@@ -76,7 +76,7 @@
     "js-cookie": "^3.0.5",
     "lodash.uniq": "^4.5.0",
     "maplibre-gl": "^4.5.2",
-    "next": "v13.4.12",
+    "next": "v14.2.35",
     "next-auth": "^4.22.3",
     "nuqs": "^1.17.1",
     "ol": "10.1.0",
