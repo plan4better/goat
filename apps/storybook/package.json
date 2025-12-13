@@ -12,7 +12,7 @@
     "@p4b/keycloak-theme": "workspace:*",
     "@p4b/ui": "workspace:*",
     "@p4b/types": "workspace:*",
-    "next": "v13.4.12",
+    "next": "v14.2.35",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
