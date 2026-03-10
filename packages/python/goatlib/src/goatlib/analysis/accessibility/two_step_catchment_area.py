@@ -8,7 +8,6 @@ from goatlib.analysis.schemas.heatmap import (
     Heatmap2SFCAParams,
     Opportunity2SFCA,
     ImpedanceFunction,
-    OpportunityGravity,
     TwoSFCAType,
     PotentialType
 )
