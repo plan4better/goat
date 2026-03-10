@@ -199,7 +199,7 @@
     },
     "capacity_expression": {
       "label": "Kapazitätsausdruck",
-      "description": "Ausdruck zur Kapazitätsberechnung (z.B. 'Bevölkerung', 'Beschäftigung')"
+      "description": "Ausdruck zur Kapazitätsberechnung (z.B. 'Fläche', 'Umfang')"
     },
     "n_destinations": {
       "label": "Anzahl der Ziele",

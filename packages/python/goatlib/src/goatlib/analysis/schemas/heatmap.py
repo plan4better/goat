@@ -464,7 +464,7 @@ class Opportunity2SFCA(OpportunityBase):
         description="Constant capacity value applied to all features.",
         json_schema_extra=ui_field(
             section="opportunities",
-            field_order=6,
+            field_order=5,
             widget="number",
             visible_when={"input_path": {"$ne": None}, "capacity_type": "constant"},
         ),
@@ -475,7 +475,7 @@ class Opportunity2SFCA(OpportunityBase):
         description="Field from the opportunity layer that contains the capacity value (e.g., number of beds, seats).",
         json_schema_extra=ui_field(
             section="opportunities",
-            field_order=5,
+            field_order=6,
             label_key="capacity_field",
             widget="field-selector",
             widget_options={"source_layer": "input_path", "field_types": ["number"]},
@@ -509,7 +509,7 @@ class Opportunity2SFCA(OpportunityBase):
         elif self.capacity_type == PotentialType.expression:
             if not self.potential_expression:
                 raise ValueError(
-                    "potential_expression must be set when capacity_type is 'expression'."
+                    "capacity_expression must be set when capacity_type is 'expression'."
                 )
         return self
 

@@ -199,7 +199,7 @@
     },
     "capacity_expression": {
       "label": "Capacity Expression",
-      "description": "Expression to calculate capacity (e.g., 'population', 'employment')"
+      "description": "Expression to calculate capacity (e.g.,  'area', 'perimeter')"
     },
     "n_destinations": {
       "label": "Number of Destinations",
