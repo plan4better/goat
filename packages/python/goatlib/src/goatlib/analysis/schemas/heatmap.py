@@ -426,25 +426,12 @@ class HeatmapConnectivityParams(HeatmapCommon):
 
 class Opportunity2SFCA(OpportunityBase):
     """Opportunity dataset parameters for 2SFCA heatmaps."""
-
-    capacity_field: str = Field(
-        ...,
-        description="Field from the opportunity layer that contains the capacity value (e.g., number of beds, seats).",
-        json_schema_extra=ui_field(
-            section="opportunities",
-            field_order=5,
-            label_key="capacity_field",
-            widget="field-selector",
-            widget_options={"source_layer": "input_path", "field_types": ["number"]},
-            visible_when={"input_path": {"$ne": None}},
-        ),
-    )
     sensitivity: SensitivityValue = Field(
         default=300000,
         description="Sensitivity parameter for enhanced 2SFCA methods.",
         json_schema_extra=ui_field(
             section="opportunities",
-            field_order=6,
+            field_order=3,
             visible_when={
                 "$and": [
                     {"input_path": {"$ne": None}},
@@ -453,6 +440,79 @@ class Opportunity2SFCA(OpportunityBase):
             },
         ),
     )
+
+    capacity_type: PotentialType = Field(
+        default=PotentialType.constant,
+        description="How to determine the capacity value for each opportunity.",
+        json_schema_extra=ui_field(
+            section="opportunities",
+            field_order=4,
+            visible_when={"input_path": {"$ne": None}},
+            widget_options={
+                # Only show "expression" option when input_path is a polygon layer
+                "enum_geometry_filter": {
+                    "source_layer": "input_path",
+                    "expression": ["Polygon", "MultiPolygon"],
+                }
+            },
+        ),
+    )
+
+    capacity_constant: float | None = Field(
+        1.0,
+        gt=0.0,
+        description="Constant capacity value applied to all features.",
+        json_schema_extra=ui_field(
+            section="opportunities",
+            field_order=6,
+            widget="number",
+            visible_when={"input_path": {"$ne": None}, "capacity_type": "constant"},
+        ),
+    )
+
+    capacity_field: str | None = Field(
+        None,
+        description="Field from the opportunity layer that contains the capacity value (e.g., number of beds, seats).",
+        json_schema_extra=ui_field(
+            section="opportunities",
+            field_order=5,
+            label_key="capacity_field",
+            widget="field-selector",
+            widget_options={"source_layer": "input_path", "field_types": ["number"]},
+            visible_when={"input_path": {"$ne": None},  "capacity_type": "field"},
+        ),
+    )
+
+    capacity_expression: PotentialExpression | None = Field(
+        None,
+        description="Expression to compute capacity for polygon layers (e.g. area or perimeter).",
+        json_schema_extra=ui_field(
+            section="opportunities",
+            field_order=7,
+            visible_when={"input_path": {"$ne": None}, "capacity_type": "expression"},
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_capacity_fields(self: Self) -> Self:
+        """Validate that the correct capacity field is set based on capacity_type."""
+        if self.capacity_type == PotentialType.field:
+            if not self.capacity_field:
+                raise ValueError(
+                    "capacity_field must be set when capacity_type is 'field'."
+                )
+        elif self.capacity_type == PotentialType.constant:
+            if self.capacity_constant is None:
+                raise ValueError(
+                    "capacity_constant must be set when capacity_type is 'constant'."
+                )
+        elif self.capacity_type == PotentialType.expression:
+            if not self.potential_expression:
+                raise ValueError(
+                    "potential_expression must be set when capacity_type is 'expression'."
+                )
+        return self
+
 
 class TwoSFCAType(StrEnum):
     """Type of 2SFCA method."""

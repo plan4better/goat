@@ -189,9 +189,17 @@
       "label": "Konstantes Potenzial",
       "description": "Verwenden Sie einen konstanten Wert für alle Ziele"
     },
+    "capacity_constant": {
+      "label": "Konstante Kapazität",
+      "description": "Verwenden Sie einen konstanten Wert für alle Zielkapazitäten"
+    },
     "potential_expression": {
       "label": "Potenzialausdruck",
       "description": "Ausdruck zur Potenzialberechnung (z.B. 'area', 'perimeter')"
+    },
+    "capacity_expression": {
+      "label": "Kapazitätsausdruck",
+      "description": "Ausdruck zur Kapazitätsberechnung (z.B. 'Bevölkerung', 'Beschäftigung')"
     },
     "n_destinations": {
       "label": "Anzahl der Ziele",
@@ -203,7 +211,7 @@
     },
     "demand_field": {
       "label": "Nachfragefeld",
-      "description": "Feld mit den Nachfragewerten"
+      "description": "Feld mit Bevölkerungs- oder Benutzeranzahl"
     },
     "demand_path": {
       "label": "Nachfrage-Layer",

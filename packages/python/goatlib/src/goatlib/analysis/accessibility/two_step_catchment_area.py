@@ -8,7 +8,9 @@ from goatlib.analysis.schemas.heatmap import (
     Heatmap2SFCAParams,
     Opportunity2SFCA,
     ImpedanceFunction,
+    OpportunityGravity,
     TwoSFCAType,
+    PotentialType
 )
 from goatlib.io.utils import Metadata
 from goatlib.models.io import DatasetMetadata
@@ -160,13 +162,15 @@ class Heatmap2SFCATool(HeatmapToolBase):
                 )
         except Exception:
             pass
+        
+        capacity_sql = self._get_capacity_sql(opp, transform_to_4326, geom_type)
 
         if "point" in geom_type:
             query = f"""
             CREATE OR REPLACE TEMP TABLE {output_table} AS
             WITH features AS (
                 SELECT
-                    {opp.capacity_field}::DOUBLE AS capacity,
+                    {capacity_sql}::DOUBLE AS capacity,
                     {transform_to_4326} AS geom
                 FROM {table_name}
                 WHERE {geom_col} IS NOT NULL
@@ -191,7 +195,7 @@ class Heatmap2SFCATool(HeatmapToolBase):
             CREATE OR REPLACE TEMP TABLE {output_table} AS
             WITH features AS (
                 SELECT
-                     {opp.capacity_field}::DOUBLE AS capacity,
+                     {capacity_sql}::DOUBLE AS capacity,
                     {transform_to_4326} AS geom
                 FROM {table_name}
                 WHERE {geom_col} IS NOT NULL
@@ -236,6 +240,57 @@ class Heatmap2SFCATool(HeatmapToolBase):
 
         self.con.execute(query)
         return output_table
+
+    def _get_capacity_sql(
+        self: Self, opp: Opportunity2SFCA, wgs84_geom_sql: str, geom_type: str
+    ) -> str:
+        """
+        Determines the SQL expression for capacity.
+        Priority:
+        1. capacity_expression
+        2. capacity_constant
+        3. capacity_field
+        4. defaults to 1.0
+
+        Special rule:
+        - 'area' and 'perimeter' expressions are only valid for Polygon/MultiPolygon geometries.
+        """
+        geom_type_lower = (geom_type or "").lower()
+
+        # --- Handle capacity_expression first ---
+        if opp.capacity_expression:
+            expr = opp.capacity_expression.lower().strip()
+
+            if expr in ("$area", "area"):
+                if "polygon" not in geom_type_lower:
+                    raise ValueError(
+                        f"Invalid capacity_expression='{expr}' for geometry type '{geom_type}'. "
+                        "Area is only valid for Polygon or MultiPolygon geometries."
+                    )
+                return f"ST_Area_Spheroid({wgs84_geom_sql})"
+
+            if expr in ("$perimeter", "perimeter"):
+                if "polygon" not in geom_type_lower:
+                    raise ValueError(
+                        f"Invalid capacity_expression='{expr}' for geometry type '{geom_type}'. "
+                        "Perimeter is only valid for Polygon or MultiPolygon geometries."
+                    )
+                return f"ST_Perimeter_Spheroid({wgs84_geom_sql})"
+
+            # Custom user expression (use as-is)
+            return expr
+
+        # --- Constant capacity ---
+        if opp.capacity_type == PotentialType.constant:
+            return str(float(opp.capacity_constant))
+
+        # --- Field-based capacity ---
+        if opp.capacity_field:
+            return f'"{opp.capacity_field}"'
+
+        # --- Default constant ---
+        return "1.0"
+
 
     def _combine_opportunities(
         self: Self, standardized_tables: list[tuple[str, str]]
@@ -502,7 +557,7 @@ class Heatmap2SFCATool(HeatmapToolBase):
             """
         else:
             raise ValueError(f"Unknown impedance function: {which}")
-
+    
     def _compute_cumulative_accessibility(
         self: Self,
         filtered_matrix: str,

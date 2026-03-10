@@ -381,7 +381,7 @@ TOOL_REGISTRY: tuple[ToolDefinition, ...] = (
              "capacity",
              "travel time",
          ),
-         docs_path="/toolbox/accessibility_indicators/2sfca",
+         docs_path="/toolbox/accessibility_indicators/two_step_floating_catchment_area",
      ),
      ToolDefinition(
          name="huff_model",

@@ -189,9 +189,17 @@
       "label": "Constant Potential",
       "description": "Use a constant value for all destinations"
     },
+    "capacity_constant": {
+      "label": "Constant Capacity",
+      "description": "Use a constant value for all destination capacities"
+    },
     "potential_expression": {
       "label": "Potential Expression",
       "description": "Expression to calculate potential (e.g., 'area', 'perimeter')"
+    },
+    "capacity_expression": {
+      "label": "Capacity Expression",
+      "description": "Expression to calculate capacity (e.g., 'population', 'employment')"
     },
     "n_destinations": {
       "label": "Number of Destinations",
@@ -203,7 +211,7 @@
     },
     "demand_field": {
       "label": "Demand Field",
-      "description": "Field with demand values"
+      "description": "Field with population or user number"
     },
     "demand_path": {
       "label": "Demand Layer",
