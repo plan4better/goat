@@ -8,7 +8,7 @@ sidebar_position: 3
 In the Settings section, **you can enable or disable various general functionalities of the dashboard**. When you disable a functionality, it will not be available in the Viewer mode.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <img src={require('/img/builder/interface_settings.png').default} alt="recent datasets" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/builder/interface_settings.webp').default} alt="recent datasets" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div> 
 
 ## Tools
