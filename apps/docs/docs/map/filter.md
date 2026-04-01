@@ -120,7 +120,7 @@ This feature is currently under development. 🧑🏻‍💻
 **Combine multiple filters** by repeating steps 3-7 for each expression. In <code>Filter results</code>, choose **Match all filters** (AND) or **Match at least one filter** (OR) to **control how filters interact**.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <img src={require('/img/map/filter/filter-results.png').default} alt="Logic Operators" style={{ maxHeight: "auto", maxWidth: "30%", objectFit: "cover"}}/>
+  <img src={require('/img/map/filter/filter-results.webp').default} alt="Logic Operators" style={{ maxHeight: "auto", maxWidth: "30%", objectFit: "cover"}}/>
 </div>
 
 ### Delete Expressions and Filters

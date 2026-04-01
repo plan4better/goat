@@ -123,7 +123,7 @@ Diese Funktion wird derzeit entwickelt. 🧑🏻‍💻
 <strong>Kombinieren Sie mehrere Filter</strong>, indem Sie die Schritte 3-7 für jeden Ausdruck wiederholen. In <code>Filter Ergebnisse</code> wählen Sie <code>Alle Filter erfüllen</code> (UND) oder <code>Mindestens einen Filter erfüllen</code> (ODER), um <strong>zu steuern, wie Filter interagieren</strong>.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <img src={require('/img/map/filter/filter-results.png').default} alt="Logic Operators" style={{ maxHeight: "300px", maxWidth: "300px", objectFit: "cover"}}/>
+  <img src={require('/img/map/filter/filter-results.webp').default} alt="Logic Operators" style={{ maxHeight: "300px", maxWidth: "300px", objectFit: "cover"}}/>
 </div>
   
 ### Ausdrücke und Filter löschen
