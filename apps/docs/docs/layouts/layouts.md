@@ -7,7 +7,7 @@ sidebar_position: 1
 The **Layouts** in GOAT allows you to create professional map reports and export them as PDF or PNG files. You can design custom layouts with maps, text, and other elements, and generate both single-page and multi-page reports.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/layouts/layouts_interface.png').default} alt="Layouts Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/layouts/layouts_interface.webp').default} alt="Layouts Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
 ## Settings Panel
