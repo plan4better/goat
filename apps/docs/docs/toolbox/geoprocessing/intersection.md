@@ -2,7 +2,7 @@
 sidebar_position: 4
 ---
 
-# Intersect
+# Intersection
 
 This tool allows you to **compute the geometric intersection of features from two layers**.
 
@@ -30,7 +30,7 @@ Computes the **geometric intersection of two vector layers.** The output contain
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Under the <code>Geoprocessing</code> menu, click on <code>Intersect</code>.</div>
+  <div class="content">Under the <code>Geoprocessing</code> menu, click on <code>intersection</code>.</div>
 </div>
 
 <div class="step">
