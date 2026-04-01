@@ -24,6 +24,7 @@
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "lint:report": "turbo run lint:report",
+    "sync:figma-image": "node ./scripts/sync-figma-image.mjs",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test"
   },
@@ -49,6 +50,7 @@
     "node": ">=16.0.0"
   },
   "dependencies": {
-    "@types/memoizee": "^0.4.8"
+    "@types/memoizee": "^0.4.8",
+    "sharp": "^0.34.1"
   }
 }

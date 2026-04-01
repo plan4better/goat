@@ -267,3 +267,11 @@ optional commercial services.
 
 ## ✍️ Contributing
 We welcome contributions of all kinds, bug reports, documentation improvements, new features, and feedback that helps strengthen the platform. Please see our [contributing guide](/CONTRIBUTING.md).
+
+## Docs Image Sync
+
+1. Create `.env.local` in the repo root.
+2. Set `FIGMA_TOKEN=...` in `.env.local`.
+3. Run `pnpm run sync:figma-image -- --target apps/docs/static/img/map/interface/map_interface.webp`.
+
+This workflow reads `FIGMA_TOKEN` from `.env.local` only. `.env.example` stays a template/documentation file and is not loaded by the sync script.
