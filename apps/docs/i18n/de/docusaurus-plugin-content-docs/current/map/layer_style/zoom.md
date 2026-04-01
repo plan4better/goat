@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 **Die Zoom-Sichtbarkeitsfunktion kontrolliert den Zoom-Bereich, in dem jeder Layer auf Ihrer Karte erscheint.** Dies hilft Ihnen, die relevantesten Daten bei verschiedenen Zoom-Stufen anzuzeigen und die Kartenleistung zu optimieren.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <img src={require('/img/map/styling/zoom.png').default} alt="Zoom-Sichtbarkeitsskala in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/map/styling/zoom.webp').default} alt="Zoom-Sichtbarkeitsskala in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
 

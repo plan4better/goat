@@ -10,7 +10,7 @@ import TabItem from '@theme/TabItem';
 **Popups zeigen relevante Informationen an, wenn Benutzer auf Karten-Features klicken.** Dies hält Ihre Karte sauber, während detaillierte Informationen auf Anfrage bereitgestellt werden. Standardmäßig zeigen Popups alle Attributfelder an, aber Sie können anpassen, welche Felder erscheinen und wie sie beschriftet sind.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/map/styling/popup.png').default} alt="Popup zeigt Feature-Informationen an" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/map/styling/popup.webp').default} alt="Popup zeigt Feature-Informationen an" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
 

@@ -115,7 +115,7 @@ When you have created a style you like, you can save it as the default for futur
 </div>
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/map/styling/save_default.png').default} alt="Default settings menu" style={{ maxHeight: "300px", maxWidth: "300px", objectFit: "cover"}}/>
+  <img src={require('/img/map/styling/save_default.webp').default} alt="Default settings menu" style={{ maxHeight: "300px", maxWidth: "300px", objectFit: "cover"}}/>
 </div>
 
 <p></p>

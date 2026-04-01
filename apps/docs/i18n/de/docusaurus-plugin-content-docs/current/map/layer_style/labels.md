@@ -11,7 +11,7 @@ import TabItem from '@theme/TabItem';
 **Beschriftungen ermöglichen es, Text auf Ihren Karten-Features basierend auf jedem Attributfeld anzuzeigen.** Dies macht Ihre Karten informativer und leichter interpretierbar, indem wichtige Informationen direkt auf den Features angezeigt werden.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/map/styling/labels.png').default} alt="Beschriftungen auf Karten-Features angezeigt" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/map/styling/labels.webp').default} alt="Beschriftungen auf Karten-Features angezeigt" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
 

@@ -30,7 +30,7 @@ import TabItem from '@theme/TabItem';
 
 <p></p>
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/map/styling/legend.png').default} alt="Legendenkonfiguration mit Untertiteleinstellungen" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/map/styling/legend.webp').default} alt="Legendenkonfiguration mit Untertiteleinstellungen" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
 

@@ -10,7 +10,7 @@ import TabItem from '@theme/TabItem';
 **Popups display relevant information when users click on map features.** This keeps your map clean while providing detailed information on demand. By default, popups show all attribute fields, but you can customize which fields appear and how they're labeled.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/map/styling/popup.png').default} alt="Popup displaying feature information" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/map/styling/popup.webp').default} alt="Popup displaying feature information" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
 ## How to configure popups

@@ -10,7 +10,7 @@ import TabItem from '@theme/TabItem';
 **The Zoom visibility feature controls the zoom range at which each layer appears on your map.** This helps you display the most relevant data at different zoom levels and optimize map performance.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <img src={require('/img/map/styling/zoom.png').default} alt="Zoom visibility scale in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/map/styling/zoom.webp').default} alt="Zoom visibility scale in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
 ## Understanding zoom levels

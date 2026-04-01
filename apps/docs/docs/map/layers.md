@@ -183,7 +183,7 @@ Click the <img src={require('/img/icons/layer.png').default} alt="Group layers" 
 By clicking on <img src={require('/img/icons/3dots.png').default} alt="Options" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/> <code>more options</code> icon next to each layer you have further options to <strong>manage and organize</strong> the selected layer.
 
 <div style={{ display: 'flex', justifyContent: 'center' }}>
-<img src={require('/img/map/layers/layer_options.png').default} alt="Layer Options" style={{ maxHeight: "250px", maxWidth: "250px", objectFit: "cover", alignItems: 'center'}}/>
+<img src={require('/img/map/layers/layer_options.webp').default} alt="Layer Options" style={{ maxHeight: "250px", maxWidth: "250px", objectFit: "cover", alignItems: 'center'}}/>
 </div>
 
 <p></p>

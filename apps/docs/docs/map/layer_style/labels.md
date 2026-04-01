@@ -10,7 +10,7 @@ import TabItem from '@theme/TabItem';
 **Labels allow you to display text on your map features based on any attribute field.** This makes your maps more informative and easier to interpret by showing key information directly on the features.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/map/styling/labels.png').default} alt="Labels displayed on map features" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/map/styling/labels.webp').default} alt="Labels displayed on map features" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
 ## How to add and configure labels

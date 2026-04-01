@@ -128,7 +128,7 @@ Wenn Sie einen Stil erstellt haben, der Ihnen gefällt, können Sie ihn als Stan
 </div>
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/map/styling/save_default.png').default} alt="Standard-Einstellungen Menü" style={{ maxHeight: "300px", maxWidth: "300px", objectFit: "cover"}}/>
+  <img src={require('/img/map/styling/save_default.webp').default} alt="Standard-Einstellungen Menü" style={{ maxHeight: "300px", maxWidth: "300px", objectFit: "cover"}}/>
 </div>
 
 <p></p>
