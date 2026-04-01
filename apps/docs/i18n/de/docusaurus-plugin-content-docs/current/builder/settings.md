@@ -9,7 +9,7 @@ sidebar_position: 3
 Im Einstellungs-Bereich können Sie **verschiedene allgemeine Funktionalitäten des Dashboards aktivieren oder deaktivieren**. Wenn Sie eine Funktionalität deaktivieren, ist sie im Betrachter-Modus nicht verfügbar.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <img src={require('/img/builder/interface_settings.png').default} alt="recent datasets" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/builder/interface_settings.webp').default} alt="recent datasets" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div> 
 
 ## Werkzeuge

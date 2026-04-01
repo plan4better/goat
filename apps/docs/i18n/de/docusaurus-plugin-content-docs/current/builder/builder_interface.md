@@ -8,7 +8,7 @@ sidebar_position: 1
 Der Wechsel in den Builder-Modus öffnet die Builder-Kartenoberfläche, **in der Sie Dashboards gestalten können, indem Sie Panels und Widgets anordnen und Ihr Workspace-Layout anpassen.**
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/builder/builder_interface.png').default} alt="Builder Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/builder/builder_interface.webp').default} alt="Builder Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
 --- 
@@ -62,7 +62,7 @@ Um ein Panel zu löschen, klicken Sie unten in den Einstellungen auf `Löschen`.
 **Widgets sind die Bausteine Ihres Dashboards**. Sie ermöglichen es Ihnen, Daten, Statistiken, Diagramme und Projektelemente wie Text oder Bilder anzuzeigen. Jedes Widget ist hochgradig anpassbar: Sie können den Inhalt, das Erscheinungsbild und das Verhalten nach Ihren Bedürfnissen anpassen, egal ob Sie wichtige Kennzahlen hervorheben, Trends visualisieren oder Kontext mit Text und Grafiken hinzufügen möchten.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/builder/widgets.png').default} alt="Builder Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/builder/widgets.webp').default} alt="Builder Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
 <div class="step">
@@ -101,5 +101,5 @@ Weitere Details finden Sie unter [Widgets](../category/widgets).
 In den Einstellungen können Sie <b>Werkzeuge</b>, <b>Bedienelemente</b> und <b>Ansichtsoptionen</b> für Ihr Dashboard aktivieren oder deaktivieren.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/builder/interface_settings.png').default} alt="Dragging a widget to the panel" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
+  <img src={require('/img/builder/interface_settings.webp').default} alt="Dragging a widget to the panel" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
