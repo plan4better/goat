@@ -128,15 +128,9 @@ This feature is currently under development. 🧑🏻‍💻
 **Remove single expressions**: Click on the <code>more options</code> <img src={require('/img/icons/3dots-horizontal.png').default} alt="Options" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/> menu next to the expression, then click <code>Delete</code> to **remove the expression**.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <img src={require('/img/map/filter/filter_delete.png').default} alt="Delete" style={{ maxHeight: "auto", maxWidth: "30%", objectFit: "cover"}}/>
+  <img src={require('/img/map/filter/filter_delete_clear.webp').default} alt="Delete expressions and clear filters" style={{ maxHeight: "auto", maxWidth: "30%", objectFit: "cover"}}/>
 </div>
-
-<p></p>
 
 **Remove whole filter**: Click <code>Clear Filter</code> at the bottom of the Filter menu to **remove all filters**.
 
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-
-  <img src={require('/img/map/filter/filter_clear.png').default} alt="Clear Filters" style={{ maxHeight: "auto", maxWidth: "30%", objectFit: "cover"}}/>
-</div>
 
