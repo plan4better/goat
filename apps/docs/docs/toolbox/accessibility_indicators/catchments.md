@@ -81,7 +81,7 @@ For suitable travel time limits by amenity type, see the [Location Tool](https:/
 
 **Considers all locations accessible by public transport, including inter-modal transfers and station access.**
 
-- Select the <code>Public transport modes</code> to analyze: Bus, Tram, Rail, Subway, Ferry, Cable Car, Gondola, and/or Funicular, and configure the <code>Travel time limit</code> in minutes.
+- Select the <code>PT modes</code> to analyze: Bus, Tram, Rail, Subway, Ferry, Cable Car, Gondola, and/or Funicular, and configure the <code>Travel time limit</code> in minutes.
 - Choose the <code>Catchment area shape</code>. If choosing:
   - <code>Polygon</code> or <code>Network</code>: you can select the <code>Steps</code> and <code>Step sizes</code>.
   - <code>Hexagonal grid</code>: no further configuration is necessary.

@@ -35,7 +35,11 @@ You can configure the **routing type**, **opportunity layers** (with capacity fi
   - **Enhanced 2SFCA (E2SFCA)** weights by an impedance function in both calculation steps, creating realistic distance decay where closer facilities contribute more to accessibility than distant ones.
   - **Modified 2SFCA (M2SFCA)** uses squared impedance weights in the second step, creating even stronger proximity bias. This variant heavily emphasizes nearby facilities while still considering distant options, making it ideal when travel convenience is paramount.
 
-**Key difference:** Unlike the *Gravity-based Heatmap*, which measures general accessibility of destinations, the *2SFCA Heatmap* explicitly models **supply-demand balance** — showing where capacity is sufficient or insufficient relative to the population that needs it.
+:::tip
+
+**Key difference:** Unlike the *Gravity-based Heatmap*, which measures general accessibility of destinations, the *2SFCA Heatmap* explicitly models **supply-demand balance** - showing where capacity is sufficient or insufficient relative to the population that needs it.
+
+:::
 
 
 :::info
@@ -64,7 +68,7 @@ Heatmap computation is available across **over 30 European countries** for `Walk
   <div class="content">Under the <code>Accessibility Indicators</code> menu, click on <code>Heatmap 2SFCA</code>.</div>
 </div>
 
-### Routing
+### Routing & Configuration
 
 <div class="step">
   <div class="step-number">3</div>
@@ -74,15 +78,33 @@ Heatmap computation is available across **over 30 European countries** for `Walk
 | Mode | Considers |
 |------|-----------|
 | Walk | All paths accessible by foot |
-| Bicycle | All paths accessible by bicycle (surface, smoothness, slope) |
-| Pedelec | All paths accessible by pedelec (surface, smoothness) |
-| Car | All paths accessible by car (speed limits, one-way restrictions) |
-| Public Transport | Public transport network (GTFS schedules) with walking access and egress (up to 30 minutes) to and from stations |
+| Bicycle | All paths accessible by bicycle (taking into account surface and slope) |
+| Pedelec | All paths accessible by pedelec (taking into account surface and slope) |
+| Car | All paths accessible by car (taking into account speed limits and one-way restrictions) |
+| Public Transport | All journeys possible by public transport (according to official GTFS schedules), considering walking access and egress to and from stops |
 
-### Configuration
+<Tabs>
+<TabItem value="active-car" label="Walk / Bicycle / Pedelec / Car" default className="tabItemBox">
 
 <div class="step">
   <div class="step-number">4</div>
+  <div class="content">In the <code>Calculate by</code> menu, choose either the Time (minutes) or Distance (metres) cost type.</div>
+</div>
+
+</TabItem>
+
+<TabItem value="public transport" label="Public Transport (PT)" className="tabItemBox">
+
+<div class="step">
+  <div class="step-number">4</div>
+  <div class="content">Choose <code>PT modes</code> to analyze: Bus, Tram, Rail, Subway, Ferry, Cable Car, Gondola, and/or Funicular. Then, select the <code>Day</code> and <code>Arrival time</code> for the analysis. The best public transport journeys that reach the opportunities at or before this time will be considered.</div>
+</div>
+
+</TabItem>
+</Tabs>
+
+<div class="step">
+  <div class="step-number">5</div>
   <div class="content">Select the <code>2SFCA Type</code> you would like to use.</div>
 </div>
 
@@ -115,7 +137,7 @@ Requires selecting an **impedance function** and **sensitivity** value.
 </Tabs>
 
 <div class="step">
-  <div class="step-number">5</div>
+  <div class="step-number">6</div>
   <div class="content">If using <b>E2SFCA</b> or <b>M2SFCA</b>, select the <code>Impedance Function</code> for distance weighting.</div>
 </div>
 
@@ -153,32 +175,46 @@ Applies a full weight of 1 to every facility within the travel time limit and 0 
 
 </Tabs>
 
+#### Advanced options
+
+Optionally, enable <code>Advanced options</code> to configure additional settings for routing and heatmap generation.
+
+<div class="step">
+  <div class="step-number">7</div>
+  <div class="content">Select a <code>Reference area</code> - a polygon layer that represents your study area. When set, the heatmap extends to cover all H3 cells within that polygon, with inaccessible cells assigned a value of <code>NULL</code> to expose coverage gaps and underserved areas.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">8</div>
+  <div class="content">Configure various routing options for your selected transport mode such as travel speed, max transfers, access/egress limits and more. Further information about mode-specific options can be found under the <a href="/docs/category/routing">Routing</a> section.</div>
+</div>
+
 ### Demand
 
 <div class="step">
-  <div class="step-number">6</div>
+  <div class="step-number">9</div>
   <div class="content">Select your <code>Demand Layer</code> from the drop-down menu. This layer should contain population or user data (e.g., census data with resident counts).</div>
 </div>
 
 <div class="step">
-  <div class="step-number">7</div>
+  <div class="step-number">10</div>
   <div class="content">Choose the <code>Demand Field</code> — a numeric field from your demand layer representing the number of potential users (e.g., population, number of households).</div>
 </div>
 
 ### Opportunities
 
 <div class="step">
-  <div class="step-number">8</div>
+  <div class="step-number">11</div>
   <div class="content">Select your <code>Input Layer</code> from the drop-down menu. This layer should contain facility locations (e.g., hospitals, schools, shops).</div>
 </div>
 
 <div class="step">
-  <div class="step-number">9</div>
+  <div class="step-number">12</div>
   <div class="content">Set the <code>Travel Time Limit</code> defining the maximum catchment area in minutes.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">10</div>
+  <div class="step-number">13</div>
   <div class="content">Choose a <code>Potential Type</code> to define how each facility's capacity is determined:
     <ul>
       <li><b>Constant</b> — all facilities have the same capacity. Enter a numeric value (default: 1.0).</li>
@@ -194,29 +230,29 @@ Need help choosing a suitable travel time limit for various common amenities? Th
 :::
 
 <div class="step">
-  <div class="step-number">11</div>
+  <div class="step-number">14</div>
   <div class="content">If using <b>E2SFCA</b> or <b>M2SFCA</b>, specify a <code>Sensitivity</code> value to control how quickly the impedance function decays with distance.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">12</div>
-  <div class="content">Optionally, add more opportunity layers by clicking <code>+ Add Opportunities</code>. Multiple facility types can be combined into a single analysis.</div>
+  <div class="step-number">15</div>
+  <div class="content">Optionally, add more opportunity layers by clicking <code>+ Add Opportunity</code>. Multiple facility types can be combined into a single analysis.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">13</div>
+  <div class="step-number">16</div>
   <div class="content">Optionally, expand <code>Advanced Options</code> and select a <code>Reference Area</code> — a polygon layer that defines the full study area. When set, the heatmap extends to cover all H3 cells within that polygon, with cells outside the computed reach shown as <code>NULL</code> to expose coverage gaps and underserved areas.</div>
 </div>
 
 ### Result Layer
 
 <div class="step">
-  <div class="step-number">14</div>
+  <div class="step-number">17</div>
   <div class="content">Set the <code>Result layer name</code> for the output heatmap layer.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">15</div>
+  <div class="step-number">18</div>
   <div class="content">Click <code>Run</code> to start the calculation.</div>
 </div>
 
@@ -264,6 +300,16 @@ The following example illustrates how the 2SFCA method works for each step.
 
 ## 4. Technical details
 
+### Cell costs
+
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+<img src={require('/img/toolbox/accessibility_indicators/heatmaps/shared/cell_cost_assignment.png').default} alt="gravity-no-destination-potential" style={{ maxHeight: "400px", maxWidth: "auto"}}/>
+</div>
+
+<p></p>
+
+When multiple edges (streets) of the road network intersect a hexagonal cell, the cell's cost is calculated as the **minimum of all edge costs** within that cell. For the 2SFCA heatmap, this cost value (represented by **t<sub>kj</sub>**) is then used according to the formula described in the following section to determine the accessibility of each cell.
+
 ### Calculation
 
 The 2SFCA method computes accessibility in two steps:
@@ -274,7 +320,7 @@ For each facility location *j*, compute the ratio of its capacity to the total d
 
 <MathJax.Provider>
   <div style={{ marginTop: '20px', fontSize: '24px' }}>
-    <MathJax.Node formula={"R_j = \\frac{S_j}{\\sum_{k \\in \\{d_{kj} \\leq d_0\\}} D_k \\cdot f(d_{kj})}"} />
+    <MathJax.Node formula={"R_j = \\frac{S_j}{\\sum_{k \\in \\{t_{kj} \\leq t_0\\}} D_k \\cdot f(t_{kj})}"} />
   </div>
 </MathJax.Provider>
 
@@ -282,9 +328,9 @@ Where:
 - *R<sub>j</sub>* = capacity demand ratio of facility *j*
 - *S<sub>j</sub>* = capacity (supply) of facility *j*
 - *D<sub>k</sub>* = demand (population) at location *k*
-- *d<sub>kj</sub>* = travel time from location *k* to facility *j*
-- *d<sub>0</sub>* = travel time limit (maximum catchment)
-- *f(d<sub>kj</sub>)* = impedance function (distance weight)
+- *t<sub>kj</sub>* = travel time from location *k* to facility *j*
+- *t<sub>0</sub>* = travel time limit (maximum catchment)
+- *f(t<sub>kj</sub>)* = impedance function (distance weight)
 
 #### Step 2 — Cumulative Accessibility
 
@@ -292,26 +338,26 @@ For each grid cell *i*, sum the capacity demand ratios of all reachable faciliti
 
 <MathJax.Provider>
   <div style={{ marginTop: '20px', fontSize: '24px' }}>
-    <MathJax.Node formula={"A_i = \\sum_{j \\in \\{d_{ij} \\leq d_0\\}} R_j \\cdot f(d_{ij})"} />
+    <MathJax.Node formula={"A_i = \\sum_{j \\in \\{t_{ij} \\leq t_0\\}} R_j \\cdot f(t_{ij})"} />
   </div>
 </MathJax.Provider>
 
 Where:
 - *A<sub>i</sub>* = accessibility at location *i*
 - *R<sub>j</sub>* = capacity demand ratio of facility *j* (from Step 1)
-- *f(d<sub>ij</sub>)* = impedance function weight
+- *f(t<sub>ij</sub>)* = impedance function weight
 
 ### 2SFCA Variants
 
-The three variants differ in how the impedance function *f(d)* is applied:
+The three variants differ in how the impedance function *f(t)* is applied:
 
 | Variant | Step 1  | Step 2  |
 |---------|--------------------------|--------------------------|
-| **Standard 2SFCA** | *f(d) = 1* (binary) | *f(d) = 1* (binary) |
-| **E2SFCA** | *f(d) = w(d)* | *f(d) = w(d)* |
-| **M2SFCA** | *f(d) = w(d)* | *f(d) = w(d)<sup>2</sup>* |
+| **Standard 2SFCA** | *f(t) = 1* (binary) | *f(t) = 1* (binary) |
+| **E2SFCA** | *f(t) = w(t)* | *f(t) = w(t)* |
+| **M2SFCA** | *f(t) = w(t)* | *f(t) = w(t)<sup>2</sup>* |
 
-Where *w(d)* is the selected impedance function (Gaussian, Linear, Exponential, Power, or Cumulative). 
+Where *w(t)* is the selected impedance function (Gaussian, Linear, Exponential, Power, or Cumulative). 
 
 ### Comparison of variants
 

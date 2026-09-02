@@ -59,16 +59,27 @@ The day of the week to consider for public transport routing. Choose between `We
 
 A time window for public transport routing. The engine evaluates **every departure minute** within this window and keeps the **fastest** journey to each reachable location — it is not an average over the window. The result is therefore the best-case, largest possible catchment area from your specified origin point. A journey is considered to fall within the time window solely based on its start time, regardless of its end time or duration.
 
+:::note
+
+Certain indicators may only support a **single departure or arrival time** instead of a time window. In this case, the engine will only evaluate journeys that start at or after a departure time or end at or before an arrival time.
+
+:::
+
 #### Maximum transfers
 
 The maximum number of transfers a PT journey may include. A maximum of `5` transfers is supported.
 
 #### Access and Egress
 
-The **access leg** (origin to the first PT station) and the **egress leg** (last PT station to the destination) are configured independently. For each, you can set:
+The **access leg** (origin to public transport stop) and the **egress leg** (public transport stop to destination) can be configured independently. For each, the following options are currently supported.
 
-- **Mode** — how users travel to and from the stations: `Walk`, `Bicycle`, `Pedelec`, or `Car`.
-- **Calculate by** — whether the leg is limited by `Time` or `Distance`, and the corresponding **Limit**.
+| Tool | Mode | Calculate by | Limit |
+|------|------|--------------|-------|
+| Catchment Area | <code>Walk</code>, <code>Bicycle</code>, <code>Pedelec</code>, <code>Car</code> | <code>Time</code> or <code>Distance</code> | Upto overall <code>Limit</code> |
+| Heatmaps | <code>Walk</code> | <code>Time</code> | 30 minutes |
+| Huff Model | <code>Walk</code> | <code>Time</code> | 30 minutes |
+| Travel Cost Matrix | <code>Walk</code>, <code>Bicycle</code>, <code>Pedelec</code>, <code>Car</code> | <code>Time</code> or <code>Distance</code> | Upto overall <code>Limit</code> |
+
 - **Speed** — the travel speed used for the leg (when calculating by `Time`).
 
 By default, both the access and egress legs use `Walk`, a `Time` limit of `15 min`, and a speed of `5 km/h`.

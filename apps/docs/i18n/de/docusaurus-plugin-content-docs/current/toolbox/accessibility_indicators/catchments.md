@@ -81,7 +81,7 @@ Geeignete Reisezeitlimits nach Einrichtungstyp finden Sie im [Standortwerkzeug](
 
 **Berücksichtigt alle per öffentlichem Verkehr erreichbaren Orte, einschließlich intermodaler Umstiege und Haltestellen-Zugang.**
 
-- Wählen Sie die <code>Öffentlichen Verkehrsmittel</code> für die Analyse: Bus, Straßenbahn, Bahn, U-Bahn, Fähre, Seilbahn, Gondel und/oder Standseilbahn, und konfigurieren Sie das <code>Reisezeitlimit</code> in Minuten.
+- Wählen Sie die <code>ÖV-Modi</code> für die Analyse: Bus, Straßenbahn, Bahn, U-Bahn, Fähre, Seilbahn, Gondel und/oder Standseilbahn, und konfigurieren Sie das <code>Reisezeitlimit</code> in Minuten.
 - Wählen Sie die <code>Form des Einzugsgebiets</code>. Bei Wahl von:
   - <code>Polygon</code> oder <code>Netzwerk</code>: können Sie <code>Schritte</code> und <code>Schrittgrößen</code> festlegen.
   - <code>Sechseckiges Gitter</code>: keine weitere Konfiguration erforderlich.

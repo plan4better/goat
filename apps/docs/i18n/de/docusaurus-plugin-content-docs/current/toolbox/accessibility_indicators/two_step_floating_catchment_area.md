@@ -25,8 +25,8 @@ Das Ergebnis ist ein **Verhältnis von Angebot zu Nachfrage auf der Ebene hexago
 
 2. **Schritt 2 — Kumulative Erreichbarkeit:** Für jede Rasterzelle werden die Kapazitätsverhältnisse aller erreichbaren Einrichtungen summiert. Das Ergebnis zeigt, wie gut jeder Standort versorgt ist.
 
-Sie können den **Routing-Modus**, **Ziele-Layer** (mit Kapazitätsfeld), **Bedarfs-Layer** (mit Bevölkerungsfeld), **Reisezeitlimits** konfigurieren und zwischen drei **2SFCA-Varianten** wählen.
-- Die **Ziele-Layer enthalten Einrichtungsdaten** mit einem Kapazitätsattribut (z. B. Anzahl der Krankenhausbetten, Quadratmeter Verkaufsfläche, Schulplätze).
+Sie können den **Routing-Modus**, **Gelegenheits-Layer** (mit Kapazitätsfeld), **Bedarfs-Layer** (mit Bevölkerungsfeld), **Reisezeitlimits** konfigurieren und zwischen drei **2SFCA-Varianten** wählen.
+- Die **Gelegenheits-Layer enthalten Einrichtungsdaten** mit einem Kapazitätsattribut (z. B. Anzahl der Krankenhausbetten, Quadratmeter Verkaufsfläche, Schulplätze).
 
 - Der **Bedarfs-Layer enthält Bevölkerungs- oder Nutzerdaten** (z. B. Einwohnerzahl, potenzielle Kunden), die die Nachfrage nach den Einrichtungen darstellen.
 
@@ -35,7 +35,11 @@ Sie können den **Routing-Modus**, **Ziele-Layer** (mit Kapazitätsfeld), **Beda
   - **Enhanced 2SFCA (E2SFCA)** gewichtet mittels einer Widerstandsfunktion in beiden Berechnungsschritten, wodurch ein realistischer Distanzabfall entsteht, bei dem näher gelegene Einrichtungen stärker zur Erreichbarkeit beitragen als entfernte.
   - **Modified 2SFCA (M2SFCA)** verwendet quadrierte Widerstandsgewichte im zweiten Schritt, was eine noch stärkere Bevorzugung von Nähe erzeugt. Diese Variante betont stark nahegelegene Einrichtungen, berücksichtigt aber immer noch entfernte Optionen, was ideal ist, wenn Reisekomfort entscheidend ist.
 
+:::tip
+
 **Wesentlicher Unterschied:** Im Gegensatz zur *Gravitationsbasierten Heatmap*, die die allgemeine Erreichbarkeit von Zielen misst, modelliert die *2SFCA Heatmap* explizit das **Gleichgewicht von Angebot und Nachfrage** – und zeigt, wo die Kapazität im Verhältnis zur bedürftigen Bevölkerung ausreichend oder unzureichend ist.
+
+:::
 
 
 :::info
@@ -64,7 +68,7 @@ Die Heatmap-Berechnung ist für `Walk`, `Bicycle`, `Pedelec` und `Auto` in **üb
   <div class="content">Klicken Sie im Menü <code>Erreichbarkeitsindikatoren</code> auf <code>Heatmap 2SFCA</code>.</div>
 </div>
 
-### Routing
+### Routing & Konfiguration
 
 <div class="step">
   <div class="step-number">3</div>
@@ -74,15 +78,48 @@ Die Heatmap-Berechnung ist für `Walk`, `Bicycle`, `Pedelec` und `Auto` in **üb
 | Verkehrsmittel | Berücksichtigt |
 |----------------|----------------|
 | Zu Fuß | Alle zu Fuß begehbaren Wege |
-| Fahrrad | Alle mit dem Fahrrad befahrbaren Wege (Oberfläche, Glätte, Steigung) |
-| Pedelec | Alle mit dem Pedelec befahrbaren Wege (Oberfläche, Glätte) |
-| Auto | Alle mit dem Auto befahrbaren Wege (Tempolimits, Einbahnstraßen) |
-| Öffentlicher Verkehr | ÖV-Netz (GTFS-Fahrpläne) mit Zu-Fuß-Zugang und -Abgang (bis zu 30 Minuten) zu und von den Haltestellen |
+| Fahrrad | Alle mit dem Fahrrad befahrbaren Wege (unter Berücksichtigung von Oberfläche und Steigung) |
+| Pedelec | Alle mit dem Pedelec befahrbaren Wege (unter Berücksichtigung von Oberfläche und Steigung) |
+| Auto | Alle mit dem Auto befahrbaren Wege (unter Berücksichtigung von Tempolimits und Einbahnstraßen) |
+| Öffentlicher Verkehr | Alle mit dem ÖV möglichen Fahrten (gemäß offiziellen GTFS-Fahrplänen), unter Berücksichtigung von Zu- und Abgang zu Fuß zu und von den Haltestellen |
 
-### Konfiguration
+<Tabs>
+<TabItem value="active-car" label="Zu Fuß / Fahrrad / Pedelec / Auto" default className="tabItemBox">
 
 <div class="step">
   <div class="step-number">4</div>
+  <div class="content">Wählen Sie im Menü <code>Berechnung nach</code>, ob die Reisekosten als Zeit (Minuten) oder als Entfernung (Meter) gemessen werden.</div>
+</div>
+
+</TabItem>
+
+<TabItem value="public transport" label="Öffentlicher Verkehr (ÖV)" className="tabItemBox">
+
+<div class="step">
+  <div class="step-number">4</div>
+  <div class="content">Wählen Sie die zu analysierenden <code>ÖV-Modi</code>: Bus, Straßenbahn, Bahn, U-Bahn, Fähre, Seilbahn, Gondel und/oder Standseilbahn. Wählen Sie anschließend <code>Tag</code> und <code>Ankunftszeit</code> für die Analyse. Berücksichtigt werden die besten ÖV-Fahrten, die die Gelegenheiten bis zu dieser Zeit erreichen.</div>
+</div>
+
+</TabItem>
+</Tabs>
+
+#### Erweiterte Optionen
+
+Optional können Sie <code>Erweiterte Optionen</code> aktivieren, um weitere Einstellungen für Routing und Heatmap-Erstellung vorzunehmen.
+
+<div class="step">
+  <div class="step-number">5</div>
+  <div class="content">Wählen Sie ein <code>Referenzgebiet</code> — einen Polygon-Layer, der Ihr Untersuchungsgebiet darstellt. Wenn festgelegt, erweitert sich die Heatmap auf alle H3-Zellen innerhalb dieses Polygons; nicht erreichbare Zellen erhalten den Wert <code>NULL</code> und zeigen so Versorgungslücken und unterversorgte Gebiete auf.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">6</div>
+  <div class="content">Konfigurieren Sie verschiedene Routing-Optionen für das gewählte Verkehrsmittel, etwa Reisegeschwindigkeit, maximale Anzahl an Umstiegen, Zu- und Abgangslimits und mehr. Weitere Informationen zu verkehrsmittelspezifischen Optionen finden Sie im Abschnitt <a href="/docs/category/routing">Routing</a>.</div>
+</div>
+
+
+<div class="step">
+  <div class="step-number">7</div>
   <div class="content">Wählen Sie den <code>2SFCA-Typ</code>, den Sie verwenden möchten.</div>
 </div>
 
@@ -115,7 +152,7 @@ Erfordert die Auswahl einer **Widerstandsfunktion** und eines **Sensitivitätswe
 </Tabs>
 
 <div class="step">
-  <div class="step-number">5</div>
+  <div class="step-number">8</div>
   <div class="content">Wenn Sie <b>E2SFCA</b> oder <b>M2SFCA</b> verwenden, wählen Sie die <code>Widerstandsfunktion</code> für die Distanzgewichtung.</div>
 </div>
 
@@ -156,29 +193,29 @@ Wendet innerhalb des Reisezeitlimits ein volles Gewicht von 1 auf jede Einrichtu
 ### Bedarf
 
 <div class="step">
-  <div class="step-number">6</div>
+  <div class="step-number">9</div>
   <div class="content">Wählen Sie Ihren <code>Nachfrage-Layer</code> aus dem Dropdown-Menü. Dieser Layer sollte Bevölkerungs- oder Nutzerdaten enthalten (z. B. Zensusdaten mit Einwohnerzahlen).</div>
 </div>
 
 <div class="step">
-  <div class="step-number">7</div>
+  <div class="step-number">10</div>
   <div class="content">Wählen Sie das <code>Nachfragefeld</code> – ein numerisches Feld aus Ihrem Bedarfs-Layer, das die Anzahl potenzieller Nutzer darstellt (z. B. Bevölkerung, Anzahl der Haushalte).</div>
 </div>
 
-### Ziele
+### Gelegenheiten
 
 <div class="step">
-  <div class="step-number">8</div>
+  <div class="step-number">11</div>
   <div class="content">Wählen Sie Ihren <code>Eingabe-Layer</code> aus dem Dropdown-Menü. Dieser Layer sollte Standorte von Einrichtungen enthalten (z. B. Krankenhäuser, Schulen, Geschäfte).</div>
 </div>
 
 <div class="step">
-  <div class="step-number">9</div>
+  <div class="step-number">12</div>
   <div class="content">Legen Sie das <code>Reisezeitlimit</code> fest, das das maximale Einzugsgebiet in Minuten definiert.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">10</div>
+  <div class="step-number">13</div>
   <div class="content">Wählen Sie einen <code>Potenzialtyp</code>, um festzulegen, wie die Kapazität jeder Einrichtung bestimmt wird:
     <ul>
       <li><b>Constant</b> — alle Einrichtungen haben die gleiche Kapazität. Geben Sie einen numerischen Wert ein (Standard: 1.0).</li>
@@ -194,29 +231,29 @@ Benötigen Sie Hilfe bei der Auswahl einer geeigneten Reisezeitgrenze für versc
 :::
 
 <div class="step">
-  <div class="step-number">11</div>
+  <div class="step-number">14</div>
   <div class="content">Wenn Sie <b>E2SFCA</b> oder <b>M2SFCA</b> verwenden, geben Sie einen <code>Sensitivitätswert</code> an, um zu steuern, wie schnell die Widerstandsfunktion mit der Entfernung abfällt.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">12</div>
+  <div class="step-number">15</div>
   <div class="content">Optional können Sie weitere Gelegenheiten hinzufügen, indem Sie auf <code>+ Hinzufügen Gelegenheiten</code> klicken. Mehrere Einrichtungstypen können in einer einzigen Analyse kombiniert werden.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">13</div>
+  <div class="step-number">16</div>
   <div class="content">Optional können Sie unter <code>Erweiterte Optionen</code> ein <code>Referenzgebiet</code> auswählen — einen Polygon-Layer, der das vollständige Untersuchungsgebiet definiert. Wenn festgelegt, erweitert sich die Heatmap auf alle H3-Zellen innerhalb dieses Polygons; Zellen außerhalb der berechneten Erreichbarkeit werden als <code>NULL</code> dargestellt und zeigen so Versorgungslücken und unterversorgte Gebiete auf.</div>
 </div>
 
 ### Ergebnis-Layer
 
 <div class="step">
-  <div class="step-number">14</div>
+  <div class="step-number">17</div>
   <div class="content">Legen Sie den <code>Name der Ergebnislayer</code> für den Ausgabe-Heatmap-Layer fest.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">15</div>
+  <div class="step-number">18</div>
   <div class="content">Klicken Sie auf <code>Ausführen</code>, um die Berechnung zu starten.</div>
 </div>
 
@@ -264,6 +301,16 @@ Das folgende Beispiel veranschaulicht, wie die 2SFCA-Methode für jeden Schritt 
 
 ## 4. Technische Details
 
+### Zellkosten
+
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+<img src={require('/img/toolbox/accessibility_indicators/heatmaps/shared/cell_cost_assignment.png').default} alt="Zuordnung der Zellkosten" style={{ maxHeight: "400px", maxWidth: "auto"}}/>
+</div>
+
+<p></p>
+
+Wenn mehrere Kanten (Straßen) des Straßennetzes eine sechseckige Zelle schneiden, werden die Kosten der Zelle als **Minimum aller Kantenkosten** innerhalb dieser Zelle berechnet. Für die 2SFCA-Heatmap wird dieser Kostenwert (dargestellt durch **tᵢⱼ**) anschließend gemäß der in den folgenden Abschnitten beschriebenen Formeln verwendet.
+
 ### Berechnung
 
 Die 2SFCA-Methode berechnet die Erreichbarkeit in zwei Schritten:
@@ -274,7 +321,7 @@ Für jeden Einrichtungsstandort *j* wird das Verhältnis seiner Kapazität zur G
 
 <MathJax.Provider>
   <div style={{ marginTop: '20px', fontSize: '24px' }}>
-    <MathJax.Node formula={"R_j = \\frac{S_j}{\\sum_{k \\in \\{d_{kj} \\leq d_0\\}} D_k \\cdot f(d_{kj})}"} />
+    <MathJax.Node formula={"R_j = \\frac{S_j}{\\sum_{k \\in \\{t_{kj} \\leq t_0\\}} D_k \\cdot f(t_{kj})}"} />
   </div>
 </MathJax.Provider>
 
@@ -282,9 +329,9 @@ Wobei:
 - *R<sub>j</sub>* = Kapazitäts-Nachfrage-Verhältnis der Einrichtung *j*
 - *S<sub>j</sub>* = Kapazität (Angebot) der Einrichtung *j*
 - *D<sub>k</sub>* = Nachfrage (Bevölkerung) am Standort *k*
-- *d<sub>kj</sub>* = Reisezeit vom Standort *k* zur Einrichtung *j*
-- *d<sub>0</sub>* = Reisezeitlimit (maximales Einzugsgebiet)
-- *f(d<sub>kj</sub>)* = Widerstandsfunktion (Distanzgewicht)
+- *t<sub>kj</sub>* = Reisezeit vom Standort *k* zur Einrichtung *j*
+- *t<sub>0</sub>* = Reisezeitlimit (maximales Einzugsgebiet)
+- *f(t<sub>kj</sub>)* = Widerstandsfunktion (Distanzgewicht)
 
 #### Schritt 2 — Kumulative Erreichbarkeit
 
@@ -292,14 +339,26 @@ Für jede Rasterzelle *i* werden die Kapazitäts-Nachfrage-Verhältnisse aller e
 
 <MathJax.Provider>
   <div style={{ marginTop: '20px', fontSize: '24px' }}>
-    <MathJax.Node formula={"A_i = \\sum_{j \\in \\{d_{ij} \\leq d_0\\}} R_j \\cdot f(d_{ij})"} />
+    <MathJax.Node formula={"A_i = \\sum_{j \\in \\{t_{ij} \\leq t_0\\}} R_j \\cdot f(t_{ij})"} />
   </div>
 </MathJax.Provider>
 
 Wobei:
 - *A<sub>i</sub>* = Erreichbarkeit am Standort *i*
 - *R<sub>j</sub>* = Kapazitäts-Nachfrage-Verhältnis der Einrichtung *j* (aus Schritt 1)
-- *f(d<sub>ij</sub>)* = Gewicht der Widerstandsfunktion
+- *f(t<sub>ij</sub>)* = Gewicht der Widerstandsfunktion
+
+### 2SFCA-Varianten
+
+Die drei Varianten unterscheiden sich darin, wie die Widerstandsfunktion *f(t)* angewendet wird:
+
+| Variante | Schritt 1 | Schritt 2 |
+|---------|--------------------------|--------------------------|
+| **Standard 2SFCA** | *f(t) = 1* (binär) | *f(t) = 1* (binär) |
+| **E2SFCA** | *f(t) = w(t)* | *f(t) = w(t)* |
+| **M2SFCA** | *f(t) = w(t)* | *f(t) = w(t)<sup>2</sup>* |
+
+Dabei ist *w(t)* die gewählte Widerstandsfunktion (Gauß, Linear, Exponentiell, Potenz oder Kumulativ).
 
 ### Vergleich der Varianten
 
@@ -409,3 +468,17 @@ Die Auflösung und Dimensionen des verwendeten hexagonalen Rasters hängen vom g
 | Pedelec | 9 | 78.999,4 m² | 174,4 m |
 | Car | 8 | 552.995,7 m² | 461,4 m |
 | Public Transport | 9 | 78.999,4 m² | 174,4 m |
+
+:::tip Hinweis
+
+Für weitere Einblicke in den Routing-Algorithmus besuchen Sie [Routing](../../category/routing). Außerdem können Sie diese [Publikation](https://doi.org/10.1016/j.jtrangeo.2021.103080) einsehen.
+
+:::
+
+## 5. Literatur
+
+Jörg, R.; Lenz, N.; Wetz, S.; Widmer, M. (2019): Ein Modell zur Analyse der Versorgungsdichte: Herleitung eines Index zur räumlichen Zugänglichkeit mithilfe von GIS und Fallstudie zur ambulanten Grundversorgung in der Schweiz (Obsan Bericht, Nr. 01/2019). Neuchâtel: Schweizerisches Gesundheitsobservatorium.
+
+https://www.obsan.admin.ch/sites/default/files/obsan_01_2019_bericht_0.pdf
+
+

@@ -3,6 +3,8 @@ sidebar_position: 6
 ---
 
 import MathJax from 'react-mathjax';
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Huff-Modell
 
@@ -60,7 +62,7 @@ Die Berechnung des Huff-Modells ist für `Walk`, `Bicycle`, `Pedelec` und `Auto`
   <div class="content">Klicken Sie im Menü <code>Erreichbarkeitsindikatoren</code> auf <code>Huff-Modell</code>.</div>
 </div>
 
-### Routing
+### Routing & Konfiguration
 
 <div class="step">
   <div class="step-number">3</div>
@@ -70,21 +72,44 @@ Die Berechnung des Huff-Modells ist für `Walk`, `Bicycle`, `Pedelec` und `Auto`
 | Verkehrsmittel | Berücksichtigt |
 |----------------|----------------|
 | Zu Fuß | Alle zu Fuß begehbaren Wege |
-| Fahrrad | Alle mit dem Fahrrad befahrbaren Wege (Oberfläche, Glätte, Steigung) |
-| Pedelec | Alle mit dem Pedelec befahrbaren Wege (Oberfläche, Glätte) |
-| Auto | Alle mit dem Auto befahrbaren Wege (Tempolimits, Einbahnstraßen) |
-| Öffentlicher Verkehr | ÖV-Netz (GTFS-Fahrpläne) mit Zu-Fuß-Zugang und -Abgang (bis zu 30 Minuten) zu und von den Haltestellen |
+| Fahrrad | Alle mit dem Fahrrad befahrbaren Wege (unter Berücksichtigung von Oberfläche und Steigung) |
+| Pedelec | Alle mit dem Pedelec befahrbaren Wege (unter Berücksichtigung von Oberfläche und Steigung) |
+| Auto | Alle mit dem Auto befahrbaren Wege (unter Berücksichtigung von Tempolimits und Einbahnstraßen) |
+| Öffentlicher Verkehr | Alle mit dem ÖV möglichen Fahrten (gemäß offiziellen GTFS-Fahrplänen), unter Berücksichtigung von Zu- und Abgang zu Fuß zu und von den Haltestellen |
 
-### Konfiguration
+<Tabs>
+<TabItem value="active-car" label="Zu Fuß / Fahrrad / Pedelec / Auto" default className="tabItemBox">
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Wählen Sie Ihr <code>Referenzgebiet</code> – einen Polygon-Layer, der die Grenze des Untersuchungsgebiets definiert. Nur Nachfrage und Ziele innerhalb dieses Gebiets werden in die Analyse einbezogen.</div>
+  <div class="content">Wählen Sie im Menü <code>Berechnung nach</code>, ob die Reisekosten als Zeit (Minuten) oder als Entfernung (Meter) gemessen werden.</div>
 </div>
 
 <div class="step">
   <div class="step-number">5</div>
-  <div class="content">Legen Sie das <code>Reisezeitlimit</code> fest, das die maximale Reisezeit in Minuten definiert. Einrichtungen außerhalb dieses Limits werden nicht berücksichtigt.</div>
+  <div class="content">Geben Sie ein <code>Limit</code> in Minuten oder Metern ein. Dieses wird entsprechend dem zuvor gewählten Verkehrsmittel und der gewählten Maßeinheit verwendet.</div>
+</div>
+
+</TabItem>
+
+<TabItem value="public transport" label="Öffentlicher Verkehr (ÖV)" className="tabItemBox">
+
+<div class="step">
+  <div class="step-number">4</div>
+  <div class="content">Wählen Sie die zu analysierenden <code>ÖV-Modi</code>: Bus, Straßenbahn, Bahn, U-Bahn, Fähre, Seilbahn, Gondel und/oder Standseilbahn. Wählen Sie anschließend <code>Tag</code> und <code>Ankunftszeit</code> für die Analyse.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">5</div>
+  <div class="content">Geben Sie ein <code>Limit</code> in Minuten ein. Einrichtungen außerhalb dieses Limits werden nicht berücksichtigt.</div>
+</div>
+
+</TabItem>
+</Tabs>
+
+<div class="step">
+  <div class="step-number">6</div>
+  <div class="content">Wählen Sie Ihr <code>Referenzgebiet</code> – einen Polygon-Layer, der die Grenze des Untersuchungsgebiets definiert. Nur Nachfrage und Ziele innerhalb dieses Gebiets werden in die Analyse einbezogen.</div>
 </div>
 
 :::tip Hinweis
@@ -96,36 +121,36 @@ Benötigen Sie Hilfe bei der Auswahl einer geeigneten Reisezeitgrenze für versc
 ### Nachfrage
 
 <div class="step">
-  <div class="step-number">6</div>
+  <div class="step-number">7</div>
   <div class="content">Wählen Sie Ihren <code>Nachfrage-Layer</code> aus dem Dropdown-Menü. Dieser Layer sollte Bevölkerungs- oder Verbraucherdaten enthalten (z. B. Zensusdaten mit Einwohnerzahlen, Kundenstandorte).</div>
 </div>
 
 <div class="step">
-  <div class="step-number">7</div>
+  <div class="step-number">8</div>
   <div class="content">Wählen Sie das <code>Nachfragefeld</code> – ein numerisches Feld aus Ihrem Nachfrage-Layer, das die Anzahl potenzieller Verbraucher darstellt (z. B. Bevölkerung, Anzahl der Haushalte).</div>
 </div>
 
 ### Gelegenheiten
 
 <div class="step">
-  <div class="step-number">8</div>
+  <div class="step-number">9</div>
   <div class="content">Wählen Sie Ihren <code>Gelegenheiten-Layer</code> aus dem Dropdown-Menü. Dieser Layer sollte Standorte von Einrichtungen oder Geschäften enthalten, die um die Nachfrage konkurrieren.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">9</div>
+  <div class="step-number">10</div>
   <div class="content">Wählen Sie das <code>Attraktivitätsfeld</code> – ein numerisches Feld, das die Attraktivität jeder Einrichtung darstellt (z. B. Verkaufsfläche in m², Anzahl der Produkte, Qualitätsbewertung).</div>
 </div>
 
 ### Erweiterte Konfiguration
 
 <div class="step">
-  <div class="step-number">10</div>
+  <div class="step-number">11</div>
   <div class="content">Passen Sie optional den <code>Attraktivitätsparameter</code> (Standard: 1,0) an, um zu steuern, wie stark die Attraktivität die Wahrscheinlichkeit beeinflusst. Höhere Werte verstärken die Unterschiede zwischen den Einrichtungen.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">11</div>
+  <div class="step-number">12</div>
   <div class="content">Passen Sie optional den Parameter <code>Entfernungsabnahme</code> (Standard: 2,0) an, um zu steuern, wie stark die Reisezeit die Attraktivität einer Einrichtung verringert. Höhere Werte bedeuten, dass Menschen weniger bereit sind, weit zu reisen.</div>
 </div>
 
@@ -138,15 +163,20 @@ Idealerweise sammeln Sie Daten zu tatsächlichen Kundenbesuchen oder Marktanteil
 
 :::
 
-### Ergebnisse
+### Ergebnis-Layer
 
 <div class="step">
-  <div class="step-number">12</div>
+  <div class="step-number">13</div>
+  <div class="content">Optional können Sie verschiedene Routing-Optionen für das gewählte Verkehrsmittel konfigurieren, etwa Reisegeschwindigkeit, maximale Anzahl an Umstiegen, Zu- und Abgangslimits und mehr. Weitere Informationen zu verkehrsmittelspezifischen Optionen finden Sie im Abschnitt <a href="/docs/category/routing">Routing</a>.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">14</div>
   <div class="content">Legen Sie den <code>Name der Ergebnislayer</code> für den Ausgabe-Huff-Modell-Layer fest.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">13</div>
+  <div class="step-number">15</div>
   <div class="content">Klicken Sie auf <code>Ausführen</code>, um die Berechnung zu starten.</div>
 </div>
 
