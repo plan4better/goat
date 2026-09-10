@@ -52,7 +52,7 @@ on:
         required: false
         type: string
         default: |
-          type=raw,value={{sha}}
+          type=raw,value={{sha}},enable=${{ github.ref_type == 'branch' }}
           type=ref,event=tag,priority=200
           type=ref,event=pr,priority=100
       target:
