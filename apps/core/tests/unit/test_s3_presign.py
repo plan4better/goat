@@ -48,3 +48,19 @@ def test_presigned_put_uses_internal_host_without_public_endpoint(
         bucket_name="goat", s3_key="k", content_type="text/csv"
     )
     assert presigned["url"].startswith(INTERNAL)
+
+
+@pytest.mark.unit
+def test_any_provider_gets_path_style_when_forced(
+    s3_settings: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "S3_PROVIDER", "on-prem")
+    monkeypatch.setattr(settings, "S3_ENDPOINT_URL", "https://store.example")
+    monkeypatch.setattr(settings, "S3_PUBLIC_ENDPOINT_URL", None)
+    service = S3Service()
+    assert service.s3_client.meta.config.s3["addressing_style"] == "path"
+    assert service.s3_client.meta.endpoint_url == "https://store.example"
+    presigned = service.generate_presigned_put(
+        bucket_name="goat", s3_key="k", content_type="text/csv"
+    )
+    assert presigned["url"].startswith("https://store.example/goat/k?")

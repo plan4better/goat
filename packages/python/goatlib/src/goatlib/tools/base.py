@@ -52,6 +52,7 @@ from goatlib.io.config import (
     PARQUET_VERSION,
 )
 from goatlib.models.io import DatasetMetadata
+from goatlib.storage.s3_config import apply_duckdb_s3_settings, boto_client_kwargs
 from goatlib.tools.db import ToolDatabaseService
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase
 
@@ -106,7 +107,8 @@ class ToolSettings:
     pt_network_base_path: str = "/app/data/pt_network/gtfs.bin"
 
     # S3 settings (shared for DuckLake and uploads)
-    s3_provider: str = "hetzner"  # hetzner, aws, minio
+    s3_provider: str = "hetzner"  # hetzner, aws, minio, or any S3-compatible store
+    s3_force_path_style: bool = False  # path-style addressing for on-prem stores
     s3_endpoint_url: str | None = None
     s3_public_endpoint_url: str | None = None  # Public URL for presigned URLs
     s3_access_key_id: str | None = None
@@ -138,80 +140,38 @@ class ToolSettings:
     pmtiles_max_zoom: int = 14  # Maximum zoom level for PMTiles generation
 
     def get_s3_client(self: Self) -> Any:
-        """Create boto3 S3 client with provider-specific config.
-
-        Returns configured S3 client for Hetzner, MinIO, or AWS.
-        """
+        """boto3 S3 client for the configured store."""
         import boto3
-        from botocore.client import Config
-
-        extra_kwargs = {}
-        if self.s3_endpoint_url:
-            extra_kwargs["endpoint_url"] = self.s3_endpoint_url
-
-        provider = self.s3_provider.lower()
-        if provider == "hetzner":
-            extra_kwargs["config"] = Config(
-                signature_version="s3v4",
-                s3={
-                    "payload_signing_enabled": False,
-                    "addressing_style": "virtual",
-                },
-            )
-        elif provider == "minio":
-            extra_kwargs["config"] = Config(
-                signature_version="s3v4",
-                s3={"addressing_style": "path"},
-            )
-        # AWS uses defaults
 
         return boto3.client(
             "s3",
             aws_access_key_id=self.s3_access_key_id,
             aws_secret_access_key=self.s3_secret_access_key,
             region_name=self.s3_region_name,
-            **extra_kwargs,
+            **boto_client_kwargs(
+                endpoint_url=self.s3_endpoint_url,
+                provider=self.s3_provider,
+                force_path_style=self.s3_force_path_style,
+            ),
         )
 
     def get_s3_public_client(self: Self) -> Any:
-        """Create boto3 S3 client for public URL signing.
+        """boto3 S3 client that signs URLs for the public endpoint.
 
-        Returns configured S3 client using the public endpoint URL for
-        generating presigned URLs that are accessible from outside the cluster.
-        Falls back to the regular S3 client if no public endpoint is configured.
+        Falls back to the internal endpoint when no public one is configured.
         """
         import boto3
-        from botocore.client import Config
-
-        # Use public endpoint if available, otherwise fall back to internal
-        endpoint_url = self.s3_public_endpoint_url or self.s3_endpoint_url
-
-        extra_kwargs = {}
-        if endpoint_url:
-            extra_kwargs["endpoint_url"] = endpoint_url
-
-        provider = self.s3_provider.lower()
-        if provider == "hetzner":
-            extra_kwargs["config"] = Config(
-                signature_version="s3v4",
-                s3={
-                    "payload_signing_enabled": False,
-                    "addressing_style": "virtual",
-                },
-            )
-        elif provider == "minio":
-            extra_kwargs["config"] = Config(
-                signature_version="s3v4",
-                s3={"addressing_style": "path"},
-            )
-        # AWS uses defaults
 
         return boto3.client(
             "s3",
             aws_access_key_id=self.s3_access_key_id,
             aws_secret_access_key=self.s3_secret_access_key,
             region_name=self.s3_region_name,
-            **extra_kwargs,
+            **boto_client_kwargs(
+                endpoint_url=self.s3_public_endpoint_url or self.s3_endpoint_url,
+                provider=self.s3_provider,
+                force_path_style=self.s3_force_path_style,
+            ),
         )
 
     @classmethod
@@ -301,6 +261,8 @@ class ToolSettings:
             s3_access_key_id=cls._get_secret("S3_ACCESS_KEY_ID", ""),
             s3_secret_access_key=cls._get_secret("S3_SECRET_ACCESS_KEY", ""),
             s3_region_name=cls._get_secret("S3_REGION", "us-east-1"),
+            s3_force_path_style=cls._get_secret("S3_FORCE_PATH_STYLE", "false").lower()
+            in ("1", "true", "yes"),
             s3_bucket_name=cls._get_secret("S3_BUCKET_NAME", ""),
             # `SCHEMA` is the canonical name (core's single data schema);
             # `CUSTOMER_SCHEMA` is accepted as a fallback for older deployments.
@@ -379,13 +341,15 @@ class SimpleToolRunner:
             con.execute(f"INSTALL {ext}; LOAD {ext};")
 
         if self.settings.s3_endpoint_url:
-            con.execute(f"""
-                SET s3_endpoint = '{self.settings.s3_endpoint_url}';
-                SET s3_access_key_id = '{self.settings.s3_access_key_id or ""}';
-                SET s3_secret_access_key = '{self.settings.s3_secret_access_key or ""}';
-                SET s3_url_style = 'path';
-                SET s3_use_ssl = false;
-            """)
+            apply_duckdb_s3_settings(
+                con,
+                endpoint_url=self.settings.s3_endpoint_url,
+                access_key=self.settings.s3_access_key_id,
+                secret_key=self.settings.s3_secret_access_key,
+                region=self.settings.s3_region_name,
+                provider=self.settings.s3_provider,
+                force_path_style=self.settings.s3_force_path_style,
+            )
 
         storage_path = self.settings.ducklake_data_dir
         con.execute(f"""

@@ -6,10 +6,10 @@ import posixpath
 from typing import BinaryIO, Dict, Optional, Self
 
 import boto3
-from botocore.client import Config
 from botocore.exceptions import ClientError
 
 from goatlib.config import settings
+from goatlib.storage.s3_config import boto_client_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -19,22 +19,11 @@ class S3Service:
 
     def __init__(self: Self) -> None:
         io_cfg = settings.io
-        extra: dict[str, object] = {}
-
-        if io_cfg.s3_endpoint_url:
-            extra["endpoint_url"] = io_cfg.s3_endpoint_url
-
-        provider = (io_cfg.s3_provider or "aws").lower()
-        if provider in {"hetzner", "minio"}:
-            # MinIO always needs path-style, Hetzner can use virtual
-            use_path_style = provider == "minio" or io_cfg.s3_force_path_style
-            extra["config"] = Config(
-                signature_version="s3v4",
-                s3={
-                    "payload_signing_enabled": False,
-                    "addressing_style": "path" if use_path_style else "virtual",
-                },
-            )
+        extra = boto_client_kwargs(
+            endpoint_url=io_cfg.s3_endpoint_url,
+            provider=io_cfg.s3_provider,
+            force_path_style=io_cfg.s3_force_path_style,
+        )
 
         self.client = boto3.client(
             "s3",

@@ -15,6 +15,7 @@ from goatlib.io.formats import ALL_EXTS, FileFormat
 from goatlib.io.parquet import write_optimized_parquet
 from goatlib.io.utils import detect_path_type, download_if_remote
 from goatlib.models.io import DatasetMetadata
+from goatlib.storage.s3_config import apply_duckdb_s3_settings
 
 if TYPE_CHECKING:
     pass
@@ -63,15 +64,15 @@ class IOConverter:
         self.con.execute("INSTALL httpfs; LOAD httpfs;")
 
         io = settings.io
-        self.con.execute("SET s3_region = $1;", [io.s3_region])
-        if io.s3_endpoint_url:
-            self.con.execute("SET s3_endpoint = $1;", [io.s3_endpoint_url])
-        if io.s3_access_key_id:
-            self.con.execute("SET s3_access_key_id = $1;", [io.s3_access_key_id])
-        if io.s3_secret_access_key:
-            self.con.execute(
-                "SET s3_secret_access_key = $1;", [io.s3_secret_access_key]
-            )
+        apply_duckdb_s3_settings(
+            self.con,
+            endpoint_url=io.s3_endpoint_url,
+            access_key=io.s3_access_key_id,
+            secret_key=io.s3_secret_access_key,
+            region=io.s3_region,
+            provider=io.s3_provider,
+            force_path_style=io.s3_force_path_style,
+        )
 
     # ------------------------------------------------------------------
     # Vector/Tabular → Parquet / GeoParquet

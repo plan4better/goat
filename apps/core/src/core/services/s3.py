@@ -4,38 +4,22 @@ import posixpath
 from typing import Any, BinaryIO, Dict
 
 import boto3
-from botocore.client import Config
 from botocore.exceptions import ClientError
 from core.core.config import settings
 from fastapi import HTTPException, status
+from goatlib.storage.s3_config import boto_client_kwargs
 
 logger = logging.getLogger(__name__)
 
 
 class S3Service:
     def __init__(self) -> None:
-        """
-        Initialize an S3 client that can talk to either AWS S3
-        or an S3-compatible provider like Hetzner or MinIO.
-        """
-        extra_kwargs = {}
-
-        # Use endpoint_url if provided (Hetzner, MinIO, etc.)
-        if settings.S3_ENDPOINT_URL:
-            extra_kwargs["endpoint_url"] = settings.S3_ENDPOINT_URL
-
-        # Special config for non-AWS providers
-        provider = (settings.S3_PROVIDER or "aws").lower()
-        if provider in {"hetzner", "minio"}:
-            # MinIO always needs path-style, Hetzner can use virtual
-            use_path_style = provider == "minio" or settings.S3_FORCE_PATH_STYLE
-            extra_kwargs["config"] = Config(
-                signature_version="s3v4",
-                s3={
-                    "payload_signing_enabled": False,
-                    "addressing_style": "path" if use_path_style else "virtual",
-                },
-            )
+        """S3 client for AWS or any S3-compatible store (Hetzner, MinIO, on-prem)."""
+        extra_kwargs = boto_client_kwargs(
+            endpoint_url=settings.S3_ENDPOINT_URL,
+            provider=settings.S3_PROVIDER,
+            force_path_style=settings.S3_FORCE_PATH_STYLE,
+        )
 
         self.s3_client = boto3.client(
             "s3",
