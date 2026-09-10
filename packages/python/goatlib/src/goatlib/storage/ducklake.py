@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 # derive from it, so adding one here automatically gets it baked into the
 # images — there is no second list to keep in sync.
 REQUIRED_DUCKDB_EXTENSIONS = ["spatial", "httpfs", "postgres", "ducklake"]
+# Community-repository extensions the analysis tools load on their own
+# connections (``INSTALL h3 FROM community``). Not loaded by the managers,
+# but baked into the images alongside the list above so those INSTALLs
+# resolve from disk instead of community-extensions.duckdb.org.
+COMMUNITY_DUCKDB_EXTENSIONS = ["h3"]
 
 
 def _baked_extension_dir() -> str | None:

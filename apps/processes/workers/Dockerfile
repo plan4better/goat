@@ -79,11 +79,11 @@ COPY pyproject.toml uv.lock /app/
 WORKDIR /app
 RUN uv sync --all-extras --frozen --no-dev --no-editable --package=goatlib
 
-# Bake DuckDB REPOSITORY extensions (spatial/httpfs/postgres/ducklake) into the
-# image so the runtime never fetches them from extensions.duckdb.org — removes
+# Bake DuckDB extensions (spatial/httpfs/postgres/ducklake + community h3) into the
+# image so the runtime never fetches them from the DuckDB repositories — removes
 # the egress/TLS dependency and speeds cold start. (linux-base already carries
 # ca-certificates + egress here.)
-RUN python -c "import duckdb; from goatlib.storage.ducklake import REQUIRED_DUCKDB_EXTENSIONS as X; con=duckdb.connect(config={'extension_directory':'/opt/duckdb-extensions'}); [con.execute(f'INSTALL {e}') for e in X]"
+RUN python -c "import duckdb; from goatlib.storage.ducklake import REQUIRED_DUCKDB_EXTENSIONS as X, COMMUNITY_DUCKDB_EXTENSIONS as C; con=duckdb.connect(config={'extension_directory':'/opt/duckdb-extensions'}); [con.execute(f'INSTALL {e}') for e in X]; [con.execute(f'INSTALL {e} FROM community') for e in C]"
 
 # =============================================================================
 # Stage: Worker Base - shared base for tools/print workers with goatlib
@@ -104,15 +104,18 @@ COPY --from=python-build $UV_PYTHON_INSTALL_DIR $UV_PYTHON_INSTALL_DIR
 COPY --from=python-build $UV_PROJECT_ENVIRONMENT $UV_PROJECT_ENVIRONMENT
 COPY --from=python-build /app /app
 
-# DuckDB extensions baked at build time; goatlib loads them from here at runtime
-# (DUCKDB_EXTENSION_DIRECTORY), so no extension is ever downloaded.
-COPY --from=python-build /opt/duckdb-extensions /opt/duckdb-extensions
+# DuckDB extensions baked at build time into DuckDB's default extension
+# directory ($HOME/.duckdb/extensions). Windmill job subprocesses inherit HOME,
+# so every connection they open finds the extensions without configuration.
+# HOME is pinned so a runtime user override cannot move the default elsewhere.
+ENV HOME=/root
+COPY --from=python-build /opt/duckdb-extensions /root/.duckdb/extensions
+RUN chmod -R a+rX /root/.duckdb && chmod a+x /root
 
 WORKDIR ${APP}
 
 ENV DISABLE_SERVER=true \
-    PYTHON_PATH="$UV_PROJECT_ENVIRONMENT/bin/python" \
-    DUCKDB_EXTENSION_DIRECTORY=/opt/duckdb-extensions
+    PYTHON_PATH="$UV_PROJECT_ENVIRONMENT/bin/python"
 
 CMD ["windmill"]
 
