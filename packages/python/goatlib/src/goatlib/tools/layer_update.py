@@ -162,7 +162,7 @@ class LayerUpdateRunner(LayerReplaceMixin, SimpleToolRunner):
             s3_key,
             local_file,
         )
-        client.download_file(self.settings.s3_bucket_name, s3_key, str(local_file))
+        self.download_uploaded_object(s3_key, local_file, client=client)
 
         # Convert to GeoParquet using IOConverter
         metadata = self.converter.to_parquet(

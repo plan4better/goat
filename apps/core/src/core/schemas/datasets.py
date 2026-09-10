@@ -20,21 +20,18 @@ class DatasetImportRequest(BaseModel):
     )
 
 
-class PresignedPostResponse(BaseModel):
-    """Schema for presigned POST response to upload file directly to S3."""
+class PresignedUploadResponse(BaseModel):
+    """Presigned PUT the browser uses to upload a file straight to S3."""
 
-    url: str = Field(..., examples=["https://mybucket.s3.amazonaws.com/"])
-    fields: Dict[str, str] = Field(
+    url: str = Field(
         ...,
         examples=[
-            {
-                "key": "goat/123/imports/data.gpkg",
-                "Content-Type": "application/geopackage+sqlite3",
-                "x-amz-algorithm": "AWS4-HMAC-SHA256",
-                "x-amz-credential": "AKIA.../us-east-1/s3/aws4_request",
-                "x-amz-date": "20240621T120000Z",
-                "policy": "eyJleHBpcmF0aW9uIjoi...",
-                "x-amz-signature": "abcd1234...",
-            }
+            "https://mybucket.s3.amazonaws.com/goat/123/imports/data.gpkg?X-Amz-Signature=..."
         ],
+    )
+    key: str = Field(..., examples=["goat/123/imports/data.gpkg"])
+    headers: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Request headers the upload must carry",
+        examples=[{"Content-Type": "application/geopackage+sqlite3"}],
     )

@@ -150,7 +150,9 @@ class TestLayerImportS3:
         runner.settings.s3_endpoint_url = "http://localhost:9000"
         runner.settings.s3_provider = "minio"
         runner.settings.s3_region_name = "us-east-1"
+        runner.settings.max_upload_dataset_file_size = 5 * 1024 * 1024 * 1024
         runner._s3_client = MagicMock()
+        runner._s3_client.head_object.return_value = {"ContentLength": 1}
         runner._converter = MagicMock()
         return runner
 
@@ -160,8 +162,8 @@ class TestLayerImportS3:
         temp_dir = tmp_path / "temp"
         temp_dir.mkdir()
 
-        def mock_download(bucket, key, dest):
-            Path(dest).touch()
+        def mock_download(**kwargs):
+            Path(kwargs["Filename"]).touch()
 
         runner._s3_client.download_file.side_effect = mock_download
 
@@ -185,8 +187,8 @@ class TestLayerImportS3:
         # Verify download was called
         runner._s3_client.download_file.assert_called_once()
         call_args = runner._s3_client.download_file.call_args
-        assert call_args[0][0] == "test-bucket"
-        assert call_args[0][1] == "uploads/test.gpkg"
+        assert call_args.kwargs["Bucket"] == "test-bucket"
+        assert call_args.kwargs["Key"] == "uploads/test.gpkg"
 
         # Verify converter was called
         runner._converter.to_parquet.assert_called_once()
@@ -199,8 +201,8 @@ class TestLayerImportS3:
         temp_dir = tmp_path / "temp"
         temp_dir.mkdir()
 
-        def mock_download(bucket, key, dest):
-            Path(dest).touch()
+        def mock_download(**kwargs):
+            Path(kwargs["Filename"]).touch()
 
         runner._s3_client.download_file.side_effect = mock_download
 

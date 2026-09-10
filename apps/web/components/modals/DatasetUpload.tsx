@@ -228,7 +228,7 @@ const DatasetUploadModal: React.FC<DatasetUploadDialogProps> = ({ open, onClose,
       const payload = createLayerFromDatasetSchema.parse({
         ...getValues(),
         folder_id: selectedFolder?.id,
-        s3_key: presigned.fields.key,
+        s3_key: presigned.key,
         ...(isTabular && { has_header: hasHeader }),
         ...(isTabular && selectedSheet && { sheet_name: selectedSheet }),
       });

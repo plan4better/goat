@@ -118,8 +118,8 @@ const ProjectImportModal: React.FC<ProjectImportModalProps> = ({ open, onClose, 
       // 2. Upload to S3
       await uploadFileToS3(fileValue, presigned);
 
-      // 3. Extract S3 key from presigned fields
-      const s3Key = presigned.fields?.key || `uploads/${fileValue.name}`;
+      // 3. Object key the file was stored under
+      const s3Key = presigned.key;
 
       // 4. Trigger import job via OGC Processes
       const job = await executeProcessAsync("project_import", {

@@ -113,6 +113,8 @@ class ToolSettings:
     s3_secret_access_key: str | None = None
     s3_region_name: str = "us-east-1"
     s3_bucket_name: str | None = None  # Bucket for user uploads/imports
+    # Largest object a browser upload may be; checked before download.
+    max_upload_dataset_file_size: int = 5 * 1024 * 1024 * 1024
 
     # Schema for customer tables
     customer_schema: str = "customer"
@@ -302,6 +304,11 @@ class ToolSettings:
             s3_bucket_name=cls._get_secret("S3_BUCKET_NAME", ""),
             # `SCHEMA` is the canonical name (core's single data schema);
             # `CUSTOMER_SCHEMA` is accepted as a fallback for older deployments.
+            max_upload_dataset_file_size=int(
+                cls._get_secret(
+                    "MAX_UPLOAD_DATASET_FILE_SIZE", str(5 * 1024 * 1024 * 1024)
+                )
+            ),
             customer_schema=cls._get_secret("SCHEMA", "")
             or cls._get_secret("CUSTOMER_SCHEMA", "customer"),
             geocoding_url=cls._get_secret("GEOCODING_URL", "") or None,
@@ -552,6 +559,27 @@ class SimpleToolRunner:
                 raise RuntimeError("Settings not initialized")
             self._s3_client = self.settings.get_s3_client()
         return self._s3_client
+
+    def download_uploaded_object(
+        self: Self, s3_key: str, local_file: Path, client: Any | None = None
+    ) -> None:
+        """Download a browser-uploaded object after checking its size.
+
+        Presigned PUT uploads carry no size policy, so the limit is enforced
+        here, before the object is fetched and converted.
+        """
+        if self.settings is None:
+            raise RuntimeError("Settings not initialized")
+        client = client if client is not None else self.s3_client
+        bucket = self.settings.s3_bucket_name
+        size = client.head_object(Bucket=bucket, Key=s3_key)["ContentLength"]
+        limit = self.settings.max_upload_dataset_file_size
+        if size > limit:
+            raise ValueError(
+                f"Uploaded file is {size // 1024 // 1024} MB; "
+                f"the limit is {limit // 1024 // 1024} MB."
+            )
+        client.download_file(Bucket=bucket, Key=s3_key, Filename=str(local_file))
 
     @property
     def s3_public_client(self: Self) -> Any:
@@ -1331,7 +1359,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         except Exception as e:  # noqa: BLE001
             logger.warning(
                 "Could not resolve project layer name by id %s: %s",
-                layer_project_id, e,
+                layer_project_id,
+                e,
             )
             return None
 

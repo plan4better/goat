@@ -1,6 +1,6 @@
 import { apiRequestAuth } from "@/lib/api/fetcher";
-import type { DatasetImportRequest, PresignedPostResponse } from "@/lib/validations/datasets";
-import { datasetImportRequestSchema, presignedPostResponseSchema } from "@/lib/validations/datasets";
+import type { DatasetImportRequest, PresignedUploadResponse } from "@/lib/validations/datasets";
+import { datasetImportRequestSchema, presignedUploadResponseSchema } from "@/lib/validations/datasets";
 
 
 export const DATASET_IMPORTS_API_BASE_URL = new URL(
@@ -10,7 +10,7 @@ export const DATASET_IMPORTS_API_BASE_URL = new URL(
 
 export const requestDatasetUpload = async (
     req: DatasetImportRequest
-): Promise<PresignedPostResponse> => {
+): Promise<PresignedUploadResponse> => {
     // validate client input with zod first
     const validatedReq = datasetImportRequestSchema.parse(req);
 
@@ -26,5 +26,5 @@ export const requestDatasetUpload = async (
     }
 
     const data = await response.json();
-    return presignedPostResponseSchema.parse(data);
+    return presignedUploadResponseSchema.parse(data);
 };

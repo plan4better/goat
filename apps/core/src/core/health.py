@@ -2,7 +2,7 @@
 
 Object storage is the only dependency here that cannot be monitored any
 other way. It is third-party and outside the cluster, so no exporter can
-scrape it — and uploads use presigned POST, meaning the browser talks to
+scrape it — and uploads use presigned PUT, meaning the browser talks to
 the provider directly. On 25 August 2026 core issued presigned URLs
 perfectly happily for 21 hours while every upload failed. There was no 5xx
 of ours to alert on and no metric anywhere that moved.

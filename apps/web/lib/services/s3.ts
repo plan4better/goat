@@ -1,16 +1,14 @@
-export async function uploadFileToS3(
-    file: File,
-    presigned: { url: string; fields: Record<string, string> }
-) {
-    const formData = new FormData();
-    Object.entries(presigned.fields).forEach(([k, v]) => {
-        formData.append(k, v);
-    });
-    formData.append("file", file);
+import type { PresignedUploadResponse } from "@/lib/validations/datasets";
 
+/**
+ * Send a file straight to object storage with the presigned PUT core issued.
+ * The raw file is the request body; the signed headers must be sent unchanged.
+ */
+export async function uploadFileToS3(file: File, presigned: PresignedUploadResponse) {
     const res = await fetch(presigned.url, {
-        method: "POST",
-        body: formData,
+        method: "PUT",
+        headers: presigned.headers,
+        body: file,
     });
 
     if (!res.ok) {

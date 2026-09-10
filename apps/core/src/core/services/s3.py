@@ -1,7 +1,7 @@
 import hashlib
 import logging
 import posixpath
-from typing import BinaryIO, Dict
+from typing import Any, BinaryIO, Dict
 
 import boto3
 from botocore.client import Config
@@ -71,9 +71,7 @@ class S3Service:
             region_name=settings.AWS_REGION,
         )
 
-    def upload_asset(
-        self, fileobj: BinaryIO, s3_key: str, content_type: str
-    ) -> None:
+    def upload_asset(self, fileobj: BinaryIO, s3_key: str, content_type: str) -> None:
         """Upload a file object to the assets bucket (avatars, documents)."""
         try:
             self.assets_client.upload_fileobj(
@@ -102,39 +100,42 @@ class S3Service:
                 detail=f"Failed to delete asset: {e}",
             )
 
-    def generate_presigned_post(
+    def generate_presigned_put(
         self,
         bucket_name: str,
         s3_key: str,
         content_type: str,
-        max_size: int,
         expires_in: int = 300,
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
+        """Presigned PUT for a browser upload straight to object storage.
+
+        Signed with the public-endpoint client: a SigV4 query signature covers
+        the Host header, so the URL cannot be rewritten after signing. PUT
+        carries no size policy; the importer checks the object size before
+        it downloads.
+        """
         try:
-            result = self.s3_client.generate_presigned_post(
-                Bucket=bucket_name,
-                Key=s3_key,
-                Fields={"Content-Type": content_type},
-                Conditions=[
-                    {"Content-Type": content_type},
-                    ["content-length-range", 0, max_size],
-                ],
+            client = self._public_client if self._public_client else self.s3_client
+            url = client.generate_presigned_url(
+                "put_object",
+                Params={
+                    "Bucket": bucket_name,
+                    "Key": s3_key,
+                    "ContentType": content_type,
+                },
                 ExpiresIn=expires_in,
+                HttpMethod="PUT",
             )
-
-            # Replace internal URL (minio:9000) with public one (localhost:9000)
-            if settings.S3_PUBLIC_ENDPOINT_URL:
-                result["url"] = result["url"].replace(
-                    settings.S3_ENDPOINT_URL, settings.S3_PUBLIC_ENDPOINT_URL
-                )
-
-            return result
-
+            return {
+                "url": url,
+                "key": s3_key,
+                "headers": {"Content-Type": content_type},
+            }
         except ClientError as e:
-            logger.error(f"S3 presigned POST failed: {e}")
+            logger.error(f"S3 presigned PUT failed: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to generate presigned POST: {e}",
+                detail=f"Failed to generate presigned PUT: {e}",
             )
 
     def upload_file(
