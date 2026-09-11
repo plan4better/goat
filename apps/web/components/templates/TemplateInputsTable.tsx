@@ -20,6 +20,8 @@ interface TemplateInputsTableProps {
    * already holds a real project layer for each one), so the row shows a
    * static "Ships with template" label instead of a live switch. */
   allowAsk: boolean;
+  /** A frozen snapshot's inputs: shown, not switchable. */
+  disabled?: boolean;
 }
 
 /** T5/T8's inputs table: one row per layer reference the save preview
@@ -28,7 +30,7 @@ interface TemplateInputsTableProps {
  * switch defaulted from the preview's `detected_inputs`. Rendered only for
  * workflow/project payloads — a layout payload carries no inputs at all
  * (T5). */
-const TemplateInputsTable = ({ inputs, modeFor, onModeChange, allowAsk }: TemplateInputsTableProps) => {
+const TemplateInputsTable = ({ inputs, modeFor, onModeChange, allowAsk, disabled }: TemplateInputsTableProps) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
 
@@ -75,6 +77,7 @@ const TemplateInputsTable = ({ inputs, modeFor, onModeChange, allowAsk }: Templa
                   <Switch
                     size="small"
                     checked={mode === "ship"}
+                    disabled={disabled}
                     onChange={(_event, checked) => onModeChange(input.key, checked ? "ship" : "ask")}
                     inputProps={{ "aria-label": `${input.label} — ${t("ship_dataset")}` }}
                   />

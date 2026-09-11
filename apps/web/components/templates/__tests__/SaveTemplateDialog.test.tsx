@@ -83,6 +83,10 @@ vi.mock("@/lib/api/templates", async () => {
   };
 });
 vi.mock("@/lib/api/users", () => ({ useUserProfile: useUserProfileMock }));
+vi.mock("@/lib/templates/thumbnailSnapshot", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/templates/thumbnailSnapshot")>()),
+  regenerateTemplateThumbnail: vi.fn(async (template: unknown) => template),
+}));
 vi.mock("@/lib/api/workflows", () => ({ useWorkflow: useWorkflowMock }));
 vi.mock("@/lib/api/reportLayouts", () => ({ useReportLayout: useReportLayoutMock }));
 vi.mock("@/lib/api/assets", () => ({ uploadAsset: uploadAssetMock }));
@@ -1476,7 +1480,14 @@ const existing = (id: string, name: string, updated: string): TemplateRead =>
 
 describe("SaveTemplateDialog — templates from the same source", () => {
   beforeEach(() => {
-    previewTemplateMock.mockResolvedValue(emptyPreview);
+    useSpacesMock.mockReset().mockReturnValue({ spaces: [personalSpace] });
+    useFoldersMock.mockReset().mockReturnValue({ folders: [homeFolder, otherFolder] });
+    useTemplateCategoriesMock.mockReset().mockReturnValue({ categories: [], isLoading: false });
+    createTemplateMock.mockReset();
+    publishTemplateWithDetailMock.mockReset();
+    refreshTemplatesMock.mockReset();
+    refreshContentFeedMock.mockReset();
+    previewTemplateMock.mockReset().mockResolvedValue(emptyPreview);
     useUserProfileMock.mockReturnValue({ userProfile: { is_superuser: false } });
   });
 
@@ -1526,5 +1537,90 @@ describe("SaveTemplateDialog — templates from the same source", () => {
     await waitFor(() => expect(screen.getByLabelText("name")).toHaveValue("My Workflow"));
     expect(screen.getByRole("button", { name: "save" })).toBeInTheDocument();
     expect(screen.getByText("location")).toBeInTheDocument();
+  });
+});
+
+describe("SaveTemplateDialog — edit mode", () => {
+  const saved = {
+    ...existing("00000000-0000-0000-0000-0000000000ee", "Saved template", "2026-09-09T10:00:00Z"),
+    inputs: [
+      {
+        key: "stops",
+        label: "GTFS stops",
+        mode: "ship",
+        layer_id: "00000000-0000-0000-0000-000000000031",
+        layer_type: "feature",
+        geometry_type: null,
+        from_catalog: true,
+      },
+    ],
+    source_ref: {
+      kind: "workflow",
+      project_id: "00000000-0000-0000-0000-000000000001",
+      workflow_id: "00000000-0000-0000-0000-000000000011",
+      layout_id: null,
+    },
+    source: {
+      kind: "workflow",
+      project_id: "00000000-0000-0000-0000-000000000001",
+      project_name: "Analysis",
+      workflow_id: "00000000-0000-0000-0000-000000000011",
+      workflow_name: "Güteklassen",
+      layout_id: null,
+      layout_name: null,
+      available: true,
+    },
+  } as unknown as TemplateRead;
+
+  beforeEach(() => {
+    useSpacesMock.mockReset().mockReturnValue({ spaces: [personalSpace] });
+    useFoldersMock.mockReset().mockReturnValue({ folders: [homeFolder, otherFolder] });
+    useTemplateCategoriesMock.mockReset().mockReturnValue({ categories: [], isLoading: false });
+    createTemplateMock.mockReset();
+    publishTemplateWithDetailMock.mockReset();
+    refreshTemplatesMock.mockReset();
+    refreshContentFeedMock.mockReset();
+    previewTemplateMock.mockReset();
+    useUserProfileMock.mockReturnValue({ userProfile: { is_superuser: false } });
+  });
+
+  it("opens prefilled, with the inputs read-only and no location", async () => {
+    render(<SaveTemplateDialog template={saved} onClose={noop} onSaved={noop} />);
+    expect(screen.getByText("edit_template")).toBeInTheDocument();
+    await expect(screen.getByLabelText("name")).toHaveValue("Saved template");
+    // The input row is listed, and its switch is frozen with the snapshot.
+    expect(screen.getByTestId("template-input-row-stops")).toBeInTheDocument();
+    await expect(screen.getByRole("checkbox", { name: /GTFS stops/ })).toBeDisabled();
+    expect(screen.getByText("inputs_frozen_hint")).toBeInTheDocument();
+    expect(screen.queryByText("location")).not.toBeInTheDocument();
+    await expect(screen.getByRole("link", { name: /Güteklassen/ })).toHaveAttribute(
+      "href",
+      "/map/00000000-0000-0000-0000-000000000001?workflow=00000000-0000-0000-0000-000000000011"
+    );
+    expect(previewTemplateMock).not.toHaveBeenCalled();
+    expect(useTemplatesFromSourceMock).toHaveBeenCalledWith(null);
+  });
+
+  it("patches the metadata on save changes", async () => {
+    updateTemplateMock.mockResolvedValue({ ...saved, name: "Renamed" });
+    const onSaved = vi.fn();
+    render(<SaveTemplateDialog template={saved} onClose={noop} onSaved={onSaved} />);
+    fireEvent.change(screen.getByLabelText("name"), { target: { value: "Renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: "save_changes" }));
+    await waitFor(() =>
+      expect(updateTemplateMock).toHaveBeenCalledWith(saved.id, expect.objectContaining({ name: "Renamed" }))
+    );
+    expect(createTemplateMock).not.toHaveBeenCalled();
+    expect(refreshTemplateMock).not.toHaveBeenCalled();
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  it("refreshes from the source from the snapshot line and re-reads the template", async () => {
+    refreshTemplateMock.mockResolvedValue({ ...saved, updated_at: "2026-09-11T10:00:00Z" });
+    readTemplateMock.mockResolvedValue({ ...saved, updated_at: "2026-09-11T10:00:00Z" });
+    render(<SaveTemplateDialog template={saved} onClose={noop} onSaved={noop} />);
+    fireEvent.click(screen.getByRole("button", { name: "update_template_from_source" }));
+    await waitFor(() => expect(refreshTemplateMock).toHaveBeenCalledWith(saved.id));
+    await waitFor(() => expect(readTemplateMock).toHaveBeenCalledWith(saved.id));
   });
 });

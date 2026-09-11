@@ -31,6 +31,7 @@ import {
   createTemplate,
   previewTemplate,
   publishTemplateWithDetail,
+  readTemplate,
   refreshTemplate,
   refreshTemplates,
   unpublishTemplate,
@@ -45,7 +46,11 @@ import {
   descriptorFromWorkflowConfig,
   layoutPageFromConfig,
 } from "@/lib/templates/previewGeometry";
-import { renderSnapshotFor, snapshotFileName } from "@/lib/templates/thumbnailSnapshot";
+import {
+  regenerateTemplateThumbnail,
+  renderSnapshotFor,
+  snapshotFileName,
+} from "@/lib/templates/thumbnailSnapshot";
 import { homeFolderOf, spaceDisplayName, spaceIconFor } from "@/lib/utils/content";
 import { tagColor } from "@/lib/utils/tagColor";
 import type { Space } from "@/lib/validations/content";
@@ -67,14 +72,19 @@ import TemplateInputsTable from "@/components/templates/TemplateInputsTable";
 import type { TemplateInputMode } from "@/components/templates/TemplateInputsTable";
 import TemplateCatalogSwitch from "@/components/templates/TemplateCatalogSwitch";
 import TemplatePreviewPanel from "@/components/templates/TemplatePreviewPanel";
+import TemplateSnapshotLine from "@/components/templates/TemplateSnapshotLine";
 import TemplateSourceChoice from "@/components/templates/TemplateSourceChoice";
 import type { TemplateSaveMode } from "@/components/templates/TemplateSourceChoice";
 import TemplateTag from "@/components/templates/TemplateTag";
 
 export interface SaveTemplateDialogProps {
-  source: TemplateSource;
-  defaultName: string;
+  /** Create mode: what is being saved. Ignored when `template` is given. */
+  source?: TemplateSource;
+  defaultName?: string;
   defaultThumbnailUrl?: string | null;
+  /** Edit mode: the template being edited — a single read (`readTemplate`),
+   * so its `source` is resolved for the snapshot line. */
+  template?: TemplateRead;
   onClose: () => void;
   onSaved: (template: TemplateRead) => void;
 }
@@ -97,14 +107,29 @@ const audienceLabel = (space: Space | undefined, t: (key: string) => string): st
  * which datasets need sharing.
  */
 const SaveTemplateDialog = ({
-  source,
-  defaultName,
-  defaultThumbnailUrl,
+  source: sourceProp,
+  defaultName: defaultNameProp,
+  defaultThumbnailUrl: defaultThumbnailUrlProp,
+  template,
   onClose,
   onSaved,
 }: SaveTemplateDialogProps) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
+  // Edit mode works on the template as last read: a refresh from the source
+  // replaces it, and the form is written back to it on save.
+  const editing = template !== undefined;
+  const [current, setCurrent] = useState<TemplateRead | undefined>(template);
+  const source: TemplateSource = template
+    ? ({
+        kind: template.payload_kind,
+        project_id: String(template.source_ref.project_id ?? ""),
+        workflow_id: (template.source_ref.workflow_id as string | null | undefined) ?? null,
+        layout_id: (template.source_ref.layout_id as string | null | undefined) ?? null,
+      } as TemplateSource)
+    : (sourceProp as TemplateSource);
+  const defaultName = template?.name ?? defaultNameProp ?? "";
+  const defaultThumbnailUrl = editing ? (current?.thumbnail_url ?? null) : defaultThumbnailUrlProp;
   // Below md the dialog is the whole viewport, which is too narrow to carry
   // the form and the preview side by side — the form is what the author
   // came for.
@@ -143,8 +168,8 @@ const SaveTemplateDialog = ({
   const targetFolderId = browsedFolderId ?? homeFolderId;
 
   const [name, setName] = useState(defaultName);
-  const [description, setDescription] = useState("");
-  const [categories, setCategories] = useState<string[]>([]);
+  const [description, setDescription] = useState(template?.description ?? "");
+  const [categories, setCategories] = useState<string[]>(template?.categories ?? []);
   // Whether the author has edited name/description/categories: prefilling
   // from a chosen template never overwrites what they typed.
   const metadataTouched = useRef(false);
@@ -153,7 +178,7 @@ const SaveTemplateDialog = ({
   // "Save as template" on the same workflow almost always means "update the
   // one I have", so the first time there are any the dialog switches to
   // updating the newest — once, and never over the author's own choice.
-  const { templates: candidates } = useTemplatesFromSource(source);
+  const { templates: candidates } = useTemplatesFromSource(editing ? null : source);
   const [saveMode, setSaveMode] = useState<TemplateSaveMode>("new");
   const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
   const updateTarget =
@@ -210,7 +235,7 @@ const SaveTemplateDialog = ({
   /** A workflow and a layout are both drawn and stored as a picture, each
    * when the caller named which one; a project payload gets none. */
   const wantsSnapshot =
-    (isWorkflow && Boolean(source.workflow_id)) || (isLayout && Boolean(source.layout_id));
+    !editing && ((isWorkflow && Boolean(source.workflow_id)) || (isLayout && Boolean(source.layout_id)));
 
   // The picture is drawn from the payload's stored config, which is what the
   // backend freezes into the template — the dialog is handed a source, not a
@@ -220,16 +245,16 @@ const SaveTemplateDialog = ({
     isLoading: workflowLoading,
     isError: workflowError,
   } = useWorkflow(
-    isWorkflow ? source.project_id : undefined,
-    isWorkflow ? (source.workflow_id ?? undefined) : undefined
+    isWorkflow && !editing ? source.project_id : undefined,
+    isWorkflow && !editing ? (source.workflow_id ?? undefined) : undefined
   );
   const {
     reportLayout,
     isLoading: layoutLoading,
     isError: layoutError,
   } = useReportLayout(
-    isLayout ? source.project_id : undefined,
-    isLayout ? (source.layout_id ?? undefined) : undefined
+    isLayout && !editing ? source.project_id : undefined,
+    isLayout && !editing ? (source.layout_id ?? undefined) : undefined
   );
 
   /** The structure descriptors the saved template will carry, built here
@@ -369,7 +394,7 @@ const SaveTemplateDialog = ({
   sourceRef.current = source;
 
   useEffect(() => {
-    if (!targetFolderId) return;
+    if (editing || !targetFolderId) return;
     let cancelled = false;
     setPreviewLoading(true);
     setPreview(undefined);
@@ -395,7 +420,7 @@ const SaveTemplateDialog = ({
     return () => {
       cancelled = true;
     };
-  }, [sourceKey, targetFolderId]);
+  }, [editing, sourceKey, targetFolderId]);
 
   const modeFor = (key: string): TemplateInputMode => inputModes[key] ?? "ask";
 
@@ -423,8 +448,9 @@ const SaveTemplateDialog = ({
 
   const [publishSwitchOn, setPublishSwitchOn] = useState(false);
   // A chosen template's catalog state is where its switch starts.
-  const publishTargetId = updateTarget?.id;
-  const publishTargetPublished = updateTarget?.catalog_status === "published";
+  const publishTargetId = editing ? current?.id : updateTarget?.id;
+  const publishTargetPublished =
+    (editing ? current?.catalog_status : updateTarget?.catalog_status) === "published";
   useEffect(() => {
     setPublishSwitchOn(publishTargetId ? publishTargetPublished : false);
   }, [publishTargetId, publishTargetPublished]);
@@ -440,7 +466,7 @@ const SaveTemplateDialog = ({
   const submitDisabled =
     submitting ||
     !name.trim() ||
-    (!targetFolderId && !updating) ||
+    (!targetFolderId && !updating && !editing) ||
     previewLoading ||
     previewErrorMessage !== undefined ||
     // The picture is still being drawn, or the payload it is drawn from has
@@ -462,12 +488,91 @@ const SaveTemplateDialog = ({
     return error instanceof Error ? error.message : String(error);
   };
 
+  /** The picture is only bytes until here: a picked file keeps its own name,
+   * a generated snapshot is named after the template. The template is worth
+   * more than its picture: a failed upload falls back to `fallback`. */
+  const resolveThumbnailUrl = async (fallback: string | null): Promise<string | null> => {
+    const alreadyUploaded = uploadedThumbnail.current;
+    if (draftThumbnailBlob && alreadyUploaded?.blob === draftThumbnailBlob) return alreadyUploaded.url;
+    if (!draftThumbnailBlob) return fallback;
+    try {
+      const file =
+        draftThumbnailBlob instanceof File
+          ? draftThumbnailBlob
+          : new File([draftThumbnailBlob], snapshotFileName(name), { type: "image/png" });
+      const asset = await uploadAsset(file, "image", {
+        displayName: file.name,
+        category: "template_thumbnail",
+      });
+      uploadedThumbnail.current = { blob: draftThumbnailBlob, url: asset.url };
+      return asset.url;
+    } catch {
+      toast.error(t("image_upload_failed"));
+      return fallback;
+    }
+  };
+
+  /** Edit mode's "Update from source": re-snapshot, redraw the picture from
+   * the new config, and read the template back so the dialog shows it. */
+  const [refreshingSource, setRefreshingSource] = useState(false);
+  const handleRefreshSource = async () => {
+    if (!current) return;
+    setRefreshingSource(true);
+    try {
+      const refreshed = await refreshTemplate(current.id);
+      await regenerateTemplateThumbnail(refreshed, t);
+      setCurrent(await readTemplate(current.id));
+      refreshTemplates();
+      refreshContentFeed();
+      if (refreshed.datasets_needing_share.length > 0) {
+        toast.info(t("template_datasets_need_sharing", { count: refreshed.datasets_needing_share.length }));
+      } else {
+        toast.success(t("template_updated_from_source"));
+      }
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setRefreshingSource(false);
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!targetFolderId && !updateTarget) return;
+    if (!targetFolderId && !updateTarget && !editing) return;
     setSubmitting(true);
     setSubmitError(undefined);
     setPublishBlocked(undefined);
     try {
+      if (editing && current) {
+        const savedThumbnailUrl = await resolveThumbnailUrl(current.thumbnail_url ?? null);
+        const patched = await updateTemplate(current.id, {
+          name: name.trim(),
+          description: description.trim() || null,
+          categories,
+          ...(savedThumbnailUrl !== (current.thumbnail_url ?? null) ? { thumbnail_url: savedThumbnailUrl } : {}),
+        });
+        if (isSuperuser) {
+          const wasPublished = current.catalog_status === "published";
+          if (publishSwitchOn && !wasPublished) {
+            const blocked = blockedShipInputs(current.inputs);
+            if (blocked.length > 0) {
+              setPublishBlocked({ template: patched, names: blocked.map((input) => input.label) });
+              return;
+            }
+            const result = await publishTemplateWithDetail(patched.id);
+            if (!result.ok) {
+              setPublishBlocked({ template: patched, names: result.layers.map((layer) => layer.name) });
+              return;
+            }
+          } else if (!publishSwitchOn && wasPublished) {
+            await unpublishTemplate(patched.id);
+          }
+        }
+        refreshTemplates();
+        refreshContentFeed();
+        onSaved(patched);
+        onClose();
+        return;
+      }
       if (updateTarget) {
         // Updating an existing template: the payload is re-snapshotted from
         // the source, then the metadata is written; location and shares
@@ -511,31 +616,7 @@ const SaveTemplateDialog = ({
       }));
       const shareDatasets = shareRows.filter((row) => layerIncluded(row.layer_id)).map((row) => row.layer_id);
 
-      // The picture is only bytes until here: a picked file keeps its own
-      // name, a generated snapshot is named after the template.
-      let savedThumbnailUrl = defaultThumbnailUrl ?? null;
-      const alreadyUploaded = uploadedThumbnail.current;
-      if (draftThumbnailBlob && alreadyUploaded?.blob === draftThumbnailBlob) {
-        savedThumbnailUrl = alreadyUploaded.url;
-      } else if (draftThumbnailBlob) {
-        try {
-          const file =
-            draftThumbnailBlob instanceof File
-              ? draftThumbnailBlob
-              : new File([draftThumbnailBlob], snapshotFileName(name), { type: "image/png" });
-          const asset = await uploadAsset(file, "image", {
-            displayName: file.name,
-            category: "template_thumbnail",
-          });
-          uploadedThumbnail.current = { blob: draftThumbnailBlob, url: asset.url };
-          savedThumbnailUrl = asset.url;
-        } catch {
-          // The template is worth more than its picture: the save goes
-          // through with whatever picture the caller already had.
-          toast.error(t("image_upload_failed"));
-          savedThumbnailUrl = defaultThumbnailUrl ?? null;
-        }
-      }
+      const savedThumbnailUrl = await resolveThumbnailUrl(defaultThumbnailUrl ?? null);
 
       const created = await createTemplate({
         name: name.trim(),
@@ -657,7 +738,11 @@ const SaveTemplateDialog = ({
     ]
   );
 
-  const title = source.kind === "project" ? t("save_project_as_template") : t("save_as_template");
+  const title = editing
+    ? t("edit_template")
+    : source.kind === "project"
+      ? t("save_project_as_template")
+      : t("save_as_template");
 
   // A refused publish leaves the template saved, so the only thing left to do
   // is read the refusal and close.
@@ -666,7 +751,7 @@ const SaveTemplateDialog = ({
   ) : (
     <AppDialogFooter
       onCancel={onClose}
-      primaryLabel={updating ? t("update_template") : t("save")}
+      primaryLabel={editing ? t("save_changes") : updating ? t("update_template") : t("save")}
       onPrimary={() => void handleSubmit()}
       primaryDisabled={submitDisabled}
       primaryLoading={submitting}
@@ -686,10 +771,23 @@ const SaveTemplateDialog = ({
         backgroundColor: alpha(theme.palette.text.primary, 0.02),
       }}>
       <TemplatePreviewPanel
-        template={draft}
-        descriptor={draftPreview}
+        template={
+          editing && current
+            ? {
+                ...current,
+                name: name.trim() || current.name,
+                description: description.trim() || null,
+                categories,
+                thumbnail_url: thumbnailUrl,
+              }
+            : draft
+        }
+        descriptor={editing ? null : draftPreview}
         namePlaceholder={!name.trim()}
-        sourceLabel={spaceDisplayName(selectedSpace, t)}
+        sourceLabel={spaceDisplayName(
+          editing ? spaces.find((space) => space.id === current?.space_id) : selectedSpace,
+          t
+        )}
         // The picture is frozen once the save starts; a change now would not
         // reach the template being written.
         thumbnailActions={
@@ -850,7 +948,7 @@ const SaveTemplateDialog = ({
             {/* The location is a choice between spaces, not a field, so it
               keeps its group heading — one block in the same rhythm. Hidden
               while updating: the template stays where it is. */}
-            {!updating && (
+            {!updating && !editing && (
               <>
             <Box>
               <FormLabelHelper label={t("location")} color={theme.palette.text.secondary} />
@@ -925,7 +1023,38 @@ const SaveTemplateDialog = ({
             </Alert>
           )}
 
-          {isLayout ? (
+          {editing && current ? (
+            <>
+              {current.payload_kind === "layout" ? (
+                <Typography sx={{ mt: 2, fontSize: 12.5, color: "text.secondary", lineHeight: 1.45 }}>
+                  {t("layouts_carry_no_datasets")}
+                </Typography>
+              ) : (
+                current.inputs.length > 0 && (
+                  <>
+                    <FormLabelHelper label={t("template_inputs")} color={theme.palette.text.secondary} />
+                    <TemplateInputsTable
+                      inputs={current.inputs}
+                      modeFor={(key) => current.inputs.find((input) => input.key === key)?.mode ?? "ask"}
+                      onModeChange={() => undefined}
+                      allowAsk={current.payload_kind !== "project"}
+                      disabled
+                    />
+                    <Typography sx={{ mt: 1, fontSize: 12, color: "text.disabled", lineHeight: 1.5 }}>
+                      {t("inputs_frozen_hint")}
+                    </Typography>
+                  </>
+                )
+              )}
+              <Box sx={{ mt: 2 }}>
+                <TemplateSnapshotLine
+                  template={current}
+                  refreshing={refreshingSource}
+                  onRefresh={handleRefreshSource}
+                />
+              </Box>
+            </>
+          ) : isLayout ? (
             <Typography sx={{ mt: 2, fontSize: 12.5, color: "text.secondary", lineHeight: 1.45 }}>
               {t("layouts_carry_no_datasets")}
             </Typography>
@@ -992,7 +1121,7 @@ const SaveTemplateDialog = ({
 
           {isSuperuser && (
             <TemplateCatalogSwitch
-              published={updateTarget?.catalog_status === "published"}
+              published={(editing ? current?.catalog_status : updateTarget?.catalog_status) === "published"}
               updating={updating}
               checked={publishSwitchOn}
               onChange={setPublishSwitchOn}
