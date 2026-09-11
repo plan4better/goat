@@ -19,6 +19,7 @@ import {
   selectSelectedWorkflowId,
   selectVariables,
   selectViewport,
+  selectWorkflows,
 } from "@/lib/store/workflow/selectors";
 import {
   addNode,
@@ -64,6 +65,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
   // Redux state
   const selectedWorkflowId = useSelector(selectSelectedWorkflowId);
   const selectedWorkflow = useSelector(selectSelectedWorkflow);
+  const storeWorkflows = useSelector(selectWorkflows);
   const selectedNodeId = useSelector(selectSelectedNodeId);
   const selectedNode = useSelector(selectSelectedNode) as WorkflowNode | null;
   const nodes = useSelector(selectNodes);
@@ -171,11 +173,16 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
   const handleSelectWorkflow = useCallback(
     (workflow: { id: string } | null) => {
       const newId = workflow?.id ?? null;
-      if (newId !== selectedWorkflowId) {
-        dispatch(selectWorkflow(newId));
+      if (newId === selectedWorkflowId) return;
+      // `selectWorkflow` reads the config from the store's list. A workflow
+      // the panel just created is in the fetched list before the effect
+      // above has copied it over, so the store is brought up to date first.
+      if (newId && workflows && !storeWorkflows.some((w) => w.id === newId)) {
+        dispatch(setWorkflows(workflows));
       }
+      dispatch(selectWorkflow(newId));
     },
-    [dispatch, selectedWorkflowId]
+    [dispatch, selectedWorkflowId, workflows, storeWorkflows]
   );
 
   // Handle drag start from nodes panel

@@ -111,9 +111,23 @@ const workflowSlice = createSlice({
   name: "workflow",
   initialState,
   reducers: {
-    // Set all workflows (from API)
+    // Set all workflows (from API). A workflow selected before the list
+    // carried it — created from a template and picked the moment the panel's
+    // own list had it, a render before the layout's copy reached the store —
+    // loads its config now, so the canvas never sits empty over a config
+    // that exists (and never auto-saves that emptiness back). A canvas the
+    // author already changed is left alone.
     setWorkflows: (state, action: PayloadAction<Workflow[]>) => {
+      const selectedWasKnown = state.workflows.some((w) => w.id === state.selectedWorkflowId);
       state.workflows = action.payload;
+      if (!state.selectedWorkflowId || selectedWasKnown || state.isDirty) return;
+      const workflow = action.payload.find((w) => w.id === state.selectedWorkflowId);
+      if (!workflow) return;
+      const { nodes, edges } = configToReactFlow(workflow.config);
+      state.nodes = nodes;
+      state.edges = edges;
+      state.viewport = workflow.config?.viewport ?? { x: 0, y: 0, zoom: 1 };
+      state.variables = workflow.config?.variables ?? [];
     },
 
     // Add a new workflow
