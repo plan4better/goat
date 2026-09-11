@@ -192,6 +192,20 @@ export const templatePreviewDescriptorSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+/** `GET /template/{id}` only: where the template was saved from, with the
+ * names the edit dialog links and whether a refresh from there can work —
+ * mirrors `core.schemas.template.TemplateSourceInfo`. */
+export const templateSourceInfoSchema = z.object({
+  kind: templatePayloadKind,
+  project_id: z.string().uuid().nullable(),
+  project_name: z.string().nullable(),
+  workflow_id: z.string().uuid().nullable().optional(),
+  workflow_name: z.string().nullable().optional(),
+  layout_id: z.string().uuid().nullable().optional(),
+  layout_name: z.string().nullable().optional(),
+  available: z.boolean(),
+});
+
 /** Response shape for the template API's read routes — mirrors `TemplateRead`. */
 export const templateReadSchema = z.object({
   /** Filled by `POST /template/{id}/refresh` when re-snapshotting now ships
@@ -217,6 +231,7 @@ export const templateReadSchema = z.object({
   ships_sample_data: z.boolean().default(false),
   catalog_status: templateCatalogStatus,
   source_ref: z.record(z.unknown()).default({}),
+  source: templateSourceInfoSchema.nullable().optional(),
   my_role: contentRole,
   created_at: z.string(),
   updated_at: z.string(),
@@ -287,6 +302,7 @@ export type TemplatePayloadKind = z.infer<typeof templatePayloadKind>;
 export type TemplateCatalogStatus = z.infer<typeof templateCatalogStatus>;
 export type TemplateInput = z.infer<typeof templateInputSchema>;
 export type TemplateSource = z.infer<typeof templateSourceSchema>;
+export type TemplateSourceInfo = z.infer<typeof templateSourceInfoSchema>;
 export type DatasetShareLine = z.infer<typeof datasetShareLineSchema>;
 export type TemplatePreview = z.infer<typeof templatePreviewSchema>;
 export type TemplatePreviewNode = z.infer<typeof templatePreviewNodeSchema>;

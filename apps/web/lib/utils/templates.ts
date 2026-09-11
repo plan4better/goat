@@ -1,7 +1,13 @@
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import type { Space } from "@/lib/validations/content";
-import type { TemplateKind, TemplateRead, TemplateSourceFilter } from "@/lib/validations/template";
+import type {
+  TemplateInput,
+  TemplateKind,
+  TemplateRead,
+  TemplateSourceFilter,
+  TemplateSourceInfo,
+} from "@/lib/validations/template";
 
 /** The hint under an empty template shelf, per source — shared by the Home
  * band and the browser, since both are "there is nothing on this shelf". */
@@ -211,3 +217,22 @@ export const stripMarkdown = (value: string): string =>
     .replace(/`/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
+/** Links into the project a template was saved from: the project itself,
+ * and the project opened on the workflow or layout through the map page's
+ * `?workflow=` / `?layout=` intents (`useMapUrlIntent`). */
+export const sourceLink = (source: TemplateSourceInfo): { project: string; payload: string | null } => {
+  const project = `/map/${source.project_id}`;
+  if (source.kind === "workflow" && source.workflow_id) {
+    return { project, payload: `${project}?workflow=${source.workflow_id}` };
+  }
+  if (source.kind === "layout" && source.layout_id) {
+    return { project, payload: `${project}?layout=${source.layout_id}` };
+  }
+  return { project, payload: null };
+};
+
+/** Shipped inputs that would stop a publish: only GOAT catalog layers may
+ * ship with a published template (`crud_template.publish`). */
+export const blockedShipInputs = (inputs: TemplateInput[]): TemplateInput[] =>
+  inputs.filter((input) => input.mode === "ship" && !!input.layer_id && !input.from_catalog);

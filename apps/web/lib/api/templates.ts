@@ -49,6 +49,10 @@ type UseTemplatesParams = {
   categories?: string;
   space_id?: string;
   folder_id?: string;
+  /** Only templates saved from this source (`source_ref` ids). */
+  source_project_id?: string;
+  source_workflow_id?: string;
+  source_layout_id?: string;
   page?: number;
   size?: number;
 };
@@ -78,6 +82,27 @@ export const useTemplates = (params: UseTemplatesParams | null) => {
     fetcher
   );
   return { page: data, isLoading, isError: error, mutate };
+};
+
+/** The templates the caller owns that were saved from this exact source —
+ * what the save dialog offers to update instead of saving a duplicate.
+ * Owners only: a refresh needs the owner's permission on the template.
+ * Newest first, so the first entry is the natural preselection. */
+export const useTemplatesFromSource = (source: TemplateSource | null) => {
+  const params: UseTemplatesParams | null = source
+    ? {
+        source: "all",
+        source_project_id: source.project_id,
+        ...(source.kind === "workflow" && source.workflow_id ? { source_workflow_id: source.workflow_id } : {}),
+        ...(source.kind === "layout" && source.layout_id ? { source_layout_id: source.layout_id } : {}),
+        size: 50,
+      }
+    : null;
+  const { page, isLoading } = useTemplates(params);
+  const templates = (page?.items ?? [])
+    .filter((template) => template.my_role === "owner")
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  return { templates, isLoading };
 };
 
 /** `GET /template/categories`: every category in use on the templates the
