@@ -1,20 +1,10 @@
 "use client";
 
-import {
-  Box,
-  Chip,
-  FormControlLabel,
-  Link,
-  Radio,
-  RadioGroup,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-  alpha,
-  useTheme,
-} from "@mui/material";
+import { Box, ButtonBase, Chip, FormControlLabel, Radio, RadioGroup, Typography, alpha, useTheme } from "@mui/material";
 import { formatDistance } from "date-fns";
 import { useTranslation } from "react-i18next";
+
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { useDateFnsLocale } from "@/i18n/utils";
 import { spaceDisplayName } from "@/lib/utils/content";
@@ -56,6 +46,32 @@ const TemplateSourceChoice = ({
   const selected = candidates.find((candidate) => candidate.id === selectedId) ?? candidates[0];
   const ago = (iso: string) => formatDistance(new Date(iso), new Date(), { addSuffix: true, locale: dateLocale });
 
+  const segment = (id: TemplateSaveMode, icon: ICON_NAME, label: string) => {
+    const on = mode === id;
+    return (
+      <ButtonBase
+        key={id}
+        onClick={() => onModeChange(id)}
+        disabled={disabled}
+        aria-pressed={on}
+        sx={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "6px",
+          height: 32,
+          px: "13px",
+          borderRadius: "999px",
+          backgroundColor: on ? alpha(theme.palette.primary.main, 0.12) : "transparent",
+          color: on ? theme.palette.primary.main : theme.palette.text.secondary,
+          fontSize: 13.5,
+          fontWeight: 600,
+        }}>
+        <Icon iconName={icon} style={{ fontSize: 15, color: "inherit" }} />
+        {label}
+      </ButtonBase>
+    );
+  };
+
   return (
     <Box
       sx={{
@@ -69,19 +85,23 @@ const TemplateSourceChoice = ({
       <Typography sx={{ fontSize: 13 }}>
         {t("templates_from_source", { count: candidates.length, kind: kindLabel })}
       </Typography>
-      <ToggleButtonGroup
-        size="small"
-        exclusive
-        value={mode}
-        disabled={disabled}
-        onChange={(_event, next: TemplateSaveMode | null) => next && onModeChange(next)}>
-        <ToggleButton value="new" sx={{ textTransform: "none", fontWeight: 700 }}>
-          {t("save_as_new")}
-        </ToggleButton>
-        <ToggleButton value="update" sx={{ textTransform: "none", fontWeight: 700 }}>
-          {t("update_existing")}
-        </ToggleButton>
-      </ToggleButtonGroup>
+      {/* The same pill the Content page's Grid/List switch uses (LayoutToggle):
+        two segments, the active one filled with the primary tint. */}
+      <Box
+        role="group"
+        aria-label={t("save_as_new") + " / " + t("update_existing")}
+        sx={{
+          display: "inline-flex",
+          gap: "2px",
+          padding: "3px",
+          width: "fit-content",
+          borderRadius: "999px",
+          border: `1px solid ${theme.palette.divider}`,
+          backgroundColor: theme.palette.background.paper,
+        }}>
+        {segment("new", ICON_NAME.PLUS, t("save_as_new"))}
+        {segment("update", ICON_NAME.REFRESH, t("update_existing"))}
+      </Box>
       {mode === "update" && (
         <>
           <RadioGroup value={selected.id} onChange={(_event, value) => onSelect(value)}>
@@ -121,16 +141,6 @@ const TemplateSourceChoice = ({
                           spaces.find((space) => space.id === candidate.space_id),
                           t
                         )}
-                        {" · "}
-                        <Link
-                          href={`/content/${candidate.space_id}/${candidate.folder_id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(event) => event.stopPropagation()}
-                          underline="hover"
-                          sx={{ fontWeight: 700 }}>
-                          {t("open")}
-                        </Link>
                       </Typography>
                     </Box>
                     <Box sx={{ textAlign: "right" }}>
