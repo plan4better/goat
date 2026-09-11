@@ -16,7 +16,7 @@ import {
   Typography,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
@@ -73,7 +73,7 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
   project,
   projectLayers = [],
   projectLayerGroups = [],
-  selectedWorkflow: _selectedWorkflow,
+  selectedWorkflow,
   onSelectWorkflow,
   onLayerDragStart,
 }) => {
@@ -83,11 +83,13 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
   const { workflows, isLoading, mutate } = useWorkflows(project?.id);
 
   // Local state
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+  // The store is the single source of truth for which workflow is open — the
+  // map page's `?workflow=` intent, the layout and this list all write it
+  // through `onSelectWorkflow`, and the list highlights what it reads back.
+  // A workflow this panel just created is selected once the list carries it.
+  const selectedWorkflowId = selectedWorkflow?.id ?? null;
+  const [pendingSelectId, setPendingSelectId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-
-  // Track last synced workflow ID to prevent unnecessary parent updates
-  const lastSyncedIdRef = useRef<string | null>(null);
 
   // Modal states
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -102,31 +104,21 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
   const [templateForFlow, setTemplateForFlow] = useState<TemplateRead | null>(null);
   const [templateSaveWorkflow, setTemplateSaveWorkflow] = useState<Workflow | null>(null);
 
-  // Sync selected workflow with parent - only when ID actually changes
   useEffect(() => {
-    // Only notify parent if the workflow ID has actually changed
-    if (selectedWorkflowId === lastSyncedIdRef.current) {
+    if (!workflows) return;
+    if (pendingSelectId) {
+      const created = workflows.find((w) => w.id === pendingSelectId);
+      if (created) {
+        setPendingSelectId(null);
+        onSelectWorkflow(created);
+      }
       return;
     }
-
-    if (selectedWorkflowId && workflows) {
-      const workflow = workflows.find((w) => w.id === selectedWorkflowId);
-      if (workflow) {
-        lastSyncedIdRef.current = selectedWorkflowId;
-        onSelectWorkflow(workflow);
-      }
-    } else {
-      lastSyncedIdRef.current = null;
-      onSelectWorkflow(null);
+    // Nothing open anywhere: the first workflow opens.
+    if (workflows.length > 0 && !selectedWorkflowId) {
+      onSelectWorkflow(workflows[0]);
     }
-  }, [selectedWorkflowId, workflows, onSelectWorkflow]);
-
-  // Auto-select first workflow when workflows load
-  useEffect(() => {
-    if (workflows && workflows.length > 0 && !selectedWorkflowId) {
-      setSelectedWorkflowId(workflows[0].id);
-    }
-  }, [workflows, selectedWorkflowId]);
+  }, [workflows, pendingSelectId, selectedWorkflowId, onSelectWorkflow]);
 
   // Handle create new workflow
   const handleCreateWorkflow = useCallback(async () => {
@@ -142,7 +134,7 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
       });
 
       await mutate();
-      setSelectedWorkflowId(newWorkflow.id);
+      setPendingSelectId(newWorkflow.id);
     } catch (error) {
       console.error("Failed to create workflow:", error);
     } finally {
@@ -162,7 +154,7 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
     async (result: TemplateUseResult) => {
       setTemplateForFlow(null);
       await mutate();
-      if (result.workflow_id) setSelectedWorkflowId(result.workflow_id);
+      if (result.workflow_id) setPendingSelectId(result.workflow_id);
     },
     [mutate]
   );
@@ -175,7 +167,7 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
       try {
         const duplicated = await duplicateWorkflow(project.id, workflowId);
         await mutate();
-        setSelectedWorkflowId(duplicated.id);
+        setPendingSelectId(duplicated.id);
       } catch (error) {
         console.error("Failed to duplicate workflow:", error);
       }
@@ -193,7 +185,6 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
 
       // If deleted workflow was selected, clear selection
       if (selectedWorkflowId === actionWorkflowId) {
-        setSelectedWorkflowId(null);
         onSelectWorkflow(null);
       }
     } catch (error) {
@@ -348,7 +339,7 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
                   }>
                   <ListItemButton
                     selected={selectedWorkflowId === workflow.id}
-                    onClick={() => setSelectedWorkflowId(workflow.id)}>
+                    onClick={() => onSelectWorkflow(workflow)}>
                     <ListItemIcon sx={{ minWidth: 36 }}>
                       <WorkflowIcon fontSize="small" />
                     </ListItemIcon>

@@ -27,8 +27,10 @@ const mockWorkflow: Workflow = {
   config: { nodes: [], edges: [] },
 } as unknown as Workflow;
 
+const { workflowsMock } = vi.hoisted(() => ({ workflowsMock: { list: [] as unknown[] } }));
+
 vi.mock("@/lib/api/workflows", () => ({
-  useWorkflows: () => ({ workflows: [mockWorkflow], isLoading: false, mutate: vi.fn() }),
+  useWorkflows: () => ({ workflows: workflowsMock.list, isLoading: false, mutate: vi.fn() }),
   createWorkflow: vi.fn(),
   deleteWorkflow: vi.fn(),
   duplicateWorkflow: vi.fn(),
@@ -60,6 +62,8 @@ vi.mock("@/components/templates/TemplateBrowser", () => ({
 }));
 
 const project = { id: "p1" } as unknown as Project;
+
+workflowsMock.list = [mockWorkflow];
 
 const renderPanel = () =>
   render(<WorkflowsConfigPanel project={project} selectedWorkflow={null} onSelectWorkflow={vi.fn()} />);
@@ -104,5 +108,27 @@ describe("WorkflowsConfigPanel template entry points", () => {
     expect(screen.getByText("duplicate")).toBeInTheDocument();
     expect(screen.getByText("save_as_template")).toBeInTheDocument();
     expect(screen.getByText("delete")).toBeInTheDocument();
+  });
+
+  it("follows the workflow the store already selected instead of opening the first one", async () => {
+    // The map page's `?workflow=` intent selects a workflow in the store
+    // before this panel mounts; the panel must not override it with its
+    // own default of "the first in the list".
+    const second = { ...mockWorkflow, id: "wf-2", name: "Workflow 4" } as unknown as Workflow;
+    workflowsMock.list = [mockWorkflow, second];
+    const onSelectWorkflow = vi.fn();
+    try {
+      render(<WorkflowsConfigPanel project={project} selectedWorkflow={second} onSelectWorkflow={onSelectWorkflow} />);
+      await expect(screen.getByText("Workflow 4").closest(".MuiListItemButton-root")).toHaveClass("Mui-selected");
+      expect(onSelectWorkflow).not.toHaveBeenCalledWith(expect.objectContaining({ id: mockWorkflow.id }));
+    } finally {
+      workflowsMock.list = [mockWorkflow];
+    }
+  });
+
+  it("opens the first workflow only when nothing is selected anywhere", () => {
+    const onSelectWorkflow = vi.fn();
+    render(<WorkflowsConfigPanel project={project} selectedWorkflow={null} onSelectWorkflow={onSelectWorkflow} />);
+    expect(onSelectWorkflow).toHaveBeenCalledWith(expect.objectContaining({ id: mockWorkflow.id }));
   });
 });
