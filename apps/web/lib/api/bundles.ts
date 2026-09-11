@@ -263,9 +263,14 @@ export const useBundleLayers = (bundleId: string | null) => {
 /** The bundle a layer belongs to, or undefined for an ordinary layer.
  *
  *  A plain layer is the common case, so a 404 is an answer rather than an
- *  error — it means "not a member". */
+ *  error — it means "not a member".
+ *
+ *  `isMembershipUnresolved` separates the two things an absent bundle can
+ *  mean. A 404 answers the question; a failed request leaves it unanswered,
+ *  and a caller that treats the second as "ordinary layer" sends a member's
+ *  edits to an endpoint that refuses them. */
 export const useBundleForLayer = (layerId: string | null) => {
-  const { data, isLoading, mutate } = useSWR<BundleForLayer | null>(
+  const { data, isLoading, error, mutate } = useSWR<BundleForLayer | null>(
     layerId ? `${BUNDLES_API_BASE_URL}/by-layer/${layerId}` : null,
     async (url: string) => {
       const response = await apiRequestAuth(url);
@@ -274,7 +279,12 @@ export const useBundleForLayer = (layerId: string | null) => {
       return response.json();
     }
   );
-  return { bundleForLayer: data ?? undefined, isLoading, mutate };
+  return {
+    bundleForLayer: data ?? undefined,
+    isLoading,
+    isMembershipUnresolved: !!layerId && !!error,
+    mutate,
+  };
 };
 
 /** Other bundles this bundle depends on (e.g. a GTFS feed's street network). */

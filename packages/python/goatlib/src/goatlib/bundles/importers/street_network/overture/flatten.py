@@ -22,7 +22,7 @@ change.
 
 import json
 import logging
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 from goatlib.bundles.importers.street_network.overture.splitter import (
     LR_SCOPE_KEY,
@@ -57,11 +57,22 @@ CAR_MODES = frozenset({"vehicle", "motor_vehicle", "car"})
 _SITUATIONAL_SCOPES = frozenset({"during", "using", "recognized", "vehicle"})
 
 
+def flatten_edges(pieces: Iterable[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
+    """Edge records as the pieces arrive.
+
+    One piece in, one record out, so a streamed split stays streamed: holding
+    the flattened copy of a city network is as expensive as holding the split
+    one, and there is no reason for either to exist.
+    """
+    for piece in pieces:
+        yield flatten_segment(piece)
+
+
 def flatten_network(
     result: SplitResult,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Split output -> (edge records, node records) for the member layers."""
-    edges = [flatten_segment(piece) for piece in result.segments]
+    edges = list(flatten_edges(result.segments))
     nodes = [flatten_connector(connector) for connector in result.connectors]
     return edges, nodes
 

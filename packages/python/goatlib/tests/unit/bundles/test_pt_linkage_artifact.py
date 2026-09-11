@@ -256,3 +256,47 @@ def _write_feed(path: Path, *, start: str, end: str) -> None:
             "calendar.txt",
             f"service_id,start_date,end_date\ns1,{start},{end}\n",
         )
+
+
+def test_a_feed_zipped_as_a_folder_is_repackaged_at_the_root(tmp_path) -> None:
+    """nigiri looks for the GTFS files at the archive root and refuses one where
+    they sit in a folder — which is what compressing a directory produces. The
+    feed is complete, so it is repackaged rather than refused."""
+    from goatlib.bundles.artifacts.gtfs import _root_level_feed
+
+    nested = tmp_path / "nested.zip"
+    with zipfile.ZipFile(nested, "w") as zf:
+        zf.writestr("paris_gtfs/stops.txt", "stop_id\nS1\n")
+        zf.writestr("paris_gtfs/agency.txt", "agency_id\n1\n")
+        zf.writestr("__MACOSX/._stops.txt", "junk")
+
+    out = _root_level_feed(str(nested), str(tmp_path))
+
+    assert out != str(nested)
+    with zipfile.ZipFile(out) as zf:
+        # The folder is gone, and so is the junk the compressor added.
+        assert sorted(zf.namelist()) == ["agency.txt", "stops.txt"]
+
+
+def test_a_flat_feed_is_left_alone(tmp_path) -> None:
+    """Nothing to repackage, so nothing is rewritten."""
+    from goatlib.bundles.artifacts.gtfs import _root_level_feed
+
+    flat = tmp_path / "flat.zip"
+    with zipfile.ZipFile(flat, "w") as zf:
+        zf.writestr("stops.txt", "stop_id\nS1\n")
+
+    assert _root_level_feed(str(flat), str(tmp_path)) == str(flat)
+
+
+def test_an_archive_holding_two_feeds_is_not_guessed_at(tmp_path) -> None:
+    """Which of them was meant is not knowable here; the loader's refusal is a
+    better answer than repackaging the wrong one."""
+    from goatlib.bundles.artifacts.gtfs import _root_level_feed
+
+    two = tmp_path / "two.zip"
+    with zipfile.ZipFile(two, "w") as zf:
+        zf.writestr("a/stops.txt", "stop_id\nS1\n")
+        zf.writestr("b/stops.txt", "stop_id\nS2\n")
+
+    assert _root_level_feed(str(two), str(tmp_path)) == str(two)

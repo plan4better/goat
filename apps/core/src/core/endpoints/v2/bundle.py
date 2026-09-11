@@ -822,8 +822,15 @@ def role_is_editable(bundle_type: str, role: str | None) -> bool:
     return bool(spec_role and spec_role.editable)
 
 
+# The path parameter is deliberately not called ``layer_id``. ``auth_z``'s SQL
+# gate extracts placeholders by name, and that one makes it run ``check_layer``
+# against this route's resource rule -- the wildcard ``bundle`` rule, whose
+# ``read-bundle`` permission no layer-typed role holds. ``check_layer`` then
+# finds no role to rank, raises, and ``auth_z`` reports the lot as a bare 401,
+# for every caller including the bundle's owner. Read access is authorized in
+# the body instead, as it is for ``/{bundle_id}/layers`` next door.
 @router.get(
-    "/by-layer/{layer_id}",
+    "/by-layer/{member_layer_id}",
     summary="The bundle a layer belongs to, if any",
     response_model=BundleByLayerResponse,
     status_code=200,
@@ -833,12 +840,12 @@ async def read_bundle_by_layer(
     *,
     async_session: AsyncSession = Depends(get_db),
     user_id: UUID4 = Depends(get_user_id),
-    layer_id: UUID4 = Path(..., description="The layer"),
+    member_layer_id: UUID4 = Path(..., description="The layer"),
 ) -> BundleByLayerResponse:
     """Resolve a layer to its bundle, role and editability."""
     link = (
         await async_session.execute(
-            select(BundleLayerLink).where(BundleLayerLink.layer_id == layer_id)
+            select(BundleLayerLink).where(BundleLayerLink.layer_id == member_layer_id)
         )
     ).scalar_one_or_none()
     if link is None:
