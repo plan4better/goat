@@ -8,10 +8,8 @@ import {
   Checkbox,
   Chip,
   FormControl,
-  FormControlLabel,
   Skeleton,
   Stack,
-  Switch,
   TextField,
   Typography,
   alpha,
@@ -47,6 +45,7 @@ import { renderSnapshotFor, snapshotFileName } from "@/lib/templates/thumbnailSn
 import { homeFolderOf, spaceDisplayName, spaceIconFor } from "@/lib/utils/content";
 import { tagColor } from "@/lib/utils/tagColor";
 import type { Space } from "@/lib/validations/content";
+import { blockedShipInputs } from "@/lib/utils/templates";
 import type {
   TemplateKind,
   TemplatePreview,
@@ -62,6 +61,7 @@ import FolderBrowser from "@/components/dashboard/common/FolderBrowser";
 import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
 import TemplateInputsTable from "@/components/templates/TemplateInputsTable";
 import type { TemplateInputMode } from "@/components/templates/TemplateInputsTable";
+import TemplateCatalogSwitch from "@/components/templates/TemplateCatalogSwitch";
 import TemplatePreviewPanel from "@/components/templates/TemplatePreviewPanel";
 import TemplateTag from "@/components/templates/TemplateTag";
 
@@ -477,6 +477,13 @@ const SaveTemplateDialog = ({
       // closes this dialog from `onSaved`, so a refusal reported afterwards
       // would land on an unmounted dialog and never reach the author.
       if (isSuperuser && publishSwitchOn) {
+        // The same rule the backend applies, checked first so a refusal
+        // names the dataset before a round trip that would fail anyway.
+        const blocked = blockedShipInputs(inputs);
+        if (blocked.length > 0) {
+          setPublishBlocked({ template: created, names: blocked.map((input) => input.label) });
+          return;
+        }
         const result = await publishTemplateWithDetail(created.id);
         if (!result.ok) {
           setPublishBlocked({ template: created, names: result.layers.map((layer) => layer.name) });
@@ -876,16 +883,14 @@ const SaveTemplateDialog = ({
           )}
 
           {isSuperuser && (
-            <FormControlLabel
-              sx={{ marginTop: "14px", "& .MuiFormControlLabel-label": { fontSize: 13 } }}
-              control={
-                <Switch
-                  size="small"
-                  checked={publishSwitchOn}
-                  onChange={(_event, checked) => setPublishSwitchOn(checked)}
-                />
-              }
-              label={t("publish_to_goat_catalog")}
+            <TemplateCatalogSwitch
+              published={false}
+              checked={publishSwitchOn}
+              onChange={setPublishSwitchOn}
+              blocked={blockedShipInputs(
+                (preview?.detected_inputs ?? []).map((input) => ({ ...input, mode: modeFor(input.key) }))
+              )}
+              disabled={submitting}
             />
           )}
 
