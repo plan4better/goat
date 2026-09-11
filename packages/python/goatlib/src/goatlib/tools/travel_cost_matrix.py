@@ -661,7 +661,7 @@ class TravelCostMatrixWindmillParams(ToolInputBase):
         ),
         json_schema_extra=ui_field(
             section="configuration",
-            field_order=28,
+            field_order=14,
             label_key="pt_network_bundle_id",
             widget="bundle-selector",
             visible_when={
@@ -687,7 +687,7 @@ class TravelCostMatrixWindmillParams(ToolInputBase):
         ),
         json_schema_extra=ui_field(
             section="configuration",
-            field_order=29,
+            field_order=15,
             label_key="street_network_bundle_id",
             widget="bundle-selector",
             # Street modes only — not because a PT run needs no street

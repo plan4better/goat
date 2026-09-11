@@ -148,7 +148,7 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
         ),
         json_schema_extra=ui_field(
             section="configuration",
-            field_order=26,
+            field_order=20,
             label_key="street_network_bundle_id",
             widget="bundle-selector",
             # A PT run takes its network from pt_network_bundle_id below, so
@@ -167,7 +167,7 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
         ),
     )
 
-    pt_network_bundle_id: str | None = pt_network_bundle_field(27)
+    pt_network_bundle_id: str | None = pt_network_bundle_field(21)
 
     # ---- Routing section --------------------------------------------------
     # Same enum + icons + labels as the other v2 tools, and required (no
@@ -414,7 +414,7 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
         json_schema_extra={
             **ui_field(
                 section="configuration",
-                field_order=20,
+                field_order=22,
                 label_key="access_mode",
                 group_label="groups.access_leg",
                 enum_icons=ACCESS_EGRESS_MODE_ICONS,
@@ -433,7 +433,7 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
         json_schema_extra={
             **ui_field(
                 section="configuration",
-                field_order=21,
+                field_order=23,
                 label_key="measure_type",
                 enum_labels=COST_TYPE_LABELS,
                 enum_icons=COST_TYPE_ICONS,
@@ -451,7 +451,7 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
         description="Access leg budget (≤ the lookup table max).",
         json_schema_extra=ui_field(
             section="configuration",
-            field_order=22,
+            field_order=24,
             label_key="limit",
             description_key="limit",
             inline_group="access_cost",
@@ -470,7 +470,7 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
         json_schema_extra={
             **ui_field(
                 section="configuration",
-                field_order=23,
+                field_order=25,
                 label_key="pt_egress_mode",
                 group_label="groups.egress_leg",
                 enum_icons=ACCESS_EGRESS_MODE_ICONS,
@@ -489,7 +489,7 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
         json_schema_extra={
             **ui_field(
                 section="configuration",
-                field_order=24,
+                field_order=26,
                 label_key="measure_type",
                 enum_labels=COST_TYPE_LABELS,
                 enum_icons=COST_TYPE_ICONS,
@@ -507,7 +507,7 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
         description="Egress leg budget (≤ the lookup table max).",
         json_schema_extra=ui_field(
             section="configuration",
-            field_order=25,
+            field_order=27,
             label_key="limit",
             description_key="limit",
             inline_group="egress_cost",

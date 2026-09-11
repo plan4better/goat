@@ -800,7 +800,7 @@ class HeatmapV2WindmillParams(ToolInputBase):
         ),
         json_schema_extra=ui_field(
             section="configuration",
-            field_order=21,
+            field_order=18,
             label_key="street_network_bundle_id",
             widget="bundle-selector",
             # A PT run takes its network from pt_network_bundle_id below, so
@@ -819,7 +819,7 @@ class HeatmapV2WindmillParams(ToolInputBase):
         ),
     )
 
-    pt_network_bundle_id: str | None = pt_network_bundle_field(22)
+    pt_network_bundle_id: str | None = pt_network_bundle_field(19)
 
     # =========================================================================
     # Cost / budget / speed
