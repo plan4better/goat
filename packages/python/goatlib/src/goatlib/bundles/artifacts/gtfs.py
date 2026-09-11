@@ -23,6 +23,7 @@ import csv
 import io
 import logging
 import os
+import shutil
 import tarfile
 import zipfile
 from datetime import date
@@ -107,6 +108,58 @@ def linkage_member(mode: str) -> str:
     return f"accessegress_{mode}_r{LINKAGE_RESOLUTION}.parquet"
 
 
+def _root_level_feed(source_path: str, workdir: str) -> str:
+    """A path to the same feed with its files at the archive root.
+
+    nigiri looks for the GTFS files at the root of the archive and refuses one
+    where they sit in a folder — which is exactly what compressing a directory
+    produces, and how a fair number of agencies publish. Every file is present
+    and the feed is perfectly good, so it is repackaged rather than refused; the
+    alternative is telling the person who uploaded it to re-zip it, for a
+    difference nothing downstream cares about.
+
+    Only a single shared top-level directory is flattened. An archive that is
+    already flat, or that holds more than one feed, is handed back untouched —
+    guessing which of several directories was meant would be worse than letting
+    the loader say it cannot read this one.
+
+    Members are streamed rather than read whole: `stop_times.txt` alone runs to
+    hundreds of MB on a city feed.
+    """
+    with zipfile.ZipFile(source_path) as src:
+        members = [
+            info
+            for info in src.infolist()
+            if not info.is_dir()
+            and not info.filename.startswith("__MACOSX/")
+            and os.path.basename(info.filename) not in ("", ".DS_Store")
+        ]
+        if not members:
+            return source_path
+        prefixes = {m.filename.split("/")[0] for m in members if "/" in m.filename}
+        flat = [m for m in members if "/" not in m.filename]
+        if flat or len(prefixes) != 1:
+            # Already at the root, or ambiguous — either way, not ours to fix.
+            return source_path
+
+        prefix = f"{prefixes.pop()}/"
+        out_path = os.path.join(workdir, "gtfs_root.zip")
+        logger.info(
+            "GTFS files live under %r; repackaging %d of them at the archive "
+            "root so the timetable loader can read the feed",
+            prefix,
+            len(members),
+        )
+        with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as dst:
+            for info in members:
+                name = info.filename[len(prefix) :]
+                if not name:
+                    continue
+                with src.open(info) as fsrc, dst.open(name, "w") as fdst:
+                    shutil.copyfileobj(fsrc, fdst)
+    return out_path
+
+
 class GtfsArtifactBuilder(ArtifactBuilder):
     bundle_type = BundleTypeName.pt_network_gtfs
     produces = (
@@ -135,6 +188,7 @@ class GtfsArtifactBuilder(ArtifactBuilder):
             )
 
         start_date, length_days = self._date_window(source_path)
+        feed_path = _root_level_feed(source_path, workdir)
         out_path = os.path.join(workdir, "pt_network_graph.bin")
         logger.info(
             "Building GTFS timetable .bin (start=%s, length=%dd) from %s",
@@ -142,7 +196,7 @@ class GtfsArtifactBuilder(ArtifactBuilder):
             length_days,
             source_path,
         )
-        routing.build_timetable(source_path, out_path, start_date, length_days)
+        routing.build_timetable(feed_path, out_path, start_date, length_days)
         timetable = BuiltArtifact(
             kind=BundleArtifactKind.pt_network_graph,
             local_path=out_path,

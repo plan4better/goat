@@ -11,9 +11,11 @@ who may import, quota, the HTTP surface — stays in core, which triggers this.
 """
 
 import logging
+import sys
 import tempfile
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Self
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -38,6 +40,80 @@ from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
 from goatlib.tools.style import get_bundle_style
 
 logger = logging.getLogger(__name__)
+
+
+def _memory_mb() -> "tuple[float, float]":
+    """Resident and peak resident memory in MB, or ``(0.0, 0.0)`` where the
+    kernel does not report it.
+
+    Two numbers because they answer different questions: the live figure says
+    what this stage is holding, the peak says how close the job came to the
+    limit — which is what an import killed outright (OOM/SIGKILL, the case that
+    leaves a bundle stuck at `processing`) is judged on, and it is only ever
+    visible after the fact.
+    """
+    current = 0.0
+    try:
+        with open("/proc/self/status") as fh:
+            for line in fh:
+                if line.startswith("VmRSS:"):
+                    current = float(line.split()[1]) / 1024.0
+                    break
+    except OSError:
+        pass
+    try:
+        import resource
+
+        peak_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # Linux reports kB, macOS bytes; the workers are Linux and the
+        # difference only matters to someone reading this on a laptop.
+        peak = peak_kb / 1024.0 if sys.platform != "darwin" else peak_kb / 1048576.0
+    except Exception:
+        peak = 0.0
+    return current, peak
+
+
+class _Stages:
+    """Successive stage timings for one import, logged like the routing
+    pipeline's ``[Pipeline]`` lines.
+
+    An import is the longest thing a user waits on and the one most likely to be
+    killed for memory, and until it finishes the only thing the job log says is
+    that it started. Each stage reports what it did, how long it took, and what
+    memory looked like afterwards, so a failed or slow import can be read rather
+    than guessed at.
+    """
+
+    def __init__(self: Self, label: str) -> None:
+        self.label = label
+        self.started = time.perf_counter()
+        self._last = self.started
+
+    def done(self: Self, stage: str, detail: str = "") -> None:
+        now = time.perf_counter()
+        elapsed_ms = (now - self._last) * 1000.0
+        self._last = now
+        rss, peak = _memory_mb()
+        logger.info(
+            "[%s] %s%s: %.0f ms | rss %.0f MB (peak %.0f MB)",
+            self.label,
+            stage,
+            f" ({detail})" if detail else "",
+            elapsed_ms,
+            rss,
+            peak,
+        )
+
+    def total(self: Self, stage: str = "total") -> None:
+        rss, peak = _memory_mb()
+        logger.info(
+            "[%s] %s: %.0f ms | rss %.0f MB (peak %.0f MB)",
+            self.label,
+            stage,
+            (time.perf_counter() - self.started) * 1000.0,
+            rss,
+            peak,
+        )
 
 
 class BundleValidationError(Exception):
@@ -161,8 +237,10 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         # they read cleanly and stay unique across bundles whose members share
         # standard names (stops, calendar, …).
         bundle_name = await db.get_bundle_name(bundle_id)
+        stages = _Stages("Import")
         with tempfile.TemporaryDirectory() as workdir:
             layers = importer.extract_layers(source_path, workdir)
+            stages.done("Extract", f"{len(layers)} layer(s)")
             try:
                 for i, extracted in enumerate(layers):
                     layer_id = str(uuid4())
@@ -269,6 +347,10 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                         bundle_id=bundle_id, layer_id=layer_id, role=extracted.role
                     )
 
+                    stages.done(
+                        f"Layer {i + 1}/{len(layers)} '{extracted.role}'",
+                        f"{info.get('feature_count', 0)} features",
+                    )
                     imported.append(
                         ImportedLayer(
                             role=extracted.role,
@@ -395,9 +477,11 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                 # the shell is never shown. Inside the inner try, so a refusal
                 # rolls the shell back like any other failed import rather than
                 # leaving a bundle holding nothing.
+                run = _Stages("Import")
                 validation = get_importer(bundle_type).validate(source_path)
                 if not validation.valid:
                     raise BundleValidationError(validation)
+                run.done("Validate", type_value)
                 imported = await self._ingest_layers(
                     db,
                     source_path=source_path,
@@ -406,12 +490,14 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                     folder_id=folder_id,
                     bundle_id=bundle_id,
                 )
+                run.done("Ingest", f"{len(imported)} member layer(s)")
                 await db.update_bundle_metadata(
                     bundle_id=bundle_id,
                     metadata=get_importer(bundle_type)
                     .extract_metadata(source_path)
                     .stated(),
                 )
+                run.done("Metadata")
                 # Artifacts gate readiness: the bundle stays "processing" until
                 # its derived artifacts (e.g. the routing .bin) are built.
                 await self.build_and_store_artifacts(
@@ -422,6 +508,7 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                     user_id=user_id,
                     members=_as_members(imported),
                 )
+                run.done("Artifacts")
             except Exception:
                 await self._rollback_bundle(
                     db, user_id=user_id, bundle_id=bundle_id, imported=imported
@@ -447,6 +534,12 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                         bundle_id,
                         project_id,
                     )
+                else:
+                    run.done("Project attach")
+            # The peak is the number that matters on the way out: an import that
+            # survived but came close is the one the next slightly larger upload
+            # gets killed for.
+            run.total()
             return BundleImportResult(
                 bundle_id=bundle_id, bundle_type=type_value, layers=imported
             )

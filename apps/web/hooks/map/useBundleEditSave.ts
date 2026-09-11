@@ -28,7 +28,11 @@ export function useBundleEditSave(activeLayerId: string | null) {
   const { t } = useTranslation("common");
   const dispatch = useAppDispatch();
   const runningJobIds = useAppSelector((state) => state.jobs.runningJobIds);
-  const { bundleForLayer, mutate: mutateBundleForLayer } = useBundleForLayer(activeLayerId);
+  const {
+    bundleForLayer,
+    isMembershipUnresolved,
+    mutate: mutateBundleForLayer,
+  } = useBundleForLayer(activeLayerId);
 
   // The revision as it was when this session opened, not the freshest one.
   // Sending the freshest value would mean a concurrent change is never
@@ -87,7 +91,7 @@ export function useBundleEditSave(activeLayerId: string | null) {
     [activeLayerId, bundleForLayer, dispatch, mutateBundleForLayer, runningJobIds, t]
   );
 
-  return { bundleForLayer, saveBundleEdits };
+  return { bundleForLayer, isMembershipUnresolved, saveBundleEdits };
 }
 
 export default useBundleEditSave;

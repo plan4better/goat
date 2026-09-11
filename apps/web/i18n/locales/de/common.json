@@ -939,6 +939,7 @@
   "features": "Features",
   "features_saved": "Features gespeichert",
   "bundle_update_not_started": "Die Änderungen sind gespeichert, aber die Aktualisierung des Datenpakets konnte nicht gestartet werden. Starten Sie sie über das Datenpaket.",
+  "bundle_membership_unresolved": "Es konnte nicht geprüft werden, ob dieser Layer zu einem Datenpaket gehört. Ihre Änderungen bleiben erhalten – versuchen Sie erneut zu speichern.",
   "update_bundle": "Datenpaket aktualisieren",
   "bundle_update_started": "Datenpaket wird aktualisiert",
   "bundle_update_failed_to_start": "Aktualisierung konnte nicht gestartet werden",
