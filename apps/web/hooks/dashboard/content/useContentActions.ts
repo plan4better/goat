@@ -103,21 +103,13 @@ export const useContentActions = () => {
         if (role === "owner") {
           items.push(
             { id: ContentActions.MOVE, label: `${t("move_to")}…`, icon: ICON_NAME.FOLDER },
-            { id: ContentActions.SHARE, label: t("share"), icon: ICON_NAME.SHARE },
-            { id: ContentActions.TRANSFER, label: t("transfer_ellipsis"), icon: ICON_NAME.SHARE }
+            { id: ContentActions.SHARE, label: t("share"), icon: ICON_NAME.SHARE }
           );
         }
         if (role === "owner" || role === "editor") {
           // One dialog for name, description, categories, thumbnail and —
           // for a superuser — the GOAT catalog switch (see SaveTemplateDialog).
           items.push({ id: ContentActions.EDIT_TEMPLATE, label: `${t("edit")}…`, icon: ICON_NAME.EDIT });
-        }
-        if (role === "owner") {
-          items.push({
-            id: ContentActions.UPDATE_TEMPLATE_FROM_SOURCE,
-            label: t("update_template_from_source"),
-            icon: ICON_NAME.REFRESH,
-          });
         }
         if (role === "owner") {
           items.push({

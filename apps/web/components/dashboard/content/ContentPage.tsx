@@ -5,7 +5,6 @@ import {
   Button,
   Stack,
   SwipeableDrawer,
-  Typography,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
@@ -20,10 +19,9 @@ import { ICON_NAME } from "@p4b/ui/components/Icon";
 import { useDocuments } from "@/lib/api/assets";
 import { refreshContentFeed, useContent, useSharedWithSpace, useSpaces } from "@/lib/api/content";
 import { useFolders } from "@/lib/api/folders";
-import { readTemplate, refreshTemplate, refreshTemplates, useTemplate } from "@/lib/api/templates";
+import { readTemplate, useTemplate } from "@/lib/api/templates";
 import type { ContentSectionKey } from "@/lib/providers/ContentUiStateProvider";
 import { useContentUiState } from "@/lib/providers/ContentUiStateProvider";
-import { regenerateTemplateThumbnail } from "@/lib/templates/thumbnailSnapshot";
 import {
   folderLocationLabel,
   folderPath,
@@ -477,25 +475,6 @@ const ContentPage = ({
     router.push(ROW_KIND_TO_ROUTE[item.type](item.id));
   };
 
-  const handleUpdateTemplateFromSource = async (id: string) => {
-    try {
-      const refreshed = await refreshTemplate(id);
-      // The frozen config has just been replaced, so the picture of it is
-      // stale: it is re-drawn and re-stored from the config the refresh
-      // left behind, the same drawing the save dialog stores.
-      const updated = await regenerateTemplateThumbnail(refreshed, t);
-      refreshTemplates();
-      refreshContentFeed();
-      if (updated.datasets_needing_share.length > 0) {
-        toast.info(t("template_datasets_need_sharing", { count: updated.datasets_needing_share.length }));
-      } else {
-        toast.success(t("template_updated_from_source"));
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("error_updating_template"));
-    }
-  };
-
   const handleMenuSelect = (menuItem: PopperMenuItem, item: ContentItem) => {
     if (menuItem.id === ContentActions.OPEN) {
       openItem(item);
@@ -510,10 +489,6 @@ const ContentPage = ({
     }
     if (menuItem.id === ContentActions.USE_TEMPLATE && item.type === "template") {
       setTemplateOpen({ id: item.id, autoUse: true });
-      return;
-    }
-    if (menuItem.id === ContentActions.UPDATE_TEMPLATE_FROM_SOURCE && item.type === "template") {
-      void handleUpdateTemplateFromSource(item.id);
       return;
     }
     if (menuItem.id === ContentActions.EDIT_TEMPLATE && item.type === "template") {

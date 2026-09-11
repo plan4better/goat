@@ -164,7 +164,7 @@ describe("useContentActions.getMenuItems", () => {
     expect(menu[0].label).toBe('open_in:{"name":"Mobility Team"}');
   });
 
-  it("an owner on a template gets the same move/share/transfer set as a project, plus Edit, Update and Delete", () => {
+  it("an owner on a template gets the same move/share set as a project, plus Edit and Delete", () => {
     const { result } = renderHook(() => useContentActions());
     const template = item({ type: "template", my_role: "owner" });
 
@@ -174,9 +174,7 @@ describe("useContentActions.getMenuItems", () => {
       ContentActions.USE_TEMPLATE,
       ContentActions.MOVE,
       ContentActions.SHARE,
-      ContentActions.TRANSFER,
       ContentActions.EDIT_TEMPLATE,
-      ContentActions.UPDATE_TEMPLATE_FROM_SOURCE,
       ContentActions.DELETE,
     ]);
   });
