@@ -361,7 +361,7 @@ const ContentDetailsPanel = ({
                 </Stack>
               )}
 
-              {(itemSpace || grants.length > 0) && (
+              {(itemSpace || grants.length > 0 || item.is_public) && (
                 <>
               <Box sx={{ height: "1px", backgroundColor: theme.palette.divider, margin: "14px 0 10px" }} />
 
@@ -392,6 +392,32 @@ const ContentDetailsPanel = ({
                 </Typography>
               )}
               <Stack>
+                {/* The widest audience first: a published item is open to
+                anyone with the link, GOAT account or not — the same warning
+                colour the card chip uses for it. */}
+                {item.is_public && (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: "9px", padding: "4px 0" }}>
+                    <Box sx={accessCircleSx}>
+                      <Icon
+                        iconName={ICON_NAME.GLOBE}
+                        style={{ fontSize: 11, color: theme.palette.warning.main }}
+                      />
+                    </Box>
+                    <Typography
+                      component="span"
+                      noWrap
+                      sx={{
+                        flex: 1,
+                        minWidth: 0,
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        color: theme.palette.warning.main,
+                      }}>
+                      {t("public")}
+                    </Typography>
+                    <Chip label={t("anyone_with_link")} size="small" sx={roleChipSx} />
+                  </Box>
+                )}
                 {/* A restricted item withholds the space default (D9), so the
                 space is not one of its audiences — only the grants below are.
                 A personal space has no members for the flag to narrow. */}

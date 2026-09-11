@@ -293,4 +293,19 @@ describe("ContentDetailsPanel", () => {
     expect(screen.getByText("Templates")).toBeInTheDocument();
     expect(screen.queryByText(/^› /)).not.toBeInTheDocument();
   });
+
+  it("lists the public audience first when the item is published", () => {
+    renderPanel({ selected: [{ ...ownerLayer, is_public: true }] });
+
+    expect(screen.getByText("public")).toBeInTheDocument();
+    expect(screen.getByText("anyone_with_link")).toBeInTheDocument();
+    // The team grant still follows it.
+    expect(screen.getByText("Marketing")).toBeInTheDocument();
+  });
+
+  it("does not claim a public audience for an unpublished item", () => {
+    renderPanel();
+
+    expect(screen.queryByText("anyone_with_link")).not.toBeInTheDocument();
+  });
 });
