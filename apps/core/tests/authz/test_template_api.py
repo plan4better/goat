@@ -1650,3 +1650,100 @@ async def test_read_resolves_the_source_and_its_availability(
     assert info["workflow_id"] == workflow_id
     assert info["workflow_name"] is None
     assert info["available"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_template_under_a_shared_folder_is_listed_under_all(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: UUID,
+    fixture_get_home_folder: dict[str, object],
+    roles: dict[str, UUID],
+    make_user: Callable[..., Awaitable[Any]],
+    make_layer: Callable[..., Awaitable[Any]],
+) -> None:
+    """Most templates travel through a folder shared with a team or an
+    organisation, not through a grant on the template itself. "Everyone"
+    in the template browser has to reach them the way a single read does —
+    through any folder above the template — or a colleague sees only their
+    own templates there."""
+    home = str(fixture_get_home_folder["id"])
+    owner = await db_session.get(User, fixture_create_user)
+    assert owner is not None
+    home_folder = await db_session.get(Folder, UUID(home))
+    assert home_folder is not None
+    layer = await make_layer(owner, home_folder)
+    # A shared folder with a subfolder: the template sits two levels down.
+    shared_folder_id = (
+        await db_session.execute(
+            text(
+                f"INSERT INTO {S}.folder (id, name, user_id, space_id, parent_id, updated_at) "
+                "VALUES (gen_random_uuid(), 'shared', :u, :s, :p, now()) RETURNING id"
+            ),
+            {"u": owner.id, "s": home_folder.space_id, "p": home_folder.id},
+        )
+    ).scalar_one()
+    sub_folder_id = (
+        await db_session.execute(
+            text(
+                f"INSERT INTO {S}.folder (id, name, user_id, space_id, parent_id, updated_at) "
+                "VALUES (gen_random_uuid(), 'nested', :u, :s, :p, now()) RETURNING id"
+            ),
+            {"u": owner.id, "s": home_folder.space_id, "p": shared_folder_id},
+        )
+    ).scalar_one()
+    await db_session.commit()
+    project_id = await _create_project(client, home)
+    workflow_id = await _create_workflow(
+        client, project_id, _dataset_workflow_config(layer.id)
+    )
+    source = {"kind": "workflow", "project_id": project_id, "workflow_id": workflow_id}
+    preview = await client.post(
+        f"{settings.API_V2_STR}/template/preview",
+        json={"source": source, "folder_id": str(sub_folder_id)},
+    )
+    assert preview.status_code == 200, preview.text
+    created = await client.post(
+        f"{settings.API_V2_STR}/template",
+        json={
+            "name": "Under a shared folder",
+            "folder_id": str(sub_folder_id),
+            "source": source,
+            "inputs": preview.json()["detected_inputs"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    tid = created.json()["id"]
+
+    colleague = await make_user(owner.organization_id)
+    # The grant sits on the top folder, two levels above the template.
+    await db_session.execute(
+        text(
+            f"INSERT INTO {S}.resource_grant "
+            "(resource_type, resource_id, grantee_type, grantee_id, role_id, granted_by) "
+            "VALUES ('folder', :f, 'user', :c, :r, :u)"
+        ),
+        {
+            "f": shared_folder_id,
+            "c": colleague.id,
+            "r": roles["folder-viewer"],
+            "u": owner.id,
+        },
+    )
+    await db_session.commit()
+    headers = {"Authorization": f"Bearer {_unverified_bearer(colleague.id)}"}
+
+    everything = await client.get(
+        f"{settings.API_V2_STR}/template", params={"source": "all"}, headers=headers
+    )
+    assert everything.status_code == 200, everything.text
+    listed = next((i for i in everything.json()["items"] if i["id"] == tid), None)
+    assert (
+        listed is not None
+    ), "a template under a shared folder is missing from Everyone"
+    assert listed["my_role"] == "viewer"
+
+    mine = await client.get(
+        f"{settings.API_V2_STR}/template", params={"source": "mine"}, headers=headers
+    )
+    assert all(i["id"] != tid for i in mine.json()["items"])

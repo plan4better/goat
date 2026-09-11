@@ -805,17 +805,15 @@ class CRUDTemplate:
         # a direct user grant, or one to a team or the organisation the caller
         # belongs to. `effective_role` still decides afterwards whether the
         # grant actually confers read.
+        # A template reaches a non-member through a grant on the template
+        # itself or on any folder above it — the same walk `effective_role`
+        # makes for a single read, so the list agrees with what a read would
+        # allow. Most templates travel that way: a folder shared with a team
+        # or an organisation, not a grant on each template.
         granted = (
-            f"""EXISTS (
-                SELECT 1 FROM {schema}.resource_grant rg
-                 WHERE rg.resource_type = 'template' AND rg.resource_id = t.id
-                   AND ((rg.grantee_type = 'user' AND rg.grantee_id = :user_id)
-                     OR (rg.grantee_type = 'team' AND rg.grantee_id IN (
-                            SELECT ut.team_id FROM {schema}.user_team ut
-                             WHERE ut.user_id = :user_id))
-                     OR (rg.grantee_type = 'organization' AND rg.grantee_id = (
-                            SELECT usr.organization_id FROM {schema}."user" usr
-                             WHERE usr.id = :user_id))))"""
+            f"""({schema}.direct_grant_rank('template', t.id, :user_id) > 0
+                 OR EXISTS (SELECT 1 FROM {schema}.folder_chain(t.folder_id) AS fc(folder_id)
+                             WHERE {schema}.direct_grant_rank('folder', fc.folder_id, :user_id) > 0))"""
             if source == "all"
             else "FALSE"
         )
