@@ -543,10 +543,21 @@ class CRUDContent:
                     status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found"
                 )
             if folder.space_id != space_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="folder_id does not belong to space_id",
-                )
+                # A folder shared into a space is opened under that space —
+                # the one the caller browsed from — so the page keeps its
+                # place in the space list and the trail. That context space
+                # has to be one of the caller's own; the folder itself is
+                # gated below like any other.
+                context = await db.get(Space, space_id)
+                if context is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND, detail="Space not found"
+                    )
+                if await crud_space.my_role(db, space=context, user_id=user_id) is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Not a member of this space",
+                    )
             if not await authz.can(db, "folder", folder_id, user_id, "read"):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
