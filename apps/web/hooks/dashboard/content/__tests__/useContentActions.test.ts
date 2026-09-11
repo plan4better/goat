@@ -164,7 +164,7 @@ describe("useContentActions.getMenuItems", () => {
     expect(menu[0].label).toBe('open_in:{"name":"Mobility Team"}');
   });
 
-  it("an owner on a template gets the same move/share/transfer set as a project, plus the template actions", () => {
+  it("an owner on a template gets the same move/share/transfer set as a project, plus Edit, Update and Delete", () => {
     const { result } = renderHook(() => useContentActions());
     const template = item({ type: "template", my_role: "owner" });
 
@@ -175,8 +175,7 @@ describe("useContentActions.getMenuItems", () => {
       ContentActions.MOVE,
       ContentActions.SHARE,
       ContentActions.TRANSFER,
-      ContentActions.RENAME,
-      ContentActions.REGENERATE_THUMBNAIL,
+      ContentActions.EDIT_TEMPLATE,
       ContentActions.UPDATE_TEMPLATE_FROM_SOURCE,
       ContentActions.DELETE,
     ]);
@@ -192,7 +191,7 @@ describe("useContentActions.getMenuItems", () => {
     }
   });
 
-  it("an editor on a template gets OPEN, DETAILS, USE_TEMPLATE, RENAME and the thumbnail redraw only", () => {
+  it("an editor on a template gets OPEN, DETAILS, USE_TEMPLATE and Edit only", () => {
     const { result } = renderHook(() => useContentActions());
     const template = item({ type: "template", my_role: "editor" });
 
@@ -200,31 +199,15 @@ describe("useContentActions.getMenuItems", () => {
       ContentActions.OPEN,
       ContentActions.DETAILS,
       ContentActions.USE_TEMPLATE,
-      ContentActions.RENAME,
-      ContentActions.REGENERATE_THUMBNAIL,
+      ContentActions.EDIT_TEMPLATE,
     ]);
   });
 
-  it("offers the thumbnail redraw to whoever may edit the template, and to nobody else", () => {
-    const { result } = renderHook(() => useContentActions());
-
-    for (const role of ["owner", "editor"] as const) {
-      expect(
-        ids(result.current.getMenuItems(item({ type: "template", my_role: role }), undefined))
-      ).toContain(ContentActions.REGENERATE_THUMBNAIL);
-    }
-    expect(
-      ids(result.current.getMenuItems(item({ type: "template", my_role: "viewer" }), undefined))
-    ).not.toContain(ContentActions.REGENERATE_THUMBNAIL);
-  });
-
-  it("labels the thumbnail redraw with its own key", () => {
+  it("labels Edit with an ellipsis, since it opens a dialog", () => {
     const { result } = renderHook(() => useContentActions());
     const menu = result.current.getMenuItems(item({ type: "template", my_role: "owner" }), undefined);
 
-    expect(menu.find((entry) => entry.id === ContentActions.REGENERATE_THUMBNAIL)?.label).toBe(
-      "regenerate_thumbnail"
-    );
+    expect(menu.find((entry) => entry.id === ContentActions.EDIT_TEMPLATE)?.label).toBe("edit…");
   });
 
   it("a viewer on a template gets only OPEN, DETAILS and USE_TEMPLATE", () => {
@@ -238,43 +221,24 @@ describe("useContentActions.getMenuItems", () => {
     ]);
   });
 
-  it("a non-superuser never sees Publish, whatever the catalog status", () => {
-    const { result } = renderHook(() => useContentActions());
-    const template = item({ type: "template", my_role: "owner", template_catalog_status: "none" });
-
-    expect(ids(result.current.getMenuItems(template, undefined))).not.toContain(
-      ContentActions.PUBLISH_TO_GOAT_CATALOG
-    );
-  });
-
-  it("a superuser gets Publish for an unpublished template", () => {
-    useUserProfileMock.mockReturnValue({ userProfile: { id: "u-me", is_superuser: true } });
-    const { result } = renderHook(() => useContentActions());
-    const template = item({ type: "template", my_role: "owner", template_catalog_status: "none" });
-
-    expect(ids(result.current.getMenuItems(template, undefined))).toEqual([
-      ContentActions.OPEN,
-      ContentActions.DETAILS,
-      ContentActions.USE_TEMPLATE,
-      ContentActions.MOVE,
-      ContentActions.SHARE,
-      ContentActions.TRANSFER,
-      ContentActions.RENAME,
-      ContentActions.REGENERATE_THUMBNAIL,
-      ContentActions.UPDATE_TEMPLATE_FROM_SOURCE,
-      ContentActions.PUBLISH_TO_GOAT_CATALOG,
-      ContentActions.DELETE,
-    ]);
-  });
-
-  it("a superuser gets Unpublish, not Publish, for an already-published template", () => {
-    useUserProfileMock.mockReturnValue({ userProfile: { id: "u-me", is_superuser: true } });
-    const { result } = renderHook(() => useContentActions());
-    const template = item({ type: "template", my_role: "owner", template_catalog_status: "published" });
-
-    const menu = ids(result.current.getMenuItems(template, undefined));
-    expect(menu).toContain(ContentActions.UNPUBLISH_FROM_GOAT_CATALOG);
-    expect(menu).not.toContain(ContentActions.PUBLISH_TO_GOAT_CATALOG);
+  it("offers no Publish, Unpublish, Rename or thumbnail redraw in the menu — the edit dialog carries them", () => {
+    for (const superuser of [true, false]) {
+      useUserProfileMock.mockReturnValue({ userProfile: { id: "u-me", is_superuser: superuser } });
+      const { result } = renderHook(() => useContentActions());
+      for (const status of ["none", "published"] as const) {
+        const menu = ids(
+          result.current.getMenuItems(
+            item({ type: "template", my_role: "owner", template_catalog_status: status }),
+            undefined
+          )
+        );
+        expect(menu).not.toContain(ContentActions.PUBLISH_TO_GOAT_CATALOG);
+        expect(menu).not.toContain(ContentActions.UNPUBLISH_FROM_GOAT_CATALOG);
+        expect(menu).not.toContain(ContentActions.RENAME);
+        expect(menu).not.toContain(ContentActions.REGENERATE_THUMBNAIL);
+        expect(menu).toContain(ContentActions.EDIT_TEMPLATE);
+      }
+    }
   });
 });
 

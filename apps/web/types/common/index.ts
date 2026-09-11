@@ -19,6 +19,7 @@ export enum ContentActions {
   RENAME = "rename",
   TRANSFER = "transfer",
   USE_TEMPLATE = "useTemplate",
+  EDIT_TEMPLATE = "editTemplate",
   UPDATE_TEMPLATE_FROM_SOURCE = "updateTemplateFromSource",
   REGENERATE_THUMBNAIL = "regenerateThumbnail",
   PUBLISH_TO_GOAT_CATALOG = "publishToGoatCatalog",

@@ -20,19 +20,10 @@ import { ICON_NAME } from "@p4b/ui/components/Icon";
 import { useDocuments } from "@/lib/api/assets";
 import { refreshContentFeed, useContent, useSharedWithSpace, useSpaces } from "@/lib/api/content";
 import { useFolders } from "@/lib/api/folders";
-import {
-  publishTemplateWithDetail,
-  refreshTemplate,
-  refreshTemplates,
-  unpublishTemplate,
-  useTemplate,
-} from "@/lib/api/templates";
+import { readTemplate, refreshTemplate, refreshTemplates, useTemplate } from "@/lib/api/templates";
 import type { ContentSectionKey } from "@/lib/providers/ContentUiStateProvider";
 import { useContentUiState } from "@/lib/providers/ContentUiStateProvider";
-import {
-  regenerateTemplateThumbnail,
-  regenerateTemplateThumbnailResult,
-} from "@/lib/templates/thumbnailSnapshot";
+import { regenerateTemplateThumbnail } from "@/lib/templates/thumbnailSnapshot";
 import {
   folderLocationLabel,
   folderPath,
@@ -93,6 +84,7 @@ import SpaceSettingsDialog from "@/components/modals/content/SpaceSettingsDialog
 import TransferDialog from "@/components/modals/content/TransferDialog";
 import TrashDialog from "@/components/modals/content/TrashDialog";
 import TemplatePreviewDialog from "@/components/templates/TemplatePreviewDialog";
+import SaveTemplateDialog from "@/components/templates/SaveTemplateDialog";
 import UseTemplateFlow from "@/components/templates/UseTemplateFlow";
 
 const FEED_PAGE_SIZE = 50;
@@ -216,6 +208,7 @@ const ContentPage = ({
   const [templateOpen, setTemplateOpen] = useState<{ id: string; autoUse: boolean } | null>(null);
   const { template: loadedTemplate } = useTemplate(templateOpen?.id ?? null);
   const [templateToUse, setTemplateToUse] = useState<TemplateRead | null>(null);
+  const [editTemplate, setEditTemplate] = useState<TemplateRead | null>(null);
   useEffect(() => {
     if (templateOpen?.autoUse && loadedTemplate) {
       setTemplateToUse(loadedTemplate);
@@ -503,58 +496,6 @@ const ContentPage = ({
     }
   };
 
-  /** Draws a template's picture from the config it carries and stores it,
-   * with a layout's page label along with it — the backfill for the
-   * templates saved before either existed. Explicit and per template, since
-   * a picture the author uploaded by hand is indistinguishable from a
-   * generated one and would be overwritten by any automatic pass. */
-  const handleRegenerateThumbnail = async (item: ContentItem) => {
-    const result = await regenerateTemplateThumbnailResult(item, t);
-    if (result.status === "updated") {
-      refreshTemplates();
-      refreshContentFeed();
-      toast.success(t("template_thumbnail_updated"));
-      return;
-    }
-    if (result.status === "failed") {
-      toast.error(t("error_updating_template"));
-      return;
-    }
-    toast.info(
-      result.status === "no_config"
-        ? t("template_thumbnail_no_config")
-        : t("template_thumbnail_nothing_to_draw")
-    );
-  };
-
-  const handlePublishTemplate = async (id: string) => {
-    try {
-      const result = await publishTemplateWithDetail(id);
-      if (!result.ok) {
-        toast.error(
-          t("template_dataset_not_public", { names: result.layers.map((layer) => layer.name).join(", ") })
-        );
-        return;
-      }
-      refreshTemplates();
-      refreshContentFeed();
-      toast.success(t("template_published"));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("error_publishing_template"));
-    }
-  };
-
-  const handleUnpublishTemplate = async (id: string) => {
-    try {
-      await unpublishTemplate(id);
-      refreshTemplates();
-      refreshContentFeed();
-      toast.success(t("template_unpublished"));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("error_unpublishing_template"));
-    }
-  };
-
   const handleMenuSelect = (menuItem: PopperMenuItem, item: ContentItem) => {
     if (menuItem.id === ContentActions.OPEN) {
       openItem(item);
@@ -575,16 +516,12 @@ const ContentPage = ({
       void handleUpdateTemplateFromSource(item.id);
       return;
     }
-    if (menuItem.id === ContentActions.REGENERATE_THUMBNAIL && item.type === "template") {
-      void handleRegenerateThumbnail(item);
-      return;
-    }
-    if (menuItem.id === ContentActions.PUBLISH_TO_GOAT_CATALOG && item.type === "template") {
-      void handlePublishTemplate(item.id);
-      return;
-    }
-    if (menuItem.id === ContentActions.UNPUBLISH_FROM_GOAT_CATALOG && item.type === "template") {
-      void handleUnpublishTemplate(item.id);
+    if (menuItem.id === ContentActions.EDIT_TEMPLATE && item.type === "template") {
+      // The dialog edits the template as read in full — the feed row lacks
+      // the inputs and the resolved source it shows.
+      void readTemplate(item.id)
+        .then(setEditTemplate)
+        .catch(() => toast.error(t("error_updating_template")));
       return;
     }
     setDialog({ action: menuItem.id as ContentActions, items: [item] });
@@ -1036,6 +973,17 @@ const ContentPage = ({
           }
           onClose={() => setTemplateOpen(null)}
           onUse={() => loadedTemplate && setTemplateToUse(loadedTemplate)}
+        />
+      )}
+
+      {editTemplate && (
+        <SaveTemplateDialog
+          template={editTemplate}
+          onClose={() => setEditTemplate(null)}
+          onSaved={() => {
+            setEditTemplate(null);
+            refreshContentFeed();
+          }}
         />
       )}
 

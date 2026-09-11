@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
-import { useUserProfile } from "@/lib/api/users";
 import { spaceDisplayName } from "@/lib/utils/content";
 import type { ContentItem, ContentRole, Space } from "@/lib/validations/content";
 
@@ -55,8 +54,6 @@ export const canMoveAll = (items: ContentItem[]): boolean =>
  */
 export const useContentActions = () => {
   const { t } = useTranslation("common");
-  const { userProfile } = useUserProfile();
-  const isSuperuser = Boolean(userProfile?.is_superuser);
 
   const getMenuItems = useCallback(
     (item: ContentItem, space: Space | undefined): PopperMenuItem[] => {
@@ -111,19 +108,9 @@ export const useContentActions = () => {
           );
         }
         if (role === "owner" || role === "editor") {
-          items.push(
-            { id: ContentActions.RENAME, label: t("rename"), icon: ICON_NAME.EDIT },
-            // Draws the template's picture again, and re-labels a layout
-            // with the page it prints on — for the templates saved before a
-            // save generated either. Picked per template by whoever may
-            // edit it: nothing tells a generated picture apart from one the
-            // author uploaded, so it is never redrawn on its own.
-            {
-              id: ContentActions.REGENERATE_THUMBNAIL,
-              label: t("regenerate_thumbnail"),
-              icon: ICON_NAME.IMAGE,
-            }
-          );
+          // One dialog for name, description, categories, thumbnail and —
+          // for a superuser — the GOAT catalog switch (see SaveTemplateDialog).
+          items.push({ id: ContentActions.EDIT_TEMPLATE, label: `${t("edit")}…`, icon: ICON_NAME.EDIT });
         }
         if (role === "owner") {
           items.push({
@@ -131,24 +118,6 @@ export const useContentActions = () => {
             label: t("update_template_from_source"),
             icon: ICON_NAME.REFRESH,
           });
-        }
-        // T4, v1: publish/unpublish is gated on the realm-level superuser flag
-        // alone, independent of the caller's own role on this row — the
-        // action is invisible to everyone else, superuser or not the owner.
-        if (isSuperuser) {
-          items.push(
-            item.template_catalog_status === "published"
-              ? {
-                  id: ContentActions.UNPUBLISH_FROM_GOAT_CATALOG,
-                  label: t("unpublish_from_goat_catalog"),
-                  icon: ICON_NAME.GLOBE,
-                }
-              : {
-                  id: ContentActions.PUBLISH_TO_GOAT_CATALOG,
-                  label: t("publish_to_goat_catalog"),
-                  icon: ICON_NAME.GLOBE,
-                }
-          );
         }
         if (role === "owner") {
           items.push({
@@ -197,7 +166,7 @@ export const useContentActions = () => {
 
       return items;
     },
-    [t, isSuperuser]
+    [t]
   );
 
   return { getMenuItems, roleOf, canActOn };

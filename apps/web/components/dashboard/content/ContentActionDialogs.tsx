@@ -5,13 +5,11 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
-import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import { refreshContentFeed } from "@/lib/api/content";
 import { useDataset } from "@/lib/api/layers";
 import { executeProcessAsync } from "@/lib/api/processes";
 import { copyProject, useProject } from "@/lib/api/projects";
-import { refreshTemplates, updateTemplate } from "@/lib/api/templates";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
 import type { ContentItem } from "@/lib/validations/content";
 
@@ -19,7 +17,6 @@ import { ContentActions } from "@/types/common";
 
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
-import NameDialog from "@/components/dashboard/common/NameDialog";
 import ContentDialogWrapper from "@/components/modals/ContentDialogWrapper";
 import FolderModal from "@/components/modals/Folder";
 
@@ -101,24 +98,6 @@ const ContentActionDialogs = ({ action, item, onClose }: ContentActionDialogsPro
         selectedFolder={{ id: item.id, name: item.name }}
         onClose={onClose}
         onEdit={() => {
-          refreshContentFeed();
-          onClose();
-        }}
-      />
-    );
-  }
-
-  if (action === ContentActions.RENAME && item.type === "template") {
-    return (
-      <NameDialog
-        title={t("rename")}
-        icon={ICON_NAME.CLONE}
-        cta={t("save")}
-        initialName={item.name}
-        onClose={onClose}
-        onSubmit={async (name) => {
-          await updateTemplate(item.id, { name });
-          refreshTemplates();
           refreshContentFeed();
           onClose();
         }}
