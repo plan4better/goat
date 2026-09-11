@@ -48,7 +48,6 @@ export interface ContentDetailsLocation {
 
 interface ContentDetailsPanelProps {
   selected: ContentItem[];
-  space: Space | undefined;
   spaces: Space[];
   folders: Folder[];
   location: ContentDetailsLocation;
@@ -82,7 +81,6 @@ const shareEntries = (item: ContentItem): ShareEntry[] => [
  * space. */
 const ContentDetailsPanel = ({
   selected,
-  space,
   spaces,
   folders,
   location,
@@ -102,7 +100,15 @@ const ContentDetailsPanel = ({
   // Move needs one space to browse for a destination; Delete does not.
   const canMoveSelection = canMoveAll(selected);
   const canDeleteSelection = selected.every(canActOn);
-  const itemSpace = item ? (spaces.find((s) => s.id === item.space_id) ?? space) : undefined;
+  // The space the item lives in, when it is one of the caller's own. A
+  // folder shared in from someone else's personal space lists items whose
+  // space the caller cannot see; those name their creator instead.
+  const itemSpace = item ? spaces.find((s) => s.id === item.space_id) : undefined;
+  const ownerName = itemSpace
+    ? itemSpace.kind === "personal"
+      ? t("only_you")
+      : spaceDisplayName(itemSpace, t)
+    : item?.created_by?.name;
   const isActionable = item ? canActOn(item) : false;
   const grants = item ? shareEntries(item) : [];
   const isRestricted = !!item && (item.restricted || item.restricted_inherited);
@@ -257,7 +263,7 @@ const ContentDetailsPanel = ({
             </Box>
           )}
 
-          {item && itemSpace && (
+          {item && (
             <Box>
               <Box
                 sx={{
@@ -335,11 +341,11 @@ const ContentDetailsPanel = ({
                 ))}
               </Box>
 
-              <Typography sx={{ marginTop: "10px", fontSize: 12, color: "text.secondary" }}>
-                {t("owned_by", {
-                  name: itemSpace.kind === "personal" ? t("only_you") : spaceDisplayName(itemSpace, t),
-                })}
-              </Typography>
+              {ownerName && (
+                <Typography sx={{ marginTop: "10px", fontSize: 12, color: "text.secondary" }}>
+                  {t("owned_by", { name: ownerName })}
+                </Typography>
+              )}
 
               {item.type === "template" && item.template_catalog_status === "published" && (
                 <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: "8px" }}>
@@ -385,7 +391,7 @@ const ContentDetailsPanel = ({
                 {/* A restricted item withholds the space default (D9), so the
                 space is not one of its audiences — only the grants below are.
                 A personal space has no members for the flag to narrow. */}
-                {(!isRestricted || itemSpace.kind === "personal") && (
+                {itemSpace && (!isRestricted || itemSpace.kind === "personal") && (
                   <Box sx={{ display: "flex", alignItems: "center", gap: "9px", padding: "4px 0" }}>
                     <Box sx={accessCircleSx}>
                       <Icon

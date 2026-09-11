@@ -56,7 +56,6 @@ vi.mock("@/lib/providers/ContentUiStateProvider", () => ({
       templates: true,
       datasets: true,
       documents: true,
-      shared_with_space: true,
     },
     toggleSection: vi.fn(),
     detailsOpen: false,

@@ -8,7 +8,7 @@ export type ContentSectionKey = "folders" | "shortcuts" | "projects" | "template
 
 /** Sections built from their own listing rather than from the content feed —
  * they collapse the same way, so they share the open/closed record. */
-export type ContentExtraSectionKey = "documents" | "shared_with_space";
+export type ContentExtraSectionKey = "documents";
 
 export type ContentOpenSections = Record<ContentSectionKey | ContentExtraSectionKey, boolean>;
 
@@ -32,7 +32,6 @@ const DEFAULT_OPEN_SECTIONS: ContentOpenSections = {
   templates: true,
   datasets: true,
   documents: true,
-  shared_with_space: true,
 };
 
 /**

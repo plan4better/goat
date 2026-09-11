@@ -71,7 +71,6 @@ const renderPanel = (overrides: Partial<ComponentProps<typeof ContentDetailsPane
   render(
     <ContentDetailsPanel
       selected={[ownerLayer]}
-      space={teamSpace}
       spaces={[teamSpace]}
       folders={[]}
       location={defaultLocation}
@@ -153,7 +152,6 @@ describe("ContentDetailsPanel", () => {
     };
     renderPanel({
       selected: [{ ...ownerLayer, space_id: "space-p", shared_with: null }],
-      space: personalSpace,
       spaces: [personalSpace],
     });
 
@@ -263,5 +261,23 @@ describe("ContentDetailsPanel", () => {
       selected: [{ ...ownerLayer, created_by: { id: "u-me", name: "Marco Albrecht", avatar: null } }],
     });
     expect(screen.getByText("you")).toBeInTheDocument();
+  });
+
+  it("names the creator as owner when the item's space is not one of the caller's", () => {
+    // A folder shared in from someone else's personal space lists items in
+    // a space the caller cannot see — the panel still renders them.
+    renderPanel({
+      selected: [
+        {
+          ...ownerLayer,
+          my_role: "viewer",
+          space_id: "00000000-0000-0000-0000-0000000000ff",
+          created_by: { id: "00000000-0000-0000-0000-0000000000aa", name: "Camila R." },
+        },
+      ],
+    });
+
+    expect(screen.getByText('owned_by:{"name":"Camila R."}')).toBeInTheDocument();
+    expect(screen.queryByText("space_members")).not.toBeInTheDocument();
   });
 });

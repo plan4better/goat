@@ -22,6 +22,15 @@ interface ContentBreadcrumbProps {
    * folder hierarchy of its own — the breadcrumb then shows only the view's
    * own label instead of a space/folder trail. */
   view?: "shared_with_me" | "recent";
+  /** The trail starts at this folder: a folder shared into the browsed space
+   * is the root of what can be seen of its own space, so its ancestors — in
+   * a space the caller may not even be able to see — stay out of the trail. */
+  rootFolderId?: string | null;
+  /** Set when the address names a space the caller cannot see (a folder in
+   * someone else's personal space, reached from "Shared with me" or by
+   * link): the trail then starts at that view instead of at a space name. */
+  fallbackView?: "shared_with_me";
+  onNavigateView?: (view: "shared_with_me") => void;
   /** Whether a drag is currently hovering the space-name crumb — dropping
    * there moves the dragged item(s) to the space root. */
   dragOverRoot?: boolean;
@@ -53,6 +62,9 @@ const ContentBreadcrumb = ({
   onNavigate,
   assumePersonal = false,
   view,
+  rootFolderId,
+  fallbackView,
+  onNavigateView,
   dragOverRoot,
   onDragOverRoot,
   onDragLeaveRoot,
@@ -116,9 +128,19 @@ const ContentBreadcrumb = ({
     );
   }
 
-  const path = folderPath(folders, folderId).filter((f) => f.name !== "home");
-  const spaceUnknown = !space && !assumePersonal;
-  const spaceLabel = space?.kind === "personal" || assumePersonal ? t("my_content") : (space?.name ?? "…");
+  const fullPath = folderPath(folders, folderId).filter((f) => f.name !== "home");
+  const rootIndex = rootFolderId ? fullPath.findIndex((f) => f.id === rootFolderId) : -1;
+  const path = rootIndex > 0 ? fullPath.slice(rootIndex) : fullPath;
+  const spaceUnknown = !space && !assumePersonal && !fallbackView;
+  const spaceLabel =
+    space?.kind === "personal" || assumePersonal
+      ? t("my_content")
+      : (space?.name ?? (fallbackView ? t(fallbackView) : "…"));
+  const rootIcon = fallbackView && !space ? ICON_NAME.SHARE : spaceIconFor(space);
+  const navigateRoot = () => {
+    if (!space && fallbackView && onNavigateView) onNavigateView(fallbackView);
+    else onNavigate(null);
+  };
   const spaceCrumbSkeleton = <Skeleton variant="text" width={120} sx={{ fontSize: 14 }} />;
 
   const folderCrumbs = path.map((folder, index) => (
@@ -142,7 +164,7 @@ const ContentBreadcrumb = ({
           variant="outlined"
           size="small"
           sx={{ borderRadius: 999, textTransform: "none", flexShrink: 0 }}
-          startIcon={<Icon iconName={spaceIconFor(space)} style={{ fontSize: 13 }} />}
+          startIcon={<Icon iconName={rootIcon} style={{ fontSize: 13 }} />}
           endIcon={<Icon iconName={ICON_NAME.CHEVRON_DOWN} style={{ fontSize: 12 }} />}>
           {loading && spaceUnknown ? spaceCrumbSkeleton : spaceLabel}
         </Button>
@@ -154,13 +176,13 @@ const ContentBreadcrumb = ({
   return (
     <>
       <Icon
-        iconName={spaceIconFor(space)}
+        iconName={rootIcon}
         style={{ fontSize: 19, color: theme.palette.text.secondary, flexShrink: 0 }}
       />
       <Typography
         component="button"
         type="button"
-        onClick={() => onNavigate(null)}
+        onClick={navigateRoot}
         onDragOver={onDragOverRoot}
         onDragLeave={onDragLeaveRoot}
         onDrop={onDropRoot}
