@@ -88,6 +88,13 @@ type Props = {
    * the texture mark.
    */
   fallback?: ReactNode;
+  /**
+   * How the picture meets the frame. `cover` fills it and crops, which is
+   * what a tile wants; `contain` shows the whole picture with letterboxing,
+   * which is what a preview of an uploaded image wants — a user who framed
+   * a map or a layout expects to see all of it.
+   */
+  fit?: "cover" | "contain";
 };
 
 const BAND_HEIGHT = { grid: 176, card: 132 } as const;
@@ -98,6 +105,7 @@ const ContentThumbnail = ({
   variant = "grid",
   memberCount,
   href,
+  fit = "cover",
   height,
   fallback,
 }: Props) => {
@@ -158,7 +166,7 @@ const ContentThumbnail = ({
           // A dead thumbnail falls back to the stand-in rather than leaving a
           // broken-image glyph in the grid.
           onError={() => setFailed(true)}
-          sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          sx={{ width: "100%", height: "100%", objectFit: fit, display: "block" }}
         />
       </Box>
     );

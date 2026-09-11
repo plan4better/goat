@@ -203,10 +203,14 @@ const TemplatePreviewPanel = ({
         borderRadius: "10px",
         overflow: "hidden",
         border: `1px solid ${theme.palette.divider}`,
-        // The thumbnail fills the box, which is what sets the height.
-        "& > div": { borderRadius: 0, width: "100%", height: "100%" },
+        // A preview shows the whole picture: an uploaded image is letterboxed
+        // inside a margin rather than cropped to the frame the way a tile is.
+        padding: "12px",
+        backgroundColor: theme.palette.action.hover,
+        // The thumbnail fills the padded box, which is what sets the height.
+        "& > div": { borderRadius: 0, width: "100%", height: "100%", backgroundColor: "transparent" },
       }}>
-      <ContentThumbnail kind="template" href={template.thumbnail_url} variant="card" />
+      <ContentThumbnail kind="template" href={template.thumbnail_url} variant="card" fit="contain" />
     </Box>
   ) : descriptor !== undefined ? (
     <TemplatePreviewFallback descriptor={descriptor} payloadKind={template.payload_kind} />
