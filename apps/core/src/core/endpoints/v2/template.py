@@ -99,6 +99,17 @@ async def list_templates(
         description="Comma-separated categories; a template matches only when "
         "it carries every one of them (compared case-insensitively).",
     ),
+    source_project_id: UUID | None = Query(
+        None,
+        description="Only templates saved from this project (source_ref.project_id)",
+    ),
+    source_workflow_id: UUID | None = Query(
+        None,
+        description="Only templates saved from this workflow (source_ref.workflow_id)",
+    ),
+    source_layout_id: UUID | None = Query(
+        None, description="Only templates saved from this layout (source_ref.layout_id)"
+    ),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
 ) -> TemplatePage:
@@ -116,6 +127,9 @@ async def list_templates(
         kind=kind,
         search=search,
         categories=categories,
+        source_project_id=source_project_id,
+        source_workflow_id=source_workflow_id,
+        source_layout_id=source_layout_id,
         page=page,
         size=size,
     )

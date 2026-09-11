@@ -726,6 +726,9 @@ class CRUDTemplate:
         source: str,
         kind: str | None,
         categories: str | None,
+        source_project_id: UUID | None = None,
+        source_workflow_id: UUID | None = None,
+        source_layout_id: UUID | None = None,
     ) -> tuple[list[str], dict[str, Any]] | None:
         """The WHERE conditions and bound parameters shared by every query
         over the caller's readable templates.
@@ -792,6 +795,16 @@ class CRUDTemplate:
             params["kind"] = kind
         elif kind == "dashboard":
             conditions.append("t.payload_kind = 'project'")
+        # The save dialog's "templates already saved from this source": one
+        # exact condition per given id on the stored source reference.
+        for column, value in (
+            ("project_id", source_project_id),
+            ("workflow_id", source_workflow_id),
+            ("layout_id", source_layout_id),
+        ):
+            if value is not None:
+                conditions.append(f"t.source_ref->>'{column}' = :source_{column}")
+                params[f"source_{column}"] = str(value)
         wanted = self.parse_categories(categories)
         if wanted:
             # All-of, case-insensitive: the row's lowercased categories must
@@ -815,12 +828,22 @@ class CRUDTemplate:
         kind: str | None,
         search: str | None,
         categories: str | None = None,
+        source_project_id: UUID | None = None,
+        source_workflow_id: UUID | None = None,
+        source_layout_id: UUID | None = None,
         page: int,
         size: int,
     ) -> TemplatePage:
         schema = settings.SCHEMA
         prepared = await self._readable_conditions(
-            db, user_id=user_id, source=source, kind=kind, categories=categories
+            db,
+            user_id=user_id,
+            source=source,
+            kind=kind,
+            categories=categories,
+            source_project_id=source_project_id,
+            source_workflow_id=source_workflow_id,
+            source_layout_id=source_layout_id,
         )
         if prepared is None:
             return TemplatePage(items=[], total=0)

@@ -1510,3 +1510,75 @@ async def test_granting_a_template_shares_its_shipped_datasets(
     body = use_resp.json()
     assert body["unresolved_inputs"] == []
     assert len(body["added_layer_project_ids"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_templates_filters_by_source(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: UUID,
+    fixture_get_home_folder: dict[str, object],
+    make_layer: Callable[..., Awaitable[Any]],
+) -> None:
+    """The save dialog asks "which templates were saved from this workflow?"
+    — a filter on the stored source reference, one condition per given id."""
+    home = str(fixture_get_home_folder["id"])
+    owner = await db_session.get(User, fixture_create_user)
+    assert owner is not None
+    home_folder = await db_session.get(Folder, UUID(home))
+    assert home_folder is not None
+    layer = await make_layer(owner, home_folder)
+    await db_session.commit()
+    project_id = await _create_project(client, home)
+    wf_a = await _create_workflow(
+        client, project_id, _dataset_workflow_config(layer.id)
+    )
+    wf_b = await _create_workflow(
+        client, project_id, _dataset_workflow_config(layer.id)
+    )
+
+    async def save(workflow_id: str, name: str) -> str:
+        source = {
+            "kind": "workflow",
+            "project_id": project_id,
+            "workflow_id": workflow_id,
+        }
+        preview = await client.post(
+            f"{settings.API_V2_STR}/template/preview",
+            json={"source": source, "folder_id": home},
+        )
+        assert preview.status_code == 200, preview.text
+        created = await client.post(
+            f"{settings.API_V2_STR}/template",
+            json={
+                "name": name,
+                "folder_id": home,
+                "source": source,
+                "inputs": preview.json()["detected_inputs"],
+            },
+        )
+        assert created.status_code == 201, created.text
+        return str(created.json()["id"])
+
+    a1 = await save(wf_a, "A first")
+    a2 = await save(wf_a, "A second")
+    b1 = await save(wf_b, "B only")
+
+    r = await client.get(
+        f"{settings.API_V2_STR}/template",
+        params={
+            "source": "all",
+            "source_project_id": project_id,
+            "source_workflow_id": wf_a,
+        },
+    )
+    assert r.status_code == 200, r.text
+    ids = {i["id"] for i in r.json()["items"]}
+    assert ids == {a1, a2}
+    assert b1 not in ids
+
+    r = await client.get(
+        f"{settings.API_V2_STR}/template",
+        params={"source": "all", "source_project_id": project_id},
+    )
+    assert {i["id"] for i in r.json()["items"]} >= {a1, a2, b1}
