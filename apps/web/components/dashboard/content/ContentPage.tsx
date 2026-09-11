@@ -860,12 +860,6 @@ const ContentPage = ({
             onClick={() => {
               if (selection.anySelected) selection.clear();
             }}>
-            {active.kind === "view" && active.view === "shared_with_me" && (
-              <Typography component="div" sx={{ fontSize: 12.5, color: theme.palette.text.disabled, mb: 2 }}>
-                {t("shared_with_me_note")}
-              </Typography>
-            )}
-
             {showSkeleton && (
               <ContentFeedSkeleton layout={layout === "grid" ? "tiles" : "list"} mobile={mobile} />
             )}

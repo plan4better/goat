@@ -521,7 +521,6 @@
   "recent": "Recent",
   "select_items_hint": "Select an item to see its details, or hover a card and use the check-circle to select several.",
   "shared_with_me": "Shared with me",
-  "shared_with_me_note": "Items stay where they live — this is a view of what people shared with you, not a place.",
   "shared_with_organization": "Shared with organization",
   "shared_with_names": "Shared with {{names}}",
   "anyone_with_link": "Anyone with the link",
