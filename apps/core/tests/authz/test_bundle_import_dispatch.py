@@ -59,8 +59,9 @@ class _Importer:
 
 
 def _accept_the_upload(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Get the request as far as the dispatch: the download, the type sniffing
-    and the validation are all somebody else's code."""
+    """Get the request as far as the dispatch: the download and the type
+    sniffing are somebody else's code. Nothing stubs validation, because the
+    endpoint no longer performs any — the import job does."""
     monkeypatch.setattr(
         bundle_endpoints.s3_service,
         "download_file",
@@ -71,7 +72,6 @@ def _accept_the_upload(monkeypatch: pytest.MonkeyPatch) -> None:
         "infer_bundle_type",
         lambda *_a, **_kw: BundleTypeName.street_network,
     )
-    monkeypatch.setattr(bundle_endpoints, "get_importer", lambda *_a: _Importer)
 
 
 def _payload(user: User, folder: Folder) -> dict[str, Any]:

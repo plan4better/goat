@@ -23,9 +23,13 @@ class _RecordingDb:
         return "GTFS Lisbon"
 
     async def create_bundle_project_group(
-        self, project_id: str, bundle_id: str, name: str
+        self, project_id: str, bundle_id: str, name: str, member_count: int = 0
     ) -> tuple[int, int]:
         self.name = name
+        # The real one makes room for the header plus this many members before
+        # taking the top; the placement under test is relative to the order it
+        # hands back, whatever that is.
+        self.member_count = member_count
         return 7, self.group_order
 
     async def add_to_project(

@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from fastapi.concurrency import run_in_threadpool
-from goatlib.bundles.importers import get_importer, infer_bundle_type
+from goatlib.bundles.importers import infer_bundle_type
 from goatlib.models.bundle import (
     BundleArtifactState,
     BundleStatus,
@@ -446,9 +446,13 @@ async def import_bundle(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
             )
 
-    # Download once, then infer and validate against the same local copy. The
-    # name alone can't always decide the type — GTFS feeds and Overture extracts
-    # are both zips — so importers get to sniff the contents as a fallback.
+    # Downloaded only to infer the type: the name alone can't always decide it
+    # — GTFS feeds and Overture extracts are both zips — so importers get to
+    # sniff the contents as a fallback. The type is needed here because it is
+    # written on the bundle row this request creates. Validating the payload is
+    # the import job's job: a refusal raised here would be reported to nobody,
+    # while a failed job is, and the heavier checks need a geospatial stack this
+    # service does not install.
     tmp_path = tempfile.NamedTemporaryFile(suffix=".zip", delete=False).name
     try:
         # boto3 and the zip sniffing are synchronous; off the event loop so a
@@ -466,35 +470,9 @@ async def import_bundle(
                     "segments and connectors GeoParquet)"
                 ),
             )
-        try:
-            validation = await run_in_threadpool(
-                get_importer(bundle_type).validate, tmp_path
-            )
-        except ImportError as e:
-            # Validating this bundle type reads its payload, which needs the
-            # geospatial stack this service deliberately does not install
-            # (goatlib without the `full` extra). Refuse rather than accept an
-            # unvalidated upload.
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    f"validation of {bundle_type.value} bundles is not "
-                    f"available on this service"
-                ),
-            ) from e
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-    if not validation.valid:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "message": f"Invalid {bundle_type.value} upload",
-                "errors": validation.errors,
-                "missing_required_roles": validation.missing_required_roles,
-            },
-        )
-
     # Validate the optional street-network dependency before creating anything.
     link_street = False
     if payload.street_network_bundle_id is not None:

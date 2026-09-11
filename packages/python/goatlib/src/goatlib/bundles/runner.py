@@ -1,7 +1,7 @@
 """Dataset-bundle import runner.
 
-Ingests a validated source into DuckLake as member layers and creates the
-bundle + membership rows. Reuses ``SimpleToolRunner``'s ingest
+Validates an uploaded source, ingests it into DuckLake as member layers, and
+creates the bundle + membership rows. Reuses ``SimpleToolRunner``'s ingest
 primitives (DuckLake connection, ``_ingest_to_ducklake``, postgres pool) and the
 per-type importer plugin — so it stays type-agnostic and runs wherever the tools
 run (Windmill, or any env with DuckLake + Postgres configured).
@@ -299,15 +299,21 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         """Place the freshly-imported member layers into a locked bundle-backed
         group in the given project (the upload-from-within-a-project flow).
 
-        The group goes below what the project already holds and its members
-        directly beneath it, so the bundle arrives as one block instead of
-        scattering through the panel.
+        The group goes on top of what the project already holds, with its
+        members directly beneath it, so the bundle arrives as one block instead
+        of scattering through the panel — and in the same place a bundle added
+        to a project by hand arrives.
 
         Each project layer gets the same default style the member layer was
         created with, so it matches adding the bundle to a project manually."""
         bundle_name = await db.get_bundle_name(bundle_id) or "Bundle"
         group_id, group_order = await db.create_bundle_project_group(
-            project_id=project_id, bundle_id=bundle_id, name=bundle_name
+            project_id=project_id,
+            bundle_id=bundle_id,
+            name=bundle_name,
+            # Room for the header plus every member, made before any of them
+            # is written.
+            member_count=len(imported),
         )
         # Points before lines before polygons, so a node is not buried under
         # the edges it joins. Stable, so members of one geometry keep the
@@ -356,7 +362,7 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         folder_id: str,
         project_id: Optional[str] = None,
     ) -> BundleImportResult:
-        """Ingest a validated source into an ALREADY-CREATED bundle (member
+        """Validate the source, ingest it into an ALREADY-CREATED bundle (member
         layers), then flip the bundle's terminal status.
 
         When ``project_id`` is given (upload from within a project), the bundle
@@ -383,6 +389,15 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                 db, user_id=user_id, bundle_id=bundle_id, folder_id=folder_id
             )
             try:
+                # Validated here rather than by core: an upload's problems have
+                # to reach the person who uploaded it, and only a job's failure
+                # is reported back — an error raised in the request that created
+                # the shell is never shown. Inside the inner try, so a refusal
+                # rolls the shell back like any other failed import rather than
+                # leaving a bundle holding nothing.
+                validation = get_importer(bundle_type).validate(source_path)
+                if not validation.valid:
+                    raise BundleValidationError(validation)
                 imported = await self._ingest_layers(
                     db,
                     source_path=source_path,

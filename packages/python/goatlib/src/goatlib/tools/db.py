@@ -939,36 +939,45 @@ class ToolDatabaseService:
         return layer_project_id
 
     async def create_bundle_project_group(
-        self: Self, project_id: str, bundle_id: str, name: str
+        self: Self, project_id: str, bundle_id: str, name: str, member_count: int = 0
     ) -> tuple[int, int]:
         """Create a bundle-backed layer group in a project (locked membership),
-        placed below everything already there. Returns ``(id, order)`` — the
-        caller needs the order to place the members directly beneath it.
+        at the top. Returns ``(id, order)`` — the caller needs the order to place
+        the members directly beneath it.
 
-        Groups and layers share one tree-wide "order" sequence — the layer panel
-        writes it by flattening the whole tree — so the maximum is taken over both.
-        Reading only the groups drops the bundle in among the existing layers."""
-        row = await self.pool.fetchrow(
-            f"""
-            INSERT INTO {self.schema}.layer_project_group (
-                project_id, bundle_id, name, "order", created_at, updated_at
-            )
-            VALUES (
-                $1, $2, $3,
-                GREATEST(
-                    COALESCE((SELECT MAX("order") FROM {self.schema}.layer_project_group
-                              WHERE project_id = $1), -1),
-                    COALESCE((SELECT MAX("order") FROM {self.schema}.layer_project
-                              WHERE project_id = $1), -1)
-                ) + 1,
-                NOW(), NOW()
-            )
-            RETURNING id, "order"
-            """,
-            uuid_module.UUID(project_id),
-            uuid_module.UUID(bundle_id),
-            name,
-        )
+        Anything added to a project goes on top, so the project is pushed down to
+        make room first: by the group plus every member that will sit under it,
+        which is why ``member_count`` is asked for. Groups and layers share one
+        tree-wide "order" sequence — the layer panel writes it by flattening the
+        whole tree — so both have to move, or the new rows land in among the old
+        ones instead of above them.
+
+        The same rule core applies when a bundle is added to a project by hand
+        (``crud_layer_project_group.add_bundle``); an upload that arrived at the
+        bottom while a manual add arrived at the top would be the panel
+        contradicting itself."""
+        room = 1 + max(member_count, 0)
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                for table in ("layer_project", "layer_project_group"):
+                    await conn.execute(
+                        f"UPDATE {self.schema}.{table} "
+                        f'SET "order" = "order" + $2 WHERE project_id = $1',
+                        uuid_module.UUID(project_id),
+                        room,
+                    )
+                row = await conn.fetchrow(
+                    f"""
+                    INSERT INTO {self.schema}.layer_project_group (
+                        project_id, bundle_id, name, "order", created_at, updated_at
+                    )
+                    VALUES ($1, $2, $3, 0, NOW(), NOW())
+                    RETURNING id, "order"
+                    """,
+                    uuid_module.UUID(project_id),
+                    uuid_module.UUID(bundle_id),
+                    name,
+                )
         logger.info(
             f"Created bundle group {row['id']} for bundle {bundle_id} "
             f"in project {project_id} at order {row['order']}"
