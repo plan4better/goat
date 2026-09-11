@@ -1582,3 +1582,71 @@ async def test_list_templates_filters_by_source(
         params={"source": "all", "source_project_id": project_id},
     )
     assert {i["id"] for i in r.json()["items"]} >= {a1, a2, b1}
+
+
+@pytest.mark.asyncio
+async def test_read_resolves_the_source_and_its_availability(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: UUID,
+    fixture_get_home_folder: dict[str, object],
+    make_layer: Callable[..., Awaitable[Any]],
+) -> None:
+    """The edit dialog links to where the template came from and disables
+    "Update from source" when that is gone — names and a flag, resolved on
+    the single read only."""
+    home = str(fixture_get_home_folder["id"])
+    owner = await db_session.get(User, fixture_create_user)
+    assert owner is not None
+    home_folder = await db_session.get(Folder, UUID(home))
+    assert home_folder is not None
+    layer = await make_layer(owner, home_folder)
+    await db_session.commit()
+    project_id = await _create_project(client, home)
+    workflow_id = await _create_workflow(
+        client, project_id, _dataset_workflow_config(layer.id)
+    )
+    source = {"kind": "workflow", "project_id": project_id, "workflow_id": workflow_id}
+    preview = await client.post(
+        f"{settings.API_V2_STR}/template/preview",
+        json={"source": source, "folder_id": home},
+    )
+    created = await client.post(
+        f"{settings.API_V2_STR}/template",
+        json={
+            "name": "Resolved",
+            "folder_id": home,
+            "source": source,
+            "inputs": preview.json()["detected_inputs"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    tid = created.json()["id"]
+
+    read = await client.get(f"{settings.API_V2_STR}/template/{tid}")
+    assert read.status_code == 200, read.text
+    info = read.json()["source"]
+    assert info["kind"] == "workflow"
+    assert info["project_id"] == project_id
+    assert info["workflow_id"] == workflow_id
+    assert info["project_name"]
+    assert info["workflow_name"]
+    assert info["available"] is True
+
+    # The list never pays for the resolution.
+    listed = await client.get(
+        f"{settings.API_V2_STR}/template", params={"source": "mine"}
+    )
+    row = next(i for i in listed.json()["items"] if i["id"] == tid)
+    assert row["source"] is None
+
+    # Delete the workflow: the reference stays, availability drops.
+    deleted = await client.delete(
+        f"{settings.API_V2_STR}/project/{project_id}/workflow/{workflow_id}"
+    )
+    assert deleted.status_code in (200, 204), deleted.text
+    read = await client.get(f"{settings.API_V2_STR}/template/{tid}")
+    info = read.json()["source"]
+    assert info["workflow_id"] == workflow_id
+    assert info["workflow_name"] is None
+    assert info["available"] is False

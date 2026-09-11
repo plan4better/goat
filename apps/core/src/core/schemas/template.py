@@ -90,6 +90,22 @@ class TemplateSource(BaseModel):
     layout_id: UUID | None = None
 
 
+class TemplateSourceInfo(BaseModel):
+    """Where a template was saved from, resolved for the caller: names for
+    the edit dialog's links, and whether "Update from source" can work —
+    the project must still be readable and the workflow/layout still exist.
+    Only ``GET /template/{id}`` fills this in; list rows carry ``None``."""
+
+    kind: Literal["workflow", "layout", "project"]
+    project_id: UUID | None
+    project_name: str | None
+    workflow_id: UUID | None = None
+    workflow_name: str | None = None
+    layout_id: UUID | None = None
+    layout_name: str | None = None
+    available: bool
+
+
 class TemplatePreviewRequest(BaseModel):
     """Body of ``POST /template/preview``: what would saving this source
     into ``folder_id`` detect and require."""
@@ -183,6 +199,7 @@ class TemplateRead(BaseModel):
     ships_sample_data: bool
     catalog_status: Literal["none", "proposed", "published", "declined"]
     source_ref: dict[str, Any]
+    source: TemplateSourceInfo | None = None
     my_role: Literal["owner", "editor", "viewer"]
     created_at: datetime
     updated_at: datetime

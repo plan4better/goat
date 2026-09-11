@@ -62,6 +62,7 @@ from core.schemas.template import (
     TemplatePreviewRequest,
     TemplateRead,
     TemplateSource,
+    TemplateSourceInfo,
     TemplateUpdate,
     TemplateUseRequest,
     TemplateUseResult,
@@ -222,6 +223,53 @@ class CRUDTemplate:
             updated_at=row.updated_at,  # type: ignore[arg-type]
             datasets_needing_share=datasets_needing_share or [],
         )
+
+    async def _resolve_source(
+        self, db: AsyncSession, row: Template, user_id: UUID
+    ) -> TemplateSourceInfo | None:
+        """Names and availability of the recorded source, for the caller:
+        the project must be live and readable, the workflow/layout must
+        still exist. Resolved on the single read only — a list row never
+        pays for it."""
+        ref = row.source_ref or {}
+        project_id_raw = ref.get("project_id")
+        if project_id_raw is None:
+            return None
+        project_id = UUID(str(project_id_raw))
+        project = await db.get(Project, project_id)
+        project_live = project is not None and project.deleted_at is None
+        readable = project_live and await authz.can(
+            db, "project", project_id, user_id, "read"
+        )
+        info = TemplateSourceInfo(
+            kind=row.payload_kind,  # type: ignore[arg-type]
+            project_id=project_id,
+            project_name=project.name if readable and project is not None else None,
+            available=bool(readable),
+        )
+        if row.payload_kind == "workflow" and ref.get("workflow_id"):
+            info.workflow_id = UUID(str(ref["workflow_id"]))
+            wf = (
+                await crud_workflow.get_by_project_and_id(
+                    db, project_id=project_id, workflow_id=info.workflow_id
+                )
+                if readable
+                else None
+            )
+            info.workflow_name = wf.name if wf is not None else None
+            info.available = bool(readable and wf is not None)
+        elif row.payload_kind == "layout" and ref.get("layout_id"):
+            info.layout_id = UUID(str(ref["layout_id"]))
+            layout = (
+                await crud_report_layout.get_by_project_and_id(
+                    db, project_id=project_id, layout_id=info.layout_id
+                )
+                if readable
+                else None
+            )
+            info.layout_name = layout.name if layout is not None else None
+            info.available = bool(readable and layout is not None)
+        return info
 
     async def _with_from_catalog(
         self, db: AsyncSession, inputs: list[TemplateInput]
@@ -985,6 +1033,7 @@ class CRUDTemplate:
         my_role = await authz.effective_role(db, "template", template_id, user_id)
         assert my_role is not None
         read = await self._to_read(db, row, my_role=my_role)
+        read.source = await self._resolve_source(db, row, user_id)
         if (
             include_config
             and my_role in ("owner", "editor")
