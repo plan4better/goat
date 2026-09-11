@@ -219,15 +219,16 @@ export const stripMarkdown = (value: string): string =>
     .trim();
 
 /** Links into the project a template was saved from: the project itself,
- * and the project opened on the workflow or layout through the map page's
- * `?workflow=` / `?layout=` intents (`useMapUrlIntent`). */
+ * and the project opened on the workflow or layout — the map page's
+ * `?workflow=` / `?layout=` intents select the item, and `?mode=` switches
+ * to the panel that shows it (`useMapUrlIntent`). */
 export const sourceLink = (source: TemplateSourceInfo): { project: string; payload: string | null } => {
   const project = `/map/${source.project_id}`;
   if (source.kind === "workflow" && source.workflow_id) {
-    return { project, payload: `${project}?workflow=${source.workflow_id}` };
+    return { project, payload: `${project}?mode=workflows&workflow=${source.workflow_id}` };
   }
   if (source.kind === "layout" && source.layout_id) {
-    return { project, payload: `${project}?layout=${source.layout_id}` };
+    return { project, payload: `${project}?mode=reports&layout=${source.layout_id}` };
   }
   return { project, payload: null };
 };

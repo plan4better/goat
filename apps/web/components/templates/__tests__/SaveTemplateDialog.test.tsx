@@ -1595,7 +1595,7 @@ describe("SaveTemplateDialog — edit mode", () => {
     expect(screen.queryByText("location")).not.toBeInTheDocument();
     await expect(screen.getByRole("link", { name: /Güteklassen/ })).toHaveAttribute(
       "href",
-      "/map/00000000-0000-0000-0000-000000000001?workflow=00000000-0000-0000-0000-000000000011"
+      "/map/00000000-0000-0000-0000-000000000001?mode=workflows&workflow=00000000-0000-0000-0000-000000000011"
     );
     expect(previewTemplateMock).not.toHaveBeenCalled();
     expect(useTemplatesFromSourceMock).toHaveBeenCalledWith(null);

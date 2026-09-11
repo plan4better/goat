@@ -48,8 +48,8 @@ const TemplateSnapshotLine = ({ template, onRefresh, refreshing }: TemplateSnaps
             {links.payload && payloadName ? (
               <>
                 {" "}
-                <Link href={links.payload} target="_blank" rel="noreferrer" sx={{ fontWeight: 700 }}>
-                  {payloadName} ↗
+                <Link href={links.payload} target="_blank" rel="noreferrer" underline="hover" sx={{ fontWeight: 700 }}>
+                  {payloadName}
                 </Link>
               </>
             ) : null}
@@ -57,8 +57,8 @@ const TemplateSnapshotLine = ({ template, onRefresh, refreshing }: TemplateSnaps
               <>
                 {" "}
                 {t("in_project")}{" "}
-                <Link href={links.project} target="_blank" rel="noreferrer" sx={{ fontWeight: 700 }}>
-                  {source.project_name} ↗
+                <Link href={links.project} target="_blank" rel="noreferrer" underline="hover" sx={{ fontWeight: 700 }}>
+                  {source.project_name}
                 </Link>
               </>
             ) : null}

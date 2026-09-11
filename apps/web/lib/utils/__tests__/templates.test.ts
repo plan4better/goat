@@ -241,14 +241,14 @@ describe("sourceLink", () => {
   const p = base.project_id;
 
   it("opens the project on the workflow it was saved from", () => {
-    expect(sourceLink(base)).toEqual({ project: `/map/${p}`, payload: `/map/${p}?workflow=${base.workflow_id}` });
+    expect(sourceLink(base)).toEqual({ project: `/map/${p}`, payload: `/map/${p}?mode=workflows&workflow=${base.workflow_id}` });
   });
 
   it("opens the project on the layout for a layout template", () => {
     const layoutId = "00000000-0000-0000-0000-000000000022";
     expect(sourceLink({ ...base, kind: "layout", workflow_id: null, layout_id: layoutId })).toEqual({
       project: `/map/${p}`,
-      payload: `/map/${p}?layout=${layoutId}`,
+      payload: `/map/${p}?mode=reports&layout=${layoutId}`,
     });
   });
 

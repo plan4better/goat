@@ -37,7 +37,7 @@ describe("TemplateSnapshotLine", () => {
     render(<TemplateSnapshotLine template={base} onRefresh={async () => {}} />);
     await expect(screen.getByRole("link", { name: /Güteklassen/ })).toHaveAttribute(
       "href",
-      `/map/${projectId}?workflow=${workflowId}`
+      `/map/${projectId}?mode=workflows&workflow=${workflowId}`
     );
     await expect(screen.getByRole("link", { name: /Analysis/ })).toHaveAttribute("href", `/map/${projectId}`);
     await expect(screen.getByRole("button", { name: "update_template_from_source" })).toBeEnabled();

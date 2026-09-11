@@ -127,8 +127,9 @@ const TemplateSourceChoice = ({
                           target="_blank"
                           rel="noreferrer"
                           onClick={(event) => event.stopPropagation()}
+                          underline="hover"
                           sx={{ fontWeight: 700 }}>
-                          {t("open")} ↗
+                          {t("open")}
                         </Link>
                       </Typography>
                     </Box>
