@@ -272,6 +272,7 @@ describe("ContentDetailsPanel", () => {
           ...ownerLayer,
           my_role: "viewer",
           space_id: "00000000-0000-0000-0000-0000000000ff",
+          shared_with: null,
           created_by: { id: "00000000-0000-0000-0000-0000000000aa", name: "Camila R." },
         },
       ],
@@ -279,5 +280,17 @@ describe("ContentDetailsPanel", () => {
 
     expect(screen.getByText('owned_by:{"name":"Camila R."}')).toBeInTheDocument();
     expect(screen.queryByText("space_members")).not.toBeInTheDocument();
+    // Nothing to list under "Who has access": no space row, no grants.
+    expect(screen.queryByText("who_has_access")).not.toBeInTheDocument();
+  });
+
+  it("does not open the location with a separator when the space is unknown", () => {
+    renderPanel({
+      selected: [{ ...ownerLayer, my_role: "viewer", space_id: "00000000-0000-0000-0000-0000000000ff", folder_id: "f-1" }],
+      folders: [{ id: "f-1", name: "Templates", parent_id: null } as never],
+    });
+
+    expect(screen.getByText("Templates")).toBeInTheDocument();
+    expect(screen.queryByText(/^› /)).not.toBeInTheDocument();
   });
 });

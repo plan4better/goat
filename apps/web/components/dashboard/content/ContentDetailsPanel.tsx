@@ -127,7 +127,9 @@ const ContentDetailsPanel = ({
             ...folderPath(folders, item.folder_id)
               .filter((folder) => folder.name !== "home")
               .map((folder) => folder.name),
-          ].join(" › "),
+          ]
+            .filter(Boolean)
+            .join(" › "),
         },
         {
           icon: ICON_NAME.CLOCK,
@@ -359,6 +361,8 @@ const ContentDetailsPanel = ({
                 </Stack>
               )}
 
+              {(itemSpace || grants.length > 0) && (
+                <>
               <Box sx={{ height: "1px", backgroundColor: theme.palette.divider, margin: "14px 0 10px" }} />
 
               <Typography
@@ -430,6 +434,8 @@ const ContentDetailsPanel = ({
                   </Box>
                 ))}
               </Stack>
+                </>
+              )}
 
               {item.type === "folder" && grants.length > 0 && (
                 <Typography
