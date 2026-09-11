@@ -177,12 +177,20 @@ describe("audienceOf", () => {
   const teamSpace = space({ id: "t1", kind: "team", name: "Team" });
   const personalSpace = space({ id: "s1", kind: "personal", name: "Personal" });
 
-  it("is org when shared with an organization", () => {
+  it("is org when shared with an organization, reading Shared and naming it on hover", () => {
     const result = audienceOf(
-      item({ shared_with: { organizations: [{ role: "viewer", id: "o1" }], teams: [], users: [] } }),
+      item({
+        shared_with: {
+          organizations: [{ role: "viewer", id: "o1", name: "Plan4Better" }],
+          teams: [{ role: "viewer", id: "t2", name: "Admins" }],
+          users: [],
+        },
+      }),
       teamSpace
     );
     expect(result.kind).toBe("org");
+    expect(result.labelKey).toBe("shared");
+    expect(result.sharedWithNames).toEqual(["Plan4Better", "Admins"]);
   });
 
   it("is shared when shared with a team", () => {

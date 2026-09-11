@@ -518,6 +518,7 @@
   "shared_with_me": "Mit mir geteilt",
   "shared_with_me_note": "Inhalte bleiben, wo sie liegen – diese Ansicht zeigt, was andere mit Ihnen geteilt haben.",
   "shared_with_organization": "Mit Organisation geteilt",
+  "shared_with_names": "Geteilt mit {{names}}",
   "shortcut_in": "Verknüpfung · in {{name}}",
   "shortcuts": "Verknüpfungen",
   "space_members": "Mitglieder des Bereichs",

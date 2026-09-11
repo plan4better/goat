@@ -177,6 +177,19 @@ export type Audience = {
   kind: "public" | "restricted" | "org" | "shared" | "private" | "space";
   labelKey: string;
   icon: ICON_NAME;
+  /** Who the item is shared with, by name, for a "shared" or "org"
+   * audience — the chip says only "Shared" and names them on hover. */
+  sharedWithNames?: string[];
+};
+
+/** The grantees of an item by display name — organizations first, then
+ * teams, then people — for the hover on the "Shared" chip. */
+export const sharedWithNames = (item: ContentItem): string[] => {
+  const sw = item.shared_with;
+  if (!sw) return [];
+  return [...(sw.organizations ?? []), ...(sw.teams ?? []), ...(sw.users ?? [])]
+    .map((entry) => entry.name)
+    .filter((name): name is string => !!name);
 };
 
 /** Who else can see an item, for the audience badge on a card or row. A
@@ -195,10 +208,15 @@ export const audienceOf = (item: ContentItem, space: Space | undefined): Audienc
 
   const sharedWith = item.shared_with;
   if (sharedWith?.organizations?.length) {
-    return { kind: "org", labelKey: "shared_with_organization", icon: ICON_NAME.ORGANIZATION };
+    return {
+      kind: "org",
+      labelKey: "shared",
+      icon: ICON_NAME.ORGANIZATION,
+      sharedWithNames: sharedWithNames(item),
+    };
   }
   if (sharedWith?.teams?.length || sharedWith?.users?.length) {
-    return { kind: "shared", labelKey: "shared", icon: ICON_NAME.SHARE };
+    return { kind: "shared", labelKey: "shared", icon: ICON_NAME.SHARE, sharedWithNames: sharedWithNames(item) };
   }
   if (space?.kind === "personal") {
     return { kind: "private", labelKey: "private_content", icon: ICON_NAME.LOCK };

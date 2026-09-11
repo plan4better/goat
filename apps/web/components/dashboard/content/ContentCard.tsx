@@ -214,7 +214,9 @@ const ContentCard = ({
           </Typography>
         )}
         <Box sx={{ display: "flex", alignItems: "center", gap: "8px", mt: "4px", pr: "4px" }}>
-          <ContentCreatorCell creator={item.created_by} />
+          {/* The avatar never shrinks — the time and the audience chip give
+           * way (and truncate) when the row runs out of width. */}
+          <ContentCreatorCell creator={item.created_by} sx={{ flexShrink: 0 }} />
           <Tooltip title={t("last_updated")} placement="top" disableInteractive>
             <Typography
               component="span"
@@ -249,7 +251,7 @@ const ContentCard = ({
             />
           )}
           {showAudience && (
-            <Box sx={{ display: "flex", flexShrink: 0, ml: pinned ? 0 : "auto" }}>
+            <Box sx={{ display: "flex", minWidth: 0, ml: pinned ? 0 : "auto" }}>
               <AudienceChip audience={audience} />
             </Box>
           )}

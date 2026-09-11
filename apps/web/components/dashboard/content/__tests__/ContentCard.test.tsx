@@ -53,11 +53,25 @@ const project: ContentItem = {
   restricted_inherited: false,
 };
 
-const renderCard = (item?: Partial<ContentItem>) =>
+const organizationSpace: Space = {
+  ...personalSpace,
+  id: "s-org",
+  kind: "organization",
+  name: "Organization",
+  organization_id: "org-1",
+};
+
+const sharedWithOrg = {
+  teams: [],
+  organizations: [{ id: "org-1", name: "Organization", role: "project-viewer" }],
+  users: [],
+};
+
+const renderCard = (item?: Partial<ContentItem>, space: Space = personalSpace) =>
   render(
     <ContentCard
       item={{ ...project, ...item }}
-      space={personalSpace}
+      space={space}
       selected={false}
       anySelected={false}
       onToggleSelect={() => {}}
@@ -135,6 +149,21 @@ describe("ContentCard", () => {
     renderCard();
 
     expect(screen.queryByText("private_content")).not.toBeInTheDocument();
+  });
+
+  it("reads Shared for an organization share and names the organization on hover", () => {
+    renderCard({ shared_with: sharedWithOrg });
+
+    expect(screen.getByText("shared")).toBeInTheDocument();
+    expect(screen.queryByText("shared_with_organization")).not.toBeInTheDocument();
+    // The mock `t` returns the key alone — the hover carries that key.
+    expect(screen.getByLabelText("shared_with_names")).toBeInTheDocument();
+  });
+
+  it("still warns about a public item inside the organization space", () => {
+    renderCard({ space_id: "s-org", is_public: true }, organizationSpace);
+
+    expect(screen.getByText("public")).toBeInTheDocument();
   });
 
   it("shows the creator as an avatar only, naming them in the tooltip", () => {
