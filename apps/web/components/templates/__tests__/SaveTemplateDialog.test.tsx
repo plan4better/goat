@@ -27,7 +27,17 @@ const {
   renderLayoutSnapshotMock,
   uploadAssetMock,
   toastErrorMock,
+  useTemplatesFromSourceMock,
+  refreshTemplateMock,
+  updateTemplateMock,
+  unpublishTemplateMock,
+  readTemplateMock,
 } = vi.hoisted(() => ({
+  useTemplatesFromSourceMock: vi.fn(),
+  refreshTemplateMock: vi.fn(),
+  updateTemplateMock: vi.fn(),
+  unpublishTemplateMock: vi.fn(),
+  readTemplateMock: vi.fn(),
   previewTemplateMock: vi.fn(),
   createTemplateMock: vi.fn(),
   refreshTemplatesMock: vi.fn(),
@@ -65,6 +75,11 @@ vi.mock("@/lib/api/templates", async () => {
     refreshTemplates: refreshTemplatesMock,
     useTemplateCategories: useTemplateCategoriesMock,
     publishTemplateWithDetail: publishTemplateWithDetailMock,
+    useTemplatesFromSource: useTemplatesFromSourceMock,
+    refreshTemplate: refreshTemplateMock,
+    updateTemplate: updateTemplateMock,
+    unpublishTemplate: unpublishTemplateMock,
+    readTemplate: readTemplateMock,
   };
 });
 vi.mock("@/lib/api/users", () => ({ useUserProfile: useUserProfileMock }));
@@ -118,6 +133,11 @@ const imageFile = (name: string, size = 4096, type = "image/png"): File => {
 let objectUrlCount = 0;
 
 beforeEach(() => {
+  useTemplatesFromSourceMock.mockReset().mockReturnValue({ templates: [], isLoading: false });
+  refreshTemplateMock.mockReset();
+  updateTemplateMock.mockReset();
+  unpublishTemplateMock.mockReset();
+  readTemplateMock.mockReset();
   objectUrlCount = 0;
   URL.createObjectURL = vi.fn(() => `blob:thumb-${++objectUrlCount}`);
   URL.revokeObjectURL = vi.fn();
@@ -1429,5 +1449,82 @@ describe("SaveTemplateDialog — the thumbnail", () => {
     cleanup();
 
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:thumb-1");
+  });
+});
+
+const existing = (id: string, name: string, updated: string): TemplateRead =>
+  ({
+    id,
+    name,
+    description: "Old description",
+    categories: ["Public transport"],
+    thumbnail_url: null,
+    space_id: "00000000-0000-0000-0000-000000000001",
+    folder_id: "00000000-0000-0000-0000-000000000002",
+    created_by: null,
+    payload_kind: "workflow",
+    kinds: ["workflow"],
+    inputs: [],
+    ships_sample_data: false,
+    catalog_status: "none",
+    source_ref: {},
+    my_role: "owner",
+    created_at: updated,
+    updated_at: updated,
+    datasets_needing_share: [],
+  }) as unknown as TemplateRead;
+
+describe("SaveTemplateDialog — templates from the same source", () => {
+  beforeEach(() => {
+    previewTemplateMock.mockResolvedValue(emptyPreview);
+    useUserProfileMock.mockReturnValue({ userProfile: { is_superuser: false } });
+  });
+
+  it("defaults to updating the latest template saved from this workflow and prefills its metadata", async () => {
+    useTemplatesFromSourceMock.mockReturnValue({
+      templates: [
+        existing("00000000-0000-0000-0000-0000000000aa", "Newest", "2026-09-09T10:00:00Z"),
+        existing("00000000-0000-0000-0000-0000000000bb", "Older", "2026-08-01T10:00:00Z"),
+      ],
+      isLoading: false,
+    });
+    render(<SaveTemplateDialog source={workflowSource} defaultName="My Workflow" onClose={noop} onSaved={noop} />);
+    await screen.findByRole("radio", { name: /Newest/ });
+    await expect(screen.getByRole("radio", { name: /Newest/ })).toBeChecked();
+    await waitFor(() => expect(screen.getByLabelText("name")).toHaveValue("Newest"));
+    expect(screen.getByRole("button", { name: "update_template" })).toBeInTheDocument();
+    expect(screen.queryByText("location")).not.toBeInTheDocument();
+  });
+
+  it("refreshes then patches the chosen template instead of creating one", async () => {
+    const newest = existing("00000000-0000-0000-0000-0000000000aa", "Newest", "2026-09-09T10:00:00Z");
+    useTemplatesFromSourceMock.mockReturnValue({ templates: [newest], isLoading: false });
+    refreshTemplateMock.mockResolvedValue({ ...newest, updated_at: "2026-09-11T10:00:00Z" });
+    updateTemplateMock.mockResolvedValue({ ...newest, name: "Renamed" });
+    const onSaved = vi.fn();
+    render(<SaveTemplateDialog source={workflowSource} defaultName="My Workflow" onClose={noop} onSaved={onSaved} />);
+    await screen.findByRole("radio", { name: /Newest/ });
+    await waitFor(() => expect(screen.getByLabelText("name")).toHaveValue("Newest"));
+    fireEvent.change(screen.getByLabelText("name"), { target: { value: "Renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: "update_template" }));
+    await waitFor(() =>
+      expect(updateTemplateMock).toHaveBeenCalledWith(newest.id, expect.objectContaining({ name: "Renamed" }))
+    );
+    expect(refreshTemplateMock).toHaveBeenCalledWith(newest.id);
+    expect(createTemplateMock).not.toHaveBeenCalled();
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  it("saves a new template when the author switches to save-as-new", async () => {
+    useTemplatesFromSourceMock.mockReturnValue({
+      templates: [existing("00000000-0000-0000-0000-0000000000aa", "Newest", "2026-09-09T10:00:00Z")],
+      isLoading: false,
+    });
+    render(<SaveTemplateDialog source={workflowSource} defaultName="My Workflow" onClose={noop} onSaved={noop} />);
+    await screen.findByRole("button", { name: "save_as_new" });
+    fireEvent.click(screen.getByRole("button", { name: "save_as_new" }));
+    await waitFor(() => expect(screen.getByLabelText("name")).toHaveValue("My Workflow"));
+    expect(screen.getByRole("button", { name: "save" })).toBeInTheDocument();
+    expect(screen.getByText("location")).toBeInTheDocument();
   });
 });

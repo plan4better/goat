@@ -31,8 +31,12 @@ import {
   createTemplate,
   previewTemplate,
   publishTemplateWithDetail,
+  refreshTemplate,
   refreshTemplates,
+  unpublishTemplate,
+  updateTemplate,
   useTemplateCategories,
+  useTemplatesFromSource,
 } from "@/lib/api/templates";
 import { useUserProfile } from "@/lib/api/users";
 import { useWorkflow } from "@/lib/api/workflows";
@@ -63,6 +67,8 @@ import TemplateInputsTable from "@/components/templates/TemplateInputsTable";
 import type { TemplateInputMode } from "@/components/templates/TemplateInputsTable";
 import TemplateCatalogSwitch from "@/components/templates/TemplateCatalogSwitch";
 import TemplatePreviewPanel from "@/components/templates/TemplatePreviewPanel";
+import TemplateSourceChoice from "@/components/templates/TemplateSourceChoice";
+import type { TemplateSaveMode } from "@/components/templates/TemplateSourceChoice";
 import TemplateTag from "@/components/templates/TemplateTag";
 
 export interface SaveTemplateDialogProps {
@@ -139,6 +145,35 @@ const SaveTemplateDialog = ({
   const [name, setName] = useState(defaultName);
   const [description, setDescription] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
+  // Whether the author has edited name/description/categories: prefilling
+  // from a chosen template never overwrites what they typed.
+  const metadataTouched = useRef(false);
+
+  // Templates already saved from this same source, newest first. A second
+  // "Save as template" on the same workflow almost always means "update the
+  // one I have", so the first time there are any the dialog switches to
+  // updating the newest — once, and never over the author's own choice.
+  const { templates: candidates } = useTemplatesFromSource(source);
+  const [saveMode, setSaveMode] = useState<TemplateSaveMode>("new");
+  const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
+  const updateTarget =
+    saveMode === "update"
+      ? (candidates.find((candidate) => candidate.id === updateTargetId) ?? candidates[0])
+      : undefined;
+  const updating = updateTarget !== undefined;
+  const candidatesSeen = useRef(false);
+  useEffect(() => {
+    if (candidatesSeen.current || candidates.length === 0) return;
+    candidatesSeen.current = true;
+    setSaveMode("update");
+    setUpdateTargetId(candidates[0].id);
+  }, [candidates]);
+  useEffect(() => {
+    if (!updateTarget || metadataTouched.current) return;
+    setName(updateTarget.name);
+    setDescription(updateTarget.description ?? "");
+    setCategories(updateTarget.categories);
+  }, [updateTarget]);
 
   const categoryOptions = useMemo(() => (categoryFacets ?? []).map((facet) => facet.name), [categoryFacets]);
   const categoryCounts = useMemo(
@@ -163,6 +198,7 @@ const SaveTemplateDialog = ({
       const name = canonicalCategory(value);
       if (name && !next.some((entry) => entry.toLowerCase() === name.toLowerCase())) next.push(name);
     }
+    metadataTouched.current = true;
     setCategories(next);
   };
 
@@ -386,6 +422,12 @@ const SaveTemplateDialog = ({
   const sharedCount = shareRows.filter((row) => layerIncluded(row.layer_id)).length;
 
   const [publishSwitchOn, setPublishSwitchOn] = useState(false);
+  // A chosen template's catalog state is where its switch starts.
+  const publishTargetId = updateTarget?.id;
+  const publishTargetPublished = updateTarget?.catalog_status === "published";
+  useEffect(() => {
+    setPublishSwitchOn(publishTargetId ? publishTargetPublished : false);
+  }, [publishTargetId, publishTargetPublished]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
   // Set only when the template was saved but publishing it was refused: the
@@ -398,7 +440,7 @@ const SaveTemplateDialog = ({
   const submitDisabled =
     submitting ||
     !name.trim() ||
-    !targetFolderId ||
+    (!targetFolderId && !updating) ||
     previewLoading ||
     previewErrorMessage !== undefined ||
     // The picture is still being drawn, or the payload it is drawn from has
@@ -421,11 +463,48 @@ const SaveTemplateDialog = ({
   };
 
   const handleSubmit = async () => {
-    if (!targetFolderId) return;
+    if (!targetFolderId && !updateTarget) return;
     setSubmitting(true);
     setSubmitError(undefined);
     setPublishBlocked(undefined);
     try {
+      if (updateTarget) {
+        // Updating an existing template: the payload is re-snapshotted from
+        // the source, then the metadata is written; location and shares
+        // stay as they are. The thumbnail keeps the template's own picture.
+        const refreshed = await refreshTemplate(updateTarget.id);
+        const patched = await updateTemplate(updateTarget.id, {
+          name: name.trim(),
+          description: description.trim() || null,
+          categories,
+        });
+        if (isSuperuser) {
+          const wasPublished = updateTarget.catalog_status === "published";
+          if (publishSwitchOn && !wasPublished) {
+            const blocked = blockedShipInputs(refreshed.inputs);
+            if (blocked.length > 0) {
+              setPublishBlocked({ template: patched, names: blocked.map((input) => input.label) });
+              return;
+            }
+            const result = await publishTemplateWithDetail(patched.id);
+            if (!result.ok) {
+              setPublishBlocked({ template: patched, names: result.layers.map((layer) => layer.name) });
+              return;
+            }
+          } else if (!publishSwitchOn && wasPublished) {
+            await unpublishTemplate(patched.id);
+          }
+        }
+        refreshTemplates();
+        refreshContentFeed();
+        if (refreshed.datasets_needing_share.length > 0) {
+          toast.info(t("template_datasets_need_sharing", { count: refreshed.datasets_needing_share.length }));
+        }
+        onSaved(patched);
+        onClose();
+        return;
+      }
+      if (!targetFolderId) return;
       const inputs = (preview?.detected_inputs ?? []).map((input) => ({
         ...input,
         mode: modeFor(input.key),
@@ -587,7 +666,7 @@ const SaveTemplateDialog = ({
   ) : (
     <AppDialogFooter
       onCancel={onClose}
-      primaryLabel={t("save")}
+      primaryLabel={updating ? t("update_template") : t("save")}
       onPrimary={() => void handleSubmit()}
       primaryDisabled={submitDisabled}
       primaryLoading={submitting}
@@ -646,13 +725,34 @@ const SaveTemplateDialog = ({
           {/* One rhythm for the whole form: every block — the three fields,
             the space choice and the folder browser — sits 32px from the next. */}
           <Stack spacing={4} sx={{ mt: "10px" }}>
+            <TemplateSourceChoice
+              kindLabel={t(`template_kind_${source.kind}`)}
+              candidates={candidates}
+              mode={saveMode}
+              onModeChange={(next) => {
+                setSaveMode(next);
+                if (next === "new" && !metadataTouched.current) {
+                  setName(defaultName);
+                  setDescription("");
+                  setCategories([]);
+                }
+              }}
+              selectedId={updateTarget?.id ?? null}
+              onSelect={setUpdateTargetId}
+              spaces={spaces}
+              disabled={submitting}
+            />
+
             {/* TextFieldInput leaves its unfocused label colour to `inherit`,
               so the box around it is what sets the house secondary. */}
             <Box sx={{ color: "text.secondary" }}>
               <TextFieldInput
                 label={t("name")}
                 value={name}
-                onChange={(value) => setName(value)}
+                onChange={(value) => {
+                  metadataTouched.current = true;
+                  setName(value);
+                }}
                 inputProps={{ "aria-label": t("name") }}
               />
             </Box>
@@ -666,7 +766,10 @@ const SaveTemplateDialog = ({
               <FormLabelHelper label={t("description")} color={theme.palette.text.secondary} />
               <MarkdownContentEditor
                 value={description}
-                onChange={setDescription}
+                onChange={(value) => {
+                  metadataTouched.current = true;
+                  setDescription(value);
+                }}
                 minRows={4}
                 placeholder={t("template_description_placeholder")}
                 ariaLabel={t("description")}
@@ -745,7 +848,10 @@ const SaveTemplateDialog = ({
             </FormControl>
 
             {/* The location is a choice between spaces, not a field, so it
-              keeps its group heading — one block in the same rhythm. */}
+              keeps its group heading — one block in the same rhythm. Hidden
+              while updating: the template stays where it is. */}
+            {!updating && (
+              <>
             <Box>
               <FormLabelHelper label={t("location")} color={theme.palette.text.secondary} />
               <Box sx={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -801,6 +907,8 @@ const SaveTemplateDialog = ({
                 helperText={t("template_folder_hint")}
                 maxHeight={180}
               />
+            )}
+              </>
             )}
           </Stack>
 
@@ -884,7 +992,8 @@ const SaveTemplateDialog = ({
 
           {isSuperuser && (
             <TemplateCatalogSwitch
-              published={false}
+              published={updateTarget?.catalog_status === "published"}
+              updating={updating}
               checked={publishSwitchOn}
               onChange={setPublishSwitchOn}
               blocked={blockedShipInputs(
