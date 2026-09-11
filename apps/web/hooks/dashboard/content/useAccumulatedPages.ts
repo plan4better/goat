@@ -5,16 +5,17 @@ import { useEffect, useMemo, useState } from "react";
 import type { ContentItem, ContentPage } from "@/lib/validations/content";
 
 /** Whether a page already accumulated is the one just fetched. SWR hands
- * back fresh objects on every revalidation, so the rows are compared by what
- * identifies them and by when they last changed, not by reference — storing
- * an equal page again would re-render for nothing, and re-render endlessly
- * where the fetched object is new on every render. */
+ * back fresh objects on every revalidation, so the rows are compared by
+ * content, not by reference — storing an equal page again would re-render
+ * for nothing, and re-render endlessly where the fetched object is new on
+ * every render. Identity and `updated_at` alone are not enough: sharing,
+ * restricting or publishing an item changes its row without touching
+ * `updated_at`, and the page must pick those up so the audience chip
+ * follows the change without a reload. */
 const samePage = (stored: ContentItem[] | undefined, fetched: ContentItem[]): boolean =>
   !!stored &&
   stored.length === fetched.length &&
-  stored.every(
-    (item, index) => item.id === fetched[index].id && item.updated_at === fetched[index].updated_at
-  );
+  stored.every((item, index) => JSON.stringify(item) === JSON.stringify(fetched[index]));
 
 export interface AccumulatedPages {
   /** Every page listed so far for this collection, in page order. */
