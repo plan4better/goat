@@ -50,17 +50,24 @@ const SharePeopleTab = ({
   const { t } = useTranslation("common");
   const theme = useTheme();
   const [query, setQuery] = useState("");
+  // Whether the field is being used to pick someone. An empty field then
+  // lists the organisation's members instead of nothing: "Add person" used to
+  // only move focus, which shows no change on screen and reads as broken.
+  const [browsing, setBrowsing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const addedIds = useMemo(() => new Set(users.map((u) => u.id)), [users]);
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return members
-      .filter((member) => memberName(member).toLowerCase().includes(q) || member.email.toLowerCase().includes(q))
-      .slice(0, MAX_MATCHES);
-  }, [members, query]);
+    const pool = q
+      ? members.filter(
+          (member) => memberName(member).toLowerCase().includes(q) || member.email.toLowerCase().includes(q)
+        )
+      : members.filter((member) => !addedIds.has(member.id));
+    return pool.slice(0, MAX_MATCHES);
+  }, [members, query, addedIds]);
+  const picking = query.trim() !== "" || browsing;
 
   if (!supported) {
     return (
@@ -80,9 +87,10 @@ const SharePeopleTab = ({
         placeholder={t("add_people_placeholder")}
         clearLabel={t("clear")}
         inputRef={inputRef}
+        onFocus={() => setBrowsing(true)}
       />
 
-      {query.trim() !== "" ? (
+      {picking ? (
         <Box sx={scrollSx}>
           {matches.length === 0 ? (
             <Typography sx={{ padding: "16px 2px", fontSize: 12.5, color: "text.disabled", lineHeight: 1.55 }}>
@@ -100,11 +108,10 @@ const SharePeopleTab = ({
                 onClick={() => {
                   if (already) return;
                   onAdd(member.id);
-                  // Clearing the query puts the new grant (and its role
-                  // picker) in view straight away, and leaves the field
-                  // focused for the next name.
+                  // Clearing the query and the browse puts the new grant (and
+                  // its role picker) in view straight away.
                   setQuery("");
-                  inputRef.current?.focus();
+                  setBrowsing(false);
                 }}
                 sx={{
                   display: "flex",
@@ -171,7 +178,10 @@ const SharePeopleTab = ({
           </Typography>
           <Button
             variant="contained"
-            onClick={() => inputRef.current?.focus()}
+            onClick={() => {
+              setBrowsing(true);
+              inputRef.current?.focus();
+            }}
             startIcon={<Icon iconName={ICON_NAME.PLUS} style={{ fontSize: 14 }} />}
             sx={{ borderRadius: "999px", padding: "9px 18px", fontSize: 13.5, fontWeight: 700, textTransform: "none" }}>
             {t("add_person")}

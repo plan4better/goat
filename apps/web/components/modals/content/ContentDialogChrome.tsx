@@ -172,6 +172,8 @@ interface DialogSearchFieldProps {
   placeholder: string;
   clearLabel: string;
   inputRef?: RefObject<HTMLInputElement | null>;
+  /** The field took focus — a tab may open its list of candidates on it. */
+  onFocus?: () => void;
 }
 
 /** The pill search field at the top of a Share tab: a soft band with a
@@ -182,6 +184,7 @@ export const DialogSearchField = ({
   placeholder,
   clearLabel,
   inputRef,
+  onFocus,
 }: DialogSearchFieldProps) => {
   const theme = useTheme();
 
@@ -204,6 +207,7 @@ export const DialogSearchField = ({
         placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onFocus={onFocus}
         endAdornment={
           value ? (
             <IconButton size="small" aria-label={clearLabel} onClick={() => onChange("")}>
