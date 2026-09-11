@@ -75,6 +75,18 @@ describe("templateSourceOf", () => {
     expect(templateSourceOf(template({ space_id: "s1", created_by: other }), spaces)).toBe("mine");
   });
 
+  it("reads a template in a space the caller is not in as shared with them", () => {
+    // Reached through a grant on it or on a folder above it — most often
+    // someone else's personal space, which must not read as "Mine".
+    expect(templateSourceOf(template({ space_id: "someone-elses", created_by: other }), spaces)).toBe(
+      "shared"
+    );
+    expect(templateShelfOf(template({ space_id: "someone-elses" }), spaces)).toEqual({
+      key: "shared",
+      source: "shared",
+    });
+  });
+
   it("reads a template by the kind of space it lives in", () => {
     expect(templateSourceOf(template({ space_id: "s2", created_by: other }), spaces)).toBe("team");
     expect(templateSourceOf(template({ space_id: "s4", created_by: other }), spaces)).toBe("team");
@@ -82,12 +94,12 @@ describe("templateSourceOf", () => {
     expect(templateSourceOf(template({ space_id: "s1", created_by: other }), spaces)).toBe("mine");
   });
 
-  it("falls back to Mine for a space the caller is not in", () => {
-    expect(templateSourceOf(template({ space_id: "s9" }), spaces)).toBe("mine");
+  it("never reads a space the caller is not in as Mine", () => {
+    expect(templateSourceOf(template({ space_id: "s9" }), spaces)).toBe("shared");
   });
 
-  it("orders the groups GOAT first, then the caller's own shelves", () => {
-    expect(TEMPLATE_SOURCE_ORDER).toEqual(["goat", "mine", "team", "org"]);
+  it("orders the groups GOAT first, then the caller's own shelves, then what was shared", () => {
+    expect(TEMPLATE_SOURCE_ORDER).toEqual(["goat", "mine", "team", "org", "shared"]);
   });
 });
 
@@ -143,6 +155,15 @@ describe("compareTemplateShelves", () => {
       "s4",
       "s3",
     ]);
+  });
+
+  it("stacks what others shared last, after the organization", () => {
+    const shelves = [
+      { key: "shared", source: "shared" as const },
+      { key: "s3", source: "org" as const, space: org },
+      { key: "mine", source: "mine" as const },
+    ];
+    expect([...shelves].sort(compareTemplateShelves).map((shelf) => shelf.key)).toEqual(["mine", "s3", "shared"]);
   });
 });
 

@@ -71,21 +71,24 @@ export const templateBrowserEmptyCopy = (
 };
 
 /** Which shelf a template sits on, as the browser groups and tags them.
- * Mirrors the four `source` filters `crud_template.list_templates` answers
- * (`goat|mine|team|org`), so a row's tag says the same thing the segment
- * that would return it does. */
-export type TemplateSourceKey = "goat" | "mine" | "team" | "org";
+ * The first four mirror the `source` filters `crud_template.list_templates`
+ * answers (`goat|mine|team|org`), so a row's tag says the same thing the
+ * segment that would return it does. `shared` is what "Everyone" adds on
+ * top: a template in a space the caller is not in, reached through a grant
+ * on it or on a folder above it. */
+export type TemplateSourceKey = "goat" | "mine" | "team" | "org" | "shared";
 
 /** The order the shelves are stacked in under the "Everyone" segment: the
- * GOAT shelf first, then the caller's own shelves widening outwards. */
-export const TEMPLATE_SOURCE_ORDER: TemplateSourceKey[] = ["goat", "mine", "team", "org"];
+ * GOAT shelf first, then the caller's own shelves widening outwards, then
+ * what others shared with them. */
+export const TEMPLATE_SOURCE_ORDER: TemplateSourceKey[] = ["goat", "mine", "team", "org", "shared"];
 
-/** One shelf in the browser's list. GOAT and Mine are one shelf each, while
- * every team and organization space is its own shelf — a caller in two teams
- * has two team shelves, each named after its own space. */
+/** One shelf in the browser's list. GOAT, Mine and Shared are one shelf
+ * each, while every team and organization space is its own shelf — a caller
+ * in two teams has two team shelves, each named after its own space. */
 export interface TemplateShelf {
-  /** Identity of the shelf: the source key for GOAT and Mine, the space id
-   * for a team or organization shelf. */
+  /** Identity of the shelf: the source key for GOAT, Mine and Shared, the
+   * space id for a team or organization shelf. */
   key: string;
   source: TemplateSourceKey;
   /** The space the shelf is, on team and organization shelves. */
@@ -101,16 +104,17 @@ export interface TemplateShelf {
  * (a published template in the caller's own space answers both `goat` and
  * `mine`), so a browser that groups rows takes the published shelf first.
  *
- * `spaces` are the caller's own spaces (`useSpaces`), and the list is scoped
- * to exactly those spaces plus the published ones, so every listed template
- * resolves. A template reached by id alone — `initialTemplateId` — can sit
- * in a space the caller is not in, and falls back to `mine`.
+ * `spaces` are the caller's own spaces (`useSpaces`). A template in a space
+ * that is not among them — most often someone else's personal space, reached
+ * through a shared folder — is `shared`: it is not the caller's, and the
+ * backend has no segment for it beyond "Everyone".
  */
 export const templateSourceOf = (template: TemplateRead, spaces: Space[]): TemplateSourceKey => {
   if (template.catalog_status === "published") return "goat";
   const space = spaces.find((entry) => entry.id === template.space_id);
-  if (space?.kind === "team") return "team";
-  if (space?.kind === "organization") return "org";
+  if (!space) return "shared";
+  if (space.kind === "team") return "team";
+  if (space.kind === "organization") return "org";
   return "mine";
 };
 
@@ -118,7 +122,7 @@ export const templateSourceOf = (template: TemplateRead, spaces: Space[]): Templ
  * space that source came from on a team or organization shelf. */
 export const templateShelfOf = (template: TemplateRead, spaces: Space[]): TemplateShelf => {
   const source = templateSourceOf(template, spaces);
-  if (source === "goat" || source === "mine") return { key: source, source };
+  if (source === "goat" || source === "mine" || source === "shared") return { key: source, source };
   const space = spaces.find((entry) => entry.id === template.space_id);
   return { key: space?.id ?? source, source, space };
 };
@@ -130,11 +134,12 @@ export const templateSourceLabel = (shelf: TemplateShelf, t: (key: string) => st
   if (shelf.space) return shelf.space.name;
   if (shelf.source === "goat") return t("source_goat");
   if (shelf.source === "mine") return t("source_mine");
+  if (shelf.source === "shared") return t("shared_with_me");
   return t(shelf.source === "team" ? "source_team" : "source_organization");
 };
 
 /** The order the shelves stack under "Everyone": GOAT, then Mine, then one
- * shelf per team by name, then the organization. */
+ * shelf per team by name, then the organization, then Shared with me. */
 export const compareTemplateShelves = (a: TemplateShelf, b: TemplateShelf): number =>
   TEMPLATE_SOURCE_ORDER.indexOf(a.source) - TEMPLATE_SOURCE_ORDER.indexOf(b.source) ||
   (a.space?.name ?? "").localeCompare(b.space?.name ?? "");
