@@ -46,6 +46,7 @@ from core.schemas.share import (
     LayerShareRoleEnum,
     ShareLayerSchema,
     ShareLayerWithTeamOrOrganizationSchema,
+    ShareWithUserSchema,
 )
 from core.schemas.template import (
     DatasetShareLine,
@@ -336,39 +337,62 @@ class CRUDTemplate:
         user_id: UUID,
     ) -> None:
         """Add a viewer grant on `layer_id` for `destination_space`'s own
-        team/organisation (T6), preserving every OTHER existing grant on
-        that family.
-
-        `crud_share.share_resource` prunes every row of a grantee family
-        (teams/organizations/users) that is present in its payload but not
-        named there — so a payload naming only the destination grantee would
-        silently delete every other team/org this layer was already shared
-        with. To avoid that, the existing grants for the affected family are
-        read first and carried forward unchanged; the destination grantee is
-        added only if it is not already there (never downgrading an existing
-        higher role for it — this call only ever wants "at least viewer").
-        A personal destination has no team/organisation to grant to and is a
-        no-op.
-        """
+        team/organisation (T6). A personal destination has no team/organisation
+        to grant to and is a no-op."""
         if destination_space.kind == SpaceKind.team:
-            grantee_id = destination_space.team_id
-            family = "teams"
+            grantee_type, grantee_id = "team", destination_space.team_id
         elif destination_space.kind == SpaceKind.organization:
-            grantee_id = destination_space.organization_id
-            family = "organizations"
+            grantee_type, grantee_id = "organization", destination_space.organization_id
         else:
             return
         if grantee_id is None:
             return
+        await self._add_viewer_grant_to(
+            db,
+            layer_id=layer_id,
+            grantee_type=grantee_type,
+            grantee_id=str(grantee_id),
+            user_id=user_id,
+        )
+
+    async def _add_viewer_grant_to(
+        self,
+        db: AsyncSession,
+        *,
+        layer_id: UUID,
+        grantee_type: str,
+        grantee_id: str,
+        user_id: UUID,
+    ) -> None:
+        """Add a viewer grant on `layer_id` for one grantee, preserving every
+        OTHER existing grant on that family.
+
+        `crud_share.share_resource` prunes every row of a grantee family
+        (teams/organizations/users) that is present in its payload but not
+        named there — so a payload naming only this grantee would silently
+        delete every other team/org/user this layer was already shared with.
+        The existing grants for the affected family are therefore read first
+        and carried forward unchanged; the grantee is added only if it is not
+        already there (never downgrading an existing higher role — this call
+        only ever wants "at least viewer").
+        """
+        family = {"team": "teams", "organization": "organizations", "user": "users"}[
+            grantee_type
+        ]
         existing = await crud_share.get_grants(
             db=db, resource_type="layer", resource_id=layer_id
         )
         items = list(getattr(existing, family) or [])
-        grantee_id_str = str(grantee_id)
-        if not any(item.id == grantee_id_str for item in items):
+        if any(item.id == grantee_id for item in items):
+            return
+        if family == "users":
+            items.append(
+                ShareWithUserSchema(id=grantee_id, role=LayerShareRoleEnum.layer_viewer)
+            )
+        else:
             items.append(
                 ShareLayerWithTeamOrOrganizationSchema(
-                    id=grantee_id_str, role=LayerShareRoleEnum.layer_viewer
+                    id=grantee_id, role=LayerShareRoleEnum.layer_viewer
                 )
             )
         shared_with = ShareLayerSchema(**{family: items})
@@ -379,6 +403,44 @@ class CRUDTemplate:
             shared_with=shared_with,
             granted_by=user_id,
         )
+
+    async def _share_shipped_datasets_with(
+        self,
+        db: AsyncSession,
+        *,
+        row: Template,
+        grantee_type: str,
+        grantee_id: str,
+        user_id: UUID,
+    ) -> None:
+        """Let a template's grantee read the datasets it ships.
+
+        A "ship" input is resolved on use only if the user may read that
+        layer, so a template shared without its datasets arrives as an empty
+        workflow. Saving into a team or organisation space already grants the
+        datasets to that space (T6); a grant on the template does the same for
+        its grantee. Catalog layers are readable by everyone, and a layer the
+        owner may not share is left alone — the template then resolves that
+        input as unbound for the grantee, exactly as before.
+        """
+        for raw in row.inputs or []:
+            i = TemplateInput(**raw)
+            if i.mode != "ship" or i.layer_id is None or i.from_catalog:
+                continue
+            layer = await db.get(Layer, i.layer_id)
+            if layer is None or layer.deleted_at is not None:
+                continue
+            if layer.catalog_external_uid is not None:
+                continue
+            if not await authz.can(db, "layer", i.layer_id, user_id, "share"):
+                continue
+            await self._add_viewer_grant_to(
+                db,
+                layer_id=i.layer_id,
+                grantee_type=grantee_type,
+                grantee_id=grantee_id,
+                user_id=user_id,
+            )
 
     async def _caller_spaces(
         self, db: AsyncSession, user_id: UUID
@@ -686,9 +748,31 @@ class CRUDTemplate:
         if not scoped_space_ids and not include_goat:
             return None
 
+        schema = settings.SCHEMA
+        # A template shared with the caller (T3) lives in someone else's space,
+        # so no space bucket reaches it; `all` takes it in through its grant —
+        # a direct user grant, or one to a team or the organisation the caller
+        # belongs to. `effective_role` still decides afterwards whether the
+        # grant actually confers read.
+        granted = (
+            f"""EXISTS (
+                SELECT 1 FROM {schema}.resource_grant rg
+                 WHERE rg.resource_type = 'template' AND rg.resource_id = t.id
+                   AND ((rg.grantee_type = 'user' AND rg.grantee_id = :user_id)
+                     OR (rg.grantee_type = 'team' AND rg.grantee_id IN (
+                            SELECT ut.team_id FROM {schema}.user_team ut
+                             WHERE ut.user_id = :user_id))
+                     OR (rg.grantee_type = 'organization' AND rg.grantee_id = (
+                            SELECT usr.organization_id FROM {schema}."user" usr
+                             WHERE usr.id = :user_id))))"""
+            if source == "all"
+            else "FALSE"
+        )
         conditions = [
             "t.deleted_at IS NULL",
-            "(t.space_id = ANY(:space_ids) OR (:include_goat AND t.catalog_status = 'published'))",
+            "(t.space_id = ANY(:space_ids)"
+            " OR (:include_goat AND t.catalog_status = 'published')"
+            f" OR {granted})",
         ]
         params: dict[str, Any] = {
             "space_ids": scoped_space_ids,
@@ -1541,6 +1625,15 @@ class CRUDTemplate:
                 },
             )
         ).one()
+        template_row = await db.get(Template, template_id)
+        if template_row is not None:
+            await self._share_shipped_datasets_with(
+                db,
+                row=template_row,
+                grantee_type=obj_in.grantee_type,
+                grantee_id=str(obj_in.grantee_id),
+                user_id=user_id,
+            )
         await db.commit()
         return TemplateGrantRead(
             id=row.id,
