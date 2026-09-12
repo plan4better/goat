@@ -39,6 +39,11 @@ _ORDER_COLUMNS: dict[str, str] = {
     "name": "i.name",
     "last_opened_at": "last_opened_at",
 }
+# Every view's ORDER BY ends in `i.type, i.id` in the same direction: a bulk
+# import leaves dozens of rows tied on `updated_at`/`created_at`, each page
+# is its own LIMIT/OFFSET query, and Postgres orders ties any way it likes
+# per query — without the tiebreak a tie group straddling a page boundary
+# repeats rows on the next page and drops others.
 _ORDER_DIRECTIONS: dict[str, str] = {
     "ascendent": "ASC",
     "descendent": "DESC",
@@ -300,7 +305,7 @@ WITH RECURSIVE scope AS (
        {_item_scope("cs.folder_id")}
 )
 {_ITEMS_TAIL.format(S=schema)}
- ORDER BY (i.type = 'folder') DESC, {order_col} {order_dir}
+ ORDER BY (i.type = 'folder') DESC, {order_col} {order_dir}, i.type {order_dir}, i.id {order_dir}
  LIMIT :size OFFSET :offset
 """
 
@@ -353,7 +358,7 @@ def _shared_with_me_view_sql(schema: str, order_col: str, order_dir: str) -> str
 WITH items AS ({_granted_items_cte(schema)})
 {_ITEMS_TAIL.format(S=schema)}
    AND {schema}.space_rank(i.space_id, :user_id) = 0
- ORDER BY {order_col} {order_dir}
+ ORDER BY {order_col} {order_dir}, i.type {order_dir}, i.id {order_dir}
  LIMIT :size OFFSET :offset
 """
 
@@ -363,7 +368,7 @@ def _shared_with_space_view_sql(schema: str, order_col: str, order_dir: str) -> 
 WITH items AS ({_granted_items_cte(schema)})
 {_ITEMS_TAIL.format(S=schema)}
    AND i.space_id IS DISTINCT FROM :space_id
- ORDER BY {order_col} {order_dir}
+ ORDER BY {order_col} {order_dir}, i.type {order_dir}, i.id {order_dir}
  LIMIT :size OFFSET :offset
 """
 
@@ -419,7 +424,7 @@ WITH items AS (
             OR t.catalog_status = 'published')
 )
 {_ITEMS_TAIL.format(S=schema)}
- ORDER BY {order_col} {order_dir}
+ ORDER BY {order_col} {order_dir}, i.type {order_dir}, i.id {order_dir}
  LIMIT :size OFFSET :offset
 """
 
