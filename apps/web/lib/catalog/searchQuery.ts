@@ -39,6 +39,12 @@ const toDatetimeInterval = (
  * omitting `sortby` asks for. In the menu so the pill matches what happens. */
 export const DEFAULT_SORT = "relevance";
 
+/** The metadata language ranked first, sent as `language_boost`. One value
+ * for everyone for now — the catalog's readers are German-speaking planners
+ * and most of its rows are German — to be read from the organization or the
+ * browser language once either is a reliable source. */
+export const CATALOG_LANGUAGE_BOOST = "de";
+
 export const buildSearchParams = (
   state: CatalogQueryState,
   {
@@ -84,6 +90,9 @@ export const buildSearchParams = (
     // and text relevance it gates behind `sortby` — but someone who asked for
     // "Title A-Z" did not ask for it to be reshuffled by where the map is.
     bbox_boost: viewport && !explicitSort ? viewport.join(",") : undefined,
+    // Ranks rows in the reader's language first, behind the viewport; the
+    // same explicit-sort rule switches it off.
+    language_boost: explicitSort ? undefined : CATALOG_LANGUAGE_BOOST,
     q: state.q ?? undefined,
     nuts: state.spatial?.kind === "region" ? state.spatial.nutsIds : undefined,
     intersects: geometry ? JSON.stringify(geometry) : undefined,

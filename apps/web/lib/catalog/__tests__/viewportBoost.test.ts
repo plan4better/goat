@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_SORT, buildSearchParams } from "@/lib/catalog/searchQuery";
+import { CATALOG_LANGUAGE_BOOST, DEFAULT_SORT, buildSearchParams } from "@/lib/catalog/searchQuery";
 
 /**
  * Opening the catalog from a project should surface the datasets around the
@@ -58,5 +58,16 @@ describe("buildSearchParams — viewport", () => {
     const params = buildSearchParams(state({ sortby: "title" }));
 
     expect(params.sortby).toBe("title,id");
+  });
+
+  it("asks for the reader's language first, on every surface", () => {
+    expect(buildSearchParams(state()).language_boost).toBe(CATALOG_LANGUAGE_BOOST);
+    expect(buildSearchParams(state(), { viewport: [11.36, 48.06, 11.72, 48.25] }).language_boost).toBe(
+      CATALOG_LANGUAGE_BOOST
+    );
+  });
+
+  it("drops the language boost under an explicit sort, like the viewport boost", () => {
+    expect(buildSearchParams(state({ sortby: "-updated" })).language_boost).toBeUndefined();
   });
 });
