@@ -1,7 +1,5 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Box, Divider, Stack, TextField, Typography } from "@mui/material";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Autocomplete, Box, Chip, FormControl, Stack, TextField, Typography, useTheme } from "@mui/material";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 import { mutate } from "swr";
@@ -12,111 +10,159 @@ import { type BundleDatasetMetadata, isBundleTile, updateBundle, useBundle } fro
 import { matchesContentListKey } from "@/lib/api/datasets";
 import { updateDataset } from "@/lib/api/layers";
 import { PROJECTS_API_BASE_URL, updateProject } from "@/lib/api/projects";
-import { BUNDLE_METADATA_KEYS, type BundleMetadata, bundleMetadataSchema } from "@/lib/validations/bundle";
+import { bundleMetadataSchema } from "@/lib/validations/bundle";
 import { layerMetadataSchema } from "@/lib/validations/layer";
 
 import type { ContentDialogBaseProps } from "@/types/dashboard/content";
+import type { SelectorItem } from "@/types/map/common";
 
 import { useContentMetadataHooks } from "@/hooks/map/ContentMetadataHooks";
 
+import MarkdownContentEditor from "@/components/builder/widgets/common/MarkdownContentEditor";
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
-import { RhfAutocompleteField } from "@/components/common/form-inputs/AutocompleteField";
+import FormLabelHelper from "@/components/common/FormLabelHelper";
+import Selector from "@/components/map/panels/common/Selector";
+import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
 
 interface MetadataDialogProps extends ContentDialogBaseProps {}
 
+/** A group heading inside the form: the same 12px secondary label as a field,
+ * set apart by the space above it. */
+const GroupLabel = ({ children }: { children: string }) => (
+  <Typography sx={{ fontSize: 12, fontWeight: 600, color: "text.secondary", pt: 2 }}>{children}</Typography>
+);
+
+/** The provenance a bundle states about its data, as the form holds it: every
+ * field a string, so an emptied one is simply "". */
+type Provenance = {
+  geographical_code: string;
+  data_reference_year: string;
+  lineage: string;
+  license: string;
+  attribution: string;
+  distributor_name: string;
+  distributor_email: string;
+  distribution_url: string;
+};
+
+const EMPTY_PROVENANCE: Provenance = {
+  geographical_code: "",
+  data_reference_year: "",
+  lineage: "",
+  license: "",
+  attribution: "",
+  distributor_name: "",
+  distributor_email: "",
+  distribution_url: "",
+};
+
+/** Trimmed, without blanks, and without a tag already present in another case. */
+const cleanTags = (raw: string[]): string[] => {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const entry of raw) {
+    const tag = entry.trim();
+    if (!tag || seen.has(tag.toLowerCase())) continue;
+    seen.add(tag.toLowerCase());
+    tags.push(tag);
+  }
+  return tags;
+};
+
 const Metadata: React.FC<MetadataDialogProps> = ({ open, onClose, content, type }) => {
   const { t } = useTranslation("common");
+  const theme = useTheme();
   const [isBusy, setIsBusy] = useState(false);
   // A layer, a project and a bundle all edit name and description here; only a
-  // bundle also states where its data came from, so the form is typed on the
-  // widest of the three and the provenance inputs render for bundles alone.
+  // bundle also states where its data came from, so the provenance inputs
+  // render for bundles alone.
   const isBundle = isBundleTile(content);
-  const {
-    handleSubmit,
-    register,
-    reset,
-    formState: { errors, isValid },
-    control,
-  } = useForm<BundleMetadata>({
-    mode: "onChange",
-    resolver: zodResolver(isBundle ? bundleMetadataSchema : layerMetadataSchema),
-    // The form is flat; a stored row carries the document. Spreading it over
-    // the top level seeds the inputs without the form knowing either shape.
-    defaultValues: {
-      ...content,
-      ...((content as { dataset_metadata?: Record<string, unknown> }).dataset_metadata ?? {}),
-    },
-  });
+  const tile = content as { name: string; description?: string | null; tags?: string[] | null };
+
+  const [name, setName] = useState(tile.name);
+  const [description, setDescription] = useState(tile.description ?? "");
+  const [tags, setTags] = useState<string[]>(tile.tags ?? []);
+  const [tagsFocused, setTagsFocused] = useState(false);
+  const [provenance, setProvenance] = useState<Provenance>(EMPTY_PROVENANCE);
+  const setField = (key: keyof Provenance) => (value: string) =>
+    setProvenance((current) => ({ ...current, [key]: value }));
 
   // Callers pass whatever they hold, and a content tile carries no provenance
   // (the grid listing omits it), so the authoritative row is fetched and the
-  // form re-seeded. Only the fields this form owns: resetting folder_id would
-  // make every save look like a folder move.
+  // form re-seeded.
   const { bundle } = useBundle(isBundle ? content.id : null);
   useEffect(() => {
     if (!bundle) return;
-    // The form is flat for both kinds; a bundle's provenance is stored as one
-    // document, so it is unpacked here and packed again on submit.
-    const provenance = bundle.dataset_metadata ?? {};
-    reset({
-      name: bundle.name,
-      description: bundle.description ?? undefined,
-      geographical_code: provenance.geographical_code ?? undefined,
-      data_reference_year: provenance.data_reference_year ?? undefined,
-      lineage: provenance.lineage ?? undefined,
-      license: (provenance.license ?? undefined) as BundleMetadata["license"],
-      attribution: provenance.attribution ?? undefined,
-      distributor_name: provenance.distributor_name ?? undefined,
-      distributor_email: provenance.distributor_email ?? undefined,
-      distribution_url: provenance.distribution_url ?? undefined,
+    const stored = bundle.dataset_metadata ?? {};
+    setName(bundle.name);
+    setDescription(bundle.description ?? "");
+    setProvenance({
+      geographical_code: stored.geographical_code ?? "",
+      data_reference_year: stored.data_reference_year != null ? String(stored.data_reference_year) : "",
+      lineage: stored.lineage ?? "",
+      license: stored.license ?? "",
+      attribution: stored.attribution ?? "",
+      distributor_name: stored.distributor_name ?? "",
+      distributor_email: stored.distributor_email ?? "",
+      distribution_url: stored.distribution_url ?? "",
     });
-  }, [bundle, reset]);
+  }, [bundle]);
 
   const { geographicalCodeOptions } = useContentMetadataHooks();
+  const regionItems = useMemo<SelectorItem[]>(
+    () =>
+      geographicalCodeOptions.map((option) => ({
+        value: option.value,
+        label: option.label,
+        iconNode: <span aria-hidden>{option.icon}</span>,
+      })),
+    [geographicalCodeOptions]
+  );
+  const regionItem = regionItems.find((item) => item.value === provenance.geographical_code);
 
-  const onSubmit = async (data: BundleMetadata) => {
+  /** The form as the API wants it: empty strings dropped, so the schema's
+   * optional fields (an email, a URL, a two-letter region) only get checked
+   * when something was actually typed. */
+  const values = useMemo(() => {
+    const identity = { name: name.trim(), description: description.trim() || undefined };
+    if (!isBundle) return { ...identity, tags };
+    const filled = Object.fromEntries(
+      Object.entries(provenance).filter(([, value]) => value.trim() !== "")
+    ) as Partial<Provenance>;
+    return { ...identity, ...filled };
+  }, [name, description, tags, provenance, isBundle]);
+
+  const valid = useMemo(
+    () => (isBundle ? bundleMetadataSchema : layerMetadataSchema).safeParse(values).success,
+    [values, isBundle]
+  );
+  const canSubmit = !!name.trim() && valid && !isBusy;
+
+  const onSubmit = async () => {
+    if (!canSubmit) return;
     try {
       setIsBusy(true);
-      const cleanedData = Object.fromEntries(
-        Object.entries(data).filter(([_, value]) => value !== null && value !== undefined && value !== "")
-      );
-      // Name and description are the row's own columns. Provenance is a bundle
-      // concept — an importer fills it from what the source states about itself
-      // — so only the bundle branch below sends it, as a document the API merges
-      // into what is stored rather than replacing.
-      // Every provenance field the form owns, with an emptied one sent as null:
-      // the API merges the document, so a key that is simply absent is a key
-      // that keeps its old value, and there would be no way to clear one.
-      const provenance = Object.fromEntries(
-        BUNDLE_METADATA_KEYS.filter((key) => key in data).map((key) => {
-          const value = (data as Record<string, unknown>)[key];
-          return [key, value === "" || value === undefined ? null : value];
-        })
-      );
-      const identity = {
-        ...(cleanedData.name !== undefined ? { name: cleanedData.name as string } : {}),
-        ...(cleanedData.description !== undefined ? { description: cleanedData.description as string } : {}),
-      };
+      const identity = { name: name.trim(), description: description.trim() };
       if (isBundle) {
+        // Every provenance field the form owns, with an emptied one sent as
+        // null: the API merges the document, so a key that is simply absent
+        // keeps its old value and there would be no way to clear one.
+        const document = Object.fromEntries(
+          Object.entries(provenance).map(([key, value]) => {
+            if (value.trim() === "") return [key, null];
+            return [key, key === "data_reference_year" ? Number(value) : value.trim()];
+          })
+        );
         await updateBundle(content.id, {
           ...identity,
-          dataset_metadata: provenance as BundleDatasetMetadata,
+          dataset_metadata: document as BundleDatasetMetadata,
         });
-        // The detail page reads a single bundle; the grids read the listing.
         mutate(matchesContentListKey);
       } else if (type === "layer") {
-        // A layer is its name, description and tags. Publishing one to the
-        // catalog will be its own job, not a set of metadata fields here.
-        await updateDataset(content.id, {
-          folder_id: content.folder_id,
-          ...identity,
-        });
+        await updateDataset(content.id, { folder_id: content.folder_id, ...identity, tags });
         mutate(matchesContentListKey);
       } else {
-        await updateProject(content.id, {
-          folder_id: content.folder_id,
-          ...cleanedData,
-        });
+        await updateProject(content.id, { folder_id: content.folder_id, ...identity, tags });
         mutate((key) => Array.isArray(key) && key[0] === PROJECTS_API_BASE_URL);
       }
       toast.success(t("metadata_updated_success"));
@@ -127,6 +173,7 @@ const Metadata: React.FC<MetadataDialogProps> = ({ open, onClose, content, type 
       onClose && onClose();
     }
   };
+
   return (
     <AppDialog
       open={open}
@@ -138,121 +185,141 @@ const Metadata: React.FC<MetadataDialogProps> = ({ open, onClose, content, type 
         <AppDialogFooter
           onCancel={onClose}
           primaryLabel={t("update")}
-          onPrimary={handleSubmit(onSubmit)}
-          primaryDisabled={!isValid}
+          onPrimary={() => void onSubmit()}
+          primaryDisabled={!canSubmit}
           primaryLoading={isBusy}
         />
       }>
-      <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ mt: 1, maxHeight: "500px" }}>
+      {/* TextFieldInput leaves its unfocused label colour to `inherit`, so the
+          box around the form is what sets the house secondary. */}
+      <Box sx={{ pt: 1, color: "text.secondary" }}>
         <Stack spacing={4}>
-          {type === "layer" && (
-            <>
-              <Divider />
-              <Box>
-                <Typography variant="body1" fontWeight="bold">
-                  {t("common:metadata.heading_titles.basic")}
-                </Typography>
-              </Box>
-              <Divider />
-            </>
+          <TextFieldInput
+            label={t("name")}
+            value={name}
+            onChange={setName}
+            autoFocus
+            disabled={isBusy}
+            inputProps={{ "aria-label": t("name") }}
+          />
+
+          {/* The description is markdown wherever it is shown, so it is
+              written in the markdown editor rather than a plain text area. */}
+          <FormControl size="small" fullWidth>
+            <FormLabelHelper label={t("description")} color={theme.palette.text.secondary} />
+            <MarkdownContentEditor
+              value={description}
+              onChange={setDescription}
+              minRows={4}
+              placeholder={t("description")}
+              ariaLabel={t("description")}
+              videoHint={false}
+            />
+          </FormControl>
+
+          {/* Free-text tags as chips, the same field the template dialog uses
+              for its categories. Enter or a blur commits what was typed. */}
+          {!isBundle && (
+            <FormControl size="small" fullWidth>
+              <FormLabelHelper
+                label={t("tags")}
+                color={tagsFocused ? theme.palette.primary.main : theme.palette.text.secondary}
+              />
+              <Autocomplete
+                freeSolo
+                multiple
+                autoSelect
+                filterSelectedOptions
+                disabled={isBusy}
+                size="small"
+                options={[] as string[]}
+                value={tags}
+                onChange={(_event, next) => setTags(cleanTags(next as string[]))}
+                onFocus={() => setTagsFocused(true)}
+                onBlur={() => setTagsFocused(false)}
+                renderTags={(value, getTagProps) =>
+                  value.map((tag, index) => {
+                    const { key, ...tagProps } = getTagProps({ index });
+                    return <Chip key={key} size="small" label={tag} {...tagProps} />;
+                  })
+                }
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder={tags.length === 0 ? t("add_tag") : ""}
+                    inputProps={{ ...params.inputProps, "aria-label": t("tags") }}
+                    sx={{
+                      "& .MuiAutocomplete-inputRoot": { minHeight: "40px", fontSize: "0.875rem" },
+                      "& input": { fontSize: "0.875rem" },
+                      "& input::placeholder": { fontSize: "0.875rem" },
+                    }}
+                  />
+                )}
+              />
+            </FormControl>
           )}
 
-          <TextField
-            fullWidth
-            label={t("name")}
-            {...register("name")}
-            error={!!errors.name}
-            helperText={errors.name?.message}
-          />
-          <TextField
-            fullWidth
-            multiline
-            rows={6}
-            label={t("description")}
-            {...register("description")}
-            error={!!errors.description}
-            helperText={errors.description?.message}
-          />
           {isBundle && (
             <>
-              <RhfAutocompleteField
-                options={geographicalCodeOptions}
-                control={control}
-                name="geographical_code"
-                label={t("common:metadata.headings.geographical_code")}
+              <GroupLabel>{t("metadata.heading_titles.data_quality")}</GroupLabel>
+              <Selector
+                label={t("metadata.headings.geographical_code")}
+                items={regionItems}
+                selectedItems={regionItem}
+                enableSearch
+                disabled={isBusy}
+                setSelectedItems={(items) => {
+                  const picked = Array.isArray(items) ? items[0] : items;
+                  setField("geographical_code")(picked ? String(picked.value) : "");
+                }}
               />
-              <TextField
-                fullWidth
-                label={t("common:metadata.headings.data_reference_year")}
+              <TextFieldInput
+                label={t("metadata.headings.data_reference_year")}
                 type="number"
-                {...register("data_reference_year", {
-                  setValueAs: (v) => (v === "" ? undefined : parseInt(v, 10)),
-                })}
-                error={!!errors.data_reference_year}
-                helperText={errors.data_reference_year?.message}
+                value={provenance.data_reference_year}
+                onChange={setField("data_reference_year")}
+                disabled={isBusy}
               />
-              <Divider />
-              <Box>
-                <Typography variant="body1" fontWeight="bold">
-                  {t("common:metadata.heading_titles.data_quality")}
-                </Typography>
-              </Box>
-              <Divider />
-              <TextField
-                fullWidth
+              <TextFieldInput
+                label={t("metadata.headings.lineage")}
+                value={provenance.lineage}
+                onChange={setField("lineage")}
                 multiline
-                rows={6}
-                label={t("common:metadata.headings.lineage")}
-                {...register("lineage")}
-                error={!!errors.lineage}
-                helperText={errors.lineage?.message}
+                rows={4}
+                disabled={isBusy}
               />
-              <Divider />
-              <Box>
-                <Typography variant="body1" fontWeight="bold">
-                  {t("common:metadata.heading_titles.distribution")}
-                </Typography>
-              </Box>
-              <Divider />
-              <TextField
-                fullWidth
-                label={t("common:metadata.headings.distributor_name")}
-                {...register("distributor_name")}
-                error={!!errors.distributor_name}
-                helperText={errors.distributor_name?.message}
+
+              <GroupLabel>{t("metadata.heading_titles.distribution")}</GroupLabel>
+              <TextFieldInput
+                label={t("metadata.headings.distributor_name")}
+                value={provenance.distributor_name}
+                onChange={setField("distributor_name")}
+                disabled={isBusy}
               />
-              <TextField
-                fullWidth
-                label={t("common:metadata.headings.distributor_email")}
-                {...register("distributor_email", {
-                  setValueAs: (v) => (!v ? undefined : v),
-                })}
-                error={!!errors.distributor_email}
-                helperText={errors.distributor_email?.message}
+              <TextFieldInput
+                label={t("metadata.headings.distributor_email")}
+                value={provenance.distributor_email}
+                onChange={setField("distributor_email")}
+                disabled={isBusy}
               />
-              <TextField
-                fullWidth
-                label={t("common:metadata.headings.distribution_url")}
-                {...register("distribution_url", {
-                  setValueAs: (v) => (!v ? undefined : v),
-                })}
-                error={!!errors.distribution_url}
-                helperText={errors.distribution_url?.message}
+              <TextFieldInput
+                label={t("metadata.headings.distribution_url")}
+                value={provenance.distribution_url}
+                onChange={setField("distribution_url")}
+                disabled={isBusy}
               />
-              <TextField
-                fullWidth
-                label={t("common:metadata.headings.license")}
+              <TextFieldInput
+                label={t("metadata.headings.license")}
+                value={provenance.license}
+                onChange={setField("license")}
                 placeholder="DL-DE-BY-2.0"
-                {...register("license")}
-                error={!!errors.license}
-                helperText={errors.license?.message}
+                disabled={isBusy}
               />
-              <TextField
-                fullWidth
-                label={t("common:metadata.headings.attribution")}
-                {...register("attribution")}
-                error={!!errors.attribution}
-                helperText={errors.attribution?.message}
+              <TextFieldInput
+                label={t("metadata.headings.attribution")}
+                value={provenance.attribution}
+                onChange={setField("attribution")}
+                disabled={isBusy}
               />
             </>
           )}

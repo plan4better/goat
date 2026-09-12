@@ -1462,7 +1462,7 @@
     }
   },
   "metadata_updated_error": "Error updating metadata",
-  "metadata_updated_success": "Metadata updated successfully",
+  "metadata_updated_success": "Metadata updated",
   "meters": "Meters",
   "metric": "Metric",
   "miles": "Miles",
@@ -3003,6 +3003,8 @@
   "view_only": "View only",
   "no_projects_yet": "You have no projects yet",
   "no_projects_yet_template": "You have no projects yet, so the template opens in a new one.",
+  "tags": "Tags",
+  "add_tag": "Add tag…",
   "template_inputs_from_project": "The layers offered are those of “{{project}}”. A slot left for later stays empty until you pick a layer in the workflow.",
   "template_inputs_new_project": "A new project has no layers yet, so every slot is left for later. Pick them in the workflow once your data is there.",
   "template_adds_to_project": "Adds “{{name}}” to the project “{{project}}” and opens it there.",

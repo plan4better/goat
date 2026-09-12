@@ -1539,8 +1539,8 @@
       "polygon": "Polygon"
     }
   },
-  "metadata_updated_error": "Fehler beim aktualisieren der Metadaten",
-  "metadata_updated_success": "Metadaten erfolgreich aktualisiert",
+  "metadata_updated_error": "Fehler beim Aktualisieren der Metadaten",
+  "metadata_updated_success": "Metadaten aktualisiert",
   "meters": "Meter",
   "metric": "Metrisch",
   "miles": "Meilen",
@@ -3003,6 +3003,8 @@
   "view_only": "Nur ansehen",
   "no_projects_yet": "Sie haben noch keine Projekte",
   "no_projects_yet_template": "Sie haben noch keine Projekte, daher wird die Vorlage in einem neuen Projekt geöffnet.",
+  "tags": "Tags",
+  "add_tag": "Tag hinzufügen…",
   "template_inputs_from_project": "Zur Auswahl stehen die Layer von „{{project}}“. Ein später zu entscheidender Platz bleibt leer, bis Sie im Workflow einen Layer wählen.",
   "template_inputs_new_project": "Ein neues Projekt hat noch keine Layer, daher bleiben alle Plätze offen. Wählen Sie sie im Workflow, sobald Ihre Daten dort sind.",
   "template_adds_to_project": "Fügt „{{name}}“ zum Projekt „{{project}}“ hinzu und öffnet es dort.",
