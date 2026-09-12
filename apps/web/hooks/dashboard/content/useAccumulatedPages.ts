@@ -67,19 +67,32 @@ export const useAccumulatedPages = (
     );
   }, [fetchedPage, requestedPage]);
 
-  const items = useMemo(
-    () =>
-      Object.keys(fetched.pages)
-        .map(Number)
-        .sort((a, b) => a - b)
-        .flatMap((number) => fetched.pages[number]),
-    [fetched]
-  );
+  // Pages are read one at a time, so a row that lands after an earlier page
+  // was read shifts every later page down by one and the next page fetched
+  // begins with a row already listed. Each row is listed once, at its first
+  // position, keyed on type and id — the feed can hand the same id back as
+  // two kinds only across views, never inside one collection.
+  const { items, fetchedCount } = useMemo(() => {
+    const rows = Object.keys(fetched.pages)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .flatMap((number) => fetched.pages[number]);
+    const seen = new Set<string>();
+    const unique = rows.filter((row) => {
+      const key = `${row.type}-${row.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return { items: unique, fetchedCount: rows.length };
+  }, [fetched]);
 
   return {
     items,
     total: fetched.total,
     loaded: items.length > 0 || !!fetchedPage,
-    hasMore: fetched.total > items.length,
+    // Counted over the rows as fetched, repeats included, so the pages read
+    // line up with the total the way the endpoint paged them.
+    hasMore: fetched.total > fetchedCount,
   };
 };

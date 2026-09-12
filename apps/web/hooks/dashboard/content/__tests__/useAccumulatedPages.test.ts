@@ -71,4 +71,17 @@ describe("useAccumulatedPages", () => {
     rerender({ fetched: page([item("a", { is_public: true })]) });
     expect(result.current.items[0].is_public).toBe(true);
   });
+
+  it("lists a row once when a later page shifted onto one already accumulated", () => {
+    // A dataset landing after page 1 was read pushes the feed down by one
+    // row, so the page 2 fetched afterwards begins with page 1's last row.
+    const { result, rerender } = renderHook(
+      ({ fetched, requested }: { fetched: ContentPage; requested: number }) =>
+        useAccumulatedPages(fetched, requested, "space-1"),
+      { initialProps: { fetched: page([item("a"), item("b")], 3), requested: 1 } }
+    );
+
+    rerender({ fetched: page([item("b"), item("c")], 4), requested: 2 });
+    expect(result.current.items.map((row) => row.id)).toEqual(["a", "b", "c"]);
+  });
 });
