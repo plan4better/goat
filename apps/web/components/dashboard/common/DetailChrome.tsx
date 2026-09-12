@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, Chip, Link as MuiLink, Stack, Tooltip, Typography, useTheme } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material";
 import { visuallyHidden } from "@mui/utils";
 import { useTranslation } from "react-i18next";
 
@@ -139,10 +140,14 @@ export const DetailTabs = <T extends string>({
   tabs,
   active,
   onChange,
+  sx,
 }: {
   tabs: DetailTab<T>[];
   active: T;
   onChange: (tab: T) => void;
+  /** Layout overrides for the bar itself — a pinned dialog header drops the
+   * space under the rule, since the body scrolls up to it. */
+  sx?: SxProps<Theme>;
 }) => {
   const theme = useTheme();
   const { i18n } = useTranslation();
@@ -153,7 +158,10 @@ export const DetailTabs = <T extends string>({
       direction="row"
       useFlexGap
       flexWrap="wrap"
-      sx={{ gap: 1, borderBottom: `1px solid ${theme.palette.divider}`, mb: 6 }}>
+      sx={[
+        { gap: 1, borderBottom: `1px solid ${theme.palette.divider}`, mb: 6 },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}>
       {tabs.map((tab) => {
         const selected = tab.id === active;
         return (

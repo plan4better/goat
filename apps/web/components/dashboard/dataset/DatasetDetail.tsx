@@ -17,8 +17,8 @@ import {
   DetailHeader,
   DetailTabs,
   KeywordSection,
-  LicenseNotices,
   LicenseBadge,
+  LicenseNotices,
   type MetaField,
   MetaSidebar,
 } from "@/components/dashboard/common/DetailChrome";
@@ -147,9 +147,7 @@ const DatasetDetail = ({ dataset, actions }: DatasetDetailProps) => {
       label: t("metadata.headings.data_category"),
       value: labels.conceptLabel(stringOf(catalogItem?.category)),
     },
-    (!!stringOf(catalogItem?.license) ||
-      !!stringOf(catalogItem?.attribution) ||
-      !!lineage) && {
+    (!!stringOf(catalogItem?.license) || !!stringOf(catalogItem?.attribution) || !!lineage) && {
       icon: ICON_NAME.LICENSE,
       label: t("metadata.headings.license"),
       value: (
@@ -190,18 +188,27 @@ const DatasetDetail = ({ dataset, actions }: DatasetDetailProps) => {
     },
   ];
 
+  // The dialog's paper is a flex column capped at the viewport: the header and
+  // tabs keep their place at the top and only the body under them scrolls, so
+  // the title, the actions and the close control never leave the screen.
+  const gutter = { xs: 4, md: 6 };
   return (
-    <>
-      <DetailHeader
-        size="compact"
-        title={dataset.name}
-        badge={{ label: t(typeLabelKey) }}
-        actions={actions}
-      />
+    <Box sx={{ display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 0 }}>
+      <Box sx={{ flex: "none", px: gutter, pt: gutter }}>
+        <DetailHeader
+          size="compact"
+          title={dataset.name}
+          badge={{ label: t(typeLabelKey) }}
+          actions={actions}
+        />
+        <DetailTabs<TabId> tabs={tabs} active={tab} onChange={setTab} sx={{ mb: 0 }} />
+      </Box>
 
-      <DetailTabs<TabId> tabs={tabs} active={tab} onChange={setTab} />
-
-      <Stack direction={{ xs: "column", md: "row" }} spacing={6} alignItems="flex-start">
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={6}
+        alignItems="flex-start"
+        sx={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", px: gutter, py: 6 }}>
         <Stack spacing={4} sx={{ flex: 1, minWidth: 0, alignSelf: "stretch" }}>
           {tab === "summary" && (
             <>
@@ -242,7 +249,7 @@ const DatasetDetail = ({ dataset, actions }: DatasetDetailProps) => {
 
         {tab === "summary" && <MetaSidebar fields={fields} flat />}
       </Stack>
-    </>
+    </Box>
   );
 };
 

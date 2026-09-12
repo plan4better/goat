@@ -50,8 +50,8 @@ const ContentPreviewDialog = ({ layerId, onClose, onShare, onMove }: ContentPrev
       // On the paper, which carries `role="dialog"`; the modal root would take
       // the label otherwise and leave the dialog itself unnamed.
       PaperProps={{ "aria-label": dataset?.name, sx: contentDialogPaperSx(1200, fullScreen) }}>
-      <DialogContent sx={{ p: { xs: 4, md: 6 } }}>
-        {isLoading && (
+      {isLoading && (
+        <DialogContent sx={{ p: { xs: 4, md: 6 } }}>
           <>
             {/* The header carries the close control once the dataset is there;
              * until then this is the only one. */}
@@ -62,37 +62,37 @@ const ContentPreviewDialog = ({ layerId, onClose, onShare, onMove }: ContentPrev
             </Stack>
             <Skeleton variant="rectangular" width="100%" height={400} />
           </>
-        )}
-        {!isLoading && dataset && (
-          <DatasetDetail
-            dataset={dataset}
-            actions={
-              <>
-                {onShare && (
-                  <Button
-                    variant="outlined"
-                    onClick={onShare}
-                    startIcon={<Icon iconName={ICON_NAME.SHARE} style={{ fontSize: 13 }} />}>
-                    {t("share")}
-                  </Button>
-                )}
-                {onMove && (
-                  <Button
-                    variant="outlined"
-                    onClick={onMove}
-                    startIcon={<Icon iconName={ICON_NAME.FOLDER} style={{ fontSize: 13 }} />}>
-                    {t("move_to")}
-                  </Button>
-                )}
-                {/* Last in the row, so it never sits over the buttons before it. */}
-                <IconButton size="small" onClick={onClose} aria-label={t("close")} sx={{ ml: 1 }}>
-                  <Icon iconName={ICON_NAME.CLOSE} fontSize="small" />
-                </IconButton>
-              </>
-            }
-          />
-        )}
-      </DialogContent>
+        </DialogContent>
+      )}
+      {!isLoading && dataset && (
+        <DatasetDetail
+          dataset={dataset}
+          actions={
+            <>
+              {onShare && (
+                <Button
+                  variant="outlined"
+                  onClick={onShare}
+                  startIcon={<Icon iconName={ICON_NAME.SHARE} style={{ fontSize: 13 }} />}>
+                  {t("share")}
+                </Button>
+              )}
+              {onMove && (
+                <Button
+                  variant="outlined"
+                  onClick={onMove}
+                  startIcon={<Icon iconName={ICON_NAME.FOLDER} style={{ fontSize: 13 }} />}>
+                  {t("move_to")}
+                </Button>
+              )}
+              {/* Last in the row, so it never sits over the buttons before it. */}
+              <IconButton size="small" onClick={onClose} aria-label={t("close")} sx={{ ml: 1 }}>
+                <Icon iconName={ICON_NAME.CLOSE} fontSize="small" />
+              </IconButton>
+            </>
+          }
+        />
+      )}
     </Dialog>
   );
 };
