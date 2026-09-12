@@ -61,16 +61,28 @@ Ein Zeitfenster für das Routing im öffentlichen Verkehr. Die Engine wertet **j
 Eine Verbindung gilt als innerhalb des Zeitfensters liegend, **ausschließlich basierend auf ihrer Startzeit** – unabhängig von ihrer Endzeit oder Gesamtdauer.
 
 
+:::note
+
+Bestimmte Indikatoren unterstützen möglicherweise nur eine **einzelne Abfahrts- oder Ankunftszeit** anstelle eines Zeitfensters. In diesem Fall wertet die Engine nur Verbindungen aus, die zu oder nach einer Abfahrtszeit beginnen oder zu oder vor einer Ankunftszeit enden.
+
+:::
+
+
 #### Maximale Umstiege
 
 Die maximale Anzahl an Umstiegen, die eine ÖV-Verbindung enthalten darf. Es werden maximal `5` Umstiege unterstützt.
 
 #### Zugang und Abgang
 
-Die **Zugangs-Etappe** (vom Ausgangsort zur ersten ÖV-Haltestelle) und die **Abgangs-Etappe** (von der letzten ÖV-Haltestelle zum Ziel) werden unabhängig voneinander konfiguriert. Für jede können Sie festlegen:
+Die **Zugangs-Etappe** (vom Ausgangsort zur ÖV-Haltestelle) und die **Abgangs-Etappe** (von der ÖV-Haltestelle zum Ziel) können unabhängig voneinander konfiguriert werden. Für jede werden derzeit die folgenden Optionen unterstützt.
 
-- **Verkehrsmittel** — wie Nutzer zu den Haltestellen und von diesen weg gelangen: `Zu Fuß`, `Fahrrad`, `Pedelec` oder `Auto`.
-- **Berechnen nach** — ob die Etappe durch `Zeit` oder `Entfernung` begrenzt wird, sowie das entsprechende **Limit**.
+| Tool | Verkehrsmittel | Berechnung nach | Limit |
+|------|----------------|-----------------|-------|
+| Einzugsgebiet | <code>Zu Fuß</code>, <code>Fahrrad</code>, <code>Pedelec</code>, <code>Auto</code> | <code>Zeit</code> oder <code>Entfernung</code> | Bis zum gesamten <code>Limit</code> |
+| Heatmaps | <code>Zu Fuß</code> | <code>Zeit</code> | 30 Minuten |
+| Huff-Modell | <code>Zu Fuß</code> | <code>Zeit</code> | 30 Minuten |
+| Reisekostenmatrix | <code>Zu Fuß</code>, <code>Fahrrad</code>, <code>Pedelec</code>, <code>Auto</code> | <code>Zeit</code> oder <code>Entfernung</code> | Bis zum gesamten <code>Limit</code> |
+
 - **Geschwindigkeit** — die für die Etappe verwendete Reisegeschwindigkeit (bei Berechnung nach `Zeit`).
 
 Standardmäßig verwenden die Zugangs- und die Abgangs-Etappe `Zu Fuß`, ein `Zeit`-Limit von `15 Min` und eine Geschwindigkeit von `5 km/h`.

@@ -8,7 +8,7 @@ import MathJax from 'react-mathjax';
 
 # Heatmap - Gravity
 
-Der Indikator Heatmap Gravity **erzeugt eine farbcodierte Karte zur Visualisierung der Erreichbarkeit von Punkten, wie z. B. POIs, aus umliegenden Gebieten**.
+Der Indikator Heatmap - Gravity **erzeugt eine farbcodierte Karte zur Visualisierung der Erreichbarkeit von Punkten (etwa Einrichtungen) oder Polygonen (etwa Parks) aus umliegenden Gebieten**.
 
 <div style={{ display: 'flex', justifyContent: 'center' }}>
 <iframe width="674" height="378" src="https://www.youtube.com/embed/WhMbwt5j-Jc?si=gM8F-3nu-lvUOnsq&amp;start=46" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
@@ -16,13 +16,13 @@ Der Indikator Heatmap Gravity **erzeugt eine farbcodierte Karte zur Visualisieru
 
 ## 1. Erklärung
 
-Die Heatmap Gravity zeigt ein **farbcodiertes hexagonales Raster, das die Erreichbarkeit von Zielen (Opportunities) basierend auf Reisezeit und Attraktivität der Ziele darstellt**. Die Erreichbarkeit wird mit realen Verkehrsnetzen und einer gravitationsbasierten Formel berechnet, die widerspiegelt, wie die Reisebereitschaft mit zunehmender Entfernung abnimmt.
+Die Heatmap Gravity zeigt ein **farbcodiertes hexagonales Raster, das die Erreichbarkeit von Zielen (Gelegenheiten) basierend auf Reisekosten (Zeit oder Entfernung) und Attraktivität der Ziele darstellt**. Die Erreichbarkeit wird mit realen Verkehrsnetzen und einer gravitationsbasierten Formel berechnet, die widerspiegelt, wie die Reisebereitschaft mit zunehmender Entfernung abnimmt.
 
-Sie können das **Verkehrsmittel**, den **Ziel-Layer**, das **Reisezeitlimit** sowie die **Sensitivität** und das **Destinationspotenzial** einstellen, um die Berechnung der Erreichbarkeit zu verfeinern.
+Sie können das **Verkehrsmittel**, den **Gelegenheits-Layer**, das **Reisekostenlimit** sowie die **Sensitivität** und das **Destinationspotenzial** einstellen, um die Berechnung der Erreichbarkeit zu verfeinern.
 
-- Der **Ziel-Layer enthält punktbasierte Ziel-Daten** (wie POIs, Haltestellen, Schulen, Einrichtungen oder benutzerdefinierte Punkte). Sie können mehrere Ziel-Layer auswählen, die zu einer einzigen Heatmap kombiniert werden.
+- Der **Gelegenheits-Layer enthält punktbasierte Zieldaten** (wie POIs, Haltestellen, Schulen, Einrichtungen oder benutzerdefinierte Punkte). Sie können mehrere Ziel-Layer auswählen, die zu einer einzigen Heatmap kombiniert werden.
 
-- Die **Sensitivität steuert, wie schnell die Erreichbarkeit mit zunehmender Reisezeit abnimmt**, während das **Destinationspotenzial es ermöglicht, Zielen mit höherer Kapazität oder Qualität mehr Gewicht zu geben** (z. B. ein größerer Supermarkt oder eine Haltestelle mit mehr Abfahrten). Zusammen mit der gewählten **Widerstandsfunktion definieren diese Einstellungen, wie die Erreichbarkeit berechnet wird**.
+- Die **Sensitivität steuert, wie schnell die Erreichbarkeit mit zunehmenden Reisekosten abnimmt**, während das **Destinationspotenzial es ermöglicht, Zielen mit höherer Kapazität oder Qualität mehr Gewicht zu geben** (z. B. ein größerer Supermarkt oder eine Haltestelle mit mehr Abfahrten). Zusammen mit der gewählten **Widerstandsfunktion definieren diese Einstellungen, wie die Erreichbarkeit berechnet wird**.
 
 - Der **Potenzialtyp** bestimmt, wie das Gewicht jedes Ziels abgeleitet wird: Mit **Constant** wird allen Zielen der gleiche Wert zugewiesen, oder mit **Field** wird ein numerisches Attribut aus dem Eingabe-Layer verwendet (z. B. Abfahrten, Sitzplätze oder Kapazität).
 
@@ -30,7 +30,11 @@ Sie können das **Verkehrsmittel**, den **Ziel-Layer**, das **Reisezeitlimit** s
 
 Beeinflusst durch all diese Eigenschaften kann **die Erreichbarkeit eines Punktes komplexes reales menschliches Verhalten modellieren** und ist ein leistungsfähiges Maß für Verkehrs- und Erreichbarkeitsplanung.
 
+:::tip
+
 **Wichtiger Unterschied:** Im Gegensatz zur *Heatmap Durchschnitt Reisezeit*, die den Reiseaufwand misst, zeigt die *Gravity-basierte Heatmap* die **Attraktivität** – also wie erreichbar und anziehend Ziele sind, wenn sowohl Entfernung als auch Qualität berücksichtigt werden.
+
+:::
 
 
 :::info
@@ -61,7 +65,7 @@ Die Heatmap-Berechnung ist für `Walk`, `Bicycle`, `Pedelec` und `Auto` in **üb
   <div class="content">Im Menü <code>Erreichbarkeitsindikatoren</code> klicken Sie auf <code>Heatmap Gravity</code>.</div>
 </div>
 
-### Routing
+### Routing & Konfiguration
 
 <div class="step">
   <div class="step-number">3</div>
@@ -71,12 +75,10 @@ Die Heatmap-Berechnung ist für `Walk`, `Bicycle`, `Pedelec` und `Auto` in **üb
 | Verkehrsmittel | Berücksichtigt |
 |----------------|----------------|
 | Zu Fuß | Alle zu Fuß begehbaren Wege |
-| Fahrrad | Alle mit dem Fahrrad befahrbaren Wege (Oberfläche, Glätte, Steigung) |
-| Pedelec | Alle mit dem Pedelec befahrbaren Wege (Oberfläche, Glätte) |
-| Auto | Alle mit dem Auto befahrbaren Wege (Tempolimits, Einbahnstraßen) |
-| Öffentlicher Verkehr | ÖV-Netz (GTFS-Fahrpläne) mit Zu-Fuß-Zugang und -Abgang (bis zu 30 Minuten) zu und von den Haltestellen |
-
-### Konfiguration
+| Fahrrad | Alle mit dem Fahrrad befahrbaren Wege (unter Berücksichtigung von Oberfläche und Steigung) |
+| Pedelec | Alle mit dem Pedelec befahrbaren Wege (unter Berücksichtigung von Oberfläche und Steigung) |
+| Auto | Alle mit dem Auto befahrbaren Wege (unter Berücksichtigung von Tempolimits und Einbahnstraßen) |
+| Öffentlicher Verkehr | Alle mit dem ÖV möglichen Fahrten (gemäß offiziellen GTFS-Fahrplänen), unter Berücksichtigung von Zu- und Abgang zu Fuß zu und von den Haltestellen |
 
 <div class="step">
   <div class="step-number">4</div>
@@ -117,16 +119,50 @@ Diese Funktion zählt jedes Ziel innerhalb des Reisezeitlimits gleich und wendet
 
 </Tabs>
 
-### Ziele
+<Tabs>
+<TabItem value="active-car" label="Zu Fuß / Fahrrad / Pedelec / Auto" default className="tabItemBox">
 
 <div class="step">
   <div class="step-number">5</div>
+  <div class="content">Wählen Sie im Menü <code>Berechnung nach</code>, ob die Reisekosten als Zeit (Minuten) oder als Entfernung (Meter) gemessen werden.</div>
+</div>
+
+</TabItem>
+
+<TabItem value="public transport" label="Öffentlicher Verkehr (ÖV)" className="tabItemBox">
+
+<div class="step">
+  <div class="step-number">5</div>
+  <div class="content">Wählen Sie die zu analysierenden <code>ÖV-Modi</code>: Bus, Straßenbahn, Bahn, U-Bahn, Fähre, Seilbahn, Gondel und/oder Standseilbahn. Wählen Sie anschließend <code>Tag</code> und <code>Ankunftszeit</code> für die Analyse. Berücksichtigt werden die besten ÖV-Fahrten, die die Gelegenheiten bis zu dieser Zeit erreichen.</div>
+</div>
+
+</TabItem>
+</Tabs>
+
+#### Erweiterte Optionen
+
+Optional können Sie <code>Erweiterte Optionen</code> aktivieren, um weitere Einstellungen für Routing und Heatmap-Erstellung vorzunehmen.
+
+<div class="step">
+  <div class="step-number">6</div>
+  <div class="content">Wählen Sie ein <code>Referenzgebiet</code> — einen Polygon-Layer, der Ihr Untersuchungsgebiet darstellt. Wenn festgelegt, erweitert sich die Heatmap auf alle H3-Zellen innerhalb dieses Polygons; nicht erreichbare Zellen erhalten den Wert <code>NULL</code> und zeigen so Versorgungslücken und unterversorgte Gebiete auf.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">7</div>
+  <div class="content">Konfigurieren Sie verschiedene Routing-Optionen für das gewählte Verkehrsmittel, etwa Reisegeschwindigkeit, maximale Anzahl an Umstiegen, Zu- und Abgangslimits und mehr. Weitere Informationen zu verkehrsmittelspezifischen Optionen finden Sie im Abschnitt <a href="/docs/category/routing">Routing</a>.</div>
+</div>
+
+### Gelegenheiten
+
+<div class="step">
+  <div class="step-number">8</div>
   <div class="content">Wählen Sie Ihren <code>Eingabe-Layer</code> aus dem Dropdown-Menü. Dies kann jeder zuvor erstellte Layer mit punktbasierten Daten sein.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">6</div>
-  <div class="content">Wählen Sie ein <code>Reisezeitlimit</code> für Ihre Heatmap. Dies wird im Kontext des zuvor gewählten <i>Verkehrsmittels</i> verwendet.</div>
+  <div class="step-number">9</div>
+  <div class="content">Geben Sie ein <code>Limit</code> für die Reisekosten Ihrer Heatmap ein. Dieses wird im Kontext des zuvor gewählten <i>Verkehrsmittels</i> verwendet.</div>
 </div>
 
 :::tip Hinweis
@@ -136,7 +172,7 @@ Benötigen Sie Hilfe bei der Wahl eines geeigneten Reisezeitlimits für verschie
 :::
 
 <div class="step">
-  <div class="step-number">7</div>
+  <div class="step-number">10</div>
   <div class="content">Wählen Sie den <code>Potenzialtyp</code>, um zu bestimmen, wie jedes Ziel gewichtet wird:
     <ul>
       <li><b>Constant</b> — alle Ziele erhalten das gleiche Gewicht. Geben Sie einen numerischen Wert ein (Standard: 1.0).</li>
@@ -146,7 +182,7 @@ Benötigen Sie Hilfe bei der Wahl eines geeigneten Reisezeitlimits für verschie
 </div>
 
 <div class="step">
-  <div class="step-number">8</div>
+  <div class="step-number">11</div>
   <div class="content">Geben Sie einen <code>Sensitivitätswert</code> an. Dieser muss numerisch sein und wird von der Heatmap-Funktion verwendet, um zu bestimmen, wie sich die Erreichbarkeit mit zunehmender Reisezeit verändert.</div>
 </div>
 
@@ -163,20 +199,15 @@ Eine visuelle Erklärung, wie die Sensitivität die Berechnung beeinflusst, find
 
 :::
 
-<div class="step">
-  <div class="step-number">9</div>
-  <div class="content">Optional können Sie unter <code>Erweiterte Optionen</code> ein <code>Referenzgebiet</code> auswählen — einen Polygon-Layer, der das vollständige Untersuchungsgebiet definiert. Wenn festgelegt, erweitert sich die Heatmap auf alle H3-Zellen innerhalb dieses Polygons; Zellen außerhalb der berechneten Erreichbarkeit werden als <code>NULL</code> dargestellt und zeigen so Versorgungslücken und unterversorgte Gebiete auf.</div>
-</div>
-
 ### Ergebnis-Layer
 
 <div class="step">
-  <div class="step-number">10</div>
+  <div class="step-number">12</div>
   <div class="content">Legen Sie den <code>Name der Ergebnislayer</code> für den Ausgabe-Heatmap-Layer fest.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">11</div>
+  <div class="step-number">13</div>
   <div class="content">Klicken Sie auf <code>Ausführen</code>, um die Berechnung der Heatmap zu starten.</div>
 </div>
 
@@ -208,6 +239,16 @@ Das folgende Beispiel zeigt, wie sich Änderungen in den Ziel-Einstellungen auf 
 Die hintere Karte ist ohne Destinationspotenzial berechnet. Die zweite Karte verwendet die gleichen Einstellungen, aber mit Destinationspotenzial basierend auf der Gesamtzahl der Abfahrten. Dadurch ändern sich die Erreichbarkeitswerte jeder Hexagonzelle und sie verteilen sich in einem breiteren Bereich, da der höchste Wert noch weiter steigt. **Höhere Erreichbarkeitswerte konzentrieren sich um die Haltestellen mit mehr Abfahrten (rote Punkte).**
 
 ## 4. Technische Details
+
+### Zellkosten
+
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+<img src={require('/img/toolbox/accessibility_indicators/heatmaps/shared/cell_cost_assignment.png').default} alt="Zuordnung der Zellkosten" style={{ maxHeight: "400px", maxWidth: "auto"}}/>
+</div>
+
+<p></p>
+
+Wenn mehrere Kanten (Straßen) des Straßennetzes eine sechseckige Zelle schneiden, werden die Kosten der Zelle als **Minimum aller Kantenkosten** innerhalb dieser Zelle berechnet. Für die gravitationsbasierte Heatmap wird dieser Kostenwert (dargestellt durch **tᵢⱼ**) anschließend gemäß der im folgenden Abschnitt beschriebenen Formel verwendet, um die Erreichbarkeit jeder Zelle zu bestimmen.
 
 ### Berechnung
 Der Erreichbarkeitswert für jede hexagonale Zelle wird mit einer **gravitationsbasierten Formel** berechnet, die schätzt, wie stark Ziele jeden Standort beeinflussen.

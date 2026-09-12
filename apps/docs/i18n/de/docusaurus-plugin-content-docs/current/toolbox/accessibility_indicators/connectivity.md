@@ -4,6 +4,8 @@ sidebar_position: 4
 ---
 
 import MathJax from 'react-mathjax';
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Heatmap - Konnektivität
 Der Heatmap - Konnektivität Indikator **erstellt eine farbkodierte Karte zur Visualisierung der Konnektivität von Orten innerhalb eines Interessengebiets** ([**AOI**](../../further_reading/glossary#area-of-interest-aoi "Was ist ein AOI?")).
@@ -42,7 +44,7 @@ Die Heatmap-Berechnung ist für `Walk`, `Bicycle`, `Pedelec` und `Auto` in **üb
   <div class="content">Unter dem <code>Erreichbarkeitsindikatoren</code> Menü klicken Sie auf <code>Heatmap Konnektivität</code>.</div>
 </div>
 
-### Routing 
+### Routing & Konfiguration
 
 <div class="step">
   <div class="step-number">3</div>
@@ -52,25 +54,59 @@ Die Heatmap-Berechnung ist für `Walk`, `Bicycle`, `Pedelec` und `Auto` in **üb
 | Verkehrsmittel | Berücksichtigt |
 |----------------|----------------|
 | Zu Fuß | Alle zu Fuß begehbaren Wege |
-| Fahrrad | Alle mit dem Fahrrad befahrbaren Wege (Oberfläche, Glätte, Steigung) |
-| Pedelec | Alle mit dem Pedelec befahrbaren Wege (Oberfläche, Glätte) |
-| Auto | Alle mit dem Auto befahrbaren Wege (Tempolimits, Einbahnstraßen) |
-| Öffentlicher Verkehr | ÖV-Netz (GTFS-Fahrpläne) mit Zu-Fuß-Zugang und -Abgang (bis zu 30 Minuten) zu und von den Haltestellen |
+| Fahrrad | Alle mit dem Fahrrad befahrbaren Wege (unter Berücksichtigung von Oberfläche und Steigung) |
+| Pedelec | Alle mit dem Pedelec befahrbaren Wege (unter Berücksichtigung von Oberfläche und Steigung) |
+| Auto | Alle mit dem Auto befahrbaren Wege (unter Berücksichtigung von Tempolimits und Einbahnstraßen) |
+| Öffentlicher Verkehr | Alle mit dem ÖV möglichen Fahrten (gemäß offiziellen GTFS-Fahrplänen), unter Berücksichtigung von Zu- und Abgang zu Fuß zu und von den Haltestellen |
+
+<Tabs>
+<TabItem value="active-car" label="Zu Fuß / Fahrrad / Pedelec / Auto" default className="tabItemBox">
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">
-  Wählen Sie ein <code>Reisezeitlimit</code> für Ihre Heatmap. Dies wird im Kontext des zuvor ausgewählten <code>Verkehrsmittels</code> verwendet.
-  </div>
+  <div class="content">Wählen Sie im Menü <code>Berechnung nach</code>, ob die Reisekosten als Zeit (Minuten) oder als Entfernung (Meter) gemessen werden.</div>
 </div>
+
+<div class="step">
+  <div class="step-number">5</div>
+  <div class="content">Geben Sie ein <code>Limit</code> in Minuten oder Metern für Ihre Heatmap ein. Dieses wird entsprechend dem zuvor gewählten Verkehrsmittel und der gewählten Maßeinheit verwendet.</div>
+</div>
+
+</TabItem>
+
+<TabItem value="public transport" label="Öffentlicher Verkehr (ÖV)" className="tabItemBox">
+
+<div class="step">
+  <div class="step-number">4</div>
+  <div class="content">Wählen Sie die zu analysierenden <code>ÖV-Modi</code>: Bus, Straßenbahn, Bahn, U-Bahn, Fähre, Seilbahn, Gondel und/oder Standseilbahn. Wählen Sie anschließend <code>Tag</code> und <code>Ankunftszeit</code> für die Analyse. Berücksichtigt werden die besten ÖV-Fahrten, die die Gelegenheiten bis zu dieser Zeit erreichen.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">5</div>
+  <div class="content">Geben Sie ein <code>Limit</code> in Minuten für Ihre Heatmap ein.</div>
+</div>
+
+</TabItem>
+</Tabs>
 
 :::tip Hinweis
 Benötigen Sie Hilfe bei der Auswahl eines geeigneten Reisezeitlimits für verschiedene gängige Einrichtungen? Das ["Standort-Werkzeug"](https://www.chemnitz.de/chemnitz/media/unsere-stadt/verkehr/verkehrsplanung/vep2040_standortwerkzeug.pdf) der Stadt Chemnitz kann hilfreiche Orientierung bieten.
 :::
 
 
+#### Erweiterte Optionen
+
+Optional können Sie <code>Erweiterte Optionen</code> aktivieren, um weitere Einstellungen für Routing und Heatmap-Erstellung vorzunehmen.
+
 <div class="step">
-  <div class="step-number">5</div>
+  <div class="step-number">6</div>
+  <div class="content">Konfigurieren Sie verschiedene Routing-Optionen für das gewählte Verkehrsmittel, etwa Reisegeschwindigkeit, maximale Anzahl an Umstiegen, Zu- und Abgangslimits und mehr. Weitere Informationen zu verkehrsmittelspezifischen Optionen finden Sie im Abschnitt <a href="/docs/category/routing">Routing</a>.</div>
+</div>
+
+### Referenzgebiet
+
+<div class="step">
+  <div class="step-number">7</div>
   <div class="content">Wählen Sie ein <code>Referenzgebiet</code> — einen Polygon-Layer, der Ihr Interessengebiet (AOI) definiert, für das die Heatmap berechnet werden soll.</div>
 </div>
 
@@ -78,16 +114,16 @@ Benötigen Sie Hilfe bei der Auswahl eines geeigneten Reisezeitlimits für versc
 ### Ergebnis-Layer
 
 <div class="step">
-  <div class="step-number">6</div>
+  <div class="step-number">8</div>
   <div class="content">Legen Sie den <code>Name der Ergebnislayer</code> für den Ausgabe-Heatmap-Layer fest.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">7</div>
+  <div class="step-number">9</div>
   <div class="content">Klicken Sie auf <code>Ausführen</code>, um die Berechnung der Heatmap zu beginnen.</div>
 </div>
 
-### Ergebnisse 
+### Ergebnisse
 
 Sobald die Berechnung abgeschlossen ist, wird ein Ergebnislayer zur Karte hinzugefügt. Dieser Heatmap Konnektivität Layer enthält Ihre farbkodierte Heatmap. **Durch Klicken auf eine der sechseckigen Zellen der Heatmap wird der berechnete Konnektivitätswert für diese Zelle angezeigt.**
 

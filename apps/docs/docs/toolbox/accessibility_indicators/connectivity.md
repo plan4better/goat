@@ -4,9 +4,11 @@ sidebar_position: 4
 ---
 
 import MathJax from 'react-mathjax';
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Heatmap - Connectivity
-The Heatmap - Connectivity indicator, **produces a color-coded map to visualize the connectivity of locations within an area of interest** ([**AOI**](../../further_reading/glossary#area-of-interest-aoi "What is an AOI?")).
+The Heatmap - Connectivity indicator **produces a color-coded map to visualize the connectivity of locations within an area of interest** ([**AOI**](../../further_reading/glossary#area-of-interest-aoi "What is an AOI?")).
 
 <div style={{ display: 'flex', justifyContent: 'center' }}>
 <iframe width="674" height="378" src="https://www.youtube.com/embed/PzWEIbcSf4Y?si=MB4LNSEkMmnzccuX" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
@@ -42,7 +44,7 @@ Heatmap computation is available across **over 30 European countries** for `Walk
   <div class="content">Under the <code>Accessibility Indicators</code> menu, click on <code>Heatmap Connectivity</code>.</div>
 </div>
 
-### Routing 
+### Routing & Configuration
 
 <div class="step">
   <div class="step-number">3</div>
@@ -52,42 +54,75 @@ Heatmap computation is available across **over 30 European countries** for `Walk
 | Mode | Considers |
 |------|-----------|
 | Walk | All paths accessible by foot |
-| Bicycle | All paths accessible by bicycle (surface, smoothness, slope) |
-| Pedelec | All paths accessible by pedelec (surface, smoothness) |
-| Car | All paths accessible by car (speed limits, one-way restrictions) |
-| Public Transport | Public transport network (GTFS schedules) with walking access and egress (up to 30 minutes) to and from stations |
+| Bicycle | All paths accessible by bicycle (taking into account surface and slope) |
+| Pedelec | All paths accessible by pedelec (taking into account surface and slope) |
+| Car | All paths accessible by car (taking into account speed limits and one-way restrictions) |
+| Public Transport | All journeys possible by public transport (according to official GTFS schedules), considering walking access and egress to and from stops |
+
+<Tabs>
+<TabItem value="active-car" label="Walk / Bicycle / Pedelec / Car" default className="tabItemBox">
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">
-  Choose a <code>Travel Time Limit</code> for your heatmap. This will be used in the context of your previously selected <code>Routing Type</code>.
-  </div>
+  <div class="content">In the <code>Calculate by</code> menu, choose either the Time (minutes) or Distance (metres) cost type.</div>
 </div>
+
+<div class="step">
+  <div class="step-number">5</div>
+  <div class="content">Enter a cost <code>Limit</code> in minutes or metres for your heatmap. This will be used according to your previously selected transport mode and cost type.</div>
+</div>
+
+</TabItem>
+
+<TabItem value="public transport" label="Public Transport (PT)" className="tabItemBox">
+
+<div class="step">
+  <div class="step-number">4</div>
+  <div class="content">Choose <code>PT modes</code> to analyze: Bus, Tram, Rail, Subway, Ferry, Cable Car, Gondola, and/or Funicular. Then, select the <code>Day</code> and <code>Arrival time</code> for the analysis. The best public transport journeys that reach the opportunities at or before this time will be considered.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">5</div>
+  <div class="content">Enter a cost <code>Limit</code> in minutes for your heatmap.</div>
+</div>
+
+</TabItem>
+</Tabs>
 
 :::tip Hint
 Need help choosing a suitable travel time limit for various common amenities? The ["Standort-Werkzeug"](https://www.chemnitz.de/chemnitz/media/unsere-stadt/verkehr/verkehrsplanung/vep2040_standortwerkzeug.pdf) of the City of Chemnitz can provide helpful guidance.
 :::
 
+#### Advanced options
 
-<div class="step">
-  <div class="step-number">5</div>
-  <div class="content">Select the <code>Reference Layer</code> (layer containing your AOI) <strong>for which you would like to calculate the heatmap</strong>. This can be any polygon feature layer.</div>
-</div>
-
-
-### Result Layer
+Optionally, enable <code>Advanced options</code> to configure additional settings for routing and heatmap generation.
 
 <div class="step">
   <div class="step-number">6</div>
+  <div class="content">Configure various routing options for your selected transport mode such as travel speed, max transfers, access/egress limits and more. Further information about mode-specific options can be found under the <a href="/docs/category/routing">Routing</a> section.</div>
+</div>
+
+### Reference layer
+
+<div class="step">
+  <div class="step-number">7</div>
+  <div class="content">Select the <code>Reference layer</code> (layer containing your area of interest) <strong>for which you would like to calculate the heatmap</strong>. This can be any polygon feature layer.</div>
+</div>
+
+
+### Result layer
+
+<div class="step">
+  <div class="step-number">8</div>
   <div class="content">Set the <code>Result layer name</code> for the output heatmap layer.</div>
 </div>
 
 <div class="step">
-  <div class="step-number">7</div>
+  <div class="step-number">9</div>
   <div class="content">Click <code>Run</code> to start the calculation of the heatmap.</div>
 </div>
 
-### Results 
+### Results
 
 Once the calculation is complete, a result layer will be added to the map. This Heatmap Connectivity layer will contain your color-coded heatmap. **Clicking on any of the heatmap's hexagonal cells will reveal the computed connectivity value for this cell.**
 
