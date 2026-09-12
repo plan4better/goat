@@ -35,8 +35,9 @@ const toDatetimeInterval = (
   return `${start}/${end}`;
 };
 
-/** What both the picker and the catalog page start at. */
-export const DEFAULT_SORT = "-updated";
+/** The one option never sent: it names the server's own order, which is what
+ * omitting `sortby` asks for. In the menu so the pill matches what happens. */
+export const DEFAULT_SORT = "relevance";
 
 export const buildSearchParams = (
   state: CatalogQueryState,

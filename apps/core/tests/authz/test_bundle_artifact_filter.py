@@ -20,7 +20,6 @@ from core.core.config import settings
 from core.db.models.folder import Folder
 from core.db.models.organization import Organization
 from core.db.models.user import User
-from core.db.seed_bundle_types import seed_bundle_types
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,7 +106,6 @@ async def test_the_filter_and_the_read_agree_on_readiness(
     org = await make_org()
     owner = await make_user(org.id)
     folder = await make_folder(owner, "Bundles")
-    await seed_bundle_types(db_session)
 
     ready = await _bundle_with_artifact(
         db_session,

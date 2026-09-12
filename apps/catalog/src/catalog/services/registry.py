@@ -38,6 +38,8 @@ schema). Everything else comes from the file.
 from dataclasses import dataclass
 from typing import Any
 
+from catalog.relevance import RELEVANCE_RANK_SQL, TOPIC_SCORE_FIELD
+
 _GEOJSON_GEOMETRY_SCHEMA = "https://geojson.org/schema/Geometry.json"
 
 #: Columns that must never be queryable, whatever the file contains.
@@ -180,6 +182,9 @@ _FIELD_DEFS: dict[str, _Seed] = {
     "goat:geographical_code": _Seed(
         "Country or region code", facetable=True, facet_name="geographical_code"
     ),
+    # Not facetable: a ranking input, not a filter a reader would pick from.
+    "goat:topicRelevance": _Seed("Plan4Better topic relevance tier"),
+    "goat:topicRelevanceScore": _Seed("Topic relevance as a score, higher first"),
     "year": _Seed("Calendar year of the data", json_type="integer", filter_param=True),
 }
 
@@ -206,6 +211,12 @@ class _Virtual:
 #: parameter but *not* via CQL2 or ``sortby`` -- everything else in the API
 #: supports all three. Expressing them here closes that gap.
 _VIRTUAL_FIELDS: dict[str, _Virtual] = {
+    # Makes the score sortable as `relevance` and CQL2-addressable.
+    "relevance": _Virtual(
+        expr=RELEVANCE_RANK_SQL,
+        json_type="integer",
+        requires=TOPIC_SCORE_FIELD,
+    ),
     # The year a row's data STARTS in -- not every year it covers. A single
     # expression cannot say "overlaps 2016" (that needs two comparisons), and
     # `datetime` already does say it: `?datetime=2016-01-01T00:00:00Z/

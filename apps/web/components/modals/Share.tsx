@@ -561,7 +561,11 @@ const ShareModal: React.FC<ShareProps> = ({ open, onClose, type, content }) => {
                 </>
               )}
               {item.value === "public" && type === "project" && (
-                <ShareWithPublicTab project={content as Project} />
+                // The panel drops its padding for the two edge-to-edge lists
+                // above; this tab is sections and controls, so it gets it back.
+                <Box sx={{ px: 3 }}>
+                  <ShareWithPublicTab project={content as Project} />
+                </Box>
               )}
             </CustomTabPanel>
           ))}

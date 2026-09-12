@@ -6,6 +6,7 @@ description = "GOAT Core"
 authors = [{ name = "Plan4Better GmbH", email = "dev@plan4better.de" }]
 dependencies = [
   "asyncpg==0.30.0",
+  "duckdb==1.5.4",
   "psycopg==3.2.3",
   "psycopg-binary==3.2.3",
   "shapely==2.0.6",

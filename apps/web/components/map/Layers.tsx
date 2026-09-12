@@ -341,47 +341,60 @@ const Layers = (props: LayersProps) => {
     [useDataLayers]
   );
 
-  // Imperatively reorder layers when the layer order changes (e.g., drag-and-drop).
+  // Imperatively reorder layers when the stack has to be re-sorted: a drag
+  // changes the order, and any edit to a layer (a rename, a style change)
+  // remounts its Source — the key below carries `updated_at` — which re-adds
+  // its MapLibre layers on top of everything whatever the tree says.
   const prevOrderRef = useRef<string>("");
   useEffect(() => {
     if (!mapRef || !useDataLayers || useDataLayers.length < 2) return;
 
-    const orderKey = useDataLayers.map((l) => l.id).join(",");
+    const orderKey = useDataLayers.map((l) => `${l.id}:${l.updated_at || ""}`).join(",");
     // On initial mount, just record the order (reversed rendering handles it)
     if (!prevOrderRef.current) {
       prevOrderRef.current = orderKey;
       return;
     }
-    // Skip if order hasn't changed
+    // Skip if neither the order nor any layer has changed
     if (orderKey === prevOrderRef.current) return;
     prevOrderRef.current = orderKey;
 
     const map = mapRef.getMap();
-    const styleLayers = map.getStyle()?.layers || [];
+    const reorder = () => {
+      const styleLayers = map.getStyle()?.layers || [];
 
-    // For each data layer, find all MapLibre layers sharing its source
-    const desiredTopToBottom: string[] = [];
-    for (const layer of useDataLayers) {
-      const mainLayerId = layer.id.toString();
-      const mainLayer = styleLayers.find((l) => l.id === mainLayerId);
-      if (!mainLayer || !("source" in mainLayer)) continue;
-      const sourceId = mainLayer.source;
-      // Collect all layers with this source (styleLayers is bottom-to-top, reverse for top-to-bottom)
-      const group = styleLayers
-        .filter((l) => "source" in l && l.source === sourceId)
-        .map((l) => l.id)
-        .reverse();
-      desiredTopToBottom.push(...group);
-    }
-
-    // Reorder by moving each layer before the previous one in the desired order
-    for (let i = 1; i < desiredTopToBottom.length; i++) {
-      try {
-        map.moveLayer(desiredTopToBottom[i], desiredTopToBottom[i - 1]);
-      } catch {
-        // Layer might not be on map yet
+      // For each data layer, find all MapLibre layers sharing its source
+      const desiredTopToBottom: string[] = [];
+      for (const layer of useDataLayers) {
+        const mainLayerId = layer.id.toString();
+        const mainLayer = styleLayers.find((l) => l.id === mainLayerId);
+        if (!mainLayer || !("source" in mainLayer)) continue;
+        const sourceId = mainLayer.source;
+        // Collect all layers with this source (styleLayers is bottom-to-top, reverse for top-to-bottom)
+        const group = styleLayers
+          .filter((l) => "source" in l && l.source === sourceId)
+          .map((l) => l.id)
+          .reverse();
+        desiredTopToBottom.push(...group);
       }
-    }
+
+      // Reorder by moving each layer before the previous one in the desired order
+      for (let i = 1; i < desiredTopToBottom.length; i++) {
+        try {
+          map.moveLayer(desiredTopToBottom[i], desiredTopToBottom[i - 1]);
+        } catch {
+          // Layer might not be on map yet
+        }
+      }
+    };
+
+    reorder();
+    // A remounted Source mounts its layers after this effect has run, so the
+    // pass above cannot see them yet; sort once more when the map settles.
+    map.once("idle", reorder);
+    return () => {
+      map.off("idle", reorder);
+    };
   }, [useDataLayers, mapRef]);
 
   // Apply basemap layer visibility and stacking for custom vector basemaps.

@@ -18,11 +18,11 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
-import { useBundles } from "@/lib/api/bundles";
-import { useProjectLayerGroups } from "@/lib/api/projects";
-
 import type { SelectorItem } from "@/types/map/common";
 import type { ProcessedInput } from "@/types/map/ogc-processes";
+
+import { useBundles } from "@/lib/api/bundles";
+import { useProjectLayerGroups } from "@/lib/api/projects";
 
 import Selector from "@/components/map/panels/common/Selector";
 
@@ -42,19 +42,32 @@ export default function BundleInput({ input, value, onChange, disabled }: Bundle
     artifactKind: opts.artifact_kind as string | undefined,
   });
 
-  // A bundle is in the project when one of its layer groups is backed by it.
+  // A bundle is in the project when one of its layer groups is backed by it —
+  // and that group is also what it is called here. The group starts out named
+  // after the bundle but can be renamed in the tree, so listing the bundle's
+  // own name would show one thing in the tree and another in this dropdown.
   const { layerGroups } = useProjectLayerGroups(useParams().projectId as string);
-  const inProject = useMemo(
-    () => new Set((layerGroups ?? []).map((group) => group.bundle_id).filter(Boolean)),
+  const groupNameByBundle = useMemo(
+    () =>
+      new Map(
+        (layerGroups ?? [])
+          .filter((group) => !!group.bundle_id)
+          .map((group) => [group.bundle_id as string, group.name])
+      ),
     [layerGroups]
   );
 
   const bundleItems: SelectorItem[] = useMemo(
     () =>
       (bundles ?? [])
-        .filter((bundle) => inProject.has(bundle.id))
-        .map((bundle) => ({ value: bundle.id, label: bundle.name })),
-    [bundles, inProject]
+        .filter((bundle) => groupNameByBundle.has(bundle.id))
+        .map((bundle) => ({
+          value: bundle.id,
+          // The bundle's own name as a fallback: a group with no name of its
+          // own would otherwise render as an unlabelled row.
+          label: groupNameByBundle.get(bundle.id) || bundle.name,
+        })),
+    [bundles, groupNameByBundle]
   );
 
   const selectedItem = useMemo(

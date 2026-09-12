@@ -57,12 +57,12 @@ WORKDIR /app
 
 RUN uv sync --frozen --no-dev --no-editable --package=geoapi
 
-# Bake DuckDB REPOSITORY extensions (spatial/httpfs/postgres/ducklake) into the
-# image so the runtime never fetches them from extensions.duckdb.org — removes
+# Bake DuckDB extensions (spatial/httpfs/postgres/ducklake + community h3) into the
+# image so the runtime never fetches them from the DuckDB repositories — removes
 # the egress/TLS dependency and speeds cold start. Needs ca-certificates+egress,
 # available only in this build stage.
 RUN apt-get update && apt-get install --no-install-recommends -y ca-certificates \
-    && python -c "import duckdb; from goatlib.storage.ducklake import REQUIRED_DUCKDB_EXTENSIONS as X; con=duckdb.connect(config={'extension_directory':'/opt/duckdb-extensions'}); [con.execute(f'INSTALL {e}') for e in X]" \
+    && python -c "import duckdb; from goatlib.storage.ducklake import REQUIRED_DUCKDB_EXTENSIONS as X, COMMUNITY_DUCKDB_EXTENSIONS as C; con=duckdb.connect(config={'extension_directory':'/opt/duckdb-extensions'}); [con.execute(f'INSTALL {e}') for e in X]; [con.execute(f'INSTALL {e} FROM community') for e in C]" \
     && rm -rf /var/lib/apt/lists/*
 
 # ==== STAGE 4: Webapp environment ====
@@ -82,12 +82,16 @@ COPY --from=python-base $UV_PYTHON_INSTALL_DIR $UV_PYTHON_INSTALL_DIR
 COPY --from=python-base $UV_PROJECT_ENVIRONMENT $UV_PROJECT_ENVIRONMENT
 COPY --from=python-base /app /app
 
-# DuckDB extensions baked at build time; goatlib loads them from here at runtime
-# (DUCKDB_EXTENSION_DIRECTORY), so no extension is ever downloaded.
-COPY --from=python-base /opt/duckdb-extensions /opt/duckdb-extensions
-ENV DUCKDB_EXTENSION_DIRECTORY=/opt/duckdb-extensions
+# DuckDB extensions baked at build time into DuckDB's default extension
+# directory ($HOME/.duckdb/extensions), so every connection finds them without
+# configuration and nothing is downloaded at runtime. HOME is pinned because a
+# runtime that overrides the user (runAsUser) would otherwise resolve it from
+# /etc/passwd and look elsewhere. World-readable for arbitrary UIDs.
+ENV HOME=/home/appuser
+COPY --from=python-base /opt/duckdb-extensions /home/appuser/.duckdb/extensions
+RUN chmod -R a+rX /home/appuser/.duckdb
 
-RUN chown -R appuser:appuser /app $UV_PROJECT_ENVIRONMENT $UV_PYTHON_INSTALL_DIR /opt/duckdb-extensions
+RUN chown -R appuser:appuser /app $UV_PROJECT_ENVIRONMENT $UV_PYTHON_INSTALL_DIR /home/appuser/.duckdb
 USER appuser
 
 WORKDIR /app

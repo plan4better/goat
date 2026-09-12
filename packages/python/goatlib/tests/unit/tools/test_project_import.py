@@ -52,6 +52,7 @@ class TestProjectImportRunner:
         settings = MagicMock()
         settings.customer_schema = "customer"
         settings.s3_bucket_name = "test-bucket"
+        settings.max_upload_dataset_file_size = 5 * 1024 * 1024 * 1024
         settings.s3_endpoint_url = "http://localhost:9000"
         settings.s3_provider = "minio"
         settings.s3_region_name = "us-east-1"
@@ -74,6 +75,7 @@ class TestProjectImportRunner:
         runner.settings = mock_settings
         runner._duckdb_con = MagicMock()
         runner._s3_client = MagicMock()
+        runner._s3_client.head_object.return_value = {"ContentLength": 1}
         return runner
 
     def test_validate_manifest_valid(self, runner: ProjectImportRunner) -> None:

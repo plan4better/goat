@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from goatlib.analysis.schemas.catchment_area_v2 import CostType as CostTypeV2
 from goatlib.analysis.schemas.catchment_area_v2 import RoutingMode as RoutingModeV2
+from goatlib.analysis.schemas.pt_network import PTNetworkOverride
 from goatlib.analysis.schemas.ui import (
     SECTION_CONFIGURATION,
     SECTION_DEMAND,
@@ -740,7 +741,7 @@ class HuffmodelParams(HeatmapCommon):
     )
 
 
-class HuffmodelV2Params(BaseModel):
+class HuffmodelV2Params(PTNetworkOverride):
     """Huff model on the v2 (on-the-fly routing) backend. Same model inputs as
     v1 Huff, but the OD matrix is computed live (no od_matrix_path), and routing
     mode/cost_type + PT params are exposed. Standalone (not HeatmapCommon) to

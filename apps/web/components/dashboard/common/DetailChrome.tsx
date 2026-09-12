@@ -1,6 +1,7 @@
 "use client";
 
-import { Box, Chip, Link as MuiLink, Stack, Typography, useTheme } from "@mui/material";
+import { Box, Chip, Link as MuiLink, Stack, Tooltip, Typography, useTheme } from "@mui/material";
+import { visuallyHidden } from "@mui/utils";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -233,6 +234,11 @@ export const SectionCard = ({
         boxShadow: surfaceShadows(theme).rest,
         p: pad,
         overflow: bleed ? "hidden" : undefined,
+        // Harvested metadata is arbitrary text: publisher names, keywords and
+        // URLs arrive with single tokens wider than the card, which the default
+        // `normal` will not break and so spills past the border. Inherited, so
+        // one declaration covers every panel body.
+        overflowWrap: "anywhere",
       }}>
       {title && (
         <Stack direction="row" alignItems="baseline" spacing={3} sx={{ mb: note ? 1.5 : 3.5 }}>
@@ -397,6 +403,79 @@ export const LicenseBadge = ({ license, href }: { license: string; href?: string
     <MuiLink href={target} target="_blank" rel="noreferrer noopener" underline="none" title={license}>
       {badge}
     </MuiLink>
+  );
+};
+
+/** Where the licence has no name: link its terms. */
+export const LicenseTerms = ({ href }: { href?: string }) => {
+  const { t } = useTranslation("common");
+  if (!href) return null;
+  return (
+    <MuiLink
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      variant="body2"
+      sx={{ overflowWrap: "anywhere" }}>
+      {t("catalog_license_terms_at_source")}
+    </MuiLink>
+  );
+};
+
+export const LicenseNotices = ({
+  attribution,
+  lineage,
+}: {
+  attribution?: string | null;
+  lineage?: string | null;
+}) => {
+  const { t } = useTranslation("common");
+  const theme = useTheme();
+  if (!attribution && !lineage) return null;
+  const notice = (heading: string, body: string) => (
+    <Box sx={{ "&:not(:first-of-type)": { mt: 0.5 } }}>
+      <Typography
+        component="span"
+        sx={{
+          display: "block",
+          fontSize: 9,
+          fontWeight: 700,
+          lineHeight: 1,
+          mb: 0.125,
+          letterSpacing: 0.5,
+          textTransform: "uppercase",
+          opacity: 0.7,
+        }}>
+        {heading}
+      </Typography>
+      {body}
+    </Box>
+  );
+  return (
+    <Tooltip
+      placement="top"
+      slotProps={{
+        tooltip: {
+          sx: { maxWidth: 320, whiteSpace: "pre-wrap", py: 0.25, px: 1, lineHeight: 1.25 },
+        },
+      }}
+      title={
+        <>
+          {attribution && notice(t("metadata.headings.attribution"), attribution)}
+          {lineage && notice(t("metadata.headings.lineage"), lineage)}
+        </>
+      }>
+      <Box component="span" tabIndex={0} sx={{ display: "inline-flex", cursor: "help" }}>
+        <Icon
+          iconName={ICON_NAME.CIRCLEINFO}
+          style={{ fontSize: 12 }}
+          htmlColor={theme.palette.text.secondary}
+        />
+        <Box component="span" sx={visuallyHidden}>
+          {t("metadata.headings.license")}
+        </Box>
+      </Box>
+    </Tooltip>
   );
 };
 

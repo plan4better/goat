@@ -20,7 +20,6 @@ from core.db.models._link_model import ResourceGrant
 from core.db.models.folder import Folder
 from core.db.models.organization import Organization
 from core.db.models.user import User
-from core.db.seed_bundle_types import seed_bundle_types
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,7 +62,6 @@ async def test_offboarded_creators_bundle_still_lists_without_an_owner(
     creator = await make_user(org.id)
     caller = await make_user(org.id)
     folder = await make_folder(creator, "Bundles")
-    await seed_bundle_types(db_session)
     bundle_id = UUID(
         str(
             (

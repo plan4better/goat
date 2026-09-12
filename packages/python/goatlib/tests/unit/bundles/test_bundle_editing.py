@@ -348,7 +348,7 @@ def _stub_build(monkeypatch, tmp_path):
         builds_from_layers = False
         produces = (BundleArtifactKind.street_network_graph,)
 
-        def build(self, *, source_path, workdir):
+        def build(self, *, source_path, workdir, **kwargs):
             return [
                 base.BuiltArtifact(
                     kind=BundleArtifactKind.street_network_graph,
@@ -442,7 +442,7 @@ async def test_the_revision_is_read_before_the_build_not_after(monkeypatch, tmp_
             builds_from_layers = builder.builds_from_layers
             produces = builder.produces
 
-            def build(self, *, source_path, workdir):
+            def build(self, *, source_path, workdir, **kwargs):
                 order.append("build")
                 return builder.build(source_path=source_path, workdir=workdir)
 
@@ -475,7 +475,7 @@ async def test_a_dying_builds_failure_carries_the_revision_it_started_from(
         builds_from_layers = False
         produces = ()
 
-        def build(self, *, source_path, workdir):
+        def build(self, *, source_path, workdir, **kwargs):
             raise RuntimeError("the builder died")
 
     monkeypatch.setattr(build_mixin, "get_artifact_builder", lambda t: _Exploding())

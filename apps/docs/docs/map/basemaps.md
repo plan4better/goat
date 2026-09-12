@@ -85,7 +85,24 @@ https://tile.openstreetmap.org/{z}/{x}/{y}.png
 ```
 
 :::info Tile usage policy
-OpenStreetMap's tile servers are intended for light use. For production or high-traffic projects, consider a hosted provider such as [MapTiler](#maptiler) which offers OSM-based styles with better reliability.
+OpenStreetMap's tile servers are intended for light use. For production or high-traffic projects, consider a hosted provider such as [OpenFreeMap](#openfreemap) or [MapTiler](#maptiler), which offer OSM-based styles with better reliability.
+:::
+
+---
+
+### OpenFreeMap
+
+OpenFreeMap serves free vector basemaps built from OpenStreetMap data — no account, no API key and no usage limit. Its tiles follow the same OpenMapTiles schema the commercial providers use, so styles are largely interchangeable between them. GOAT's own built-in vector basemaps are served from here.
+
+**Sample URL:**
+```
+https://tiles.openfreemap.org/styles/liberty
+```
+
+Available styles: `liberty`, `bright`, `positron`, `dark` and `fiord`.
+
+:::info No service guarantee
+OpenFreeMap is a donation-funded service with no uptime guarantee. Its tiles are served behind a CDN and cached, and the whole planet is published for self-hosting if you need to run it yourself.
 :::
 
 ---

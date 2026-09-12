@@ -67,6 +67,12 @@ class PTTimeWindow(BaseModel):
     """Time window for PT departure sweep."""
 
     weekday: Weekday = Weekday.weekday
+    # A real date, for a timetable the weekday anchors do not fall inside — an
+    # uploaded bundle's. Wins over `weekday` when set; see
+    # `goatlib.analysis.pt_time`.
+    on_date: str | None = Field(
+        default=None, description="Date to route on (YYYY-MM-DD)"
+    )
     from_time: int = Field(
         ..., description="Start time in seconds from midnight (e.g. 25200 = 07:00)"
     )

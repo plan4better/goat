@@ -27,7 +27,7 @@ page works with no credentials.
 """
 
 from typing import Annotated, Any, Literal
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Body, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
@@ -121,7 +121,27 @@ class JSONSchemaResponse(JSONResponse):
 
 
 def _base_url(request: Request) -> str:
-    return str(request.base_url).rstrip("/")
+    """This API's own origin, as the caller reached it.
+
+    ``request.base_url`` takes the host from the ``Host`` header but the scheme
+    from the connection, and TLS terminates at the ingress -- so behind one the
+    scheme is ``http`` while the browser is on ``https``. Every absolute href
+    this service emits runs through here, and an ``http`` asset href is fetched
+    from an ``https`` page as active mixed content, which the browser blocks.
+
+    ``X-Forwarded-Proto`` is the original scheme. It is read here rather than
+    left to the ASGI server's proxy handling, which trusts only ``127.0.0.1``
+    unless ``FORWARDED_ALLOW_IPS`` names the proxy, so the correct scheme does
+    not depend on how the container was launched. Only the first value counts
+    (each proxy appends), and only the two schemes this API is served over.
+    """
+    base = str(request.base_url).rstrip("/")
+    forwarded = (
+        request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    )
+    if forwarded in ("http", "https"):
+        return urlunsplit(urlsplit(base)._replace(scheme=forwarded))
+    return base
 
 
 def _stac_base(request: Request) -> str:

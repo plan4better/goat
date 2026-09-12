@@ -13,6 +13,7 @@ import {
 } from "@/lib/catalog/searchQuery";
 
 import { addCatalogLayersToProject, projectLayersKey } from "@/lib/api/projects";
+import { DEFAULT_SORT } from "@/lib/catalog/searchQuery";
 import type { CatalogSpatialFilter } from "@/lib/catalog/spatial";
 import type { CatalogAggregation, CatalogCollection } from "@/lib/validations/catalog";
 
@@ -122,7 +123,9 @@ export const useCatalogFlow = ({
   const queryState = useMemo(
     () => ({
       q,
-      sortby: "-updated",
+      // The server's own order, never sent — sending a sort switches every
+      // ranking signal off, the viewport boost included.
+      sortby: DEFAULT_SORT,
       // The accumulating fetch owns paging; this state only describes the query.
       page: 1,
       spatial,

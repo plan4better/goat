@@ -77,9 +77,10 @@ def test_topology_columns_carry_the_endpoint_connectors(flattened) -> None:
         assert left["target_node"] == right["source_node"]
 
 
-def test_nodes_mark_synthetic_connectors(flattened) -> None:
+def test_minted_nodes_are_named_after_where_they_were_minted(flattened) -> None:
+    """Their id is `{segment_id}@{linear_reference}`; nothing else needs saying."""
     _, nodes = flattened
-    assert sum(1 for n in nodes if n["is_synthetic"]) == 4
+    assert sum(1 for n in nodes if "@" in n["id"]) == 4
     assert all(n["coordinate"] is not None for n in nodes)
 
 
@@ -90,10 +91,10 @@ def test_surface_flattens_per_edge(flattened) -> None:
     """Frauenstraße changes surface at 0.5; each edge gets one value."""
     edges, _ = flattened
     assert [e["surface"] for e in _edges_of(edges, "seg-frauenstrasse")] == [
-        "sett",
-        "asphalt",
+        "paving_stones",
+        "paved",
     ]
-    assert all(e["surface"] == "asphalt" for e in _edges_of(edges, "seg-tal"))
+    assert all(e["surface"] == "paved" for e in _edges_of(edges, "seg-tal"))
 
 
 def test_road_flags_stay_whole_in_the_residual(flattened) -> None:
@@ -567,9 +568,7 @@ def test_unknown_fields_are_carried_rather_than_dropped() -> None:
 
 def test_residual_is_null_when_nothing_is_left_over() -> None:
     """An edge fully described by its columns shouldn't carry an empty blob."""
-    edge = flatten_segment(
-        _piece(road_surface=[{"value": "asphalt"}], speed_limits=None)
-    )
+    edge = flatten_segment(_piece(road_surface=[{"value": "paved"}], speed_limits=None))
     assert edge["other"] is None
 
 
@@ -581,10 +580,12 @@ def test_residual_is_json_serialisable(flattened) -> None:
 
 
 def test_flatten_connector_shape() -> None:
+    """Id and coordinate, and nothing else — `synthetic` is dropped, since the
+    id a minted connector was given already carries it."""
     node = flatten_connector(
         {"id": "c-a", "coordinate": (11.0, 48.0), "synthetic": True}
     )
-    assert node == {"id": "c-a", "coordinate": (11.0, 48.0), "is_synthetic": True}
+    assert node == {"id": "c-a", "coordinate": (11.0, 48.0)}
 
 
 # --- the one invariant this design depends on -----------------------------

@@ -3,15 +3,28 @@ import type { BuiltInBasemap } from "@/types/map/common";
 
 export type Basemap = BuiltInBasemap;
 
+/** An OpenFreeMap style, by name.
+ *
+ * OpenFreeMap serves the same OpenMapTiles 3.16 schema MapTiler Planet does,
+ * so a style swap needs no change to anything reading the tiles: the
+ * source-layer names and their `class`/`subclass` domains are identical, which
+ * is what `classifyBasemapLayers` and every basemap-layer override key off.
+ * The tiles, glyphs and sprite all come from this one host — behind the same
+ * CDN as MapTiler, with the tile paths versioned per planet run and cached
+ * immutably.
+ *
+ * Imagery stays on MapTiler: no free provider serves comparable resolution. */
+const OFM_STYLE_URL = (style: string): string => `https://tiles.openfreemap.org/styles/${style}`;
+
 export const BASEMAPS: BuiltInBasemap[] = [
   {
     source: "builtin",
     type: "vector",
     value: "streets",
-    url: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
+    url: OFM_STYLE_URL("liberty"),
     title: "High Fidelity",
     subtitle: "Great for public presentations",
-    thumbnail: `https://cloud.maptiler.com/static/img/maps/streets-v2.png`,
+    thumbnail: "/assets/images/basemaps/liberty.png",
   },
   {
     source: "builtin",
@@ -26,19 +39,19 @@ export const BASEMAPS: BuiltInBasemap[] = [
     source: "builtin",
     type: "vector",
     value: "light",
-    url: `https://api.maptiler.com/maps/dataviz-light/style.json?key=${MAPTILER_KEY}`,
+    url: OFM_STYLE_URL("positron"),
     title: "Light",
     subtitle: "For highlighting data overlays",
-    thumbnail: "https://media.maptiler.com/old/img/cloud/slider/streets-v2-light.png",
+    thumbnail: "/assets/images/basemaps/positron.png",
   },
   {
     source: "builtin",
     type: "vector",
     value: "dark",
-    url: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
+    url: OFM_STYLE_URL("dark"),
     title: "Dark",
     subtitle: "For highlighting data overlays",
-    thumbnail: "https://media.maptiler.com/old/img/cloud/slider/streets-v2-dark.png",
+    thumbnail: "/assets/images/basemaps/dark.png",
   },
   {
     source: "builtin",

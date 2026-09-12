@@ -7,14 +7,13 @@ layer, with a probability value per facility.
 """
 
 import logging
-from datetime import date, datetime, timedelta, timezone
-from datetime import time as time_of_day
 from pathlib import Path
 from typing import Any, Literal, Self
 
 from pydantic import ConfigDict, Field, model_validator
 
 from goatlib.analysis.accessibility.huff_model_v2 import HuffmodelV2Tool
+from goatlib.analysis.pt_time import pt_anchor_unix_minutes
 from goatlib.analysis.schemas.catchment_area import WEEKDAY_LABELS
 from goatlib.analysis.schemas.catchment_area_v2 import (
     CostType,
@@ -57,6 +56,11 @@ from goatlib.tools.heatmap_v2 import (
     SECTION_ROUTING_HM,
     HeatmapRoutingMode,
 )
+from goatlib.tools.pt_network import (
+    apply_pt_bundle_override,
+    pt_date_field,
+    pt_network_bundle_field,
+)
 from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
@@ -64,23 +68,6 @@ from goatlib.tools.schemas import (
 from goatlib.tools.style import get_heatmap_style
 
 logger = logging.getLogger(__name__)
-
-# PT arrival anchor: weekday-type → representative service date (UTC),
-# mirroring catchment/heatmap v2. The time-of-day picker adds the seconds.
-_PT_WEEKDAY_DATES: dict[str, date] = {
-    "weekday": date(2026, 6, 16),
-    "saturday": date(2026, 6, 20),
-    "sunday": date(2026, 6, 21),
-}
-
-
-def _pt_arrival_unix_minutes(pt_day: Weekday, seconds_of_day: int) -> int:
-    day = pt_day.value if hasattr(pt_day, "value") else str(pt_day)
-    anchor = _PT_WEEKDAY_DATES.get(day, _PT_WEEKDAY_DATES["weekday"])
-    dt = datetime.combine(anchor, time_of_day.min, tzinfo=timezone.utc) + timedelta(
-        seconds=seconds_of_day
-    )
-    return int(dt.timestamp() // 60)
 
 
 class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
@@ -134,12 +121,22 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
     max_transfers: int = Field(
         default=5, json_schema_extra=ui_field(section="configuration", hidden=True)
     )
-    # Resolved from street_network_bundle_id in process(); hidden so the
-    # inherited analysis-layer fields don't render as raw paths.
+    # Resolved from street_network_bundle_id and pt_network_bundle_id in
+    # process(); hidden so the inherited analysis-layer fields don't render as
+    # raw paths.
     edge_path: str | None = Field(
         None, json_schema_extra=ui_field(section="configuration", hidden=True)
     )
     node_path: str | None = Field(
+        None, json_schema_extra=ui_field(section="configuration", hidden=True)
+    )
+    timetable_path: str | None = Field(
+        None, json_schema_extra=ui_field(section="configuration", hidden=True)
+    )
+    access_table_path: str | None = Field(
+        None, json_schema_extra=ui_field(section="configuration", hidden=True)
+    )
+    egress_table_path: str | None = Field(
         None, json_schema_extra=ui_field(section="configuration", hidden=True)
     )
 
@@ -154,7 +151,8 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
             field_order=26,
             label_key="street_network_bundle_id",
             widget="bundle-selector",
-            # PT legs route on the global network, so this is for street modes.
+            # A PT run takes its network from pt_network_bundle_id below, so
+            # this selector is for street modes.
             visible_when={
                 "$and": [
                     {"routing_mode": {"$in": ["walking", "bicycle", "pedelec", "car"]}},
@@ -168,6 +166,8 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
             },
         ),
     )
+
+    pt_network_bundle_id: str | None = pt_network_bundle_field(27)
 
     # ---- Routing section --------------------------------------------------
     # Same enum + icons + labels as the other v2 tools, and required (no
@@ -242,9 +242,19 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
             field_order=3,
             label_key="weekday",
             enum_labels=WEEKDAY_LABELS,
-            visible_when={"routing_mode": "pt"},
+            # Only for the default network. Its three choices resolve to three
+            # fixed anchor dates, which exist in that network's timetable and
+            # almost certainly not in an uploaded feed's — so when a bundle is
+            # chosen, `pt_date` replaces this rather than sitting beside it.
+            visible_when={
+                "$and": [
+                    {"routing_mode": "pt"},
+                    {"pt_network_bundle_id": {"$exists": False}},
+                ]
+            },
         ),
     )
+    pt_date: str | None = pt_date_field(3)
     pt_arrival_time: int = Field(
         default=32400,  # 09:00
         ge=0,
@@ -632,8 +642,8 @@ class HuffModelV2ToolRunner(BaseToolRunner[HuffModelV2ToolParams]):
 
         arrival_time = None
         if params.routing_mode == HeatmapRoutingMode.pt:
-            arrival_time = _pt_arrival_unix_minutes(
-                params.pt_day, params.pt_arrival_time
+            arrival_time = pt_anchor_unix_minutes(
+                params.pt_day, params.pt_arrival_time, params.pt_date
             )
 
         # PT access/egress are walk-only (walk lookup table); the pt_* UI fields
@@ -664,6 +674,10 @@ class HuffModelV2ToolRunner(BaseToolRunner[HuffModelV2ToolParams]):
                     "street_network_bundle_id",
                     "edge_path",
                     "node_path",
+                    "pt_network_bundle_id",
+                    "timetable_path",
+                    "access_table_path",
+                    "egress_table_path",
                     "transit_modes",
                     "max_transfers",
                     "pt_modes",
@@ -704,6 +718,18 @@ class HuffModelV2ToolRunner(BaseToolRunner[HuffModelV2ToolParams]):
             )
             analysis_params.edge_path = edge_path
             analysis_params.node_path = node_path
+
+        # An uploaded PT bundle replaces the global network: its timetable and
+        # its stop-to-street linkage, in the analysis layer's mode spelling.
+        if params.routing_mode == HeatmapRoutingMode.pt and params.pt_network_bundle_id:
+            apply_pt_bundle_override(
+                self,
+                analysis_params,
+                params.pt_network_bundle_id,
+                temp_dir,
+                access_mode=analysis_params.access_mode.value,
+                egress_mode=analysis_params.egress_mode.value,
+            )
 
         tool = self.tool_class()
         try:

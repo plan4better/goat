@@ -99,7 +99,14 @@ const AttributionControl: React.FC<AttributionControlProps> = ({ customAttributi
     const sources = map?.getStyle()?.sources ?? {};
     const sourceAttributions: string[] = [];
     for (const id in sources) {
-      const a = (sources[id] as { attribution?: string }).attribution;
+      // The live source first, then the style's own spec. A source declared
+      // with a `url` carries its credit in the TileJSON, which MapLibre merges
+      // onto the source object but not into the style `getStyle()` serializes
+      // — that returns the spec as written. OpenFreeMap credits itself,
+      // OpenMapTiles and OpenStreetMap that way, so reading only the spec
+      // leaves an OSM-derived basemap with no attribution at all.
+      const live = (map?.getSource?.(id) as { attribution?: string } | undefined)?.attribution;
+      const a = live ?? (sources[id] as { attribution?: string }).attribution;
       if (a) sourceAttributions.push(a);
     }
     const custom = customAttribution ?? [goatAttribution(t("made_with_goat"))];

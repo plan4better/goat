@@ -17,7 +17,6 @@ from core.db.models.folder import Folder
 from core.db.models.layer import Layer
 from core.db.models.project import Project
 from core.db.models.user import User
-from core.db.seed_bundle_types import seed_bundle_types
 from core.endpoints.v2.bundle import (
     _authorize_bundle_read_or_project_reach,
     _bundle_reachable_via_project,
@@ -331,7 +330,6 @@ async def test_delete_layer_refuses_a_bundle_member(
             {"u": fixture_create_user, "s": space_id, "f": folder_id},
         )
     ).scalar_one()
-    await seed_bundle_types(db_session)
     bundle_id = (
         await db_session.execute(
             text(
@@ -519,7 +517,6 @@ async def test_trashed_bundle_unreachable_via_project_editor_fallback(
     project = await make_project(project_owner, project_folder)
     bundle_folder = await make_folder(project_owner)
     layer = await make_layer(project_owner, bundle_folder)
-    await seed_bundle_types(db_session)
     bundle_id = (
         await db_session.execute(
             text(
@@ -568,7 +565,7 @@ async def test_trashed_bundle_unreachable_via_project_editor_fallback(
 
     with pytest.raises(HTTPException) as exc2:
         await read_bundle_by_layer(
-            async_session=db_session, user_id=editor.id, layer_id=layer.id
+            async_session=db_session, user_id=editor.id, member_layer_id=layer.id
         )
     assert exc2.value.status_code == 404
 

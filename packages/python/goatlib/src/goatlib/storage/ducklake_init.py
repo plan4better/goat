@@ -27,6 +27,8 @@ import sys
 
 import duckdb
 
+from goatlib.storage.s3_config import apply_duckdb_s3_settings, duckdb_s3_endpoint
+
 # DuckDB extensions the DuckLake ATTACH needs loaded in the connection.
 # Matches BaseDuckLakeManager.REQUIRED_EXTENSIONS in ducklake.py — kept in
 # sync intentionally; if you change one, change both. We don't reach into
@@ -86,16 +88,13 @@ def bootstrap_from_env() -> None:
         con.execute(f"INSTALL {ext}; LOAD {ext};")
 
     if s3_endpoint:
-        s3_endpoint_clean = s3_endpoint.replace("http://", "").replace("https://", "")
-        print(f"  S3 endpoint: {s3_endpoint_clean}")
-        # Parameterised SET to avoid SQL-injection if creds contain quotes.
-        con.execute("SET s3_endpoint = ?;", [s3_endpoint_clean])
-        if s3_access_key:
-            con.execute("SET s3_access_key_id = ?;", [s3_access_key])
-        if s3_secret_key:
-            con.execute("SET s3_secret_access_key = ?;", [s3_secret_key])
-        con.execute("SET s3_url_style = 'path';")
-        con.execute("SET s3_use_ssl = false;")
+        print(f"  S3 endpoint: {duckdb_s3_endpoint(s3_endpoint)[0]}")
+        apply_duckdb_s3_settings(
+            con,
+            endpoint_url=s3_endpoint,
+            access_key=s3_access_key,
+            secret_key=s3_secret_key,
+        )
 
     pg_uri = (
         f"host={pg_host} port={pg_port} "

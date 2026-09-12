@@ -37,7 +37,8 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { useDataset, useDatasetCollectionItems } from "@/lib/api/layers";
 import { getExtent } from "@/lib/api/processes";
 import { useTempLayerFeatures } from "@/lib/api/workflows";
-import { GEOAPI_BASE_URL, MAPTILER_KEY } from "@/lib/constants";
+import { GEOAPI_BASE_URL } from "@/lib/constants";
+import { getBasemapUrl } from "@/lib/constants/basemaps";
 import { rgbToHex } from "@/lib/utils/helpers";
 import { getMapboxStyleColor } from "@/lib/transformers/layer";
 import { DrawProvider } from "@/lib/providers/DrawProvider";
@@ -858,7 +859,7 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
                       bounds: mapBounds,
                       fitBoundsOptions: { padding: 20 },
                     }}
-                    mapStyle={`https://api.maptiler.com/maps/dataviz-light/style.json?key=${MAPTILER_KEY}`}
+                    mapStyle={getBasemapUrl("light")}
                     dragRotate={false}
                     touchZoomRotate={false}
                     containerSx={{
@@ -881,7 +882,7 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
                     bounds: mapBounds,
                     fitBoundsOptions: { padding: 40 },
                   }}
-                  mapStyle={`https://api.maptiler.com/maps/dataviz-light/style.json?key=${MAPTILER_KEY}`}
+                  mapStyle={getBasemapUrl("light")}
                   dragRotate={false}
                   touchZoomRotate={false}
                   style={{ width: "100%", height: "100%" }}>

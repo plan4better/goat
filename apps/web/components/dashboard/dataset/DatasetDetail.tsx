@@ -17,6 +17,7 @@ import {
   DetailHeader,
   DetailTabs,
   KeywordSection,
+  LicenseNotices,
   LicenseBadge,
   type MetaField,
   MetaSidebar,
@@ -146,10 +147,19 @@ const DatasetDetail = ({ dataset, actions }: DatasetDetailProps) => {
       label: t("metadata.headings.data_category"),
       value: labels.conceptLabel(stringOf(catalogItem?.category)),
     },
-    !!stringOf(catalogItem?.license) && {
+    (!!stringOf(catalogItem?.license) ||
+      !!stringOf(catalogItem?.attribution) ||
+      !!lineage) && {
       icon: ICON_NAME.LICENSE,
       label: t("metadata.headings.license"),
-      value: <LicenseBadge license={stringOf(catalogItem?.license) as string} />,
+      value: (
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          {!!stringOf(catalogItem?.license) && (
+            <LicenseBadge license={stringOf(catalogItem?.license) as string} />
+          )}
+          <LicenseNotices attribution={stringOf(catalogItem?.attribution)} lineage={lineage} />
+        </Stack>
+      ),
     },
     {
       // The catalog says publisher where a layer says owner; both are shown, so

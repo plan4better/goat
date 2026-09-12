@@ -23,7 +23,6 @@ from core.db.models.layer import Layer
 from core.db.models.organization import Organization
 from core.db.models.project import Project
 from core.db.models.user import User
-from core.db.seed_bundle_types import seed_bundle_types
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,7 +80,6 @@ async def test_a_bundle_with_members_is_added_whatever_its_import_status(
     owner = await make_user(org.id)
     folder = await make_folder(owner, "Bundles")
     project = await make_project(owner, folder)
-    await seed_bundle_types(db_session)
     bundle_id = await _bundle(db_session, owner=owner, folder=folder)
     edges = await make_layer(owner, folder)
     db_session.add(
@@ -127,7 +125,6 @@ async def test_a_bundle_holding_nothing_is_refused(
     owner = await make_user(org.id)
     folder = await make_folder(owner, "Bundles")
     project = await make_project(owner, folder)
-    await seed_bundle_types(db_session)
     bundle_id = await _bundle(db_session, owner=owner, folder=folder)
     await db_session.commit()
 
@@ -164,7 +161,6 @@ async def test_a_bundle_left_failed_by_an_older_release_is_refused(
     owner = await make_user(org.id)
     folder = await make_folder(owner, "Bundles")
     project = await make_project(owner, folder)
-    await seed_bundle_types(db_session)
     bundle_id = UUID(
         str(
             (

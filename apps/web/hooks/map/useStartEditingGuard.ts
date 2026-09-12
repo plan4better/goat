@@ -8,9 +8,10 @@ import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 interface StartEditingPayload {
   layerId: string;
   geometryType: "point" | "line" | "polygon" | null;
-  /** layer_project id — the data panel follows the edit session to this layer
-   * (otherwise the panel guard would end the session immediately for targeting
-   * a different layer than the table), and for a table layer it is opened. */
+  /** layer_project id — the data panel follows the edit session to this layer,
+   * whether it is open or not: the panel ends any session whose layer is not
+   * the one it points at. For a table layer it is also opened, since the table
+   * is the only place that layer can be edited. */
   projectLayerId?: number;
 }
 
@@ -30,25 +31,28 @@ export const useStartEditingGuard = () => {
   const hasPendingEdits = useAppSelector(
     (state) => Object.keys(state.featureEditor.pendingFeatures).length > 0
   );
-  const isDataPanelOpen = useAppSelector((state) => state.map.isDataPanelOpen);
   const [pendingRequest, setPendingRequest] = useState<StartEditingPayload | null>(null);
 
   const beginEditing = useCallback(
     (payload: StartEditingPayload) => {
       dispatch(startEditing({ layerId: payload.layerId, geometryType: payload.geometryType }));
-      // A table layer has nothing on the map, so the data table is the editor:
-      // starting a session without it would leave the user editing a layer they
-      // cannot see. A geospatial layer is edited on the map, so its table is
-      // only kept in lockstep when it already happens to be open.
-      const isTableLayer = payload.geometryType === null;
-      if (payload.projectLayerId !== undefined && (isDataPanelOpen || isTableLayer)) {
+      // The data panel follows the session, open or not. It used to follow only
+      // while open, which left a closed panel pointing at whatever was last
+      // looked at — and the panel ends any session whose layer is not the one
+      // it is pointed at, so starting one from the tree on any other layer was
+      // undone the moment it began. Pointing a closed panel at the layer being
+      // edited costs nothing and is what it should show when it opens.
+      if (payload.projectLayerId !== undefined) {
         dispatch(setDataPanelLayerId(payload.projectLayerId));
       }
-      if (isTableLayer) {
+      // A table layer has nothing on the map, so the data table *is* the
+      // editor: starting a session without it would leave the user editing a
+      // layer they cannot see.
+      if (payload.geometryType === null) {
         dispatch(setIsDataPanelOpen(true));
       }
     },
-    [dispatch, isDataPanelOpen]
+    [dispatch]
   );
 
   const requestStartEditing = useCallback(

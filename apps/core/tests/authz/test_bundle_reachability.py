@@ -16,7 +16,6 @@ from core.db.models.folder import Folder
 from core.db.models.layer import Layer
 from core.db.models.project import Project
 from core.db.models.user import User
-from core.db.seed_bundle_types import seed_bundle_types
 from core.endpoints.v2.bundle import _bundle_reachable_via_project
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +30,6 @@ async def _make_bundle_with_member_layer(
     layer: Layer,
 ) -> UUID:
     """A bundle owned by `owner`, with `layer` as its one member."""
-    await seed_bundle_types(db_session)
     bundle_id = (
         await db_session.execute(
             text(

@@ -77,6 +77,27 @@ describe("AttributionControl", () => {
     expect(screen.queryByText(/Project basemap/)).not.toBeInTheDocument();
   });
 
+  it("credits a source whose attribution arrives with its TileJSON", () => {
+    // A source declared with a `url` — every OpenFreeMap style, and BKG's world
+    // style — has no attribution in the style document: MapLibre merges the
+    // TileJSON's credit onto the live source and `getStyle()` serializes the
+    // spec as written. Reading only the spec left an OSM-derived basemap
+    // rendering with no attribution at all, which the ODbL requires.
+    const tileJsonMap = {
+      getStyle: () => ({ sources: { openmaptiles: { type: "vector", url: "https://tiles.example/planet" } } }),
+      getSource: (id: string) =>
+        id === "openmaptiles"
+          ? { attribution: "<a href='https://openfreemap.org'>OpenFreeMap</a> © OpenMapTiles Data from OpenStreetMap" }
+          : undefined,
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    mapContext = { map: tileJsonMap };
+    render(<AttributionControl />);
+    expect(screen.getByText(/OpenFreeMap/)).toBeInTheDocument();
+    expect(screen.getByText(/OpenStreetMap/)).toBeInTheDocument();
+  });
+
   it("shows a 'more' link on overflow that opens the attributions modal", () => {
     const { container } = render(<AttributionControl />);
     const textEl = container.querySelector("[data-testid='attribution-text']") as HTMLElement;

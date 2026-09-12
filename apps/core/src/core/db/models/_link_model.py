@@ -47,6 +47,8 @@ class LayerProjectLink(DateTimeBase, table=True):
         sa_column=Column(
             UUID_PG(as_uuid=True),
             ForeignKey(f"{settings.SCHEMA}.project.id", ondelete="CASCADE"),
+            # Every read and reorder of a project's tree filters on it.
+            index=True,
         ),
         description="Project ID",
     )
@@ -110,6 +112,7 @@ class LayerProjectGroup(DateTimeBase, table=True):
             UUID_PG(as_uuid=True),
             ForeignKey(f"{settings.SCHEMA}.project.id", ondelete="CASCADE"),
             nullable=False,
+            index=True,
         )
     )
 
@@ -526,6 +529,18 @@ class BundleDependencyLink(SQLModel, table=True):
     dependency_kind: str = Field(
         sa_column=Column(Text, nullable=False),
         description="Dependency slot (a spec dependency kind, e.g. 'street_network')",
+    )
+    built_revision: Optional[int] = Field(
+        default=None,
+        sa_column=Column(Integer, nullable=True),
+        description=(
+            "The dependency's layers_revision at the time this bundle's "
+            "artifacts were last built from it. Compared with that bundle's "
+            "current layers_revision to derive whether they are still current; "
+            "null means linked but never built from — which is what a fresh "
+            "link is, so re-pointing a bundle at another one invalidates on "
+            "its own"
+        ),
     )
 
     # Two FKs to bundle -> relationships must name their foreign key.

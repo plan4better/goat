@@ -3,6 +3,7 @@
 
 #include "../output/sql_export.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <duckdb.hpp>
 #include <filesystem>
@@ -331,6 +332,16 @@ namespace routing::data
                 auto rid_target_x = target_x_vec.sel->get_index(i);
                 auto rid_target_y = target_y_vec.sel->get_index(i);
 
+                // An unmeasurable edge is dropped rather than loaded: every
+                // cost derived from a non-finite length is non-finite too, and
+                // NaN never compares true, so such an edge cannot be traversed
+                // anyway — it would only spread NaN through the graph.
+                if (!length_m_vec.validity.RowIsValid(rid_length_m) ||
+                    !length_3857_vec.validity.RowIsValid(rid_length_3857) ||
+                    !std::isfinite(length_m_data[rid_length_m]) ||
+                    !std::isfinite(length_3857_data[rid_length_3857]))
+                    continue;
+
                 Edge e;
                 e.id = id_data[rid_id];
                 e.source = source_data[rid_source];
@@ -367,9 +378,18 @@ namespace routing::data
                         for (auto &pt_val : coord_list)
                         {
                             auto &pt = duckdb::ListValue::GetChildren(pt_val);
-                            if (pt.size() >= 2)
-                                e.geometry.push_back({pt[0].GetValue<double>(),
-                                                      pt[1].GetValue<double>()});
+                            if (pt.size() < 2 || pt[0].IsNull() || pt[1].IsNull())
+                                continue;
+                            // A single unusable vertex must not fail every
+                            // route on the network. GetValue on a NULL raises
+                            // a DuckDB internal error naming neither the edge
+                            // nor the column, and non-finite ordinates poison
+                            // every cost computed from the geometry.
+                            auto const x = pt[0].GetValue<double>();
+                            auto const y = pt[1].GetValue<double>();
+                            if (!std::isfinite(x) || !std::isfinite(y))
+                                continue;
+                            e.geometry.push_back({x, y});
                         }
                     }
                 }

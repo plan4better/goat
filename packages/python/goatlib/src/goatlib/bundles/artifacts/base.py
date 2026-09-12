@@ -8,14 +8,15 @@ runner stores them (S3 + ``bundle_artifact`` rows). Builders never touch the DB.
 """
 
 from abc import ABC
-from typing import Dict, List, Protocol, Tuple
+from typing import Any, Dict, List, Protocol, Tuple
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from goatlib.models.bundle import (
     BundleArtifactKind,
     BundleArtifactState,
     BundleTypeName,
+    get_spec,
 )
 
 
@@ -31,49 +32,7 @@ class ArtifactSource(Protocol):
         self, bundle_id: str, kind: str
     ) -> Tuple[str | None, BundleArtifactState | None]: ...
 
-
-def require_ready_artifact(
-    source: ArtifactSource,
-    bundle_id: str,
-    kind: "BundleArtifactKind | str",
-    noun: str,
-) -> str:
-    """The stored path of a bundle's artifact, or a refusal that says why not.
-
-    Every consumer of every artifact kind needs the same four sentences, and
-    what differs between them is one noun — so the mapping lives here once
-    rather than being copied per kind with the noun changed. ``noun`` names
-    what the user chose ("street network", "public-transport network"), not the
-    artifact: the person who picked a bundle in a dropdown has no idea an
-    artifact exists.
-
-    The state is what makes the refusals distinguishable. "Being updated after
-    an edit", "still being prepared" and "the last update failed" call for
-    three different things from a user — wait, wait, or press Update — and
-    ``None`` (no build has ever been attempted) is a fourth. Collapsing them
-    into "not available" would leave someone waiting on a build that is not
-    running.
-    """
-    path, state = source.resolve_bundle_artifact(
-        bundle_id, getattr(kind, "value", kind)
-    )
-    if path:
-        return path
-    refusal = {
-        BundleArtifactState.outdated: (
-            f"This {noun} is being updated. Try again once the update finishes."
-        ),
-        BundleArtifactState.building: (
-            f"This {noun} is still being prepared. Try again shortly."
-        ),
-        BundleArtifactState.failed: (
-            f"This {noun}'s last update failed. Update it from the bundle "
-            "before using it."
-        ),
-    }
-    raise ValueError(
-        refusal.get(state, f"The selected {noun} is not ready to route on yet.")
-    )
+    def resolve_bundle_dependency(self, bundle_id: str, kind: str) -> str | None: ...
 
 
 class ArtifactBuilderUnavailableError(Exception):
@@ -82,12 +41,46 @@ class ArtifactBuilderUnavailableError(Exception):
     binding yet). The import still completes; the artifact is skipped."""
 
 
+class ArtifactBuildFailedError(Exception):
+    """One or more of a bundle type's artifacts could not be built.
+
+    Raised after every artifact's outcome has been recorded, so the bundle says
+    which kind failed and why — and then the job fails. A bundle missing an
+    artifact its type declares is not a usable bundle: the tools that need it
+    would refuse, and an import that reported success would leave someone to
+    discover that for themselves.
+    """
+
+
 class BuiltArtifact(BaseModel):
-    """A produced artifact file, ready to be stored by the runner."""
+    """The outcome for one artifact kind: a file to store, or why there is none.
+
+    A builder that produces several kinds reports each separately, so a build
+    that fails can say which kind failed and why rather than only that
+    something did. The build still fails as a whole — see
+    ``ArtifactBuildFailedError``.
+    """
 
     kind: BundleArtifactKind
-    local_path: str
-    size: int
+    local_path: str | None = None
+    size: int = 0
+    #: What this build knows about its output that nobody can derive later —
+    #: a timetable's service window, say, since the feed is not kept. Stored
+    #: verbatim on the artifact row; see ``BundleArtifact.properties``.
+    properties: Dict[str, Any] = {}
+    #: Why this kind was not produced, in words a user can act on. Recorded
+    #: against the artifact so the bundle reports it as failed rather than as
+    #: never attempted.
+    error: str | None = None
+
+    @model_validator(mode="after")
+    def _built_or_failed(self) -> "BuiltArtifact":
+        if bool(self.local_path) == bool(self.error):
+            raise ValueError(
+                "a BuiltArtifact carries either a local_path or an error, "
+                "never both and never neither"
+            )
+        return self
 
 
 class ArtifactBuilder(ABC):
@@ -97,14 +90,39 @@ class ArtifactBuilder(ABC):
     # The artifact kinds this builder currently produces (may be a subset of the
     # type spec's declared artifacts while others are still unimplemented).
     produces: tuple[BundleArtifactKind, ...] = ()
-    # True when the build reads the bundle's member layers instead of the
-    # uploaded source. Layers are the source of truth for types whose members can
-    # be edited, so their artifact must be rebuildable from the edited layer
-    # rather than from the original upload.
-    builds_from_layers: bool = False
 
-    def build(self, *, source_path: str, workdir: str) -> List[BuiltArtifact]:
+    @property
+    def builds_from_layers(self) -> bool:
+        """True when the build reads the bundle's member layers instead of the
+        uploaded source.
+
+        Read from the type spec rather than declared per builder: the API has to
+        answer the same question (to know whether a filtered copy is possible)
+        and cannot import a builder to ask — one of them pulls in DuckDB and the
+        routing extension.
+        """
+        return get_spec(self.bundle_type).artifacts_build_from_layers
+
+    def build(
+        self,
+        *,
+        source_path: str,
+        workdir: str,
+        dependencies: Dict[str, Any] | None = None,
+        options: Dict[str, Any] | None = None,
+    ) -> List[BuiltArtifact]:
         """Build the artifacts from ``source_path`` into ``workdir``.
+
+        ``dependencies`` carries what the bundle's *other* bundles contribute,
+        keyed by dependency kind as the spec names it — a GTFS bundle's
+        ``street_network`` entry holds the edge and node paths its linkage is
+        computed against. Resolved by the caller, which owns the database and
+        the artifact store; absent when a dependency is unlinked or its own
+        artifact is not usable.
+
+        ``options`` is per-build tuning a caller may pass through (which
+        access/egress modes to compute, say). A builder ignores what it does
+        not recognise.
 
         Raises ``ArtifactBuilderUnavailableError`` if the toolchain is missing.
         """

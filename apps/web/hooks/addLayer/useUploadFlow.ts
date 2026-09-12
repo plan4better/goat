@@ -3,7 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type FieldErrors, type UseFormRegister, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 
-import { type BundleTypeDef, detectBundleType } from "@/lib/api/bundles";
+import {
+  type BundleRead,
+  type BundleTypeDef,
+  detectBundleType,
+  useBundles,
+} from "@/lib/api/bundles";
 import { refreshContentFeed } from "@/lib/api/content";
 import { getWritableFolders, useFolders } from "@/lib/api/folders";
 import { useProject } from "@/lib/api/projects";
@@ -40,6 +45,17 @@ const TABULAR_EXTENSIONS = ["csv", "xlsx", "xls"];
 /** As `contentMetadataSchema` enforces it — kept here so the field can stop at the same point. */
 export const MAX_NAME_LENGTH = 100;
 
+/**
+ * The selector's value for "no bundle of my own — use the network GOAT ships".
+ *
+ * An option rather than the initial state: the link is a decision the upload
+ * asks for, and pre-answering it with the default would let someone import a
+ * feed against a network they never looked at. It is not a bundle id and is
+ * never sent — the import simply carries no link, and the artifact builder
+ * falls back to the default network on its own.
+ */
+export const DEFAULT_STREET_NETWORK = "default";
+
 export type UploadFlowState = {
   file?: File;
   fileError?: string;
@@ -51,6 +67,13 @@ export type UploadFlowState = {
   setSelectedFolder: (folder: Folder | null) => void;
   /** Set when the file is a recognised bundle (e.g. GTFS) and will import as one. */
   bundleType: BundleTypeDef | null;
+  /** A bundle type may require linking to a street network: a PT feed's
+   *  stop-to-street linkage is computed against one, so the upload cannot
+   *  finish until one is named. Empty for every other file. */
+  requiresStreetNetwork: boolean;
+  streetNetworks: BundleRead[];
+  streetNetworkId: string | null;
+  setStreetNetworkId: (id: string | null) => void;
   /** CSV/XLSX only: the parsed head of the file plus how to read it. */
   isTabular: boolean;
   preview: TabularPreview | null;
@@ -113,6 +136,20 @@ export const useUploadFlow = ({
   }, [file]);
 
   const bundleType = useMemo(() => detectBundleType(file), [file]);
+  const requiresStreetNetwork = !!bundleType?.requiresStreetNetwork;
+  const [streetNetworkId, setStreetNetworkId] = useState<string | null>(null);
+  /**
+   * Only street networks whose routing graph is built and current.
+   *
+   * One that is still importing cannot be linked to usefully — the linkage
+   * build would find no graph and record a failure the user did not cause.
+   * Fetched only when a file needs it, so an ordinary upload makes no request.
+   */
+  const { data: streetNetworks } = useBundles({
+    bundleType: "street_network",
+    artifactKind: "street_network_graph",
+    enabled: requiresStreetNetwork,
+  });
 
 
   // The project's own folder is the natural destination; otherwise whatever folder
@@ -194,6 +231,7 @@ export const useUploadFlow = ({
       setSource(null);
       setHasHeader(true);
       setSheet("");
+      setStreetNetworkId(null);
       if (!next?.name) return;
       // Case-insensitive, like the tabular reader that will open it — Windows
       // and most GIS exporters write `EXPORT.CSV`.
@@ -221,6 +259,7 @@ export const useUploadFlow = ({
     setSource(null);
     setHasHeader(true);
     setSheet("");
+    setStreetNetworkId(null);
     setSelectedFolder(undefined);
     folderInitialized.current = false;
     resetForm();
@@ -243,6 +282,10 @@ export const useUploadFlow = ({
       projectId,
       ...(isTabular && { hasHeader }),
       ...(isTabular && sheet ? { sheetName: sheet } : {}),
+      // The default network is the absence of a link, not a bundle to name.
+      ...(streetNetworkId && streetNetworkId !== DEFAULT_STREET_NETWORK
+        ? { streetNetworkBundleId: streetNetworkId }
+        : {}),
     });
     reset();
     // Also refreshed on job completion (`useJobStatus`, wired by the Content
@@ -260,6 +303,7 @@ export const useUploadFlow = ({
     isTabular,
     hasHeader,
     sheet,
+    streetNetworkId,
     importDataset,
     reset,
     onDone,
@@ -295,12 +339,28 @@ export const useUploadFlow = ({
   const action = useMemo(
     () => ({
       label: t("upload"),
-      // One screen, so one condition: a file, a name that validates, somewhere to put it.
-      disabled: !file || !isValid || !selectedFolder,
+      // One screen, so one condition: a file, a name that validates, somewhere
+      // to put it — and, for a bundle type that depends on one, a street
+      // network to link. That link is not an afterthought the import can fill
+      // in later: it is what the bundle's stop-to-street linkage is built from.
+      disabled:
+        !file ||
+        !isValid ||
+        !selectedFolder ||
+        (requiresStreetNetwork && !streetNetworkId),
       notice,
       run: submit,
     }),
-    [file, isValid, selectedFolder, submit, t, notice]
+    [
+      file,
+      isValid,
+      selectedFolder,
+      requiresStreetNetwork,
+      streetNetworkId,
+      submit,
+      t,
+      notice,
+    ]
   );
 
   return {
@@ -316,6 +376,10 @@ export const useUploadFlow = ({
       selectedFolder,
       setSelectedFolder,
       bundleType,
+      requiresStreetNetwork,
+      streetNetworks: streetNetworks ?? [],
+      streetNetworkId,
+      setStreetNetworkId,
       isTabular,
       preview,
       hasHeader,

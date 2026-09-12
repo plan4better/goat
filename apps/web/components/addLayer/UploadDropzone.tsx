@@ -51,11 +51,17 @@ const UploadDropzone = ({
         // `dragOver` must be prevented for a drop to be allowed at all.
         onDragOver={(event: React.DragEvent) => {
           event.preventDefault();
+          event.stopPropagation();
           setOver(true);
         }}
         onDragLeave={() => setOver(false)}
         onDrop={(event: React.DragEvent) => {
           event.preventDefault();
+          // The editor listens for file drops on the window, to import a file
+          // dropped anywhere on the map. This zone has just taken the file, so
+          // the event must not reach it — otherwise one drop both queues the
+          // file here and imports it in the background.
+          event.stopPropagation();
           setOver(false);
           take(event.dataTransfer.files);
         }}

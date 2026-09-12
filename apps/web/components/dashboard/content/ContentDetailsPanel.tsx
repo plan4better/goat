@@ -159,7 +159,10 @@ const ContentDetailsPanel = ({
   const actionPillSx = {
     flex: 1,
     borderRadius: "999px",
-    padding: "8px 0",
+    // Side padding so a longer label ("Verschieben zu") does not touch the
+    // pill's edge in the narrow details column.
+    padding: "8px 14px",
+    whiteSpace: "nowrap",
     fontSize: 13,
     fontWeight: 700,
     textTransform: "none",

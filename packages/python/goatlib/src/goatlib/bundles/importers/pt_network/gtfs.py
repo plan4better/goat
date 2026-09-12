@@ -15,8 +15,6 @@ import shutil
 import zipfile
 from typing import Dict, List, Optional, Set
 
-import duckdb
-
 from goatlib.bundles.importers.base import (
     BundleImporter,
     BundleMetadata,
@@ -33,8 +31,10 @@ def _clean(value: Optional[str]) -> Optional[str]:
 
 
 def _valid_email(value: Optional[str]) -> Optional[str]:
-    """Agencies write free text here, and the API models the column as an
-    email, so anything unparseable is dropped rather than stored."""
+    """Agencies write free text in this column — a phone number, opening
+    hours — so anything unparseable is dropped rather than stored as a contact
+    nobody can write to. Hygiene, not a constraint the read path relies on:
+    `BundleRead` reports the document as stored."""
     if value and re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
         return value
     return None
@@ -281,6 +281,11 @@ class GtfsImporter(BundleImporter):
         they first appear past the sample. ``strict_mode=false`` also tolerates
         the minor RFC deviations real-world feeds commonly have.
         """
+        # Imported here, not at module scope: `core` depends on goatlib
+        # without the `full` extra, so it must be able to import this module
+        # (the registry does) without duckdb present. Only conversion needs it.
+        import duckdb
+
         src = txt_path.replace("'", "''")
         dst = out_path.replace("'", "''")
         con = duckdb.connect()

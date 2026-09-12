@@ -39,6 +39,9 @@ export type DatasetImportRequest = {
   /** Spreadsheets only, and only when someone has answered for them. */
   hasHeader?: boolean;
   sheetName?: string;
+  /** Bundle types that depend on one — a GTFS feed links to the street network
+   *  its stop-to-street linkage is built against. */
+  streetNetworkBundleId?: string;
 };
 
 /**
@@ -83,11 +86,14 @@ export const useDatasetImport = () => {
         let jobId: string | undefined;
         if (bundleType) {
           const response = await requestBundleImport({
-            s3_key: presigned.fields.key,
+            s3_key: presigned.key,
             folder_id: request.folderId as string,
             name: request.name,
             description: request.description,
             ...(request.projectId && { project_id: request.projectId }),
+            ...(request.streetNetworkBundleId && {
+              street_network_bundle_id: request.streetNetworkBundleId,
+            }),
           });
           jobId = response.job_id ?? undefined;
         } else {
@@ -95,7 +101,7 @@ export const useDatasetImport = () => {
             name: request.name,
             description: request.description,
             folder_id: request.folderId,
-            s3_key: presigned.fields.key,
+            s3_key: presigned.key,
             ...(request.hasHeader !== undefined && { has_header: request.hasHeader }),
             ...(request.sheetName && { sheet_name: request.sheetName }),
           });

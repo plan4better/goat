@@ -73,6 +73,42 @@ def test_landing_conformsto_in_body(client: TestClient) -> None:
     assert any("queryables" in rel for rel in rels)
 
 
+def test_forwarded_proto_sets_href_scheme(client: TestClient) -> None:
+    """Behind a TLS-terminating proxy every absolute href must be https.
+
+    An http asset href on an https page is active mixed content, which the
+    browser blocks -- the style then never loads and the preview falls back to
+    an unstyled footprint.
+    """
+    plain = client.get("/stac").json()
+    assert next(
+        link["href"] for link in plain["links"] if link["rel"] == "self"
+    ).startswith("http://")
+
+    fwd = client.get("/stac", headers={"X-Forwarded-Proto": "https"}).json()
+    for link in fwd["links"]:
+        assert not link["href"].startswith("http://"), link
+
+    # Asset hrefs are built from the same base, and are the ones the browser fetches.
+    items = client.get(
+        "/stac/collections/src-1/items", headers={"X-Forwarded-Proto": "https"}
+    ).json()
+    for feature in items["features"]:
+        for asset in (feature.get("assets") or {}).values():
+            assert not asset["href"].startswith("http://"), asset
+
+
+def test_forwarded_proto_ignores_junk(client: TestClient) -> None:
+    """Only a scheme this API is served over, and only the first proxy's value."""
+    first = client.get("/stac", headers={"X-Forwarded-Proto": "https, http"}).json()
+    first_self = next(link["href"] for link in first["links"] if link["rel"] == "self")
+    assert first_self.startswith("https://")
+
+    junk = client.get("/stac", headers={"X-Forwarded-Proto": "gopher"}).json()
+    junk_self = next(link["href"] for link in junk["links"] if link["rel"] == "self")
+    assert junk_self.startswith("http://")
+
+
 def test_queryables_media_type(client: TestClient) -> None:
     r = client.get("/stac/queryables")
     assert r.status_code == 200
@@ -99,7 +135,11 @@ def test_collection_queryables_404(client: TestClient) -> None:
 
 
 def test_collections_datetime_param(client: TestClient) -> None:
-    r = client.get("/stac/collections", params={"datetime": "2026-01-01T00:00:00Z/.."})
+    # `limit` past the default page: the relevance order moves src-1 off it.
+    r = client.get(
+        "/stac/collections",
+        params={"datetime": "2026-01-01T00:00:00Z/..", "limit": 200},
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["numberMatched"] >= 1
@@ -145,6 +185,37 @@ def test_collection_item_by_id(client: TestClient, store: CatalogStore) -> None:
 def test_collection_item_not_found_404(client: TestClient) -> None:
     r = client.get("/stac/collections/src-1/items/does-not-exist")
     assert r.status_code == 404
+
+
+def test_collections_intersects_filters_like_bbox(client: TestClient) -> None:
+    """A drawn shape narrows Collection Search the way a bbox does.
+
+    The parameter has to be declared on the collections query model: FastAPI
+    drops an undeclared query parameter without a word, and the catalog page
+    sends every drawn polygon and buffered point as `intersects` -- so the
+    filter silently returned the whole catalog.
+    """
+    # The western half of the fixture's footprints, so some rows fall outside.
+    envelope = {
+        "type": "Polygon",
+        "coordinates": [[[5, 47], [10, 47], [10, 56], [5, 56], [5, 47]]],
+    }
+    everything = client.get("/stac/collections", params={"limit": 1}).json()
+    boxed = client.get(
+        "/stac/collections", params={"bbox": "5,47,10,56", "limit": 1}
+    ).json()
+    drawn = client.get(
+        "/stac/collections",
+        params={"intersects": json.dumps(envelope), "limit": 1},
+    ).json()
+
+    assert drawn["numberMatched"] == boxed["numberMatched"]
+    assert drawn["numberMatched"] < everything["numberMatched"]
+
+
+def test_collections_intersects_invalid_400(client: TestClient) -> None:
+    r = client.get("/stac/collections", params={"intersects": "{not json"})
+    assert r.status_code == 400
 
 
 def test_collections_bbox_boost_invalid_400(client: TestClient) -> None:

@@ -34,6 +34,9 @@ const bundle = (overrides: Partial<BundleRead> = {}): BundleRead =>
     name: "Munich",
     folder_id: "folder-1",
     bundle_type: "street_network",
+    // A street network's artifacts are derived from its member layers, which is
+    // what makes a rebuild possible at all — the gate the panel reads.
+    artifacts_from_layers: true,
     status: "ready",
     artifacts: [],
     ...overrides,

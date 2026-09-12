@@ -6,6 +6,7 @@ import { useCallback, useMemo } from "react";
 import type { CatalogSearchParams } from "@/lib/api/catalog";
 import {
   CATALOG_PAGE_SIZE,
+  DEFAULT_SORT,
   buildFacetParams,
   buildSearchParams,
   countActiveFilters,
@@ -30,7 +31,7 @@ export type CatalogTab = "datasets" | "templates";
 /** Non-facet URL parameters. */
 const baseParsers = {
   q: parseAsString,
-  sortby: parseAsString.withDefault("-updated"),
+  sortby: parseAsString.withDefault(DEFAULT_SORT),
   tab: parseAsStringEnum<CatalogTab>(["datasets", "templates"]).withDefault("datasets"),
   /** A NUTS region id — filtered server-side by that region's geometry. */
   nuts: parseAsString,

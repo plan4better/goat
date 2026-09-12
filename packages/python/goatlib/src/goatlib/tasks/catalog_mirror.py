@@ -98,7 +98,13 @@ __all__ = [
 #:     `extent.temporal` states a closed one.
 #: v7: `thumbnail_item` — which layer's thumbnail stands for the dataset, so a
 #:     dataset card has a picture without fetching its members.
-MIRROR_FORMAT_VERSION = 7
+#: v8: items inherit their collection's `attribution` — the notice an
+#:     attribution licence obliges the user to reproduce. It is published on the
+#:     Collection only, and has to reach a layer the way `license` does.
+#: v9: `goat:topicRelevance` on a Collection — Plan4Better's topic relevance
+#:     tier — with `goat:topicRelevanceScore`, the same judgement as a number so
+#:     ordering needs no knowledge of that vocabulary. Higher is better.
+MIRROR_FORMAT_VERSION = 9
 
 ITEMS_FILENAME = "items.parquet"
 COLLECTIONS_FILENAME = "collections.parquet"
@@ -138,6 +144,9 @@ GUARANTEED_COLLECTION_COLUMNS: tuple[tuple[str, str], ...] = (
     ("datetime", "TIMESTAMPTZ"),
     ("datetime_start", "TIMESTAMPTZ"),
     ("datetime_end", "TIMESTAMPTZ"),
+    # Named in the service's own ORDER BY, so an older file yields typed NULLs.
+    ("goat:topicRelevance", "VARCHAR"),
+    ("goat:topicRelevanceScore", "BIGINT"),
 )
 
 #: Physical row order of the written files -- what a reader's row-group
@@ -552,6 +561,7 @@ def build_mirror(
             "goat:layerType",
             "goat:geographical_code",
             "license",
+            "attribution",
             "publisher",
             "category",
             "description",
@@ -568,6 +578,8 @@ def build_mirror(
                 {_text(geographical_code)}                    AS "goat:geographical_code",
                 {_text(f"COALESCE({item_expr(_opt(items, 'license', 'i.license'))}, "
                        f"{coll_expr(_opt(collections, 'license', 'c.license'))})")} AS license,
+                {_text(f"COALESCE({item_expr(_opt(items, 'attribution', 'i.attribution'))}, "
+                       f"{coll_expr(_opt(collections, 'attribution', 'c.attribution'))})")} AS attribution,
                 {_text(publisher)}                             AS publisher,
                 {_text(f"COALESCE({item_expr(_first_theme(items, 'i'))}, "
                        f"{coll_expr(_first_theme(collections, 'c'))})")} AS category,

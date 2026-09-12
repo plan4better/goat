@@ -13,12 +13,13 @@ import {
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
-import { Divider, IconButton, Tooltip } from "@mui/material";
+import { Divider, IconButton, Tooltip, useTheme } from "@mui/material";
 import Box from "@mui/material/Box";
 import Collapse from "@mui/material/Collapse";
 import Typography from "@mui/material/Typography";
 import { alpha, styled } from "@mui/material/styles";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 // ----------------------------------------------------------------------
@@ -154,7 +155,7 @@ const ActionsContainer = styled("div")(({ theme }) => ({
 
 const InsertionLine = styled("div")(({ theme }) => ({
   position: "absolute",
-  bottom: 0,
+  top: 0,
   left: 0,
   right: 0,
   height: 2,
@@ -407,7 +408,6 @@ const RecursiveTreeItemInner = <T extends BaseTreeItem>({
         onDragStart={handleExternalDragStart}>
         <CustomTreeItemContent
           onClick={handleRowClick}
-          ref={setNodeRef}
           enableSelection={enableSelection}
           isDragging={isDragging}
           isSelectable={item.isSelectable}
@@ -630,9 +630,13 @@ export function DraggableTreeView<T extends BaseTreeItem>(props: DraggableTreeVi
         if (isBundleGroupId(overItem.parentId)) return;
         const oldIndex = items.findIndex((i) => i.id === activeIdStr);
         const targetIndex = items.findIndex((i) => i.id === overIdStr);
+        // The row always lands directly above the target, which is what the
+        // insertion line shows. Moving down, arrayMove would otherwise put it
+        // below — the target shifts up past it — so the index gives way by one.
+        const insertIndex = oldIndex < targetIndex ? targetIndex - 1 : targetIndex;
         const newItems = [...items];
         newItems[oldIndex] = { ...newItems[oldIndex], parentId: overItem.parentId };
-        onItemsChange(arrayMove(newItems, oldIndex, targetIndex));
+        onItemsChange(arrayMove(newItems, oldIndex, insertIndex));
       }
     }
   };
@@ -643,6 +647,24 @@ export function DraggableTreeView<T extends BaseTreeItem>(props: DraggableTreeVi
   };
 
   const activeItem = activeId ? items.find((i) => i.id === activeId) : null;
+
+  // The overlay is a copy of the row, so it needs the row's indent: rendered
+  // at level 0 it starts one nesting level to the left of what the cursor
+  // grabbed, which reads as the drag lagging behind the pointer.
+  const theme = useTheme();
+  // Resolved after mount: there is no document during SSR.
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => setPortalTarget(document.body), []);
+
+  const activeLevel = React.useMemo(() => {
+    let level = 0;
+    let parentId = activeItem?.parentId ?? null;
+    while (parentId) {
+      level += 1;
+      parentId = items.find((i) => i.id === parentId)?.parentId ?? null;
+    }
+    return level;
+  }, [activeItem, items]);
 
   return (
     <DndContext
@@ -668,21 +690,31 @@ export function DraggableTreeView<T extends BaseTreeItem>(props: DraggableTreeVi
           />
         ))}
       </Box>
-      <DragOverlay dropAnimation={null}>
-        {activeItem ? (
-          <RecursiveTreeItemInner
-            item={{ ...activeItem, collapsed: true }}
-            allData={[]}
-            level={0}
-            onCollapse={() => {}}
-            renderActions={renderActions}
-            renderPrefix={renderPrefix}
-            isOverlay
-            selectedIds={selectedIds}
-            enableSelection={true}
-          />
-        ) : null}
-      </DragOverlay>
+      {/* Portaled to the body: the overlay is `position: fixed` with the
+          dragged row's viewport coordinates, and the floating panel this tree
+          lives in has a `backdrop-filter`, which makes it the containing block
+          for fixed descendants. Left inside it, the overlay is offset by the
+          panel's own distance from the top of the window. */}
+      {portalTarget
+        ? createPortal(
+            <DragOverlay dropAnimation={null} zIndex={theme.zIndex.drawer + 2}>
+              {activeItem ? (
+                <RecursiveTreeItemInner
+                  item={{ ...activeItem, collapsed: true }}
+                  allData={[]}
+                  level={activeLevel}
+                  onCollapse={() => {}}
+                  renderActions={renderActions}
+                  renderPrefix={renderPrefix}
+                  isOverlay
+                  selectedIds={selectedIds}
+                  enableSelection={true}
+                />
+              ) : null}
+            </DragOverlay>,
+            portalTarget
+          )
+        : null}
     </DndContext>
   );
 }

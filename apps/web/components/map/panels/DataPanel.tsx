@@ -1,6 +1,7 @@
 import { Box, useTheme } from "@mui/material";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "react-toastify";
 
 import { stopEditing } from "@/lib/store/featureEditor/slice";
 import { setDataPanelHeight, setDataPanelLayerId, setIsDataPanelOpen } from "@/lib/store/map/slice";
@@ -67,12 +68,52 @@ const DataPanel: React.FC<DataPanelProps> = ({ projectLayers, isEditor = true })
       setLayerSwitchConfirmOpen(false);
       return;
     }
+    // Only while the table is on screen. The mismatch this guards against is a
+    // visible one — a toolbar and a table naming different layers — and a
+    // closed panel shows neither. Acting regardless meant a session started
+    // anywhere else was ended by whatever layer the panel had last been
+    // pointed at.
+    if (!isDataPanelOpen) return;
     if (hasPendingEdits) {
       setLayerSwitchConfirmOpen(true);
     } else {
       dispatch(stopEditing());
     }
-  }, [activeProjectLayer, editingLayerId, hasPendingEdits, dispatch]);
+  }, [activeProjectLayer, editingLayerId, hasPendingEdits, isDataPanelOpen, dispatch]);
+
+  /**
+   * A session ends when its layer leaves the project.
+   *
+   * Removing the layer — or the bundle it belongs to — leaves the editor
+   * pointed at something the project no longer contains: the floating toolbar
+   * stays up, the map keeps taking edits, and there is nothing left to save
+   * them to. Unlike a layer *switch*, there is nothing to confirm, because
+   * cancelling could only return the session to a layer that has gone.
+   *
+   * `wasPresent` separates "removed" from "not loaded yet": the list is empty
+   * on first render, and ending a session then would kill one that had just
+   * started. Once the edited layer has been seen in the list, its absence is
+   * a removal — including when it was the project's only layer.
+   */
+  const editedLayerWasPresent = useRef(false);
+  useEffect(() => {
+    if (!editingLayerId) {
+      editedLayerWasPresent.current = false;
+      return;
+    }
+    if (projectLayers.some((layer) => layer.layer_id === editingLayerId)) {
+      editedLayerWasPresent.current = true;
+      return;
+    }
+    if (!editedLayerWasPresent.current) return;
+    // Said out loud only when it costs something: edits that cannot be saved
+    // anywhere are being dropped, and the editor closing on its own would
+    // otherwise look like a glitch.
+    if (hasPendingEdits) {
+      toast.info(t("editing_ended_layer_removed"));
+    }
+    dispatch(stopEditing());
+  }, [projectLayers, editingLayerId, hasPendingEdits, dispatch, t]);
 
   const handleLayerSwitchConfirm = useCallback(() => {
     dispatch(stopEditing());

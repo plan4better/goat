@@ -178,9 +178,9 @@ format writes the same layer, so nothing here names Overture. They follow
 data_preparation's `output_segment` type, which is where `original_id` and the
 source/target pair come from.
 
-`nodes` — `id`, `is_synthetic`, `geometry`. Synthetic nodes were reconstructed
-rather than read from the upload, and their ids are not GERS-resolvable when they
-came from an attribute boundary.
+`nodes` — `id`, `geometry`. A node the splitter minted (rather than one read
+from the upload) is named as such in its own id, so no separate flag records it;
+those ids are not GERS-resolvable when they came from an attribute boundary.
 
 ### The linear-reference range in `id`
 

@@ -8,12 +8,11 @@ import importlib
 import logging
 import math
 import time
-from datetime import date, datetime, timedelta, timezone
-from datetime import time as time_of_day
 from pathlib import Path
 from typing import Any, Self
 
 from goatlib.analysis.core.base import AnalysisTool
+from goatlib.analysis.pt_time import pt_anchor_unix_minutes
 from goatlib.analysis.schemas.travel_cost_matrix import (
     AccessEgressMode,
     CostType,
@@ -79,27 +78,11 @@ class TravelCostMatrixTool(AnalysisTool):
 
     @staticmethod
     def _pt_departure_unix_minutes(params: TravelCostMatrixParams) -> int:
-        weekday_value = "weekday"
-        from_seconds = 25200
-
-        if params.time_window:
-            weekday_value = (
-                params.time_window.weekday.value
-                if hasattr(params.time_window.weekday, "value")
-                else str(params.time_window.weekday)
-            )
-            from_seconds = params.time_window.from_time
-
-        weekday_dates = {
-            "weekday": date(2026, 6, 16),
-            "saturday": date(2026, 6, 20),
-            "sunday": date(2026, 6, 21),
-        }
-        anchor_date = weekday_dates.get(weekday_value, weekday_dates["weekday"])
-        departure_dt = datetime.combine(
-            anchor_date, time_of_day.min, tzinfo=timezone.utc
-        ) + timedelta(seconds=from_seconds)
-        return int(departure_dt.timestamp() // 60)
+        """When the sweep starts, as the engine wants it: unix minutes UTC."""
+        window = params.time_window
+        if window is None:
+            return pt_anchor_unix_minutes()
+        return pt_anchor_unix_minutes(window.weekday, window.from_time, window.on_date)
 
     def _build_matrix_config(
         self: Self,

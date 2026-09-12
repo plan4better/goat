@@ -82,15 +82,10 @@ const ProjectImportModal: React.FC<ProjectImportModalProps> = ({
         return;
       }
       setFileValue(file);
-      // Auto-populate project name from filename if empty
-      if (!projectName) {
-        const name = file.name
-          .replace(/^project-export-/, "")
-          .replace(/-\d{8}_\d{6}\.zip$/, "")
-          .replace(/\.zip$/, "")
-          .replace(/_/g, " ");
-        setProjectName(name);
-      }
+      // The name stays empty unless the user types one: the archive carries
+      // the project's own name, and the file name is a sanitised copy of it
+      // (parentheses and other characters stripped for the file system), so
+      // pre-filling from it would rename the project on every import.
     }
   };
 
@@ -122,8 +117,8 @@ const ProjectImportModal: React.FC<ProjectImportModalProps> = ({
       // 2. Upload to S3
       await uploadFileToS3(fileValue, presigned);
 
-      // 3. Extract S3 key from presigned fields
-      const s3Key = presigned.fields?.key || `uploads/${fileValue.name}`;
+      // 3. Object key the file was stored under
+      const s3Key = presigned.key;
 
       // 4. Trigger import job via OGC Processes
       const job = await executeProcessAsync("project_import", {

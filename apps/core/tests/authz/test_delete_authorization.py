@@ -20,7 +20,6 @@ from core.db.models.organization import Organization
 from core.db.models.space import Space, SpaceKind
 from core.db.models.team import Team
 from core.db.models.user import User
-from core.db.seed_bundle_types import seed_bundle_types
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,7 +46,6 @@ def _unverified_bearer(user_id: UUID) -> str:
 async def _make_bundle(
     db_session: AsyncSession, *, creator: User, folder: Folder, space: Space
 ) -> UUID:
-    await seed_bundle_types(db_session)
     return cast(
         UUID,
         (

@@ -123,7 +123,7 @@ const CatalogSpatialSection = ({
                       paint={{ "line-color": SHAPE_COLOR, "line-width": 1.6 }}
                     />
                   </Source>
-                  {/* Credited even at this size: the tiles are MapTiler's and the data OpenStreetMap's whether the map is 96px or full screen. */}
+                  {/* Credited even at this size: the tiles and the data behind them are someone else's whether the map is 96px or full screen. */}
                   <DetailMapAttribution />
                 </MapLibre>
               ) : (
@@ -165,7 +165,7 @@ const CatalogSpatialSection = ({
               </Stack>
             </Stack>
 
-            {/* The whole card still opens the dialog, but as an overlay rather than a button wrapped around everything: the map credits MapTiler and OpenStreetMap with links, and a link inside a button is invalid HTML — React says so, and the nested control cannot be relied on to get its own clicks. */}
+            {/* The whole card still opens the dialog, but as an overlay rather than a button wrapped around everything: the map credits its tile and data providers with links, and a link inside a button is invalid HTML — React says so, and the nested control cannot be relied on to get its own clicks. */}
             <Box
               component="button"
               type="button"

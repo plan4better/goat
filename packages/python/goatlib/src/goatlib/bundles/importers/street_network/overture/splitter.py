@@ -32,7 +32,18 @@ See README.md for the contract this sits inside.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Self,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from goatlib.bundles.importers.street_network.overture import linear_ref
 
@@ -106,8 +117,137 @@ class SplitResult:
     stats: SplitStats
 
 
+class SplitStream:
+    """The split pieces, yielded as they are made.
+
+    The whole point is that nothing holds them: a city extract splits 359k
+    segments into ~893k pieces, and keeping those, the flattened copy of them
+    and the writer's copy alive at once is where a street-network import spent
+    most of its memory.
+
+    ``connectors`` and ``stats`` are only complete once the iterator is
+    exhausted — which nodes a piece references is not known until the piece
+    exists, and the node layer is exactly the referenced ones. Iterate once,
+    then read them.
+    """
+
+    def __init__(
+        self: Self,
+        segments: Iterable[Dict[str, Any]],
+        connectors: Iterable[Dict[str, Any]],
+        *,
+        config: SplitConfig = DEFAULT_CONFIG,
+    ) -> None:
+        self._segments = segments
+        self._connectors = connectors
+        self._config = config
+        self.stats = SplitStats(segments_in=0, nodes_in=0)
+        self._synthetic: Dict[str, Dict[str, Any]] = {}
+        self._referenced: Set[str] = set()
+        self._split = False
+
+    def __iter__(self: Self) -> Iterator[Dict[str, Any]]:
+        config = self._config
+        stats = self.stats
+        # First pass over the connectors: their ids are all the split needs to
+        # know a boundary already has a node. Ids rather than records, because
+        # the records are what cost the memory.
+        known_ids: Set[str] = set()
+        for connector in self._connectors:
+            known_ids.add(connector["id"])
+            stats.nodes_in += 1
+        synthetic = self._synthetic
+        # Which nodes the edges actually use, accumulated as the pieces go by:
+        # the alternative is re-reading every piece afterwards, which is the
+        # list this class exists to avoid.
+        referenced = self._referenced
+        segments_out = 0
+
+        for segment in self._segments:
+            stats.segments_in += 1
+            coords = segment.get("coordinates") or []
+            if len(coords) < 2:
+                # A one-point "line" has no length to reference positions against.
+                stats.segments_skipped.append(str(segment.get("id")))
+                continue
+
+            segment_length_m = linear_ref.total_length(coords)
+            if segment_length_m <= 0.0:
+                stats.segments_skipped.append(str(segment.get("id")))
+                continue
+
+            positions = _split_positions(segment, segment_length_m, config)
+            pieces, dropped = _split_segment(
+                segment, coords, positions, segment_length_m, config
+            )
+            stats.slivers_dropped += dropped
+
+            for piece in pieces:
+                _assign_endpoint_connectors(
+                    piece,
+                    segment,
+                    known_ids=known_ids,
+                    synthetic=synthetic,
+                    segment_length_m=segment_length_m,
+                    config=config,
+                )
+                _apply_reference_columns(piece, segment)
+                for endpoint in piece.get("connectors") or []:
+                    referenced.add(endpoint["connector_id"])
+                segments_out += 1
+                yield piece
+
+        # Every referenced id is either one the file held or one just minted, so
+        # the node count is known without materialising the nodes themselves.
+        stats.segments_out = segments_out
+        stats.nodes_out = len(referenced)
+        stats.nodes_reconstructed = len(synthetic)
+        stats.nodes_unreferenced = stats.nodes_in + len(synthetic) - len(referenced)
+        self._split = True
+        if stats.segments_skipped:
+            logger.warning(
+                "Skipped %d unusable segment(s): %s",
+                len(stats.segments_skipped),
+                ", ".join(stats.segments_skipped[:5]),
+            )
+        logger.info(
+            "Split %d segment(s) into %d piece(s); %d node(s) "
+            "(%d reconstructed, %d unreferenced dropped), %d sliver(s) dropped",
+            stats.segments_in,
+            stats.segments_out,
+            stats.nodes_out,
+            stats.nodes_reconstructed,
+            stats.nodes_unreferenced,
+            stats.slivers_dropped,
+        )
+
+    def nodes(self: Self) -> Iterator[Dict[str, Any]]:
+        """The node layer's rows: exactly the connectors the edges reference.
+
+        A second pass over the connectors file. An extract covers whatever bbox
+        it was clipped to, so it holds connectors belonging to segments we do
+        not have (other subtypes, roads just outside); emitting those would
+        scatter isolated points across the nodes layer.
+
+        Only valid once the pieces have been iterated — which nodes are
+        referenced is decided by the pieces, and asking earlier would quietly
+        emit a subset.
+        """
+        if not self._split:
+            raise RuntimeError(
+                "nodes() needs the split pieces first: iterate the stream, then "
+                "ask for the nodes they reference"
+            )
+        for connector in self._connectors:
+            if connector["id"] in self._referenced:
+                yield connector
+        for connector in self._synthetic.values():
+            if connector["id"] in self._referenced:
+                yield connector
+
+
 def split_network(
-    segments: Sequence[Dict[str, Any]],
+    segments: Iterable[Dict[str, Any]],
     connectors: Sequence[Dict[str, Any]],
     *,
     config: SplitConfig = DEFAULT_CONFIG,
@@ -117,81 +257,14 @@ def split_network(
     ``segments`` and ``connectors`` are Overture records as plain dicts, with
     geometry already decoded to a coordinate list under ``coordinates``
     (segments) or ``coordinate`` (connectors).
+
+    Every piece at once. `SplitStream` is the same work without holding them,
+    which is what an import of any size should use.
     """
-    stats = SplitStats(segments_in=len(segments), nodes_in=len(connectors))
-    known_ids = {c["id"] for c in connectors}
-    out_segments: List[Dict[str, Any]] = []
-    synthetic: Dict[str, Dict[str, Any]] = {}
-
-    for segment in segments:
-        coords = segment.get("coordinates") or []
-        if len(coords) < 2:
-            # A one-point "line" has no length to reference positions against.
-            stats.segments_skipped.append(str(segment.get("id")))
-            continue
-
-        segment_length_m = linear_ref.total_length(coords)
-        if segment_length_m <= 0.0:
-            stats.segments_skipped.append(str(segment.get("id")))
-            continue
-
-        positions = _split_positions(segment, segment_length_m, config)
-        pieces, dropped = _split_segment(
-            segment, coords, positions, segment_length_m, config
-        )
-        stats.slivers_dropped += dropped
-
-        for piece in pieces:
-            _assign_endpoint_connectors(
-                piece,
-                segment,
-                known_ids=known_ids,
-                synthetic=synthetic,
-                segment_length_m=segment_length_m,
-                config=config,
-            )
-            _apply_reference_columns(piece, segment)
-            out_segments.append(piece)
-
-    # An extract's connectors file covers whatever bbox it was clipped to, which
-    # includes connectors belonging to segments we don't have (other subtypes,
-    # roads just outside). Keeping them would scatter isolated points across the
-    # nodes layer, so the output is exactly the nodes the edges reference.
-    referenced = {
-        endpoint["connector_id"]
-        for piece in out_segments
-        for endpoint in piece.get("connectors") or []
-    }
-    out_connectors = [
-        connector
-        for connector in list(connectors) + list(synthetic.values())
-        if connector["id"] in referenced
-    ]
-
-    stats.segments_out = len(out_segments)
-    stats.nodes_out = len(out_connectors)
-    stats.nodes_reconstructed = len(synthetic)
-    stats.nodes_unreferenced = len(connectors) + len(synthetic) - len(out_connectors)
-    if stats.segments_skipped:
-        logger.warning(
-            "Skipped %d unusable segment(s): %s",
-            len(stats.segments_skipped),
-            ", ".join(stats.segments_skipped[:5]),
-        )
-    logger.info(
-        "Split %d segment(s) into %d piece(s); %d node(s) "
-        "(%d reconstructed, %d unreferenced dropped), %d sliver(s) dropped",
-        stats.segments_in,
-        stats.segments_out,
-        stats.nodes_out,
-        stats.nodes_reconstructed,
-        stats.nodes_unreferenced,
-        stats.slivers_dropped,
-    )
+    stream = SplitStream(segments, connectors, config=config)
+    out_segments = list(stream)
     return SplitResult(
-        segments=out_segments,
-        connectors=out_connectors,
-        stats=stats,
+        segments=out_segments, connectors=list(stream.nodes()), stats=stream.stats
     )
 
 

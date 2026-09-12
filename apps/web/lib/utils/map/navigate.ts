@@ -75,11 +75,14 @@ export async function zoomToProjectLayer(
   // Check if layer has a CQL filter applied
   const hasCqlFilter = layer.query?.cql && Object.keys(layer.query.cql).length > 0;
 
-  if (hasCqlFilter && layer.layer_id) {
+  // A filtered layer's stored extent covers rows the filter hides. A catalog
+  // layer's stored extent is the bbox the provider published for the dataset,
+  // which is not measured from the rows: it is often the provider's whole
+  // territory, or a world box where nothing was published. Both ask the data.
+  if ((hasCqlFilter || layer.in_catalog) && layer.layer_id) {
     try {
-      console.log("zoomToProjectLayer: Fetching filtered extent for", layer.layer_id);
-      // Fetch filtered extent from API
-      const cqlFilter = JSON.stringify(layer.query?.cql);
+      console.log("zoomToProjectLayer: Fetching extent for", layer.layer_id);
+      const cqlFilter = hasCqlFilter ? JSON.stringify(layer.query?.cql) : undefined;
       const result = await getExtent(layer.layer_id, cqlFilter);
       console.log("zoomToProjectLayer: Got result", result);
 

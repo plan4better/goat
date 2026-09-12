@@ -1,7 +1,7 @@
 """Dataset-bundle import runner.
 
-Ingests a validated source into DuckLake as member layers and creates the
-bundle + membership rows. Reuses ``SimpleToolRunner``'s ingest
+Validates an uploaded source, ingests it into DuckLake as member layers, and
+creates the bundle + membership rows. Reuses ``SimpleToolRunner``'s ingest
 primitives (DuckLake connection, ``_ingest_to_ducklake``, postgres pool) and the
 per-type importer plugin — so it stays type-agnostic and runs wherever the tools
 run (Windmill, or any env with DuckLake + Postgres configured).
@@ -11,9 +11,11 @@ who may import, quota, the HTTP surface — stays in core, which triggers this.
 """
 
 import logging
+import sys
 import tempfile
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Self
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -27,6 +29,7 @@ from goatlib.models.bundle import (
     BundleStatus,
     BundleTypeName,
     get_spec,
+    member_draw_rank,
     role_computed_columns,
     role_field_config,
 )
@@ -34,9 +37,83 @@ from goatlib.models.io import DatasetMetadata
 from goatlib.tools.authz import authorize_bundle_ingest
 from goatlib.tools.base import BaseToolRunner
 from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
-from goatlib.tools.style import get_default_style
+from goatlib.tools.style import get_bundle_style
 
 logger = logging.getLogger(__name__)
+
+
+def _memory_mb() -> "tuple[float, float]":
+    """Resident and peak resident memory in MB, or ``(0.0, 0.0)`` where the
+    kernel does not report it.
+
+    Two numbers because they answer different questions: the live figure says
+    what this stage is holding, the peak says how close the job came to the
+    limit — which is what an import killed outright (OOM/SIGKILL, the case that
+    leaves a bundle stuck at `processing`) is judged on, and it is only ever
+    visible after the fact.
+    """
+    current = 0.0
+    try:
+        with open("/proc/self/status") as fh:
+            for line in fh:
+                if line.startswith("VmRSS:"):
+                    current = float(line.split()[1]) / 1024.0
+                    break
+    except OSError:
+        pass
+    try:
+        import resource
+
+        peak_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # Linux reports kB, macOS bytes; the workers are Linux and the
+        # difference only matters to someone reading this on a laptop.
+        peak = peak_kb / 1024.0 if sys.platform != "darwin" else peak_kb / 1048576.0
+    except Exception:
+        peak = 0.0
+    return current, peak
+
+
+class _Stages:
+    """Successive stage timings for one import, logged like the routing
+    pipeline's ``[Pipeline]`` lines.
+
+    An import is the longest thing a user waits on and the one most likely to be
+    killed for memory, and until it finishes the only thing the job log says is
+    that it started. Each stage reports what it did, how long it took, and what
+    memory looked like afterwards, so a failed or slow import can be read rather
+    than guessed at.
+    """
+
+    def __init__(self: Self, label: str) -> None:
+        self.label = label
+        self.started = time.perf_counter()
+        self._last = self.started
+
+    def done(self: Self, stage: str, detail: str = "") -> None:
+        now = time.perf_counter()
+        elapsed_ms = (now - self._last) * 1000.0
+        self._last = now
+        rss, peak = _memory_mb()
+        logger.info(
+            "[%s] %s%s: %.0f ms | rss %.0f MB (peak %.0f MB)",
+            self.label,
+            stage,
+            f" ({detail})" if detail else "",
+            elapsed_ms,
+            rss,
+            peak,
+        )
+
+    def total(self: Self, stage: str = "total") -> None:
+        rss, peak = _memory_mb()
+        logger.info(
+            "[%s] %s: %.0f ms | rss %.0f MB (peak %.0f MB)",
+            self.label,
+            stage,
+            (time.perf_counter() - self.started) * 1000.0,
+            rss,
+            peak,
+        )
 
 
 class BundleValidationError(Exception):
@@ -160,8 +237,10 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         # they read cleanly and stay unique across bundles whose members share
         # standard names (stops, calendar, …).
         bundle_name = await db.get_bundle_name(bundle_id)
+        stages = _Stages("Import")
         with tempfile.TemporaryDirectory() as workdir:
             layers = importer.extract_layers(source_path, workdir)
+            stages.done("Extract", f"{len(layers)} layer(s)")
             try:
                 for i, extracted in enumerate(layers):
                     layer_id = str(uuid4())
@@ -252,6 +331,15 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                         extent_wkt=info.get("extent_wkt"),
                         feature_count=info.get("feature_count", 0),
                         size=info.get("size", 0),
+                        # Stated rather than left to `create_layer`, which
+                        # picks a random colour when given none: a bundle's
+                        # members are one dataset and should not arrive in two
+                        # unrelated colours.
+                        properties=get_bundle_style(
+                            bundle_type,
+                            extracted.role,
+                            normalize_geometry_type(info.get("geometry_type")),
+                        ),
                     )
                     if field_config:
                         await db.set_layer_field_config(layer_id, field_config)
@@ -259,6 +347,10 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                         bundle_id=bundle_id, layer_id=layer_id, role=extracted.role
                     )
 
+                    stages.done(
+                        f"Layer {i + 1}/{len(layers)} '{extracted.role}'",
+                        f"{info.get('feature_count', 0)} features",
+                    )
                     imported.append(
                         ImportedLayer(
                             role=extracted.role,
@@ -283,25 +375,43 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         *,
         project_id: str,
         bundle_id: str,
+        bundle_type: "BundleTypeName | str",
         imported: List[ImportedLayer],
     ) -> None:
         """Place the freshly-imported member layers into a locked bundle-backed
         group in the given project (the upload-from-within-a-project flow).
 
-        The group goes below what the project already holds and its members
-        directly beneath it, so the bundle arrives as one block instead of
-        scattering through the panel.
+        The group goes on top of what the project already holds, with its
+        members directly beneath it, so the bundle arrives as one block instead
+        of scattering through the panel — and in the same place a bundle added
+        to a project by hand arrives.
 
         Each project layer gets the same default style the member layer was
         created with, so it matches adding the bundle to a project manually."""
         bundle_name = await db.get_bundle_name(bundle_id) or "Bundle"
         group_id, group_order = await db.create_bundle_project_group(
-            project_id=project_id, bundle_id=bundle_id, name=bundle_name
+            project_id=project_id,
+            bundle_id=bundle_id,
+            name=bundle_name,
+            # Room for the header plus every member, made before any of them
+            # is written.
+            member_count=len(imported),
+        )
+        # Points before lines before polygons, so a node is not buried under
+        # the edges it joins. Stable, so members of one geometry keep the
+        # order the spec lists their roles in.
+        placed = sorted(
+            imported,
+            key=lambda layer: member_draw_rank(
+                normalize_geometry_type(layer.geometry_type)
+            ),
         )
         try:
-            for position, layer in enumerate(imported):
+            for position, layer in enumerate(placed):
                 geom = normalize_geometry_type(layer.geometry_type)
-                properties = get_default_style(geom) if geom else None
+                properties = (
+                    get_bundle_style(bundle_type, layer.role, geom) if geom else None
+                )
                 await db.add_to_project(
                     layer_id=layer.layer_id,
                     project_id=project_id,
@@ -334,7 +444,7 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         folder_id: str,
         project_id: Optional[str] = None,
     ) -> BundleImportResult:
-        """Ingest a validated source into an ALREADY-CREATED bundle (member
+        """Validate the source, ingest it into an ALREADY-CREATED bundle (member
         layers), then flip the bundle's terminal status.
 
         When ``project_id`` is given (upload from within a project), the bundle
@@ -361,6 +471,17 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                 db, user_id=user_id, bundle_id=bundle_id, folder_id=folder_id
             )
             try:
+                # Validated here rather than by core: an upload's problems have
+                # to reach the person who uploaded it, and only a job's failure
+                # is reported back — an error raised in the request that created
+                # the shell is never shown. Inside the inner try, so a refusal
+                # rolls the shell back like any other failed import rather than
+                # leaving a bundle holding nothing.
+                run = _Stages("Import")
+                validation = get_importer(bundle_type).validate(source_path)
+                if not validation.valid:
+                    raise BundleValidationError(validation)
+                run.done("Validate", type_value)
                 imported = await self._ingest_layers(
                     db,
                     source_path=source_path,
@@ -369,12 +490,14 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                     folder_id=folder_id,
                     bundle_id=bundle_id,
                 )
+                run.done("Ingest", f"{len(imported)} member layer(s)")
                 await db.update_bundle_metadata(
                     bundle_id=bundle_id,
                     metadata=get_importer(bundle_type)
                     .extract_metadata(source_path)
                     .stated(),
                 )
+                run.done("Metadata")
                 # Artifacts gate readiness: the bundle stays "processing" until
                 # its derived artifacts (e.g. the routing .bin) are built.
                 await self.build_and_store_artifacts(
@@ -385,6 +508,7 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                     user_id=user_id,
                     members=_as_members(imported),
                 )
+                run.done("Artifacts")
             except Exception:
                 await self._rollback_bundle(
                     db, user_id=user_id, bundle_id=bundle_id, imported=imported
@@ -401,6 +525,7 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                         db,
                         project_id=project_id,
                         bundle_id=bundle_id,
+                        bundle_type=type_value,
                         imported=imported,
                     )
                 except Exception:
@@ -409,6 +534,12 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                         bundle_id,
                         project_id,
                     )
+                else:
+                    run.done("Project attach")
+            # The peak is the number that matters on the way out: an import that
+            # survived but came close is the one the next slightly larger upload
+            # gets killed for.
+            run.total()
             return BundleImportResult(
                 bundle_id=bundle_id, bundle_type=type_value, layers=imported
             )

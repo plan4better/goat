@@ -46,6 +46,7 @@ _ITEM_COLUMNS = [
     "title",
     "description",
     "license",
+    "attribution",
     "category",
     "publisher",
     "keywords",
@@ -75,11 +76,31 @@ class CatalogItemNotFoundError(ValueError):
     """The mirror has no item with this id."""
 
 
+def _item_select_list(con: duckdb.DuckDBPyConnection, mirror_items_path: str) -> str:
+    """``_ITEM_COLUMNS`` as a SELECT list, with NULL standing in for a column
+    the file does not have.
+
+    The mirror is rewritten by the sync task on its own schedule, so a service
+    can run ahead of the file it reads for one cycle. A column added to the
+    list must read as unknown until then, not turn every promote into a binder
+    error.
+    """
+    present = {
+        column[0]
+        for column in con.execute(
+            "SELECT * FROM read_parquet(?) LIMIT 0", [mirror_items_path]
+        ).description
+    }
+    return ", ".join(
+        col if col.strip('"') in present else f"NULL AS {col}" for col in _ITEM_COLUMNS
+    )
+
+
 def read_item(mirror_items_path: str | Path, item_id: str) -> dict[str, Any]:
     """One item row from the mirror, as a plain dict keyed by column name."""
     con = duckdb.connect()
     try:
-        cols = ", ".join(_ITEM_COLUMNS)
+        cols = _item_select_list(con, str(mirror_items_path))
         row = con.execute(
             f"SELECT {cols} FROM read_parquet(?) WHERE id = ?",
             [str(mirror_items_path), item_id],
@@ -105,7 +126,7 @@ def read_items(
         return {}
     con = duckdb.connect()
     try:
-        cols = ", ".join(_ITEM_COLUMNS)
+        cols = _item_select_list(con, str(mirror_items_path))
         placeholders = ", ".join("?" for _ in item_ids)
         rows = con.execute(
             f"SELECT {cols} FROM read_parquet(?) WHERE id IN ({placeholders})",

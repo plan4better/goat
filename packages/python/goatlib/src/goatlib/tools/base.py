@@ -54,6 +54,7 @@ from goatlib.io.config import (
 )
 from goatlib.models.bundle import BundleArtifactState, artifact_state
 from goatlib.models.io import DatasetMetadata
+from goatlib.storage.s3_config import apply_duckdb_s3_settings, boto_client_kwargs
 from goatlib.tools.db import ToolDatabaseService
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase
 from goatlib.utils.layer import (
@@ -129,13 +130,16 @@ class ToolSettings:
     pt_network_base_path: str = "/app/data/pt_network/gtfs.bin"
 
     # S3 settings (shared for DuckLake and uploads)
-    s3_provider: str = "hetzner"  # hetzner, aws, minio
+    s3_provider: str = "hetzner"  # hetzner, aws, minio, or any S3-compatible store
+    s3_force_path_style: bool = False  # path-style addressing for on-prem stores
     s3_endpoint_url: str | None = None
     s3_public_endpoint_url: str | None = None  # Public URL for presigned URLs
     s3_access_key_id: str | None = None
     s3_secret_access_key: str | None = None
     s3_region_name: str = "us-east-1"
     s3_bucket_name: str | None = None  # Bucket for user uploads/imports
+    # Largest object a browser upload may be; checked before download.
+    max_upload_dataset_file_size: int = 5 * 1024 * 1024 * 1024
 
     # Schema for customer tables
     customer_schema: str = "customer"
@@ -159,80 +163,38 @@ class ToolSettings:
     pmtiles_max_zoom: int = 14  # Maximum zoom level for PMTiles generation
 
     def get_s3_client(self: Self) -> Any:
-        """Create boto3 S3 client with provider-specific config.
-
-        Returns configured S3 client for Hetzner, MinIO, or AWS.
-        """
+        """boto3 S3 client for the configured store."""
         import boto3
-        from botocore.client import Config
-
-        extra_kwargs = {}
-        if self.s3_endpoint_url:
-            extra_kwargs["endpoint_url"] = self.s3_endpoint_url
-
-        provider = self.s3_provider.lower()
-        if provider == "hetzner":
-            extra_kwargs["config"] = Config(
-                signature_version="s3v4",
-                s3={
-                    "payload_signing_enabled": False,
-                    "addressing_style": "virtual",
-                },
-            )
-        elif provider == "minio":
-            extra_kwargs["config"] = Config(
-                signature_version="s3v4",
-                s3={"addressing_style": "path"},
-            )
-        # AWS uses defaults
 
         return boto3.client(
             "s3",
             aws_access_key_id=self.s3_access_key_id,
             aws_secret_access_key=self.s3_secret_access_key,
             region_name=self.s3_region_name,
-            **extra_kwargs,
+            **boto_client_kwargs(
+                endpoint_url=self.s3_endpoint_url,
+                provider=self.s3_provider,
+                force_path_style=self.s3_force_path_style,
+            ),
         )
 
     def get_s3_public_client(self: Self) -> Any:
-        """Create boto3 S3 client for public URL signing.
+        """boto3 S3 client that signs URLs for the public endpoint.
 
-        Returns configured S3 client using the public endpoint URL for
-        generating presigned URLs that are accessible from outside the cluster.
-        Falls back to the regular S3 client if no public endpoint is configured.
+        Falls back to the internal endpoint when no public one is configured.
         """
         import boto3
-        from botocore.client import Config
-
-        # Use public endpoint if available, otherwise fall back to internal
-        endpoint_url = self.s3_public_endpoint_url or self.s3_endpoint_url
-
-        extra_kwargs = {}
-        if endpoint_url:
-            extra_kwargs["endpoint_url"] = endpoint_url
-
-        provider = self.s3_provider.lower()
-        if provider == "hetzner":
-            extra_kwargs["config"] = Config(
-                signature_version="s3v4",
-                s3={
-                    "payload_signing_enabled": False,
-                    "addressing_style": "virtual",
-                },
-            )
-        elif provider == "minio":
-            extra_kwargs["config"] = Config(
-                signature_version="s3v4",
-                s3={"addressing_style": "path"},
-            )
-        # AWS uses defaults
 
         return boto3.client(
             "s3",
             aws_access_key_id=self.s3_access_key_id,
             aws_secret_access_key=self.s3_secret_access_key,
             region_name=self.s3_region_name,
-            **extra_kwargs,
+            **boto_client_kwargs(
+                endpoint_url=self.s3_public_endpoint_url or self.s3_endpoint_url,
+                provider=self.s3_provider,
+                force_path_style=self.s3_force_path_style,
+            ),
         )
 
     @classmethod
@@ -323,9 +285,16 @@ class ToolSettings:
             s3_access_key_id=cls._get_secret("S3_ACCESS_KEY_ID", ""),
             s3_secret_access_key=cls._get_secret("S3_SECRET_ACCESS_KEY", ""),
             s3_region_name=cls._get_secret("S3_REGION", "us-east-1"),
+            s3_force_path_style=cls._get_secret("S3_FORCE_PATH_STYLE", "false").lower()
+            in ("1", "true", "yes"),
             s3_bucket_name=cls._get_secret("S3_BUCKET_NAME", ""),
             # `SCHEMA` is the canonical name (core's single data schema);
             # `CUSTOMER_SCHEMA` is accepted as a fallback for older deployments.
+            max_upload_dataset_file_size=int(
+                cls._get_secret(
+                    "MAX_UPLOAD_DATASET_FILE_SIZE", str(5 * 1024 * 1024 * 1024)
+                )
+            ),
             customer_schema=cls._get_secret("SCHEMA", "")
             or cls._get_secret("CUSTOMER_SCHEMA", "customer"),
             geocoding_url=cls._get_secret("GEOCODING_URL", "") or None,
@@ -398,13 +367,15 @@ class SimpleToolRunner:
             con.execute(f"INSTALL {ext}; LOAD {ext};")
 
         if self.settings.s3_endpoint_url:
-            con.execute(f"""
-                SET s3_endpoint = '{self.settings.s3_endpoint_url}';
-                SET s3_access_key_id = '{self.settings.s3_access_key_id or ""}';
-                SET s3_secret_access_key = '{self.settings.s3_secret_access_key or ""}';
-                SET s3_url_style = 'path';
-                SET s3_use_ssl = false;
-            """)
+            apply_duckdb_s3_settings(
+                con,
+                endpoint_url=self.settings.s3_endpoint_url,
+                access_key=self.settings.s3_access_key_id,
+                secret_key=self.settings.s3_secret_access_key,
+                region=self.settings.s3_region_name,
+                provider=self.settings.s3_provider,
+                force_path_style=self.settings.s3_force_path_style,
+            )
 
         storage_path = self.settings.ducklake_data_dir
         con.execute(f"""
@@ -584,6 +555,27 @@ class SimpleToolRunner:
                 raise RuntimeError("Settings not initialized")
             self._s3_client = self.settings.get_s3_client()
         return self._s3_client
+
+    def download_uploaded_object(
+        self: Self, s3_key: str, local_file: Path, client: Any | None = None
+    ) -> None:
+        """Download a browser-uploaded object after checking its size.
+
+        Presigned PUT uploads carry no size policy, so the limit is enforced
+        here, before the object is fetched and converted.
+        """
+        if self.settings is None:
+            raise RuntimeError("Settings not initialized")
+        client = client if client is not None else self.s3_client
+        bucket = self.settings.s3_bucket_name
+        size = client.head_object(Bucket=bucket, Key=s3_key)["ContentLength"]
+        limit = self.settings.max_upload_dataset_file_size
+        if size > limit:
+            raise ValueError(
+                f"Uploaded file is {size // 1024 // 1024} MB; "
+                f"the limit is {limit // 1024 // 1024} MB."
+            )
+        client.download_file(Bucket=bucket, Key=s3_key, Filename=str(local_file))
 
     @property
     def s3_public_client(self: Self) -> Any:
@@ -1092,6 +1084,22 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         logger.info(f"Filtered temp layer written to: {temp_path}")
         return temp_path
 
+    def resolve_bundle_dependency(
+        self: Self, bundle_id: str, kind: str
+    ) -> "str | None":
+        """The bundle this one depends on for ``kind``, or None if unlinked.
+
+        A tool asks this to follow a link the user already made rather than
+        making them state it twice: a public-transport bundle names the street
+        network its stops were connected to, and that is the network its
+        journeys' access and egress legs should be routed on.
+        """
+        if self.db_service is None:
+            return None
+        return _get_or_create_event_loop().run_until_complete(
+            self.db_service.get_bundle_dependency(bundle_id, kind)
+        )
+
     def resolve_bundle_artifact(
         self: Self, bundle_id: str, kind: str
     ) -> "tuple[str | None, BundleArtifactState | None]":
@@ -1123,6 +1131,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             row.get("revision"),
             row["layers_revision"],
             row.get("storage_path"),
+            bool(row.get("dependencies_current", True)),
         )
         if state is not BundleArtifactState.ready:
             return None, state

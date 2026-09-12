@@ -22,6 +22,13 @@ const nextConfig = {
   },
   reactStrictMode: true,
   transpilePackages: ["@p4b/ui", "@p4b/tsconfig"],
+  // The pwa-icon routes use sharp, whose libvips shared library is loaded by
+  // the dynamic linker (not require()), so output file tracing misses it and
+  // the standalone build 500s with ERR_DLOPEN_FAILED. Globs resolve from this
+  // directory; node_modules lives at the monorepo root.
+  outputFileTracingIncludes: {
+    "/api/pwa-icon/**": ["../../node_modules/.pnpm/@img+sharp-libvips-*/**/*"],
+  },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "assets.plan4better.de" },

@@ -290,6 +290,10 @@
       "label": "Tag",
       "description": "Art des Tages für den ÖV-Fahrplan"
     },
+    "pt_date": {
+      "label": "Datum",
+      "description": "Tag der Berechnung, innerhalb des Fahrplanzeitraums des gewählten Datenpakets"
+    },
     "from_time": {
       "label": "Startzeit",
       "description": "Beginn des Analysezeitraums"

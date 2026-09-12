@@ -847,11 +847,7 @@ class ProjectImportRunner(SimpleToolRunner):
 
                 # 1. Download ZIP from S3
                 logger.info("Downloading ZIP from S3: %s", params.s3_key)
-                self.s3_client.download_file(
-                    Bucket=self.settings.s3_bucket_name,
-                    Key=params.s3_key,
-                    Filename=str(zip_path),
-                )
+                self.download_uploaded_object(params.s3_key, zip_path)
 
                 # 2. Extract ZIP (with security checks)
                 archive_dir = tmp_dir / "archive"

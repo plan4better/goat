@@ -1,5 +1,4 @@
 import { MAPTILER_KEY } from "@/lib/constants";
-import { getBasemapUrl } from "@/lib/constants/basemaps";
 import type { TemplatePreviewViewState } from "@/lib/validations/template";
 
 /**
@@ -14,11 +13,6 @@ import type { TemplatePreviewViewState } from "@/lib/validations/template";
  * rasterised by loading the SVG through an `<img>`, which resolves nothing
  * external: an `<image href="https://…">` in that SVG draws nothing at all.
  */
-
-/** The style id a MapTiler basemap url names. Only these carry a static
- * endpoint — the BKG and plan4better styles in `BASEMAPS` are hosted
- * elsewhere, and a frame is not fetched for them. */
-const MAPTILER_STYLE = /^https:\/\/api\.maptiler\.com\/maps\/([A-Za-z0-9_-]+)\/style\.json/;
 
 /** How long a frame is waited for. A thumbnail is generated while its author
  * waits on a dialog, so a slow endpoint falls back to the placeholder map
@@ -38,27 +32,24 @@ const round2 = (value: number): number => Math.round(value * 100) / 100;
 const clampSize = (value: number): number =>
   Math.min(Math.max(Math.round(value), STATIC_MAP_MIN_SIZE), STATIC_MAP_MAX_SIZE);
 
-/** Which of `BASEMAPS` a thumbnail's map frame is drawn from. Not the app's
- * default (`light` / `dataviz-light`): that style is deliberately pale so
- * data overlays read on top of it, and a template's map frame carries no
- * overlay at all, which left the frame looking like blank paper. `streets`
- * still reads as a map at thumbnail size. */
-const STATIC_MAP_BASEMAP = "streets";
-
-/**
- * The style a static frame is drawn in: the id that basemap's url names, so
- * a thumbnail's map reads as the map the app itself shows. Null where the
- * basemap is not a MapTiler style, and then no frame is fetched.
- */
-export const staticMapStyle = (): string | null => {
-  const match = MAPTILER_STYLE.exec(getBasemapUrl(STATIC_MAP_BASEMAP));
-  return match ? match[1] : null;
-};
+/** The style a thumbnail's map frame is drawn in.
+ *
+ * Pinned rather than read out of `BASEMAPS`, because none of the app's own
+ * vector basemaps can serve this: they are OpenFreeMap styles, and
+ * OpenFreeMap has no static-image endpoint. MapTiler stays the imagery
+ * provider, so the key is configured anyway and this is one request per
+ * distinct thumbnail camera.
+ *
+ * It is deliberately not the app's default (`light`): a pale style is meant
+ * to sit under data overlays, and a template's map frame carries no overlay
+ * at all, which left the frame looking like blank paper. This one still reads
+ * as a map at thumbnail size. */
+const STATIC_MAP_STYLE = "streets-v2";
 
 /**
  * The MapTiler static-maps url for one camera at one pixel size, or null
- * where there is no frame to ask for: no key configured, a default basemap
- * with no static endpoint, or a box with no area.
+ * where there is no frame to ask for: no key configured, or a box with no
+ * area.
  *
  * The url is also the cache key — it carries the style, the centre, the zoom
  * and the size, which is everything the frame depends on.
@@ -67,8 +58,7 @@ export const staticMapUrl = (
   view: TemplatePreviewViewState,
   size: { width: number; height: number }
 ): string | null => {
-  const style = staticMapStyle();
-  if (!style || !MAPTILER_KEY) return null;
+  if (!MAPTILER_KEY) return null;
   if (!(size.width > 0) || !(size.height > 0)) return null;
   const longitude = round5(view.longitude);
   const latitude = round5(view.latitude);
@@ -81,7 +71,7 @@ export const staticMapUrl = (
   // OpenStreetMap's terms still require the attribution to appear on the
   // surface that displays the map, and where that goes is a licensing
   // decision the product owner made rather than a technical default.
-  return `https://api.maptiler.com/maps/${style}/static/${longitude},${latitude},${zoom}/${width}x${height}@2x.png?key=${MAPTILER_KEY}&attribution=0`;
+  return `https://api.maptiler.com/maps/${STATIC_MAP_STYLE}/static/${longitude},${latitude},${zoom}/${width}x${height}@2x.png?key=${MAPTILER_KEY}&attribution=0`;
 };
 
 /** The frames fetched in this session, keyed by their own url — so a card

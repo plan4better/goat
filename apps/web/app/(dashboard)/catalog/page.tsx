@@ -24,6 +24,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { useCatalogAggregations, useCatalogDatasets } from "@/lib/api/catalog";
 import { useFavoriteStars } from "@/lib/api/favorites";
 import { datasetCard } from "@/lib/catalog/card";
+import { DEFAULT_SORT } from "@/lib/catalog/searchQuery";
 import type { CatalogCollection } from "@/lib/validations/catalog";
 import type { TemplateRead, TemplateUseResult } from "@/lib/validations/template";
 
@@ -65,6 +66,7 @@ import UseTemplateFlow from "@/components/templates/UseTemplateFlow";
 /** Icons per facet parameter. Falls back to a neutral filter glyph. */
 /** Sort choices, page-only: the Add Layer picker takes results as they come. */
 const SORT_OPTIONS: { value: string; labelKey: string; icon: ICON_NAME }[] = [
+  { value: DEFAULT_SORT, labelKey: "sort_relevance", icon: ICON_NAME.BULLSEYE },
   { value: "-updated", labelKey: "sort_last_updated", icon: ICON_NAME.REFRESH },
   { value: "title", labelKey: "sort_title_asc", icon: ICON_NAME.SORT_ALPHA_ASC },
   { value: "-title", labelKey: "sort_title_desc", icon: ICON_NAME.SORT_ALPHA_DESC },

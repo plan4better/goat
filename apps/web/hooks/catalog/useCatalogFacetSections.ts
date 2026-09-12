@@ -66,6 +66,11 @@ const MIN_BUCKETS_TO_OFFER = 2;
  */
 export const FACET_HIDDEN = new Set(["geographical_code"]);
 
+/** Bucket values a facet does not offer. Narrows the picker, not the API. */
+export const FACET_HIDDEN_VALUES: Record<string, Set<string>> = {
+  license: new Set(["other", "proprietary"]),
+};
+
 /**
  * Sidebar order, most-asked question first.
  *
@@ -124,8 +129,9 @@ export const useCatalogFacetSections = ({
   const sections = useMemo(
     () =>
       facetPlan.flatMap(({ name, param }) => {
+        const hidden = FACET_HIDDEN_VALUES[name];
         const options = (buckets[name] ?? [])
-          .filter((bucket) => bucket.key !== null)
+          .filter((bucket) => bucket.key !== null && !hidden?.has(bucket.key))
           .map((bucket) => ({
             value: bucket.key as string,
             label: optionLabel(param, bucket.key as string),

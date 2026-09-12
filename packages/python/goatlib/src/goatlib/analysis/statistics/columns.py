@@ -19,9 +19,17 @@ def table_column_names(con: duckdb.DuckDBPyConnection, table_name: str) -> set[s
 
     DESCRIBE loads only this relation's metadata; information_schema.columns
     would lazily load every table in the catalog to answer.
+
+    Described as a SELECT because bare `DESCRIBE <relation>` only parses an
+    identifier: callers legitimately pass an expression such as
+    `read_parquet('...')`, and `DESCRIBE read_parquet('...')` is a parser error
+    ("syntax error at or near \"(\""). `DESCRIBE SELECT * FROM ...` binds the
+    same metadata for both shapes without scanning either.
     """
     return {
-        str(row[0]) for row in con.execute(f"DESCRIBE {table_name}").fetchall() if row
+        str(row[0])
+        for row in con.execute(f"DESCRIBE SELECT * FROM {table_name}").fetchall()
+        if row
     }
 
 

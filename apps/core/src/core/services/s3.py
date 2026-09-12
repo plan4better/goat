@@ -1,13 +1,13 @@
 import hashlib
 import logging
 import posixpath
-from typing import BinaryIO, Dict
+from typing import Any, BinaryIO, Dict
 
 import boto3
-from botocore.client import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from core.core.config import settings
 from fastapi import HTTPException, status
+from goatlib.storage.s3_config import boto_client_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -24,28 +24,12 @@ class S3Service:
     """
 
     def __init__(self) -> None:
-        """
-        Initialize an S3 client that can talk to either AWS S3
-        or an S3-compatible provider like Hetzner or MinIO.
-        """
-        extra_kwargs = {}
-
-        # Use endpoint_url if provided (Hetzner, MinIO, etc.)
-        if settings.S3_ENDPOINT_URL:
-            extra_kwargs["endpoint_url"] = settings.S3_ENDPOINT_URL
-
-        # Special config for non-AWS providers
-        provider = (settings.S3_PROVIDER or "aws").lower()
-        if provider in {"hetzner", "minio"}:
-            # MinIO always needs path-style, Hetzner can use virtual
-            use_path_style = provider == "minio" or settings.S3_FORCE_PATH_STYLE
-            extra_kwargs["config"] = Config(
-                signature_version="s3v4",
-                s3={
-                    "payload_signing_enabled": False,
-                    "addressing_style": "path" if use_path_style else "virtual",
-                },
-            )
+        """S3 client for AWS or any S3-compatible store (Hetzner, MinIO, on-prem)."""
+        extra_kwargs = boto_client_kwargs(
+            endpoint_url=settings.S3_ENDPOINT_URL,
+            provider=settings.S3_PROVIDER,
+            force_path_style=settings.S3_FORCE_PATH_STYLE,
+        )
 
         self.s3_client = boto3.client(
             "s3",
@@ -110,39 +94,42 @@ class S3Service:
                 detail=f"Failed to delete asset: {e}",
             )
 
-    def generate_presigned_post(
+    def generate_presigned_put(
         self,
         bucket_name: str,
         s3_key: str,
         content_type: str,
-        max_size: int,
         expires_in: int = 300,
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
+        """Presigned PUT for a browser upload straight to object storage.
+
+        Signed with the public-endpoint client: a SigV4 query signature covers
+        the Host header, so the URL cannot be rewritten after signing. PUT
+        carries no size policy; the importer checks the object size before
+        it downloads.
+        """
         try:
-            result = self.s3_client.generate_presigned_post(
-                Bucket=bucket_name,
-                Key=s3_key,
-                Fields={"Content-Type": content_type},
-                Conditions=[
-                    {"Content-Type": content_type},
-                    ["content-length-range", 0, max_size],
-                ],
+            client = self._public_client if self._public_client else self.s3_client
+            url = client.generate_presigned_url(
+                "put_object",
+                Params={
+                    "Bucket": bucket_name,
+                    "Key": s3_key,
+                    "ContentType": content_type,
+                },
                 ExpiresIn=expires_in,
+                HttpMethod="PUT",
             )
-
-            # Replace internal URL (minio:9000) with public one (localhost:9000)
-            if settings.S3_PUBLIC_ENDPOINT_URL:
-                result["url"] = result["url"].replace(
-                    settings.S3_ENDPOINT_URL, settings.S3_PUBLIC_ENDPOINT_URL
-                )
-
-            return result
-
+            return {
+                "url": url,
+                "key": s3_key,
+                "headers": {"Content-Type": content_type},
+            }
         except (ClientError, BotoCoreError) as e:
-            logger.error(f"S3 presigned POST failed: {e}")
+            logger.error(f"S3 presigned PUT failed: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to generate presigned POST: {e}",
+                detail=f"Failed to generate presigned PUT: {e}",
             )
 
     def upload_file(

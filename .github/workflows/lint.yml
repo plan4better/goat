@@ -45,6 +45,11 @@ jobs:
 
       - name: 🔬 Upload ESLint report
         if: ${{ always() }}
+        # The report is a debugging convenience -- the annotate step above
+        # already surfaces the findings. A failed upload (artifact storage
+        # quota, a 403 from the artifact service) must not fail the job: this
+        # workflow gates the release, so that would skip every image build.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: lint-results

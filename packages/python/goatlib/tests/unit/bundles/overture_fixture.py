@@ -40,6 +40,8 @@ _SEGMENT_SCHEMA = pa.schema(
         ("version", pa.int32()),
         ("subtype", pa.string()),
         ("class", pa.string()),
+        ("subclass", pa.string()),
+        ("subclass_rules", pa.null()),
         (
             "names",
             pa.struct(
@@ -210,7 +212,7 @@ def build_records() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
             # A speed change at 0.50 has no connector behind it, so the splitter
             # has to mint one.
             speed_limits=[_speed(30, [0.0, 0.5]), _speed(50, [0.5, 1.0])],
-            road_surface=[_surface("asphalt")],
+            road_surface=[_surface("paved")],
             # No left turn from Tal's east end onto Frauenstraße. References
             # other features, so it belongs only to the piece ending at Isartor.
             prohibited_transitions=[
@@ -236,7 +238,7 @@ def build_records() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
                 ("c-rindermarkt-south", 1.0),
             ],
             speed_limits=[_speed(20)],
-            road_surface=[_surface("sett")],
+            road_surface=[_surface("paved")],
         ),
         _segment(
             "seg-frauenstrasse",
@@ -249,8 +251,8 @@ def build_records() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
             ],
             speed_limits=[_speed(30)],
             road_surface=[
-                _surface("sett", [0.0, 0.5]),
-                _surface("asphalt", [0.5, 1.0]),
+                _surface("paving_stones", [0.0, 0.5]),
+                _surface("paved", [0.5, 1.0]),
             ],
             # Whole-range but non-geometrically scoped: closed backward except to
             # buses. Splitting cannot reduce these to one value, which is why the
@@ -282,6 +284,7 @@ def build_records() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
                 ("c-sendlinger-south", 1.0),
             ],
             road_surface=[_surface("paving_stones")],
+            subclass="sidewalk",
         ),
         _segment(
             "seg-isarradweg",
@@ -292,7 +295,7 @@ def build_records() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
                 ("c-frauenstrasse-south", 0.0),
                 ("c-isarradweg-south", 1.0),
             ],
-            road_surface=[_surface("asphalt")],
+            road_surface=[_surface("paved")],
             road_flags=[{"values": ["is_bridge"], "between": [0.2, 0.4]}],
         ),
     ]
@@ -319,6 +322,7 @@ def _segment(
     connectors: List[Tuple[str, float]],
     speed_limits: Any = None,
     road_surface: Any = None,
+    subclass: Any = None,
     road_flags: Any = None,
     access_restrictions: Any = None,
     level_rules: Any = None,
@@ -332,6 +336,12 @@ def _segment(
         "version": 1,
         "subtype": "road",
         "class": road_class,
+        # Overture carries a road's subclass as a scalar and, where it changes
+        # along the way, as `subclass_rules`. The flatten reads the rules first
+        # and falls back to the scalar, so a fixture segment that states one
+        # covers the scalar path.
+        "subclass": subclass,
+        "subclass_rules": None,
         "names": {"primary": name, "rules": None},
         "connectors": [{"connector_id": cid, "at": at} for cid, at in connectors],
         "road_surface": road_surface,

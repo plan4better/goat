@@ -9,12 +9,13 @@ from pathlib import Path
 
 import duckdb
 import pytest
-from goatlib.tools.catalog_promote import (
+from goatlib.catalog.promote import (
     CatalogItemNotFoundError,
     _jsonable,
     layer_type,
     published_style,
     read_item,
+    read_items,
     resolve_item_ids,
     style_key_for,
 )
@@ -69,6 +70,14 @@ def test_read_item_returns_row_as_dict(mirror: Path) -> None:
     assert item["title"] == "Schulstandorte Bayern"
     assert item["version"] == "2024-11"
     assert item["goat:geometryType"] == "point"
+
+
+def test_a_column_the_mirror_predates_reads_as_absent(mirror: Path) -> None:
+    """The fixture is a pre-v8 mirror without `attribution`: the sync task
+    rewrites the file on its own schedule, so a deploy can read an older one
+    for a cycle, and that must not fail every promote until it catches up."""
+    assert read_item(mirror, "item-1")["attribution"] is None
+    assert read_items(mirror, ["item-1", "item-2"])["item-2"]["attribution"] is None
 
 
 def test_read_item_unknown_id_raises(mirror: Path) -> None:

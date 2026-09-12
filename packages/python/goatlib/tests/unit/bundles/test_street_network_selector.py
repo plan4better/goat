@@ -37,6 +37,18 @@ ANALYSIS_SCHEMAS = (
 
 STREET_MODES = {"walking", "bicycle", "pedelec", "car"}
 
+# A PT journey still has to get to the first stop and away from the last.
+# Catchment and the matrix route those legs live — the engine's
+# `pt::compute_access` loads street edges around the origins — while the
+# heatmaps and Huff read the costs out of the PT bundle's precomputed
+# stop-to-street linkage.
+#
+# Either way the street network is not the user's to choose in PT mode: it
+# follows the PT bundle, which names the network its stops were connected to or
+# was built against the default. Offering the choice would only be a chance to
+# pick one that disagrees with the bundle.
+PT_ROUTES_STREET_LEGS_LIVE = ("catchment_area_v2", "travel_cost_matrix")
+
 
 def _properties(tool_name: str) -> dict:
     definition = next(d for d in TOOL_REGISTRY if d.name == tool_name)
@@ -65,13 +77,23 @@ def test_the_selector_lists_only_routable_street_bundles(tool_name: str) -> None
 
 
 @pytest.mark.parametrize("tool_name", ROUTING_TOOLS)
-def test_the_selector_is_advanced_and_street_only(tool_name: str) -> None:
-    """PT legs route on the global network, so the field is meaningless in PT
-    mode; and it is an override, so it stays behind Advanced."""
+def test_the_selector_stays_behind_advanced(tool_name: str) -> None:
+    """It is an override of the default network, not a required input."""
     ui = _properties(tool_name)["street_network_bundle_id"]["x-ui"]
-    condition = json.dumps(ui["visible_when"])
+    assert "show_advanced" in json.dumps(ui["visible_when"])
 
-    assert "show_advanced" in condition
+
+@pytest.mark.parametrize("tool_name", ROUTING_TOOLS)
+def test_the_selector_is_street_only(tool_name: str) -> None:
+    """In PT mode the network follows the bundle, so there is nothing to ask.
+
+    This is where a wrong reason once lived — that PT legs route on the global
+    network — and with the field hidden and nothing resolving it, a PT run had
+    no street network at all: its access leg fell back to the default, which
+    fails outright for a region the default does not cover. The field stays
+    hidden; what changed is that the link is now followed.
+    """
+    ui = _properties(tool_name)["street_network_bundle_id"]["x-ui"]
     modes = ui["visible_when"]["$and"][0]["routing_mode"]["$in"]
     assert set(modes) == STREET_MODES
 
@@ -163,3 +185,40 @@ def test_the_tool_fetches_the_graph_when_a_bundle_is_chosen(tool_name: str) -> N
 
     assert "if params.street_network_bundle_id:" in source
     assert "fetch_routing_network(" in source
+
+
+@pytest.mark.parametrize("tool_name", PT_ROUTES_STREET_LEGS_LIVE)
+def test_a_linked_street_network_is_followed_without_being_asked_for(
+    tool_name: str,
+) -> None:
+    """A PT bundle already names the street network its stops were connected
+    to. Requiring the user to name it again is a second chance to get it wrong
+    — and getting it wrong means routing access legs on a network that may not
+    even cover the region."""
+    from goatlib.bundles.artifacts.street_network import fetch_linked_routing_network
+
+    calls: list[tuple[str, str]] = []
+
+    class _Source:
+        def resolve_bundle_dependency(self, bundle_id: str, kind: str) -> str | None:
+            calls.append((bundle_id, kind))
+            return "street-bundle" if bundle_id == "pt-bundle" else None
+
+        def resolve_bundle_artifact(self, bundle_id: str, kind: str):
+            raise AssertionError("should not resolve an artifact in this test")
+
+    # Unlinked: nothing to follow, so the caller keeps the default network.
+    assert fetch_linked_routing_network(_Source(), "no-link", "/tmp") is None
+    assert calls == [("no-link", "street_network")]
+
+    # Linked: the dependency is what gets fetched.
+    calls.clear()
+
+    class _Linked(_Source):
+        def resolve_bundle_artifact(self, bundle_id: str, kind: str):
+            assert bundle_id == "street-bundle"
+            return None, None  # not ready -> refuses, which is the point
+
+    with pytest.raises(ValueError):
+        fetch_linked_routing_network(_Linked(), "pt-bundle", "/tmp")
+    assert calls == [("pt-bundle", "street_network")]

@@ -11,7 +11,7 @@ from core.deps.auth import auth_z
 from core.endpoints.deps import get_db, get_user_id
 from core.schemas.bundle import DatasetContentTile
 from core.schemas.common import OrderEnum
-from core.schemas.datasets import DatasetImportRequest, PresignedPostResponse
+from core.schemas.datasets import DatasetImportRequest, PresignedUploadResponse
 from core.schemas.error import HTTPErrorHandler
 from core.schemas.layer import ILayerGet
 from core.services.s3 import s3_service
@@ -69,15 +69,15 @@ async def read_datasets(
 @router.post(
     "/request-upload",
     summary="Request S3 upload URL",
-    description="Generate a presigned S3 POST object for a dataset import.",
-    response_model=PresignedPostResponse,
+    description="Generate a presigned S3 PUT for a dataset import.",
+    response_model=PresignedUploadResponse,
     status_code=200,
     dependencies=[Depends(auth_z)],
 )
 async def request_upload(
     body: DatasetImportRequest,
     user_id: UUID = Depends(get_user_id),
-) -> PresignedPostResponse:
+) -> PresignedUploadResponse:
     if body.file_size > settings.MAX_UPLOAD_DATASET_FILE_SIZE:
         raise HTTPException(
             400,
@@ -89,12 +89,10 @@ async def request_upload(
         settings.S3_BUCKET_PATH, "users", str(user_id), "imports", "uploads", filename
     )
 
-    # Generate presigned POST object
-    presigned = s3_service.generate_presigned_post(
+    presigned = s3_service.generate_presigned_put(
         bucket_name=settings.S3_BUCKET_NAME,
         s3_key=s3_key,
         content_type=body.content_type,
-        max_size=settings.MAX_UPLOAD_DATASET_FILE_SIZE,
         expires_in=600,  # 10 min expiry
     )
 

@@ -41,9 +41,13 @@ from goatlib.analysis.schemas.ui import (
     ui_sections,
 )
 from goatlib.bundles.artifacts.gtfs import fetch_pt_timetable
-from goatlib.bundles.artifacts.street_network import fetch_routing_network
+from goatlib.bundles.artifacts.street_network import (
+    fetch_linked_routing_network,
+    fetch_routing_network,
+)
 from goatlib.models.io import DatasetMetadata
 from goatlib.tools.catchment_area import CatchmentAreaToolRunner
+from goatlib.tools.pt_network import pt_date_field
 from goatlib.tools.schemas import ToolInputBase, get_default_layer_name
 
 logger = logging.getLogger(__name__)
@@ -330,7 +334,12 @@ class CatchmentAreaV2WindmillParams(ToolInputBase):
             field_order=19,
             label_key="street_network_bundle_id",
             widget="bundle-selector",
-            # PT legs route on the global network, so this is for street modes.
+            # Street modes only — not because a PT run needs no street
+            # network (its access and egress legs are routed live on one), but
+            # because for PT the answer is not the user's to give: it follows
+            # the PT bundle, which either names the network its stops were
+            # connected to or was built against the default. Offering a choice
+            # there is only a chance to pick one that disagrees.
             visible_when={
                 "$and": [
                     {"routing_mode": {"$in": ["walking", "bicycle", "pedelec", "car"]}},
@@ -491,9 +500,19 @@ class CatchmentAreaV2WindmillParams(ToolInputBase):
             field_order=8,
             label_key="weekday",
             enum_labels=WEEKDAY_LABELS,
-            visible_when={"routing_mode": "pt"},
+            # Only for the default network. Its three choices resolve to three
+            # fixed anchor dates, which exist in that network's timetable and
+            # almost certainly not in an uploaded feed's — so when a bundle is
+            # chosen, `pt_date` replaces this rather than sitting beside it.
+            visible_when={
+                "$and": [
+                    {"routing_mode": "pt"},
+                    {"pt_network_bundle_id": {"$exists": False}},
+                ]
+            },
         ),
     )
+    pt_date: str | None = pt_date_field(8)
     pt_start_time: int = Field(
         default=25200,
         description="PT window start (seconds from midnight).",
@@ -911,6 +930,9 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
         if params.routing_mode == CatchmentAreaRoutingMode.pt:
             time_window = PTTimeWindow(
                 weekday=params.pt_day,
+                # Set only for a bundle, whose timetable the weekday
+                # anchors do not fall inside; it wins when present.
+                on_date=params.pt_date,
                 from_time=params.pt_start_time,
                 to_time=params.pt_end_time,
             )
@@ -1014,13 +1036,24 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
                 self, params.pt_network_bundle_id
             )
 
-        # Likewise for a street network bundle.
+        # The street network to route on, in order of what the user meant:
+        # the one they picked; else the one the chosen PT bundle is linked to,
+        # since that is the network its stops were connected to and the one its
+        # access and egress legs belong on; else the default.
+        graph = None
         if params.street_network_bundle_id:
-            edge_path, node_path = fetch_routing_network(
+            graph = fetch_routing_network(
                 self, params.street_network_bundle_id, temp_dir
             )
-            analysis_params.edge_path = edge_path
-            analysis_params.node_path = node_path
+        elif (
+            params.routing_mode == CatchmentAreaRoutingMode.pt
+            and params.pt_network_bundle_id
+        ):
+            graph = fetch_linked_routing_network(
+                self, params.pt_network_bundle_id, temp_dir
+            )
+        if graph:
+            analysis_params.edge_path, analysis_params.node_path = graph
 
         tool = self.tool_class()
         try:

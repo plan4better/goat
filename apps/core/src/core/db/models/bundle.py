@@ -24,7 +24,6 @@ from core.db.models.bundle_type import BundleTypeName
 if TYPE_CHECKING:
     from ._link_model import BundleDependencyLink, BundleLayerLink
     from .bundle_artifact import BundleArtifact
-    from .bundle_type import BundleType
     from .folder import Folder
     from .user import User
 
@@ -35,9 +34,9 @@ class Bundle(ContentBaseAttributes, DateTimeBase, table=True):
     Datasets such as a street network (nodes + edges) or a GTFS public-transport
     feed (stops, routes, trips, …) are made up of several layers that only make
     sense as a unit. A bundle bundles those member layers under one
-    owner and folder, tagged with a ``bundle_type`` whose ``structure``
-    describes the expected roles/artifacts. Deleting a bundle cascades to its
-    layers.
+    owner and folder, tagged with a ``bundle_type`` whose spec — in code, see
+    ``goatlib.models.bundle`` — describes the roles and artifacts to expect.
+    Deleting a bundle cascades to its layers.
 
     Inherits ``folder_id``, ``name`` and ``description`` from
     ``ContentBaseAttributes`` and ``created_at``/``updated_at`` from
@@ -87,22 +86,30 @@ class Bundle(ContentBaseAttributes, DateTimeBase, table=True):
         description="Restricted (D9): members of the bundle's space do not get the space default role on it; grants still apply.",
     )
     bundle_type: BundleTypeName = Field(
-        sa_column=Column(
-            Text,
-            ForeignKey(f"{settings.SCHEMA}.bundle_type.type", ondelete="RESTRICT"),
-            nullable=False,
-            index=True,
+        sa_column=Column(Text, nullable=False, index=True),
+        description=(
+            "Bundle type. Plain text, validated on the way in by the "
+            "BundleTypeName enum: the set of types is declared in code "
+            "(goatlib.models.bundle.SPECS), and the reference table that used "
+            "to hold it only carried a copy of each type's spec that drifted"
         ),
-        description="Bundle type (FK to bundle_type.type)",
     )
     thumbnail_url: str | None = Field(
         default=settings.DEFAULT_LAYER_THUMBNAIL,
         sa_column=Column(Text, nullable=True),
-        description="Bundle thumbnail URL",
+        description=(
+            "Fallback thumbnail. A bundle has no geometry of its own, so the "
+            "read paths show one member layer's thumbnail instead — the role "
+            "the type's spec names; see crud_bundle.member_thumbnails. This "
+            "column is what they fall back to when that member has none"
+        ),
     )
     dataset_metadata: Dict[str, Any] | None = Field(
         default=None,
-        sa_column=Column(JSONB, nullable=True),
+        # none_as_null: without it None is stored as JSON null rather than SQL
+        # NULL, and a JSON null is not an object — the importers' provenance
+        # merge then concatenates onto a non-object and yields an array.
+        sa_column=Column(JSONB(none_as_null=True), nullable=True),
         description=(
             "Dataset-level provenance: what the source states about itself "
             "(importers write it) plus what the owner authors"
@@ -129,7 +136,6 @@ class Bundle(ContentBaseAttributes, DateTimeBase, table=True):
     # Relationships
     user: "User" = Relationship(back_populates="bundles")
     folder: "Folder" = Relationship(back_populates="bundles")
-    type_definition: "BundleType" = Relationship(back_populates="bundles")
     layer_links: List["BundleLayerLink"] = Relationship(
         back_populates="bundle",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},

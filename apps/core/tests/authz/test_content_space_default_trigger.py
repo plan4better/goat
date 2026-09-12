@@ -14,7 +14,6 @@ from core.core.config import settings
 from core.db.models.folder import Folder
 from core.db.models.space import Space, SpaceKind
 from core.db.models.user import User
-from core.db.seed_bundle_types import seed_bundle_types
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -88,7 +87,6 @@ async def test_bundle_insert_without_space_id_gets_folders_space(
 ) -> None:
     owner = await make_user()
     folder = await make_folder(owner)
-    await seed_bundle_types(db_session)
 
     bundle_id = (
         await db_session.execute(

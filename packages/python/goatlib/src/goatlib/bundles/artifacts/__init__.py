@@ -3,8 +3,8 @@
 from goatlib.bundles.artifacts.base import (
     ArtifactBuilder,
     ArtifactBuilderUnavailableError,
+    ArtifactBuildFailedError,
     BuiltArtifact,
-    require_ready_artifact,
 )
 from goatlib.bundles.artifacts.gtfs import GtfsArtifactBuilder
 from goatlib.bundles.artifacts.registry import (
@@ -23,6 +23,7 @@ register_artifact_builder(GtfsArtifactBuilder())
 register_artifact_builder(StreetNetworkArtifactBuilder())
 
 __all__ = [
+    "ArtifactBuildFailedError",
     "ArtifactBuilder",
     "ArtifactBuilderUnavailableError",
     "BuiltArtifact",
@@ -34,5 +35,4 @@ __all__ = [
     "resolve_artifact",
     "store_artifact",
     "register_artifact_builder",
-    "require_ready_artifact",
 ]

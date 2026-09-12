@@ -21,11 +21,14 @@ import {
   DetailHeader,
   DetailTabs,
   KeywordSection,
+  LicenseNotices,
   LicenseBadge,
+  LicenseTerms,
   type MetaField,
   MetaSidebar,
   SectionCard,
 } from "@/components/dashboard/common/DetailChrome";
+import MarkdownProse from "@/components/dashboard/common/MarkdownProse";
 import SchemaTable from "@/components/dashboard/common/SchemaTable";
 import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
 
@@ -67,6 +70,10 @@ const CatalogLayerDetail = ({
   const title = inBundle ? props.title : collection?.title || props.title;
   // `other` is STAC's "unknown", not a licence — see `licenseLabel`.
   const licenseLabel = labels.licenseLabel(props.license);
+  const licenseHref =
+    linkHref(item.links, "license") ??
+    linkHref(collection?.links, "license") ??
+    linkHref(collection?.links, "via");
   const periodField = labels.periodField(inBundle ? itemPeriod(item) : datasetPeriod(collection, [item]));
 
   /** How big the dataset is, beside the sample that shows a slice of it — the two numbers a reader needs to judge what the rows below them represent. */
@@ -121,10 +128,25 @@ const CatalogLayerDetail = ({
       label: t("metadata.headings.language"),
       value: labels.languageLabel(props.language?.code),
     },
-    !!licenseLabel && {
+    (!!licenseLabel ||
+      !!licenseHref ||
+      !!collection?.attribution ||
+      !!props["processing:lineage"]) && {
       icon: ICON_NAME.LICENSE,
       label: t("metadata.headings.license"),
-      value: <LicenseBadge license={licenseLabel} href={linkHref(item.links, "license")} />,
+      value: (
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          {licenseLabel ? (
+            <LicenseBadge license={licenseLabel} href={licenseHref} />
+          ) : (
+            <LicenseTerms href={licenseHref} />
+          )}
+          <LicenseNotices
+            attribution={collection?.attribution}
+            lineage={props["processing:lineage"]}
+          />
+        </Stack>
+      ),
     },
     // When the data is from, headed by what the value turns out to be: a reference year for a single date, a period for a span (`periodField`).
     !!periodField && {
@@ -195,9 +217,7 @@ const CatalogLayerDetail = ({
             <>
               <SectionCard title={t("metadata.headings.description")}>
                 {description ? (
-                  <Typography variant="body2" sx={{ lineHeight: 1.7 }}>
-                    {description}
-                  </Typography>
+                  <MarkdownProse>{description}</MarkdownProse>
                 ) : (
                   <Typography variant="body2" color="text.secondary">
                     {t("catalog_no_description")}

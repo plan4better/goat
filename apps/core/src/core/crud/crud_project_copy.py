@@ -27,6 +27,8 @@ from core.schemas.error import FolderNotFoundError
 
 logger = logging.getLogger(__name__)
 
+_GROUP_ICON_KEY_RE = re.compile(r"^group_icon_(\d+)$")
+
 
 async def copy_project(
     async_session: AsyncSession,
@@ -299,9 +301,9 @@ async def copy_project(
     # ------------------------------------------------------------------
     # 7b. Remap builder_config layer_project_id references
     # ------------------------------------------------------------------
-    if new_project.builder_config and old_to_new_link_id:
+    if new_project.builder_config and (old_to_new_link_id or old_to_new_group_id):
         new_project.builder_config = _remap_builder_config(
-            new_project.builder_config, old_to_new_link_id
+            new_project.builder_config, old_to_new_link_id, old_to_new_group_id
         )
         async_session.add(new_project)
 
@@ -395,13 +397,18 @@ def _remap_basemap_layer_config(
 
 
 def _remap_builder_config(
-    config: dict[str, Any], lp_id_map: dict[int, int]
+    config: dict[str, Any],
+    lp_id_map: dict[int, int],
+    group_id_map: dict[int, int] | None = None,
 ) -> dict[str, Any]:
-    """Remap layer_project_id references in builder_config.
+    """Remap layer_project_id and group references in builder_config.
 
-    Widget configs reference layer_project link IDs (integers). When a project
-    is copied, the links get new auto-increment IDs. This walks the serialized
-    config and replaces old IDs with new ones.
+    Widget configs reference layer_project link IDs (integers) and
+    layer_project_group IDs (integers); both get new auto-increment IDs when
+    a project is copied. Link IDs are rewritten on the serialized config;
+    group IDs live in widget config keys (`group_icon_<id>`) and `group_info`
+    object keys, which are rewritten on the deserialized tree. Mirrors the
+    import path (`goatlib.tools.project_import`).
     """
     config_str = json.dumps(config)
 
@@ -423,4 +430,46 @@ def _remap_builder_config(
             config_str,
         )
 
-    return json.loads(config_str)
+    remapped: dict[str, Any] = json.loads(config_str)
+    if group_id_map:
+        remapped = _remap_group_ids_in_config(remapped, group_id_map)
+    return remapped
+
+
+def _remap_group_ids_in_config(node: Any, group_id_map: dict[int, int]) -> Any:
+    """Recursively rewrite `group_icon_<id>` keys and `group_info` keys.
+
+    Layer-widget configs encode group IDs into dynamic keys (one per group),
+    which a pure value-based remap cannot touch. Keys with no mapping are
+    preserved so stale entries (e.g. for groups deleted before the copy)
+    don't get silently dropped — the frontend ignores them.
+    """
+    if isinstance(node, dict):
+        new_dict: dict[str, Any] = {}
+        for key, value in node.items():
+            if key == "group_info" and isinstance(value, dict):
+                new_dict[key] = {
+                    _remap_group_info_key(k, group_id_map): v for k, v in value.items()
+                }
+                continue
+            match = _GROUP_ICON_KEY_RE.match(key) if isinstance(key, str) else None
+            if match:
+                new_gid = group_id_map.get(int(match.group(1)))
+                new_key = f"group_icon_{new_gid}" if new_gid is not None else key
+                new_dict[new_key] = _remap_group_ids_in_config(value, group_id_map)
+            else:
+                new_dict[key] = _remap_group_ids_in_config(value, group_id_map)
+        return new_dict
+    if isinstance(node, list):
+        return [_remap_group_ids_in_config(item, group_id_map) for item in node]
+    return node
+
+
+def _remap_group_info_key(key: str, group_id_map: dict[int, int]) -> str:
+    """Map a single group_info key (string-encoded int) to its new ID."""
+    try:
+        old_gid = int(key)
+    except (TypeError, ValueError):
+        return key
+    new_gid = group_id_map.get(old_gid)
+    return str(new_gid) if new_gid is not None else key

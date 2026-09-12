@@ -26,7 +26,10 @@ Safety:
   * --archive writes an inventory JSON, a pg_dump of the DuckLake catalog, and
     a hard-linked copy of the data (no extra disk; the originals are moved, not
     modified, so the links keep pointing at the same bytes). --archive-mode=copy
-    takes a real copy instead.
+    takes a real copy instead. --skip-catalog-dump drops only the pg_dump, for
+    a run whose catalog is already covered by a database backup taken outside
+    this script; the inventory, the snapshot id and the file archive still
+    happen, and pg_dump then need not exist on this host at all.
   * Each table moves in its own transaction: files first, then metadata. A
     failure rolls the metadata back and moves the files back.
   * Row counts are captured before and compared after.
@@ -282,8 +285,10 @@ def dump_catalog(
         result = subprocess.run(argv, capture_output=True)
     except FileNotFoundError as e:
         raise RuntimeError(
-            f"{pg_dump_cmd[0]} not found. Install postgresql-client, or point "
-            f"--pg-dump at one (e.g. 'docker exec -i goat-db18 pg_dump')."
+            f"{pg_dump_cmd[0]} not found. Install postgresql-client, point "
+            f"--pg-dump at one (e.g. 'docker exec -i goat-db18 pg_dump'), or "
+            f"pass --skip-catalog-dump if a database backup taken outside this "
+            f"script already covers the {catalog} schema."
         ) from e
     if result.returncode != 0:
         raise RuntimeError(
@@ -377,6 +382,16 @@ def write_archive(
 ) -> None:
     """Inventory + catalog dump + a copy of the data, before anything moves."""
     archive.mkdir(parents=True, exist_ok=True)
+
+    # The inventory is the map back: every table's original schema and path,
+    # and the only surviving record of who owned an orphan directory. A second
+    # run against the same archive finds nothing left to move and would
+    # overwrite it with an empty one, so refuse instead.
+    if (archive / "inventory.json").exists():
+        raise RuntimeError(
+            f"{archive / 'inventory.json'} already exists; point --archive at a "
+            f"fresh directory so an earlier run's inventory is never overwritten"
+        )
 
     inventory = {
         "flat_schema": FLAT_SCHEMA,
@@ -538,6 +553,12 @@ def main() -> int:
         help="GB to require free beyond the archive's own size (default 2)",
     )
     parser.add_argument(
+        "--skip-catalog-dump",
+        action="store_true",
+        help="do not pg_dump the DuckLake catalog; only for a run whose "
+        "catalog is already in a database backup taken outside this script",
+    )
+    parser.add_argument(
         "--pg-dump",
         default="pg_dump",
         help="pg_dump command; may include arguments, e.g. "
@@ -580,7 +601,16 @@ def main() -> int:
             args.archive_mode,
             int(args.archive_margin * 1e9),
         )
-        dump_catalog(args.archive, settings, catalog, shlex.split(args.pg_dump))
+        if args.skip_catalog_dump:
+            args.archive.mkdir(parents=True, exist_ok=True)
+            logger.warning(
+                "Skipping the DuckLake catalog dump: recovery depends on a "
+                "database backup taken outside this script covering the %s "
+                "schema",
+                catalog,
+            )
+        else:
+            dump_catalog(args.archive, settings, catalog, shlex.split(args.pg_dump))
         snapshot = con.execute(
             f"SELECT max(snapshot_id) FROM pgmeta.{catalog}.ducklake_snapshot"
         ).fetchone()[0]

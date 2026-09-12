@@ -59,7 +59,7 @@ const DatasetUpdateModal: React.FC<ContentDialogBaseProps> = ({ open, onClose, c
 
         // Upload file to S3 directly
         await uploadFileToS3(fileValue, presigned);
-        s3Key = presigned?.fields?.key;
+        s3Key = presigned.key;
 
         const layerId = content.id;
         const response = await updateLayerDataset(layerId, { s3_key: s3Key });

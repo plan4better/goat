@@ -249,6 +249,31 @@ def test_a_degenerate_edge_is_a_bad_request_not_a_server_error(client):
     mocks["dispatch"].assert_not_awaited()
 
 
+def test_a_vertex_with_no_usable_position_is_refused():
+    """A NaN ordinate is a valid double all the way down — DuckDB stores it,
+    every length derived from it is NaN, and the network it lands in only fails
+    much later, on every route, naming nothing. So it is refused at the door."""
+    import math
+
+    from geoapi.routers.bundle_edits import _plan
+
+    geometry = {
+        "type": "LineString",
+        "coordinates": [[math.nan, math.nan], [-122.7052, 45.5136]],
+    }
+    with pytest.raises(ValueError, match="no usable position"):
+        _plan(None, geometry)
+
+
+def test_a_coordinate_that_is_not_finite_is_never_written():
+    """The node writer interpolates coordinates as SQL literals, where `nan`
+    parses as a double rather than failing."""
+    from geoapi.services.bundle_edit_service import insert_node
+
+    with pytest.raises(ValueError, match="not a finite number"):
+        insert_node(None, "t", ["id", "geometry"], "n1", float("nan"), 0.0)
+
+
 def test_a_successful_save_reports_the_queued_rebuild(client):
     """The rebuild is the server's job now; the client only tracks it."""
     mocks: dict = {}

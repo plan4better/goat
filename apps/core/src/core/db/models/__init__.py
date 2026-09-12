@@ -13,7 +13,6 @@ from ._link_model import (
 from .asset import UploadedAsset
 from .bundle import Bundle
 from .bundle_artifact import BundleArtifact
-from .bundle_type import BundleType
 from .cost import Cost
 from .credit_usage import CreditUsage
 from .favorite import Favorite

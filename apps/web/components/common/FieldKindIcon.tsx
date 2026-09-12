@@ -16,7 +16,7 @@ export const FIELD_KIND_ICONS: Record<FieldIndicatorKind, ICON_NAME> = {
   perimeter: ICON_NAME.RULER_HORIZONTAL,
   length: ICON_NAME.RULER_HORIZONTAL,
   datetime: ICON_NAME.CALENDAR,
-  boolean: ICON_NAME.CIRCLECHECK,
+  boolean: ICON_NAME.CHECK,
   formula: ICON_NAME.CODE,
   object: ICON_NAME.CODE,
   geometry: ICON_NAME.MAP,

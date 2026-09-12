@@ -8,7 +8,7 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 const { refreshContentFeedMock } = vi.hoisted(() => ({ refreshContentFeedMock: vi.fn() }));
 vi.mock("@/lib/api/content", () => ({ refreshContentFeed: refreshContentFeedMock }));
 vi.mock("@/lib/api/datasets", () => ({
-  requestDatasetUpload: vi.fn().mockResolvedValue({ url: "https://s3.example", fields: { key: "k" } }),
+  requestDatasetUpload: vi.fn().mockResolvedValue({ url: "https://s3.example", key: "k", headers: {} }),
 }));
 vi.mock("@/lib/api/layers", () => ({ createLayer: vi.fn().mockResolvedValue({ jobID: "job-1" }) }));
 vi.mock("@/lib/api/processes", () => ({ useJobs: () => ({ mutate: vi.fn() }) }));

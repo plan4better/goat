@@ -316,7 +316,10 @@ class HuffmodelV2Tool(HeatmapToolBase):
         # An uploaded street network bundle's graph overrides the global network.
         cfg.edge_dir = str(params.edge_path or self._edge_dir)
         cfg.node_dir = str(params.node_path or self._node_dir)
-        cfg.timetable_path = self._timetable_path
+        # An uploaded PT bundle replaces the global network: its own timetable
+        # and its own linkage tables, or neither (the schema refuses a half
+        # override).
+        cfg.timetable_path = str(params.timetable_path or self._timetable_path)
         cfg.arrival_time = int(params.arrival_time)
         cfg.max_transfers = params.max_transfers
         cfg.transit_modes = list(params.transit_modes or [])
@@ -324,8 +327,14 @@ class HuffmodelV2Tool(HeatmapToolBase):
         cfg.egress_mode = self._routing_mode_enum(params.egress_mode)
         cfg.access_max_time = params.access_max_time
         cfg.egress_max_time = params.egress_max_time
-        cfg.access_table_path = self._accessegress_table_path(params.access_mode)
-        cfg.egress_table_path = self._accessegress_table_path(params.egress_mode)
+        cfg.access_table_path = str(
+            params.access_table_path
+            or self._accessegress_table_path(params.access_mode)
+        )
+        cfg.egress_table_path = str(
+            params.egress_table_path
+            or self._accessegress_table_path(params.egress_mode)
+        )
         cfg.output_path = od_path
         routing.compute_od_costs(cfg)
 

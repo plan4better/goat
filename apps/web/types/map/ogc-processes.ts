@@ -189,6 +189,7 @@ export type InferredInputType =
   | "repeatable-object" // Repeatable array of objects (x-ui.repeatable)
   | "object" // Nested object (type is object)
   | "time-picker" // Time picker (x-ui.widget is time-picker)
+  | "date-picker" // Date field, bounded by a bundle's service window (x-ui.widget is date-picker)
   | "starting-points" // Starting points selector (map clicks or layer)
   | "field-statistics" // Field statistics selector (operation + field)
   | "chips" // Editable chips (x-ui.widget is chips)

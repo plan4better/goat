@@ -350,7 +350,10 @@ class HeatmapV2Tool(HeatmapToolBase):
         if params.routing_mode == RoutingMode.pt:
             if params.arrival_time is None:
                 raise ValueError("PT heatmap requires an arrival_time.")
-            cfg.timetable_path = self._timetable_path
+            # An uploaded PT bundle replaces the global network: its own
+            # timetable and its own linkage tables, or neither (the schema
+            # refuses a half override).
+            cfg.timetable_path = str(params.timetable_path or self._timetable_path)
             cfg.arrival_time = int(params.arrival_time)
             cfg.max_transfers = params.max_transfers
             cfg.transit_modes = list(params.transit_modes or [])
@@ -358,8 +361,14 @@ class HeatmapV2Tool(HeatmapToolBase):
             cfg.egress_mode = routing_mode_map[params.egress_mode]
             cfg.access_max_time = params.access_max_time
             cfg.egress_max_time = params.egress_max_time
-            cfg.access_table_path = self._accessegress_table_path(params.access_mode)
-            cfg.egress_table_path = self._accessegress_table_path(params.egress_mode)
+            cfg.access_table_path = str(
+                params.access_table_path
+                or self._accessegress_table_path(params.access_mode)
+            )
+            cfg.egress_table_path = str(
+                params.egress_table_path
+                or self._accessegress_table_path(params.egress_mode)
+            )
             # Connectivity keys its output at the fixed per-mode resolution the
             # AOI is rasterized to, so C++ output cells align with the AOI cells.
             cfg.connectivity_output_resolution = DEFAULT_H3_RESOLUTION[

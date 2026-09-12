@@ -23,6 +23,7 @@ import duckdb
 from pydantic import BaseModel, ConfigDict, Field
 
 from catalog.errors import ApiError
+from catalog.relevance import BBOX_AREA_SQL, RELEVANCE_RANK_SQL
 from catalog.services.registry import Queryable, QueryableRegistry
 from catalog.store import CatalogStore
 
@@ -739,32 +740,16 @@ def _build_order_by(
 
     prefix = ""
 
-    # Relevance ranking only kicks in when the caller left sortby unset -- an
-    # explicit sortby means q is filter-only (api spec §2.1.6), never a ranking
-    # signal. Unlike the BM25 version this replaces, it applies
-    # too: a representative row is a row, so "how many query words does it
-    # match" is as meaningful for a bundle card as for a single layer.
-    # Spatial relevance before text relevance: a spatial filter is an explicit
-    # narrowing to a place, and within that place the text terms order what is
-    # left. Local datasets mostly score 1.0 and tie, so `q` still decides among
-    # them. Skipped when the caller sorted explicitly, like every other ranking
-    # signal here.
+    # Every ranking key below is skipped when the caller sorted explicitly: a
+    # sortby makes `q` filter-only (api spec §2.1.6), never a ranking signal.
     if not p.sortby:
         containment = _containment_rank_sql(p, add, geom)
         if containment:
             prefix += containment + ", "
 
-    # The viewport ranks BELOW the spatial filter, so it can only break the
-    # filter's ties. The two can disagree completely -- viewing Munich while
-    # filtering Berlin -- and there the only rows that score above zero on the
-    # viewport are the ones sprawling across both cities, exactly the rows the
-    # filter ranked last. Ordering the viewport first promoted them over Berlin's
-    # own data. Below the filter it stays silent instead: a dataset drawn around
-    # Berlin scores 1.0 on the filter and 0 on Munich, and every row in that
-    # leading group scores 0, because being inside Berlin means being outside
-    # Munich. Where the two DO agree -- viewing Munich, filtering Bavaria -- the
-    # filter ties everything Bavarian at 1.0 and the viewport does the real work
-    # of floating Munich to the front of it.
+    # Below the spatial filter, so it only breaks that filter's ties: viewing
+    # Munich while filtering Berlin must not promote the rows sprawling across
+    # both, which the filter ranked last.
     if boost is not None:
         prefix += _viewport_rank_sql(boost, add) + ", "
 
@@ -772,11 +757,19 @@ def _build_order_by(
     if q_terms and not p.sortby:
         prefix += _q_rank_sql(q_terms, add) + ", "
 
+    # How much a planner needs it, then the wider footprint among rows that tie.
+    # Gated on the score column, which only collections carry.
+    scored = registry.resolve("relevance") is not None
+    if not p.sortby and scored:
+        prefix += f"{RELEVANCE_RANK_SQL} DESC, "
+        prefix += f"{BBOX_AREA_SQL} DESC, "
+
     if not p.sortby:
-        # `id` as the tiebreaker: `updated` is far from unique (3,834 datasets
-        # share 970 timestamps, one of them 607 times), so without it offset
-        # paging can return the same row on two pages. Clients used to send an
-        # explicit `sortby` to get this, which switched every ranking signal off.
+        # Recency, then `id`, behind every ranking key: the score has four
+        # values and the footprint ties across NULL and oversized bboxes, so
+        # without a unique key offset paging over the partial order serves one
+        # row on two pages and skips another. A layer list, which carries no
+        # score, starts here.
         body = "updated DESC, id"
     else:
         clauses: list[str] = []

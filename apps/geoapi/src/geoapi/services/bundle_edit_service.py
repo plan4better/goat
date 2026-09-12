@@ -15,6 +15,7 @@ near it.
 
 import json
 import logging
+import math
 import uuid
 from typing import Any, Iterable, Sequence
 
@@ -220,6 +221,20 @@ def node_references(
     return references
 
 
+def _finite(value: float, what: str) -> float:
+    """A coordinate or fraction that can be written.
+
+    These reach SQL as bare literals, and `nan`/`inf` are valid DuckDB doubles
+    there — so an unusable number is stored rather than refused, and only
+    surfaces much later as a routing failure that names neither the layer nor
+    the row.
+    """
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{what} is not a finite number ({value}).")
+    return number
+
+
 def _node_insert_sql(nodes_table: str, columns: Sequence[str], geom_expr: str) -> str:
     """INSERT for a node, writing only the columns the layer actually has.
 
@@ -228,9 +243,6 @@ def _node_insert_sql(nodes_table: str, columns: Sequence[str], geom_expr: str) -
     """
     target = ['"id"']
     select = ["?"]
-    if "is_synthetic" in columns:
-        target.append('"is_synthetic"')
-        select.append("TRUE")
     target.append('"geometry"')
     select.append("g")
     if "bbox" in columns:
@@ -260,8 +272,10 @@ def insert_node(
     y_3857: float,
 ) -> None:
     """Add a node at a projected coordinate, stored back as 4326."""
+    x = _finite(x_3857, "Node x coordinate")
+    y = _finite(y_3857, "Node y coordinate")
     geom_expr = (
-        f"SELECT ST_Transform(ST_Point({x_3857}, {y_3857}), 'EPSG:3857', "
+        f"SELECT ST_Transform(ST_Point({x}, {y}), 'EPSG:3857', "
         "'EPSG:4326', always_xy := true) AS g"
     )
     con.execute(_node_insert_sql(nodes_table, columns, geom_expr), [node_id])
@@ -277,7 +291,9 @@ def insert_node_on_edge(
     fraction: float,
 ) -> None:
     """Add a node at a fraction along an edge, exactly on its geometry."""
-    point = _projected(f"ST_LineInterpolatePoint({{geom}}, {float(fraction)})")
+    point = _projected(
+        f"ST_LineInterpolatePoint({{geom}}, {_finite(fraction, 'Split fraction')})"
+    )
     geom_expr = f'SELECT {point} AS g FROM {edges_table} WHERE "id" = ?'
     con.execute(_node_insert_sql(nodes_table, columns, geom_expr), [node_id, edge_id])
 
@@ -312,7 +328,10 @@ def split_edge(
         replacements += [f'{sql} AS "{name}"' for name, sql in derived]
         # The half replaces the geometry first, so everything above reads it
         # rather than the original's.
-        cut = _projected(f"ST_LineSubstring({{geom}}, {float(start)}, {float(end)})")
+        cut = _projected(
+            f"ST_LineSubstring({{geom}}, {_finite(start, 'Split start')}, "
+            f"{_finite(end, 'Split end')})"
+        )
         half = (
             f'SELECT * REPLACE ({cut} AS "geometry") '
             f'FROM {edges_table} WHERE "id" = ?'

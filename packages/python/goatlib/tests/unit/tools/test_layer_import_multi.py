@@ -176,6 +176,7 @@ def test_too_many_datasets_is_refused_before_anything_is_imported(
 
     class _Settings:
         s3_bucket_name = "bucket"
+        max_upload_dataset_file_size = 5 * 1024 * 1024 * 1024
 
     monkeypatch.setattr(runner, "settings", _Settings(), raising=False)
     monkeypatch.setattr(runner, "_get_s3_client", lambda: _StubS3())
@@ -191,8 +192,11 @@ def test_too_many_datasets_is_refused_before_anything_is_imported(
 
 
 class _StubS3:
-    def download_file(self, bucket: str, key: str, dest: str) -> None:
-        Path(dest).write_bytes(b"")
+    def head_object(self, **kwargs: str) -> dict[str, int]:
+        return {"ContentLength": 0}
+
+    def download_file(self, **kwargs: str) -> None:
+        Path(kwargs["Filename"]).write_bytes(b"")
 
 
 def test_a_raster_is_skipped_rather_than_ingested_as_a_table(runner, monkeypatch):

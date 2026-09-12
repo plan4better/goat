@@ -16,8 +16,12 @@ ENV LC_CTYPE=C.utf8 \
 
 ENV PATH="$UV_PROJECT_ENVIRONMENT/bin:$PATH"
 
+# ca-certificates is what OpenSSL's default verify paths read, so without it
+# `ssl.create_default_context()` trusts nothing and every outbound HTTPS call
+# made through aiohttp fails to verify. Installed in the shared base so the
+# build stage and the runtime stage both have it.
 RUN apt-get update && apt-get upgrade -y \
-    && apt-get install --no-install-recommends -y tzdata \
+    && apt-get install --no-install-recommends -y tzdata ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # ==== STAGE 2: Python environment ====
@@ -56,4 +60,3 @@ WORKDIR /app
 EXPOSE 8000
 
 CMD ["fastapi", "run", "apps/core/src/core/main.py"]
-

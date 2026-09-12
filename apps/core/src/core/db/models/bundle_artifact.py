@@ -2,7 +2,7 @@
 Bundle Artifact Model
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 from uuid import UUID
 
 from goatlib.models.bundle import (
@@ -11,6 +11,7 @@ from goatlib.models.bundle import (
 )
 from pydantic import field_serializer
 from sqlalchemy import BigInteger, ForeignKey, Integer, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as UUID_PG
 from sqlmodel import Column, Field, Relationship, UniqueConstraint, text
 
@@ -76,6 +77,20 @@ class BundleArtifact(DateTimeBase, table=True):
         description=(
             "Path of the built artifact relative to the bundles data dir "
             "(null until built)"
+        ),
+    )
+    properties: Dict[str, Any] | None = Field(
+        default=None,
+        # none_as_null: without it None is stored as JSON null rather than SQL
+        # NULL, and a JSON null is not an object.
+        sa_column=Column(JSONB(none_as_null=True), nullable=True),
+        description=(
+            "What the build knows about its own output and nobody else can "
+            'derive — a PT timetable\'s service window ({"service_start": '
+            '"2026-03-01", "service_days": 120}), since the feed it came from '
+            "is not kept. Free-form and per kind: a column each would be a "
+            "migration each, so nothing checks the shape and readers treat an "
+            "unrecognised value as absent"
         ),
     )
     size: int | None = Field(

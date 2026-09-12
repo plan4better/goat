@@ -494,22 +494,31 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                 logger.warning("Failed to query unique values: %s", e)
 
         if not unique_values:
-            # Fallback: compute expected values from params
-            if params.routing_mode in [
-                CatchmentAreaRoutingMode.walking,
-                CatchmentAreaRoutingMode.bicycle,
-                CatchmentAreaRoutingMode.pedelec,
-            ]:
-                max_value = params.max_traveltime_active
-            elif params.routing_mode == CatchmentAreaRoutingMode.car:
-                max_value = params.max_traveltime_car
+            # Fallback: expected values from params. Two param shapes reach
+            # here -- v2 carries one `max_cost` for the selected measure (and
+            # often the cutoffs outright), v1 a limit per routing mode -- so
+            # neither set of field names may be assumed present.
+            step_sizes = getattr(params, "step_sizes", None)
+            if step_sizes:
+                unique_values = sorted(int(round(v)) for v in step_sizes)
             else:
-                max_value = params.max_traveltime_pt
+                max_value = getattr(params, "max_cost", None)
+                if max_value is None:
+                    if params.routing_mode in [
+                        CatchmentAreaRoutingMode.walking,
+                        CatchmentAreaRoutingMode.bicycle,
+                        CatchmentAreaRoutingMode.pedelec,
+                    ]:
+                        max_value = params.max_traveltime_active
+                    elif params.routing_mode == CatchmentAreaRoutingMode.car:
+                        max_value = params.max_traveltime_car
+                    else:
+                        max_value = params.max_traveltime_pt
 
-            step_size = max_value / params.steps
-            unique_values = [
-                int(round(step_size * (i + 1))) for i in range(params.steps)
-            ]
+                step_size = max_value / params.steps
+                unique_values = [
+                    int(round(step_size * (i + 1))) for i in range(params.steps)
+                ]
 
         # Use line style for network output, polygon style for polygon/grid output
         is_network = params.catchment_area_type == CatchmentAreaType.network

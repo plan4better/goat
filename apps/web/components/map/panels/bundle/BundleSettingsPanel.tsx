@@ -49,9 +49,29 @@ const BundleSettingsPanel = ({ projectId }: { projectId: string }) => {
     [members]
   );
 
+  // Not every type can be filtered: the filter produces a *copy* whose
+  // artifacts are rebuilt from the clipped layers, which a GTFS bundle cannot
+  // do — its feed is not kept. The flag comes from the type's spec, so this
+  // gate opens on its own once PT filtering is supported.
+  const canFilter = !!bundle?.artifacts_from_layers;
+
+  // The strip stays even when Metadata is the only tab: every other panel in
+  // this slot is tabbed, and a bundle that dropped the header would read as a
+  // different kind of panel rather than as the same one with less in it.
+  // `activeTab` stays the tab's identity, so the strip's index is derived and
+  // the panels below keep addressing themselves by name.
+  const tabs = canFilter ? [FILTER_TAB, METADATA_TAB] : [METADATA_TAB];
+  const tabLabel: Record<number, string> = {
+    [FILTER_TAB]: t("filter"),
+    [METADATA_TAB]: t("metadata.title"),
+  };
+
   // Which tab is open is already in Redux — the panel slot the tree opened,
-  // and what a tab click dispatches — so it is derived, not mirrored.
-  const activeTab = activeRightPanel === MapSidebarItemID.FILTER ? FILTER_TAB : METADATA_TAB;
+  // and what a tab click dispatches — so it is derived, not mirrored. Clamped
+  // to a tab that exists: the slot can ask for Filter on a bundle that has no
+  // Filter tab.
+  const activeTab =
+    canFilter && activeRightPanel === MapSidebarItemID.FILTER ? FILTER_TAB : METADATA_TAB;
   const isTabLive = useLazyTabs(activeTab, selectedBundleId);
 
   const handleTabChange = (value: number) => {
@@ -71,30 +91,33 @@ const BundleSettingsPanel = ({ projectId }: { projectId: string }) => {
       <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
         <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
           <Tabs
-            value={activeTab}
-            onChange={(_, v) => handleTabChange(v)}
+            value={Math.max(tabs.indexOf(activeTab), 0)}
+            onChange={(_, index) => handleTabChange(tabs[index])}
             variant="fullWidth"
             aria-label="Bundle Settings Tabs">
-            <Tab label={t("filter")} />
-            <Tab label={t("metadata.title")} />
+            {tabs.map((tab) => (
+              <Tab key={tab} label={tabLabel[tab]} />
+            ))}
           </Tabs>
         </Box>
         <Box sx={{ flexGrow: 1, overflowY: "auto", p: 0 }}>
-          <Box role="tabpanel" hidden={activeTab !== FILTER_TAB} sx={{ height: "100%" }}>
-            {isTabLive(FILTER_TAB) &&
-              (memberLayerId ? (
-                <BundleFilter
-                  key={bundle.id}
-                  bundle={bundle}
-                  projectId={projectId}
-                  memberLayerId={memberLayerId}
-                />
-              ) : (
-                <Typography variant="body2" sx={{ p: 3, fontStyle: "italic" }}>
-                  {t("filter_bundle_no_geometry")}
-                </Typography>
-              ))}
-          </Box>
+          {canFilter && (
+            <Box role="tabpanel" hidden={activeTab !== FILTER_TAB} sx={{ height: "100%" }}>
+              {isTabLive(FILTER_TAB) &&
+                (memberLayerId ? (
+                  <BundleFilter
+                    key={bundle.id}
+                    bundle={bundle}
+                    projectId={projectId}
+                    memberLayerId={memberLayerId}
+                  />
+                ) : (
+                  <Typography variant="body2" sx={{ p: 3, fontStyle: "italic" }}>
+                    {t("filter_bundle_no_geometry")}
+                  </Typography>
+                ))}
+            </Box>
+          )}
           <Box role="tabpanel" hidden={activeTab !== METADATA_TAB} sx={{ height: "100%" }}>
             {/* The aggregated fields, status and artifact state — the same
                 at-a-glance set the bundle's own page leads with. The long

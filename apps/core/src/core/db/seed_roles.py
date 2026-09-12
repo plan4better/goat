@@ -457,6 +457,11 @@ RESOURCES_PERMISSIONS = [
         "permissions": ["delete-team"],
     },
     {
+        "url_pattern": "teams/{team_id}/profile",
+        "method": ["PATCH"],
+        "permissions": ["update-team"],
+    },
+    {
         "url_pattern": "teams/{team_id}/users",
         "method": ["GET"],
         "permissions": ["read-team"],

@@ -65,6 +65,9 @@ export function inferInputType(
   if (topLevelUiMeta?.widget === "time-picker") {
     return "time-picker";
   }
+  if (topLevelUiMeta?.widget === "date-picker") {
+    return "date-picker";
+  }
   if (topLevelUiMeta?.widget === "starting-points") {
     return "starting-points";
   }
@@ -91,6 +94,9 @@ export function inferInputType(
   }
   if (uiMeta?.widget === "time-picker") {
     return "time-picker";
+  }
+  if (uiMeta?.widget === "date-picker") {
+    return "date-picker";
   }
   if (uiMeta?.widget === "starting-points") {
     return "starting-points";

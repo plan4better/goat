@@ -710,7 +710,6 @@ async def test_foreign_layer_in_my_bundle_is_not_moved(
     Transferring the bundle must move only the members in the caller's own
     personal space — the foreign one keeps its space and its user grants,
     and is reported in `skipped_foreign`."""
-    from core.db.seed_bundle_types import seed_bundle_types
 
     me = fixture_create_user
     org, team, space, mate = await _setup(
@@ -723,7 +722,6 @@ async def test_foreign_layer_in_my_bundle_is_not_moved(
         )
     ).scalar_one()
 
-    await seed_bundle_types(db_session)
     bundle_id = (
         await db_session.execute(
             text(

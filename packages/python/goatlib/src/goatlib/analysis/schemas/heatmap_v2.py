@@ -11,13 +11,14 @@ underlying semantics are identical to keep cross-tool consistency.
 from enum import StrEnum
 from typing import Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
 
 from goatlib.analysis.schemas.catchment_area_v2 import (
     CostType,
     RoutingMode,
 )
 from goatlib.analysis.schemas.heatmap import OpportunityGravity
+from goatlib.analysis.schemas.pt_network import PTNetworkOverride
 
 # Validation bounds for the gravity sensitivity (β). V2 exposes this as a free
 # numeric field (rather than the v1 fixed dropdown), bounded to the range the
@@ -98,7 +99,7 @@ class OpportunityV2(OpportunityGravity):
     )
 
 
-class HeatmapV2Params(BaseModel):
+class HeatmapV2Params(PTNetworkOverride):
     """Parameters for HeatmapV2Tool (on-the-fly C++ routing).
 
     cost_type + max_cost define the budget:

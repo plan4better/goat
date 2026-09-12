@@ -5,6 +5,7 @@ import type { StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Map, MapProvider, type MapRef, type ViewStateChangeEvent } from "react-map-gl/maplibre";
 
+import { getBasemapUrl } from "@/lib/constants/basemaps";
 import { PATTERN_IMAGES } from "@/lib/constants/pattern-images";
 import type { AtlasPage } from "@/lib/print/atlas-utils";
 import { calculateMapViewport, zoomToScale } from "@/lib/print/atlas-utils";
@@ -16,8 +17,10 @@ import type { MapAtlasControl, ReportElement } from "@/lib/validations/reportLay
 
 import Layers from "@/components/map/Layers";
 
-// Default basemap URL (OpenStreetMap style)
-const DEFAULT_BASEMAP_URL = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+// Fallback for a map element whose project has not synced a basemap yet: the
+// app's own Light basemap, rather than a second provider's copy of the same
+// style.
+const DEFAULT_BASEMAP_URL = getBasemapUrl("light");
 
 // Default view state (centered on Europe)
 const DEFAULT_VIEW_STATE = {

@@ -263,9 +263,17 @@ def test_geoparquet_metadata_is_present(tmp_path: Path, importer) -> None:
     assert b"geo" in metadata
 
 
-def test_nodes_flag_synthetic_connectors(tmp_path: Path, importer) -> None:
+def test_minted_nodes_are_named_after_where_they_were_minted(
+    tmp_path: Path, importer
+) -> None:
+    """A node minted at an attribute boundary carries it in its own id.
+
+    `{segment_id}@{linear_reference}`, and no GERS id contains an "@" — which
+    is why the layer holds no separate flag for it.
+    """
     _, nodes = _extract(tmp_path, importer)
-    assert sum(1 for n in nodes if n["is_synthetic"]) == 4
+    assert sum(1 for n in nodes if "@" in n["id"]) == 4
+    assert "is_synthetic" not in nodes[0]
 
 
 def test_edge_topology_references_existing_nodes(tmp_path: Path, importer) -> None:
@@ -289,3 +297,34 @@ def test_extract_without_segments_fails_loudly(tmp_path: Path, importer) -> None
     workdir.mkdir()
     with pytest.raises(OvertureReadError):
         importer.extract_layers(str(archive), str(workdir))
+
+
+def test_only_writes_values_the_editor_allows(tmp_path: Path, importer) -> None:
+    """The importer and the editor share one vocabulary per column.
+
+    A value the importer can write but the editor's dropdown does not list
+    cannot be re-saved: the write path refuses it, so the row becomes
+    uneditable. Both columns are nullable and mostly null in real extracts, so
+    this checks what is written rather than that every value appears.
+    """
+    from goatlib.models.bundle import (
+        EDGE_SUBCLASSES,
+        EDGE_SURFACES,
+        ROUTING_CLASSES,
+        BundleTypeName,
+        get_spec,
+    )
+
+    edges, _ = _extract(tmp_path, importer)
+    allowed = get_spec(BundleTypeName.street_network).role("edges").allowed_values
+    assert set(allowed) == {"class", "subclass", "surface"}
+
+    for column, vocabulary in (
+        ("class", ROUTING_CLASSES),
+        ("subclass", EDGE_SUBCLASSES),
+        ("surface", EDGE_SURFACES),
+    ):
+        written = {e[column] for e in edges if e.get(column) is not None}
+        assert written <= vocabulary, (column, written - vocabulary)
+        # A vocabulary nothing exercises is a vocabulary nothing checks.
+        assert written

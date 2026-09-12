@@ -52,7 +52,7 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
   const { t } = useTranslation("common");
   const dispatch = useAppDispatch();
   const { drawControl } = useDraw();
-  const { bundleForLayer, saveBundleEdits } = useBundleEditSave(
+  const { bundleForLayer, isMembershipUnresolved, saveBundleEdits } = useBundleEditSave(
     useAppSelector((state) => state.featureEditor.activeLayerId)
   );
   const { projectId } = useParams();
@@ -885,6 +885,15 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
       return;
     }
 
+    // Membership unknown: the lookup failed rather than answering "not a
+    // member". The per-feature endpoints refuse a bundle member, so saving
+    // here would trade a clear problem for a confusing rejection — and an
+    // ordinary layer is unaffected, its lookup having answered.
+    if (isMembershipUnresolved) {
+      toast.error(t("bundle_membership_unresolved"));
+      return;
+    }
+
     const newFeatures = committed.filter((f) => f.action === "create");
     const updatedFeatures = committed.filter((f) => f.action === "update");
     const deletedFeatures = committed.filter((f) => f.action === "delete");
@@ -943,6 +952,7 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
     dispatch,
     t,
     bundleForLayer,
+    isMembershipUnresolved,
     saveBundleEdits,
     refreshAfterSave,
   ]);

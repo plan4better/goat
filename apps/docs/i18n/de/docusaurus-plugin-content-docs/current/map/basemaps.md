@@ -85,7 +85,24 @@ https://tile.openstreetmap.org/{z}/{x}/{y}.png
 ```
 
 :::info Nutzungsrichtlinien
-Die Kachelserver von OpenStreetMap sind für geringen Datenverkehr ausgelegt. Für produktive oder stark frequentierte Projekte empfiehlt sich ein gehosteter Anbieter wie [MapTiler](#maptiler), der OSM-basierte Kartenstile mit besserer Zuverlässigkeit anbietet.
+Die Kachelserver von OpenStreetMap sind für geringen Datenverkehr ausgelegt. Für produktive oder stark frequentierte Projekte empfiehlt sich ein gehosteter Anbieter wie [OpenFreeMap](#openfreemap) oder [MapTiler](#maptiler), die OSM-basierte Kartenstile mit besserer Zuverlässigkeit anbieten.
+:::
+
+---
+
+### OpenFreeMap
+
+OpenFreeMap stellt kostenlose Vektor-Grundkarten auf Basis von OpenStreetMap-Daten bereit — ohne Konto, ohne API-Schlüssel und ohne Nutzungsbegrenzung. Die Kacheln folgen demselben OpenMapTiles-Schema, das auch die kommerziellen Anbieter verwenden, sodass sich Kartenstile weitgehend untereinander austauschen lassen. Die integrierten Vektor-Grundkarten von GOAT werden von hier ausgeliefert.
+
+**Beispiel-URL:**
+```
+https://tiles.openfreemap.org/styles/liberty
+```
+
+Verfügbare Stile: `liberty`, `bright`, `positron`, `dark` und `fiord`.
+
+:::info Keine Verfügbarkeitsgarantie
+OpenFreeMap ist ein spendenfinanzierter Dienst ohne Verfügbarkeitsgarantie. Die Kacheln werden über ein CDN ausgeliefert und zwischengespeichert; zusätzlich wird der gesamte Planet zum Selbst-Hosten veröffentlicht.
 :::
 
 ---

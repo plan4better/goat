@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from catalog.config import CatalogSettings
-from catalog.services.search import SearchParams, search_items
+from catalog.services.search import SearchParams, _build_order_by, search_items
 from catalog.store import CatalogStore
 
 from .fixtures.gen_catalog import Row, write_catalog, write_nuts
@@ -266,3 +266,16 @@ def test_the_default_order_is_stable_without_an_explicit_sort(store) -> None:
 
     ids = [r["id"] for r in first] + [r["id"] for r in second]
     assert len(ids) == len(set(ids)), "a row appeared on two pages"
+
+
+def test_the_collections_default_order_ends_in_a_unique_key(store) -> None:
+    """The relevance keys rank, they do not order: four score values and a
+    footprint that ties across every NULL or oversized bbox leave thousands of
+    rows equal, so `updated DESC, id` still has to close the order behind them
+    or offset paging serves one collection on two pages."""
+    clause, _ = _build_order_by(
+        SearchParams(), None, registry=store.snapshot().collection_registry
+    )
+
+    assert "goat:topicRelevanceScore" in clause
+    assert clause.endswith("updated DESC, id")

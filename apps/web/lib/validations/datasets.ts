@@ -9,10 +9,11 @@ export const datasetImportRequestSchema = z.object({
 
 export type DatasetImportRequest = z.infer<typeof datasetImportRequestSchema>;
 
-// Response schema (presigned POST)
-export const presignedPostResponseSchema = z.object({
+// Response schema (presigned PUT)
+export const presignedUploadResponseSchema = z.object({
     url: z.string().url(),
-    fields: z.record(z.string()),
+    key: z.string(),
+    headers: z.record(z.string()).default({}),
 });
 
-export type PresignedPostResponse = z.infer<typeof presignedPostResponseSchema>;
+export type PresignedUploadResponse = z.infer<typeof presignedUploadResponseSchema>;

@@ -42,12 +42,11 @@ from goatlib.bundles.artifacts.base import (
     ArtifactBuilder,
     ArtifactSource,
     BuiltArtifact,
-    require_ready_artifact,
 )
-from goatlib.computed_columns import COMPUTED_KIND_REGISTRY
 from goatlib.models.bundle import (
     ROUTING_CLASSES,
     BundleArtifactKind,
+    BundleArtifactState,
     BundleTypeName,
 )
 
@@ -100,7 +99,6 @@ DEFAULT_SURFACE_IMPEDANCE = 0.0
 class StreetNetworkArtifactBuilder(ArtifactBuilder):
     bundle_type = BundleTypeName.street_network
     produces = (BundleArtifactKind.street_network_graph,)
-    builds_from_layers = True
 
     def build_from_layers(
         self, *, layer_paths: Dict[str, str], workdir: str
@@ -174,6 +172,43 @@ def unpack_routing_network(
     return str(edges), str(nodes)
 
 
+def require_routing_network(
+    archive: str | None,
+    state: "BundleArtifactState | None",
+    dest_dir: str | Path,
+) -> Tuple[str, str]:
+    """Unpack a resolved graph, or refuse with why it cannot be used.
+
+    Split from the fetch so the sync path (a tool, through its runner) and the
+    async one (a build, through its database service) resolve the artifact
+    however suits them and still refuse in the same words.
+    """
+    if not archive:
+        # The state separates "not ready yet" from "was ready until someone
+        # edited it", which are different things to tell a user. None means no
+        # build has been attempted.
+        refusal: Dict[BundleArtifactState | None, str] = {
+            BundleArtifactState.outdated: (
+                "This street network is being updated after an edit. Try again "
+                "once the update finishes."
+            ),
+            BundleArtifactState.building: (
+                "This street network is still being prepared. Try again shortly."
+            ),
+            BundleArtifactState.failed: (
+                "This street network's last update failed. Update it from the "
+                "bundle before using it."
+            ),
+        }
+        raise ValueError(
+            refusal.get(
+                state,
+                "The selected street network bundle is not ready to route on yet.",
+            )
+        )
+    return unpack_routing_network(archive, dest_dir)
+
+
 def fetch_routing_network(
     source: ArtifactSource, bundle_id: str, dest_dir: str | Path
 ) -> Tuple[str, str]:
@@ -182,13 +217,33 @@ def fetch_routing_network(
     Returns the ``(edges, nodes)`` paths to hand to the analysis params, so a
     consumer needs one call and no knowledge of the artifact's packaging.
     """
-    archive = require_ready_artifact(
-        source,
-        bundle_id,
-        BundleArtifactKind.street_network_graph,
-        "street network",
+    return require_routing_network(
+        *source.resolve_bundle_artifact(
+            bundle_id, BundleArtifactKind.street_network_graph.value
+        ),
+        dest_dir,
     )
-    return unpack_routing_network(archive, dest_dir)
+
+
+def fetch_linked_routing_network(
+    source: ArtifactSource, bundle_id: str, dest_dir: str | Path
+) -> "Tuple[str, str] | None":
+    """The graph of the street network a bundle is linked to, if it names one.
+
+    Following the link rather than asking again: a public-transport bundle's
+    stops were connected to a particular street network, and routing its access
+    and egress legs on a different one — or on the default, which may not even
+    cover the region — is not something a user should have to know to avoid.
+
+    None when nothing is linked, so a caller can fall back to the default. A
+    network that *is* linked but unusable raises, as it does everywhere else:
+    silently routing on something other than what the bundle names is the
+    failure this exists to prevent.
+    """
+    depends_on = source.resolve_bundle_dependency(bundle_id, "street_network")
+    if not depends_on:
+        return None
+    return fetch_routing_network(source, depends_on, dest_dir)
 
 
 def _transform(
@@ -214,15 +269,33 @@ def _transform(
         SELECT * FROM read_parquet('{edges_layer}')
     """)
 
+    # `length_m` is read from the layer rather than derived here, so its absence
+    # has to be caught before the build: the engine reads a zero-length edge as
+    # free to traverse, which would silently distort every route through it.
+    # Checked here rather than trusted because an edges layer imported before
+    # the column existed simply has not got one.
     edge_columns = {
         row[0]
         for row in con.execute("SELECT column_name FROM (DESCRIBE edge_src)").fetchall()
     }
+    if "length_m" not in edge_columns:
+        raise ValueError(
+            "The edges layer has no 'length_m' column, so edge costs cannot be "
+            "built. It is a computed column added at import; re-import this "
+            "street network bundle to produce it."
+        )
+    missing = con.execute(
+        "SELECT count(*) FROM edge_src WHERE length_m IS NULL"
+    ).fetchone()
+    if missing and missing[0]:
+        raise ValueError(
+            f"{missing[0]} edge(s) have no 'length_m' value. The column is "
+            "computed from the geometry on import and on every edit, so a null "
+            "means it was never filled — re-import or edit the layer to "
+            "recompute it."
+        )
 
-    con.execute(
-        f"COPY ({_edge_query('length_m' in edge_columns)}) "
-        f"TO '{edges_out}' (FORMAT PARQUET)"
-    )
+    con.execute(f"COPY ({_edge_query()}) TO '{edges_out}' (FORMAT PARQUET)")
 
     edge_count = con.execute(
         f"SELECT count(*) FROM read_parquet('{edges_out}')"
@@ -272,44 +345,12 @@ def _node_query() -> str:
     """
 
 
-def _length_expression(layer_has_length: bool) -> str:
-    """SQL for the edge's `length_m`, given whether the layer carries one.
-
-    Two paths, because two kinds of edges layer exist and both have to build:
-
-    * The layer has the column — the importer declared it and the editor
-      rewrites it on every geometry change, so it is the source of truth. Its
-      value wins, and the length a user reads in the table is the length the
-      engine routes on. `coalesce` still covers individual nulls: the column
-      can exist and be unfilled (added by a backfill, or by an importer that
-      declared it without filling it), and the engine reads a zero-length edge
-      as free to traverse, which would silently distort every route through it.
-    * The layer has no such column — every street-network bundle imported
-      before the column existed. Refusing here would mean those bundles could
-      never rebuild, and a rebuild is what their first edit queues, so the
-      build measures the geometry itself instead.
-
-    Either way the formula is the computed kind's own, from
-    `goatlib.computed_columns`, so a length derived here cannot disagree with
-    one the layer computes later.
-
-    Belongs in the `projected` CTE, where `edge_src` is the only relation in
-    scope: the outer select joins `node_ids`, which carries a `geometry`
-    column of its own, and an unqualified reference there would be ambiguous.
-    """
-    computed = COMPUTED_KIND_REGISTRY["length"].compute_sql("geometry")
-    if not layer_has_length:
-        return computed
-    return f"coalesce(length_m, {computed})"
-
-
-def _edge_query(layer_has_length: bool) -> str:
+def _edge_query() -> str:
     surface_case = " ".join(
         f"WHEN e.surface = '{name}' THEN {value}"
         for name, value in SURFACE_IMPEDANCE.items()
     )
     class_list = ", ".join(f"'{c}'" for c in sorted(ROUTING_CLASSES))
-    length_m = _length_expression(layer_has_length)
     return f"""
         WITH projected AS (
             SELECT
@@ -317,16 +358,18 @@ def _edge_query(layer_has_length: bool) -> str:
                 ST_Transform(e.geometry, 'EPSG:4326', 'EPSG:3857', always_xy := true) AS geom_3857,
                 CASE WHEN e."class" IN ({class_list})
                      THEN e."class" ELSE 'unknown' END AS routing_class,
-                CASE {surface_case} ELSE {DEFAULT_SURFACE_IMPEDANCE} END AS surface_imp,
-                {length_m} AS length_m_built
+                CASE {surface_case} ELSE {DEFAULT_SURFACE_IMPEDANCE} END AS surface_imp
             FROM edge_src e
         )
         SELECT
             row_number() OVER (ORDER BY p.id)::BIGINT AS id,
             s.int_id::BIGINT AS source,
             t.int_id::BIGINT AS target,
-            -- Cast because the loader reinterpret_casts DOUBLE.
-            p.length_m_built::DOUBLE AS length_m,
+            -- The edges layer's own computed column, not derived here: one
+            -- formula, in `goatlib.computed_columns`, so the length a user sees
+            -- and the length the engine routes on cannot disagree. Cast because
+            -- the layer stores FLOAT and the loader reinterpret_casts DOUBLE.
+            p.length_m::DOUBLE AS length_m,
             ST_Length(p.geom_3857)::DOUBLE AS length_3857,
             p.routing_class::VARCHAR AS class_,
             -- No DEM in an upload, so uploaded networks route as though flat.

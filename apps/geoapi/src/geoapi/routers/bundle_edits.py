@@ -843,6 +843,16 @@ def _plan(
     last = len(projected) - 1
     if last < 1:
         raise ValueError("An edge needs at least two points.")
+    # Checked here, at the one place every drawn line enters: a non-finite
+    # ordinate survives everything downstream — it is a valid double to
+    # DuckDB, and every length and cost derived from it is non-finite too —
+    # and only shows up later as a routing failure on the whole network.
+    for index, vertex in enumerate(coordinates):
+        if not all(math.isfinite(ordinate) for ordinate in vertex):
+            raise ValueError(
+                f"Vertex {index + 1} of this edge has no usable position "
+                f"({vertex}). Redraw it and save again."
+            )
 
     def resolve(index: int, decision: Any) -> str:
         """Materialise one vertex's decision and move the vertex onto the node.

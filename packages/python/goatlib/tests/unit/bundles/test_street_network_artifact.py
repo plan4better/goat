@@ -238,6 +238,45 @@ def test_classes_stay_within_the_routing_vocabulary(artifact, con) -> None:
     assert classes <= ROUTING_CLASSES
 
 
+def test_the_surface_impedance_table_stays_inside_the_vocabulary() -> None:
+    """The editor offers `EDGE_SURFACES`; the build costs cycling from
+    `SURFACE_IMPEDANCE`. A key outside the vocabulary is a penalty nobody can
+    choose, and a surface the table has never heard of costs nothing extra —
+    so a drift either way changes how a street routes without saying so."""
+    from goatlib.bundles.artifacts.street_network import SURFACE_IMPEDANCE
+    from goatlib.models.bundle import EDGE_SURFACES
+
+    assert set(SURFACE_IMPEDANCE) <= EDGE_SURFACES
+
+
+def test_edge_vocabularies_match_the_overture_schema() -> None:
+    """`subclass` and `surface` are Overture's own enums — segment.subclass and
+    the roadSurface definition. Pinned literally: the importer can only produce
+    these, so widening the editor's dropdown past them would offer a value no
+    import can create, and narrowing it would refuse one an import already
+    stored."""
+    from goatlib.models.bundle import EDGE_SUBCLASSES, EDGE_SURFACES
+
+    assert EDGE_SUBCLASSES == {
+        "link",
+        "sidewalk",
+        "crosswalk",
+        "parking_aisle",
+        "driveway",
+        "alley",
+        "cycle_crossing",
+    }
+    assert EDGE_SURFACES == {
+        "unknown",
+        "paved",
+        "unpaved",
+        "gravel",
+        "dirt",
+        "paving_stones",
+        "metal",
+    }
+
+
 def test_pedestrian_classes_are_impassable_by_car(artifact, con) -> None:
     """0 is how the loader spells "cannot be traversed"."""
     edges, _ = artifact
@@ -384,7 +423,7 @@ def test_surface_impedance_uses_the_canonical_coefficients(artifact, con) -> Non
     )
     # Sendlinger Straße is paving_stones, which the config penalises.
     assert by_surface["pedestrian"] == pytest.approx(0.2, abs=1e-6)
-    # Rindermarkt is sett, which the config doesn't list — so no penalty.
+    # Rindermarkt is paved, which the config doesn't list — so no penalty.
     assert by_surface["living_street"] == pytest.approx(0.0, abs=1e-6)
 
 
@@ -551,117 +590,50 @@ def test_a_layer_where_no_edge_resolves_is_refused(tmp_path, con) -> None:
         build_con.close()
 
 
-# --- length_m: the layer's column, or the geometry ---------------------------
+def test_a_bundle_is_styled_as_a_backdrop_with_one_part_picked_out() -> None:
+    """Both types get one grey bulk and one red accent, from the same pair.
 
-
-def _legacy_network(con, root: Path, *, length_sql: str | None) -> Tuple[str, str]:
-    """A one-edge network whose edges layer carries `length_m` only if asked.
-
-    `length_sql` is the column's SQL (`'74.4'`, `'NULL::DOUBLE'`, …); None
-    leaves the column out entirely, which is what every edges layer imported
-    before the column existed looks like.
+    An ordinary upload gets a random colour, which is right when nothing is
+    known about it — but a bundle's members are one dataset, so a network would
+    otherwise arrive as two unrelated layers in two random colours. Grey and
+    thin is what a network being routed *on* should look like: present, and not
+    competing with the result drawn over it. Which member is the accent differs
+    by type: a street network is its edges with the junctions picked out, while
+    a PT network is its stops along the lines they run on.
     """
-    nodes, edges = str(root / "nodes.parquet"), str(root / "edges.parquet")
-    con.execute(f"""
-        COPY (
-            SELECT * FROM (VALUES
-                ('n1', ST_Point(11.0, 48.0)),
-                ('n2', ST_Point(11.001, 48.0))
-            ) t("id", geometry)
-        ) TO '{nodes}' (FORMAT PARQUET)
-    """)
-    length_column = f", {length_sql} AS length_m" if length_sql is not None else ""
-    con.execute(f"""
-        COPY (
-            SELECT 'e1' AS id, 'residential' AS "class",
-                   CAST(NULL AS VARCHAR) AS surface,
-                   30 AS speed_limit_kph_forward, 30 AS speed_limit_kph_backward,
-                   'n1' AS source_node, 'n2' AS target_node,
-                   ST_GeomFromText('LINESTRING (11.0 48.0, 11.001 48.0)')
-                       AS geometry
-                   {length_column}
-        ) TO '{edges}' (FORMAT PARQUET)
-    """)
-    return edges, nodes
+    from goatlib.models.bundle import BundleTypeName
+    from goatlib.tools.style import (
+        BUNDLE_ACCENT_RED,
+        BUNDLE_BACKDROP_GREY,
+        BUNDLE_POINT_HALO_WHITE,
+        get_bundle_style,
+        hex_to_rgb,
+    )
 
+    grey = hex_to_rgb(BUNDLE_BACKDROP_GREY)
+    red = hex_to_rgb(BUNDLE_ACCENT_RED)
 
-def _built_lengths(tmp_path: Path, con, *, length_sql: str | None) -> list:
-    from goatlib.bundles.artifacts.street_network import _transform
+    edges = get_bundle_style(BundleTypeName.street_network, "edges", "line")
+    nodes = get_bundle_style(BundleTypeName.street_network, "nodes", "point")
+    assert edges["color"] == edges["stroke_color"] == grey
+    assert edges["stroke_width"] == 2
+    assert nodes["color"] == red
+    assert nodes["radius"] == 3
 
-    edges, nodes = _legacy_network(con, tmp_path, length_sql=length_sql)
-    out = str(tmp_path / "edges_out.parquet")
-    build_con = duckdb.connect()
-    build_con.execute("INSTALL spatial; LOAD spatial")
-    try:
-        _transform(build_con, edges, nodes, out, str(tmp_path / "nodes_out.parquet"))
-    finally:
-        build_con.close()
-    rows = con.execute(f"SELECT length_m FROM read_parquet('{out}')").fetchall()
-    return [row[0] for row in rows]
+    stops = get_bundle_style(BundleTypeName.pt_network_gtfs, "stops", "point")
+    shapes = get_bundle_style(BundleTypeName.pt_network_gtfs, "shapes", "line")
+    assert stops["color"] == grey
+    assert stops["radius"] == 4
+    # Haloed, and `stroked` on — the renderer draws a width of 0 without it,
+    # so setting the colour and width alone would show no outline at all.
+    assert stops["stroked"] is True
+    assert stops["stroke_color"] == hex_to_rgb(BUNDLE_POINT_HALO_WHITE)
+    assert stops["stroke_width"] == 2
+    assert shapes["color"] == shapes["stroke_color"] == red
+    assert shapes["stroke_width"] == 3
 
-
-def test_a_legacy_edges_layer_without_length_m_still_builds(tmp_path, con) -> None:
-    """Every street-network bundle imported before the column existed has no
-    `length_m`, and its first edit queues a rebuild — so refusing here would
-    mean those bundles can never rebuild again."""
-    lengths = _built_lengths(tmp_path, con, length_sql=None)
-    # Measured from the geometry with the computed kind's own formula.
-    assert lengths == [pytest.approx(74.4, abs=0.5)]
-
-
-def test_a_null_length_m_is_measured_from_the_geometry(tmp_path, con) -> None:
-    """The column can exist and be unfilled. The engine reads a zero-length
-    edge as free to traverse, so a null must not reach the graph."""
-    lengths = _built_lengths(tmp_path, con, length_sql="CAST(NULL AS DOUBLE)")
-    assert lengths == [pytest.approx(74.4, abs=0.5)]
-
-
-def test_the_layers_length_m_wins_when_it_is_filled(tmp_path, con) -> None:
-    """Once the column exists it is the source of truth, so the length a user
-    reads in the table is the length the engine routes on — even where it
-    disagrees with what the geometry alone would say."""
-    lengths = _built_lengths(tmp_path, con, length_sql="999.0")
-    assert lengths == [pytest.approx(999.0, abs=1e-6)]
-
-
-# --- one refusal mapping for every artifact kind -----------------------------
-
-
-@pytest.mark.parametrize(
-    ("state", "fragment"),
-    [
-        ("outdated", "being updated"),
-        ("building", "still being prepared"),
-        ("failed", "last update failed"),
-        (None, "not ready to route on"),
-    ],
-)
-def test_both_fetch_helpers_refuse_in_the_same_words(state, fragment) -> None:
-    """The refusal mapping was copied per artifact kind with the noun changed,
-    which is how the two drifted ("once it finishes" against "once the update
-    finishes"). One function now, so a fifth state cannot be handled in one
-    place and forgotten in the other."""
-    from goatlib.bundles.artifacts.gtfs import fetch_pt_timetable
-
-    with pytest.raises(ValueError, match=fragment) as street:
-        fetch_routing_network(_FakeSource(None, state), "bundle-1", "/tmp")
-    with pytest.raises(ValueError, match=fragment) as transit:
-        fetch_pt_timetable(_FakeSource(None, state), "bundle-1")
-
-    # Same sentence, and the noun is the only thing that differs — it names
-    # what the user picked, not the artifact behind it.
-    assert str(street.value).replace("street network", "<noun>") == str(
-        transit.value
-    ).replace("public-transport network", "<noun>")
-
-
-def test_the_refusal_names_what_the_user_chose(tmp_path) -> None:
-    from goatlib.bundles.artifacts.base import require_ready_artifact
-
-    with pytest.raises(ValueError, match="This bicycle network is being updated"):
-        require_ready_artifact(
-            _FakeSource(None, "outdated"),
-            "bundle-1",
-            "street_network_graph",
-            "bicycle network",
-        )
+    # A role with nothing to say inherits the geometry's default untouched,
+    # random colour included — the override is per role, not per bundle.
+    other = get_bundle_style(BundleTypeName.pt_network_gtfs, "routes", "point")
+    assert other["radius"] == 5  # the generic point default, not the stops rule
+    assert other["color"] not in (grey, red)

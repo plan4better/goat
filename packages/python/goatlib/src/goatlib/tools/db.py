@@ -436,6 +436,11 @@ class ToolDatabaseService:
         silent about keeps whatever the owner authored — the same guarantee as
         before, now expressed by the JSONB concatenation rather than by
         assembling one assignment per column.
+
+        Anything stored that is not an object is merged onto as if absent:
+        concatenating onto a JSON scalar produces an array, which no longer
+        validates as provenance and takes the bundle's read endpoint down with
+        it.
         """
         allowed = (
             "lineage",
@@ -459,7 +464,11 @@ class ToolDatabaseService:
             f"""
             UPDATE {self.schema}.bundle
             SET dataset_metadata =
-                    COALESCE(dataset_metadata, '{{}}'::jsonb) || $2::jsonb,
+                    CASE
+                        WHEN jsonb_typeof(dataset_metadata) = 'object'
+                        THEN dataset_metadata
+                        ELSE '{{}}'::jsonb
+                    END || $2::jsonb,
                 updated_at = NOW()
             WHERE id = $1
             """,
@@ -621,11 +630,27 @@ class ToolDatabaseService:
         last build attempt did. Reading both means a layer write whose
         stale-marking never landed cannot leave a tool routing on a graph that
         no longer matches the data.
+
+        ``dependencies_current`` is the same comparison across the dependency
+        edge: each dependency's ``built_revision`` — the revision this bundle's
+        artifacts were built from — against that bundle's current
+        ``layers_revision``. An artifact derived from another bundle goes stale
+        when that bundle is edited, and nothing in this bundle's own revision
+        would say so. A dependency never built from reads as not current; one
+        that has been unlinked has nothing to compare and so does not.
         """
         kind_value = getattr(kind, "value", kind)
         row = await self.pool.fetchrow(
             f"""
-            SELECT a.storage_path, a.build_status, a.revision, b.layers_revision
+            SELECT a.storage_path, a.build_status, a.revision, b.layers_revision,
+                   NOT EXISTS (
+                       SELECT 1
+                       FROM {self.schema}.bundle_dependency d
+                       JOIN {self.schema}.bundle dep
+                         ON dep.id = d.depends_on_bundle_id
+                       WHERE d.bundle_id = a.bundle_id
+                         AND d.built_revision IS DISTINCT FROM dep.layers_revision
+                   ) AS dependencies_current
             FROM {self.schema}.bundle_artifact a
             JOIN {self.schema}.bundle b ON b.id = a.bundle_id
             WHERE a.bundle_id = $1 AND a.kind = $2
@@ -661,6 +686,25 @@ class ToolDatabaseService:
         bundle["dataset_metadata"] = _decode_jsonb(bundle.get("dataset_metadata"))
         return bundle
 
+    async def get_bundle_dependency(
+        self: Self, bundle_id: str, kind: str
+    ) -> "str | None":
+        """The bundle this one depends on for ``kind``, or None if unlinked.
+
+        A GTFS bundle's linkage is computed against the street network it names
+        here, so the build has to resolve the link before it can start.
+        """
+        row = await self.pool.fetchrow(
+            f"""
+            SELECT depends_on_bundle_id
+            FROM {self.schema}.bundle_dependency
+            WHERE bundle_id = $1 AND dependency_kind = $2
+            """,
+            uuid_module.UUID(bundle_id),
+            kind,
+        )
+        return str(row["depends_on_bundle_id"]) if row else None
+
     async def get_bundle_revision(self: Self, bundle_id: str) -> int:
         """Current layers_revision of a bundle."""
         row = await self.pool.fetchrow(
@@ -693,6 +737,7 @@ class ToolDatabaseService:
         built_revision: int,
         storage_path: str,
         size: int,
+        properties: "dict[str, Any] | None" = None,
     ) -> "tuple[bool, str | None]":
         """Mark an artifact ready, unless the layers have moved on since.
 
@@ -711,6 +756,10 @@ class ToolDatabaseService:
                 storage_path = $3,
                 size = $4,
                 revision = $5,
+                -- Replaced, not merged: these describe *this* build's
+                -- output, so the previous build's facts are not partial
+                -- truths to keep — they are about a file being displaced.
+                properties = $7::jsonb,
                 updated_at = NOW()
             FROM {self.schema}.bundle b,
                  -- The path being replaced, read through the same statement
@@ -739,11 +788,37 @@ class ToolDatabaseService:
             size,
             built_revision,
             BundleArtifactBuildStatus.complete.value,
+            json.dumps(properties) if properties else None,
         )
         if row is None:
             return False, None
         displaced = row["displaced_path"]
         return True, (displaced if displaced != storage_path else None)
+
+    async def set_dependency_built_revision(
+        self: Self, bundle_id: str, kind: str, built_revision: int
+    ) -> None:
+        """Record which revision of a dependency this bundle was built from.
+
+        Called once the artifacts of a build have published, so the row says
+        what the published files were actually derived from. Guarded on the
+        dependency still being at that revision: if it moved on mid-build, the
+        row keeps saying "not built from the current revision", which is true —
+        the build read the older one.
+        """
+        await self.pool.execute(
+            f"""
+            UPDATE {self.schema}.bundle_dependency d
+            SET built_revision = $3
+            FROM {self.schema}.bundle dep
+            WHERE d.bundle_id = $1 AND d.dependency_kind = $2
+              AND dep.id = d.depends_on_bundle_id
+              AND dep.layers_revision = $3
+            """,
+            uuid_module.UUID(bundle_id),
+            kind,
+            built_revision,
+        )
 
     async def list_bundle_layers(self: Self, bundle_id: str) -> "list[dict]":
         """Role and layer id of each member layer of a bundle."""
@@ -864,36 +939,45 @@ class ToolDatabaseService:
         return layer_project_id
 
     async def create_bundle_project_group(
-        self: Self, project_id: str, bundle_id: str, name: str
+        self: Self, project_id: str, bundle_id: str, name: str, member_count: int = 0
     ) -> tuple[int, int]:
         """Create a bundle-backed layer group in a project (locked membership),
-        placed below everything already there. Returns ``(id, order)`` — the
-        caller needs the order to place the members directly beneath it.
+        at the top. Returns ``(id, order)`` — the caller needs the order to place
+        the members directly beneath it.
 
-        Groups and layers share one tree-wide "order" sequence — the layer panel
-        writes it by flattening the whole tree — so the maximum is taken over both.
-        Reading only the groups drops the bundle in among the existing layers."""
-        row = await self.pool.fetchrow(
-            f"""
-            INSERT INTO {self.schema}.layer_project_group (
-                project_id, bundle_id, name, "order", created_at, updated_at
-            )
-            VALUES (
-                $1, $2, $3,
-                GREATEST(
-                    COALESCE((SELECT MAX("order") FROM {self.schema}.layer_project_group
-                              WHERE project_id = $1), -1),
-                    COALESCE((SELECT MAX("order") FROM {self.schema}.layer_project
-                              WHERE project_id = $1), -1)
-                ) + 1,
-                NOW(), NOW()
-            )
-            RETURNING id, "order"
-            """,
-            uuid_module.UUID(project_id),
-            uuid_module.UUID(bundle_id),
-            name,
-        )
+        Anything added to a project goes on top, so the project is pushed down to
+        make room first: by the group plus every member that will sit under it,
+        which is why ``member_count`` is asked for. Groups and layers share one
+        tree-wide "order" sequence — the layer panel writes it by flattening the
+        whole tree — so both have to move, or the new rows land in among the old
+        ones instead of above them.
+
+        The same rule core applies when a bundle is added to a project by hand
+        (``crud_layer_project_group.add_bundle``); an upload that arrived at the
+        bottom while a manual add arrived at the top would be the panel
+        contradicting itself."""
+        room = 1 + max(member_count, 0)
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                for table in ("layer_project", "layer_project_group"):
+                    await conn.execute(
+                        f"UPDATE {self.schema}.{table} "
+                        f'SET "order" = "order" + $2 WHERE project_id = $1',
+                        uuid_module.UUID(project_id),
+                        room,
+                    )
+                row = await conn.fetchrow(
+                    f"""
+                    INSERT INTO {self.schema}.layer_project_group (
+                        project_id, bundle_id, name, "order", created_at, updated_at
+                    )
+                    VALUES ($1, $2, $3, 0, NOW(), NOW())
+                    RETURNING id, "order"
+                    """,
+                    uuid_module.UUID(project_id),
+                    uuid_module.UUID(bundle_id),
+                    name,
+                )
         logger.info(
             f"Created bundle group {row['id']} for bundle {bundle_id} "
             f"in project {project_id} at order {row['order']}"

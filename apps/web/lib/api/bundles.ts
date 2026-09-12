@@ -23,6 +23,11 @@ export interface BundleRead {
   status: string;
   /** The bundle's derived artifacts and their build state. */
   artifacts?: BundleArtifact[];
+  /** Whether the artifacts are built from the member layers. Gates filtering
+   *  and rebuilding, both of which have to produce artifacts from layers —
+   *  false for GTFS, whose feed is not kept. Resolved from the bundle type's
+   *  spec server-side, so it flips on its own when a type gains support. */
+  artifacts_from_layers?: boolean;
   description?: string | null;
   thumbnail_url?: string;
   created_at?: string;
@@ -54,6 +59,10 @@ export interface BundleArtifact {
   /** The bundle revision this artifact was built from; null if never built. */
   revision?: number | null;
   size?: number | null;
+  /** What the build recorded about its own output — a PT timetable's
+   *  `service_start` / `service_days`, which bound a date offered against it.
+   *  Free-form by design, so read defensively. */
+  properties?: Record<string, unknown> | null;
   updated_at?: string | null;
 }
 
@@ -104,6 +113,14 @@ export interface BundleTypeDef {
   uploadHint: string;
   /** Whether an uploaded file is this bundle type. */
   matches: (file: File) => boolean;
+  /** Whether the upload must name a street network bundle to link. Follows the
+   *  type's own required dependency: a GTFS feed's stop-to-street linkage is
+   *  computed against a street network. */
+  requiresStreetNetwork?: boolean;
+  /** i18n key for what the upload screen explains about this type: what the
+   *  one file becomes, and why it asks for what it asks for. Per type, since
+   *  no two of them import the same way. */
+  uploadNoteKey?: string;
 }
 
 export const BUNDLE_TYPES: BundleTypeDef[] = [
@@ -115,6 +132,8 @@ export const BUNDLE_TYPES: BundleTypeDef[] = [
       const name = file.name.toLowerCase();
       return name.endsWith(".zip") && name.includes("gtfs");
     },
+    requiresStreetNetwork: true,
+    uploadNoteKey: "bundle_upload_note_pt_network_gtfs",
   },
   {
     type: "street_network",
@@ -207,12 +226,20 @@ export interface BundleGrantsResponse {
 /** List bundles the user can access. Optionally restrict by `bundleType` and/or
  *  to bundles with a ready artifact of `artifactKind` (e.g. "pt_network_gtfs" +
  *  "pt_network_graph" for routable PT bundles). */
-export const useBundles = (opts?: { bundleType?: string; artifactKind?: string }) => {
+export const useBundles = (opts?: {
+  bundleType?: string;
+  artifactKind?: string;
+  /** Skip the request entirely — for a selector that only some files need. */
+  enabled?: boolean;
+}) => {
   const params = new URLSearchParams();
   if (opts?.bundleType) params.set("bundle_type", opts.bundleType);
   if (opts?.artifactKind) params.set("artifact_kind", opts.artifactKind);
   const qs = params.toString();
-  return useSWR<BundleRead[]>(`${BUNDLES_API_BASE_URL}${qs ? `?${qs}` : ""}`, fetcher);
+  return useSWR<BundleRead[]>(
+    opts?.enabled === false ? null : `${BUNDLES_API_BASE_URL}${qs ? `?${qs}` : ""}`,
+    fetcher
+  );
 };
 
 /** Fetch a single bundle for its detail page. */
@@ -236,9 +263,14 @@ export const useBundleLayers = (bundleId: string | null) => {
 /** The bundle a layer belongs to, or undefined for an ordinary layer.
  *
  *  A plain layer is the common case, so a 404 is an answer rather than an
- *  error — it means "not a member". */
+ *  error — it means "not a member".
+ *
+ *  `isMembershipUnresolved` separates the two things an absent bundle can
+ *  mean. A 404 answers the question; a failed request leaves it unanswered,
+ *  and a caller that treats the second as "ordinary layer" sends a member's
+ *  edits to an endpoint that refuses them. */
 export const useBundleForLayer = (layerId: string | null) => {
-  const { data, isLoading, mutate } = useSWR<BundleForLayer | null>(
+  const { data, isLoading, error, mutate } = useSWR<BundleForLayer | null>(
     layerId ? `${BUNDLES_API_BASE_URL}/by-layer/${layerId}` : null,
     async (url: string) => {
       const response = await apiRequestAuth(url);
@@ -247,7 +279,12 @@ export const useBundleForLayer = (layerId: string | null) => {
       return response.json();
     }
   );
-  return { bundleForLayer: data ?? undefined, isLoading, mutate };
+  return {
+    bundleForLayer: data ?? undefined,
+    isLoading,
+    isMembershipUnresolved: !!layerId && !!error,
+    mutate,
+  };
 };
 
 /** Other bundles this bundle depends on (e.g. a GTFS feed's street network). */

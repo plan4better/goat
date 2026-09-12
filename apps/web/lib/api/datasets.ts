@@ -1,8 +1,8 @@
 import { BUNDLES_API_BASE_URL } from "@/lib/api/bundles";
 import { apiRequestAuth } from "@/lib/api/fetcher";
 import { LAYERS_API_BASE_URL } from "@/lib/api/layers";
-import type { DatasetImportRequest, PresignedPostResponse } from "@/lib/validations/datasets";
-import { datasetImportRequestSchema, presignedPostResponseSchema } from "@/lib/validations/datasets";
+import type { DatasetImportRequest, PresignedUploadResponse } from "@/lib/validations/datasets";
+import { datasetImportRequestSchema, presignedUploadResponseSchema } from "@/lib/validations/datasets";
 
 export const DATASETS_API_BASE_URL = new URL("api/v2/datasets", process.env.NEXT_PUBLIC_API_URL).href;
 
@@ -23,7 +23,7 @@ export const matchesContentListKey = (key: unknown): boolean => {
   );
 };
 
-export const requestDatasetUpload = async (req: DatasetImportRequest): Promise<PresignedPostResponse> => {
+export const requestDatasetUpload = async (req: DatasetImportRequest): Promise<PresignedUploadResponse> => {
   // validate client input with zod first
   const validatedReq = datasetImportRequestSchema.parse(req);
 
@@ -39,5 +39,5 @@ export const requestDatasetUpload = async (req: DatasetImportRequest): Promise<P
   }
 
   const data = await response.json();
-  return presignedPostResponseSchema.parse(data);
+  return presignedUploadResponseSchema.parse(data);
 };

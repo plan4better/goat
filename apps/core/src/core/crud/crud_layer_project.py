@@ -6,10 +6,11 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from sqlalchemy import func, select, text
+from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.core.config import settings
-from core.db.models._link_model import LayerProjectLink
+from core.db.models._link_model import LayerProjectGroup, LayerProjectLink
 from core.db.models.layer import Layer
 from core.db.models.project import Project
 from core.schemas.project import (
@@ -24,6 +25,25 @@ from core.schemas.project import (
 
 # Local application imports
 from .base import CRUDBase
+
+
+async def make_room_at_top(
+    async_session: AsyncSession, project_id: UUID, count: int
+) -> None:
+    """Push everything already in a project down by ``count`` positions.
+
+    Groups and layers share one tree-wide order sequence, so both have to move
+    or the new rows land in among the old ones instead of above them.
+    """
+    if count <= 0:
+        return
+    for model in (LayerProjectLink, LayerProjectGroup):
+        await async_session.execute(
+            sql_update(model)
+            .where(model.project_id == project_id)
+            .values(order=model.order + count)
+        )
+    await async_session.commit()
 
 
 def initial_link_properties(
@@ -392,7 +412,6 @@ class CRUDLayerProject(CRUDBase):
         user_id: UUID,
         group_id: int | None = None,
         start_order: int | None = None,
-        append_to_layer_order: bool = False,
     ) -> List[BaseModel]:
         """Create a link between a project and a layer.
 
@@ -405,12 +424,11 @@ class CRUDLayerProject(CRUDBase):
         group (used when adding a bundle's member layers into its group).
 
         ``order`` is a position in the project's single tree-wide sequence — the
-        layer panel writes it by flattening the whole tree — so links added
-        outside the panel have to be given one, or they all land on 0 and tie.
-        ``start_order`` numbers the new links from there in ``layer_ids`` order;
-        left unset they keep the column default, which is what the ordinary
-        add-layers-to-a-project flow wants. ``append_to_layer_order`` puts them at
-        the bottom of the project instead of the top.
+        layer panel writes it by flattening the whole tree. New links go to the
+        top of that sequence, whatever they are: the project is pushed down to
+        make room for them. ``start_order`` overrides this for a caller that has
+        already made its own room and needs the links at a known position, which
+        is how a bundle's members end up directly under their group header.
         """
 
         # Drop duplicates but keep the caller's order: it fixes the order the
@@ -443,6 +461,13 @@ class CRUDLayerProject(CRUDBase):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="One or several Layers were not found",
             )
+
+        # Everything new goes on top, so the project moves down first. Skipped
+        # ids leave a gap in the sequence, which the panel closes the next time
+        # the tree is reordered.
+        if start_order is None:
+            await make_room_at_top(async_session, project_id, len(layer_ids))
+            start_order = 0
 
         # Define array for layer project ids
         layer_project_ids = []
@@ -492,7 +517,7 @@ class CRUDLayerProject(CRUDBase):
                 properties=properties,
                 other_properties=other_properties,
                 layer_project_group_id=group_id,
-                order=(start_order + position) if start_order is not None else 0,
+                order=start_order + position,
                 shareable=shareable_by_layer_id.get(layer.id, False),
             )
 
@@ -505,14 +530,9 @@ class CRUDLayerProject(CRUDBase):
 
         # Get project to update layer order
         project = await CRUDBase(Project).get(async_session, id=project_id)
-        layer_order = project.layer_order
-        # Newly added layers go to the top, unless the caller asked for the bottom.
-        if layer_order is None:
-            layer_order = layer_project_ids
-        elif append_to_layer_order:
-            layer_order = layer_order + layer_project_ids
-        else:
-            layer_order = layer_project_ids + layer_order
+        # Legacy sequence, kept in step with the order column: it only decides
+        # the API response's order, which the layer panel re-sorts anyway.
+        layer_order = layer_project_ids + list(project.layer_order or [])
 
         # Update project layer order
         project = await CRUDBase(Project).update(

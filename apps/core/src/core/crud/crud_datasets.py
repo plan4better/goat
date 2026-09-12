@@ -19,6 +19,7 @@ from core.core.content import (
     granted_ids,
 )
 from core.crud.base import CRUDBase
+from core.crud.crud_bundle import member_thumbnails
 from core.crud.crud_layer import layer as crud_layer
 from core.db.models._link_model import ResourceGrant
 from core.db.models.bundle import Bundle
@@ -357,6 +358,12 @@ class CRUDDatasets:
                     .where(Bundle.id.in_(bundle_ids))
                 )
             ).all()
+            # A bundle's own thumbnail is only ever the generic placeholder, so
+            # the tile borrows one member's — the same one the bundle's page
+            # shows.
+            bundle_thumbnails = await member_thumbnails(
+                async_session, [bundle.id for bundle, *_ in prows]
+            )
             for bundle, uid, firstname, lastname, avatar in prows:
                 bundle_type = enum_value(bundle.bundle_type)
                 tile_by_id[str(bundle.id)] = DatasetContentTile(
@@ -368,7 +375,8 @@ class CRUDDatasets:
                     bundle_type=bundle_type,
                     status=enum_value(bundle.status),
                     description=bundle.description,
-                    thumbnail_url=bundle.thumbnail_url,
+                    thumbnail_url=bundle_thumbnails.get(bundle.id)
+                    or bundle.thumbnail_url,
                     owned_by={
                         "id": uid,
                         "firstname": firstname,

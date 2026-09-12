@@ -21,7 +21,6 @@ from core.db.models.project import Project
 from core.db.models.space import Space, SpaceDefaultRole, SpaceKind
 from core.db.models.team import Team
 from core.db.models.user import User
-from core.db.seed_bundle_types import seed_bundle_types
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -408,7 +407,6 @@ async def test_restricted_bundle_closes_its_member_layers(
     layer = await make_layer(lead, folder)
     await _move_to_space(db_session, "folder", folder.id, space.id)
     await _move_to_space(db_session, "layer", layer.id, space.id)
-    await seed_bundle_types(db_session)
     bundle_id = (
         await db_session.execute(
             text(

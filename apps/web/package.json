@@ -16,7 +16,7 @@
     "lint:fix": "eslint . --ext .ts,.js,.tsx,.jsx --fix",
     "lint:report": "eslint . --format json --output-file ../../lint-results/goat.json",
     "prettier": "prettier --write .",
-    "typecheck": "tsc --project ./tsconfig.json --pretty --noEmit",
+    "typecheck": "next typegen && tsc --project ./tsconfig.json --pretty --noEmit",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:watch": "vitest --watch",

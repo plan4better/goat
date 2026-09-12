@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
+import { detectBundleType } from "@/lib/api/bundles";
 import { useProject } from "@/lib/api/projects";
 
 import { useDatasetImport } from "@/hooks/addLayer/useDatasetImport";
@@ -20,6 +21,24 @@ const NEEDS_SETUP = ["csv", "xlsx", "xls"];
 const IMPORTS_DIRECTLY = ["gpkg", "geojson", "kml", "zip", "parquet"];
 
 const extensionOf = (file: File): string => file.name.split(".").pop()?.toLowerCase() ?? "";
+
+/**
+ * Whether a drop landed inside a dialog, drawer, menu or popover.
+ *
+ * By MUI's own container class rather than by a flag each of them sets: this
+ * listens on the window, so it sees drops meant for anything layered over the
+ * editor, and the layer should not have to know that a global listener exists.
+ */
+const OVERLAY_SELECTOR = [
+  ".MuiModal-root",
+  ".MuiDialog-root",
+  ".MuiDrawer-root",
+  ".MuiPopover-root",
+  ".MuiMenu-root",
+].join(",");
+
+const insideModal = (target: EventTarget | null): boolean =>
+  target instanceof Element && !!target.closest(OVERLAY_SELECTOR);
 
 /**
  * Drop a file anywhere on the editor to import it.
@@ -53,6 +72,14 @@ const MapDropTarget = ({ projectId }: { projectId: string }) => {
         setNeedsSetup(file);
         return;
       }
+      // A bundle type that has to be linked to another bundle cannot be
+      // imported from a drop alone: a GTFS feed's stop-to-street linkage is
+      // built against a street network, and nothing here can pick one. So the
+      // drop opens the dialog and the upload finishes there.
+      if (detectBundleType(file)?.requiresStreetNetwork) {
+        setNeedsSetup(file);
+        return;
+      }
       if (!IMPORTS_DIRECTLY.includes(extension)) {
         toast.error(t("drop_unsupported_file"));
         return;
@@ -80,8 +107,15 @@ const MapDropTarget = ({ projectId }: { projectId: string }) => {
     };
     const onDrop = (event: DragEvent) => {
       if (!carriesFiles(event)) return;
-      // Without this the browser navigates to the file it was handed.
+      // Without this the browser navigates to the file it was handed — so it
+      // is prevented for every drop, including the ones this ignores.
       event.preventDefault();
+      // A drop inside a dialog belongs to the dialog. Its own drop zone has
+      // already taken the file by now (React's handler runs before this one,
+      // which listens on the window), so importing it here would import it
+      // twice; and a drop on the dialog's padding, where it has no zone,
+      // would import to the map behind whatever the dialog is asking.
+      if (insideModal(event.target)) return;
       take(event.dataTransfer?.files ?? null);
     };
 
@@ -93,8 +127,10 @@ const MapDropTarget = ({ projectId }: { projectId: string }) => {
     };
   }, [take]);
 
-  // A spreadsheet has not been uploaded: it is waiting for an answer, with its column setup
-  // already open, since there is one file and one thing to configure.
+  // The file has not been uploaded: it is waiting for an answer. A spreadsheet
+  // opens with its column setup already showing, since there is one file and
+  // one thing to configure; a bundle needs a field on the dialog itself, so
+  // that one opens plain.
   if (!needsSetup) return null;
   return (
     <AddLayerDialog
@@ -102,7 +138,7 @@ const MapDropTarget = ({ projectId }: { projectId: string }) => {
       projectId={projectId}
       defaultFolderId={project?.folder_id}
       initialFile={needsSetup}
-      autoOpenSetup
+      autoOpenSetup={NEEDS_SETUP.includes(extensionOf(needsSetup))}
       onClose={() => setNeedsSetup(null)}
     />
   );

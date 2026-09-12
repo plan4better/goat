@@ -230,7 +230,7 @@ class LayerImportRunner(BaseToolRunner[LayerImportParams]):
             s3_key,
             local_file,
         )
-        client.download_file(self.settings.s3_bucket_name, s3_key, str(local_file))
+        self.download_uploaded_object(s3_key, local_file, client=client)
 
         # Convert to GeoParquet using IOConverter
         metadata = self.converter.to_parquet(
@@ -482,7 +482,7 @@ class LayerImportRunner(BaseToolRunner[LayerImportParams]):
             s3_key,
             local_file,
         )
-        client.download_file(self.settings.s3_bucket_name, s3_key, str(local_file))
+        self.download_uploaded_object(s3_key, local_file, client=client)
 
         report = convert_all(
             str(local_file),

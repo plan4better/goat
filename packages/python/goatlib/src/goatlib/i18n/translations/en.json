@@ -291,6 +291,10 @@
       "label": "Day",
       "description": "Type of day for public transport schedule"
     },
+    "pt_date": {
+      "label": "Date",
+      "description": "Day to route on, within the timetable the selected bundle covers"
+    },
     "from_time": {
       "label": "Start Time",
       "description": "Start time of the analysis window"

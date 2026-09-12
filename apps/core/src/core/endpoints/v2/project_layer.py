@@ -193,7 +193,7 @@ async def add_catalog_items_to_project(
     from pathlib import Path as FSPath
 
     import asyncpg
-    from goatlib.tools.catalog_promote import (
+    from goatlib.catalog.promote import (
         CatalogItemNotFoundError,
         promote,
         read_items,

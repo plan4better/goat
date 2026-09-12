@@ -11,6 +11,7 @@ import ArrayInput from "@/components/map/panels/toolbox/generic/inputs/ArrayInpu
 import BooleanInput from "@/components/map/panels/toolbox/generic/inputs/BooleanInput";
 import BundleInput from "@/components/map/panels/toolbox/generic/inputs/BundleInput";
 import ChipsInput from "@/components/map/panels/toolbox/generic/inputs/ChipsInput";
+import DateInput from "@/components/map/panels/toolbox/generic/inputs/DateInput";
 import EnumInput from "@/components/map/panels/toolbox/generic/inputs/EnumInput";
 import FieldInput from "@/components/map/panels/toolbox/generic/inputs/FieldInput";
 import FieldStatisticsInput from "@/components/map/panels/toolbox/generic/inputs/FieldStatisticsInput";
@@ -176,6 +177,17 @@ export default function GenericInput({
           value={value as number | undefined}
           onChange={onChange}
           disabled={disabled}
+        />
+      );
+
+    case "date-picker":
+      return (
+        <DateInput
+          input={input}
+          value={value as string | undefined}
+          onChange={onChange}
+          disabled={disabled}
+          formValues={safeFormValues}
         />
       );
 

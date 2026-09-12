@@ -2,16 +2,17 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from goatlib.models.bundle import member_draw_rank
 from sqlalchemy import delete as sql_delete
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from core.crud.base import CRUDBase
 from core.db.models._link_model import (
     BundleLayerLink,
     LayerProjectGroup,
-    LayerProjectLink,
 )
 from core.db.models.bundle import Bundle
+from core.db.models.layer import Layer
 from core.db.session import AsyncSession
 from core.schemas.project import ILayerProjectGroupCreate, ILayerProjectGroupUpdate
 
@@ -123,6 +124,7 @@ class CRUDLayerProjectGroup(CRUDBase):
         """
         # Reuse crud_layer_project for the member links (name/order handling).
         from core.crud.crud_layer_project import layer_project as crud_layer_project
+        from core.crud.crud_layer_project import make_room_at_top
 
         # Already added?
         existing = await async_session.execute(
@@ -151,19 +153,26 @@ class CRUDLayerProjectGroup(CRUDBase):
                 detail="Bundle import failed; it cannot be added to a project",
             )
 
-        # Ordered by link id, so members land in the order the import created
-        # them (the bundle spec's role order) rather than however the rows come back.
-        member_ids = (
-            (
-                await async_session.execute(
-                    select(BundleLayerLink.layer_id)
-                    .where(BundleLayerLink.bundle_id == bundle_id)
-                    .order_by(BundleLayerLink.id)
-                )
+        # Points before lines before polygons, so a node is not buried under
+        # the edges it joins — the same stacking the import path uses, from the
+        # same rule. Within one geometry, link id keeps the order the import
+        # created them in (the spec's role order) rather than however the rows
+        # come back.
+        member_rows = (
+            await async_session.execute(
+                select(BundleLayerLink.layer_id, Layer.feature_layer_geometry_type)
+                .join(Layer, Layer.id == BundleLayerLink.layer_id)
+                .where(BundleLayerLink.bundle_id == bundle_id)
+                .order_by(BundleLayerLink.id)
             )
-            .scalars()
-            .all()
-        )
+        ).all()
+        member_ids = [
+            layer_id
+            for layer_id, _ in sorted(
+                member_rows,
+                key=lambda row: member_draw_rank(row.feature_layer_geometry_type),
+            )
+        ]
         if not member_ids:
             # Having members is the actual requirement: the group's membership
             # is locked, so an empty one can never be filled from the project
@@ -178,37 +187,16 @@ class CRUDLayerProjectGroup(CRUDBase):
                 detail="Bundle has no member layers yet",
             )
 
-        # Place the group below everything already in the project. Groups and
-        # layers share one tree-wide order sequence, so the maximum has to be
-        # taken over both — reading only the groups puts the bundle in among the
-        # existing layers.
-        max_group_order = (
-            await async_session.execute(
-                select(func.max(LayerProjectGroup.order)).where(
-                    LayerProjectGroup.project_id == project_id
-                )
-            )
-        ).scalar()
-        max_layer_order = (
-            await async_session.execute(
-                select(func.max(LayerProjectLink.order)).where(
-                    LayerProjectLink.project_id == project_id
-                )
-            )
-        ).scalar()
-        next_order = (
-            max(
-                (max_group_order if max_group_order is not None else -1),
-                (max_layer_order if max_layer_order is not None else -1),
-            )
-            + 1
-        )
+        # A bundle goes to the top like anything else added to a project, so
+        # the project moves down by the group plus every member that will sit
+        # under it, and the group takes the first position.
+        await make_room_at_top(async_session, project_id, 1 + len(member_ids))
 
         group = LayerProjectGroup(
             project_id=project_id,
             name=bundle.name,
             bundle_id=bundle_id,
-            order=next_order,
+            order=0,
         )
         async_session.add(group)
         await async_session.commit()
@@ -222,9 +210,10 @@ class CRUDLayerProjectGroup(CRUDBase):
                 layer_ids=list(member_ids),
                 user_id=user_id,
                 group_id=group.id,
-                # Directly below the group header, in role order.
+                # Directly below the group header, in role order. Room for
+                # them was made above, so the links take it as given rather
+                # than pushing the project down a second time.
                 start_order=group.order + 1,
-                append_to_layer_order=True,
             )
         except Exception:
             # The group was already committed; if adding members fails, drop

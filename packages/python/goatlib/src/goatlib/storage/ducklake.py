@@ -17,6 +17,7 @@ from urllib.parse import unquote, urlparse
 import duckdb
 
 from goatlib.storage.pin_errors import is_pin_miss_error
+from goatlib.storage.s3_config import apply_duckdb_s3_settings
 from goatlib.storage.snapshot_pin import SnapshotPin
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,11 @@ logger = logging.getLogger(__name__)
 # derive from it, so adding one here automatically gets it baked into the
 # images — there is no second list to keep in sync.
 REQUIRED_DUCKDB_EXTENSIONS = ["spatial", "httpfs", "postgres", "ducklake"]
+# Community-repository extensions the analysis tools load on their own
+# connections (``INSTALL h3 FROM community``). Not loaded by the managers,
+# but baked into the images alongside the list above so those INSTALLs
+# resolve from disk instead of community-extensions.duckdb.org.
+COMMUNITY_DUCKDB_EXTENSIONS = ["h3"]
 
 
 def _baked_extension_dir() -> str | None:
@@ -586,13 +592,12 @@ class BaseDuckLakeManager:
             con.execute(f"LOAD {ext}")
 
     def _setup_s3(self: "BaseDuckLakeManager", con: duckdb.DuckDBPyConnection) -> None:
-        if self._s3_endpoint:
-            con.execute(f"SET s3_endpoint = '{self._s3_endpoint}'")
-            con.execute("SET s3_url_style = 'path'")
-        if self._s3_access_key:
-            con.execute(f"SET s3_access_key_id = '{self._s3_access_key}'")
-        if self._s3_secret_key:
-            con.execute(f"SET s3_secret_access_key = '{self._s3_secret_key}'")
+        apply_duckdb_s3_settings(
+            con,
+            endpoint_url=self._s3_endpoint,
+            access_key=self._s3_access_key,
+            secret_key=self._s3_secret_key,
+        )
 
     def _parse_postgres_uri(self: "BaseDuckLakeManager") -> dict[str, str]:
         uri = self._postgres_uri
@@ -1100,14 +1105,12 @@ class DuckLakePool:
         for ext in self.REQUIRED_EXTENSIONS:
             con.execute(f"LOAD {ext}")
 
-        # Configure S3 if needed
-        if self._s3_endpoint:
-            con.execute(f"SET s3_endpoint='{self._s3_endpoint}'")
-            con.execute("SET s3_url_style='path'")
-        if self._s3_access_key:
-            con.execute(f"SET s3_access_key_id='{self._s3_access_key}'")
-        if self._s3_secret_key:
-            con.execute(f"SET s3_secret_access_key='{self._s3_secret_key}'")
+        apply_duckdb_s3_settings(
+            con,
+            endpoint_url=self._s3_endpoint,
+            access_key=self._s3_access_key,
+            secret_key=self._s3_secret_key,
+        )
 
         # Attach DuckLake catalog in read-only mode
         params = self._parse_postgres_uri()

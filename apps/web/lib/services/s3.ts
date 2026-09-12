@@ -1,5 +1,8 @@
+import type { PresignedUploadResponse } from "@/lib/validations/datasets";
+
 /**
- * Send a file to S3 with a presigned POST.
+ * Send a file to S3 with a presigned PUT: the raw file is the body and the signed headers
+ * are sent unchanged.
  *
  * `XMLHttpRequest` rather than `fetch`, for one reason: `fetch` reports no upload progress,
  * so a transfer can only ever be drawn as a spinner. This one reports bytes sent and can be
@@ -7,7 +10,7 @@
  */
 export function uploadFileToS3(
   file: File,
-  presigned: { url: string; fields: Record<string, string> },
+  presigned: PresignedUploadResponse,
   options?: {
     onProgress?: (sent: number, total: number) => void;
     /** Aborts the transfer. The request is cancelled, not merely ignored. */
@@ -27,20 +30,17 @@ export function uploadFileToS3(
       return;
     }
 
-    const formData = new FormData();
-    Object.entries(presigned.fields).forEach(([key, value]) => {
-      formData.append(key, value);
-    });
-    formData.append("file", file);
-
     const request = new XMLHttpRequest();
-    request.open("POST", presigned.url);
+    request.open("PUT", presigned.url);
+    Object.entries(presigned.headers).forEach(([name, value]) => {
+      request.setRequestHeader(name, value);
+    });
 
     request.upload.addEventListener("progress", (event) => {
       if (event.lengthComputable) options?.onProgress?.(event.loaded, event.total);
     });
     request.addEventListener("load", () => {
-      // S3 answers a presigned POST with 204, and any 2xx is a success here.
+      // S3 answers a presigned PUT with 200, and any 2xx is a success here.
       if (request.status >= 200 && request.status < 300) resolve();
       else reject(new Error(`S3 upload failed with status ${request.status}`));
     });
@@ -48,6 +48,6 @@ export function uploadFileToS3(
     request.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
 
     options?.signal?.addEventListener("abort", () => request.abort(), { once: true });
-    request.send(formData);
+    request.send(file);
   });
 }

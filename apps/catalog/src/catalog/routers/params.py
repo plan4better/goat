@@ -402,6 +402,12 @@ class CollectionSearchQuery(_FilterMixin):
     # On the collections relation `id` IS the collection id — this is what the
     # favourites filter feeds ("show my favourites" = the caller's saved ids).
     ids: CsvList = Field(default=None, description="Collection ids")
+    # A drawn shape or a buffered point. Declared here or FastAPI drops the
+    # query parameter without a word, and a spatial filter that is not a bbox
+    # or a NUTS region silently returns the whole catalog.
+    intersects: GeometryValue = Field(
+        default=None, description="GeoJSON geometry (URL-encoded)"
+    )
     sortby: SortBy = Field(default=None, description="e.g. -properties.updated")
     bbox_boost: BboxCsv = Field(default=None, description=BboxBoostDescription)
     limit: int = Field(default=DEFAULT_LIMIT, description=LIMIT_DESCRIPTION)
@@ -415,6 +421,7 @@ class CollectionSearchQuery(_FilterMixin):
             default_filter_lang="cql2-text",
             collections=self.source,
             ids=self.ids,
+            intersects=self.intersects,
             sortby=self.sortby,
             bbox_boost=self.bbox_boost,
             limit=limit,

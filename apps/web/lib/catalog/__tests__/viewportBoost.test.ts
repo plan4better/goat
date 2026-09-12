@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSearchParams } from "@/lib/catalog/searchQuery";
+import { DEFAULT_SORT, buildSearchParams } from "@/lib/catalog/searchQuery";
 
 /**
  * Opening the catalog from a project should surface the datasets around the
@@ -41,16 +41,17 @@ describe("buildSearchParams — viewport", () => {
   });
 
   it("still boosts under the default sort, which nobody chose", () => {
-    /**
-     * Both the picker and the catalog page start at `-updated`. Sending it made
-     * the server treat every list as explicitly sorted, which switched OFF the
-     * spatial ranking and the text relevance alike — the reason the same
-     * datasets appeared no matter where the map was.
-     */
-    const params = buildSearchParams(state({ sortby: "-updated" }), { viewport: MUNICH });
+    // The default is the server's own order, so it is never sent: sending any
+    // sort switches every ranking signal off. `-updated` is a real choice now.
+    const params = buildSearchParams(state({ sortby: DEFAULT_SORT }), { viewport: MUNICH });
 
     expect(params.bbox_boost).toBe("11.36,48.06,11.72,48.25");
     expect(params.sortby).toBeUndefined();
+
+    const recency = buildSearchParams(state({ sortby: "-updated" }), { viewport: MUNICH });
+
+    expect(recency.sortby).toBe("-updated,id");
+    expect(recency.bbox_boost).toBeUndefined();
   });
 
   it("keeps a real sort choice, with the paging tiebreaker", () => {

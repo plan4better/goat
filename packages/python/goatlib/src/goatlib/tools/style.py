@@ -430,6 +430,83 @@ def get_default_style(geometry_type: str | None) -> dict[str, Any]:
         }
 
 
+#: A network's bulk: mid grey, so it reads as the backdrop it is and whatever is
+#: analysed on top of it keeps the colour. `#717171` is the same neutral the PT
+#: service palette uses for "no service", so the two greys in the app are one
+#: grey.
+BUNDLE_BACKDROP_GREY = "#717171"
+
+#: The part of a network worth picking out of that bulk — the nodes an edge
+#: snaps to and splits at, the shapes a stop belongs to. Findable against the
+#: grey without being a colour an analysis result would want.
+BUNDLE_ACCENT_RED = "#e53935"
+
+#: A halo, so a point stays a point wherever it lands: a grey stop sitting on
+#: the red line it serves, or on a basemap the same value as itself, is only
+#: separable from what is behind it by an outline. The same white the editor's
+#: snapping indicator rings its vertices with.
+BUNDLE_POINT_HALO_WHITE = "#ffffff"
+
+#: Per-role overrides merged onto the geometry's default style when a bundle's
+#: member layers are created — keyed by (bundle type, spec role).
+#:
+#: A bundle's members are one dataset drawn together, so a random colour each
+#: (which is what an ordinary upload gets, and reasonably: nothing is known
+#: about it) makes a street network arrive as two unrelated layers in whatever
+#: two colours came up. Thin and grey is also what a network being *routed on*
+#: should look like: present, and not competing with the result drawn over it.
+BUNDLE_ROLE_STYLES: dict[tuple[str, str], dict[str, Any]] = {
+    # A street network is its edges, with the nodes picked out on top.
+    ("street_network", "edges"): {
+        "color": hex_to_rgb(BUNDLE_BACKDROP_GREY),
+        "stroke_color": hex_to_rgb(BUNDLE_BACKDROP_GREY),
+        "stroke_width": 2,
+    },
+    ("street_network", "nodes"): {
+        "color": hex_to_rgb(BUNDLE_ACCENT_RED),
+        "radius": 3,
+    },
+    # A PT network reads the other way round: the stops are the many, and the
+    # shapes are the lines they sit along.
+    ("pt_network_gtfs", "stops"): {
+        "color": hex_to_rgb(BUNDLE_BACKDROP_GREY),
+        "radius": 4,
+        # `stroked` is what turns the outline on: the point default has it off,
+        # and the renderer reads a width of 0 without it.
+        "stroked": True,
+        "stroke_color": hex_to_rgb(BUNDLE_POINT_HALO_WHITE),
+        "stroke_width": 2,
+    },
+    ("pt_network_gtfs", "shapes"): {
+        "color": hex_to_rgb(BUNDLE_ACCENT_RED),
+        "stroke_color": hex_to_rgb(BUNDLE_ACCENT_RED),
+        "stroke_width": 3,
+    },
+}
+
+
+def get_bundle_style(
+    bundle_type: str | None,
+    role: str | None,
+    geometry_type: str | None,
+) -> dict[str, Any]:
+    """The style a bundle member layer is created with.
+
+    The geometry's default style with the role's overrides on top, so a role
+    states only what it means to change and inherits the rest — a member with
+    no entry is styled exactly as any other upload of that geometry.
+    """
+    base = get_default_style(geometry_type)
+    # `getattr(x, "value", x)`: a caller may hold the enum member or the raw
+    # string, and `str()` on a `(str, Enum)` gives "BundleTypeName.x".
+    key = (
+        str(getattr(bundle_type, "value", bundle_type)),
+        str(getattr(role, "value", role)),
+    )
+    override = BUNDLE_ROLE_STYLES.get(key)
+    return {**base, **override} if override else base
+
+
 def get_tool_style(
     tool_type: str,
     geometry_type: str | None = "polygon",

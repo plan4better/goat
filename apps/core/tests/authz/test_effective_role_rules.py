@@ -13,7 +13,6 @@ from core.db.models.organization import Organization
 from core.db.models.project import Project
 from core.db.models.team import Team
 from core.db.models.user import User
-from core.db.seed_bundle_types import seed_bundle_types
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -222,7 +221,6 @@ async def test_bundle_grant_reaches_member_layers(
     make_folder: Callable[..., Awaitable[Folder]],
     make_layer: Callable[..., Awaitable[Layer]],
 ) -> None:
-    await seed_bundle_types(db_session)
     org = await make_org()
     owner, member = await make_user(org.id), await make_user(org.id)
     team = await make_team(member)
@@ -331,7 +329,6 @@ async def test_bundle_owner_is_the_space_owner_of_member_layers(
     not merely bundle-editor access. Bundle membership itself grants nothing
     on its own any more (see `test_bundle_grant_reaches_member_layers` for
     the grant path, which still caps at editor)."""
-    await seed_bundle_types(db_session)
     org = await make_org()
     bundle_owner, layer_owner = await make_user(org.id), await make_user(org.id)
     layer_folder = await make_folder(layer_owner)

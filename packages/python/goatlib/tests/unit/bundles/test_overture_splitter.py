@@ -139,13 +139,13 @@ def test_surface_change_without_a_connector_splits_frauenstrasse(
         _pieces_of(split_result, "seg-frauenstrasse"), key=lambda p: p["start_lr"]
     )
     assert [p["start_lr"] for p in pieces] == [0.0, 0.5]
-    assert [p["road_surface"][0]["value"] for p in pieces] == ["sett", "asphalt"]
+    assert [p["road_surface"][0]["value"] for p in pieces] == ["paving_stones", "paved"]
 
 
 def test_unscoped_property_is_copied_to_every_piece(split_result) -> None:
     """A whole-segment rule applies to all pieces, not just the first."""
     for piece in _pieces_of(split_result, "seg-tal"):
-        assert piece["road_surface"][0]["value"] == "asphalt"
+        assert piece["road_surface"][0]["value"] == "paved"
 
 
 def test_road_flag_range_isolates_the_bridge(split_result) -> None:
@@ -316,18 +316,18 @@ def test_split_points_are_rounded_to_the_configured_precision(split_result) -> N
 
 def test_scope_covering_the_whole_piece_is_dropped() -> None:
     applied = splitter.apply_lr_scope(
-        {"value": "asphalt", "between": [0.0, 1.0]},
+        {"value": "paved", "between": [0.0, 1.0]},
         piece_start_m=0.0,
         piece_length_m=100.0,
         segment_length_m=100.0,
         min_overlap_m=0.01,
     )
-    assert applied == {"value": "asphalt"}
+    assert applied == {"value": "paved"}
 
 
 def test_scope_missing_the_piece_removes_the_value() -> None:
     applied = splitter.apply_lr_scope(
-        {"value": "sett", "between": [0.0, 0.4]},
+        {"value": "paving_stones", "between": [0.0, 0.4]},
         piece_start_m=50.0,
         piece_length_m=50.0,
         segment_length_m=100.0,
@@ -340,13 +340,13 @@ def test_partial_overlap_rewrites_between_relative_to_the_piece() -> None:
     """The reference rescales rather than dropping. Unreachable while we split at
     every boundary, but the behaviour has to match if splitting is relaxed."""
     applied = splitter.apply_lr_scope(
-        {"value": "sett", "between": [0.25, 0.75]},
+        {"value": "paving_stones", "between": [0.25, 0.75]},
         piece_start_m=0.0,
         piece_length_m=50.0,
         segment_length_m=100.0,
         min_overlap_m=0.01,
     )
-    assert applied == {"value": "sett", "between": [0.5, 1.0]}
+    assert applied == {"value": "paving_stones", "between": [0.5, 1.0]}
 
 
 # --- properties that reference other features -----------------------------
