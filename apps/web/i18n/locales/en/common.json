@@ -3009,5 +3009,16 @@
   "where": "Where",
   "inputs": "Inputs",
   "no_matching_layer": "No matching layer",
-  "template_open_slots_hint": "A slot without a matching layer stays open. Pick a layer in the workflow once one is in the project."
+  "template_open_slots_hint": "A slot without a matching layer stays open. Pick a layer in the workflow once one is in the project.",
+  "replace_datasets": "Replace datasets…",
+  "datasets_in_this_workflow": "Datasets in this workflow",
+  "feeds_tools": "feeds {{tools}}",
+  "now_layer": "now {{layer}}",
+  "keep": "Keep",
+  "no_other_matching_layer": "No other matching layer in this project",
+  "no_datasets_in_workflow": "This workflow has no dataset nodes yet.",
+  "replace_datasets_hint": "Each list offers the project's layers of the same geometry. To use a dataset that is not in the project yet, add it with Add layer first. Replaced layers stay in the project.",
+  "field_missing_in_layer": "{{tool}} uses the field “{{field}}” ({{param}}), which “{{layer}}” does not have. The node is marked so you can pick another field.",
+  "fields_not_in_input_layer": "Fields not in the input layer",
+  "datasets_replaced": "Datasets replaced"
 }

@@ -44,6 +44,7 @@ import WorkflowRenameModal from "@/components/modals/WorkflowRename";
 import SaveTemplateDialog from "@/components/templates/SaveTemplateDialog";
 import TemplateBrowser from "@/components/templates/TemplateBrowser";
 import UseTemplateFlow from "@/components/templates/UseTemplateFlow";
+import ReplaceDatasetsDialog from "@/components/workflows/dialogs/ReplaceDatasetsDialog";
 
 const PanelContainer = styled(SidePanelContainer)(({ theme }) => ({
   width: SIDE_PANEL_WIDTH,
@@ -103,6 +104,12 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
   const [templateBrowserOpen, setTemplateBrowserOpen] = useState(false);
   const [templateForFlow, setTemplateForFlow] = useState<TemplateRead | null>(null);
   const [templateSaveWorkflow, setTemplateSaveWorkflow] = useState<Workflow | null>(null);
+  // The kebab's "Replace datasets…" works on the store's nodes, so the
+  // clicked workflow is opened first and the dialog follows once it is the
+  // selected one.
+  const [replaceDatasetsWorkflow, setReplaceDatasetsWorkflow] = useState<Workflow | null>(null);
+  const replaceDatasetsOpen =
+    replaceDatasetsWorkflow !== null && replaceDatasetsWorkflow.id === selectedWorkflowId;
 
   useEffect(() => {
     if (!workflows) return;
@@ -236,6 +243,15 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
         onClick: () => handleDuplicateWorkflow(workflow.id),
       },
       {
+        id: "replace_datasets",
+        label: t("replace_datasets"),
+        icon: ICON_NAME.REFRESH,
+        onClick: () => {
+          if (workflow.id !== selectedWorkflowId) onSelectWorkflow(workflow);
+          setReplaceDatasetsWorkflow(workflow);
+        },
+      },
+      {
         id: "save_as_template",
         label: t("save_as_template"),
         icon: ICON_NAME.SAVE,
@@ -253,7 +269,7 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
         },
       },
     ],
-    [t, handleDuplicateWorkflow]
+    [t, handleDuplicateWorkflow, selectedWorkflowId, onSelectWorkflow]
   );
 
   return (
@@ -461,6 +477,15 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
           context={{ kind: "in_project", projectId: project.id }}
           onClose={() => setTemplateForFlow(null)}
           onDone={handleTemplateFlowDone}
+        />
+      )}
+
+      {/* Kebab "Replace datasets…" — reads the open workflow's nodes */}
+      {replaceDatasetsOpen && project?.id && (
+        <ReplaceDatasetsDialog
+          projectId={project.id}
+          workflowName={replaceDatasetsWorkflow.name}
+          onClose={() => setReplaceDatasetsWorkflow(null)}
         />
       )}
 

@@ -21,7 +21,6 @@ import { type TOOL_ICON_NAME, toolIconMap } from "@p4b/ui/assets/svg/ToolIcons";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { AppDispatch } from "@/lib/store";
-import { edgeDerivedInputHandles } from "@/lib/utils/workflowHandles";
 import { selectNodes } from "@/lib/store/workflow/selectors";
 import { addNode, removeNodes } from "@/lib/store/workflow/slice";
 import {
@@ -31,10 +30,13 @@ import {
   formatDataType,
   hasOpportunityHandles,
 } from "@/lib/utils/ogc-utils";
+import { isDatasetNode, isToolNode, missingFieldRefs } from "@/lib/utils/workflowDatasets";
+import { edgeDerivedInputHandles } from "@/lib/utils/workflowHandles";
 import type { ToolNodeData } from "@/lib/validations/workflow";
 
 import { OPPORTUNITY_LAYER_HANDLES } from "@/types/map/ogc-processes";
 
+import { useLayerFieldNames } from "@/hooks/map/useLayerFieldNames";
 import { useProcessDescription } from "@/hooks/map/useOgcProcesses";
 
 import { useNodeExecutionStatus } from "../context/WorkflowExecutionContext";
@@ -209,7 +211,32 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
     return !incomingEdges.some((e) => e.targetHandle && OPPORTUNITY_LAYER_HANDLES.includes(e.targetHandle));
   }, [takesOpportunityHandles, edges, id]);
 
-  const hasWarning = missingLayerInputs.length > 0 || missingConfig.length > 0 || missingOpportunities;
+  // Field names this tool's config points at must exist on the dataset
+  // wired into the matching input; a dataset swapped for another layer is
+  // what usually breaks this, so the node keeps flagging it until fixed.
+  const upstreamLayerIds = useMemo(
+    () =>
+      edges
+        .filter((e) => e.target === id)
+        .map((e) => nodes.find((n) => n.id === e.source))
+        .flatMap((n) => {
+          const layerId = n && isDatasetNode(n) ? n.data.layerId : undefined;
+          return layerId ? [layerId] : [];
+        }),
+    [edges, id, nodes]
+  );
+  const { fieldsByLayerId } = useLayerFieldNames(upstreamLayerIds);
+  const missingFields = useMemo(() => {
+    const self = nodes.find((n) => n.id === id);
+    if (!self || !isToolNode(self)) return [];
+    return missingFieldRefs(self, process, edges, nodes, fieldsByLayerId);
+  }, [nodes, id, process, edges, fieldsByLayerId]);
+
+  const hasWarning =
+    missingLayerInputs.length > 0 ||
+    missingConfig.length > 0 ||
+    missingOpportunities ||
+    missingFields.length > 0;
 
   // Get display parameters (non-layer, non-hidden parameters with values)
   const displayParams = useMemo(() => {
@@ -390,8 +417,16 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
       parts.push(t("missing_layer_connections") + ": " + t("opportunities"));
     }
 
+    if (missingFields.length > 0) {
+      parts.push(
+        t("fields_not_in_input_layer") +
+          ": " +
+          missingFields.map((m) => `${m.field} (${m.paramLabel})`).join(", ")
+      );
+    }
+
     return parts.join(". ");
-  }, [missingLayerInputs, missingConfig, missingOpportunities, t]);
+  }, [missingLayerInputs, missingConfig, missingOpportunities, missingFields, t]);
 
   const ToolIconComponent = toolIconMap[data.processId as TOOL_ICON_NAME];
 

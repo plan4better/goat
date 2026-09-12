@@ -45,6 +45,7 @@ vi.mock("@/components/map/panels/layer/ProjectLayerTree", () => ({
 vi.mock("@/components/modals/Confirm", () => ({ default: () => null }));
 vi.mock("@/components/modals/WorkflowRename", () => ({ default: () => null }));
 vi.mock("@/components/templates/SaveTemplateDialog", () => ({ default: () => null }));
+vi.mock("@/components/workflows/dialogs/ReplaceDatasetsDialog", () => ({ default: () => null }));
 vi.mock("@/components/templates/UseTemplateFlow", () => ({ default: () => null }));
 
 const templateBrowserProps = vi.fn();
@@ -98,7 +99,7 @@ describe("WorkflowsConfigPanel template entry points", () => {
     expect(items.map((item) => item.textContent)).toEqual(["from_scratch", "from_template"]);
   });
 
-  it("gives the workflow's kebab 4 actions, including Save as template", async () => {
+  it("gives the workflow's kebab 5 actions, including Save as template and Replace datasets", async () => {
     const user = userEvent.setup();
     renderPanel();
 
@@ -107,6 +108,7 @@ describe("WorkflowsConfigPanel template entry points", () => {
     expect(await screen.findByText("rename")).toBeInTheDocument();
     expect(screen.getByText("duplicate")).toBeInTheDocument();
     expect(screen.getByText("save_as_template")).toBeInTheDocument();
+    expect(screen.getByText("replace_datasets")).toBeInTheDocument();
     expect(screen.getByText("delete")).toBeInTheDocument();
   });
 
@@ -118,8 +120,16 @@ describe("WorkflowsConfigPanel template entry points", () => {
     workflowsMock.list = [mockWorkflow, second];
     const onSelectWorkflow = vi.fn();
     try {
-      render(<WorkflowsConfigPanel project={project} selectedWorkflow={second} onSelectWorkflow={onSelectWorkflow} />);
-      await expect(screen.getByText("Workflow 4").closest(".MuiListItemButton-root")).toHaveClass("Mui-selected");
+      render(
+        <WorkflowsConfigPanel
+          project={project}
+          selectedWorkflow={second}
+          onSelectWorkflow={onSelectWorkflow}
+        />
+      );
+      await expect(screen.getByText("Workflow 4").closest(".MuiListItemButton-root")).toHaveClass(
+        "Mui-selected"
+      );
       expect(onSelectWorkflow).not.toHaveBeenCalledWith(expect.objectContaining({ id: mockWorkflow.id }));
     } finally {
       workflowsMock.list = [mockWorkflow];
@@ -128,7 +138,9 @@ describe("WorkflowsConfigPanel template entry points", () => {
 
   it("opens the first workflow only when nothing is selected anywhere", () => {
     const onSelectWorkflow = vi.fn();
-    render(<WorkflowsConfigPanel project={project} selectedWorkflow={null} onSelectWorkflow={onSelectWorkflow} />);
+    render(
+      <WorkflowsConfigPanel project={project} selectedWorkflow={null} onSelectWorkflow={onSelectWorkflow} />
+    );
     expect(onSelectWorkflow).toHaveBeenCalledWith(expect.objectContaining({ id: mockWorkflow.id }));
   });
 });

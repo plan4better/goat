@@ -205,3 +205,28 @@ export function useCategorizedProcesses() {
     error,
   };
 }
+
+/**
+ * Process descriptions for several tools in one request key — what a
+ * dialog that looks across a workflow's tool nodes reads. Ids are sorted so
+ * the same set always shares one cache entry; an id whose description is
+ * still loading is simply absent from the map.
+ */
+export function useProcessDescriptions(processIds: string[]) {
+  const { i18n } = useTranslation();
+  const language = i18n.language || "en";
+  const ids = Array.from(new Set(processIds)).sort();
+
+  const { data, isLoading } = useSWR<Record<string, OGCProcessDescription>>(
+    ids.length > 0 ? ["ogc-process-descriptions", language, ids.join(",")] : null,
+    async () => {
+      const entries = await Promise.all(
+        ids.map(async (id) => [id, await fetchProcessDescription(id, language)] as const)
+      );
+      return Object.fromEntries(entries);
+    },
+    { revalidateOnFocus: false, dedupingInterval: 60000 }
+  );
+
+  return { processes: data ?? {}, isLoading };
+}

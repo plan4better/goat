@@ -3009,5 +3009,16 @@
   "where": "Ziel",
   "inputs": "Eingaben",
   "no_matching_layer": "Kein passender Layer",
-  "template_open_slots_hint": "Ein Platz ohne passenden Layer bleibt offen. Wählen Sie im Workflow einen Layer, sobald einer im Projekt ist."
+  "template_open_slots_hint": "Ein Platz ohne passenden Layer bleibt offen. Wählen Sie im Workflow einen Layer, sobald einer im Projekt ist.",
+  "replace_datasets": "Datensätze ersetzen…",
+  "datasets_in_this_workflow": "Datensätze in diesem Workflow",
+  "feeds_tools": "speist {{tools}}",
+  "now_layer": "aktuell {{layer}}",
+  "keep": "Behalten",
+  "no_other_matching_layer": "Kein anderer passender Layer in diesem Projekt",
+  "no_datasets_in_workflow": "Dieser Workflow hat noch keine Datensatz-Knoten.",
+  "replace_datasets_hint": "Jede Liste bietet die Layer des Projekts mit derselben Geometrie. Um einen Datensatz zu verwenden, der noch nicht im Projekt ist, fügen Sie ihn zuerst über „Layer hinzufügen“ hinzu. Ersetzte Layer bleiben im Projekt.",
+  "field_missing_in_layer": "{{tool}} verwendet das Feld „{{field}}“ ({{param}}), das „{{layer}}“ nicht hat. Der Knoten wird markiert, damit Sie ein anderes Feld wählen können.",
+  "fields_not_in_input_layer": "Felder nicht im Eingabe-Layer",
+  "datasets_replaced": "Datensätze ersetzt"
 }
