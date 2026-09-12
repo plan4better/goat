@@ -55,6 +55,7 @@ class SearchParams(BaseModel):
     bbox_mode: str = "strict"
     nuts: list[str] | None = None  # NUTS region ids; intersect their geometry
     bbox_boost: list[float] | None = None  # rank intersecting rows first (4 or 6 nums)
+    language_boost: str | None = None  # rank rows in this metadata language first
     limit: int = 10
     offset: int = 0
 
@@ -752,6 +753,18 @@ def _build_order_by(
     # both, which the filter ranked last.
     if boost is not None:
         prefix += _viewport_rank_sql(boost, add) + ", "
+
+    # Rows in the reader's language next: behind the viewport, so what is
+    # around here still comes first, and ahead of the text match, so a dataset
+    # described in a language the reader cannot read is never the first hit
+    # over an equally placed one they can. Gated on the column, which a file
+    # without the Language extension does not carry.
+    if (
+        p.language_boost
+        and not p.sortby
+        and registry.resolve("language_code") is not None
+    ):
+        prefix += f"(language_code = {add(p.language_boost.lower())}) DESC, "
 
     q_terms = _parse_q_terms(p.q)
     if q_terms and not p.sortby:

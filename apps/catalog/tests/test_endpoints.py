@@ -1039,3 +1039,42 @@ def test_landing_page_has_no_service_doc_link(client: TestClient) -> None:
     rels = {link["rel"] for link in links}
     assert "service-desc" in rels
     assert "service-doc" not in rels
+
+
+def test_search_language_boost_ranks_first_without_excluding(
+    client: TestClient,
+) -> None:
+    """``language_boost`` puts rows in that language first and drops none:
+    the catalog is browsed by people who read one language, and a dataset
+    described in it is a better first hit than an equally relevant one they
+    cannot read — while the rest stays a scroll away. The fixture never
+    embeds ``language`` in the document (and its collections are all German),
+    so the English items are named through the ``language`` filter."""
+    r_all = client.get("/stac/search", params={"limit": 200})
+    assert r_all.status_code == 200
+    total = r_all.json()["numberMatched"]
+
+    r_en = client.get("/stac/search", params={"limit": 200, "language": "en"})
+    assert r_en.status_code == 200
+    english = {f["id"] for f in r_en.json()["features"]}
+    assert 0 < len(english) < total, "fixture must carry more than one language"
+
+    r_boost = client.get("/stac/search", params={"limit": 200, "language_boost": "en"})
+    assert r_boost.status_code == 200
+    body = r_boost.json()
+    assert body["numberMatched"] == total
+    ids = [f["id"] for f in body["features"]]
+    assert set(ids[: len(english)]) == english, "every English row precedes every other"
+
+
+def test_language_boost_is_off_under_an_explicit_sort(client: TestClient) -> None:
+    """Like every ranking key, an explicit ``sortby`` switches it off."""
+    plain = client.get("/stac/search", params={"limit": 50, "sortby": "-updated,id"})
+    boosted = client.get(
+        "/stac/search",
+        params={"limit": 50, "sortby": "-updated,id", "language_boost": "en"},
+    )
+    assert boosted.status_code == 200
+    assert [f["id"] for f in boosted.json()["features"]] == [
+        f["id"] for f in plain.json()["features"]
+    ]
