@@ -2989,6 +2989,7 @@
   "no_teams_match": "Kein Team entspricht der Suche.",
   "transfer_ellipsis": "Übertragen…",
   "thumbnail_too_large": "Wählen Sie ein Bild mit höchstens {{mb}} MB.",
+  "document_too_large": "Wählen Sie ein Dokument mit höchstens {{mb}} MiB.",
   "thumbnail_invalid_type": "Wählen Sie ein PNG-, JPEG- oder WebP-Bild.",
   "reset_to_generated": "Auf generiertes Bild zurücksetzen",
   "bundle_upload_note_pt_network_gtfs": "Datenpakete für ÖPNV-Netze müssen mit einem Straßennetz-Datenpaket verknüpft werden, damit GOAT Haltestellen mit Straßen verbinden kann. Wählen Sie ein Straßennetz-Datenpaket, das dieselbe Region abdeckt, um fortzufahren.",

@@ -4,9 +4,9 @@ import { useTranslation } from "react-i18next";
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import { isBundleTile } from "@/lib/api/bundles";
+import type { Folder } from "@/lib/validations/folder";
 import type { Layer } from "@/lib/validations/layer";
 import type { Project } from "@/lib/validations/project";
-import type { Folder } from "@/lib/validations/folder";
 
 import { ContentActions } from "@/types/common";
 
@@ -26,7 +26,7 @@ export const useContentMoreMenu = () => {
     contentType: "project" | "layer",
     item: Project | Layer,
     currentUserId?: string,
-    folders?: Folder[],
+    folders?: Folder[]
   ) {
     // When currentUserId is absent (profile not yet loaded) treat as owner to avoid
     // hiding menu options before auth resolves; enableActions gates the button itself.
@@ -208,6 +208,7 @@ export const useContentMoreMenu = () => {
 };
 
 export const useFileUpload = () => {
+  const { t } = useTranslation("common");
   const [fileUploadError, setFileUploadError] = useState<string | undefined>(undefined);
   const [fileValue, setFileValue] = useState<File | undefined>(undefined);
   const [datasetType, setDatasetType] = useState<string | undefined>(undefined);
@@ -217,13 +218,13 @@ export const useFileUpload = () => {
   }, []);
 
   const handleChange = useCallback(
-    (file: File) => {
+    (file: File | null) => {
       setFileUploadError(undefined);
       setFileValue(undefined);
       if (file && file.name) {
         const isAcceptedType = acceptedFileTypes.some((type) => file.name.endsWith(type));
         if (!isAcceptedType) {
-          setFileUploadError("Invalid file type. Please select a file of type");
+          setFileUploadError(t("invalid_file_type"));
           return;
         }
 
@@ -243,7 +244,7 @@ export const useFileUpload = () => {
         setFileValue(file);
       }
     },
-    [acceptedFileTypes]
+    [acceptedFileTypes, t]
   );
 
   return {

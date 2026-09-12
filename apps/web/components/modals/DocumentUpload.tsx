@@ -1,5 +1,5 @@
-import { Box, Button, Stack, Typography } from "@mui/material";
-import { useRef, useState } from "react";
+import { Stack, Typography } from "@mui/material";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
@@ -11,6 +11,8 @@ import { getWritableFolders, useFolders } from "@/lib/api/folders";
 import { homeFolderOf } from "@/lib/utils/content";
 import { DOCUMENTS_MAX_FILE_SIZE_MiB, DOCUMENT_ACCEPT } from "@/lib/validations/assets";
 
+import ChosenFileRow from "@/components/addLayer/ChosenFileRow";
+import UploadDropzone from "@/components/addLayer/UploadDropzone";
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
 import FolderBrowser from "@/components/dashboard/common/FolderBrowser";
 
@@ -20,6 +22,8 @@ interface DocumentUploadProps {
   defaultFolderId?: string;
   onSuccess?: () => void;
 }
+
+const ACCEPT = Object.values(DOCUMENT_ACCEPT).flat();
 
 export default function DocumentUploadModal({
   open,
@@ -36,8 +40,8 @@ export default function DocumentUploadModal({
    * the folder the upload was started from. `null` is the space root. */
   const [target, setTarget] = useState<string | null | undefined>(undefined);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // The space the upload was started in — the folder it came from names it,
   // and a caller that passed no folder uploads into the personal space.
@@ -59,12 +63,12 @@ export default function DocumentUploadModal({
       ? resolvedFolderId
       : null;
 
-  const acceptAttr = Object.values(DOCUMENT_ACCEPT).flat().join(",");
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    if (file && file.size > DOCUMENTS_MAX_FILE_SIZE_MiB * 1024 * 1024) {
-      toast.error(`File too large. Maximum size is ${DOCUMENTS_MAX_FILE_SIZE_MiB} MiB.`);
+  const handleFileChange = (file: File | null) => {
+    setFileError(undefined);
+    setSelectedFile(null);
+    if (!file) return;
+    if (file.size > DOCUMENTS_MAX_FILE_SIZE_MiB * 1024 * 1024) {
+      setFileError(t("document_too_large", { mb: DOCUMENTS_MAX_FILE_SIZE_MiB }));
       return;
     }
     setSelectedFile(file);
@@ -87,7 +91,7 @@ export default function DocumentUploadModal({
 
   const handleClose = () => {
     setSelectedFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    setFileError(undefined);
     onClose();
   };
 
@@ -107,7 +111,20 @@ export default function DocumentUploadModal({
           primaryDisabled={!selectedFile || !targetFolderId}
         />
       }>
-      <Stack spacing={3} sx={{ mt: 1 }}>
+      <Stack spacing={4} sx={{ my: 1 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+          {t("supported")} <b>PDF</b>, <b>DOCX</b>, <b>DOC</b> · max {DOCUMENTS_MAX_FILE_SIZE_MiB} MiB
+        </Typography>
+
+        {/* One document at a time, so the zone is the empty state: once one
+            is chosen it gives way to the row describing it, and removing the
+            file brings the zone back. */}
+        {selectedFile ? (
+          <ChosenFileRow file={selectedFile} onRemove={() => setSelectedFile(null)} disabled={isBusy} />
+        ) : (
+          <UploadDropzone accept={ACCEPT} error={fileError} onChange={handleFileChange} minHeight={180} />
+        )}
+
         {space && (
           <FolderBrowser
             space={space}
@@ -116,26 +133,9 @@ export default function DocumentUploadModal({
             value={browsedFolderId}
             onChange={setTarget}
             label={t("folder")}
+            disabled={isBusy}
           />
         )}
-        <Box>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={acceptAttr}
-            style={{ display: "none" }}
-            id="document-file-input"
-            onChange={handleFileChange}
-          />
-          <label htmlFor="document-file-input">
-            <Button variant="outlined" component="span" fullWidth>
-              {selectedFile ? selectedFile.name : t("select_file")}
-            </Button>
-          </label>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
-            PDF, DOCX, DOC — max {DOCUMENTS_MAX_FILE_SIZE_MiB} MiB
-          </Typography>
-        </Box>
       </Stack>
     </AppDialog>
   );

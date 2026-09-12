@@ -1,4 +1,4 @@
-import { Box, Stack, Typography } from "@mui/material";
+import { Stack, Typography } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
@@ -16,8 +16,9 @@ import type { ContentDialogBaseProps } from "@/types/dashboard/content";
 import { useFileUpload } from "@/hooks/dashboard/ContentHooks";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
+import ChosenFileRow from "@/components/addLayer/ChosenFileRow";
+import UploadDropzone from "@/components/addLayer/UploadDropzone";
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
-import { MuiFileInput } from "@/components/common/FileInput";
 
 const DatasetUpdateModal: React.FC<ContentDialogBaseProps> = ({ open, onClose, content }) => {
   const { t } = useTranslation("common");
@@ -85,6 +86,7 @@ const DatasetUpdateModal: React.FC<ContentDialogBaseProps> = ({ open, onClose, c
       icon={ICON_NAME.UPLOAD}
       title={t("dataset_update")}
       subtitle={content.name}
+      maxWidth={600}
       footer={
         <AppDialogFooter
           onCancel={handleOnClose}
@@ -94,42 +96,45 @@ const DatasetUpdateModal: React.FC<ContentDialogBaseProps> = ({ open, onClose, c
           primaryLoading={isBusy}
         />
       }>
-      <Box sx={{ width: "100%" }}>
+      <Stack direction="column" spacing={4} sx={{ my: 1 }}>
         {content.data_type === "wfs" && (
-          <Stack direction="column" spacing={4}>
+          <>
             <Typography variant="body2">
               <b>{t("url")}:</b> {content.other_properties?.url}
             </Typography>
             <Typography variant="body2">
               <b>{t("layer")}:</b> {content.other_properties?.layers}
             </Typography>
-          </Stack>
+          </>
         )}
         {!content.data_type && (
           <>
-            <Typography variant="caption">{t("select_file_to_upload")}</Typography>
-            <MuiFileInput
-              sx={{
-                my: 2,
-              }}
-              inputProps={{
-                accept: acceptedFileTypes.join(","),
-              }}
-              fullWidth
-              error={!!fileUploadError}
-              helperText={fileUploadError}
-              value={fileValue}
-              multiple={false}
-              onChange={handleChange}
-              placeholder={`${t("eg")} file.gpkg, file.geojson, file.parquet, shapefile.zip`}
-            />
-            <Typography variant="caption">
+            <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.6 }}>
               {t("supported")} <b>GeoPackage</b>, <b>GeoJSON</b>, <b>Shapefile (.zip)</b>, <b>KML</b>,{" "}
-              <b>CSV</b>, <b>XLSX</b>
+              <b>CSV</b>, <b>XLSX</b>, <b>Parquet</b>
             </Typography>
+
+            {/* One file at a time, so the zone is the empty state: once one is
+                chosen it gives way to the row describing it, and removing the
+                file brings the zone back. */}
+            {fileValue ? (
+              <ChosenFileRow
+                file={fileValue}
+                icon={ICON_NAME.LAYERS}
+                onRemove={() => setFileValue(undefined)}
+                disabled={isBusy}
+              />
+            ) : (
+              <UploadDropzone
+                accept={acceptedFileTypes}
+                error={fileUploadError}
+                onChange={handleChange}
+                minHeight={180}
+              />
+            )}
           </>
         )}
-      </Box>
+      </Stack>
     </AppDialog>
   );
 };

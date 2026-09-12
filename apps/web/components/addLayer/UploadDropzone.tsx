@@ -17,10 +17,15 @@ const UploadDropzone = ({
   accept,
   error,
   onChange,
+  minHeight = 300,
 }: {
   accept: string[];
   error?: string;
   onChange: (file: File | null) => void;
+  /** How tall the zone stands when nothing else sizes it. The Upload tab
+   * fills a column beside the file; a dialog with fields under the zone
+   * wants it shorter. */
+  minHeight?: number;
 }) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -36,11 +41,7 @@ const UploadDropzone = ({
 
   // Lit only while a file is over it. Having accepted one is not a reason to keep
   // shouting: the row beside it is what states the file now.
-  const border = error
-    ? theme.palette.error.main
-    : over
-      ? theme.palette.primary.main
-      : theme.palette.divider;
+  const border = error ? theme.palette.error.main : over ? theme.palette.primary.main : theme.palette.divider;
 
   return (
     <Stack spacing={2} sx={{ height: "100%" }}>
@@ -76,7 +77,7 @@ const UploadDropzone = ({
           py: 10,
           // Fills its column so the zone and the file beside it are the same height.
           flex: 1,
-          minHeight: 300,
+          minHeight,
           font: "inherit",
           cursor: "pointer",
           textAlign: "center",

@@ -2989,6 +2989,7 @@
   "no_teams_match": "No team matches your search.",
   "transfer_ellipsis": "Transfer…",
   "thumbnail_too_large": "Choose an image of {{mb}} MB or less.",
+  "document_too_large": "Choose a document of {{mb}} MiB or less.",
   "thumbnail_invalid_type": "Choose a PNG, JPEG or WebP image.",
   "reset_to_generated": "Reset to generated",
   "bundle_upload_note_pt_network_gtfs": "Public Transport Network bundles must be linked to a Street Network bundle in order for GOAT to connect stops with streets. Select a Street Network bundle that covers the same region to continue.",

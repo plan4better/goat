@@ -58,12 +58,11 @@ const readOnlyFolder: Folder = {
 
 const writableFolder: Folder = { ...readOnlyFolder, id: "folder-rw", role: "folder-editor" };
 
+const fileInput = () => document.querySelector('input[type="file"]') as HTMLInputElement;
+
 /** Picks a file, which is the other half of what `Upload` waits for. */
-const pickFile = () => {
-  const input = document.getElementById("document-file-input") as HTMLInputElement;
-  fireEvent.change(input, {
-    target: { files: [new File(["x"], "report.pdf", { type: "application/pdf" })] },
-  });
+const pickFile = (file = new File(["x"], "report.pdf", { type: "application/pdf" })) => {
+  fireEvent.change(fileInput(), { target: { files: [file] } });
 };
 
 const uploadButton = () => screen.getByRole("button", { name: "upload" }) as HTMLButtonElement;
@@ -74,17 +73,51 @@ describe("DocumentUpload", () => {
     getWritableFoldersMock.mockReset().mockReturnValue([]);
   });
 
-  it("offers a file picker and the upload action", () => {
+  it("offers the drop zone and the upload action", () => {
     render(<DocumentUploadModal open onClose={() => {}} />);
 
     expect(screen.getByText("upload_document")).toBeInTheDocument();
-    expect(screen.getByText("select_file")).toBeInTheDocument();
+    expect(screen.getByText("upload_drop_or_browse")).toBeInTheDocument();
+    expect(fileInput().accept).toContain(".pdf");
     expect(uploadButton()).toBeInTheDocument();
   });
 
   it("refuses the upload until both a folder and a file are chosen", () => {
     render(<DocumentUploadModal open onClose={() => {}} />);
 
+    expect(uploadButton().disabled).toBe(true);
+  });
+
+  it("swaps the drop zone for the chosen document", () => {
+    render(<DocumentUploadModal open onClose={() => {}} />);
+
+    pickFile();
+
+    expect(screen.queryByText("upload_drop_or_browse")).not.toBeInTheDocument();
+    expect(screen.getByText(/report\.pdf/)).toBeInTheDocument();
+  });
+
+  it("refuses a document over the size limit and keeps the drop zone", () => {
+    render(<DocumentUploadModal open onClose={() => {}} />);
+
+    const huge = new File(["x"], "atlas.pdf", { type: "application/pdf" });
+    Object.defineProperty(huge, "size", { value: 51 * 1024 * 1024 });
+    pickFile(huge);
+
+    expect(screen.getByText("document_too_large")).toBeInTheDocument();
+    expect(screen.getByText("upload_drop_or_browse")).toBeInTheDocument();
+    expect(uploadButton().disabled).toBe(true);
+  });
+
+  it("brings the drop zone back when the document is removed", () => {
+    useFoldersMock.mockReturnValue({ folders: [homeFolder, writableFolder] });
+    getWritableFoldersMock.mockReturnValue([homeFolder, writableFolder]);
+    render(<DocumentUploadModal open defaultFolderId="folder-rw" onClose={() => {}} />);
+
+    pickFile();
+    fireEvent.click(screen.getByRole("button", { name: "upload_remove_file" }));
+
+    expect(screen.getByText("upload_drop_or_browse")).toBeInTheDocument();
     expect(uploadButton().disabled).toBe(true);
   });
 
@@ -97,7 +130,7 @@ describe("DocumentUpload", () => {
 
     // The file is picked and a folder is standing in, but writing into it
     // would only come back a 403.
-    expect(screen.getByText("report.pdf")).toBeInTheDocument();
+    expect(screen.getByText(/report\.pdf/)).toBeInTheDocument();
     expect(uploadButton().disabled).toBe(true);
   });
 
