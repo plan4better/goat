@@ -3,23 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ContentAddMenu from "@/components/dashboard/content/ContentAddMenu";
 
-const {
-  createProjectMock,
-  createFolderMock,
-  pushMock,
-  addLayerDialogMock,
-  templateBrowserMock,
-  templateFlowPropsMock,
-  projectImportMock,
-} = vi.hoisted(() => ({
-  createProjectMock: vi.fn(),
-  createFolderMock: vi.fn(),
-  pushMock: vi.fn(),
-  addLayerDialogMock: vi.fn(),
-  templateBrowserMock: vi.fn(),
-  templateFlowPropsMock: vi.fn(),
-  projectImportMock: vi.fn(),
-}));
+const { createProjectMock, createFolderMock, pushMock, addLayerDialogMock, projectImportMock } = vi.hoisted(
+  () => ({
+    createProjectMock: vi.fn(),
+    createFolderMock: vi.fn(),
+    pushMock: vi.fn(),
+    addLayerDialogMock: vi.fn(),
+    projectImportMock: vi.fn(),
+  })
+);
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -36,9 +28,6 @@ vi.mock("@/lib/api/folders", () => ({
 vi.mock("@/lib/api/projects", () => ({
   createProject: (payload: unknown) => createProjectMock(payload),
 }));
-vi.mock("@/hooks/templates/useUseTemplate", () => ({
-  templateResultHref: (_template: unknown, result: { project_id: string }) => `/map/${result.project_id}`,
-}));
 vi.mock("@/components/addLayer/AddLayerDialog", () => ({
   default: (props: { source: string; defaultFolderId?: string }) => {
     addLayerDialogMock(props);
@@ -50,27 +39,6 @@ vi.mock("@/components/modals/ProjectImport", () => ({
   default: (props: { open: boolean; defaultFolderId?: string }) => {
     projectImportMock(props);
     return null;
-  },
-}));
-vi.mock("@/components/templates/TemplateBrowser", () => ({
-  default: (props: { open?: boolean; onUse: (template: { id: string }) => void }) => {
-    templateBrowserMock(props);
-    if (!props.open) return null;
-    return (
-      <button type="button" onClick={() => props.onUse({ id: "tmpl-1" })}>
-        pick-template
-      </button>
-    );
-  },
-}));
-vi.mock("@/components/templates/UseTemplateFlow", () => ({
-  default: (props: { onDone: (result: { project_id: string }) => void }) => {
-    templateFlowPropsMock(props);
-    return (
-      <button type="button" onClick={() => props.onDone({ project_id: "p-new" })}>
-        finish-use-template
-      </button>
-    );
   },
 }));
 
@@ -85,8 +53,6 @@ describe("ContentAddMenu", () => {
     createFolderMock.mockReset().mockResolvedValue({ id: "f-1" });
     pushMock.mockReset();
     addLayerDialogMock.mockReset();
-    templateBrowserMock.mockReset();
-    templateFlowPropsMock.mockReset();
     projectImportMock.mockReset();
   });
 
@@ -173,40 +139,6 @@ describe("ContentAddMenu", () => {
     );
   });
 
-  it("opens the template browser for From template, and mounts nothing until then", () => {
-    render(
-      <ContentAddMenu folderId="folder-a" homeFolderId="home-1" spaceId="space-1" spaceKind="personal" />
-    );
-
-    // Not merely closed: a mounted browser would issue its own template,
-    // space and pin requests on every Content page load.
-    expect(templateBrowserMock).not.toHaveBeenCalled();
-
-    pick("from_template");
-
-    expect(templateBrowserMock).toHaveBeenCalledWith(expect.objectContaining({ open: true }));
-  });
-
-  it("hands the picked template to UseTemplateFlow for a new project, then navigates on done", async () => {
-    render(
-      <ContentAddMenu folderId="folder-a" homeFolderId="home-1" spaceId="space-1" spaceKind="personal" />
-    );
-
-    pick("from_template");
-    fireEvent.click(screen.getByText("pick-template"));
-
-    expect(templateFlowPropsMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        template: { id: "tmpl-1" },
-        context: { kind: "new_project" },
-      })
-    );
-
-    fireEvent.click(screen.getByText("finish-use-template"));
-
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/map/p-new"));
-  });
-
   it("disables Project, Dataset and Document while a non-personal space has no root folder", () => {
     render(<ContentAddMenu folderId={null} homeFolderId={undefined} spaceId="space-team" spaceKind="team" />);
 
@@ -218,7 +150,7 @@ describe("ContentAddMenu", () => {
     // A folder can still be created — its root is `parent_id: null`, not the
     // space's `home` folder.
     expect(ariaDisabled("new_folder")).toBeNull();
-    for (const label of ["blank_project", "from_template", "import_project", "dataset", "upload_document"]) {
+    for (const label of ["blank_project", "import_project", "dataset", "upload_document"]) {
       expect(ariaDisabled(label)).toBe("true");
     }
   });

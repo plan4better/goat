@@ -117,7 +117,7 @@ const HomePage = () => {
       {usingTemplate && (
         <UseTemplateFlow
           template={usingTemplate}
-          context={{ kind: "new_project" }}
+          context={{ kind: "outside_project" }}
           onClose={() => setUsingTemplate(null)}
           onDone={(result) => {
             const template = usingTemplate;

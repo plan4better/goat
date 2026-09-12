@@ -229,7 +229,7 @@ const TemplateBand = () => {
       {using && (
         <UseTemplateFlow
           template={using}
-          context={{ kind: "new_project" }}
+          context={{ kind: "outside_project" }}
           onClose={() => setUsing(null)}
           onDone={(result) => {
             const template = using;

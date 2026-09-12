@@ -306,7 +306,11 @@ const TemplateBrowser = ({
           template={selected ?? undefined}
           sourceLabel={selected ? templateSourceLabel(shelfFor(selected), t) : undefined}
           onClose={() => setSelectedId(null)}
-          onUse={() => selected && onUse(selected)}
+          onUse={() => {
+            if (!selected) return;
+            setSelectedId(null);
+            onUse(selected);
+          }}
         />
       </>
     );

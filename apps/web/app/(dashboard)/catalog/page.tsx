@@ -236,7 +236,7 @@ const CatalogPage = () => {
           {templateInUse && (
             <UseTemplateFlow
               template={templateInUse}
-              context={{ kind: "new_project" }}
+              context={{ kind: "outside_project" }}
               onClose={() => setTemplateInUse(null)}
               onDone={(result: TemplateUseResult) => {
                 setTemplateInUse(null);

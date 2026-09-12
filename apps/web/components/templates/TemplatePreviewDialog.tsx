@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, Skeleton } from "@mui/material";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
@@ -53,11 +54,16 @@ const TemplatePreviewDialog = ({
   sourceLabel,
 }: TemplatePreviewDialogProps) => {
   const { t } = useTranslation("common");
+  // "Use template" hands over to the host's flow dialog in the same click;
+  // this one then leaves without its fade so the two never overlap.
+  const handedOff = useRef(false);
+  if (open) handedOff.current = false;
 
   return (
     <AppDialog
       open={open}
       onClose={onClose}
+      transitionDuration={handedOff.current ? { enter: 0, exit: 0 } : undefined}
       icon={ICON_NAME.CLONE}
       title={template?.name ?? t("template")}
       maxWidth={760}
@@ -67,7 +73,10 @@ const TemplatePreviewDialog = ({
         <AppDialogFooter
           onCancel={onClose}
           primaryLabel={t("use_template")}
-          onPrimary={onUse}
+          onPrimary={() => {
+            handedOff.current = true;
+            onUse();
+          }}
           primaryDisabled={!template || loading}
         />
       }>

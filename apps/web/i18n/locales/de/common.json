@@ -2995,5 +2995,19 @@
   "street_network_bundle": "Straßennetz-Datenpaket",
   "default_street_network": "Standard (Europa)",
   "select_a_street_network": "Straßennetz auswählen...",
-  "editing_ended_layer_removed": "Bearbeitung beendet: Die Ebene wurde aus dem Projekt entfernt, nicht gespeicherte Änderungen wurden verworfen."
+  "editing_ended_layer_removed": "Bearbeitung beendet: Die Ebene wurde aus dem Projekt entfernt, nicht gespeicherte Änderungen wurden verworfen.",
+  "add_to_a_project": "Zu einem Projekt hinzufügen",
+  "create_a_new_project": "Neues Projekt erstellen",
+  "last_opened": "Zuletzt geöffnet",
+  "view_only": "Nur ansehen",
+  "no_projects_yet": "Sie haben noch keine Projekte",
+  "no_projects_yet_template": "Sie haben noch keine Projekte, daher wird die Vorlage in einem neuen Projekt geöffnet.",
+  "template_inputs_from_project": "Zur Auswahl stehen die Layer von „{{project}}“. Ein später zu entscheidender Platz bleibt leer, bis Sie im Workflow einen Layer wählen.",
+  "template_inputs_new_project": "Ein neues Projekt hat noch keine Layer, daher bleiben alle Plätze offen. Wählen Sie sie im Workflow, sobald Ihre Daten dort sind.",
+  "template_adds_to_project": "Fügt „{{name}}“ zum Projekt „{{project}}“ hinzu und öffnet es dort.",
+  "template_creates_project": "Erstellt das Projekt „{{project}}“ in {{space}} mit „{{name}}“ und öffnet es.",
+  "where": "Ziel",
+  "inputs": "Eingaben",
+  "no_matching_layer": "Kein passender Layer",
+  "template_open_slots_hint": "Ein Platz ohne passenden Layer bleibt offen. Wählen Sie im Workflow einen Layer, sobald einer im Projekt ist."
 }

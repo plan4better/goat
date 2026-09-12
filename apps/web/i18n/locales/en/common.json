@@ -2995,5 +2995,19 @@
   "street_network_bundle": "Street Network bundle",
   "default_street_network": "Default (Europe)",
   "select_a_street_network": "Select a street network...",
-  "editing_ended_layer_removed": "Editing ended: the layer was removed from the project, so unsaved edits were discarded."
+  "editing_ended_layer_removed": "Editing ended: the layer was removed from the project, so unsaved edits were discarded.",
+  "add_to_a_project": "Add to a project",
+  "create_a_new_project": "Create a new project",
+  "last_opened": "Last opened",
+  "view_only": "View only",
+  "no_projects_yet": "You have no projects yet",
+  "no_projects_yet_template": "You have no projects yet, so the template opens in a new one.",
+  "template_inputs_from_project": "The layers offered are those of “{{project}}”. A slot left for later stays empty until you pick a layer in the workflow.",
+  "template_inputs_new_project": "A new project has no layers yet, so every slot is left for later. Pick them in the workflow once your data is there.",
+  "template_adds_to_project": "Adds “{{name}}” to the project “{{project}}” and opens it there.",
+  "template_creates_project": "Creates the project “{{project}}” in {{space}} with “{{name}}” and opens it.",
+  "where": "Where",
+  "inputs": "Inputs",
+  "no_matching_layer": "No matching layer",
+  "template_open_slots_hint": "A slot without a matching layer stays open. Pick a layer in the workflow once one is in the project."
 }

@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Box,
-  Button,
-  Stack,
-  SwipeableDrawer,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
+import { Box, Button, Stack, SwipeableDrawer, useMediaQuery, useTheme } from "@mui/material";
 import { useRouter } from "next/navigation";
 import type { DragEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -81,8 +74,8 @@ import ShareDialog from "@/components/modals/content/ShareDialog";
 import SpaceSettingsDialog from "@/components/modals/content/SpaceSettingsDialog";
 import TransferDialog from "@/components/modals/content/TransferDialog";
 import TrashDialog from "@/components/modals/content/TrashDialog";
-import TemplatePreviewDialog from "@/components/templates/TemplatePreviewDialog";
 import SaveTemplateDialog from "@/components/templates/SaveTemplateDialog";
+import TemplatePreviewDialog from "@/components/templates/TemplatePreviewDialog";
 import UseTemplateFlow from "@/components/templates/UseTemplateFlow";
 
 const FEED_PAGE_SIZE = 50;
@@ -556,7 +549,8 @@ const ContentPage = ({
   // `items` already holds whatever is shared into a team/organisation space,
   // so a space that owns nothing but has items shared into it is not empty.
   const isEmpty =
-    noTypesSelected || (!isLoading && items.length === 0 && (!isSpace || documents.length === 0) && feed.loaded);
+    noTypesSelected ||
+    (!isLoading && items.length === 0 && (!isSpace || documents.length === 0) && feed.loaded);
 
   const renderCard = (item: ContentItem) => {
     const selectionProps = {
@@ -884,7 +878,6 @@ const ContentPage = ({
                     </Box>
                   </ContentSection>
                 )}
-
               </Box>
             )}
 
@@ -941,7 +934,11 @@ const ContentPage = ({
             loadedTemplate ? templateSourceLabel(templateShelfOf(loadedTemplate, spaces), t) : undefined
           }
           onClose={() => setTemplateOpen(null)}
-          onUse={() => loadedTemplate && setTemplateToUse(loadedTemplate)}
+          onUse={() => {
+            if (!loadedTemplate) return;
+            setTemplateToUse(loadedTemplate);
+            setTemplateOpen(null);
+          }}
         />
       )}
 
@@ -959,7 +956,7 @@ const ContentPage = ({
       {templateToUse && (
         <UseTemplateFlow
           template={templateToUse}
-          context={{ kind: "new_project" }}
+          context={{ kind: "outside_project" }}
           onClose={() => setTemplateToUse(null)}
           onDone={(result) => {
             setTemplateToUse(null);

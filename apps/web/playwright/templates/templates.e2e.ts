@@ -213,14 +213,19 @@ test.describe("Templates", () => {
     await expect(preview).toBeVisible();
     await preview.getByRole("button", { name: "Use template" }).click();
 
-    // Both dialogs read "Use template" while the preview plays out its exit
-    // transition; only the flow's own location step has a "Destination" field.
-    const useDialog = page.getByRole("dialog").filter({ hasText: "Destination" });
+    // The flow takes the preview's place in the same click. The account
+    // owns projects by now, so it opens on "Add to a project" and the
+    // new-project form is one click away.
+    const useDialog = page.getByRole("dialog").filter({ hasText: "Add to a project" });
     await expect(useDialog).toBeVisible();
+    await useDialog.getByRole("button", { name: "Create a new project" }).click();
+    await expect(useDialog.getByText("Destination")).toBeVisible();
     await useDialog.getByLabel("Name", { exact: true }).fill(usedProjectName);
 
-    // One step: the template's only input ships with it, so there are no
-    // bindings to ask about and the primary button is already "Create".
+    // The inputs step lists the template's only input as shipping with it;
+    // there is nothing to bind, so it is a look and a click.
+    await useDialog.getByRole("button", { name: "Next" }).click();
+    await expect(useDialog.getByText("Ships with template")).toBeVisible();
     await useDialog.getByRole("button", { name: "Create" }).click();
 
     await expect(page).toHaveURL(/\/map\/[0-9a-f-]{36}/, { timeout: 60000 });

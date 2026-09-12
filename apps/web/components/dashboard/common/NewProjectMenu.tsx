@@ -13,14 +13,9 @@ import { refreshContentFeed } from "@/lib/api/content";
 import { createProject } from "@/lib/api/projects";
 import { USERS_API_BASE_URL } from "@/lib/api/users";
 import type { Project } from "@/lib/validations/project";
-import type { TemplateRead } from "@/lib/validations/template";
-
-import { templateResultHref } from "@/hooks/templates/useUseTemplate";
 
 import NameDialog from "@/components/dashboard/common/NameDialog";
 import ProjectImportModal from "@/components/modals/ProjectImport";
-import TemplateBrowser from "@/components/templates/TemplateBrowser";
-import UseTemplateFlow from "@/components/templates/UseTemplateFlow";
 
 /** What a project starts life with, until the builder saves its own: the
  * default artwork every new project carries, and a Munich-centred view. */
@@ -40,8 +35,10 @@ const NEW_PROJECT_VIEW_STATE = {
  * been created without waiting for their own poll. */
 const revalidateOnboardingFacts = () => mutate(`${USERS_API_BASE_URL}/me/onboarding`);
 
-/** The three ways to start a project. */
-export type NewProjectIntent = "blank" | "template" | "import";
+/** The two ways to start a project. Templates start from the "Start from a
+ * template" band and the template browser instead, where the use flow
+ * itself asks whether to add to a project or create one. */
+export type NewProjectIntent = "blank" | "import";
 
 export interface NewProjectItem {
   key: NewProjectIntent;
@@ -52,7 +49,7 @@ export interface NewProjectItem {
 }
 
 /** The one list every "New project" surface renders — Home's hero button and
- * Content's "Add new" menu — so both offer the same three starts in the same
+ * Content's "Add new" menu — so both offer the same starts in the same
  * order. */
 /** Paper styling shared by the dashboard's action dropdowns ("New project",
  * Content's "Add new"): a breath of space under the trigger and a width that
@@ -63,13 +60,11 @@ export const DASHBOARD_MENU_SLOT_PROPS = {
 
 export const NEW_PROJECT_ITEMS: NewProjectItem[] = [
   { key: "blank", labelKey: "blank_project", icon: ICON_NAME.MAP },
-  { key: "template", labelKey: "from_template", icon: ICON_NAME.CLONE },
   { key: "import", labelKey: "import_project", icon: ICON_NAME.UPLOAD },
 ];
 
 /** Where a new project should land. A blank project files straight into
- * `folderId`; the template flow asks for its own destination, and an import
- * only pre-selects the folder field. */
+ * `folderId`; an import only pre-selects the folder field. */
 export interface NewProjectLocation {
   spaceId?: string;
   folderId?: string;
@@ -87,18 +82,14 @@ interface NewProjectFlowsProps {
 }
 
 /**
- * The dialogs behind the three project starts, in one place: a name-only
- * blank project, the template browser plus its `UseTemplateFlow`, and the
- * project-archive import. Every start ends in the builder, so this component
- * owns the navigation; callers only say which one is open and where the
- * result should live.
+ * The dialogs behind the project starts, in one place: a name-only blank
+ * project and the project-archive import. Every start ends in the builder,
+ * so this component owns the navigation; callers only say which one is open
+ * and where the result should live.
  */
 export const NewProjectFlows = ({ intent, onClose, location, onCreated }: NewProjectFlowsProps) => {
   const { t } = useTranslation("common");
   const router = useRouter();
-  // Survives `intent` going back to null when the browser hands a template
-  // over — the browser closes, the use flow takes its place.
-  const [templateToUse, setTemplateToUse] = useState<TemplateRead | null>(null);
 
   return (
     <>
@@ -133,36 +124,6 @@ export const NewProjectFlows = ({ intent, onClose, location, onCreated }: NewPro
             // A new project has nothing to show in the feed — it opens
             // straight into the builder.
             router.push(`/map/${project.id}`);
-          }}
-        />
-      )}
-
-      {/* Mounted only while open: the browser's own template, space and pin
-       * requests would otherwise run on every page that offers this menu. */}
-      {intent === "template" && (
-        <TemplateBrowser
-          mode="dialog"
-          open
-          onClose={onClose}
-          onUse={(template) => {
-            onClose();
-            setTemplateToUse(template);
-          }}
-        />
-      )}
-
-      {templateToUse && (
-        <UseTemplateFlow
-          template={templateToUse}
-          context={{ kind: "new_project" }}
-          onClose={() => setTemplateToUse(null)}
-          onDone={(result) => {
-            const template = templateToUse;
-            setTemplateToUse(null);
-            refreshContentFeed();
-            void revalidateOnboardingFacts();
-            onCreated?.(result.project_id);
-            router.push(templateResultHref(template, result));
           }}
         />
       )}

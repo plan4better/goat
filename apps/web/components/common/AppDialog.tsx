@@ -12,6 +12,7 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+import type { DialogProps } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -57,6 +58,9 @@ export interface AppDialogProps {
   /** Names the dialog for assistive technology when the title alone does
    * not identify it (a setup dialog named after its file). */
   ariaLabel?: string;
+  /** MUI's fade timing; a dialog that takes over from another one in the
+   * same click enters (or leaves) in 0ms so the backdrop never blinks. */
+  transitionDuration?: DialogProps["transitionDuration"];
 }
 
 /**
@@ -86,6 +90,7 @@ const AppDialog = ({
   closeDisabled,
   paperSx,
   ariaLabel,
+  transitionDuration,
 }: AppDialogProps) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -104,6 +109,7 @@ const AppDialog = ({
       open={open}
       onClose={handleClose}
       aria-label={ariaLabel}
+      transitionDuration={transitionDuration}
       fullScreen={fullScreen}
       maxWidth={false}
       PaperProps={{
