@@ -131,9 +131,24 @@ class ArtifactBuilder(ABC):
         )
 
     def build_from_layers(
-        self, *, layer_paths: Dict[str, str], workdir: str
+        self,
+        *,
+        layer_paths: Dict[str, str],
+        workdir: str,
+        dependencies: Dict[str, Any] | None = None,
+        options: Dict[str, Any] | None = None,
     ) -> List[BuiltArtifact]:
-        """Build the artifacts from member layers, keyed by spec role."""
+        """Build the artifacts from member layers, keyed by spec role.
+
+        ``dependencies`` and ``options`` mean what they do for ``build``: a
+        layer-based build can still need another bundle (a GTFS feed's stops are
+        linked against a street network) and still take per-build tuning.
+
+        Every kind the type declares is built, as ``build`` does. A bundle's
+        artifacts are published together and read through one state, and its
+        dependency rows record a revision per bundle rather than per artifact —
+        so a subset has nothing to record its own currency in.
+        """
         raise NotImplementedError(
             f"{type(self).__name__} does not build from member layers"
         )

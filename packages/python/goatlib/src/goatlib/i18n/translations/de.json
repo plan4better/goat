@@ -803,6 +803,10 @@
     "speed_kmh": {
       "label": "Geschw. (km/h)",
       "description": "Reisegeschwindigkeit in km/h"
+    },
+    "reference_field": {
+      "label": "Referenzfeld",
+      "description": "Spalte zur Identifizierung der einzelnen Startpunkte; wird ins Ergebnis geschrieben, damit ein Einzugsgebiet dem Startpunkt zugeordnet werden kann, aus dem es berechnet wurde"
     }
   },
   "enums": {

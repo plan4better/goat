@@ -29,6 +29,11 @@ namespace routing::catchment
         {
             SubNetwork net;
             std::vector<int32_t> valid_starts;
+            // Where each valid start sat in cfg.starting_points. Starts that
+            // fail to snap are dropped above, so position in `valid_starts` is
+            // not the caller's index — and the caller needs its own index back
+            // to attribute a catchment to the point that produced it.
+            std::vector<int32_t> valid_start_inputs;
         };
 
         void validate_request(RequestConfig &cfg)
@@ -46,13 +51,16 @@ namespace routing::catchment
             auto prep = network::prepare_radial_network(con, cfg, load_geometry);
 
             PreparedNetwork prepared{.net = std::move(prep.net),
-                                     .valid_starts = {}};
+                                     .valid_starts = {},
+                                     .valid_start_inputs = {}};
             prepared.valid_starts.reserve(prep.snapped_nodes.size());
-            for (auto s : prep.snapped_nodes)
+            prepared.valid_start_inputs.reserve(prep.snapped_nodes.size());
+            for (size_t i = 0; i < prep.snapped_nodes.size(); ++i)
             {
-                if (s >= 0)
+                if (prep.snapped_nodes[i] >= 0)
                 {
-                    prepared.valid_starts.push_back(s);
+                    prepared.valid_starts.push_back(prep.snapped_nodes[i]);
+                    prepared.valid_start_inputs.push_back(static_cast<int32_t>(i));
                 }
             }
             if (prepared.valid_starts.empty())
@@ -162,7 +170,7 @@ namespace routing::catchment
                 field.node_count = net_ptr->node_count;
                 field.network = net_ptr;
                 output::append_field_grid_features(features, field,
-                                                    static_cast<int32_t>(oi),
+                                                    prepared.valid_start_inputs[oi],
                                                     zoom, cutoffs, cfg);
                 // `field` (and its costs vector) destructed here.
             }

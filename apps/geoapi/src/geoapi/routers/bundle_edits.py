@@ -195,6 +195,46 @@ async def member_layer_of_role(bundle_id: str, role: str) -> dict[str, Any] | No
     return dict(row) if row else None
 
 
+async def dependents_of(bundle_id: str) -> list[str]:
+    """Ids of the bundles built from this one.
+
+    An edit here moves what they were built from, which their own revision does
+    not record — so they have to be told, and nothing else walks this edge.
+    """
+    rows = await _pool().fetch(
+        """
+        SELECT d.bundle_id
+        FROM customer.bundle_dependency d
+        WHERE d.depends_on_bundle_id = $1::uuid
+        """,
+        bundle_id,
+    )
+    return [str(r["bundle_id"]) for r in rows]
+
+
+async def dispatch_dependent_rebuilds(
+    bundle_id: str, authorization: str | None
+) -> None:
+    """Queue a rebuild for each bundle built from this one.
+
+    Best-effort and never fatal: the edit itself succeeded and the dependents
+    already read as outdated, so a failed dispatch costs a click on their
+    Update button rather than correctness.
+    """
+    try:
+        dependents = await dependents_of(bundle_id)
+    except Exception as e:
+        logger.warning("Could not list dependents of bundle %s: %s", bundle_id, e)
+        return
+    for dependent_id in dependents:
+        try:
+            await dispatch_rebuild(dependent_id, authorization)
+        except Exception as e:
+            logger.warning(
+                "Could not queue dependent rebuild of bundle %s: %s", dependent_id, e
+            )
+
+
 async def claim_bundle_revision(bundle_id: str, base_revision: int) -> int:
     """Atomically advance ``layers_revision`` from the client's base.
 
@@ -558,6 +598,9 @@ async def apply_bundle_edits(
     await _invalidate_caches_and_pmtiles(nodes_info)
 
     rebuild_job_id = await dispatch_rebuild(bundle_id, authorization)
+    # The bundles built from this one are stale now too, and only this edge
+    # knows it.
+    await dispatch_dependent_rebuilds(bundle_id, authorization)
 
     return BundleEditResponse(
         revision=revision,

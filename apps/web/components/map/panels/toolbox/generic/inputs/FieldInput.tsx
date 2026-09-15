@@ -15,6 +15,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { resolveValuePath } from "@/lib/utils/ogc-utils";
 import type { LayerFieldType } from "@/lib/validations/layer";
 
 import type { ProcessedInput } from "@/types/map/ogc-processes";
@@ -131,10 +132,13 @@ export default function FieldInput({
     return inferRelatedLayerInput(input.name);
   }, [input.name, input.metadata, input.uiMeta]);
 
-  // Get the selected layer ID from form values
+  // Get the selected layer ID from form values. `source_layer` may name a
+  // plain input or reach into an object-valued one (`starting_points.layer_id`),
+  // which is how an input that is *either* coordinates or a layer still points
+  // this at a layer when it holds one.
   const selectedLayerId = useMemo(() => {
     if (!relatedLayerInputName) return null;
-    const layerId = formValues[relatedLayerInputName];
+    const layerId = resolveValuePath(formValues, relatedLayerInputName);
     return typeof layerId === "string" ? layerId : null;
   }, [relatedLayerInputName, formValues]);
 

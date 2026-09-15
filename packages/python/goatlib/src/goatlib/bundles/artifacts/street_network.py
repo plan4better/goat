@@ -34,7 +34,7 @@ import logging
 import os
 import tarfile
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import duckdb
 
@@ -101,8 +101,16 @@ class StreetNetworkArtifactBuilder(ArtifactBuilder):
     produces = (BundleArtifactKind.street_network_graph,)
 
     def build_from_layers(
-        self, *, layer_paths: Dict[str, str], workdir: str
+        self,
+        *,
+        layer_paths: Dict[str, str],
+        workdir: str,
+        dependencies: Dict[str, Any] | None = None,
+        options: Dict[str, Any] | None = None,
     ) -> List[BuiltArtifact]:
+        # A street network depends on nothing and takes no options, so both are
+        # accepted and ignored: the contract is shared with a builder that
+        # needs them.
         edges_layer = layer_paths.get("edges")
         nodes_layer = layer_paths.get("nodes")
         if not edges_layer or not nodes_layer:

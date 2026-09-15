@@ -776,6 +776,25 @@ export function formatInputName(name: string): string {
 // ============================================================================
 
 /**
+ * Read a form value by name, or by a dotted path into an object-valued input.
+ *
+ * Most inputs are scalars keyed by name. A few hold an object — `starting_points`
+ * is either map coordinates or `{layer_id}` — and a schema needs to reach inside
+ * one to say "only when points came from a layer". Splitting on "." costs
+ * nothing for the ordinary case, since a plain name has no dot to split on.
+ */
+export function resolveValuePath(values: Record<string, unknown>, path: string): unknown {
+  if (!path.includes(".")) return values[path];
+  return path
+    .split(".")
+    .reduce<unknown>(
+      (acc, key) =>
+        acc !== null && typeof acc === "object" ? (acc as Record<string, unknown>)[key] : undefined,
+      values
+    );
+}
+
+/**
  * Evaluate a MongoDB-like condition against form values
  *
  * Supports operators:
@@ -816,7 +835,7 @@ export function evaluateCondition(
       continue;
     }
 
-    const value = values[field];
+    const value = resolveValuePath(values, field);
 
     // Handle operator objects
     if (check !== null && typeof check === "object" && !Array.isArray(check)) {

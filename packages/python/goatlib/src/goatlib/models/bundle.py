@@ -354,6 +354,14 @@ class BundleTypeSpec(BaseModel):
     # consumer can ask without importing one — the API answers it per bundle,
     # and a builder brings the routing and DuckDB stack with it.
     artifacts_build_from_layers: bool = False
+    # Whether a filtered *copy* of this bundle can be made. Separate from
+    # rebuilding, though both work off the member layers: rebuilding hands the
+    # layers back as they are, while filtering clips them and needs the clip to
+    # leave a coherent bundle behind. A GTFS feed's files reference each other —
+    # dropping a stop orphans its stop_times, their trips, and the routes and
+    # services those belonged to — and until that cascade is worked out, a
+    # clipped feed would be a broken one.
+    supports_filtered_copy: bool = False
     dependencies: Tuple[DependencySpec, ...] = ()
 
     def role(self, key: str) -> Optional[RoleSpec]:
@@ -445,6 +453,7 @@ SPECS: Dict[BundleTypeName, BundleTypeSpec] = {
         thumbnail_role="edges",
         artifacts=(BundleArtifactKind.street_network_graph,),
         artifacts_build_from_layers=True,
+        supports_filtered_copy=True,
     ),
     BundleTypeName.pt_network_gtfs: BundleTypeSpec(
         type=BundleTypeName.pt_network_gtfs,
@@ -525,6 +534,11 @@ SPECS: Dict[BundleTypeName, BundleTypeSpec] = {
             BundleArtifactKind.pt_network_graph,
             BundleArtifactKind.pt_network_linkage,
         ),
+        # The member layers are the feed: one layer per GTFS file, imported as
+        # text, so writing them back out reconstitutes what the timetable is
+        # built from. That is what makes a rebuild possible after an edit or a
+        # re-link, rather than only a fresh import.
+        artifacts_build_from_layers=True,
         dependencies=(
             DependencySpec(
                 kind="street_network",
@@ -580,3 +594,14 @@ def artifacts_from_layers(type_: "BundleTypeName | str") -> bool:
     """
     spec = get_spec(type_)
     return not spec.artifacts or spec.artifacts_build_from_layers
+
+
+def supports_filtered_copy(type_: "BundleTypeName | str") -> bool:
+    """Whether a filtered copy of this bundle type can be made.
+
+    Asked by the tool that builds the copy and by the API that decides whether
+    to offer it, so the two cannot drift. Deliberately not the same question as
+    ``artifacts_from_layers``: a type can be rebuildable from its layers without
+    those layers surviving being clipped.
+    """
+    return get_spec(type_).supports_filtered_copy

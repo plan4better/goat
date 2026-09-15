@@ -190,9 +190,17 @@ class BundleRead(BundleBase, ThumbnailUrlMixin):
         False,
         description=(
             "Whether the artifacts are built from the member layers rather "
-            "than from the uploaded source. Gates the operations that need to "
-            "produce artifacts from layers — a filtered copy, an in-place "
-            "rebuild — which a GTFS bundle cannot do: its feed is not kept"
+            "than from the uploaded source, which is what makes an in-place "
+            "rebuild possible"
+        ),
+    )
+    supports_filtered_copy: bool = Field(
+        False,
+        description=(
+            "Whether a filtered copy of this bundle can be made. Narrower than "
+            "artifacts_from_layers: clipping has to leave every member layer "
+            "consistent with the others, which a GTFS feed's cross-references "
+            "do not yet allow"
         ),
     )
     artifacts: list["BundleArtifactSummary"] = Field(

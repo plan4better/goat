@@ -429,6 +429,10 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
     _starting_points_parquet: Path | None = None
     # Track if starting points came from an existing layer (skip creating duplicate)
     _starting_points_from_layer: bool = False
+    # The reference-field value of each starting point, in the order the
+    # coordinates were read. None when there is nothing to reference: map
+    # clicks, or a layer run that asked for no field.
+    _starting_point_references: "list[Any] | None" = None
 
     @classmethod
     def predict_output_schema(
@@ -537,11 +541,35 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             opacity=0.8,
         )
 
+    @staticmethod
+    def _validated_reference_column(
+        reference_field: str | None,
+        column_names: "list[str]",
+        layer_id: str,
+    ) -> "str | None":
+        """The reference column, confirmed to exist on the layer.
+
+        The name arrives as a tool input and is interpolated into SQL — there is
+        no placeholder for an identifier — so it is matched against the layer's
+        own columns rather than quoted and hoped for. An unknown name is a
+        stale saved workflow pointing at a column since renamed, which is worth
+        saying plainly instead of failing inside DuckDB.
+        """
+        if not reference_field:
+            return None
+        if reference_field not in column_names:
+            raise ValueError(
+                f"Reference field '{reference_field}' does not exist on the "
+                f"starting points layer {layer_id}."
+            )
+        return reference_field
+
     def _extract_coordinates_from_layer(
         self: Self,
         layer_id: str,
         user_id: str,
         cql_filter: dict[str, Any] | None = None,
+        reference_field: str | None = None,
     ) -> tuple[list[float], list[float]]:
         """Extract lat/lon coordinates from a layer.
 
@@ -549,10 +577,17 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             layer_id: Layer UUID string
             user_id: User UUID string (fallback if layer info unavailable)
             cql_filter: Optional CQL2-JSON filter to apply to the layer
+            reference_field: Column identifying each point, read in the same
+                query as the coordinates and left on
+                ``self._starting_point_references``. Same query because the
+                engine addresses starting points by position: a second query
+                could order its rows differently and silently shift every
+                identifier by one.
 
         Returns:
             Tuple of (latitudes, longitudes) lists
         """
+        self._starting_point_references = None
         is_temp_layer = ":" in layer_id
         if is_temp_layer:
             # export_layer_to_parquet resolves temp layers
@@ -565,11 +600,24 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             parquet_info = self._get_table_info(self.duckdb_con, f"'{temp_parquet}'")
             geom_col = parquet_info.get("geometry_column", "geometry")
 
+            ref_col = self._validated_reference_column(
+                reference_field,
+                [
+                    c[0]
+                    for c in self.duckdb_con.execute(
+                        f"DESCRIBE SELECT * FROM '{temp_parquet}'"
+                    ).fetchall()
+                ],
+                layer_id,
+            )
+            ref_select = f', "{ref_col}" as ref' if ref_col else ""
+
             # Read coordinates from the merged parquet
             result = self.duckdb_con.execute(f"""
                 SELECT
                     ST_Y(ST_Centroid("{geom_col}")) as lat,
                     ST_X(ST_Centroid("{geom_col}")) as lon
+                    {ref_select}
                 FROM '{temp_parquet}'
                 WHERE "{geom_col}" IS NOT NULL
             """).fetchall()
@@ -616,11 +664,17 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                     params = cql_filters.params
                     logger.info(f"Applied CQL filter to layer {layer_id}")
 
+            ref_col = self._validated_reference_column(
+                reference_field, column_names, layer_id
+            )
+            ref_select = f', "{ref_col}" as ref' if ref_col else ""
+
             # Query centroids of all geometries
             query = f"""
                 SELECT
                     ST_Y(ST_Centroid({geom_col})) as lat,
                     ST_X(ST_Centroid({geom_col})) as lon
+                    {ref_select}
                 FROM {table_name}
                 {where_clause}
             """
@@ -629,12 +683,20 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
         if not result:
             raise ValueError(f"No valid geometries found in layer {layer_id}")
 
-        latitudes = [
-            row[0] for row in result if row[0] is not None and row[1] is not None
-        ]
-        longitudes = [
-            row[1] for row in result if row[0] is not None and row[1] is not None
-        ]
+        # One pass: a row dropped for a null coordinate has to take its
+        # reference value with it, or every later point is misidentified.
+        latitudes: list[float] = []
+        longitudes: list[float] = []
+        references: list[Any] = []
+        for row in result:
+            if row[0] is None or row[1] is None:
+                continue
+            latitudes.append(row[0])
+            longitudes.append(row[1])
+            if len(row) > 2:
+                references.append(row[2])
+        if references:
+            self._starting_point_references = references
 
         logger.info(
             "Extracted %d starting points from layer %s",
@@ -648,6 +710,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
         self: Self,
         starting_points: StartingPoints,
         user_id: str,
+        reference_field: str | None = None,
     ) -> tuple[list[float], list[float]]:
         """Get latitude/longitude coordinates from starting points.
 
@@ -661,6 +724,9 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
         if isinstance(starting_points, StartingPointsMap):
             # Direct coordinates from map clicks - need to create starting points layer
             self._starting_points_from_layer = False
+            # Map clicks have no attributes to reference. The generated layer
+            # numbers them from 1, so position already is the identifier.
+            self._starting_point_references = None
             return starting_points.latitude, starting_points.longitude
         elif isinstance(starting_points, StartingPointsLayer):
             # Extract from existing layer - don't create duplicate starting points layer
@@ -669,6 +735,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                 starting_points.layer_id,
                 user_id,
                 cql_filter=starting_points.layer_filter,
+                reference_field=reference_field,
             )
         else:
             raise ValueError(f"Invalid starting_points type: {type(starting_points)}")

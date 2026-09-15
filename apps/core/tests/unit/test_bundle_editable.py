@@ -102,25 +102,32 @@ def test_a_dependency_that_moved_on_makes_an_artifact_outdated() -> None:
 
 
 @pytest.mark.parametrize(
-    ("bundle_type", "from_layers"),
+    ("bundle_type", "from_layers", "filterable"),
     [
-        (BundleTypeName.street_network, True),
-        # The timetable is built from the uploaded feed, which is not kept.
-        (BundleTypeName.pt_network_gtfs, False),
+        (BundleTypeName.street_network, True, True),
+        # The member layers are the feed — one per GTFS file — so writing them
+        # back out rebuilds the timetable without the uploaded archive. Clipping
+        # them is a different matter: the files reference each other, so
+        # dropping a stop orphans its times, trips and services.
+        (BundleTypeName.pt_network_gtfs, True, False),
     ],
 )
-def test_filter_and_rebuild_follow_one_rule(bundle_type, from_layers) -> None:
-    """Filtering and rebuilding both need artifacts built from the layers.
+def test_rebuild_and_filter_each_read_one_spec(
+    bundle_type, from_layers, filterable
+) -> None:
+    """Rebuilding and filtering are two questions, each answered in one place.
 
-    Two tools refuse on it, the builder exposes it, and the API reports it to
-    gate the UI — so the point is that all of them read the one spec rather
-    than each deciding for itself.
+    Every consumer — the tools that refuse, the builder, the API that gates the
+    UI — reads the spec rather than deciding for itself. They were once the same
+    flag; they are not the same question, and a type can be rebuildable without
+    being clippable.
     """
     from goatlib.bundles.artifacts import get_artifact_builder
-    from goatlib.models.bundle import artifacts_from_layers
+    from goatlib.models.bundle import artifacts_from_layers, supports_filtered_copy
 
     assert artifacts_from_layers(bundle_type) is from_layers
     assert get_artifact_builder(bundle_type).builds_from_layers is from_layers
+    assert supports_filtered_copy(bundle_type) is filterable
 
     reported = BundleRead(
         id=LAYER,
@@ -130,8 +137,10 @@ def test_filter_and_rebuild_follow_one_rule(bundle_type, from_layers) -> None:
         bundle_type=bundle_type.value,
         status="ready",
         artifacts_from_layers=artifacts_from_layers(bundle_type),
+        supports_filtered_copy=supports_filtered_copy(bundle_type),
     )
     assert reported.artifacts_from_layers is from_layers
+    assert reported.supports_filtered_copy is filterable
 
 
 @pytest.mark.parametrize(

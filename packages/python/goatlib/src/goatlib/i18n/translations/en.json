@@ -791,6 +791,10 @@
     "speed_kmh": {
       "label": "Speed (km/h)",
       "description": "Travel speed in km/h"
+    },
+    "reference_field": {
+      "label": "Reference field",
+      "description": "Column identifying each starting point, written to the result so a catchment can be traced back to the point it was computed from"
     }
   },
   "enums": {

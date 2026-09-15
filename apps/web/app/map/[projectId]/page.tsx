@@ -50,6 +50,7 @@ import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 import { DraggableItem } from "@/components/builder/widgets/common/DraggableItem";
 import { LoadingPage } from "@/components/common/LoadingPage";
 import Header from "@/components/header/Header";
+import EditModeHalo from "@/components/map/EditModeHalo";
 import MapDropTarget from "@/components/map/MapDropTarget";
 import MapViewer from "@/components/map/MapViewer";
 import DataProjectLayout from "@/components/map/layouts/desktop/DataProjectLayout";
@@ -590,6 +591,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                             projectLayers={allProjectLayersIncludingTables}
                             isEditor={isProjectEditor}
                           />
+                          <EditModeHalo />
                         </Box>
                         {mapMode === "builder" && (
                           <Box

@@ -3020,6 +3020,7 @@
   "bundle_upload_note_pt_network_gtfs": "Public Transport Network bundles must be linked to a Street Network bundle in order for GOAT to connect stops with streets. Select a Street Network bundle that covers the same region to continue.",
   "street_network_bundle": "Street Network bundle",
   "default_network": "Default (Europe)",
+  "default_pt_network": "Default",
   "select_a_street_network": "Select a street network...",
   "editing_ended_layer_removed": "Editing ended: the layer was removed from the project, so unsaved edits were discarded.",
   "add_to_a_project": "Add to a project",

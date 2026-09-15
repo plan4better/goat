@@ -13,7 +13,8 @@ import { DATA_PANEL_HEIGHT_CONSUMER_ATTR, DATA_PANEL_HEIGHT_VAR } from "@/compon
 
 const ToolbarContainer = styled(Box)(({ theme }) => ({
   position: "absolute",
-  bottom: `calc(var(${DATA_PANEL_HEIGHT_VAR}, 0px) + ${theme.spacing(2)})`,
+  // Clear of the edit-mode halo, which is brightest against the viewport edge.
+  bottom: `calc(var(${DATA_PANEL_HEIGHT_VAR}, 0px) + ${theme.spacing(8)})`,
   left: "50%",
   transform: "translateX(-50%)",
   display: "flex",

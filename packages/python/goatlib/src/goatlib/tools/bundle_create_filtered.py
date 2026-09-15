@@ -32,13 +32,13 @@ from goatlib.analysis.schemas.ui import (
     ui_field,
     ui_sections,
 )
-from goatlib.bundles.artifacts import get_artifact_builder
 from goatlib.bundles.runner import BundleImportRunner, ImportedLayer
 from goatlib.models.bundle import (
     BundleStatus,
     BundleTypeName,
     get_spec,
     role_field_config,
+    supports_filtered_copy,
 )
 from goatlib.models.io import DatasetMetadata
 from goatlib.storage.query_builder import build_cql_filter
@@ -198,12 +198,14 @@ class BundleCreateFilteredRunner(BundleImportRunner):
                     "to filter."
                 )
 
-            builder = get_artifact_builder(bundle_type)
-            if builder is not None and not builder.builds_from_layers:
+            # Not "can its artifacts be rebuilt" — that is a weaker question a
+            # GTFS bundle now passes. Clipping a feed means clipping every file
+            # that references what was dropped, which is not mapped out yet.
+            if not supports_filtered_copy(bundle_type):
                 raise ValueError(
-                    f"A '{bundle_type.value}' bundle's artifacts are built from the "
-                    "uploaded source, which is not kept, so a filtered copy could "
-                    "not build them. Filtering is not supported for this type."
+                    f"A '{bundle_type.value}' bundle cannot be filtered yet: its "
+                    "member layers reference each other, so clipping one without "
+                    "the others would leave an inconsistent feed."
                 )
 
             spec = get_spec(bundle_type)

@@ -66,6 +66,11 @@ DEFAULT_LINKAGE_MODES: Tuple[str, ...] = ("walking",)
 LINKAGE_MAX_MINUTES = 20.0
 
 
+#: Columns the import adds that no GTFS file declares, dropped when the feed is
+#: written back out. `geometry` is derived from columns that are still there.
+_NON_GTFS_COLUMNS = frozenset({"geometry", "geom", "id", "h3_3"})
+
+
 class UnlinkableStopsError(ValueError):
     """No stop in the feed could be reached from the linked street network.
 
@@ -160,6 +165,51 @@ def _root_level_feed(source_path: str, workdir: str) -> str:
     return out_path
 
 
+def _write_feed_from_layers(layer_paths: Dict[str, str], feed_dir: str) -> List[str]:
+    """Write the member layers back out as a GTFS feed. Returns the files made.
+
+    The import stored every column as text and kept the feed's own columns as
+    the layer's properties, so writing them back is a faithful round trip. Two
+    things are dropped: the geometry column the import adds to `stops` and
+    `shapes` — which is derived from `stop_lat`/`stop_lon` and the shape points,
+    both still present as columns — and the internal id, which no GTFS file
+    declares. Anything else is written as it stands; a reader ignores columns it
+    does not know.
+    """
+    import duckdb
+
+    from goatlib.bundles.importers.pt_network.gtfs import _GTFS_FILE
+
+    written: List[str] = []
+    con = duckdb.connect()
+    try:
+        con.execute("INSTALL spatial; LOAD spatial")
+        for role, path in sorted(layer_paths.items()):
+            filename = _GTFS_FILE.get(role)
+            if not filename:
+                # A member layer that is not a GTFS file. Nothing to write.
+                continue
+            columns = [
+                row[0]
+                for row in con.execute(
+                    f"DESCRIBE SELECT * FROM read_parquet('{path}')"
+                ).fetchall()
+                if row[0] not in _NON_GTFS_COLUMNS
+            ]
+            if not columns:
+                continue
+            select = ", ".join(f'"{c}"' for c in columns)
+            out = os.path.join(feed_dir, filename)
+            con.execute(
+                f"COPY (SELECT {select} FROM read_parquet('{path}')) "
+                f"TO '{out}' (FORMAT CSV, HEADER, QUOTE '\"')"
+            )
+            written.append(filename)
+    finally:
+        con.close()
+    return written
+
+
 class GtfsArtifactBuilder(ArtifactBuilder):
     bundle_type = BundleTypeName.pt_network_gtfs
     produces = (
@@ -222,6 +272,118 @@ class GtfsArtifactBuilder(ArtifactBuilder):
             modes=modes,
         )
         return [timetable, linkage]
+
+    def build_from_layers(
+        self,
+        *,
+        layer_paths: Dict[str, str],
+        workdir: str,
+        dependencies: Dict[str, Any] | None = None,
+        options: Dict[str, Any] | None = None,
+    ) -> List[BuiltArtifact]:
+        """Rebuild from the member layers rather than the uploaded feed.
+
+        The feed is not kept past the import, but the layers *are* the feed —
+        one per GTFS file, imported as text — so writing them back out
+        reconstitutes it. That is what lets an edited or re-linked bundle be
+        rebuilt at all, and it is the same path the street network already
+        takes.
+
+        Both artifacts, always: the linkage is computed against the timetable's
+        stop set, and rebuilding the timetable alongside it costs about three
+        seconds against the linkage's fourteen.
+        """
+        timetable = self._build_timetable_from_layers(layer_paths, workdir)
+        linkage = self._build_linkage(
+            timetable_path=str(timetable.local_path),
+            workdir=workdir,
+            dependencies=dependencies or {},
+            modes=self._requested_modes(options),
+        )
+        return [timetable, linkage]
+
+    def _build_timetable_from_layers(
+        self, layer_paths: Dict[str, str], workdir: str
+    ) -> BuiltArtifact:
+        """The nigiri timetable, from a feed written back out of the layers."""
+        try:
+            import routing
+        except Exception as e:  # pragma: no cover - env-dependent
+            raise ArtifactBuilderUnavailableError(
+                f"routing package is not importable: {e}"
+            )
+        if not hasattr(routing, "build_timetable"):
+            raise ArtifactBuilderUnavailableError(
+                "routing.build_timetable is unavailable — the routing extension "
+                "needs rebuilding with the timetable-build binding"
+            )
+
+        feed_dir = os.path.join(workdir, "feed")
+        os.makedirs(feed_dir, exist_ok=True)
+        written = _write_feed_from_layers(layer_paths, feed_dir)
+        if not written:
+            raise ValueError(
+                "This bundle holds no GTFS member layers, so its timetable "
+                "cannot be rebuilt. Import the feed again."
+            )
+
+        start_date, length_days = self._window_from_layers(layer_paths)
+        out_path = os.path.join(workdir, "pt_network_graph.bin")
+        logger.info(
+            "Rebuilding GTFS timetable .bin (start=%s, length=%dd) from %d layer(s)",
+            start_date,
+            length_days,
+            len(written),
+        )
+        # `build_timetable` takes a zip or a directory, so the reconstituted
+        # feed is handed over as it is written.
+        routing.build_timetable(feed_dir, out_path, start_date, length_days)
+        return BuiltArtifact(
+            kind=BundleArtifactKind.pt_network_graph,
+            local_path=out_path,
+            size=os.path.getsize(out_path),
+            properties={
+                "service_start": start_date,
+                "service_days": length_days,
+            },
+        )
+
+    @classmethod
+    def _window_from_layers(cls, layer_paths: Dict[str, str]) -> Tuple[str, int]:
+        """The service window, read from the calendar layers."""
+        import duckdb
+
+        raw: List[str] = []
+        con = duckdb.connect()
+        try:
+            for role, columns in (
+                ("calendar", ("start_date", "end_date")),
+                ("calendar_dates", ("date",)),
+            ):
+                path = layer_paths.get(role)
+                if not path:
+                    continue
+                present = {
+                    row[0]
+                    for row in con.execute(
+                        f"DESCRIBE SELECT * FROM read_parquet('{path}')"
+                    ).fetchall()
+                }
+                for column in columns:
+                    if column not in present:
+                        continue
+                    raw.extend(
+                        str(row[0]).strip()
+                        for row in con.execute(
+                            f"SELECT DISTINCT \"{column}\" FROM read_parquet('{path}') "
+                            f'WHERE "{column}" IS NOT NULL'
+                        ).fetchall()
+                    )
+        except Exception as e:
+            logger.warning("Could not read GTFS calendar layers for window: %s", e)
+        finally:
+            con.close()
+        return cls._window_from_dates(raw)
 
     @staticmethod
     def _requested_modes(options: Dict[str, Any] | None) -> Tuple[str, ...]:
@@ -390,6 +552,31 @@ class GtfsArtifactBuilder(ArtifactBuilder):
             except ValueError as e:
                 logger.warning("Invalid GTFS service dates (%s..%s): %s", lo, hi, e)
 
+        return date.today().isoformat(), _MAX_DAYS
+
+    @staticmethod
+    def _window_from_dates(raw: Sequence[str]) -> Tuple[str, int]:
+        """The same window rule as ``_date_window``, over dates already read.
+
+        Split out because a rebuild reads the service dates from the member
+        layers rather than from an archive that is no longer kept, and the two
+        must agree on the window or a rebuilt timetable would cover a different
+        span than the one it replaces.
+        """
+        parsed = sorted({v for v in raw if len(v) == 8 and v.isdigit()})
+        if parsed:
+            try:
+                start = date(
+                    int(parsed[0][:4]), int(parsed[0][4:6]), int(parsed[0][6:8])
+                )
+                end = date(
+                    int(parsed[-1][:4]), int(parsed[-1][4:6]), int(parsed[-1][6:8])
+                )
+                length = (end - start).days + 1
+                if length >= 1:
+                    return start.isoformat(), min(length, _MAX_DAYS)
+            except ValueError as e:
+                logger.warning("Invalid GTFS service dates: %s", e)
         return date.today().isoformat(), _MAX_DAYS
 
 

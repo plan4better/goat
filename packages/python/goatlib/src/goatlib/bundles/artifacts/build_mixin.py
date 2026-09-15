@@ -252,18 +252,25 @@ class BundleArtifactBuildMixin:
                 # A builder reads either the uploaded source (GTFS: the feed is
                 # the truth) or the member layers (street networks: the layers
                 # are, so an edited layer is what a rebuild must pick up).
-                dependencies: Dict[str, Any] = {}
+                # Resolved for either path: a layer-based build can still
+                # depend on another bundle (a GTFS feed's stops are linked
+                # against a street network), and it is this map that
+                # `set_dependency_built_revision` walks below — leave it empty
+                # and the bundle stays stale forever after a successful build.
+                dependencies = await self._resolve_dependencies(
+                    db, bundle_id=bundle_id, spec=spec, workdir=workdir
+                )
                 if builder.builds_from_layers:
                     layer_paths = self.export_member_layers(
                         user_id=user_id, members=members or [], workdir=workdir
                     )
                     built = builder.build_from_layers(
-                        layer_paths=layer_paths, workdir=workdir
+                        layer_paths=layer_paths,
+                        workdir=workdir,
+                        dependencies=dependencies,
+                        options=build_options,
                     )
                 else:
-                    dependencies = await self._resolve_dependencies(
-                        db, bundle_id=bundle_id, spec=spec, workdir=workdir
-                    )
                     built = builder.build(
                         source_path=source_path,
                         workdir=workdir,

@@ -74,7 +74,9 @@ export default function BundleInput({ input, value, onChange, disabled }: Bundle
       // but it is not preselected: picking it is still a choice someone makes.
       {
         value: DEFAULT_NETWORK_BUNDLE,
-        label: t("default_network"),
+        // Two keys because the two shipped networks are not labelled alike:
+        // the street network names the area it covers, the timetable does not.
+        label: t(opts.bundle_type === "pt_network_gtfs" ? "default_pt_network" : "default_network"),
         // The same glyph as the bundles below it: the row stands in the same
         // list for the same decision.
         icon: ICON_NAME.CUBE,
@@ -89,7 +91,7 @@ export default function BundleInput({ input, value, onChange, disabled }: Bundle
           icon: ICON_NAME.CUBE,
         })),
     ],
-    [bundles, groupNameByBundle, t]
+    [bundles, groupNameByBundle, opts.bundle_type, t]
   );
 
   const selectedItem = useMemo(

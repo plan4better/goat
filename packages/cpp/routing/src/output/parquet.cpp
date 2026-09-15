@@ -158,6 +158,11 @@ void write_grid_contour_parquet_from_features(
     run_step("CREATE TEMP TABLE routing_grid_polygon_tmp AS SELECT "
              "  CAST(row_number() OVER (ORDER BY origin_idx, cluster_idx, step_cost) AS INTEGER) AS id, "
              "  CAST(ROUND(step_cost) AS INTEGER) AS cost_step, "
+             // Which starting point produced this band. Both callers tag by
+             // origin, so this is always present; what differs is that only a
+             // Separated run carries the caller's own index (see
+             // `valid_start_inputs`). Consumers that do not want it drop it.
+             "  CAST(origin_idx AS INTEGER) AS origin_idx, "
              "  CASE WHEN ST_GeometryType(geom) IN ('POLYGON', 'MULTIPOLYGON') THEN geom "
              "       WHEN ST_GeometryType(geom) = 'GEOMETRYCOLLECTION' "
              "         THEN ST_CollectionExtract(geom, 3) ELSE NULL END AS geometry "

@@ -17,6 +17,7 @@ from goatlib.models.bundle import (
     artifact_state,
     artifacts_from_layers,
     get_spec,
+    supports_filtered_copy,
 )
 from pydantic import UUID4
 from sqlalchemy import and_, or_, select, text
@@ -275,6 +276,16 @@ def _from_layers(bundle_type: str) -> bool:
     return artifacts_from_layers(bundle_type)
 
 
+def _can_filter(bundle_type: str) -> bool:
+    """Whether a filtered copy may be offered for this type.
+
+    Unknown types answer False, for the same reason ``_from_layers`` does.
+    """
+    if bundle_type not in {t.value for t in BundleTypeName}:
+        return False
+    return supports_filtered_copy(bundle_type)
+
+
 async def _bundles_with_stale_dependencies(
     async_session: AsyncSession, bundle_ids: Sequence[UUID]
 ) -> set[UUID]:
@@ -329,6 +340,7 @@ def _bundle_read(
         **fields,
         owned_by=owned_by,
         artifacts_from_layers=_from_layers(bundle.bundle_type),
+        supports_filtered_copy=_can_filter(bundle.bundle_type),
         artifacts=[
             BundleArtifactSummary(
                 # Loaded values may be the enum or the raw string, depending on

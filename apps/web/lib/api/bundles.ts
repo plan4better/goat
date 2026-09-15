@@ -31,6 +31,7 @@ export interface BundleRead {
    *  false for GTFS, whose feed is not kept. Resolved from the bundle type's
    *  spec server-side, so it flips on its own when a type gains support. */
   artifacts_from_layers?: boolean;
+  supports_filtered_copy?: boolean;
   description?: string | null;
   thumbnail_url?: string;
   created_at?: string;

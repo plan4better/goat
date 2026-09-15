@@ -49,11 +49,13 @@ const BundleSettingsPanel = ({ projectId }: { projectId: string }) => {
     [members]
   );
 
-  // Not every type can be filtered: the filter produces a *copy* whose
-  // artifacts are rebuilt from the clipped layers, which a GTFS bundle cannot
-  // do — its feed is not kept. The flag comes from the type's spec, so this
-  // gate opens on its own once PT filtering is supported.
-  const canFilter = !!bundle?.artifacts_from_layers;
+  // Not every type can be filtered: clipping has to leave every member layer
+  // consistent with the others, and a GTFS feed's files reference each other —
+  // dropping a stop orphans its times, trips and services. Its own flag rather
+  // than the rebuild one, which a GTFS bundle does now pass. The flag comes
+  // from the type's spec, so this gate opens on its own once PT filtering is
+  // supported.
+  const canFilter = !!bundle?.supports_filtered_copy;
 
   // The strip stays even when Metadata is the only tab: every other panel in
   // this slot is tabbed, and a bundle that dropped the header would read as a

@@ -373,6 +373,31 @@ class CatchmentAreaV2WindmillParams(ToolInputBase):
         ),
     )
 
+    reference_field: str | None = Field(
+        default=None,
+        description=(
+            "Column identifying each starting point, written to the result as "
+            "`origin` so a catchment can be traced back to the point it was "
+            "computed from. Defaults to the layer's id."
+        ),
+        json_schema_extra=ui_field(
+            section="starting",
+            field_order=2,
+            label_key="reference_field",
+            widget="field-selector",
+            # Only separated shapes have anything to reference: combined merges
+            # every origin into one geometry. Points placed on the map carry no
+            # attributes, so there is nothing to choose between there either.
+            visible_when={
+                "$and": [
+                    {"shape_style": "separated"},
+                    {"starting_points.layer_id": {"$ne": None}},
+                ]
+            },
+            widget_options={"source_layer": "starting_points.layer_id"},
+        ),
+    )
+
     # =========================================================================
     # Configuration Section
     # =========================================================================
@@ -916,6 +941,7 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
         latitudes, longitudes = self._get_starting_coordinates(
             params.starting_points,
             params.user_id,
+            reference_field=params.reference_field,
         )
 
         # Validate starting point count
@@ -1075,9 +1101,104 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
                 if starting_points_path.exists():
                     self._starting_points_parquet = starting_points_path
 
+            result_path = self._resolve_origins(
+                Path(result_path),
+                params.shape_style,
+                temp_dir,
+            )
+
             return Path(result_path), metadata
         finally:
             tool.cleanup()
+
+    def _resolve_origins(
+        self: Self,
+        result_path: Path,
+        shape_style: ShapeStyle,
+        temp_dir: Path,
+    ) -> Path:
+        """Turn the engine's origin index into an `origin` column.
+
+        The engine addresses starting points by position, which means nothing
+        to a reader of the result. This maps each position back to the value
+        the user chose to identify it by — or to the point's own 1-based number
+        when the points came from map clicks and there is no attribute to use,
+        which is what the generated starting-points layer numbers them.
+
+        Only separated shapes get the id: a combined run answers "how far from
+        any of these points", so no band belongs to one of them. The engine
+        emits its index either way, though, so a combined run still comes
+        through here — to drop it, rather than leave an internal index in a
+        result nobody asked to change.
+        """
+        columns = {
+            row[0]
+            for row in self.duckdb_con.execute(
+                f"DESCRIBE SELECT * FROM '{result_path}'"
+            ).fetchall()
+        }
+        # An engine built before the column existed, or an output kind that
+        # never carried it (network, point grid). Nothing to do either way.
+        if "origin_idx" not in columns:
+            if shape_style == ShapeStyle.separated:
+                logger.warning(
+                    "Routing engine produced no origin_idx; "
+                    "result will carry no origin."
+                )
+            return result_path
+
+        if shape_style != ShapeStyle.separated:
+            stripped = temp_dir / "output_without_idx.parquet"
+            self.duckdb_con.execute(
+                f"COPY (SELECT * EXCLUDE (origin_idx) "
+                f"FROM '{result_path}') TO '{stripped}' (FORMAT PARQUET)"
+            )
+            return stripped
+
+        references = self._starting_point_references
+        rewritten = temp_dir / "output_with_ids.parquet"
+
+        if references:
+            # Positional join: the engine's index is the position in the list
+            # the coordinates were read from, and the references came out of
+            # that same query in that same order.
+            mapping = ", ".join(
+                f"({i}, {self._sql_literal(value)})"
+                for i, value in enumerate(references)
+            )
+            query = f"""
+                SELECT r.* EXCLUDE (origin_idx),
+                       m.ref AS origin
+                FROM '{result_path}' r
+                LEFT JOIN (VALUES {mapping}) m(idx, ref)
+                  ON m.idx = r.origin_idx
+            """
+        else:
+            query = f"""
+                SELECT * EXCLUDE (origin_idx),
+                       origin_idx + 1 AS origin
+                FROM '{result_path}'
+            """
+
+        self.duckdb_con.execute(f"COPY ({query}) TO '{rewritten}' (FORMAT PARQUET)")
+        return rewritten
+
+    @staticmethod
+    def _sql_literal(value: Any) -> str:
+        """A reference value as a DuckDB literal.
+
+        The values are layer data, not parameters, and they go into a VALUES
+        list that cannot take placeholders — so strings are escaped here rather
+        than interpolated raw.
+        """
+        if value is None:
+            return "NULL"
+        if isinstance(value, bool):
+            return "TRUE" if value else "FALSE"
+        if isinstance(value, (int, float)):
+            return str(value)
+        escaped = str(value).replace("'", "''")
+        return f"'{escaped}'"
 
 
 def main(params: CatchmentAreaV2WindmillParams) -> dict:
