@@ -602,32 +602,30 @@ def _validated_bbox_boost(p: SearchParams) -> tuple[float, float, float, float] 
     return _validate_bbox(p.bbox_boost)
 
 
-def _envelope_containment_sql(
-    west: float, south: float, east: float, north: float
-) -> str:
-    """How much of each row's stored extent lies inside a rectangle, 0..1.
+def _envelope_match_sql(west: float, south: float, east: float, north: float) -> str:
+    """How closely each row's stored extent matches a rectangle, 0..1.
 
-    Arithmetic on the bbox columns, no spatial call per row. Measured on a
-    synthetic 1M-dataset catalog: 144 ms against 1,323 ms for the equivalent
-    `ST_Intersection` expression, and the two produce the same order on the real
-    catalog (identical top 10) because the published extents ARE rectangles.
+    Intersection over union: dividing by the row's own area alone asks "is all
+    of you inside", which a village answers as well as a nationwide layer, so
+    `?nuts=DE` led with one city's points of interest.
 
-    The bounds are inlined rather than bound as parameters: they are validated
-    floats, and the expression repeats each one, which with placeholders means
-    binding the same value several times in an order that has to match the SQL
-    exactly -- a trap this file has fallen into before.
+    Arithmetic on the bbox columns, no spatial call per row: 144 ms against
+    1,323 ms for the `ST_Intersection` form at a million rows.
 
-    The `CASE` is correctness, not speed: a zero-extent row (a single point)
-    divides by zero, and reading that as "fully contained" would put every point
-    dataset in the country at the top of a city's list.
+    The bounds are inlined rather than bound: the expression repeats each one,
+    and matching that order in a parameter list is a trap this file has fallen
+    into before. A zero-extent row scores 0, the limit of the ratio.
     """
+    area = (east - west) * (north - south)
+    overlap = (
+        f"GREATEST(0, LEAST(bbox_xmax, {east}) - GREATEST(bbox_xmin, {west})) "
+        f"* GREATEST(0, LEAST(bbox_ymax, {north}) - GREATEST(bbox_ymin, {south}))"
+    )
+    own = "(bbox_xmax - bbox_xmin) * (bbox_ymax - bbox_ymin)"
     return (
         f"CASE WHEN (bbox_xmax >= {west} AND bbox_xmin <= {east} "
         f"AND bbox_ymax >= {south} AND bbox_ymin <= {north}) "
-        f"THEN COALESCE("
-        f"GREATEST(0, LEAST(bbox_xmax, {east}) - GREATEST(bbox_xmin, {west})) "
-        f"* GREATEST(0, LEAST(bbox_ymax, {north}) - GREATEST(bbox_ymin, {south})) "
-        f"/ NULLIF((bbox_xmax - bbox_xmin) * (bbox_ymax - bbox_ymin), 0), 1.0) "
+        f"THEN ({overlap}) / NULLIF({own} + {area} - ({overlap}), 0) "
         f"ELSE 0 END DESC"
     )
 
@@ -666,13 +664,13 @@ def _viewport_rank_sql(boost: tuple[float, float, float, float], add: Any) -> st
     scroll away. Runs over every row in the catalog, which is why it is the
     arithmetic form (38 ms at a million datasets).
     """
-    del add  # bounds are inlined; see `_envelope_containment_sql`
+    del add  # bounds are inlined; see `_envelope_match_sql`
     w, s, e, n = boost
-    return _envelope_containment_sql(w, s, e, n)
+    return _envelope_match_sql(w, s, e, n)
 
 
 def _containment_rank_sql(p: SearchParams, add: Any, geom: str) -> str | None:
-    """How much of each row's own extent falls inside the spatial filter.
+    """How closely each row's extent matches the spatial filter.
 
     Everything a spatial filter returns intersects the area; that says nothing
     about whether the dataset is *of* the place. The catalog's stored extents
@@ -680,10 +678,9 @@ def _containment_rank_sql(p: SearchParams, add: Any, geom: str) -> str | None:
     unprojected one 1,087,569° wide -- so a city-sized filter matches datasets
     from other countries, all honest intersections against dishonest rectangles.
 
-    Dividing by the ROW's own area is what separates them: a dataset drawn
-    around this city scores 1.0, a continent-sized one about 0.00002. Nothing is
-    excluded and no threshold is invented -- a nationwide dataset covering the
-    place is a real answer, just a worse one, and it keeps its place lower down.
+    :func:`_envelope_match_sql` is what separates them. Nothing is excluded and
+    no threshold is invented -- a nationwide dataset covering the place is a real
+    answer, just a worse one, and it keeps its place lower down.
 
     Ranked against the filter's ENVELOPE, not its exact shape: the filter itself
     stays exact, this only orders what it returned, and the geometric form costs
@@ -693,25 +690,35 @@ def _containment_rank_sql(p: SearchParams, add: Any, geom: str) -> str | None:
     """
     if p.bbox is not None:
         w, s, e, n = _validate_bbox(p.bbox)
-        return _envelope_containment_sql(w, s, e, n)
+        return _envelope_match_sql(w, s, e, n)
 
     if p.intersects is not None:
         envelope = _geojson_envelope(p.intersects)
         if envelope is None:
             return None
-        return _envelope_containment_sql(*envelope)
+        return _envelope_match_sql(*envelope)
 
     if p.nuts:
-        codes = ", ".join(add(code.strip()) for code in p.nuts if code.strip())
+        codes = [code.strip() for code in p.nuts if code.strip()]
         if not codes:
             return None
-        union = (
-            f"(SELECT ST_Union_Agg(n.geometry) FROM {CatalogStore.NUTS} n "
-            f"WHERE n.nuts_id IN ({codes}))"
-        )
+
+        def union() -> str:
+            """The region geometry. Called once per occurrence, never reused:
+            every `?` needs its own binding, in the order it appears."""
+            placeholders = ", ".join(add(code) for code in codes)
+            return (
+                f"(SELECT ST_Union_Agg(n.geometry) FROM {CatalogStore.NUTS} n "
+                f"WHERE n.nuts_id IN ({placeholders}))"
+            )
+
+        # Built left to right, in the order the placeholders appear.
+        overlap = f"ST_Area(ST_Intersection({geom}, {union()}))"
+        region = f"ST_Area({union()})"
+        overlap_again = f"ST_Area(ST_Intersection({geom}, {union()}))"
         return (
-            f"COALESCE(ST_Area(ST_Intersection({geom}, {union})) "
-            f"/ NULLIF(ST_Area({geom}), 0), 1.0) DESC"
+            f"COALESCE({overlap} / "
+            f"NULLIF(ST_Area({geom}) + {region} - {overlap_again}, 0), 0) DESC"
         )
 
     return None
