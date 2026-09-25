@@ -42,12 +42,14 @@ jobs:
     with:
       web: ${{ needs.file-changes.outputs.web == 'true' }}
       core: ${{ needs.file-changes.outputs.core == 'true' }}
-      # goatlib is a shared lib; run its suite on any python-package change.
+      # goatlib is a shared lib; run its suite on any python-package change,
+      # and on routing changes, which it tests.
       goatlib: >-
         ${{ needs.file-changes.outputs.core == 'true'
         || needs.file-changes.outputs.geoapi == 'true'
         || needs.file-changes.outputs.processes == 'true'
-        || needs.file-changes.outputs.catalog == 'true' }}
+        || needs.file-changes.outputs.catalog == 'true'
+        || needs.file-changes.outputs.workers == 'true' }}
       geoapi: ${{ needs.file-changes.outputs.geoapi == 'true' }}
       processes: ${{ needs.file-changes.outputs.processes == 'true' }}
       catalog: ${{ needs.file-changes.outputs.catalog == 'true' }}

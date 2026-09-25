@@ -57,6 +57,7 @@ jobs:
         || needs.file-changes.outputs.geoapi == 'true'
         || needs.file-changes.outputs.processes == 'true'
         || needs.file-changes.outputs.catalog == 'true'
+        || needs.file-changes.outputs.workers == 'true'
         || startsWith(github.ref, 'refs/tags/v') }}
       geoapi: >-
         ${{ needs.file-changes.outputs.geoapi == 'true'
@@ -196,10 +197,12 @@ jobs:
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/keycloak
 
-  # Windmill images - server and workers
+  # Windmill images. The server and default worker only change with the
+  # Windmill version in the worker Dockerfile; tools and print carry goatlib
+  # and routing.
   release-docker-windmill-server:
     needs: [file-changes, lint, test]
-    if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.processes == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
+    if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.windmill == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
     uses: ./.github/workflows/reusable-docker-build.yml
     permissions:
       contents: read
@@ -216,7 +219,7 @@ jobs:
 
   release-docker-windmill-worker-default:
     needs: [file-changes, lint, test]
-    if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.processes == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
+    if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.windmill == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
     uses: ./.github/workflows/reusable-docker-build.yml
     permissions:
       contents: read
@@ -233,7 +236,7 @@ jobs:
 
   release-docker-windmill-worker-tools:
     needs: [file-changes, lint, test]
-    if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.processes == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
+    if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.workers == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
     uses: ./.github/workflows/reusable-docker-build.yml
     permissions:
       contents: read
@@ -250,7 +253,7 @@ jobs:
 
   release-docker-windmill-worker-print:
     needs: [file-changes, lint, test]
-    if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.processes == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
+    if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.workers == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
     uses: ./.github/workflows/reusable-docker-build.yml
     permissions:
       contents: read

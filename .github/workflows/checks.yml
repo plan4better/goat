@@ -28,16 +28,20 @@ on:
         value: ${{ jobs.checks.outputs.storybook }}
 
       processes:
-        description: "Processes (Windmill workers) changed"
+        description: "Processes API changed"
         value: ${{ jobs.checks.outputs.processes }}
+
+      workers:
+        description: "Windmill worker images (tools, print) changed"
+        value: ${{ jobs.checks.outputs.workers }}
+
+      windmill:
+        description: "Windmill server and default worker images changed"
+        value: ${{ jobs.checks.outputs.windmill }}
 
       catalog:
         description: "Catalog (STAC service) changed"
         value: ${{ jobs.checks.outputs.catalog }}
-
-      sha-short:
-        description: "Short sha"
-        value: ${{ jobs.checks.outputs.sha-short }}
 
 jobs:
   checks:
@@ -55,8 +59,9 @@ jobs:
       keycloak-theme: ${{ steps.changes.outputs.keycloak-theme }}
       storybook: ${{ steps.changes.outputs.storybook }}
       processes: ${{ steps.changes.outputs.processes }}
+      workers: ${{ steps.changes.outputs.workers }}
+      windmill: ${{ steps.changes.outputs.windmill }}
       catalog: ${{ steps.changes.outputs.catalog }}
-      sha-short: ${{ steps.sha-short.outputs.sha-short }}
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
@@ -127,13 +132,18 @@ jobs:
                 - 'apps/processes/**'
                 - 'packages/python/goatlib/**'
                 - 'packages/python/goatobs/**'
+                - 'pyproject.toml'
+                - 'uv.lock'
+
+            # What the tools and print worker images are built from.
+            workers:
+                - 'apps/processes/workers/**'
+                - 'packages/python/goatlib/**'
                 - 'packages/cpp/routing/**'
                 - 'pyproject.toml'
                 - 'uv.lock'
 
-      - name: 🕵️ Set sha-short
-        id: sha-short
-        run: echo "sha-short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-
-
+            # The server and default worker images are the upstream Windmill
+            # image with one setting each, defined only in this Dockerfile.
+            windmill:
+                - 'apps/processes/workers/Dockerfile'
