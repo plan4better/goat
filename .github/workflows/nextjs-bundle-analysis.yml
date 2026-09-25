@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build:
     if: ${{ github.event_name == 'push' }}
@@ -21,6 +24,10 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # actions: read to download main's bundle stats from another run
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7

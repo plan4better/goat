@@ -43,6 +43,9 @@ on:
         description: "Catalog (STAC service) changed"
         value: ${{ jobs.checks.outputs.catalog }}
 
+permissions:
+  contents: read
+
 jobs:
   checks:
     name: checks

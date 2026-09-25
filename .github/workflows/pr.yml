@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# The workflow token gets read access only; jobs that need more ask for it.
+permissions:
+  contents: read
+
 concurrency:
   # Key on PR number, not head_ref: fork branches often share names (several
   # contributors PR from their fork's `main`), and equal groups would cancel
@@ -18,12 +22,19 @@ jobs:
   file-changes:
     name: file-changes
     uses: ./.github/workflows/checks.yml
+    permissions:
+      contents: read
+      pull-requests: read
     secrets: inherit
 
   lint:
     name: lint
     needs: file-changes
     uses: ./.github/workflows/lint.yml
+    # checks: write for the ESLint annotations (not available on fork PRs)
+    permissions:
+      contents: read
+      checks: write
     secrets: inherit
     with:
       web: ${{ needs.file-changes.outputs.web == 'true' }}
@@ -70,6 +81,10 @@ jobs:
     needs: [file-changes, build]
     if: ${{ needs.file-changes.outputs.web == 'true' }}
     uses: ./.github/workflows/nextjs-bundle-analysis.yml
+    # actions: read to download main's bundle stats from another run
+    permissions:
+      contents: read
+      actions: read
     secrets: inherit
 
   file-size:

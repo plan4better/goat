@@ -14,12 +14,18 @@ on:
         required: false
         default: true
 
+permissions:
+  contents: read
+
 jobs:
   web:
     # REQUIRED. lint-web.sh runs `tsc --noEmit` (typecheck) + eslint.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     if: ${{ inputs.web }}
+    permissions:
+      contents: read
+      checks: write
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
