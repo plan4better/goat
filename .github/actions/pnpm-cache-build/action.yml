@@ -46,7 +46,9 @@ runs:
           !${{ github.workspace }}/apps/web/.next/cache
         key: ${{ runner.os }}-${{ env.cache-name }}-${{ inputs.node_version }}-${{ env.key-3 }}-${{ env.key-4 }}
 
-    - run: pnpm run build
+    # web only: the root build script builds every app (docs, storybook and
+    # the keycloak theme too), which have build jobs of their own.
+    - run: pnpm exec turbo run build --filter=@p4b/web
       working-directory: ${{ inputs.cwd }}
       if: steps.cache-build.outputs.cache-hit != 'true'
       shell: bash

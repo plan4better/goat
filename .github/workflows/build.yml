@@ -9,6 +9,9 @@ on:
       web:
         type: boolean
         default: false
+      storybook:
+        type: boolean
+        default: false
       keycloak-theme:
         type: boolean
         default: false
@@ -40,6 +43,25 @@ jobs:
         uses: ./.github/actions/pnpm-cache-build
         with:
           cwd: ${{ github.workspace }}
+
+  storybook:
+    name: storybook
+    if: ${{ inputs.storybook }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v7
+
+      - name: 📥 Monorepo install
+        uses: plan4better/.github/.github/actions/pnpm-install@main
+        with:
+          enable-corepack: true
+          cwd: ${{ github.workspace }}
+          node_version: 22
+
+      - name: 🏗️ Storybook build
+        run: pnpm --filter @p4b/storybook build
 
   # Fast compile check for the theme jar. The deployable artifact is the
   # docker image built by release.yml (release-docker-keycloak).

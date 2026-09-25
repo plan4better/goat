@@ -60,16 +60,16 @@ jobs:
     uses: ./.github/workflows/build.yml
     secrets: inherit
     with:
-      web: >-
-        ${{ needs.file-changes.outputs.web == 'true'
-        || needs.file-changes.outputs.storybook == 'true' }}
+      web: ${{ needs.file-changes.outputs.web == 'true' }}
+      storybook: ${{ needs.file-changes.outputs.storybook == 'true' }}
       keycloak-theme: ${{ needs.file-changes.outputs.keycloak-theme == 'true' }}
       docs: ${{ needs.file-changes.outputs.docs == 'true' }}
 
+  # Compares the web bundle with main's; the build job hands it the build.
   analyze:
     name: analyze
     needs: [file-changes, build]
-    if: ${{ needs.file-changes.outputs.web == 'true' || needs.file-changes.outputs.storybook == 'true' }}
+    if: ${{ needs.file-changes.outputs.web == 'true' }}
     uses: ./.github/workflows/nextjs-bundle-analysis.yml
     secrets: inherit
 
