@@ -23,7 +23,10 @@ RUN pnpm install --frozen-lockfile
 # Build the project
 COPY --from=builder /app/out/full/ .
 WORKDIR /app/apps/docs
-RUN pnpm run build
+# Only build/ goes into the image. The webpack cache and the generated
+# sources the build leaves behind would stay in this layer, which is exported
+# to the build cache on every build, so they are removed in the same step.
+RUN pnpm run build && rm -rf node_modules/.cache .docusaurus
 
 # production stage
 FROM nginx:stable-alpine AS production-stage

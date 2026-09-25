@@ -23,7 +23,11 @@ RUN pnpm install --frozen-lockfile
 
 # Build the project
 COPY --from=builder /app/out/full/ .
-RUN pnpm exec turbo run build --filter=@p4b/storybook
+# Only storybook-static/ goes into the image. The build's caches would stay
+# in this layer, which is exported to the build cache on every build, so they
+# are removed in the same step.
+RUN pnpm exec turbo run build --filter=@p4b/storybook \
+    && rm -rf apps/storybook/node_modules/.cache .turbo
 
 # production stage
 FROM nginx:stable-alpine AS production-stage

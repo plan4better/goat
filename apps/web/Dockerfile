@@ -40,7 +40,12 @@ ARG NEXT_PUBLIC_AUTH=APP_NEXT_PUBLIC_AUTH
 ARG NEXT_PUBLIC_WEBSITE_URL=APP_NEXT_PUBLIC_WEBSITE_URL
 ARG NEXT_PUBLIC_STATUS_FEED_URL=APP_NEXT_PUBLIC_STATUS_FEED_URL
 
-RUN pnpm exec turbo run build --filter=@p4b/web
+# The runner stage copies only the standalone server, the static files and
+# public/. Next's compilation cache and turbo's copy of the build outputs
+# would stay in this layer, which is exported to the build cache on every
+# build, so they are removed in the same step.
+RUN pnpm exec turbo run build --filter=@p4b/web \
+    && rm -rf apps/web/.next/cache .turbo
 
 
 FROM base AS runner
