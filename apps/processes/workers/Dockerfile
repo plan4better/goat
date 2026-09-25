@@ -293,9 +293,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Chromium and the system packages it needs, installed with the CLI from
 # playwright-build, mounted for this step only. Doing it before the Python
-# environment keeps the browser layer when only goatlib changes.
+# environment keeps the browser layer when only goatlib changes. Only the
+# headless shell: the print jobs launch headless, which runs the shell, so
+# the full browser would never start.
 RUN --mount=type=bind,from=playwright-build,source=/opt/playwright,target=/opt/playwright \
-    /opt/playwright/venv/bin/playwright install --with-deps chromium \
+    /opt/playwright/venv/bin/playwright install --with-deps --only-shell chromium \
     && rm -rf /var/lib/apt/lists/*
 
 # Python, venv and extensions last (see worker-base)
