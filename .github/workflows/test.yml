@@ -53,12 +53,17 @@ jobs:
       # *.test.ts inside the tree and launches a real Chromium in beforeAll,
       # so the browser has to be here. The e2e suite is not run in CI at all —
       # running it needs a service stack, and that is a separate decision.
+      # Keyed on the Playwright release, which decides the browser build, not
+      # on the whole lockfile, which changes far more often.
+      - name: 🎭 Playwright version
+        id: playwright
+        run: echo "version=$(pnpm --filter web exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
       - name: 💾 Cache Playwright Chromium
         id: playwright-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       - name: 📥 Install Playwright Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm --filter web exec playwright install --with-deps chromium
@@ -216,18 +221,27 @@ jobs:
       # routing is the C++ package, and building it is most of this job's
       # install. uv rebuilds a path dependency after every checkout because its
       # files look new, so the wheel is cached here instead. The key covers what
-      # the build reads (the package's files, including CMakeLists.txt with the
-      # libduckdb and nigiri versions it pins, plus the lockfile and the Python
-      # version) and the runner image: any change there builds a fresh wheel.
-      - name: 🖥️ Runner image
+      # the build reads (the package's files but not its Python tests,
+      # CMakeLists.txt with the libduckdb version it pins among them, plus the
+      # lockfile and the Python version), the nigiri SDK it downloads and the
+      # runner image: any change there builds a fresh wheel. The SDK comes from
+      # nigiri's `latest-cpp` release, whose assets are replaced in place, so it
+      # is keyed on their digests.
+      - name: 🖥️ Runner image and nigiri SDK
         id: image
-        run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+          nigiri=$(gh api repos/plan4better/nigiri/releases/tags/latest-cpp \
+            --jq '[.assets[] | .name + "=" + .digest] | sort | join(",")' | sha256sum | cut -c1-16)
+          echo "nigiri=$nigiri" >> "$GITHUB_OUTPUT"
       - name: 📦 Restore routing wheel
         id: routing-wheel
         uses: actions/cache@v4
         with:
           path: .routing-wheel
-          key: routing-wheel-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ hashFiles('packages/cpp/routing/**', 'uv.lock', '.python-version') }}
+          key: routing-wheel-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ steps.image.outputs.nigiri }}-${{ hashFiles('packages/cpp/routing/**', '!packages/cpp/routing/tests/**', 'uv.lock', '.python-version') }}
       - name: 🏗️ Build routing wheel
         if: steps.routing-wheel.outputs.cache-hit != 'true'
         run: uv build --wheel packages/cpp/routing --out-dir .routing-wheel
