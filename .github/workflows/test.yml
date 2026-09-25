@@ -222,11 +222,12 @@ jobs:
       # install. uv rebuilds a path dependency after every checkout because its
       # files look new, so the wheel is cached here instead. The key covers what
       # the build reads (the package's files but not its Python tests,
-      # CMakeLists.txt with the libduckdb version it pins among them, plus the
-      # lockfile and the Python version), the nigiri SDK it downloads and the
-      # runner image: any change there builds a fresh wheel. The SDK comes from
-      # nigiri's `latest-cpp` release, whose assets are replaced in place, so it
-      # is keyed on their digests.
+      # CMakeLists.txt with the libduckdb version it pins among them, and the
+      # Python version), the nigiri SDK it downloads and the runner image: any
+      # change there builds a fresh wheel. The lockfile is left out because the
+      # wheel builds in an isolated environment that never reads it. The SDK
+      # comes from nigiri's `latest-cpp` release, whose assets are replaced in
+      # place, so it is keyed on their digests.
       - name: 🖥️ Runner image and nigiri SDK
         id: image
         env:
@@ -241,7 +242,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .routing-wheel
-          key: routing-wheel-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ steps.image.outputs.nigiri }}-${{ hashFiles('packages/cpp/routing/**', '!packages/cpp/routing/tests/**', 'uv.lock', '.python-version') }}
+          key: routing-wheel-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ steps.image.outputs.nigiri }}-${{ hashFiles('packages/cpp/routing/**', '!packages/cpp/routing/tests/**', '.python-version') }}
       - name: 🏗️ Build routing wheel
         if: steps.routing-wheel.outputs.cache-hit != 'true'
         run: uv build --wheel packages/cpp/routing --out-dir .routing-wheel
