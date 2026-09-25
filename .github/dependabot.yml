@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Keeps the actions on current releases, so a runtime deprecation arrives
+  # as one routine PR instead of a scramble. Grouped into a single monthly PR;
+  # the ci: prefix satisfies the semantic PR title check.
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
