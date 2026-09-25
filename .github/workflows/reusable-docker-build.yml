@@ -3,20 +3,10 @@ name: Docker Build and Push
 on:
   workflow_call:
     inputs:
-      comment-enable:
-        description: Create a PR comment with image tags and labels
-        required: false
-        default: false
-        type: boolean
       context:
         description: Docker context (path) to start build from
         required: false
         type: string
-      dockerhub-enable:
-        description: Log into Docker Hub
-        required: false
-        default: false
-        type: boolean
       file:
         description: Dockerfile path relative to context
         required: false
@@ -27,26 +17,15 @@ on:
         type: string
         default: |
           latest=false
-      ghcr-enable:
-        description: Log into GHCR
-        required: false
-        default: true
-        type: boolean
       image-name:
         description: Docker image name to build
         required: true
         type: string
-        default: ghcr.io/${{ github.repository }}
       platforms:
         description: Platforms to build for
         required: false
         type: string
         default: linux/amd64
-      push:
-        description: Push image(s) to registry
-        required: false
-        default: true
-        type: boolean
       tag-rules:
         description: Tag rules for docker/metadata-action
         required: false
@@ -59,16 +38,10 @@ on:
         description: Docker build target stage name
         required: false
         type: string
-    secrets:
-      dockerhub-username:
-        required: false
-      dockerhub-token:
-        required: false
 
 permissions:
   contents: read
   packages: write
-  pull-requests: write
 
 jobs:
   build:
@@ -105,15 +78,7 @@ jobs:
         id: buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: 🐳 Login to DockerHub
-        if: inputs.dockerhub-enable
-        uses: docker/login-action@v4
-        with:
-          username: ${{ secrets.dockerhub-username }}
-          password: ${{ secrets.dockerhub-token }}
-
       - name: 📦 Login to GHCR
-        if: inputs.ghcr-enable
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -163,41 +128,10 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      # --- Optional PR comment
-      - name: 💬 Find PR comment
-        if: github.event_name == 'pull_request' && inputs.comment-enable
-        id: fc
-        uses: peter-evans/find-comment@v4
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          comment-author: github-actions[bot]
-          body-includes: "📦 Docker image tags pushed"
-
-      - name: 💬 Create/update PR comment
-        if: github.event_name == 'pull_request' && inputs.comment-enable
-        uses: peter-evans/create-or-update-comment@v5
-        with:
-          comment-id: ${{ steps.fc.outputs.comment-id }}
-          issue-number: ${{ github.event.pull_request.number }}
-          edit-mode: replace
-          body: |
-            📦 Docker image tags pushed:
-            ```text
-            ${{ steps.meta.outputs.tags }}
-            ```
-            🏷 Labels added:
-            ```text
-            ${{ steps.meta.outputs.labels }}
-            ```
-
-      - name: 🏷 Output primary image tag
-        id: image-tag
-        run: echo "image-tag=${{ steps.meta.outputs.version }}" >> $GITHUB_OUTPUT
-
   merge:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: build
-    if: inputs.push
     steps:
       - name: 📥 Prepare safe image identifier
         run: |
@@ -216,15 +150,7 @@ jobs:
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: 🐳 Login to DockerHub
-        if: inputs.dockerhub-enable
-        uses: docker/login-action@v4
-        with:
-          username: ${{ secrets.dockerhub-username }}
-          password: ${{ secrets.dockerhub-token }}
-
       - name: 📦 Login to GHCR
-        if: inputs.ghcr-enable
         uses: docker/login-action@v4
         with:
           registry: ghcr.io

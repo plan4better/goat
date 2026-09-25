@@ -76,11 +76,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./apps/web/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/web
@@ -92,11 +88,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./apps/core/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/core
@@ -108,11 +100,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./apps/geoapi/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/geoapi
@@ -124,11 +112,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./apps/catalog/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/catalog
@@ -140,11 +124,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./apps/processes/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/processes
@@ -156,11 +136,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./apps/storybook/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/storybook
@@ -172,11 +148,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./apps/docs/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/docs
@@ -188,11 +160,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./packages/js/keycloak-theme/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/keycloak
@@ -207,11 +175,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./apps/processes/workers/Dockerfile
       target: server
       platforms: linux/amd64,linux/arm64
@@ -224,11 +188,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./apps/processes/workers/Dockerfile
       target: worker-default
       platforms: linux/amd64,linux/arm64
@@ -241,11 +201,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./apps/processes/workers/Dockerfile
       target: worker-tools
       platforms: linux/amd64,linux/arm64
@@ -258,11 +214,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-      pull-requests: write
     with:
-      dockerhub-enable: false
-      ghcr-enable: true
-      push: ${{ github.event_name != 'pull_request' }}
       file: ./apps/processes/workers/Dockerfile
       target: worker-print
       platforms: linux/amd64,linux/arm64
