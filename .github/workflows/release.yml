@@ -76,6 +76,10 @@ jobs:
         ${{ needs.file-changes.outputs.catalog == 'true'
         || startsWith(github.ref, 'refs/tags/v') }}
 
+  # Each image job gives the image a smoke test (smoke-command), run inside
+  # the pushed image before it is tagged: a failure keeps a broken image
+  # from being tagged and deployed. id-token and attestations: write sign
+  # its provenance attestation.
   release-docker-web:
     needs: [file-changes, lint, test]
     if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.web == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
@@ -83,10 +87,21 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./apps/web/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/web
+      smoke-command: |
+        cd /app
+        node apps/web/server.js > /tmp/web.log 2>&1 &
+        for i in $(seq 1 30); do
+          node -e "fetch('http://127.0.0.1:3000/').then(r => { console.log('HTTP', r.status); process.exit(0) }, () => process.exit(1))" && exit 0
+          sleep 1
+        done
+        cat /tmp/web.log
+        exit 1
 
   release-docker-core:
     needs: [file-changes, lint, test]
@@ -95,10 +110,16 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./apps/core/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/core
+      smoke-command: |
+        cd /app
+        export POSTGRES_SERVER=localhost POSTGRES_USER=smoke POSTGRES_PASSWORD=smoke POSTGRES_DB=smoke
+        python -c "import core.main"
 
   release-docker-geoapi:
     needs: [file-changes, lint, test]
@@ -107,10 +128,17 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./apps/geoapi/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/geoapi
+      smoke-command: |
+        cd /app
+        python -c "import geoapi.main"
+        python -c "import duckdb; c = duckdb.connect(config={'autoinstall_known_extensions': False}); [c.execute(f'LOAD {e}') for e in ('spatial', 'httpfs', 'postgres', 'ducklake', 'h3')]"
+        command -v tippecanoe-overzoom
 
   release-docker-catalog:
     needs: [file-changes, lint, test]
@@ -119,10 +147,16 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./apps/catalog/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/catalog
+      smoke-command: |
+        cd /app
+        python -c "import catalog.main"
+        python -c "import duckdb, os; c = duckdb.connect(config={'extension_directory': os.environ['DUCKDB_EXTENSION_DIRECTORY'], 'autoinstall_known_extensions': False}); c.execute('LOAD spatial')"
 
   release-docker-processes:
     needs: [file-changes, lint, test]
@@ -131,10 +165,16 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./apps/processes/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/processes
+      smoke-command: |
+        cd /app
+        python -c "import processes.main"
+        python -c "import duckdb; c = duckdb.connect(config={'autoinstall_known_extensions': False}); [c.execute(f'LOAD {e}') for e in ('spatial', 'httpfs', 'postgres', 'ducklake', 'h3')]"
 
   release-docker-storybook:
     needs: [file-changes, lint, test]
@@ -143,10 +183,15 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./apps/storybook/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/storybook
+      smoke-command: |
+        nginx -t
+        test -s /usr/share/nginx/html/storybook/index.html
 
   release-docker-docs:
     needs: [file-changes, lint, test]
@@ -155,10 +200,15 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./apps/docs/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/docs
+      smoke-command: |
+        nginx -t
+        test -s /usr/share/nginx/html/docs/index.html
 
   release-docker-keycloak:
     needs: [file-changes, lint, test]
@@ -167,10 +217,16 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./packages/js/keycloak-theme/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/keycloak
+      smoke-command: |
+        for jar in p4b-keycloak-theme keycloak-metrics-spi-4.0.0 io.phasetwo.keycloak-keycloak-events-0.19; do
+          test -s "/opt/bitnami/keycloak/providers/$jar.jar"
+        done
 
   # Windmill images. The server and default worker only change with the
   # Windmill version in the worker Dockerfile; tools and print carry goatlib
@@ -182,11 +238,15 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./apps/processes/workers/Dockerfile
       target: server
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/windmill-server
+      smoke-command: |
+        /usr/src/app/windmill --version
 
   release-docker-windmill-worker-default:
     needs: [file-changes, lint, test]
@@ -195,11 +255,15 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./apps/processes/workers/Dockerfile
       target: worker-default
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/windmill-worker-default
+      smoke-command: |
+        /usr/src/app/windmill --version
 
   release-docker-windmill-worker-tools:
     needs: [file-changes, lint, test]
@@ -208,11 +272,18 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./apps/processes/workers/Dockerfile
       target: worker-tools
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/windmill-worker-tools
+      smoke-command: |
+        python -c "import importlib; from goatlib.tools.registry import TOOL_REGISTRY; from goatlib.tasks.registry import TASK_REGISTRY; ds = [d for d in (*TOOL_REGISTRY, *TASK_REGISTRY) if d.worker_tag == 'tools']; [importlib.import_module(d.module_path) for d in ds]; print(len(ds), 'tools modules import')"
+        python -c "import duckdb; c = duckdb.connect(config={'autoinstall_known_extensions': False}); [c.execute(f'LOAD {e}') for e in ('spatial', 'httpfs', 'postgres', 'ducklake', 'h3')]"
+        tippecanoe --version
+        ogr2ogr --version
 
   release-docker-windmill-worker-print:
     needs: [file-changes, lint, test]
@@ -221,8 +292,22 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     with:
       file: ./apps/processes/workers/Dockerfile
       target: worker-print
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/windmill-worker-print
+      smoke-command: |
+        python -c "import importlib; from goatlib.tools.registry import TOOL_REGISTRY; from goatlib.tasks.registry import TASK_REGISTRY; ds = [d for d in (*TOOL_REGISTRY, *TASK_REGISTRY) if d.worker_tag == 'print']; [importlib.import_module(d.module_path) for d in ds]; print(len(ds), 'print modules import')"
+        python -c "import duckdb; c = duckdb.connect(config={'autoinstall_known_extensions': False}); [c.execute(f'LOAD {e}') for e in ('spatial', 'httpfs', 'postgres', 'ducklake', 'h3')]"
+        python -c "
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            b = p.chromium.launch()
+            page = b.new_page()
+            page.set_content('<h1>GOAT</h1>')
+            page.pdf(path='/tmp/smoke.pdf')
+            b.close()
+        "

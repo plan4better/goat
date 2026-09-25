@@ -21,6 +21,12 @@ on:
         description: Docker image name to build
         required: true
         type: string
+      smoke-command:
+        description: >-
+          Shell commands run inside the pushed image, as its default user,
+          before it is tagged; a failure stops the image from being tagged
+        required: false
+        type: string
       platforms:
         description: Platforms to build for
         required: false
@@ -42,6 +48,8 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
+  attestations: write
 
 jobs:
   build:
@@ -59,6 +67,9 @@ jobs:
     concurrency:
       group: docker-build-${{ inputs.image-name }}-${{ matrix.platform }}-${{ github.ref }}
       cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -125,6 +136,19 @@ jobs:
           cache-from: type=registry,ref=${{ inputs.image-name }}:buildcache-${{ env.PLATFORM_PAIR }}
           cache-to: type=registry,ref=${{ inputs.image-name }}:buildcache-${{ env.PLATFORM_PAIR }},mode=max
 
+      # The image is pushed by digest only, so nothing has tagged or deployed
+      # it yet. A failing check fails this platform's build, the merge job
+      # below never tags the image, and the dev and prod image updaters never
+      # see it.
+      - name: 🧪 Smoke test
+        if: inputs.smoke-command != ''
+        env:
+          IMAGE: ${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
+          SMOKE: ${{ inputs.smoke-command }}
+        run: |
+          docker pull -q "$IMAGE"
+          docker run --rm --entrypoint sh "$IMAGE" -ec "$SMOKE"
+
       - name: 📤 Export digest
         run: |
           mkdir -p /tmp/digests
@@ -143,6 +167,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: build
+    # id-token and attestations: write sign the provenance attestation.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     steps:
       - name: 📥 Prepare safe image identifier
         run: |
@@ -206,4 +236,17 @@ jobs:
             $(printf '${{ inputs.image-name }}@sha256:%s ' *)
 
       - name: 🐳 Inspect Built Image
-        run: docker buildx imagetools inspect ${{ inputs.image-name }}:${{ steps.meta.outputs.version }}
+        id: inspect
+        run: |
+          ref="${{ inputs.image-name }}:${{ steps.meta.outputs.version }}"
+          docker buildx imagetools inspect "$ref"
+          echo "digest=$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r .digest)" >> "$GITHUB_OUTPUT"
+
+      # Signed provenance for the multi-platform image: which repository,
+      # workflow and commit built it. Anyone pulling it can check with
+      # `gh attestation verify oci://<image>:<tag> --owner plan4better`.
+      - name: 🔏 Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ inputs.image-name }}
+          subject-digest: ${{ steps.inspect.outputs.digest }}
