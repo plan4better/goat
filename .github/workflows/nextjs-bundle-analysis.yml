@@ -24,10 +24,6 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
 
-      - name: 📥 Checkout PR
-        if: ${{ github.event_name == 'pull_request' }}
-        uses: plan4better/.github/.github/actions/pr-git-checkout@main
-
       - name: 📥 Monorepo install
         uses: plan4better/.github/.github/actions/pnpm-install@main
         with:

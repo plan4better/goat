@@ -40,8 +40,6 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-      - name: 📥 Checkout PR
-        uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 📥 Monorepo install
         uses: plan4better/.github/.github/actions/pnpm-install@main
         with:
@@ -122,8 +120,6 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-      - name: 📥 Checkout PR
-        uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
         uses: astral-sh/setup-uv@v10.2.0
         with:
@@ -177,8 +173,6 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-      - name: 📥 Checkout PR
-        uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
         uses: astral-sh/setup-uv@v10.2.0
         with:
@@ -205,8 +199,6 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-      - name: 📥 Checkout PR
-        uses: plan4better/.github/.github/actions/pr-git-checkout@main
       # Its own cache entry: every uv job has the same default key and the
       # first to finish saves it, which was never this one, the only job that
       # compiles a wheel (gdal) the cache is there to keep.
@@ -274,8 +266,6 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-      - name: 📥 Checkout PR
-        uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
         uses: astral-sh/setup-uv@v10.2.0
         with:
@@ -296,8 +286,6 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-      - name: 📥 Checkout PR
-        uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
         uses: astral-sh/setup-uv@v10.2.0
         with:
@@ -318,8 +306,6 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-      - name: 📥 Checkout PR
-        uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
         uses: astral-sh/setup-uv@v10.2.0
         with:
@@ -342,8 +328,6 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
-      - name: 📥 Checkout PR
-        uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
         uses: astral-sh/setup-uv@v10.2.0
         with:
