@@ -24,34 +24,41 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - name: 🔎 Validate PR title
-        id: lint
-        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+      # The title arrives through the environment, never pasted into the
+      # script: it is text anyone opening a PR controls.
+      - name: 🔎 Check the PR title
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          MARKER: "<!-- pr-title-check -->"
+        run: |
+          types='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+          existing=$(gh api "repos/$GH_REPO/issues/$PR/comments?per_page=100" \
+            --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains(env.MARKER))) | .id] | first // empty')
 
-      - name: 💬 Explain the title rule
-        if: always() && steps.lint.outputs.error_message != null
-        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
-        with:
-          header: pr-title-lint-error
-          message: |
-            Hey there and thank you for opening this pull request! 👋🏼
+          if [[ "$TITLE" =~ ^($types)(\([^\)]+\))?!?:\ [^[:space:]] ]]; then
+            if [ -n "$existing" ]; then
+              gh api --method DELETE "repos/$GH_REPO/issues/comments/$existing"
+            fi
+            echo "PR title follows Conventional Commits."
+            exit 0
+          fi
 
-            We require pull request titles to follow the [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/) and it looks like your proposed title needs to be adjusted.
+          body="$MARKER
+          Hey there and thank you for opening this pull request! 👋🏼
 
-            Details:
+          We require pull request titles to follow the [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/), since the release notes are built from them, and it looks like your proposed title needs to be adjusted.
 
-            ```
-            ${{ steps.lint.outputs.error_message }}
-            ```
-
-      - name: 💬 Remove the explanation
-        if: steps.lint.outputs.error_message == null
-        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
-        with:
-          header: pr-title-lint-error
-          delete: true
+          It should read \`type(optional scope): description\`, for example \`fix(web): keep the legend visible when printing\`, with one of these types: \`${types//|/\`, \`}\`."
+          if [ -n "$existing" ]; then
+            gh api --method PATCH "repos/$GH_REPO/issues/comments/$existing" -f body="$body" >/dev/null
+          else
+            gh pr comment "$PR" --body "$body"
+          fi
+          echo "::error::The PR title does not follow Conventional Commits: type(optional scope): description"
+          exit 1
 
   # A closed PR's caches are never restored again but count against the
   # repository's cache quota until they expire.
