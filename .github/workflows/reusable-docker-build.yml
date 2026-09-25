@@ -49,6 +49,16 @@ jobs:
     # for public repositories, and QEMU emulation made arm64 builds 2-3x slower.
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 30
+    # Builds of one image and platform for the same ref wait for each other
+    # instead of overlapping. The dev image updater deploys the most recently
+    # built image, so an older commit whose build happened to finish last
+    # would replace a newer one; queued, they finish in commit order, and the
+    # registry build cache is written in that order too. A build still
+    # waiting when a newer one queues is cancelled, which loses nothing: the
+    # newer commit contains its changes.
+    concurrency:
+      group: docker-build-${{ inputs.image-name }}-${{ matrix.platform }}-${{ github.ref }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
