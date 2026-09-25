@@ -93,6 +93,7 @@ jobs:
       file: ./apps/web/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/web
+      description: "GOAT web application (Next.js frontend)"
       smoke-command: |
         cd /app
         node apps/web/server.js > /tmp/web.log 2>&1 &
@@ -116,6 +117,7 @@ jobs:
       file: ./apps/core/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/core
+      description: "GOAT core API: users, organizations, projects, layers and their metadata"
       smoke-command: |
         cd /app
         export POSTGRES_SERVER=localhost POSTGRES_USER=smoke POSTGRES_PASSWORD=smoke POSTGRES_DB=smoke
@@ -134,6 +136,7 @@ jobs:
       file: ./apps/geoapi/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/geoapi
+      description: "GOAT GeoAPI: OGC API Features and Tiles serving layer data"
       smoke-command: |
         cd /app
         python -c "import geoapi.main"
@@ -153,6 +156,7 @@ jobs:
       file: ./apps/catalog/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/catalog
+      description: "GOAT Catalog: STAC API for the GOAT data catalog"
       smoke-command: |
         cd /app
         python -c "import catalog.main"
@@ -171,6 +175,7 @@ jobs:
       file: ./apps/processes/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/processes
+      description: "GOAT Processes API: OGC API Processes, runs analysis tools on Windmill"
       smoke-command: |
         cd /app
         python -c "import processes.main"
@@ -189,6 +194,7 @@ jobs:
       file: ./apps/storybook/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/storybook
+      description: "GOAT UI component library (Storybook)"
       smoke-command: |
         nginx -t
         test -s /usr/share/nginx/html/storybook/index.html
@@ -206,6 +212,7 @@ jobs:
       file: ./apps/docs/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/docs
+      description: "GOAT user documentation site"
       smoke-command: |
         nginx -t
         test -s /usr/share/nginx/html/docs/index.html
@@ -223,6 +230,7 @@ jobs:
       file: ./packages/js/keycloak-theme/Dockerfile
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/keycloak
+      description: "Keycloak with the GOAT login theme and event and metrics providers"
       smoke-command: |
         for jar in p4b-keycloak-theme keycloak-metrics-spi-4.0.0 io.phasetwo.keycloak-keycloak-events-0.19; do
           test -s "/opt/bitnami/keycloak/providers/$jar.jar"
@@ -245,6 +253,7 @@ jobs:
       target: server
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/windmill-server
+      description: "Windmill server for GOAT's background jobs"
       smoke-command: |
         /usr/src/app/windmill --version
 
@@ -262,6 +271,7 @@ jobs:
       target: worker-default
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/windmill-worker-default
+      description: "Windmill worker for GOAT's scheduled and system jobs"
       smoke-command: |
         /usr/src/app/windmill --version
 
@@ -279,6 +289,7 @@ jobs:
       target: worker-tools
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/windmill-worker-tools
+      description: "Windmill worker running GOAT's analysis tools (goatlib, routing, GDAL, tippecanoe)"
       smoke-command: |
         python -c "import importlib; from goatlib.tools.registry import TOOL_REGISTRY; from goatlib.tasks.registry import TASK_REGISTRY; ds = [d for d in (*TOOL_REGISTRY, *TASK_REGISTRY) if d.worker_tag == 'tools']; [importlib.import_module(d.module_path) for d in ds]; print(len(ds), 'tools modules import')"
         python -c "import duckdb; c = duckdb.connect(config={'autoinstall_known_extensions': False}); [c.execute(f'LOAD {e}') for e in ('spatial', 'httpfs', 'postgres', 'ducklake', 'h3')]"
@@ -299,6 +310,7 @@ jobs:
       target: worker-print
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/windmill-worker-print
+      description: "Windmill worker rendering GOAT's PDF reports and thumbnails (Chromium)"
       smoke-command: |
         python -c "import importlib; from goatlib.tools.registry import TOOL_REGISTRY; from goatlib.tasks.registry import TASK_REGISTRY; ds = [d for d in (*TOOL_REGISTRY, *TASK_REGISTRY) if d.worker_tag == 'print']; [importlib.import_module(d.module_path) for d in ds]; print(len(ds), 'print modules import')"
         python -c "import duckdb; c = duckdb.connect(config={'autoinstall_known_extensions': False}); [c.execute(f'LOAD {e}') for e in ('spatial', 'httpfs', 'postgres', 'ducklake', 'h3')]"

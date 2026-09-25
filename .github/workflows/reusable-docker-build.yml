@@ -21,6 +21,11 @@ on:
         description: Docker image name to build
         required: true
         type: string
+      description:
+        description: >-
+          One-line image description; GitHub shows it on the package page
+        required: false
+        type: string
       smoke-command:
         description: >-
           Shell commands run inside the pushed image, as its default user,
@@ -114,6 +119,8 @@ jobs:
           images: ${{ inputs.image-name }}
           flavor: ${{ inputs.flavor-rules }}
           tags: ${{ inputs.tag-rules }}
+          labels: ${{ inputs.description && format('org.opencontainers.image.description={0}', inputs.description) || '' }}
+          annotations: ${{ inputs.description && format('org.opencontainers.image.description={0}', inputs.description) || '' }}
 
       - name: 🐳 Build and Push per-platform (digest only)
         id: build
@@ -216,12 +223,18 @@ jobs:
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "tag=$GITHUB_REF_NAME highest=${highest:-none} latest=$latest"
 
+      # GitHub's package page reads the description, source and license of
+      # a multi-platform image from its index, not from the platform images,
+      # so the annotations are generated at index level for the merge below.
       - name: 🐳 Docker metadata extraction
         id: meta
         uses: docker/metadata-action@v6
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
         with:
           images: ${{ inputs.image-name }}
           flavor: ${{ inputs.flavor-rules }}
+          annotations: ${{ inputs.description && format('org.opencontainers.image.description={0}', inputs.description) || '' }}
           tags: |
             ${{ inputs.tag-rules }}
             type=raw,value=latest,enable=${{ steps.latest.outputs.latest == 'true' }}
@@ -231,8 +244,13 @@ jobs:
         run: |
           echo "Merging digests for ${{ inputs.image-name }}..."
           ls -l .
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+          # Arrays, not word splitting: annotation values contain spaces.
+          mapfile -t tags < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          mapfile -t annotations < <(jq -r '.annotations[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          args=()
+          for tag in "${tags[@]}"; do args+=(-t "$tag"); done
+          for annotation in "${annotations[@]}"; do args+=(--annotation "$annotation"); done
+          docker buildx imagetools create "${args[@]}" \
             $(printf '${{ inputs.image-name }}@sha256:%s ' *)
 
       - name: 🐳 Inspect Built Image
