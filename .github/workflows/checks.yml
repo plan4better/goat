@@ -114,6 +114,7 @@ jobs:
 
             storybook:
                 - 'apps/storybook/**'
+                - 'packages/js/keycloak-theme/**'
                 - 'packages/js/ui/**'
                 - 'packages/js/eslint-config-p4b/**'
                 - 'packages/js/prettier-config/**'
