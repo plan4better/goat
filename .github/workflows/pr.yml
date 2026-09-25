@@ -89,7 +89,9 @@ jobs:
         run: scripts/check-file-sizes.sh HEAD^1 HEAD
 
   required:
-    needs: [lint, test, build, analyze, file-size]
+    # file-changes too: when it fails, every job after it is skipped, not
+    # failed, and would count as passed.
+    needs: [file-changes, lint, test, build, analyze, file-size]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
