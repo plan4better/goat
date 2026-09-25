@@ -56,7 +56,7 @@ ignore_missing_imports = true
 # without explicit bases every app's conftest.py would map to the same bare
 # `conftest` module and mypy aborts on the duplicate before checking anything.
 explicit_package_bases = true
-exclude = ["venv", ".venv", "alembic", "data", "packages/rust", "packages/cpp"]
+exclude = ["venv", ".venv", "alembic", "data", "packages/cpp"]
 
 # mypy is the Python type gate. Pyright/Pylance type checking is disabled so it
 # does not flood SQLModel/SQLAlchemy code with false positives; it still reports

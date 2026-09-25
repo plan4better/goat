@@ -90,7 +90,6 @@ packages/cpp/nigiri/
 apps/core/data/*
 python_modules/
 # Rust packages (experimental)
-packages/rust/fast-routing/target/
 packages/python/goatlib/tests/result/*
 !packages/python/goatlib/tests/result/.gitkeep
 # Test
