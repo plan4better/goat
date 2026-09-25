@@ -79,7 +79,7 @@ jobs:
       # The PR's merge commit and its parents, trees only: the check fetches
       # just the blobs of the files the PR adds or modifies.
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
           filter: blob:none

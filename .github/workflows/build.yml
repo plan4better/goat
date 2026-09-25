@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main
@@ -53,7 +53,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main
@@ -81,7 +81,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main

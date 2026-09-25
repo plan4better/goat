@@ -39,7 +39,7 @@ jobs:
     # REQUIRED. vitest suite is green (202 tests).
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 📥 Monorepo install
@@ -60,7 +60,7 @@ jobs:
         run: echo "version=$(pnpm --filter web exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
       - name: 💾 Cache Playwright Chromium
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
@@ -121,14 +121,15 @@ jobs:
       AWS_MAX_ATTEMPTS: "1"
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           version: "0.9.2"
           enable-cache: true
+          prune-cache: true
       # gdal is sdist-only and needs libgdal to build; only goatlib's WFS/
       # converter paths import it (lazily), so this suite runs without it.
       # routing is the C++ package: compiling it was most of every job's
@@ -175,14 +176,15 @@ jobs:
       ENVIRONMENT: dev
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           version: "0.9.2"
           enable-cache: true
+          prune-cache: true
       - name: 🐍 Install dependencies
         run: uv sync --frozen --all-packages --all-extras --no-install-package gdal --no-install-package routing
       # `init` creates its own schemas and both extensions, so an empty
@@ -202,14 +204,15 @@ jobs:
     # travel-time matrices auto-download from assets.plan4better.de.
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           version: "0.9.2"
           enable-cache: true
+          prune-cache: true
       # Only suite that needs real gdal (WFS/converter tests). The compiled
       # wheel lands in the uv cache, so the source build runs once per
       # lockfile change, not per run. `tippecanoe` is needed because
@@ -239,7 +242,7 @@ jobs:
           echo "nigiri=$nigiri" >> "$GITHUB_OUTPUT"
       - name: 📦 Restore routing wheel
         id: routing-wheel
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .routing-wheel
           key: routing-wheel-${{ steps.image.outputs.os }}-${{ runner.arch }}-${{ steps.image.outputs.nigiri }}-${{ hashFiles('packages/cpp/routing/**', '!packages/cpp/routing/tests/**', '.python-version') }}
@@ -266,14 +269,15 @@ jobs:
     # REQUIRED. Pure unit suite — no services.
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           version: "0.9.2"
           enable-cache: true
+          prune-cache: true
       - name: 🐍 Install dependencies
         run: uv sync --frozen --all-packages --all-extras --no-install-package gdal --no-install-package routing
       - name: 🧪 pytest
@@ -287,14 +291,15 @@ jobs:
     # REQUIRED. Suite is fully mocked (DuckLake/Postgres) — no services needed.
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           version: "0.9.2"
           enable-cache: true
+          prune-cache: true
       - name: 🐍 Install dependencies
         run: uv sync --frozen --all-packages --all-extras --no-install-package gdal --no-install-package routing
       - name: 🧪 pytest
@@ -308,14 +313,15 @@ jobs:
     # REQUIRED. Suite is fully mocked (Windmill/DB) — no services needed.
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           version: "0.9.2"
           enable-cache: true
+          prune-cache: true
       - name: 🐍 Install dependencies
         run: uv sync --frozen --all-packages --all-extras --no-install-package gdal --no-install-package routing
       - name: 🧪 pytest
@@ -331,14 +337,15 @@ jobs:
     # cached by setup-uv's cache thereafter.
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           version: "0.9.2"
           enable-cache: true
+          prune-cache: true
       - name: 🐍 Install dependencies
         run: uv sync --frozen --all-packages --all-extras --no-install-package gdal --no-install-package routing
       - name: 🧪 pytest

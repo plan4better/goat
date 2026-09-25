@@ -59,13 +59,13 @@ jobs:
       sha-short: ${{ steps.sha-short.outputs.sha-short }}
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 📥 Checkout PR
         uses: plan4better/.github/.github/actions/pr-git-checkout@main
 
       - name: 🕵️ Detect changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |

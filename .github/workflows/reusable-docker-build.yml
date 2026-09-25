@@ -97,24 +97,24 @@ jobs:
           safe_image=${image//\//-}
           echo "SAFE_IMAGE=$safe_image" >> $GITHUB_ENV
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: false
 
       - name: 🐳 Set up Docker Buildx
         id: buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: 🐳 Login to DockerHub
         if: inputs.dockerhub-enable
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.dockerhub-username }}
           password: ${{ secrets.dockerhub-token }}
 
       - name: 📦 Login to GHCR
         if: inputs.ghcr-enable
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -122,7 +122,7 @@ jobs:
 
       - name: 🐳 Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ inputs.image-name }}
           flavor: ${{ inputs.flavor-rules }}
@@ -130,7 +130,7 @@ jobs:
 
       - name: 🐳 Build and Push per-platform (digest only)
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           provenance: false
           platforms: ${{ matrix.platform }}
@@ -156,7 +156,7 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: 📤 Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digests-${{ env.SAFE_IMAGE }}-${{ env.PLATFORM_PAIR }}
           path: /tmp/digests/*
@@ -206,7 +206,7 @@ jobs:
           echo "SAFE_IMAGE=$safe_image" >> $GITHUB_ENV
 
       - name: 📥 Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           # ✅ only grab digests for THIS image
@@ -214,18 +214,18 @@ jobs:
           merge-multiple: true
 
       - name: 🐳 Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: 🐳 Login to DockerHub
         if: inputs.dockerhub-enable
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.dockerhub-username }}
           password: ${{ secrets.dockerhub-token }}
 
       - name: 📦 Login to GHCR
         if: inputs.ghcr-enable
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -251,7 +251,7 @@ jobs:
 
       - name: 🐳 Docker metadata extraction
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ inputs.image-name }}
           flavor: ${{ inputs.flavor-rules }}

@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 📥 Checkout PR
         if: ${{ github.event_name == 'pull_request' }}
@@ -46,13 +46,13 @@ jobs:
           npx -p nextjs-bundle-analysis@0.5.0 report
 
       - name: 📤 Upload bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bundle
           path: ${{ github.workspace }}/apps/web/.next/analyze/__bundle_analysis.json
 
       - name: 📥 Download base branch bundle stats
-        uses: dawidd6/action-download-artifact@v6
+        uses: dawidd6/action-download-artifact@v24
         if: success() && github.event.number
         with:
           workflow: nextjs-bundle-analysis.yml
@@ -87,7 +87,7 @@ jobs:
 
       - name: 📤 Upload comment artifact
         if: success() && github.event.number
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bundle-comment
           path: |
