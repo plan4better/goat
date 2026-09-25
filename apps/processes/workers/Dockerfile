@@ -17,6 +17,10 @@ ARG PYTHON_VERSION=3.11
 # bumping WINDMILL_IMAGE_TAG (ls /tmp/windmill/cache/py_runtime in the official
 # image shows what that release expects).
 ARG WINDMILL_EXTRA_PYTHON_VERSIONS="3.12"
+ARG TIPPECANOE_VERSION=2.79.0
+# Pinned because worker-print installs the browser before goatlib and the
+# package after it (see there); both steps must name the same release.
+ARG PLAYWRIGHT_VERSION=1.63.0
 
 # =============================================================================
 # Stage: Server - API, UI, scheduler (official image)
@@ -68,6 +72,67 @@ RUN apt-get update && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 # =============================================================================
+# Stage: Routing Build - the C++ routing package as a wheel
+# =============================================================================
+# Its own stage, so a goatlib change reuses the compiled wheel. Only a change
+# under packages/cpp/routing or a new nigiri SDK compiles it again.
+FROM linux-base AS routing-build
+
+RUN apt-get update && apt-get install --no-install-recommends -y \
+    build-essential \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv
+
+# CMakeLists downloads the nigiri SDK from the `latest-cpp` release, whose
+# assets are replaced on every nigiri release. Fetching it here instead makes
+# the SDK itself part of the cache key, so a new SDK compiles a new wheel, and
+# CMake is pointed at this copy rather than downloading its own.
+ARG TARGETARCH
+ADD https://github.com/plan4better/nigiri/releases/download/latest-cpp/nigiri-sdk-linux-${TARGETARCH}.tar.gz /tmp/nigiri-sdk.tar.gz
+RUN mkdir -p /opt/nigiri-sdk \
+    && tar -xzf /tmp/nigiri-sdk.tar.gz -C /opt/nigiri-sdk \
+    && rm /tmp/nigiri-sdk.tar.gz
+
+COPY packages/cpp/routing /src/routing
+RUN uv build --wheel /src/routing --out-dir /wheels \
+    --config-setting=cmake.define.FETCHCONTENT_SOURCE_DIR_NIGIRI_SDK=/opt/nigiri-sdk
+
+# =============================================================================
+# Stage: Tippecanoe Build - PMTiles generation for worker-tools
+# =============================================================================
+FROM linux-base AS tippecanoe-build
+
+RUN apt-get update && apt-get install --no-install-recommends -y \
+    build-essential \
+    libsqlite3-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TIPPECANOE_VERSION
+RUN curl -fsSL https://github.com/felt/tippecanoe/archive/refs/tags/${TIPPECANOE_VERSION}.tar.gz -o /tmp/tippecanoe.tar.gz \
+    && tar -xzf /tmp/tippecanoe.tar.gz -C /tmp \
+    && cd /tmp/tippecanoe-${TIPPECANOE_VERSION} \
+    && make -j$(nproc) \
+    && make install PREFIX=/opt/tippecanoe \
+    && rm -rf /tmp/tippecanoe*
+
+# =============================================================================
+# Stage: Playwright Build - a standalone Playwright CLI for worker-print
+# =============================================================================
+FROM linux-base AS playwright-build
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv
+
+# Its Python lives under /opt/playwright as well, so mounting that one
+# directory gives a working CLI.
+ARG PLAYWRIGHT_VERSION
+ENV UV_PYTHON_INSTALL_DIR=/opt/playwright/python
+RUN uv venv /opt/playwright/venv \
+    && uv pip install --no-cache --python /opt/playwright/venv/bin/python playwright==${PLAYWRIGHT_VERSION}
+
+# =============================================================================
 # Stage: Python Build - install goatlib with all dependencies
 # =============================================================================
 FROM linux-base AS python-build
@@ -83,13 +148,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv
-
-# Copy goatlib + routing package sources and install with all dependencies
-COPY packages/python/goatlib /app/packages/python/goatlib
-COPY packages/cpp/routing /app/packages/cpp/routing
-COPY pyproject.toml uv.lock /app/
 WORKDIR /app
-RUN uv sync --all-extras --frozen --no-dev --no-editable --package=goatlib
 
 # Python versions Windmill asks for besides the venv's (see
 # WINDMILL_EXTRA_PYTHON_VERSIONS), installed next to it in the same uv-managed
@@ -97,15 +156,33 @@ RUN uv sync --all-extras --frozen --no-dev --no-editable --package=goatlib
 ARG WINDMILL_EXTRA_PYTHON_VERSIONS
 RUN uv python install ${WINDMILL_EXTRA_PYTHON_VERSIONS}
 
+# Third-party dependencies first, from the lockfile and goatlib's manifest
+# alone, so a goatlib source change reuses this layer. routing comes from
+# routing-build.
+COPY pyproject.toml uv.lock /app/
+COPY packages/python/goatlib/pyproject.toml /app/packages/python/goatlib/
+RUN uv sync --all-extras --frozen --no-dev --no-editable --no-install-workspace --no-install-package routing --package=goatlib
+
+COPY packages/python/goatlib /app/packages/python/goatlib
+RUN uv sync --all-extras --frozen --no-dev --no-editable --no-install-package routing --package=goatlib
+
+# After the last sync, which would remove a package it was told not to install.
+COPY --from=routing-build /wheels /wheels
+RUN uv pip install --no-deps --python $UV_PROJECT_ENVIRONMENT/bin/python /wheels/*.whl
+
 # Bake DuckDB extensions (spatial/httpfs/postgres/ducklake + community h3) into the
 # image so the runtime never fetches them from the DuckDB repositories — removes
 # the egress/TLS dependency and speeds cold start. (linux-base already carries
-# ca-certificates + egress here.)
-RUN python -c "import duckdb; from goatlib.storage.ducklake import REQUIRED_DUCKDB_EXTENSIONS as X, COMMUNITY_DUCKDB_EXTENSIONS as C; con=duckdb.connect(config={'extension_directory':'/opt/duckdb-extensions'}); [con.execute(f'INSTALL {e}') for e in X]; [con.execute(f'INSTALL {e} FROM community') for e in C]"
+# ca-certificates + egress here.) World-readable for arbitrary UIDs.
+RUN python -c "import duckdb; from goatlib.storage.ducklake import REQUIRED_DUCKDB_EXTENSIONS as X, COMMUNITY_DUCKDB_EXTENSIONS as C; con=duckdb.connect(config={'extension_directory':'/opt/duckdb-extensions'}); [con.execute(f'INSTALL {e}') for e in X]; [con.execute(f'INSTALL {e} FROM community') for e in C]" \
+    && chmod -R a+rX /opt/duckdb-extensions
 
 # =============================================================================
-# Stage: Worker Base - shared base for tools/print workers with goatlib
+# Stage: Worker Base - shared base for tools/print workers
 # =============================================================================
+# Holds no goatlib. Each worker adds its system packages on top of this and
+# copies the Python environment last, so a goatlib change rebuilds nothing but
+# that copy.
 FROM linux-base AS worker-base
 
 ARG APP=/usr/src/app
@@ -116,11 +193,6 @@ RUN ln -s ${APP}/windmill /usr/local/bin/windmill
 
 # Copy uv for runtime package management
 COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv
-
-# Copy Python and venv from build stage
-COPY --from=python-build $UV_PYTHON_INSTALL_DIR $UV_PYTHON_INSTALL_DIR
-COPY --from=python-build $UV_PROJECT_ENVIRONMENT $UV_PROJECT_ENVIRONMENT
-COPY --from=python-build /app /app
 
 # Point Windmill's uv-managed Python directory at ours. Windmill ignores
 # PYTHON_PATH when it resolves a Python version: at every worker start and in
@@ -134,13 +206,13 @@ RUN mkdir -p /tmp/windmill/cache \
     && ln -s $UV_PYTHON_INSTALL_DIR /tmp/windmill/cache/py_runtime \
     && chmod 777 /tmp/windmill /tmp/windmill/cache
 
-# DuckDB extensions baked at build time into DuckDB's default extension
-# directory ($HOME/.duckdb/extensions). Windmill job subprocesses inherit HOME,
-# so every connection they open finds the extensions without configuration.
-# HOME is pinned so a runtime user override cannot move the default elsewhere.
+# DuckDB extensions are baked at build time into DuckDB's default extension
+# directory ($HOME/.duckdb/extensions), copied in by each worker below.
+# Windmill job subprocesses inherit HOME, so every connection they open finds
+# the extensions without configuration. HOME is pinned so a runtime user
+# override cannot move the default elsewhere.
 ENV HOME=/root
-COPY --from=python-build /opt/duckdb-extensions /root/.duckdb/extensions
-RUN chmod -R a+rX /root/.duckdb && chmod a+x /root
+RUN chmod a+x /root
 
 # Windmill runs uv (`uv python find` above, lockfile resolution) with its
 # environment cleared down to HOME and PATH, so uv's cache is always
@@ -175,20 +247,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     libgeos-dev \
     libproj-dev \
-    # Build dependencies for tippecanoe
+    # Build toolchain, and the libraries tippecanoe links against
     build-essential \
     libsqlite3-dev \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install tippecanoe for PMTiles generation
-ARG TIPPECANOE_VERSION=2.79.0
-RUN curl -fsSL https://github.com/felt/tippecanoe/archive/refs/tags/${TIPPECANOE_VERSION}.tar.gz -o /tmp/tippecanoe.tar.gz \
-    && tar -xzf /tmp/tippecanoe.tar.gz -C /tmp \
-    && cd /tmp/tippecanoe-${TIPPECANOE_VERSION} \
-    && make -j$(nproc) \
-    && make install \
-    && rm -rf /tmp/tippecanoe*
+# tippecanoe for PMTiles generation
+COPY --from=tippecanoe-build /opt/tippecanoe/ /usr/local/
+
+# Python, venv and extensions last (see worker-base)
+COPY --from=python-build $UV_PYTHON_INSTALL_DIR $UV_PYTHON_INSTALL_DIR
+COPY --from=python-build $UV_PROJECT_ENVIRONMENT $UV_PROJECT_ENVIRONMENT
+COPY --from=python-build /app /app
+COPY --from=python-build /opt/duckdb-extensions /root/.duckdb/extensions
 
 ENV WORKER_TAGS=tools
 
@@ -219,8 +291,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Playwright Python package and browsers
-# --no-cache: keep root-owned wheels out of the shared /root/.cache/uv (and ~140 MB out of the image)
-RUN uv pip install --no-cache playwright && playwright install chromium && playwright install-deps chromium
+# Chromium and the system packages it needs, installed with the CLI from
+# playwright-build, mounted for this step only. Doing it before the Python
+# environment keeps the browser layer when only goatlib changes.
+RUN --mount=type=bind,from=playwright-build,source=/opt/playwright,target=/opt/playwright \
+    /opt/playwright/venv/bin/playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python, venv and extensions last (see worker-base)
+COPY --from=python-build $UV_PYTHON_INSTALL_DIR $UV_PYTHON_INSTALL_DIR
+COPY --from=python-build $UV_PROJECT_ENVIRONMENT $UV_PROJECT_ENVIRONMENT
+COPY --from=python-build /app /app
+COPY --from=python-build /opt/duckdb-extensions /root/.duckdb/extensions
+
+# The Playwright package itself, the release whose browser is installed above.
+# --no-cache: keep root-owned wheels out of the shared /root/.cache/uv (and out of the image)
+ARG PLAYWRIGHT_VERSION
+RUN uv pip install --no-cache --python $UV_PROJECT_ENVIRONMENT/bin/python playwright==${PLAYWRIGHT_VERSION}
 
 ENV WORKER_TAGS=print
