@@ -58,6 +58,11 @@ apps/core/tests
 apps/geoapi/tests
 apps/processes/tests
 
+# The worker image definition. The processes image copies apps/processes, so
+# without this every change to the worker Dockerfile rebuilt the processes
+# image. BuildKit still reads a Dockerfile that is ignored here.
+apps/processes/workers
+
 # Large data directories
 data/
 lint-results/
