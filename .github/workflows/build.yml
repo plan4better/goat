@@ -33,11 +33,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: 📥 Monorepo install
-        uses: plan4better/.github/.github/actions/pnpm-install@main
-        with:
-          enable-corepack: true
-          cwd: ${{ github.workspace }}
-          node_version: 22
+        uses: ./.github/actions/pnpm-install
 
       - name: 🏗️ GOAT build
         uses: ./.github/actions/pnpm-cache-build
@@ -54,11 +50,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: 📥 Monorepo install
-        uses: plan4better/.github/.github/actions/pnpm-install@main
-        with:
-          enable-corepack: true
-          cwd: ${{ github.workspace }}
-          node_version: 22
+        uses: ./.github/actions/pnpm-install
 
       - name: 🏗️ Storybook build
         run: pnpm --filter @p4b/storybook build
@@ -75,11 +67,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: 📥 Monorepo install
-        uses: plan4better/.github/.github/actions/pnpm-install@main
-        with:
-          enable-corepack: true
-          cwd: ${{ github.workspace }}
-          node_version: 22
+        uses: ./.github/actions/pnpm-install
 
       - name: 🏗️ Keycloak theme build
         shell: bash
@@ -100,11 +88,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: 📥 Monorepo install
-        uses: plan4better/.github/.github/actions/pnpm-install@main
-        with:
-          enable-corepack: true
-          cwd: ${{ github.workspace }}
-          node_version: 22
+        uses: ./.github/actions/pnpm-install
 
       - name: 🏗️ Docs build (en + de)
         run: pnpm --filter @p4b/docs build

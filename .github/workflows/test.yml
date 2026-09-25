@@ -41,11 +41,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 📥 Monorepo install
-        uses: plan4better/.github/.github/actions/pnpm-install@main
-        with:
-          enable-corepack: true
-          cwd: ${{ github.workspace }}
-          node_version: 22
+        uses: ./.github/actions/pnpm-install
       # vitest runs in jsdom and its config excludes playwright/ and
       # **/*.e2e.*, but lib/print/__tests__/pdf-renderer.test.ts is a plain
       # *.test.ts inside the tree and launches a real Chromium in beforeAll,

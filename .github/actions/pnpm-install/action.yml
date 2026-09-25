@@ -1,0 +1,50 @@
+name: "pnpm install"
+description: "Node from .nvmrc, pnpm from packageManager, cached store, frozen install"
+author: "Plan4Better GmbH"
+
+runs:
+  using: "composite"
+  steps:
+    - name: ⚙️ Node
+      uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+        # pnpm is not installed yet at this point, and the store is cached
+        # below; keep setup-node from caching for a package manager itself.
+        package-manager-cache: false
+
+    # corepack installs the pnpm release named in package.json's
+    # packageManager. The corepack bundled with Node can lack the current
+    # registry signing keys, hence the update.
+    - name: ⚙️ pnpm
+      shell: bash
+      run: |
+        npm install -g corepack@latest
+        corepack enable
+
+    - name: ⚙️ pnpm store path
+      id: pnpm-config
+      shell: bash
+      run: echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
+    # The month in the key starts a fresh store every month. Restoring the
+    # previous lockfile's store and saving it again would otherwise let it
+    # grow without bound.
+    - name: ⚙️ Cache rotation key
+      id: cache-rotation
+      shell: bash
+      run: echo "YEAR_MONTH=$(date -u +%Y%m)" >> "$GITHUB_OUTPUT"
+
+    - name: 💾 pnpm store
+      uses: actions/cache@v6
+      with:
+        path: ${{ steps.pnpm-config.outputs.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-cache-${{ steps.cache-rotation.outputs.YEAR_MONTH }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-cache-${{ steps.cache-rotation.outputs.YEAR_MONTH }}-
+
+    - name: 📥 Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile --prefer-offline
+      env:
+        HUSKY: "0"

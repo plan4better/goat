@@ -25,11 +25,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: 📥 Monorepo install
-        uses: plan4better/.github/.github/actions/pnpm-install@main
-        with:
-          enable-corepack: true
-          cwd: ${{ github.workspace }}
-          node_version: 22
+        uses: ./.github/actions/pnpm-install
 
       - name: 🔬 Run linting
         run: bash ${{ github.workspace }}/scripts/lint-web.sh
