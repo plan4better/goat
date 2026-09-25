@@ -33,3 +33,5 @@ export const isApplePlatform = (info: PlatformInfo): boolean => {
  */
 export const shortcutLabel = (letter: string, info: PlatformInfo): string =>
   isApplePlatform(info) ? `⌘${letter}` : `Ctrl+${letter}`;
+
+// Throwaway change to test the PR checks; this branch is never merged.
