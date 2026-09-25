@@ -26,13 +26,13 @@ jobs:
     steps:
       - name: 🔎 Validate PR title
         id: lint
-        uses: amannn/action-semantic-pull-request@v6
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 💬 Explain the title rule
         if: always() && steps.lint.outputs.error_message != null
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: pr-title-lint-error
           message: |
@@ -48,7 +48,7 @@ jobs:
 
       - name: 💬 Remove the explanation
         if: steps.lint.outputs.error_message == null
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: pr-title-lint-error
           delete: true
