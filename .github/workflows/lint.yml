@@ -30,7 +30,11 @@ jobs:
       - name: 🔬 Run linting
         run: bash ${{ github.workspace }}/scripts/lint-web.sh
 
+      # The annotations are a check run of their own, and a fork PR's token
+      # is read-only, so creating it fails there, and since v4 that fails
+      # the job. ESLint errors already failed the lint step above.
       - name: 🔬 Annotate Code Linting Results
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: ataylorme/eslint-annotate-action@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
