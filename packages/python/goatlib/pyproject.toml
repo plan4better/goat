@@ -1,7 +1,7 @@
 [project]
 name = "goatlib"
 version = "2.0.0"
-requires-python = ">3.10,<3.12"
+requires-python = ">=3.11,<3.12"
 description = "GOAT Library"
 authors = [{ name = "Plan4Better GmbH", email = "dev@plan4better.de" }]
 # Base dependencies are intentionally minimal: only what the light, cross-service
