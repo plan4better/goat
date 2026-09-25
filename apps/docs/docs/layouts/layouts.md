@@ -40,6 +40,34 @@ The Settings Panel allows you to create a new layout, customize the overall layo
   <div class="content">Now you are ready to start working on your Layout. Once is finished click <code>Print Layout</code> at the bottom to <b>export your layout</b> as PDF, PNG, or JPEG.</div>
 </div>
 
+### Save as a template
+
+A layout you have designed can be saved as a **template** and reused for other reports.
+
+<div class="step">
+  <div class="step-number">1</div>
+  <div class="content">Open the layout's <code>more options</code> menu and choose <code>Save as template…</code>.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">2</div>
+  <div class="content">Give the template a <code>Name</code> and, optionally, a <code>Description</code> and categories.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">3</div>
+  <div class="content">Choose the <code>Location</code> (a space and folder) where it is saved. Everyone who can open that folder can use the template.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">4</div>
+  <div class="content">Click <code>Save</code>. The template then appears as a choice when you create a new layout.</div>
+</div>
+
+:::info Update instead of duplicate
+If a template was already saved from this layout, you can <code>Update template from source</code> with the current version instead of creating a duplicate.
+:::
+
 ## Layout Preview
 The Layout Preview is the main area that displays the current layout you are working on. You can interact with the elements, move them around, and see how they will appear in the final report.
 

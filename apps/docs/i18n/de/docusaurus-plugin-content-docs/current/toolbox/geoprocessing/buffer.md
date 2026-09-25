@@ -86,10 +86,6 @@ Ein Puffer ist ein Werkzeug, das verwendet wird, um **das Einzugsgebiet um einen
 
 <div class="step">
   <div class="step-number">8</div>
-  <div class="content">Klicken Sie auf <code>Ausführen</code>. Dies startet die Berechnung des Puffers.</div>
-</div>
-<div class="step">
-  <div class="step-number">8</div>
   <div class="content">Klicken Sie auf <code>Ausführen</code>. Dies startet die Berechnung des Puffers. Sobald diese Aufgabe abgeschlossen ist, wird der resultierende Layer namens <b>"Puffer"</b> zu Ihrer Karte hinzugefügt.</div>
 </div>
 

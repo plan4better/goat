@@ -6,11 +6,6 @@ sidebar_position: 2
 
 **Wenn Sie ein Projekt öffentlich teilen, kann jeder Ihre Karte ansehen, ohne ein GOAT-Konto zu benötigen.** Diese Funktion eignet sich ideal, um räumliche Analysen zu präsentieren, Einblicke zu teilen oder interaktive Karten auf externen Plattformen einzubetten.
 
-#### Was können öffentliche Nutzer tun?
-- Layer ein- und ausblenden
-- Grundkarte wechseln
-- Hinein- und herauszoomen
-
 ::::info
 Öffentliches Teilen ist nur zum Ansehen. Wenn andere die Karte **bearbeiten** sollen, nutzen Sie die Option **Teams & Mitglieder teilen**.
 ::::

@@ -77,6 +77,7 @@ Deleting content does not remove it straight away: it goes to the **Trash**, whe
 - **New Folder**, to group content however suits you
 - **Blank project** or **Import project**
 - **Dataset**, to upload a file from your device (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet, and GTFS or Overture archives)
+- **Connect service**, to add an external layer by URL (WFS, WMS, WMTS, XYZ Tiles or COG)
 - **Upload Document**, for a file that belongs with the work without being data
 
 A project can also be started from the Home page.
@@ -170,7 +171,12 @@ GOAT supports multiple file formats for upload: **GeoPackage**, **GeoJSON**, **S
 
 ### Connecting to an external source
 
-A service that already publishes the data, such as a **Web Feature Service (WFS)**, **Web Map Service (WMS)**, **Web Map Tile Service (WMTS)**, **XYZ Tiles** or a **Cloud Optimized GeoTIFF (COG)**, is connected from inside a project rather than from this page. In the map, click `+ Add layer` on the left panel and choose `Connect service`. See [Add Layers](../map/layers#add-layers) for the steps.
+A service that already publishes the data, such as a **Web Feature Service (WFS)**, **Web Map Service (WMS)**, **Web Map Tile Service (WMTS)**, **XYZ Tiles** or a **Cloud Optimized GeoTIFF (COG)**, is added with `Connect service`. On this page, click `Add new` and choose `Connect service` to add it to the current folder. Inside a project you can also reach it from `+ Add layer` on the map. See [Add Layers](../map/layers#add-layers) for the steps.
+
+Once added, a connected layer appears on this page like any other dataset, with two differences that show where its data comes from:
+
+- A **`Linked`** tag, meaning the layer is **drawn live from the external service** rather than stored in GOAT. Its content can change or disappear if the service does.
+- A **source line** showing the format and host, for example `WMS, linked from wms.nrw.de`. A **WFS** layer is imported as a copy into GOAT instead, and reads `Imported from WFS (wfs.nrw.de)`.
 
 ## Working with a dataset
 

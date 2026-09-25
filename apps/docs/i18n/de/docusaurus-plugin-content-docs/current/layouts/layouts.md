@@ -40,6 +40,34 @@ Der Einstellungsbereich ermöglicht es Ihnen, ein neues Layout zu erstellen, die
   <div class="content">Jetzt sind Sie bereit, an Ihrem Layout zu arbeiten. Wenn es fertig ist, klicken Sie unten auf <code>Layout drucken</code>, um Ihr <b>Layout als PDF, PNG oder JPEG zu exportieren</b>.</div>
 </div>
 
+### Als Vorlage speichern
+
+Ein von Ihnen gestaltetes Layout kann als **Vorlage** gespeichert und für andere Berichte wiederverwendet werden.
+
+<div class="step">
+  <div class="step-number">1</div>
+  <div class="content">Öffnen Sie das <code>Weitere Optionen</code>-Menü des Layouts und wählen Sie <code>Als Vorlage speichern…</code>.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">2</div>
+  <div class="content">Geben Sie der Vorlage einen <code>Namen</code> und optional eine <code>Beschreibung</code> sowie Kategorien.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">3</div>
+  <div class="content">Wählen Sie den <code>Speicherort</code> (einen Bereich und Ordner), an dem sie gespeichert wird. Alle, die diesen Ordner öffnen können, können die Vorlage verwenden.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">4</div>
+  <div class="content">Klicken Sie auf <code>Speichern</code>. Die Vorlage erscheint anschließend als Auswahl, wenn Sie ein neues Layout erstellen.</div>
+</div>
+
+:::info Aktualisieren statt duplizieren
+Wenn aus diesem Layout bereits eine Vorlage gespeichert wurde, können Sie sie mit <code>Vorlage aus Quelle aktualisieren</code> mit der aktuellen Version aktualisieren, anstatt ein Duplikat zu erstellen.
+:::
+
 ## Layout-Vorschau
 Die Layout-Vorschau ist der Hauptbereich, der das aktuelle Layout anzeigt, an dem Sie arbeiten. Sie können mit den Elementen interagieren, sie verschieben und sehen, wie sie im endgültigen Bericht erscheinen werden.
 

@@ -30,7 +30,7 @@ Dieses Panel befindet sich links und ist in zwei Bereiche unterteilt:
 
 #### Workflow-Management
 
-- **Workflow hinzufügen**: Klicken Sie auf <code>+ Workflow hinzufügen</code>, um neue analytische Pipelines zu erstellen
+- **Neu**: Klicken Sie auf <code>+ Neu</code> und wählen Sie <code>Neu erstellen</code> oder <code>Aus Vorlage</code>, um neue analytische Pipelines zu erstellen
 
 - **Workflow-Liste**: Verwalten Sie vorhandene Workflows mit Optionen zum Umbenennen, Duplizieren und Löschen
 
@@ -146,17 +146,12 @@ Beginnen Sie mit einfachen 2-3 Knoten-Workflows, um die Benutzeroberfläche zu v
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content"><strong>Erstellen Sie einen neuen Workflow</strong>: Klicken Sie auf <code>+ Workflow hinzufügen</code> im linken Panel, um einen neuen [Workflow](../further_reading/glossary.md#workflow) zu erstellen.</div>
+  <div class="content"><strong>Erstellen Sie einen neuen Workflow</strong>: Klicken Sie auf <code>+ Neu</code> im linken Panel und wählen Sie <code>Neu erstellen</code>, um mit einer leeren Leinwand zu beginnen, oder <code>Aus Vorlage</code>, um von einem fertigen Workflow zu starten (siehe <a href="#mit-einer-vorlage-starten">Mit einer Vorlage starten</a>). Ein neuer Workflow wird mit einem Standardnamen zur Liste hinzugefügt.</div>
 </div>
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content"><strong>Benennen Sie Ihren Workflow</strong>: Geben Sie einen aussagekräftigen Namen ein, der Ihr analytisches Ziel widerspiegelt (z.B. "Städtische Erreichbarkeitsanalyse", "Umweltauswirkungsbewertung").</div>
-</div>
-
-<div class="step">
-  <div class="step-number">4</div>
-  <div class="content"><strong>Beschreibung hinzufügen</strong>: Geben Sie eine optionale Beschreibung an, die den Zweck und die Methodik des Workflows dokumentiert.</div>
+  <div class="content"><strong>Benennen Sie ihn um</strong>: Öffnen Sie das <code>Weitere Optionen</code>-Menü des Workflows und wählen Sie <code>Umbenennen</code>, um ihm einen Namen zu geben, der Ihr analytisches Ziel widerspiegelt (z.B. „Städtische Erreichbarkeitsanalyse").</div>
 </div>
 
 ### Erstellen Ihres Workflows
@@ -221,6 +216,56 @@ Die erfolgreiche Nutzung der Workflow-Benutzeroberfläche bietet:
 :::info Auto-Speicher-Feature
 Workflows speichern Änderungen automatisch, während Sie sie erstellen. Das System bewahrt alle Konfigurationen, Verbindungen und Ausführungszustände auf.
 :::
+
+### Einen Workflow als Vorlage speichern
+
+Sobald ein Workflow eingerichtet ist, können Sie ihn als **Vorlage** speichern, damit er ohne erneute Einrichtung mit anderen Daten oder von anderen Personen wiederverwendet werden kann.
+
+<div class="step">
+  <div class="step-number">1</div>
+  <div class="content">Öffnen Sie das <code>Weitere Optionen</code>-Menü des Workflows und wählen Sie <code>Als Vorlage speichern…</code>.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">2</div>
+  <div class="content">Geben Sie der Vorlage einen <code>Namen</code> und optional eine <code>Beschreibung</code> sowie Kategorien.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">3</div>
+  <div class="content">Wählen Sie den <code>Speicherort</code> (einen Bereich und Ordner), an dem die Vorlage gespeichert wird. Alle, die diesen Ordner öffnen können, können die Vorlage verwenden.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">4</div>
+  <div class="content">Entscheiden Sie in der <code>Eingaben</code>-Tabelle für jeden Eingabe-Layer, ob er <strong>mit der Vorlage mitgeliefert</strong> wird oder die Vorlage <strong>bei der Verwendung nach einem Layer fragt</strong>. Ein mitgelieferter Layer wird zusammen mit der Vorlage geteilt, damit andere sie ausführen können.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">5</div>
+  <div class="content">Klicken Sie auf <code>Speichern</code>.</div>
+</div>
+
+:::info Aktualisieren statt duplizieren
+Wenn aus diesem Workflow bereits eine Vorlage gespeichert wurde, können Sie sie **aus der Quelle aktualisieren** mit der aktuellen Version, anstatt ein Duplikat zu erstellen. Da die Eingaben Teil des gespeicherten Snapshots sind, verwenden Sie <code>Vorlage aus Quelle aktualisieren</code>, um sie zu ändern.
+:::
+
+### Mit einer Vorlage starten
+
+<div class="step">
+  <div class="step-number">1</div>
+  <div class="content">Klicken Sie im <code>Workflows</code>-Panel auf <code>Aus Vorlage</code>, um die Vorlagenübersicht zu öffnen, gefiltert auf Workflow-Vorlagen.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">2</div>
+  <div class="content">Suchen oder blättern Sie, wählen Sie eine Vorlage für die <strong>Vorschau</strong> und klicken Sie auf <code>Vorlage verwenden</code>.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">3</div>
+  <div class="content">Der Workflow wird zu Ihrem Projekt hinzugefügt. Wo die Vorlage eine Eingabe offen gelassen hat, wählen Sie einen Layer, sobald er im Projekt vorhanden ist.</div>
+</div>
 
 ## 4. Workflows aus der Kartenansicht ausführen
 

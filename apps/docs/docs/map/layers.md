@@ -128,6 +128,18 @@ You can add layers from [different sources](../data/dataset_types) to your map:
       <div class="content"><p>A WMTS can be added by <strong>direct URL</strong> or <strong>GetCapabilities</strong> link. If the URL carries more than one layer, only one can be added at a time.</p>The projection must be <strong>Web Mercator (EPSG:3857)</strong> and GoogleMaps compatible. Zoom levels differ otherwise, so a source that does not meet both will not appear in the list.</div>
     </div>
   </TabItem>
+
+  <TabItem value="XYZ" label="XYZ" className="tabItemBox">
+    <div class="step">
+      <div class="content"><p>An <strong>XYZ Tiles</strong> layer is any tile URL with <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code> placeholders. The address is the layer, so there is no list to choose from &mdash; check the preview shows what you expect.</p></div>
+    </div>
+  </TabItem>
+
+  <TabItem value="COG" label="COG" className="tabItemBox">
+    <div class="step">
+      <div class="content"><p>A <strong>Cloud Optimized GeoTIFF (COG)</strong> is added by a direct <code>.tif</code>/<code>.tiff</code> link. The file is read in pieces straight from where it is stored, so nothing is uploaded to GOAT.</p></div>
+    </div>
+  </TabItem>
 </Tabs>
 
   </TabItem>

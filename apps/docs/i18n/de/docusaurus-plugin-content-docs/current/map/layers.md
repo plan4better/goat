@@ -20,6 +20,10 @@ import TabItem from '@theme/TabItem';
 
 Das Layer Panel ist Ihre zentrale Anlaufstelle für die Organisation und Steuerung aller Daten in Ihrem GOAT-Projekt. Hier können Sie neue Datensätze hinzufügen, die Layer-Reihenfolge für eine optimale Visualisierung anordnen, verwandte Layer gruppieren und die Sichtbarkeit steuern. Dieser Abschnitt führt Sie durch alle wesentlichen Layer-Verwaltungsfunktionen, um Ihnen beim Erstellen gut organisierter und visuell effektiver Karten zu helfen.
 
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+  <img src={require('/img/map/layers/add_layer_de.webp').default} alt="Layer in GOAT hinzufügen" style={{ maxHeight: "flex", maxWidth: "flex", objectFit: "cover"}}/>
+</div>
+
 ### Layer hinzufügen
 
 Sie können Layer aus [verschiedenen Quellen](../data/dataset_types) zu Ihrer Karte hinzufügen:
@@ -125,6 +129,18 @@ Sie können Layer aus [verschiedenen Quellen](../data/dataset_types) zu Ihrer Ka
       <div class="content"><p>Ein WMTS lässt sich über eine <strong>direkte URL</strong> oder einen <strong>GetCapabilities</strong>-Link einbinden. Enthält die URL mehrere Layer, kann jeweils nur einer hinzugefügt werden.</p>Die Projektion muss <strong>Web Mercator (EPSG:3857)</strong> und GoogleMaps-kompatibel sein. Andernfalls unterscheiden sich die Zoomstufen, und die Quelle erscheint nicht in der Liste.</div>
     </div>
   </TabItem>
+
+  <TabItem value="XYZ" label="XYZ" className="tabItemBox">
+    <div class="step">
+      <div class="content"><p>Ein <strong>XYZ-Kacheln</strong>-Layer ist jede Kachel-URL mit <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code>-Platzhaltern. Die Adresse ist der Layer, es gibt also keine Layerliste zur Auswahl &mdash; prüfen Sie, ob die Vorschau zeigt, was Sie erwarten.</p></div>
+    </div>
+  </TabItem>
+
+  <TabItem value="COG" label="COG" className="tabItemBox">
+    <div class="step">
+      <div class="content"><p>Ein <strong>Cloud Optimized GeoTIFF (COG)</strong> wird über einen direkten <code>.tif</code>/<code>.tiff</code>-Link eingebunden. Die Datei wird stückweise direkt von ihrem Speicherort gelesen, es wird nichts zu GOAT hochgeladen.</p></div>
+    </div>
+  </TabItem>
 </Tabs>
 
   </TabItem>
@@ -136,31 +152,18 @@ Sie können alle Ihre Datensätze auf der [Inhalt-Seite](../workspace/content) v
 
 :::
 
-### Layer organisieren
-
-Sobald Sie einen Datensatz zur Karte hinzugefügt haben, wird er in der **Layer-Liste** sichtbar. Von dort aus können Sie die verschiedenen Layer organisieren.
-
-
-#### Layer-Reihenfolge
+### Layer-Reihenfolge
 
 Bei der Visualisierung mehrerer Datensätze gleichzeitig ist die Layer-Reihenfolge entscheidend für die Erstellung klarer, lesbarer Karten. Daher <strong>kann die Layer-Reihenfolge interaktiv geändert werden</strong>.
 
-Fahren Sie mit der Maus über den <strong>linken Rand</strong> des Layers in der Layer-Liste, bis ein Pfeilsymbol erscheint, dann <strong>ziehen und lassen Sie los, um</strong> den Layer an die gewünschte Position zu verschieben.
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <Video src={require('/img/map/layers/layer_order.mp4').default} alt="Layer-Reihenfolge" style={{ maxHeight: "flex", maxWidth: "flex", objectFit: "cover"}}/>
-</div> 
+Klicken Sie auf den Layer in der Layer-Liste und <strong>ziehen Sie ihn per Drag-and-drop</strong> an die gewünschte Position.
 
 
-#### Layer anzeigen / ausblenden
+### Layer anzeigen / ausblenden
 
 Klicken Sie auf das <img src={require('/img/icons/eye.png').default} alt="Layer anzeigen in GOAT" style={{ maxHeight: "flex", maxWidth: "flex", objectFit: "cover"}}/> Symbol neben dem Layer-Namen, um einen Layer vorübergehend aus der Kartenansicht <strong>auszublenden</strong>. Ein erneuter Klick auf das Auge macht den Layer <strong>wieder sichtbar</strong>.
 
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <Video src={require('/img/map/layers/hide_layers.mp4').default} alt="Layer ausblenden" style={{ maxHeight: "flex", maxWidth: "flex", objectFit: "cover"}}/>
-</div> 
-
-#### Layer gruppieren
+### Layer gruppieren
 
 Klicken Sie auf die <img src={require('/img/icons/layer.png').default} alt="Layer gruppieren" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/> <code> Layer gruppieren</code> Schaltfläche oben im Layer Panel, um **Layer-Gruppen zu erstellen**, die dabei helfen, verwandte Datensätze zusammen zu organisieren.
 
@@ -189,14 +192,7 @@ Klicken Sie auf die <img src={require('/img/icons/layer.png').default} alt="Laye
   <div class="content">Verwenden Sie den <strong>Aufklappen/Zuklappen-Pfeil</strong> neben dem Gruppennamen, um den Gruppeninhalt anzuzeigen oder zu verbergen.</div>
 </div>
 
-Layer-Gruppen ermöglichen es Ihnen:
-- **Verwandte Layer** in logische Sammlungen zu organisieren
-- **Ganze Gruppen auf- oder zuzuklappen** für bessere Arbeitsbereich-Verwaltung
-- **Gruppenebenen-Operationen** wie das Anzeigen/Verbergen aller Layer in einer Gruppe anzuwenden
-- **Visuelle Hierarchie** in komplexen Projekten mit vielen Layern zu erhalten
-
-
-#### Optionen
+### Optionen
 
 Durch Klicken auf das <code>weitere Optionen</code> <img src={require('/img/icons/3dots.png').default} alt="Optionen" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/> Symbol haben Sie weitere Optionen zur <strong>Verwaltung und Organisation</strong> des ausgewählten Layers.
 

@@ -46,6 +46,10 @@ Weitere Informationen zu dieser Klassifizierung finden Sie im [Overture Wiki](ht
 
 #### Erstellung künstlicher Kanten
 
+Vom Nutzer angegebene Startpunkte liegen in der Regel eine kurze Distanz vom Straßennetz entfernt. Um die zusätzliche Zeit (bzw. Kosten) für die Fahrt vom Startpunkt zur nächstgelegenen Straße zu berücksichtigen (z. B. über eine nicht kartierte Zufahrt), werden künstliche (bzw. simulierte) Kanten erstellt.
+
+#### Kantenkostenberechnung
+
 Für alle Kanten im Teilnetz wird ein Kostenwert (dargestellt als Zeit) auf der Grundlage von Weglänge und Fahrgeschwindigkeit berechnet.
 
 Kostenfunktion für Auto:
