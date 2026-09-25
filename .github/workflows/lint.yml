@@ -66,27 +66,21 @@ jobs:
           enable-cache: true
           prune-cache: true
 
-      # gdal is sdist-only and needs libgdal to build, and routing is a C++
-      # package that is slow to compile; ruff/mypy need neither installed.
-      - name: 🐍 Install Dependencies
-        run: uv sync --frozen --all-packages --all-extras --no-install-package gdal --no-install-package routing
+      # ruff reads the source only, so the dev group it is pinned in is all
+      # this job installs.
+      - name: 🐍 Install ruff
+        run: uv sync --frozen --only-dev
         working-directory: ${{ github.workspace }}
 
       # REQUIRED: ruff lint on the packages that are clean. Keeps them clean and
-      # blocks regressions. (Not goatlib — it still carries ruff debt — and not
-      # `ruff format --check`, which is currently dirty repo-wide.)
-      # --no-sync: a bare `uv run` re-syncs and would pull gdal back in.
+      # blocks regressions. Not goatlib, which still carries ruff debt. mypy
+      # --strict and `ruff format --check` are not run here either: no package
+      # passes them yet, so they would only report the same debt on every run
+      # (scripts/lint-python.sh runs them locally).
+      # --no-sync: a bare `uv run` would sync the whole workspace first.
       - name: 🔬 ruff check (clean packages, required)
         run: >-
           uv run --no-sync ruff check
           apps/core apps/geoapi apps/processes apps/catalog
           packages/python/goatobs
-        working-directory: ${{ github.workspace }}
-
-      # ADVISORY: full gate (mypy --strict + repo-wide ruff check + ruff format
-      # --check). Currently red on pre-existing debt — reports but does not
-      # block. Remove `continue-on-error` once the debt is cleared.
-      - name: 🔬 Full lint (mypy + ruff + format, advisory)
-        continue-on-error: true
-        run: uv run --no-sync bash scripts/lint-python.sh
         working-directory: ${{ github.workspace }}
