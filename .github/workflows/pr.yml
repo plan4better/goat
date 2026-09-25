@@ -31,10 +31,6 @@ jobs:
     name: lint
     needs: file-changes
     uses: ./.github/workflows/lint.yml
-    # checks: write for the ESLint annotations (not available on fork PRs)
-    permissions:
-      contents: read
-      checks: write
     secrets: inherit
     with:
       web: ${{ needs.file-changes.outputs.web == 'true' }}

@@ -27,9 +27,6 @@ jobs:
     name: lint
     needs: file-changes
     uses: ./.github/workflows/lint.yml
-    permissions:
-      contents: read
-      checks: write
     secrets: inherit
     # Direct pushes to main get no pr.yml run, so this is their only lint.
     with:
