@@ -1,27 +1,77 @@
 name: "PR Base"
 
-# PR metadata jobs (labels, semantic title check, welcome comment, cache
-# cleanup). These need a write token even on fork PRs, hence
-# pull_request_target — which is safe here only because none of these jobs
-# check out or execute PR code (they all run with contents: none). Keep the
-# CI pipeline (pr.yml) on plain pull_request; never add pull_request_target
-# to a workflow that builds PR code.
+# PR housekeeping: the title check and cache cleanup. Both need a write token
+# on fork PRs too, hence pull_request_target, which is safe here only because
+# neither job checks out or runs PR code. Keep the CI pipeline (pr.yml) on
+# plain pull_request; never add pull_request_target to a workflow that builds
+# PR code.
 on:
   pull_request_target:
     branches: [main]
-    types: [opened, reopened, edited, synchronize]
-  pull_request:
-    branches: [main]
-    types: [closed]
+    types: [opened, reopened, edited, synchronize, closed]
+
+permissions: {}
 
 jobs:
-  pr-base:
-    name: pr-base
-    uses: "plan4better/.github/.github/workflows/reusable-pr-base.yml@main"
+  # The release notes list PR titles, so titles follow Conventional Commits
+  # like the commits do. A PR that breaks the rule gets a comment explaining
+  # it, removed again once the title is fixed.
+  title:
+    name: title
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
-      contents: none
-      issues: read
       pull-requests: write
-      # clean-pr-cache deletes the closed PR's action caches.
+    steps:
+      - name: 🔎 Validate PR title
+        id: lint
+        uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 💬 Explain the title rule
+        if: always() && steps.lint.outputs.error_message != null
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: pr-title-lint-error
+          message: |
+            Hey there and thank you for opening this pull request! 👋🏼
+
+            We require pull request titles to follow the [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/) and it looks like your proposed title needs to be adjusted.
+
+            Details:
+
+            ```
+            ${{ steps.lint.outputs.error_message }}
+            ```
+
+      - name: 💬 Remove the explanation
+        if: steps.lint.outputs.error_message == null
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: pr-title-lint-error
+          delete: true
+
+  # A closed PR's caches are never restored again but count against the
+  # repository's cache quota until they expire.
+  caches:
+    name: clean caches
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
       actions: write
-    secrets: inherit
+    steps:
+      - name: 🧹 Delete the closed PR's caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          deleted=0
+          for id in $(gh cache list --ref "$REF" --limit 100 --json id --jq '.[].id'); do
+            gh cache delete "$id"
+            deleted=$((deleted + 1))
+          done
+          echo "Deleted $deleted caches of $REF"
