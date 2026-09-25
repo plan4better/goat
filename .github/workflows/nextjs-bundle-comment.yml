@@ -19,12 +19,14 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request'
     steps:
       - name: 📥 Download bundle comment artifact
-        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7 # v24
-        with:
-          run_id: ${{ github.event.workflow_run.id }}
-          name: bundle-comment
-          path: bundle-comment
-          if_no_artifact_found: ignore
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        # PR runs without web changes have no analysis, so no artifact.
+        run: >-
+          gh run download "$RUN_ID" --name bundle-comment --dir bundle-comment
+          || echo "No bundle comment artifact in run $RUN_ID."
 
       # The artifact is built from PR code, so treat its contents as untrusted:
       # sanitize the PR number and only comment if that PR's head matches the
@@ -46,25 +48,22 @@ jobs:
             echo "PR number in artifact does not match the triggering run; skipping."
           fi
 
-      - name: 💬 Find Comment
+      # One comment per PR, found by the marker the analysis puts in it and
+      # updated on every run.
+      - name: 💬 Post or update the bundle comment
         if: steps.pr.outputs.number
-        uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad # v4.0.0
-        id: fc
-        with:
-          issue-number: ${{ steps.pr.outputs.number }}
-          body-includes: "<!-- __NEXTJS_BUNDLE_@p4b/web -->"
-
-      - name: 💬 Create Comment
-        if: steps.pr.outputs.number && steps.fc.outputs.comment-id == 0
-        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
-        with:
-          issue-number: ${{ steps.pr.outputs.number }}
-          body-path: bundle-comment/__bundle_analysis_comment.txt
-
-      - name: 💬 Update Comment
-        if: steps.pr.outputs.number && steps.fc.outputs.comment-id != 0
-        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
-        with:
-          comment-id: ${{ steps.fc.outputs.comment-id }}
-          body-path: bundle-comment/__bundle_analysis_comment.txt
-          edit-mode: replace
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.number }}
+          MARKER: "<!-- __NEXTJS_BUNDLE_@p4b/web -->"
+        run: |
+          body=$(cat bundle-comment/__bundle_analysis_comment.txt)
+          id=$(gh api "repos/$GH_REPO/issues/$PR/comments?per_page=100" \
+            --jq '[.[] | select(.body | contains(env.MARKER)) | .id] | first // empty')
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GH_REPO/issues/comments/$id" -f body="$body" >/dev/null
+            echo "Updated comment $id on #$PR"
+          else
+            gh pr comment "$PR" --body "$body"
+          fi
