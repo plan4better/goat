@@ -94,7 +94,7 @@ jobs:
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/web
       title: "GOAT Web"
-      description: "GOAT web application: the Next.js frontend for maps, dashboards, workflows and reports. Serves on port 3000 and talks to the GOAT APIs."
+      description: "GOAT's web application: the frontend for maps, dashboards, workflows and reports."
       smoke-command: |
         cd /app
         node apps/web/server.js > /tmp/web.log 2>&1 &
@@ -119,7 +119,7 @@ jobs:
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/core
       title: "GOAT Core"
-      description: "GOAT core API (FastAPI, port 8000) for users, organizations, projects and layer metadata. Needs PostgreSQL with PostGIS and S3-compatible storage."
+      description: "GOAT's core API for users, organizations, projects and layer metadata."
       smoke-command: |
         cd /app
         export POSTGRES_SERVER=localhost POSTGRES_USER=smoke POSTGRES_PASSWORD=smoke POSTGRES_DB=smoke
@@ -139,7 +139,7 @@ jobs:
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/geoapi
       title: "GOAT GeoAPI"
-      description: "GOAT GeoAPI (FastAPI, port 8000): OGC API Features and Tiles for layer data. Needs PostgreSQL and S3-compatible storage."
+      description: "GOAT's OGC API Features and Tiles service for layer data."
       smoke-command: |
         cd /app
         python -c "import geoapi.main"
@@ -160,7 +160,7 @@ jobs:
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/catalog
       title: "GOAT Catalog"
-      description: "GOAT Catalog (port 8400): STAC API for the GOAT data catalog."
+      description: "GOAT's STAC API for searching and browsing the data catalog."
       smoke-command: |
         cd /app
         python -c "import catalog.main"
@@ -180,7 +180,7 @@ jobs:
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/processes
       title: "GOAT Processes"
-      description: "GOAT Processes API (FastAPI, port 8000): OGC API Processes for running GOAT's analysis tools. Needs Windmill, PostgreSQL and S3-compatible storage."
+      description: "GOAT's OGC API Processes service, which runs the analysis tools."
       smoke-command: |
         cd /app
         python -c "import processes.main"
@@ -200,7 +200,7 @@ jobs:
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/storybook
       title: "GOAT Storybook"
-      description: "GOAT UI component library (Storybook), served by nginx on port 80."
+      description: "GOAT's UI component library, as a Storybook site."
       smoke-command: |
         nginx -t
         test -s /usr/share/nginx/html/storybook/index.html
@@ -219,7 +219,7 @@ jobs:
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/docs
       title: "GOAT Docs"
-      description: "GOAT user documentation, served by nginx on port 80."
+      description: "GOAT's user documentation site."
       smoke-command: |
         nginx -t
         test -s /usr/share/nginx/html/docs/index.html
@@ -238,7 +238,7 @@ jobs:
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/keycloak
       title: "GOAT Keycloak"
-      description: "Keycloak with the GOAT login theme and providers."
+      description: "Keycloak with GOAT's login theme."
       smoke-command: |
         for jar in p4b-keycloak-theme keycloak-metrics-spi-4.0.0 io.phasetwo.keycloak-keycloak-events-0.19; do
           test -s "/opt/bitnami/keycloak/providers/$jar.jar"
@@ -262,7 +262,7 @@ jobs:
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/windmill-server
       title: "GOAT Windmill Server"
-      description: "Windmill server for GOAT's background jobs."
+      description: "Windmill server that schedules and runs GOAT's background jobs."
       smoke-command: |
         /usr/src/app/windmill --version
 
@@ -322,7 +322,7 @@ jobs:
       platforms: linux/amd64,linux/arm64
       image-name: ghcr.io/${{ github.repository }}/windmill-worker-print
       title: "GOAT Windmill Print Worker"
-      description: "Windmill worker that renders GOAT's PDF reports and project thumbnails."
+      description: "Windmill worker that renders GOAT's map layouts to PDF or PNG and creates project and layer thumbnails."
       smoke-command: |
         python -c "import importlib; from goatlib.tools.registry import TOOL_REGISTRY; from goatlib.tasks.registry import TASK_REGISTRY; ds = [d for d in (*TOOL_REGISTRY, *TASK_REGISTRY) if d.worker_tag == 'print']; [importlib.import_module(d.module_path) for d in ds]; print(len(ds), 'print modules import')"
         python -c "import duckdb; c = duckdb.connect(config={'autoinstall_known_extensions': False}); [c.execute(f'LOAD {e}') for e in ('spatial', 'httpfs', 'postgres', 'ducklake', 'h3')]"
