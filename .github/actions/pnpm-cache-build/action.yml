@@ -27,22 +27,24 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Keyed on the commit, so it only hands one run's build to a later job of
+    # the same run (bundle analysis restores what the build job made) and
+    # never serves a build across commits. Only the build output is cached:
+    # Next's .next/cache and turbo's archives are large, nothing here reads
+    # them, and they filled the repository's cache quota, evicting the caches
+    # other jobs restore.
     - name: Cache production build
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       id: cache-build
       env:
         cache-name: prod-build
-        key-1: ${{ inputs.node_version }}-${{ hashFiles('${{ inputs.cwd }}/pnpm-lock.yaml') }}
-        key-2: ${{ hashFiles('${{ inputs.cwd }}/apps/**/**.[jt]s', '${{ inputs.cwd }}/apps/**/**.[jt]sx', '${{ inputs.cwd }}/packages/js/**/**.[jt]s', '${{ inputs.cwd }}/packages/js/**/**.[jt]sx', '!**/node_modules') }}
         key-3: ${{ github.event.pull_request.number || github.ref }}
-        # Ensures the production build will always be fresh
         key-4: ${{ github.sha }}
       with:
         path: |
           ${{ github.workspace }}/apps/web/.next
-          **/.turbo/**
-          **/dist/**
-        key: ${{ runner.os }}-${{ env.cache-name }}-${{ env.key-1 }}-${{ env.key-2 }}-${{ env.key-3 }}-${{ env.key-4 }}
+          !${{ github.workspace }}/apps/web/.next/cache
+        key: ${{ runner.os }}-${{ env.cache-name }}-${{ inputs.node_version }}-${{ env.key-3 }}-${{ env.key-4 }}
 
     - run: pnpm run build
       working-directory: ${{ inputs.cwd }}
