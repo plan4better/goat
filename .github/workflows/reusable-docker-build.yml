@@ -21,9 +21,13 @@ on:
         description: Docker image name to build
         required: true
         type: string
+      title:
+        description: Human-readable image name
+        required: false
+        type: string
       description:
         description: >-
-          One-line image description; GitHub shows it on the package page
+          Short image description; GitHub shows it on the package page
         required: false
         type: string
       smoke-command:
@@ -119,8 +123,16 @@ jobs:
           images: ${{ inputs.image-name }}
           flavor: ${{ inputs.flavor-rules }}
           tags: ${{ inputs.tag-rules }}
-          labels: ${{ inputs.description && format('org.opencontainers.image.description={0}', inputs.description) || '' }}
-          annotations: ${{ inputs.description && format('org.opencontainers.image.description={0}', inputs.description) || '' }}
+          labels: |
+            ${{ inputs.description && format('org.opencontainers.image.description={0}', inputs.description) || '' }}
+            ${{ inputs.title && format('org.opencontainers.image.title={0}', inputs.title) || '' }}
+            org.opencontainers.image.vendor=Plan4Better GmbH
+            org.opencontainers.image.documentation=https://goat.plan4better.de/docs/
+          annotations: |
+            ${{ inputs.description && format('org.opencontainers.image.description={0}', inputs.description) || '' }}
+            ${{ inputs.title && format('org.opencontainers.image.title={0}', inputs.title) || '' }}
+            org.opencontainers.image.vendor=Plan4Better GmbH
+            org.opencontainers.image.documentation=https://goat.plan4better.de/docs/
 
       - name: 🐳 Build and Push per-platform (digest only)
         id: build
@@ -234,7 +246,11 @@ jobs:
         with:
           images: ${{ inputs.image-name }}
           flavor: ${{ inputs.flavor-rules }}
-          annotations: ${{ inputs.description && format('org.opencontainers.image.description={0}', inputs.description) || '' }}
+          annotations: |
+            ${{ inputs.description && format('org.opencontainers.image.description={0}', inputs.description) || '' }}
+            ${{ inputs.title && format('org.opencontainers.image.title={0}', inputs.title) || '' }}
+            org.opencontainers.image.vendor=Plan4Better GmbH
+            org.opencontainers.image.documentation=https://goat.plan4better.de/docs/
           tags: |
             ${{ inputs.tag-rules }}
             type=raw,value=latest,enable=${{ steps.latest.outputs.latest == 'true' }}
