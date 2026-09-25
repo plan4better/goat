@@ -15,6 +15,7 @@ permissions:
 jobs:
   comment:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.event.workflow_run.event == 'pull_request'
     steps:
       - name: 📥 Download bundle comment artifact

@@ -1,10 +1,9 @@
 name: "Test"
 
 # Reusable test workflow. Driven by the change-detection booleans from
-# checks.yml so only affected areas run. Jobs that are not yet green on a clean
-# tree are marked `continue-on-error: true` (ADVISORY) — they run and report but
-# do not block the merge. Promote them to required (drop continue-on-error) as
-# each suite goes green.
+# checks.yml so only affected areas run. Every suite is required; one that is
+# not green on a clean tree can be marked `continue-on-error: true` until it
+# is.
 
 on:
   workflow_call:
@@ -36,7 +35,8 @@ jobs:
     name: web (vitest)
     if: ${{ inputs.web }}
     runs-on: ubuntu-latest
-    # REQUIRED. vitest suite is green (202 tests).
+    timeout-minutes: 15
+    # REQUIRED. vitest suite is green.
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
@@ -77,7 +77,8 @@ jobs:
     name: core (pytest)
     if: ${{ inputs.core }}
     runs-on: ubuntu-latest
-    # REQUIRED. The 100-test suite passes against PostGIS alone: it self-
+    timeout-minutes: 15
+    # REQUIRED. The suite passes against PostGIS alone: it self-
     # bootstraps schemas (DROP/CREATE + metadata.create_all in the session
     # fixture), the asset tests are pure-unit, and external services (S3, DNS,
     # Caddy) are mocked/faked — no MinIO or network needed.
@@ -144,6 +145,7 @@ jobs:
     name: alembic (fresh upgrade)
     if: ${{ inputs.core }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # REQUIRED. The core suite builds its schema with metadata.create_all, so
     # nothing else here runs a migration. This walks the chain on an empty
     # database the way a fresh deploy does, then `alembic check` asserts the
@@ -194,6 +196,7 @@ jobs:
     name: goatlib (pytest)
     if: ${{ inputs.goatlib }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # REQUIRED. Data-dependent tests skip when their fixtures are absent;
     # travel-time matrices auto-download from assets.plan4better.de.
     steps:
@@ -262,6 +265,7 @@ jobs:
     # into the core/geoapi/catalog filters that input is derived from.
     if: ${{ inputs.goatlib }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # REQUIRED. Pure unit suite — no services.
     steps:
       - name: 📥 Checkout
@@ -282,6 +286,7 @@ jobs:
     name: geoapi (pytest)
     if: ${{ inputs.geoapi }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # REQUIRED. Suite is fully mocked (DuckLake/Postgres) — no services needed.
     steps:
       - name: 📥 Checkout
@@ -302,6 +307,7 @@ jobs:
     name: processes (pytest)
     if: ${{ inputs.processes }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # REQUIRED. Suite is fully mocked (Windmill/DB) — no services needed.
     steps:
       - name: 📥 Checkout
@@ -322,6 +328,7 @@ jobs:
     name: catalog (pytest)
     if: ${{ inputs.catalog }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # REQUIRED. Suite runs against generated parquet fixtures — no services
     # needed; DuckDB extensions (spatial/fts) are fetched on first run and
     # cached by setup-uv's cache thereafter.

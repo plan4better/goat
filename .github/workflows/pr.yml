@@ -93,11 +93,12 @@ jobs:
     needs: [lint, test, build, analyze, file-size]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       # Fail only on real failures/cancellations. `skipped` is expected and OK:
       # change-detection legitimately skips jobs for unaffected areas (e.g.
-      # build-goat on a core-only PR). Advisory jobs use continue-on-error so
-      # they report success and never reach here.
+      # the web build on a core-only PR). Advisory steps use continue-on-error
+      # so their job still succeeds.
       - name: fail if required jobs failed
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
         run: exit 1

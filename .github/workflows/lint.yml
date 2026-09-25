@@ -18,6 +18,7 @@ jobs:
   web:
     # REQUIRED. lint-web.sh runs `tsc --noEmit` (typecheck) + eslint.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: ${{ inputs.web }}
     steps:
       - name: 📥 Checkout
@@ -54,6 +55,7 @@ jobs:
 
   python:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: ${{ inputs.python }}
     steps:
       - name: 📥 Checkout

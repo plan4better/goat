@@ -48,6 +48,7 @@ jobs:
     # Each platform builds natively on its own runner: arm64 runners are free
     # for public repositories, and QEMU emulation made arm64 builds 2-3x slower.
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

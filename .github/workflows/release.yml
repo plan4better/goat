@@ -35,7 +35,7 @@ jobs:
 
   # Gate releases on the test suites. Change-detection picks the affected
   # suites on branch pushes; tag releases run everything (same override the
-  # release jobs use). Advisory suites report green and never block.
+  # release jobs use).
   # A push that touches none of their paths skips every suite, and a skipped
   # `test` would skip each release job below that needs it. So those jobs
   # check `!failure() && !cancelled()` rather than the implicit success():
