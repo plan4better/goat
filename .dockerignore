@@ -12,6 +12,9 @@ coverage
 **/.next
 apps/web/out
 apps/storybook/out
+apps/storybook/storybook-static
+apps/docs/build
+apps/docs/.docusaurus
 
 # node
 **/dist
@@ -49,6 +52,8 @@ htmlcov
 
 # Test fixtures — not needed at runtime, ~110MB in goatlib alone
 packages/python/*/tests
+packages/cpp/*/tests
+apps/catalog/tests
 apps/core/tests
 apps/geoapi/tests
 apps/processes/tests

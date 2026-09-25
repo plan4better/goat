@@ -32,27 +32,33 @@ FROM linux-base AS python-base
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv
+WORKDIR /app
 
-# Create virtual environment and install dependencies
+# Third-party dependencies first, from the lockfile and the workspace manifests
+# alone, so a source change reuses this layer and reinstalls only the
+# workspace packages below.
+COPY pyproject.toml uv.lock /app/
+COPY apps/core/pyproject.toml /app/apps/core/
+COPY packages/python/goatlib/pyproject.toml /app/packages/python/goatlib/
+COPY packages/python/goatobs/pyproject.toml /app/packages/python/goatobs/
+RUN uv sync --frozen --no-dev --no-editable --no-install-workspace --package=core
+
 COPY apps/core /app/apps/core
 COPY packages/python/goatlib /app/packages/python/goatlib
 COPY packages/python/goatobs /app/packages/python/goatobs
-COPY pyproject.toml uv.lock /app/
-WORKDIR /app
-
-# Install project dependencies
 RUN uv sync --frozen --no-dev --no-editable --package=core
 
 # ==== STAGE 3: Webapp environment ====
 FROM linux-base AS webapp
 
-# Copy python, virtual env and app
-COPY --from=python-base $UV_PYTHON_INSTALL_DIR $UV_PYTHON_INSTALL_DIR
-COPY --from=python-base $UV_PROJECT_ENVIRONMENT $UV_PROJECT_ENVIRONMENT
-COPY --from=python-base /app /app
+RUN useradd -m appuser && chown appuser:appuser /tmp
 
-RUN useradd -m appuser
-RUN chown -R appuser:appuser /app /tmp $UV_PROJECT_ENVIRONMENT $UV_PYTHON_INSTALL_DIR
+# Copy python, virtual env and app. --chown here rather than a `chown -R`
+# afterwards, which would store every file a second time in another layer.
+COPY --from=python-base --chown=appuser:appuser $UV_PYTHON_INSTALL_DIR $UV_PYTHON_INSTALL_DIR
+COPY --from=python-base --chown=appuser:appuser $UV_PROJECT_ENVIRONMENT $UV_PROJECT_ENVIRONMENT
+COPY --from=python-base --chown=appuser:appuser /app /app
+
 USER appuser
 
 WORKDIR /app
