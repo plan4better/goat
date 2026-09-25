@@ -1,17 +1,14 @@
 name: "Release"
 
+# Releases are the v* tag pushes. Publishing a GitHub release for that tag
+# is not a trigger: it ran the whole pipeline a second time for the same
+# commit and pushed the same image tags concurrently.
 on:
-  release:
-    types: [published]
   push:
     branches: [main]
     tags:
       - "v*"
   workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
 
 jobs:
   file-changes:
