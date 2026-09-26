@@ -277,6 +277,10 @@ export const projectSchema = contentMetadataSchema.extend({
   // Count of this project's linked live layers that live in a personal
   // space; null when the project is itself in a personal space.
   personally_owned_layer_count: z.number().optional().nullable(),
+  // Restricted (D9): its own flag, and whether a restricted folder above it
+  // closes it instead. Sent by the single-project read.
+  restricted: z.boolean().optional(),
+  restricted_inherited: z.boolean().optional(),
 });
 
 // order: int = Field(0, description="Visual sorting order")

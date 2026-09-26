@@ -7,14 +7,12 @@ import DatasetTableModal from "@/components/modals/DatasetTable";
 import DatasetUpdateModal from "@/components/modals/DatasetUpdate";
 import MetadataModal from "@/components/modals/Metadata";
 import ContentMoveToFolderModal from "@/components/modals/MoveToFolder";
-import ShareModal from "@/components/modals/Share";
 
 interface ContentDialogProps extends Omit<ContentDialogBaseProps, "open"> {
   action: ContentActions;
   onContentDelete?: () => void;
   onContentDownload?: () => void;
   onMoveToFolder?: () => void;
-  onContentShare?: () => void;
 }
 
 export default function ContentDialogWrapper(props: ContentDialogProps) {
@@ -44,7 +42,6 @@ export default function ContentDialogWrapper(props: ContentDialogProps) {
       {props.action === ContentActions.TABLE && (
         <DatasetTableModal {...commonModalProps} dataset={props.content} />
       )}
-      {props.action === ContentActions.SHARE && <ShareModal {...commonModalProps} content={props.content} />}
     </>
   );
 }

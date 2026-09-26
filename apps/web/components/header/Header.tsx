@@ -34,7 +34,7 @@ import WhatsNewPopper from "@/components/header/WhatsNewPopper";
 import JobsPopper from "@/components/jobs/JobsPopper";
 import ContentDeleteModal from "@/components/modals/ContentDelete";
 import Metadata from "@/components/modals/Metadata";
-import ShareModal from "@/components/modals/Share";
+import ProjectShareDialog from "@/components/modals/content/ProjectShareDialog";
 import SaveTemplateDialog from "@/components/templates/SaveTemplateDialog";
 
 import { Toolbar } from "./Toolbar";
@@ -186,13 +186,8 @@ export default function Header(props: HeaderProps) {
         />
       )}
 
-      {project && props.mapHeader && (
-        <ShareModal
-          open={showShareDialog}
-          onClose={() => setShowShareDialog(false)}
-          type="project"
-          content={project}
-        />
+      {project && props.mapHeader && showShareDialog && (
+        <ProjectShareDialog project={project} onClose={() => setShowShareDialog(false)} />
       )}
 
       {project && isEditingProjectMetadata && (
