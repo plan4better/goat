@@ -417,74 +417,74 @@ export const PieChartWidget = ({ config: rawConfig }: { config: PieChartSchema }
                   <Cell key={`cell-${index}`} fill={computedColors[index]} stroke="none" />
                 ))}
 
+                {/* A direct child: recharts collects a Pie's labels without looking
+                  inside fragments, so a wrapped Label is never drawn. */}
                 {isCenterActiveLayout && !isFullPie && (
-                  <>
-                    <Label
-                      content={(props: Record<string, unknown>) => {
-                        const vb = props.viewBox as { cx?: number; cy?: number } | undefined;
-                        const cx = vb?.cx ?? 0;
-                        const cy = vb?.cy ?? 0;
-                        const safeIndex = Math.min(activeIndex, displayData.length - 1);
-                        const activeItem = displayData[safeIndex];
-                        if (!activeItem) return null;
-                        const activeColor = baseColors[safeIndex % baseColors.length];
-                        const percentText = formatNumber(
-                          totalOperationValue ? activeItem.operation_value / totalOperationValue : 0,
-                          "percent_1d",
-                          i18n.language
-                        );
-                        const label = getDisplayLabel(activeItem.grouped_value);
-                        const maxChars = 12;
-                        const words = label.split(/\s+/);
-                        const lines: string[] = [];
-                        let currentLine = "";
-                        for (const word of words) {
-                          if (!currentLine) {
-                            currentLine = word;
-                          } else if ((currentLine + " " + word).length <= maxChars) {
-                            currentLine += " " + word;
-                          } else {
-                            lines.push(currentLine);
-                            currentLine = word;
-                          }
+                  <Label
+                    content={(props: Record<string, unknown>) => {
+                      const vb = props.viewBox as { cx?: number; cy?: number } | undefined;
+                      const cx = vb?.cx ?? 0;
+                      const cy = vb?.cy ?? 0;
+                      const safeIndex = Math.min(activeIndex, displayData.length - 1);
+                      const activeItem = displayData[safeIndex];
+                      if (!activeItem) return null;
+                      const activeColor = baseColors[safeIndex % baseColors.length];
+                      const percentText = formatNumber(
+                        totalOperationValue ? activeItem.operation_value / totalOperationValue : 0,
+                        "percent_1d",
+                        i18n.language
+                      );
+                      const label = getDisplayLabel(activeItem.grouped_value);
+                      const maxChars = 12;
+                      const words = label.split(/\s+/);
+                      const lines: string[] = [];
+                      let currentLine = "";
+                      for (const word of words) {
+                        if (!currentLine) {
+                          currentLine = word;
+                        } else if ((currentLine + " " + word).length <= maxChars) {
+                          currentLine += " " + word;
+                        } else {
+                          lines.push(currentLine);
+                          currentLine = word;
                         }
-                        if (currentLine) lines.push(currentLine);
-                        const labelLineHeight = 14;
-                        const percentSize = sizePreset.centerPercent;
-                        const gap = 4;
-                        const totalLabelHeight = lines.length * labelLineHeight;
-                        const totalHeight = percentSize + gap + totalLabelHeight;
-                        const startY = cy - totalHeight / 2 + percentSize / 2;
-                        return (
-                          <g>
-                            <text
-                              x={cx}
-                              y={startY}
-                              textAnchor="middle"
-                              fontSize={percentSize}
-                              fontWeight="bold"
-                              fill={activeColor}>
-                              {percentText}
-                            </text>
-                            <text
-                              x={cx}
-                              y={startY + percentSize / 2 + gap}
-                              textAnchor="middle"
-                              dominantBaseline="hanging"
-                              fontSize={sizePreset.centerSublabel}
-                              fontWeight="bold"
-                              fill={activeColor}>
-                              {lines.map((line, i) => (
-                                <tspan key={i} x={cx} dy={i === 0 ? 0 : labelLineHeight}>
-                                  {line}
-                                </tspan>
-                              ))}
-                            </text>
-                          </g>
-                        );
-                      }}
-                    />
-                  </>
+                      }
+                      if (currentLine) lines.push(currentLine);
+                      const labelLineHeight = 14;
+                      const percentSize = sizePreset.centerPercent;
+                      const gap = 4;
+                      const totalLabelHeight = lines.length * labelLineHeight;
+                      const totalHeight = percentSize + gap + totalLabelHeight;
+                      const startY = cy - totalHeight / 2 + percentSize / 2;
+                      return (
+                        <g>
+                          <text
+                            x={cx}
+                            y={startY}
+                            textAnchor="middle"
+                            fontSize={percentSize}
+                            fontWeight="bold"
+                            fill={activeColor}>
+                            {percentText}
+                          </text>
+                          <text
+                            x={cx}
+                            y={startY + percentSize / 2 + gap}
+                            textAnchor="middle"
+                            dominantBaseline="hanging"
+                            fontSize={sizePreset.centerSublabel}
+                            fontWeight="bold"
+                            fill={activeColor}>
+                            {lines.map((line, i) => (
+                              <tspan key={i} x={cx} dy={i === 0 ? 0 : labelLineHeight}>
+                                {line}
+                              </tspan>
+                            ))}
+                          </text>
+                        </g>
+                      );
+                    }}
+                  />
                 )}
               </Pie>
             </PieChart>
