@@ -18,6 +18,7 @@ import { toast } from "react-toastify";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { type Job, dismissJob, useJobs } from "@/lib/api/processes";
+import { claimJobAnnouncement } from "@/lib/utils/jobAnnouncement";
 
 import { ArrowPopper as JobStatusMenu } from "@/components/ArrowPoper";
 import HeaderPopoverPaper, { HEADER_POPOVER_PLACEMENT } from "@/components/header/HeaderPopoverPaper";
@@ -158,13 +159,14 @@ export default function JobsPopper() {
           // Mark as downloaded before triggering to prevent race conditions
           downloadedJobsRef.current.add(job.jobID);
 
-          // Dismiss all existing toasts and show success toast
-          toast.dismiss();
-          const jobType = t(job.processID) || job.processID;
-          toast.success(`"${jobType}" - ${t("job_success")}`);
-
-          // Trigger download
-          handleDownload(result);
+          // Every open tab sees the job finish; only one of them downloads it
+          void claimJobAnnouncement(job.jobID).then((claimed) => {
+            if (!claimed) return;
+            toast.dismiss();
+            const jobType = t(job.processID) || job.processID;
+            toast.success(`"${jobType}" - ${t("job_success")}`);
+            handleDownload(result);
+          });
         }
       }
     });

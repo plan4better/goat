@@ -27,6 +27,7 @@ import { dismissJob, useJobs } from "@/lib/api/processes";
 import { useProject } from "@/lib/api/projects";
 import { type WorkflowExecuteRequest, cleanupWorkflowTemp, executeWorkflow, useWorkflow } from "@/lib/api/workflows";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
+import { claimJobAnnouncement } from "@/lib/utils/jobAnnouncement";
 
 import type { NodeExecutionInfo, NodeExecutionStatus } from "@/components/workflows/context/WorkflowExecutionContext";
 
@@ -287,8 +288,12 @@ export default function WorkflowRunner({ workflowId, onBack, onClose }: Workflow
       }));
 
       dispatch(setRunningJobIds(runningJobIdsRef.current.filter((id) => id !== execState.jobId)));
-      toast.dismiss();
-      toast.success(t("workflow_completed"));
+      // The workflow editor in another tab may be watching this run too; only one tab says so
+      void claimJobAnnouncement(job.jobID).then((claimed) => {
+        if (!claimed) return;
+        toast.dismiss();
+        toast.success(t("workflow_completed"));
+      });
     } else if (job.status === "failed") {
       if (processedJobIdsRef.current.has(job.jobID)) return;
       processedJobIdsRef.current.add(job.jobID);
@@ -310,8 +315,11 @@ export default function WorkflowRunner({ workflowId, onBack, onClose }: Workflow
       });
 
       dispatch(setRunningJobIds(runningJobIdsRef.current.filter((id) => id !== execState.jobId)));
-      toast.dismiss();
-      toast.error(`${t("workflow_failed")}: ${job.message || "Unknown error"}`);
+      void claimJobAnnouncement(job.jobID).then((claimed) => {
+        if (!claimed) return;
+        toast.dismiss();
+        toast.error(`${t("workflow_failed")}: ${job.message || "Unknown error"}`);
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobs, execState.jobId, dispatch, t]);

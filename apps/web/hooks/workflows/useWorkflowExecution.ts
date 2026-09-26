@@ -15,6 +15,7 @@ import {
 import type { AppDispatch } from "@/lib/store";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
 import { selectEdges, selectNodes, selectVariables } from "@/lib/store/workflow/selectors";
+import { claimJobAnnouncement } from "@/lib/utils/jobAnnouncement";
 
 import { useAppSelector } from "@/hooks/store/ContextHooks";
 
@@ -588,8 +589,12 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       // Allow reconnection if the same workflow is run again
       reconnectedRef.current = null;
 
-      toast.dismiss();
-      toast.success(t("workflow_completed"));
+      // Every tab with this workflow open sees the run end; only one says so
+      void claimJobAnnouncement(job.jobID).then((claimed) => {
+        if (!claimed) return;
+        toast.dismiss();
+        toast.success(t("workflow_completed"));
+      });
     } else if (job.status === "failed") {
       // Skip if we've already processed this job failure
       if (processedJobIdsRef.current.has(job.jobID)) {
@@ -651,8 +656,11 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       // Allow reconnection if the same workflow is run again
       reconnectedRef.current = null;
 
-      toast.dismiss();
-      toast.error(`${t("workflow_failed")}: ${job.message || "Unknown error"}`);
+      void claimJobAnnouncement(job.jobID).then((claimed) => {
+        if (!claimed) return;
+        toast.dismiss();
+        toast.error(`${t("workflow_failed")}: ${job.message || "Unknown error"}`);
+      });
     }
     // Note: Intentionally excluding runningJobIds from deps to avoid infinite loop
     // The dispatch only happens on job completion which happens once

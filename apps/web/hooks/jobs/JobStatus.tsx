@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef } from "react";
 import type { TFunction } from "i18next";
+import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
 import { getJobResult, useJobs } from "@/lib/api/processes";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
+import { claimJobAnnouncement } from "@/lib/utils/jobAnnouncement";
 
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
@@ -81,27 +82,31 @@ export function useJobStatus(onSuccess?: () => void, onFailed?: () => void) {
 
         dispatch(setRunningJobIds(runningJobIds.filter((id) => id !== job.jobID)));
         const type = t(job.processID) || "";
+        let announce: (() => void) | undefined;
 
         if (job.status === "successful") {
           onSuccessRef.current?.();
           // Don't show success toast for:
           // - delete jobs: already handled optimistically
-          // - layer_export/print_report: handled in JobsPopper with auto-download
+          // - layer_export/print_report/project_export: handled in JobsPopper with auto-download
           // - workflow_runner: handled by useWorkflowExecution
           // - finalize_layer: show custom message
           const isDeleteJob =
             job.processID === "layer_delete" || job.processID.toLowerCase().includes("delete");
-          const isDownloadJob = job.processID === "layer_export" || job.processID === "print_report";
+          const isDownloadJob =
+            job.processID === "layer_export" ||
+            job.processID === "print_report" ||
+            job.processID === "project_export";
           const isWorkflowJob = job.processID === "workflow_runner";
           const isFinalizeJob = job.processID === "finalize_layer";
           if (isFinalizeJob) {
-            toast.success(t("layer_saved_successfully"));
+            announce = () => toast.success(t("layer_saved_successfully"));
           } else if (job.processID === "layer_import") {
             // An upload can hold several datasets, and one of them failing does not fail
             // the job — so "success" on its own would hide what was left behind.
-            void announceImport(job.jobID, t, `"${type}" - ${t("job_success")}`);
+            announce = () => void announceImport(job.jobID, t, `"${type}" - ${t("job_success")}`);
           } else if (!isDeleteJob && !isDownloadJob && !isWorkflowJob) {
-            toast.success(`"${type}" - ${t("job_success")}`);
+            announce = () => toast.success(`"${type}" - ${t("job_success")}`);
           }
         } else {
           onFailedRef.current?.();
@@ -110,10 +115,16 @@ export function useJobStatus(onSuccess?: () => void, onFailed?: () => void) {
           // with a contextual message; don't double-toast here.
           const isWorkflowJob = job.processID === "workflow_runner";
           if (isFinalizeJob) {
-            toast.error(t("layer_save_failed"));
+            announce = () => toast.error(t("layer_save_failed"));
           } else if (!isWorkflowJob) {
-            toast.error(`"${type}" - ${t("job_failed")}`);
+            announce = () => toast.error(`"${type}" - ${t("job_failed")}`);
           }
+        }
+
+        // The callbacks refresh this tab's views; the toast goes to one tab only
+        if (announce) {
+          const show = announce;
+          void claimJobAnnouncement(job.jobID).then((claimed) => claimed && show());
         }
       }
     });
