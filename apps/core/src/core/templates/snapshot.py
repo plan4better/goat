@@ -28,37 +28,65 @@ _DATASET_NODE = "dataset"
 _TOOL_NODE = "tool"
 
 
-def detect_workflow_inputs(config: dict[str, Any]) -> list[DetectedInput]:
-    """Find every dataset node in a workflow config that has a bound layer.
+def _bound_dataset_nodes(config: dict[str, Any]) -> list[tuple[dict[str, Any], UUID]]:
+    """Every dataset node with a valid ``layerId``, with that id parsed.
 
     A dataset node with no ``layerId`` (added to the canvas but not yet
-    connected to a layer) has nothing to ship or ask for and is skipped.
-    Each match becomes one ``DetectedInput`` keyed ``"node:<node id>"`` — the
-    key ``freeze_workflow_config`` and ``bind_workflow_config`` use to find
-    it again later. A node whose ``layerId`` is present but not a valid UUID
-    (C10 — malformed/corrupted data, not something this module can freeze
-    or bind either way) is skipped rather than raising: one bad node must
-    not crash detection for every other node in the config. A ``layerType``
-    that is not one of the three layer types (a node saved before the web
-    narrowed the field, carrying ``"layer"``) is read as no type at all.
+    connected to a layer) has nothing to ship or ask for. One whose
+    ``layerId`` is present but not a valid UUID (C10 — malformed/corrupted
+    data, not something this module can freeze or bind either way) is
+    skipped rather than raising: one bad node must not crash detection for
+    every other node in the config.
     """
-    detected: list[DetectedInput] = []
+    found: list[tuple[dict[str, Any], UUID]] = []
     for node in config.get("nodes", []):
         if node.get("type") != _DATASET_NODE:
             continue
-        data = node.get("data") or {}
-        layer_id = data.get("layerId")
+        layer_id = (node.get("data") or {}).get("layerId")
         if not layer_id:
             continue
         try:
-            parsed_layer_id = UUID(layer_id)
+            found.append((node, UUID(layer_id)))
         except (ValueError, TypeError, AttributeError):
             continue
+    return found
+
+
+def _input_key_by_node(config: dict[str, Any]) -> dict[str, str]:
+    """The input each dataset node belongs to: ``"node:<id>"`` of the first
+    node on the same layer. A dataset used by several nodes, each with a
+    filter of its own, is one input, so the author decides ship/ask for it
+    once and the user binds it once."""
+    first_node_by_layer: dict[UUID, str] = {}
+    keys: dict[str, str] = {}
+    for node, layer_id in _bound_dataset_nodes(config):
+        first = first_node_by_layer.setdefault(layer_id, node["id"])
+        keys[node["id"]] = f"node:{first}"
+    return keys
+
+
+def detect_workflow_inputs(config: dict[str, Any]) -> list[DetectedInput]:
+    """Find every dataset a workflow config's dataset nodes are bound to.
+
+    Each dataset becomes one ``DetectedInput``, taken from the first node
+    that uses it and keyed ``"node:<node id>"`` — the key
+    ``freeze_workflow_config`` and ``bind_workflow_config`` use to find it
+    again later. A ``layerType`` that is not one of the three layer types (a
+    node saved before the web narrowed the field, carrying ``"layer"``) is
+    read as no type at all.
+    """
+    detected: list[DetectedInput] = []
+    seen: set[UUID] = set()
+    for node, layer_id in _bound_dataset_nodes(config):
+        if layer_id in seen:
+            continue
+        seen.add(layer_id)
+        data = node.get("data") or {}
         detected.append(
             DetectedInput(
                 key=f"node:{node['id']}",
                 label=data.get("label", ""),
-                layer_id=parsed_layer_id,
+                layer_id=layer_id,
                 project_layer_id=data.get("projectLayerId"),
                 layer_type=normalize_layer_type(data.get("layerType")),
                 geometry_type=data.get("geometryType"),
@@ -201,7 +229,8 @@ def freeze_workflow_config(
 ) -> dict[str, Any]:
     """Freeze a workflow config around the author's ship/ask choices (T5).
 
-    For each dataset node whose id matches one of ``inputs``: mode "ship"
+    For each dataset node that belongs to one of ``inputs`` (every node on
+    that input's dataset, see ``_input_key_by_node``): mode "ship"
     keeps ``layerId``, drops ``projectLayerId`` (recorded first as
     ``data.templateSourceProjectLayerId`` so ``bind_workflow_config`` can
     later rewrite tool params that stored the numeric id), and sets
@@ -216,13 +245,14 @@ def freeze_workflow_config(
     """
     result = copy.deepcopy(config)
     inputs_by_key = {i.key: i for i in inputs}
+    key_by_node = _input_key_by_node(config)
     nodes = result.get("nodes", [])
     for node in nodes:
         if node.get("type") != _DATASET_NODE:
             continue
-        key = f"node:{node['id']}"
-        template_input = inputs_by_key.get(key)
-        if template_input is None:
+        key = key_by_node.get(node["id"])
+        template_input = inputs_by_key.get(key) if key is not None else None
+        if key is None or template_input is None:
             continue
         data = node.setdefault("data", {})
         old_project_layer_id = data.get("projectLayerId")

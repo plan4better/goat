@@ -53,7 +53,8 @@ class TemplateInput(BaseModel):
     """A declared input slot on a saved template (T5).
 
     ``key`` is the stable id a snapshot uses to address the slot again later:
-    ``"node:<dataset node id>"`` for a workflow dataset node, or
+    ``"node:<dataset node id>"`` for a workflow dataset (the first of the
+    dataset nodes that use it), or
     ``"param:<node id>:<param>"`` for a tool-parameter slot (not produced by
     this module yet). ``mode`` is the author's choice at save time: "ship"
     keeps ``layer_id`` bound so the dataset resolves for every user who can

@@ -563,3 +563,69 @@ class TestLayoutPageMm:
         )
         assert layout_page_mm({}) is None
         assert layout_page_mm(None) is None
+
+
+# ---------------------------------------------------------------------------
+# One dataset in several nodes
+# ---------------------------------------------------------------------------
+
+
+def _same_dataset_twice() -> dict:
+    """The workflow config with a second dataset node on the same layer,
+    filtered differently, as when one dataset feeds two branches."""
+    config = _workflow_config()
+    first = _node(config, "n1")
+    first["data"]["filter"] = {"op": "<", "args": [{"property": "area"}, 500]}
+    second = copy.deepcopy(first)
+    second["id"] = "n3"
+    second["data"]["filter"] = {"op": ">=", "args": [{"property": "area"}, 500]}
+    config["nodes"].append(second)
+    return config
+
+
+def test_detect_lists_a_dataset_once_however_many_nodes_use_it() -> None:
+    detected = detect_workflow_inputs(_same_dataset_twice())
+
+    assert [d.key for d in detected] == ["node:n1"]
+    assert detected[0].layer_id == UUID(LAYER_ID)
+
+
+@pytest.mark.parametrize("mode", ["ship", "ask"])
+def test_freeze_marks_every_node_of_a_dataset_with_its_one_input(mode: str) -> None:
+    inputs = [
+        TemplateInput(
+            key="node:n1",
+            label="Buildings",
+            mode=mode,  # type: ignore[arg-type]
+            layer_id=UUID(LAYER_ID) if mode == "ship" else None,
+            layer_type="feature",
+        )
+    ]
+
+    frozen = freeze_workflow_config(_same_dataset_twice(), inputs)
+
+    for node_id in ("n1", "n3"):
+        data = _node(frozen, node_id)["data"]
+        assert data["templateInput"] == "node:n1"
+        assert ("unresolved" in data) is (mode == "ask")
+
+
+def test_bind_fills_every_node_of_a_dataset_and_keeps_each_filter() -> None:
+    config = _same_dataset_twice()
+    inputs = [
+        TemplateInput(
+            key="node:n1", label="Buildings", mode="ask", layer_type="feature"
+        )
+    ]
+    frozen = freeze_workflow_config(config, inputs)
+
+    bound, unresolved = bind_workflow_config(
+        frozen, {"node:n1": (UUID(NEW_LAYER_ID), 55)}
+    )
+
+    assert unresolved == []
+    for node_id in ("n1", "n3"):
+        data = _node(bound, node_id)["data"]
+        assert data["layerId"] == NEW_LAYER_ID
+        assert data["projectLayerId"] == 55
+        assert data["filter"] == _node(config, node_id)["data"]["filter"]
