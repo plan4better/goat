@@ -27,7 +27,7 @@ export type AddLayerSource = {
   labelKey: string;
   group: AddLayerGroup;
   icon: ICON_NAME;
-  /** Adds to a project, so it is absent where there is none (the datasets page). */
+  /** Adds to a project, so it is absent where there is none (the Content page). */
   needsProject?: boolean;
   /**
    * Browsing sources lay out their own edges, so their dialog does not pad them: a filter
@@ -86,7 +86,7 @@ export const ADD_LAYER_SOURCES: AddLayerSource[] = [
     group: "new",
     icon: ICON_NAME.LINK,
     // A layer list beside a preview map, both reaching the frame's edges; a folder is all
-    // it needs, so the datasets page offers it too.
+    // it needs, so the Content page offers it too.
     wide: true,
     width: "min(1100px, 94vw)",
   },

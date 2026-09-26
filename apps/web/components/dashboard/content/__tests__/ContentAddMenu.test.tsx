@@ -128,6 +128,18 @@ describe("ContentAddMenu", () => {
     );
   });
 
+  it("opens Connect service for a map service, filing it into the folder being browsed", () => {
+    render(
+      <ContentAddMenu folderId="folder-a" homeFolderId="home-1" spaceId="space-1" spaceKind="personal" />
+    );
+
+    pick("connect_service");
+
+    expect(addLayerDialogMock).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "connect", defaultFolderId: "folder-a" })
+    );
+  });
+
   it("opens the project import with the folder being browsed pre-selected", () => {
     render(
       <ContentAddMenu folderId="folder-a" homeFolderId="home-1" spaceId="space-1" spaceKind="personal" />
@@ -142,7 +154,7 @@ describe("ContentAddMenu", () => {
     );
   });
 
-  it("disables Project, Dataset and Document while a non-personal space has no root folder", () => {
+  it("disables Project, Dataset, Connect service and Document while a non-personal space has no root folder", () => {
     render(<ContentAddMenu folderId={null} homeFolderId={undefined} spaceId="space-team" spaceKind="team" />);
 
     fireEvent.click(screen.getByRole("button", { name: "add_new" }));
@@ -153,7 +165,13 @@ describe("ContentAddMenu", () => {
     // A folder can still be created — its root is `parent_id: null`, not the
     // space's `home` folder.
     expect(ariaDisabled("new_folder")).toBeNull();
-    for (const label of ["blank_project", "import_project", "dataset", "upload_document"]) {
+    for (const label of [
+      "blank_project",
+      "import_project",
+      "dataset",
+      "connect_service",
+      "upload_document",
+    ]) {
       expect(ariaDisabled(label)).toBe("true");
     }
   });
