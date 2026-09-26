@@ -607,25 +607,6 @@ async def share_folder(
             detail=f"Unknown role: {payload.role}",
         )
 
-    # Check for conflicting grant (different grantee)
-    conflict_result = await async_session.execute(
-        select(ResourceGrant.id)
-        .where(
-            ResourceGrant.resource_type == "folder",
-            ResourceGrant.resource_id == folder_id,
-            or_(
-                ResourceGrant.grantee_type != payload.grantee_type,
-                ResourceGrant.grantee_id != payload.grantee_id,
-            ),
-        )
-        .limit(1)
-    )
-    if conflict_result.first() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This folder is already shared with another team or organization. Remove the existing grant first.",
-        )
-
     # Upsert: delete existing grant for this grantee, then insert fresh
     await async_session.execute(
         sql_delete(ResourceGrant).where(

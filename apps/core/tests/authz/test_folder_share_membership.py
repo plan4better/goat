@@ -111,3 +111,55 @@ async def test_folder_share_refuses_a_grantee_outside_the_callers_organization(
     )
     assert ok.status_code == 200, ok.text
     assert await _grants(db_session, fid) == [("team", str(my_team.id))]
+
+
+@pytest.mark.asyncio
+async def test_folder_shares_with_the_organization_and_a_team_together(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: UUID,
+    make_user: Callable[..., Awaitable[User]],
+    make_org: Callable[[], Awaitable[Organization]],
+    make_team: Callable[..., Awaitable[Team]],
+) -> None:
+    """A folder carries a grant per grantee, like a layer or a project: the
+    whole organization can read it while one team edits it."""
+    me = fixture_create_user
+    mine = await make_org()
+    await db_session.execute(
+        text(f'UPDATE {S}."user" SET organization_id = :o WHERE id = :u'),
+        {"o": mine.id, "u": me},
+    )
+    colleague = await make_user(mine.id)
+    planners = await make_team(colleague, org=mine)
+    reviewers = await make_team(colleague, org=mine)
+    await db_session.commit()
+
+    created = await client.post(
+        f"{settings.API_V2_STR}/folder", json={"name": "shared"}
+    )
+    assert created.status_code in (200, 201), created.text
+    fid = created.json()["id"]
+
+    for grantee_type, grantee_id, role in (
+        ("organization", mine.id, "folder-viewer"),
+        ("team", planners.id, "folder-editor"),
+        ("team", reviewers.id, "folder-viewer"),
+    ):
+        r = await client.post(
+            f"{settings.API_V2_STR}/folder/{fid}/share",
+            json={
+                "grantee_type": grantee_type,
+                "grantee_id": str(grantee_id),
+                "role": role,
+            },
+        )
+        assert r.status_code == 200, r.text
+
+    assert await _grants(db_session, fid) == sorted(
+        [
+            ("organization", str(mine.id)),
+            ("team", str(planners.id)),
+            ("team", str(reviewers.id)),
+        ]
+    )
