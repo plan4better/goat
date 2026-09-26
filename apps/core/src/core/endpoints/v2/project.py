@@ -185,6 +185,9 @@ async def read_project(
         personally_owned_layer_count=await crud_project.personally_owned_layer_count(
             async_session, project.id
         ),
+        restricted_inherited=await crud_project.restricted_inherited(
+            async_session, project
+        ),
     )
 
 

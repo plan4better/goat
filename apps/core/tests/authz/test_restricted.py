@@ -634,3 +634,55 @@ async def test_restricted_folder_is_not_listed_by_get_folder(
     for name in ("Drafts (confidential)", "Inside"):
         assert granted[name]["role"] == "folder-viewer", granted[name]
         assert granted[name]["shared_from_name"] == "Mobility"
+
+
+@pytest.mark.asyncio
+async def test_project_read_reports_restricted_like_the_feed(
+    client: AsyncClient,
+    fixture_create_user: UUID,
+    fixture_get_home_folder: dict[str, Any],
+) -> None:
+    """The builder's Share dialog reads a project through `GET /project/{id}`,
+    not the feed, so that read carries the same Restricted pair."""
+    f = await client.post(f"{settings.API_V2_STR}/folder", json={"name": "Locked"})
+    assert f.status_code == 201, f.text
+    fid = f.json()["id"]
+    p = await client.post(
+        f"{settings.API_V2_STR}/project",
+        json={
+            "name": "inside",
+            "folder_id": fid,
+            "initial_view_state": {
+                "latitude": 48.1,
+                "longitude": 11.5,
+                "zoom": 10,
+                "min_zoom": 0,
+                "max_zoom": 20,
+                "bearing": 0,
+                "pitch": 0,
+            },
+        },
+    )
+    assert p.status_code in (200, 201), p.text
+    pid = p.json()["id"]
+
+    read = (await client.get(f"{settings.API_V2_STR}/project/{pid}")).json()
+    assert read["restricted"] is False and read["restricted_inherited"] is False
+
+    r = await client.patch(
+        f"{settings.API_V2_STR}/content/folder/{fid}/restricted",
+        json={"restricted": True},
+    )
+    assert r.status_code == 204, r.text
+    read = (await client.get(f"{settings.API_V2_STR}/project/{pid}")).json()
+    assert read["restricted"] is False
+    assert read["restricted_inherited"] is True, "closed through its folder"
+
+    r = await client.patch(
+        f"{settings.API_V2_STR}/content/project/{pid}/restricted",
+        json={"restricted": True},
+    )
+    assert r.status_code == 204, r.text
+    read = (await client.get(f"{settings.API_V2_STR}/project/{pid}")).json()
+    assert read["restricted"] is True
+    assert read["restricted_inherited"] is False, "its own flag, not inherited"

@@ -138,6 +138,13 @@ class IProjectRead(ContentBaseAttributes, DateTimeBase):
     shared_with: dict[str, Any] | None = Field(None, description="Shared with")
     owned_by: dict[str, Any] | None = Field(None, description="Owned by")
     my_role: str | None = Field(None, description="Current user's role on this project")
+    restricted: bool = Field(
+        False, description="Restricted (D9): members do not get the space default"
+    )
+    restricted_inherited: bool = Field(
+        False,
+        description="Closed by a restricted ancestor folder rather than its own flag",
+    )
     builder_config: dict[str, Any] | None = Field(None, description="Builder config")
     max_extent: list[float] | None = Field(
         None, description="Max extent of the project"

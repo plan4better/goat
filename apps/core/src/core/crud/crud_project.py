@@ -79,6 +79,21 @@ class CRUDProject(CRUDBase[Project, Any, Any]):
         labels = await self.space_labels(async_session, [space_id])
         return labels.get(space_id, {"space_kind": None, "space_name": None})
 
+    async def restricted_inherited(
+        self, async_session: AsyncSession, project: Project
+    ) -> bool:
+        """Whether a restricted ancestor folder closes this project while its
+        own flag is off, as the content feed reports it."""
+        if project.restricted or project.folder_id is None:
+            return False
+        result = await async_session.execute(
+            text(
+                f"SELECT {settings.SCHEMA}.restricted_applies('project', :id, :folder_id)"
+            ),
+            {"id": project.id, "folder_id": project.folder_id},
+        )
+        return bool(result.scalar())
+
     async def personally_owned_layer_counts(
         self, async_session: AsyncSession, project_ids: list[UUID | None]
     ) -> dict[UUID, int | None]:
