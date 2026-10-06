@@ -4,6 +4,7 @@ from . import (
     asset,
     bundle,
     content,
+    credits,
     custom_domain_lookup,
     datasets,
     favorite,
@@ -34,6 +35,7 @@ router = APIRouter()
 router.include_router(
     organizations.router, prefix="/organizations", tags=["Organizations"]
 )
+router.include_router(credits.router, prefix="/credits", tags=["Credits"])
 router.include_router(teams.router, prefix="/teams", tags=["Teams"])
 router.include_router(space.router, prefix="/space", tags=["Space"])
 router.include_router(users.router, prefix="/users", tags=["Users"])

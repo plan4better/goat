@@ -17,6 +17,7 @@ from sqlalchemy import select, text
 from core.core import authz
 from core.core.config import settings
 from core.crud.crud_folder import folder as crud_folder
+from core.crud.crud_organization import organization as crud_organization
 from core.crud.crud_project import DEFAULT_INITIAL_VIEW_STATE
 from core.crud.crud_project import project as crud_project
 from core.crud.crud_project_copy import copy_project as copy_project_fn
@@ -109,6 +110,13 @@ async def create_project(
         headers=request.headers,
         peer=request.client.host if request.client else None,
     )
+
+    # Capacity quota: block when the org is at its project cap (NULL total = unlimited).
+    org = await crud_organization.get_by_user(async_session, user_id)
+    if org is not None:
+        crud_organization.check_capacity_quota(
+            organization=org, quota="projects", incoming=1
+        )
 
     # Create project
     project = await crud_project.create(

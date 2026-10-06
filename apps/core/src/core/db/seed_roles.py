@@ -250,6 +250,12 @@ RESOURCES_PERMISSIONS = [
         "method": ["GET", "POST", "PUT"],
     },
     {
+        # Credit and quota usage of the caller's own organization. No
+        # permissions: any member may see it; the routes read only their org.
+        "url_pattern": "credits",
+        "method": ["GET"],
+    },
+    {
         "url_pattern": "folder",
         "method": ["GET"],
         "permissions": [

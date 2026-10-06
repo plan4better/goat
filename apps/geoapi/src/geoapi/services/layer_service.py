@@ -4,6 +4,7 @@ This service retrieves layer metadata from the DuckLake catalog
 and PostgreSQL metadata tables.
 """
 
+import asyncio
 import json
 import logging
 from typing import Any, Optional
@@ -11,9 +12,10 @@ from uuid import UUID
 
 import asyncpg
 from cachetools import TTLCache
+from fastapi import HTTPException
 
 from geoapi.config import settings
-from geoapi.dependencies import LayerInfo, normalize_layer_id
+from geoapi.dependencies import LayerInfo, get_layer_info_sync, normalize_layer_id
 from geoapi.tile_cache import get_redis_client
 
 logger = logging.getLogger(__name__)
@@ -34,10 +36,12 @@ class LayerMetadata:
         columns: list[dict[str, Any]],
         srid: int = 4326,
         user_id: Optional[str] = None,
+        organization_id: Optional[str] = None,
         geometry_column: Optional[str] = None,
     ) -> None:
         self.layer_id = layer_id
         self.user_id = user_id
+        self.organization_id = organization_id
         self.name = name
         self.geometry_type = geometry_type
         self.bounds = bounds
@@ -55,6 +59,7 @@ class LayerMetadata:
             "columns": self.columns,
             "srid": self.srid,
             "user_id": self.user_id,
+            "organization_id": self.organization_id,
             "geometry_column": self.geometry_column,
         }
 
@@ -299,6 +304,16 @@ class LayerService:
             return None
         return None
 
+    async def get_metadata_by_id(self, layer_id: UUID) -> Optional[LayerMetadata]:
+        """Layer metadata by id alone, for callers without a URL context (the
+        egress metering middleware). Resolves the layer like the routes do
+        (DuckLake schema or materialized catalog layer); None when unknown."""
+        try:
+            layer_info = await asyncio.to_thread(get_layer_info_sync, str(layer_id))
+        except HTTPException:
+            return None
+        return await self.get_layer_metadata(layer_info)
+
     async def get_layer_metadata(
         self, layer_info: LayerInfo
     ) -> Optional[LayerMetadata]:
@@ -331,6 +346,7 @@ class LayerService:
             SELECT
                 l.id,
                 l.user_id,
+                u.organization_id AS organization_id,
                 l.name,
                 l.feature_layer_geometry_type,
                 ST_XMin(e.e) AS xmin,
@@ -338,6 +354,7 @@ class LayerService:
                 ST_XMax(e.e) AS xmax,
                 ST_YMax(e.e) AS ymax
             FROM customer.layer l
+            LEFT JOIN customer."user" u ON l.user_id = u.id
             LEFT JOIN LATERAL ST_Envelope(l.extent) e ON TRUE
             WHERE l.id = $1
             """,
@@ -383,6 +400,9 @@ class LayerService:
             bounds=bounds,
             columns=columns,
             user_id=str(row["user_id"]).replace("-", "") if row["user_id"] else None,
+            organization_id=str(row["organization_id"])
+            if row["organization_id"]
+            else None,
             geometry_column=geometry_column,
         )
 

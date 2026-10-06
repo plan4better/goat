@@ -56,9 +56,7 @@ def test_base_plus_addons():
 
 
 def test_order_level_override_wins():
-    payload = compute_entitlement(
-        order(x_goat_editors=25), [BASE_LINE, EXTRA_EDITOR]
-    )
+    payload = compute_entitlement(order(x_goat_editors=25), [BASE_LINE, EXTRA_EDITOR])
     assert payload["total_editors"] == 25  # negotiated deal
     assert payload["total_viewers"] == 2  # others still computed
 

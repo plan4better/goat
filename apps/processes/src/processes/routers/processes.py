@@ -821,6 +821,10 @@ async def execute_process(
         except Exception:
             pass  # Token decode failed, skip email tracking
 
+    from processes.services.credit_gate import assert_credits_available
+
+    await assert_credits_available(access_token)
+
     # Submit job to Windmill
     # Note: Worker tag is configured on the script during sync, not per-job
     try:

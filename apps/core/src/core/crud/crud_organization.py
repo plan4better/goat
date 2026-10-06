@@ -600,6 +600,32 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
                 detail=_("Invalid role"),
             )
 
+    _CAPACITY = {
+        "projects": ("total_projects", "used_projects"),
+        "storage": ("total_storage", "used_storage"),
+    }
+
+    def check_capacity_quota(
+        self, *, organization: Organization, quota: str, incoming: float = 0
+    ) -> None:
+        """Block when a capacity quota would be exceeded. NULL total = unlimited."""
+        total_attr, used_attr = self._CAPACITY[quota]
+        total = getattr(organization, total_attr)
+        if total is None:
+            return
+        used = getattr(organization, used_attr) or 0
+        if used + incoming > total:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=_(f"Organization has reached its {quota} limit"),
+            )
+
+    async def get_by_user(self, db: AsyncSession, user_id: UUID) -> Organization | None:
+        user = await db.get(User, user_id)
+        if user is None or user.organization_id is None:
+            return None
+        return await db.get(Organization, user.organization_id)
+
     _ENTITLEMENT_CAPS = (
         "total_credits",
         "total_storage",

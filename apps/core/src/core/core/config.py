@@ -115,6 +115,12 @@ class Settings(BaseSettings):
     DEFAULT_QUOTA_PROJECTS: int = 10000
     DEFAULT_QUOTA_EDITORS: int = 1000
     DEFAULT_QUOTA_VIEWERS: int = 1000
+    # Credit metering. Conversion rates are NOT config — they are billing data
+    # in the customer.credit_rate table (seeded in the migration; operator/Odoo
+    # editable). Only operational knobs live here.
+    MAX_TOOL_RUNTIME_SECONDS: int = 1800
+    # Self-hosted credit allowance. None == unlimited (gate skipped).
+    DEFAULT_QUOTA_CREDITS: float | None = None
 
     # ------------------------------------------------------------------
     # Templates (T11b): organization whose space owns the seeded GOAT

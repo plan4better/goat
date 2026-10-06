@@ -256,4 +256,34 @@ TASK_REGISTRY: tuple[TaskDefinition, ...] = (
         schedule="0 0 3 * * *",  # Daily, 03:00
         worker_tag="tools",
     ),
+    TaskDefinition(
+        name="compute_rollup",
+        display_name="Compute Rollup",
+        description="Charge compute credits from completed Windmill tool jobs.",
+        module_path="goatlib.tasks.compute_rollup",
+        params_class_name="ComputeRollupParams",
+        windmill_path="f/goat/tasks/compute_rollup",
+        schedule="0 */5 * * * *",  # every 5 minutes
+        worker_tag="tools",
+    ),
+    TaskDefinition(
+        name="traffic_rollup",
+        display_name="Traffic Rollup",
+        description="Charge egress bytes per layer/service/project; refresh over-budget flags.",
+        module_path="goatlib.tasks.traffic_rollup",
+        params_class_name="TrafficRollupParams",
+        windmill_path="f/goat/tasks/traffic_rollup",
+        schedule="0 */5 * * * *",  # every 5 minutes
+        worker_tag="tools",
+    ),
+    TaskDefinition(
+        name="credit_reset",
+        display_name="Credit Reset",
+        description="Self-hosted period roll: zero used_credits, advance plan_renewal_date.",
+        module_path="goatlib.tasks.credit_reset",
+        params_class_name="CreditResetParams",
+        windmill_path="f/goat/tasks/credit_reset",
+        schedule="0 0 1 * * *",  # daily at 01:00 UTC
+        worker_tag="tools",
+    ),
 )
