@@ -7,28 +7,16 @@ const regionEnum = z.enum(["EU"]);
 const organizationBaseSchema = z.object({
   name: z.string().min(1).max(50),
   type: z.string().min(1).max(50),
-  size: z.string().min(1).max(50),
-  industry: z.string().min(1).max(150),
-  department: z.string().min(1).max(150),
-  use_case: z.string().min(1).max(250),
-  phone_number: z.string().min(1).max(50),
-  location: z.string().min(1).max(50),
   avatar: z.string(),
 });
 
-const planNameEnum = z.enum(["goat_starter", "goat_professional", "goat_enterprise"]);
-
-export const planNames = {
-  STARTER: "goat_starter",
-  PRO: "goat_professional",
-  ENTERPRISE: "goat_enterprise",
+// Premium features granted via the organization's `extras` list
+// (null = all enabled, e.g. self-hosted; [] = none granted).
+export const featureNames = {
+  WHITE_LABEL: "white_label",
 } as const;
 
-export enum FeatureName {
-}
-
-export const featureToPlanMap = {
-};
+export type FeatureName = (typeof featureNames)[keyof typeof featureNames];
 
 export const organizationRolesEnum = z.enum([
   "organization-owner",
@@ -48,18 +36,18 @@ const organizationSchema = organizationBaseSchema.extend({
   id: z.string(),
   created_at: z.string(),
   updated_at: z.string(),
-  total_storage: z.number(),
+  total_storage: z.number().nullable(),
   used_storage: z.number().default(0),
-  total_credits: z.number(),
+  total_credits: z.number().nullable(),
   used_credits: z.number().default(0),
-  total_projects: z.number(),
+  total_projects: z.number().nullable(),
   used_projects: z.number().default(0),
-  total_editors: z.number(),
+  total_editors: z.number().nullable(),
   used_editors: z.number().default(1),
-  total_viewers: z.number(),
+  total_viewers: z.number().nullable(),
   used_viewers: z.number().default(0),
-  plan_name: planNameEnum,
-  plan_renewal_date: z.string(),
+  extras: z.array(z.string()).nullable().optional(),
+  plan_renewal_date: z.string().nullable(),
   on_trial: z.boolean(),
   region: regionEnum,
   contact_user_id: z.string(),
@@ -89,7 +77,6 @@ export const invitationCreateSchema = z.object({
 export const organizationUpdateSchema = organizationBaseSchema.partial();
 
 export const postOrganizationSchema = organizationBaseSchema.extend({
-  region: regionEnum,
   newsletter_subscribe: z.boolean(),
 });
 

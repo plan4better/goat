@@ -70,13 +70,6 @@ const SettingsLayout = (props: SettingsLayoutProps) => {
         current: pathname?.includes("/usage"),
         auth: isOrgAdmin,
       },
-      {
-        link: "/settings/billing",
-        icon: ICON_NAME.CREDIT_CARD,
-        label: t("billing"),
-        current: pathname?.includes("/billing"),
-        auth: isOrgAdmin,
-      },
     ];
   }, [pathname, t, isOrgAdmin]);
 

@@ -6,7 +6,7 @@ from sqlmodel import Column, Field, Index, Text
 
 from core.core.config import settings
 from core.db.models._base_class import UUIDServerDefaultBase
-from core.db.models.organization import PlanTypeEnum, QuotaTypeEnum
+from core.db.models.organization import QuotaTypeEnum
 
 
 class RequestMethodEnum(str, Enum):
@@ -31,7 +31,9 @@ class Resource(UUIDServerDefaultBase, table=True):
     quota_types: List[QuotaTypeEnum] | None = Field(
         sa_column=Column(ARRAY(Text()), nullable=True)
     )
-    plan_names: List[PlanTypeEnum] | None = Field(
+    # Premium features (organization.extras entries) required to access this
+    # resource. NULL = no feature requirement.
+    extras: List[str] | None = Field(
         sa_column=Column(ARRAY(Text()), nullable=True),
     )
 

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import { useOrganization, useUserProfile } from "@/lib/api/users";
 import type { FeatureName } from "@/lib/validations/organization";
-import { featureToPlanMap, organizationRoles } from "@/lib/validations/organization";
+import { organizationRoles } from "@/lib/validations/organization";
 import { type Team, teamRoles } from "@/lib/validations/team";
 
 interface Options {
@@ -39,15 +39,14 @@ export function useAuthZ(options: Options = {}) {
   }, [isUserProfileLoading]);
 
   const isAppFeatureEnabled = (feature: FeatureName) => {
-    const organizationPlan = organization?.plan_name;
-    const plansEnabled = featureToPlanMap[feature];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (organizationPlan && plansEnabled && plansEnabled.includes(organizationPlan as any)) {
-      return true;
+    // extras: null/undefined = all features enabled (self-hosted),
+    // otherwise the granted premium features.
+    const extras = organization?.extras;
+    if (extras === null || extras === undefined) {
+      return !!organization;
     }
-
-    return false;
-  }
+    return extras.includes(feature);
+  };
 
   return {
     isUserProfileError,

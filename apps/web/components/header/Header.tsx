@@ -329,7 +329,7 @@ export default function Header(props: HeaderProps) {
           <>
             {!props.viewOnly && (
               <Stack direction="row" spacing={2} justifyContent="center" alignItems="center">
-                {organization && organization.on_trial && isOrgAdmin && (
+                {organization && organization.on_trial && organization.plan_renewal_date && isOrgAdmin && (
                   <Chip
                     icon={<Info />}
                     variant="outlined"

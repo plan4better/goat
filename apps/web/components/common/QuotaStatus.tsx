@@ -3,17 +3,15 @@ import LinearProgress, { linearProgressClasses } from "@mui/material/LinearProgr
 import type { ReactNode } from "react";
 
 const BorderLinearProgress = styled(
-  (
-    {
-      colorWhenFull: _,
-      variant,
-      ...other
-    }: {
-      colorWhenFull: string;
-      value: number;
-      variant: "determinate" | "indeterminate" | "buffer" | "query";
-    }
-  ) => <LinearProgress variant={variant} {...other} />
+  ({
+    colorWhenFull: _,
+    variant,
+    ...other
+  }: {
+    colorWhenFull: string;
+    value: number;
+    variant: "determinate" | "indeterminate" | "buffer" | "query";
+  }) => <LinearProgress variant={variant} {...other} />
 )<{ value: number; colorWhenFull: string; variant: "determinate" | "indeterminate" | "buffer" | "query" }>(
   ({ theme, value, colorWhenFull }) => ({
     height: 6,
@@ -36,7 +34,8 @@ const BorderLinearProgress = styled(
 
 interface QuotaStatusProps {
   current: number;
-  total: number;
+  /** null = unlimited (no cap) — the bar stays empty */
+  total: number | null;
   quotaLabel: string | ReactNode;
   titleLabel?: string;
   colorWhenFull?: string;
@@ -44,18 +43,16 @@ interface QuotaStatusProps {
   alertSeverity?: "error" | "warning" | "info" | "success";
 }
 
-export default function QuotaStatus(
-  {
-    current,
-    total,
-    quotaLabel,
-    titleLabel,
-    colorWhenFull = "red",
-    alertMessage,
-    alertSeverity = "info",
-  }: QuotaStatusProps
-) {
-  const progressValue = (current / total) * 100;
+export default function QuotaStatus({
+  current,
+  total,
+  quotaLabel,
+  titleLabel,
+  colorWhenFull = "red",
+  alertMessage,
+  alertSeverity = "info",
+}: QuotaStatusProps) {
+  const progressValue = total == null || total <= 0 ? 0 : Math.min(100, (current / total) * 100);
 
   return (
     <Stack spacing={2}>

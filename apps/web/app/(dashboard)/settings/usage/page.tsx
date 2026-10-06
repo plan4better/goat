@@ -27,9 +27,12 @@ export default function Usage() {
       };
 
     return {
-      isCreditFull: organization.used_credits >= organization.total_credits,
-      isStorageFull: organization.used_storage >= organization.total_storage,
-      isProjectsFull: organization.used_projects >= organization.total_projects,
+      isCreditFull:
+        organization.total_credits != null && organization.used_credits >= organization.total_credits,
+      isStorageFull:
+        organization.total_storage != null && organization.used_storage >= organization.total_storage,
+      isProjectsFull:
+        organization.total_projects != null && organization.used_projects >= organization.total_projects,
     };
   }, [organization]);
 
@@ -78,7 +81,7 @@ export default function Usage() {
                       i18nKey="common:current_credits_out_of_total_quota"
                       values={{
                         current: organization.used_credits,
-                        total: organization.total_credits,
+                        total: organization.total_credits ?? "∞",
                       }}
                       components={{
                         highlight: (
@@ -131,10 +134,13 @@ export default function Usage() {
                         binary: true,
                         locale: i18n?.language || "en",
                       }),
-                      total: prettyBytes(organization.total_storage * 1024 * 1024, {
-                        binary: true,
-                        locale: i18n?.language || "en",
-                      }),
+                      total:
+                        organization.total_storage == null
+                          ? "∞"
+                          : prettyBytes(organization.total_storage * 1024 * 1024, {
+                              binary: true,
+                              locale: i18n?.language || "en",
+                            }),
                     }}
                     components={{
                       highlight: (
@@ -177,7 +183,7 @@ export default function Usage() {
                     i18nKey="common:current_projects_out_of_total_quota"
                     values={{
                       current: organization.used_projects,
-                      total: organization.total_projects,
+                      total: organization.total_projects ?? "∞",
                     }}
                     components={{
                       highlight: (

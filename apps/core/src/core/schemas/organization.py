@@ -10,10 +10,8 @@ from core.db.models.invitation import InvitationStatusEnum
 from core.db.models.organization import (
     AvailableRegionsEnum,
     OrganizationBase,
-    OrganizationIndustryEnum,
     OrganizationRolesEnum,
     OrganizationTypeEnum,
-    OrganizationUseCaseEnum,
 )
 from core.utils.partial import optional
 
@@ -24,29 +22,16 @@ class OrganizationRead(OrganizationBase):
     updated_at: datetime | None = None
 
 
-class TrialPlanTypeEnum(str, Enum):
-    """This enum represents the trial subscription types."""
-
-    starter = "goat_starter"
-    profesional = "goat_professional"
-
-
 class OrganizationCreateUpdateBase(BaseModel):
     name: str
-    department: str
-    industry: OrganizationIndustryEnum
-    location: str
     newsletter_subscribe: bool | None = None
     type: OrganizationTypeEnum
-    size: str | None = None
-    use_case: OrganizationUseCaseEnum
     avatar: str | None = None
-    phone_number: str | None = None
 
 
 class OrganizationCreate(OrganizationCreateUpdateBase):
     name: str
-    region: AvailableRegionsEnum
+    region: AvailableRegionsEnum = AvailableRegionsEnum.eu
 
 
 @optional
@@ -79,16 +64,9 @@ request_examples = {
         "create": {
             "name": "test",
             "type": "government",
-            "size": "25-50",
-            "industry": "architecture",
-            "department": "GIS",
-            "use_case": "infrastructure_planning_and_design",
-            "phone_number": "6479616224",
-            "location": "AF",
             "newsletter_subscribe": True,
-            "region": "EU",
         },
-        "update": {"phone_number": "6479616225"},
+        "update": {"name": "test renamed"},
         "update_user_role": {"role": "organization-admin"},
         "invite": {
             "user_email": "majkshkurti94@gmail.com",

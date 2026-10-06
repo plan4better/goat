@@ -111,7 +111,6 @@ class Settings(BaseSettings):
     # Plan and quotas applied to organizations when no billing system is
     # configured (self-hosted deployments). With billing enabled these come
     # from the billing provider instead.
-    DEFAULT_PLAN_NAME: str = "goat_enterprise"
     DEFAULT_QUOTA_STORAGE_MB: int = 1048576
     DEFAULT_QUOTA_PROJECTS: int = 10000
     DEFAULT_QUOTA_EDITORS: int = 1000
@@ -307,10 +306,20 @@ class Settings(BaseSettings):
         return self.SMTP_FROM or self.SMTP_USER
 
     # ------------------------------------------------------------------
-    # Billing / Stripe
+    # Billing / Odoo
     # ------------------------------------------------------------------
-    STRIPE_SECRET_KEY: str | None = None
-    STRIPE_WEBHOOK_SECRET: str | None = None
+    ODOO_WEBHOOK_SECRET: str | None = None
+
+    # ------------------------------------------------------------------
+    # Trial (SaaS signup). GOAT-managed: no billing record until sales
+    # converts the org (docs/odoo-entitlement-contract.md). Self-hosted
+    # deployments never start trials — orgs get DEFAULT_QUOTA_*.
+    # ------------------------------------------------------------------
+    TRIAL_DAYS: int = 14
+    TRIAL_QUOTA_STORAGE_MB: float = 5120
+    TRIAL_QUOTA_PROJECTS: int = 50
+    TRIAL_QUOTA_EDITORS: int = 3
+    TRIAL_QUOTA_VIEWERS: int = 2
 
     # ------------------------------------------------------------------
     # Processes service (OGC API - Processes front for Windmill). Core posts

@@ -34,24 +34,32 @@ from core.schemas.organization import (
     OrganizationCreate,
     OrganizationMemberRoleUpdateEnum,
     OrganizationUser,
-    TrialPlanTypeEnum,
 )
 from core.services.s3 import s3_service
 from core.utils.email import send_email
 from core.utils.i18n import trans as _
 from core.utils.other import decode_base64_file, get_image_extension_from_base64
 
-from .crud_stripe import crud_stripe
 from .crud_user import user as crud_user
 
-# Quotas applied when no Stripe billing is configured (self-hosted deployments).
-SELF_HOSTED_PLAN_METADATA = {
-    "plan_name": settings.DEFAULT_PLAN_NAME,
+# Quotas applied when no billing is configured (self-hosted deployments).
+SELF_HOSTED_QUOTAS = {
     "credits": 1000000,
     "storage": settings.DEFAULT_QUOTA_STORAGE_MB,
     "projects": settings.DEFAULT_QUOTA_PROJECTS,
     "editors": settings.DEFAULT_QUOTA_EDITORS,
     "viewers": settings.DEFAULT_QUOTA_VIEWERS,
+}
+
+# GOAT-managed trial for SaaS signups (Odoo billing mode): no billing record
+# exists until sales converts the org; expiry is enforced by the trial_expiry
+# Windmill task. See docs/odoo-entitlement-contract.md.
+TRIAL_QUOTAS = {
+    "credits": None,
+    "storage": settings.TRIAL_QUOTA_STORAGE_MB,
+    "projects": settings.TRIAL_QUOTA_PROJECTS,
+    "editors": settings.TRIAL_QUOTA_EDITORS,
+    "viewers": settings.TRIAL_QUOTA_VIEWERS,
 }
 
 
@@ -62,42 +70,32 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         organization_obj: OrganizationCreate,
         user_id: str,
         db: AsyncSession,
-        plan_name: TrialPlanTypeEnum = TrialPlanTypeEnum.profesional,
         is_superuser: bool = False,
     ) -> Organization:
         # Create user
         user = await crud_user.create_if_not_exists(user_id=user_id, db_session=db)
-        billing_enabled = bool(settings.STRIPE_SECRET_KEY)
-        product_metadata = (
-            crud_stripe.get_product_metadata(plan_name.value)
-            if billing_enabled
-            else SELF_HOSTED_PLAN_METADATA
-        )
+        # SaaS (ODOO_WEBHOOK_SECRET set): GOAT-managed trial; the entitlement
+        # webhook takes over on conversion. Otherwise self-hosted: no trial.
+        saas_mode = bool(settings.ODOO_WEBHOOK_SECRET)
+        quotas = TRIAL_QUOTAS if saas_mode else SELF_HOSTED_QUOTAS
 
         # Create organization
         organization = Organization(
             name=organization_obj.name,
             avatar=organization_obj.avatar or settings.ORGANIZATION_DEFAULT_AVATAR,
-            on_trial=billing_enabled,
-            total_credits=product_metadata.get("credits"),
-            total_storage=product_metadata.get("storage"),
-            total_projects=product_metadata.get("projects"),
-            total_editors=product_metadata.get("editors"),
-            total_viewers=product_metadata.get("viewers"),
-            plan_name=product_metadata.get("plan_name"),
-            plan_renewal_date=datetime.now() + timedelta(days=14)
-            if billing_enabled
+            on_trial=saas_mode,
+            total_credits=quotas.get("credits"),
+            total_storage=quotas.get("storage"),
+            total_projects=quotas.get("projects"),
+            total_editors=quotas.get("editors"),
+            total_viewers=quotas.get("viewers"),
+            extras=[] if saas_mode else None,
+            plan_renewal_date=datetime.now() + timedelta(days=settings.TRIAL_DAYS)
+            if saas_mode
             else None,
             type=organization_obj.type,
-            size=organization_obj.size,
-            industry=organization_obj.industry,
-            department=organization_obj.department,
-            use_case=organization_obj.use_case,
-            phone_number=organization_obj.phone_number,
-            location=organization_obj.location,
             region=organization_obj.region,
             contact_user_id=user_id,
-            stripe_id="",
             suspended=False,
             users=[user],
             newsletter_subscribe=organization_obj.newsletter_subscribe,
@@ -106,23 +104,6 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         if not is_superuser and organization_obj.newsletter_subscribe:
             user.newsletter_subscribe = True
 
-        # For superusers, we don't create stripe customer and don't subscribe
-        # This is because superusers are internal users
-        # Create stripe customer
-        if not is_superuser and billing_enabled:
-            customer = crud_stripe.create_customer(
-                organization=organization, email=user.email
-            )
-            organization.stripe_id = customer.id
-
-            # Create subscription with trial period
-            price_id = crud_stripe.get_stripe_plan_default_price(plan_name.value)
-            crud_stripe.create_stripe_subscription(
-                customer_id=organization.stripe_id,
-                price_id=price_id,
-                quantity=1,
-                trial_period_days=14,
-            )
         user.organization = organization
         db.add(organization)
         db.add(user)
@@ -607,7 +588,8 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
 
         if role in role_limits:
             total_attr, used_attr, role_name = role_limits[role]
-            if getattr(organization, total_attr) <= getattr(organization, used_attr):
+            total = getattr(organization, total_attr)
+            if total is not None and total <= getattr(organization, used_attr):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=_(f"Organization has reached the limit of {role_name}"),
@@ -617,6 +599,47 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=_("Invalid role"),
             )
+
+    _ENTITLEMENT_CAPS = (
+        "total_credits",
+        "total_storage",
+        "total_projects",
+        "total_editors",
+        "total_viewers",
+    )
+
+    def apply_entitlement(
+        self,
+        *,
+        organization: Organization,
+        entitlement: dict,
+        reset_usage: bool = True,
+    ) -> None:
+        """Apply a billing entitlement (caps + renewal). Zeroes used_credits on renewal.
+
+        Provider-agnostic: `entitlement` is a plain dict; absent keys are left as-is.
+        """
+        for cap in self._ENTITLEMENT_CAPS:
+            if cap in entitlement:
+                setattr(organization, cap, entitlement[cap])
+        if "extras" in entitlement:
+            extras = entitlement["extras"]
+            organization.extras = (
+                [str(e) for e in extras] if extras is not None else None
+            )
+        if "suspended" in entitlement:
+            organization.suspended = bool(entitlement["suspended"])
+        if "on_trial" in entitlement:
+            organization.on_trial = bool(entitlement["on_trial"])
+        renewal = entitlement.get("plan_renewal_date")
+        if renewal:
+            organization.plan_renewal_date = (
+                renewal
+                if isinstance(renewal, datetime)
+                else datetime.fromisoformat(renewal)
+            )
+        if reset_usage:
+            organization.used_credits = 0
 
 
 organization = CRUDOrganization(Organization)

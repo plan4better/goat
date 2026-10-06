@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.core.config import settings
-from core.crud.crud_organization import SELF_HOSTED_PLAN_METADATA
+from core.crud.crud_organization import SELF_HOSTED_QUOTAS
 from core.crud.crud_space import space as crud_space
 from core.db.models import Organization, Role, User, UserRoleLink
 from core.db.models.folder import Folder
@@ -41,22 +41,14 @@ async def seed_default_user_org(session: AsyncSession) -> None:
             name=settings.DEFAULT_ORGANIZATION_NAME,
             avatar=settings.ORGANIZATION_DEFAULT_AVATAR,
             on_trial=False,
-            total_credits=SELF_HOSTED_PLAN_METADATA["credits"],
-            total_storage=SELF_HOSTED_PLAN_METADATA["storage"],
-            total_projects=SELF_HOSTED_PLAN_METADATA["projects"],
-            total_editors=SELF_HOSTED_PLAN_METADATA["editors"],
-            total_viewers=SELF_HOSTED_PLAN_METADATA["viewers"],
-            plan_name=SELF_HOSTED_PLAN_METADATA["plan_name"],
+            total_credits=SELF_HOSTED_QUOTAS["credits"],
+            total_storage=SELF_HOSTED_QUOTAS["storage"],
+            total_projects=SELF_HOSTED_QUOTAS["projects"],
+            total_editors=SELF_HOSTED_QUOTAS["editors"],
+            total_viewers=SELF_HOSTED_QUOTAS["viewers"],
             type="other",
-            size="1-10",
-            industry="other",
-            department="general",
-            use_case="other",
-            phone_number="+0000000000",
-            location="local",
             region="EU",
             contact_user_id=user_id,
-            stripe_id="",
             suspended=False,
         )
         session.add(organization)

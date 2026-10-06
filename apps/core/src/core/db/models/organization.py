@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, List, Optional
 from uuid import UUID
 
 from pydantic import field_serializer, field_validator
+from sqlalchemy import Numeric
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as UUID_PG
 from sqlmodel import (
     Boolean,
@@ -26,56 +28,6 @@ if TYPE_CHECKING:
     from .user import User
 
 
-class OrganizationUseCaseEnum(str, Enum):
-    site_analysis_and_design_decision_support = (
-        "site_analysis_and_design_decision_support"
-    )
-    market_analysis_and_location_optimization = (
-        "market_analysis_and_location_optimization"
-    )
-    infrastructure_planning_and_design = "infrastructure_planning_and_design"
-    location_based_insights_for_clients = "location_based_insights_for_clients"
-    geographic_studies_and_data_visualization = (
-        "geographic_studies_and_data_visualization"
-    )
-    geospatial_data_management_and_analysis = "geospatial_data_management_and_analysis"
-    site_selection_and_market_analysis = "site_selection_and_market_analysis"
-    network_planning_and_coverage_optimization = (
-        "network_planning_and_coverage_optimization"
-    )
-    route_optimization_and_traffic_management = (
-        "route_optimization_and_traffic_management"
-    )
-    geo_marketing_and_customer_targeting = "geo_marketing_and_customer_targeting"
-    property_valuation_and_market_analysis = "property_valuation_and_market_analysis"
-    other = "other"
-
-
-class OrganizationIndustryEnum(str, Enum):
-    urban_planning = "urban_planning"
-    transportation_planning = "transportation_planning"
-    architecture = "architecture"
-    civil_engineering = "civil_engineering"
-    location_planning = "location_planning"
-    gis_it = "gis_it"
-    telecommunication = "telecommunication"
-    banking_and_finance = "banking_and_finance"
-    consulting = "consulting"
-    archaeology = "archaeology"
-    real_estate = "real_estate"
-    education_research = "education_research"
-    forestry = "forestry"
-    healthcare = "healthcare"
-    government_and_public_services = "government_and_public_services"
-    surveying_and_geodesy = "surveying_and_geodesy"
-    marketing_and_advertising = "marketing_and_advertising"
-    emergency_management = "emergency_management"
-    sports_and_entertainment = "sports_and_entertainment"
-    defense_and_military = "defense_and_military"
-    insurance = "insurance"
-    other = "other"
-
-
 class OrganizationTypeEnum(str, Enum):
     government = "government"
     private = "private"
@@ -86,14 +38,6 @@ class OrganizationTypeEnum(str, Enum):
 
 class AvailableRegionsEnum(str, Enum):
     eu = "EU"
-
-
-class PlanTypeEnum(str, Enum):
-    """This enum represents the subscription types."""
-
-    starter = "goat_starter"
-    profesional = "goat_professional"
-    enterprise = "goat_enterprise"
 
 
 class QuotaTypeEnum(str, Enum):
@@ -114,44 +58,51 @@ class OrganizationRolesEnum(str, Enum):
 class OrganizationBase(SQLModel):
     name: str = Field(sa_column=Column(Text, nullable=False), max_length=255)
     avatar: str = Field(sa_column=Column(Text, nullable=False))
-    total_storage: float = Field(sa_column=Column(Float, nullable=False))
+    total_storage: float | None = Field(
+        default=None, sa_column=Column(Float, nullable=True)
+    )
     used_storage: Optional[float] = Field(
         default=0, sa_column=Column(Float, nullable=False, server_default=text("0"))
     )
-    total_credits: int = Field(sa_column=Column(Integer, nullable=False))
-    used_credits: Optional[int] = Field(
-        default=0, sa_column=Column(Integer, nullable=False, server_default=text("0"))
+    total_credits: float | None = Field(
+        default=None, sa_column=Column(Numeric, nullable=True)
     )
-    total_projects: int = Field(sa_column=Column(Integer, nullable=False))
+    used_credits: float = Field(
+        default=0, sa_column=Column(Numeric, nullable=False, server_default=text("0"))
+    )
+    total_projects: int | None = Field(
+        default=None, sa_column=Column(Integer, nullable=True)
+    )
     used_projects: Optional[int] = Field(
         default=0, sa_column=Column(Integer, nullable=False, server_default=text("0"))
     )
-    total_editors: int = Field(sa_column=Column(Integer, nullable=False))
+    total_editors: int | None = Field(
+        default=None, sa_column=Column(Integer, nullable=True)
+    )
     used_editors: Optional[int] = Field(
         default=1, sa_column=Column(Integer, nullable=False, server_default=text("1"))
     )
-    total_viewers: int = Field(sa_column=Column(Integer, nullable=False))
+    total_viewers: int | None = Field(
+        default=None, sa_column=Column(Integer, nullable=True)
+    )
     used_viewers: Optional[int] = Field(
         default=0, sa_column=Column(Integer, nullable=False, server_default=text("0"))
     )
-    plan_name: PlanTypeEnum = Field(sa_column=Column(Text, nullable=False))
+    # Granted premium features (grant-list). NULL = all enabled (self-hosted),
+    # [] = none granted (SaaS default until billing pushes an entitlement).
+    extras: list[str] | None = Field(
+        default=None, sa_column=Column(ARRAY(Text), nullable=True)
+    )
     plan_renewal_date: datetime | None = Field(default=None, sa_column=Column(DateTime))
     on_trial: bool = Field(sa_column=Column(Boolean, nullable=False))
     type: OrganizationTypeEnum = Field(sa_column=Column(Text, nullable=False))
-    size: str | None = Field(sa_column=Column(Text, nullable=True), max_length=255)
-    industry: OrganizationIndustryEnum = Field(sa_column=Column(Text, nullable=False))
-    department: str = Field(sa_column=Column(Text, nullable=False), max_length=255)
-    use_case: OrganizationUseCaseEnum = Field(sa_column=Column(Text, nullable=False))
     contact_user_id: UUID = Field(
         sa_column=Column(
             UUID_PG(as_uuid=True),
             nullable=False,
         )
     )
-    phone_number: str = Field(sa_column=Column(Text, nullable=False), max_length=255)
-    location: str = Field(sa_column=Column(Text, nullable=False), max_length=255)
     region: AvailableRegionsEnum = Field(sa_column=Column(Text, nullable=False))
-    stripe_id: str | None = Field(sa_column=Column(Text, nullable=True))
     hubspot_id: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     # Odoo company (res.partner, is_company) this org is (see core.odoo).
     # Written by staff or the billing integration, never by the support bridge,
@@ -171,7 +122,7 @@ class OrganizationBase(SQLModel):
             raise ValueError("Value must be greater than or equal to 0")
         return value
 
-    @field_serializer("plan_name", "type", "industry", "use_case", "region")
+    @field_serializer("type", "region")
     def _serialize_enum(self, value: Enum | str | None) -> str | None:
         return serialize_str_enum(value)
 

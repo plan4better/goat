@@ -52,18 +52,20 @@ const OrganizationMembers = () => {
 
   const isViewerQuotaFull = useMemo(() => {
     if (!organization) return false;
-    return organization.used_viewers >= organization.total_viewers;
+    return organization.total_viewers != null && organization.used_viewers >= organization.total_viewers;
   }, [organization]);
 
   const isEditorQuotaFull = useMemo(() => {
     if (!organization) return false;
-    return organization.used_editors >= organization.total_editors;
+    return organization.total_editors != null && organization.used_editors >= organization.total_editors;
   }, [organization]);
 
   const quotaStatus = useMemo(() => {
     if (!organization) return "";
-    const isViewerQuotaFull = organization.used_viewers >= organization.total_viewers;
-    const isEditorQuotaFull = organization.used_editors >= organization.total_editors;
+    const isViewerQuotaFull =
+      organization.total_viewers != null && organization.used_viewers >= organization.total_viewers;
+    const isEditorQuotaFull =
+      organization.total_editors != null && organization.used_editors >= organization.total_editors;
 
     const statuses = [] as string[];
     if (isViewerQuotaFull) statuses.push("Viewers");
@@ -155,7 +157,7 @@ const OrganizationMembers = () => {
                             i18nKey="common:viewers_quota_label"
                             values={{
                               current: organization.used_viewers,
-                              total: organization.total_viewers,
+                              total: organization.total_viewers ?? "∞",
                             }}
                             components={{
                               highlight: (
@@ -192,7 +194,7 @@ const OrganizationMembers = () => {
                             i18nKey="common:editors_quota_label"
                             values={{
                               current: organization.used_editors,
-                              total: organization.total_editors,
+                              total: organization.total_editors ?? "∞",
                             }}
                             components={{
                               highlight: (

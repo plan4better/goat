@@ -37,7 +37,8 @@ const OrgMemberInviteModal: React.FC<OrgMemberInviteDialogProps> = ({ open, onCl
     defaultValues: {
       user_email: "",
       role:
-        organization && organization?.used_editors < organization?.total_editors
+        organization &&
+        (organization.total_editors == null || organization.used_editors < organization.total_editors)
           ? organizationRoles.EDITOR
           : organizationRoles.VIEWER,
     },
@@ -71,10 +72,15 @@ const OrgMemberInviteModal: React.FC<OrgMemberInviteDialogProps> = ({ open, onCl
     if (!organization) return true;
     if (
       (role === organizationRoles.ADMIN || role === organizationRoles.EDITOR) &&
+      organization.total_editors != null &&
       organization.used_editors >= organization.total_editors
     )
       return true;
-    if (role === organizationRoles.VIEWER && organization.used_viewers >= organization.total_viewers)
+    if (
+      role === organizationRoles.VIEWER &&
+      organization.total_viewers != null &&
+      organization.used_viewers >= organization.total_viewers
+    )
       return true;
     return false;
   };

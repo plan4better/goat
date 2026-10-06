@@ -23,21 +23,9 @@ test("a user without an organization creates one on first login", async ({ page 
   await logIn(page, userOf("newcomer").email, PASSWORD);
   await page.waitForURL(/\/onboarding\/organization\/create/, { timeout: 30000 });
 
+  // One step: the name and the type. Everything else about the organization lives in the CRM.
   await page.getByLabel("Your organization's name").fill("Newcomer Planning");
-  await page.getByRole("button", { name: "Next" }).click();
-
   await choose(page, /Organization type/, "Public sector");
-  await choose(page, /Organization size/, "5-25");
-  await choose(page, /Industry/, "Architecture");
-  await page.getByLabel(/Organization department/).fill("Mobility");
-  await choose(page, /What are your main use cases\?/, "Geospatial data management and analysis");
-  await page.getByRole("button", { name: "Next" }).click();
-  // Every profile field is required: the step does not let anyone on without them.
-
-  await page.getByLabel(/Phone number/).fill("+49 89 1234567");
-  await page.getByRole("combobox", { name: /Country/ }).fill("Germany");
-  // The option leads with the country's flag.
-  await page.getByRole("option", { name: /Germany/ }).click();
   await page.getByRole("button", { name: "Let's get started" }).click();
 
   await page.waitForURL(/\/home/, { timeout: 30000 });

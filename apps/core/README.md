@@ -10,7 +10,7 @@ Core owns the Postgres schema (`customer` by default) and serves it under `/api/
 - **Content and access**: spaces, folders, the unified content feed, trash and transfer, favourites, sharing grants.
 - **Projects**: projects and their layers, layer groups, workflows, report layouts, publishing.
 - **Datasets**: layer and bundle metadata, upload URLs, templates, user assets.
-- **Plans and billing**: plan lookup, quotas, the Stripe webhook.
+- **Quotas and billing**: organization quotas and extras, pushed from Odoo subscriptions (`webhooks/odoo/entitlement`), and GOAT-managed trials (`webhooks/trial`). See `docs/odoo-entitlement-contract.md`.
 - **Support tickets** (SaaS only): tickets in Plan4Better's Odoo Helpdesk, read and answered from GOAT (`src/core/support`).
 
 The full, current route list is the OpenAPI document at `/api/docs`. The liveness check is `GET /api/healthz`.
@@ -65,7 +65,7 @@ All settings and their defaults are in `src/core/core/config.py`. The ones that 
 
 - `AUTH` (on unless set to false) and `KEYCLOAK_SERVER_URL`, which is required while auth is on.
 - `GOAT_PROCESSES_URL`: without it, bundle import answers 503, and a catalog dataset added to a project stays pending because its materialize job cannot start.
-- `STRIPE_SECRET_KEY`: billing is active only when it is set; otherwise the `DEFAULT_PLAN_*` / `DEFAULT_QUOTA_*` values apply.
+- `ODOO_WEBHOOK_SECRET`: SaaS mode (Odoo billing) only when it is set: new organizations start a trial (`TRIAL_DAYS`, `TRIAL_QUOTA_*`) and the billing webhooks accept calls. Otherwise the `DEFAULT_QUOTA_*` values apply.
 - `SMTP_HOST`: emails are sent only when it is set.
 - `ODOO_URL`, `ODOO_DB` (shared by the Odoo integrations), `ODOO_SUPPORT_API_KEY`, `ODOO_SUPPORT_TEAM_ID`: support tickets are on only when all four are set; otherwise `/api/v2/support` answers 404.
 - `CUSTOM_DOMAIN_CNAME_TARGET`: empty turns custom domains off.
