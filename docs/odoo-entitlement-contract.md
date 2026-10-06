@@ -190,7 +190,7 @@ the endpoint inert; orgs get env-driven defaults (`DEFAULT_PLAN_NAME`,
 All steps are existence-guarded: the `init` baseline builds fresh DBs from
 current models (already the end state), so the migration no-ops there.
 
-The migration is `0011_odoo_billing` (after `0010_support_tickets`).
+The migration is `0011_billing_and_usage` (after `0010_support_tickets`), together with usage metering.
 
 ## Odoo instances
 

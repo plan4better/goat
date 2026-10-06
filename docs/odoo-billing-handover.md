@@ -57,13 +57,13 @@ porting"). The original design notes for usage are local; ask Majk for them.
 - core: `webhooks/odoo/entitlement` and `webhooks/trial` (shared secret), `apply_entitlement`,
   nullable quotas (`NULL` = unlimited), `organization.extras`, feature gating by extras in
   `check_organization.sql`, `white_label` in `seed_roles`; Stripe and plan code removed.
-- Migration `0011_odoo_billing` (after support's `0010`).
+- One migration for billing and usage, `0011_billing_and_usage` (after support's `0010`).
 - goatlib: the `odoo_entitlement_push` and `trial_expiry` tasks, registered in the task registry.
 - web: one-step organization signup, quota display for unlimited values, features gated by extras,
   billing page and plan cards removed.
 - `scripts/odoo/odoo_setup.py`: all Odoo-side setup (catalog, white-label checkbox, removal of the old
   plan-name field, the automation rule). Dry run by default, staging only without `--allow-prod`.
-- Usage: migration `0012_credit_metering` (ledger columns, `credit_rate`, the dead `cost` table dropped),
+- Usage: in the same migration the ledger columns, `credit_rate` and the dead `cost` table dropped;
   `charge_credits.sql`, `/api/v2/credits/{balance,usage,breakdown,storage-by-layer}`, the capacity checks
   on upload and project creation, the geoapi metering middleware, the processes credit gate, the
   `compute_rollup`, `traffic_rollup` and `credit_reset` tasks, and a new Usage page (overview and
@@ -71,7 +71,8 @@ porting"). The original design notes for usage are local; ask Majk for them.
 
 ## Changed while porting
 
-- The migration became `0011_odoo_billing` with `down_revision = "0010_support_tickets"`.
+- Both old migrations became one, `0011_billing_and_usage` with `down_revision = "0010_support_tickets"`,
+  guarded like the others: the organization part first, then the ledger (downgrade the other way round).
 - Settings follow the Odoo conventions from support (module docstring of `core.odoo`): the task reads
   `ODOO_URL`, `ODOO_DB`, `ODOO_BILLING_USER`, `ODOO_BILLING_API_KEY`; `odoo_setup.py` reads `ODOO_URL`,
   `ODOO_DB`, `ODOO_ADMIN_LOGIN`, `ODOO_ADMIN_KEY` from the environment.
@@ -80,17 +81,16 @@ porting"). The original design notes for usage are local; ask Majk for them.
   contact link), the onboarding e2e test (one step).
 - `scripts/odoo/crm_migrate.py` (GOAT to Odoo CRM migration) is not part of this branch: it is a one-off
   tool that reads a local copy of the production database.
-- Usage: the migration became `0012_credit_metering` after `0011`, guarded like the others, without the
-  organization changes `0011` already makes. `/credits` goes through `auth_z` (main now requires it on
+- Usage: `/credits` goes through `auth_z` (main now requires it on
   every route) with a seeded `credits` pattern. geoapi's `get_metadata_by_id` resolves the layer the way
   the routes do today (DuckLake schema or catalog layer; the original predates flat layer storage). The
   capacity tests create their folder in a personal space (main's content spaces). The new Usage page
   replaces the old one.
-- Migrations `0010` to `0012` ran on a copy of the dev database on 2026-10-06 and core started on it.
+- Migrations `0010` and `0011` ran on a copy of the dev database on 2026-10-06 and core started on it.
 
 ## Open before it can ship
 
-1. **Check migration `0011` against production.** It drops `plan_name`, `stripe_id` and the six signup
+1. **Check migration `0011_billing_and_usage` against production.** It drops `plan_name`, `stripe_id` and the six signup
    columns, and makes quotas nullable. Look at the production data first (anything still read from those
    columns, anything to keep in the CRM).
 2. **XML-RPC goes away.** `/xmlrpc` and `/jsonrpc` are deprecated since Odoo 19 and scheduled for removal. The
