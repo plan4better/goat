@@ -56,9 +56,11 @@ KeycloakUser = Callable[[str], Awaitable[dict[str, Any]]]
 
 Scope = Literal["mine", "org"]
 State = Literal["open", "closed"]
-# Lists (and the summary built from them) are cached per user for LIST_TTL, so
-# reloads and tab switches in a row ask Odoo once. The user's own writes drop
-# their entries at once; changes from Odoo show up when the entries expire.
+# The header summary (every page load) is built from lists cached per user for
+# LIST_TTL. The cache is per pod: a write on one pod cannot drop another pod's
+# entries. So the lists the user opens are always read fresh from Odoo (and
+# refresh this pod's cache), which keeps "open" and "closed" consistent whichever
+# pod answers; only the badge may lag behind on another pod for up to LIST_TTL.
 LIST_TTL = 60.0
 # Open tickets a user may have as the customer; a new one waits until one is closed.
 MAX_OPEN_TICKETS = 25
@@ -552,11 +554,12 @@ class SupportService:
         user = await self._store.load_user(user_id)
         if scope == "org" and not (user.is_org_admin and user.org_id):
             raise SupportForbidden()  # before the cache: a revoked admin gets nothing
+        # not from the cache: see LIST_TTL
+        self._limit(self._read_limiter, (user.id, "read"))
         if request_id:
-            self._limit(self._read_limiter, (user.id, "read"))  # not cached
             items = await self._compute(user, scope, state, request_id)
         else:
-            items = await self._items(user, scope, state)
+            items = await self._items(user, scope, state, fresh=True)
         needle = q.strip().lower()
         if needle:
             items = [
@@ -570,14 +573,17 @@ class SupportService:
             key=lambda i: (not i.needs_my_reply, -i.ticket.updated_at.timestamp()),
         )
 
-    async def _items(self, user: SupportUser, scope: Scope, state: State) -> Items:
-        """The list from the per-user cache, or from Odoo after LIST_TTL.
+    async def _items(
+        self, user: SupportUser, scope: Scope, state: State, *, fresh: bool = False
+    ) -> Items:
+        """The list from the per-user cache, or from Odoo after LIST_TTL or when
+        `fresh` (which refreshes the cache too).
 
         Keyed by the contact as well: a link made outside this service changes
         what the lists hold.
         """
         key = (user.id, "list", scope, state, user.contact_id)
-        hit = self._cache.get(key)
+        hit = None if fresh else self._cache.get(key)
         if hit is not None:
             return list(hit)
         items = await self._compute(user, scope, state, None)
@@ -812,7 +818,7 @@ class SupportService:
         contact = await self._contact_for_read(user)
         if not contact:
             return
-        mine = await self._items(user, "mine", "open")
+        mine = await self._items(user, "mine", "open", fresh=True)
         open_own = sum(
             1
             for i in mine

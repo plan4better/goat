@@ -126,6 +126,18 @@ export const revalidateSupportTickets = (
     return include(scope, state);
   });
 
+/**
+ * After the user changed a ticket (status, reply): drops the cached ticket lists, so the list page
+ * loads them fresh instead of showing the old state first, and refetches the summary (badge).
+ */
+export const forgetSupportLists = (): Promise<unknown> =>
+  Promise.all([
+    globalMutate((key) => Array.isArray(key) && key[0] === SUPPORT_TICKETS_URL, undefined, {
+      revalidate: true,
+    }),
+    globalMutate(`${SUPPORT_API_BASE_URL}/summary`),
+  ]);
+
 export const useSupportTickets = (scope: TicketScope, state: TicketState) => {
   const { data, error, isLoading, mutate } = useAuthedSWR<SupportTicket[]>(
     ticketsKey(scope, state),

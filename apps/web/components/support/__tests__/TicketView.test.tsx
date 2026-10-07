@@ -18,6 +18,7 @@ const m = vi.hoisted(() => ({
   reopenSupportTicket: vi.fn(),
   toastError: vi.fn(),
   colleagues: vi.fn(),
+  forgetSupportLists: vi.fn(),
 }));
 const i18n = vi.hoisted(() => ({ language: "en" }));
 vi.mock("react-i18next", () => ({
@@ -46,6 +47,7 @@ vi.mock("@/lib/api/support", () => ({
   postSupportReply: m.postSupportReply,
   resolveSupportTicket: m.resolveSupportTicket,
   reopenSupportTicket: m.reopenSupportTicket,
+  forgetSupportLists: m.forgetSupportLists,
   rateSupportTicket: m.rateSupportTicket,
   updateSupportFollowers: m.updateSupportFollowers,
   downloadSupportAttachment: vi.fn(),
@@ -295,6 +297,8 @@ describe("TicketView", () => {
     await waitFor(() => expect(m.postSupportReply).toHaveBeenCalledWith("00031", "Thanks!", []));
     await waitFor(() => expect(box.value).toBe(""));
     expect(m.mutate).toHaveBeenCalled();
+    // the lists and the badge change with a reply: the list page must not show the old state
+    expect(m.forgetSupportLists).toHaveBeenCalled();
   });
 
   it("offers a rating on resolved tickets", async () => {
@@ -408,6 +412,15 @@ describe("TicketView", () => {
     m.useSupportTicket.mockReturnValue({ ticket: undefined, isLoading: true });
     render(<TicketView ticketRef="00031" />);
     expect(m.globalMutate).not.toHaveBeenCalled();
+  });
+
+  it("drops the cached lists after resolving, so the list page shows the new state", async () => {
+    m.useSupportTicket.mockReturnValue({ ticket: detail(), mutate: m.mutate, isLoading: false });
+    m.resolveSupportTicket.mockResolvedValue(undefined);
+    render(<TicketView ticketRef="00031" />);
+    fireEvent.click(screen.getByRole("button", { name: "support_mark_resolved" }));
+    await waitFor(() => expect(m.forgetSupportLists).toHaveBeenCalled());
+    expect(m.mutate).toHaveBeenCalled();
   });
 
   it("toasts the error when resolving fails", async () => {

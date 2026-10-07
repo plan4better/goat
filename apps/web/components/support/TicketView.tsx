@@ -31,6 +31,7 @@ import { useDateFnsLocale } from "@/i18n/utils";
 import {
   SUPPORT_API_BASE_URL,
   downloadSupportAttachment,
+  forgetSupportLists,
   postSupportReply,
   rateSupportTicket,
   reopenSupportTicket,
@@ -432,6 +433,7 @@ const SidePanel = ({ detail, onChanged }: { detail: SupportTicketDetail; onChang
     setBusy(true);
     try {
       await updateSupportFollowers(tk.ref, update);
+      void forgetSupportLists(); // leaving a ticket removes it from your list
       // Removing yourself ends your access; a refetch would only show "not found".
       if (leave) router.push("/support");
       else onChanged();
@@ -644,6 +646,7 @@ const TicketView = ({ ticketRef }: { ticketRef: string }) => {
       setFiles([]);
       if (result.failed_files.length)
         toast.warning(t("support_failed_files", { files: result.failed_files.join(", ") }));
+      void forgetSupportLists();
       await mutate();
     } catch (e) {
       toast.error(supportErrorMessage(t, e, { action: true }));
@@ -659,6 +662,7 @@ const TicketView = ({ ticketRef }: { ticketRef: string }) => {
     setStatusBusy(true);
     try {
       await (action === "resolve" ? resolveSupportTicket(tk.ref) : reopenSupportTicket(tk.ref));
+      void forgetSupportLists();
       await mutate();
     } catch (e) {
       toast.error(supportErrorMessage(t, e, { action: true }));

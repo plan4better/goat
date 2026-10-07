@@ -1364,3 +1364,38 @@ async def test_a_staff_colleague_is_refused_with_its_own_reason() -> None:
             me.id, _input(colleague_ids=(cyrine.id,))
         )
     assert provider.created == [] and provider.follower_changes == []
+
+
+# ---------------------------------------------- lists across pods (own caches)
+async def test_lists_are_read_fresh_and_only_the_summary_is_cached() -> None:
+    provider, store = FakeProvider(), MemoryStore()
+    me = store.add_user(email="m@x.de", contact_id=100)
+    provider.add(make_ticket(customer_contact_id=100))
+    service = _service(provider, store)
+    await service.list(me.id, "mine", "open")
+    calls = provider.list_calls
+    await service.list(me.id, "mine", "open")
+    assert provider.list_calls == calls + 1  # opened lists always ask the ticket system
+    calls = provider.list_calls
+    await service.summary(me.id)
+    await service.summary(me.id)
+    # the summary reuses the lists: "open" from the fresh read above, "closed" once
+    assert provider.list_calls == calls + 1
+
+
+async def test_a_resolve_on_one_pod_shows_on_another_pods_lists() -> None:
+    provider, store = FakeProvider(), MemoryStore()
+    me = store.add_user(email="m@x.de", contact_id=100)
+    provider.add(make_ticket(customer_contact_id=100))
+    pod_a, pod_b = _service(provider, store), _service(provider, store)  # own caches
+    assert [i.ticket.ref for i in await pod_b.list(me.id, "mine", "open")] == ["00031"]
+    assert await pod_b.list(me.id, "mine", "closed") == []
+    await pod_a.resolve(me.id, "00031")
+    detail = provider.tickets["00031"]
+    provider.tickets["00031"] = replace(
+        detail, ticket=replace(detail.ticket, status="solved")
+    )  # what Odoo now answers
+    assert await pod_b.list(me.id, "mine", "open") == []
+    assert [i.ticket.ref for i in await pod_b.list(me.id, "mine", "closed")] == [
+        "00031"
+    ]

@@ -65,6 +65,26 @@ const setLists = (open: SupportTicket[], closed: SupportTicket[] = []) =>
   }));
 
 describe("TicketList", () => {
+  it("shows neither tabs nor 'no tickets yet' until both lists are known", () => {
+    useSupportTicketsMock.mockImplementation((_scope: string, state: string) => ({
+      tickets: state === "open" ? [] : undefined, // closed still loading
+      error: undefined,
+      isLoading: state !== "open",
+      mutate: vi.fn(),
+    }));
+    render(<TicketList />);
+    expect(screen.getByRole("progressbar")).toBeTruthy();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByText("support_empty_title")).toBeNull();
+  });
+
+  it("says 'no tickets yet' only when both lists came back empty", () => {
+    setLists([], []);
+    render(<TicketList />);
+    expect(screen.getByText("support_empty_title")).toBeTruthy();
+    expect(screen.queryByRole("tab")).toBeNull();
+  });
+
   beforeEach(() => {
     useSupportTicketsMock.mockReset();
     pushMock.mockReset();

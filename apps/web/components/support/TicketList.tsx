@@ -258,6 +258,9 @@ const TicketList = () => {
     closed.tickets.length === 0;
   // The tab's list has not arrived yet: hold its place rather than claim it is empty.
   const loading = current.tickets === undefined;
+  // Until both lists are known, neither the tabs with their counts nor "no tickets yet" is shown:
+  // either could be wrong, and switching between them flickers.
+  const known = open.tickets !== undefined && closed.tickets !== undefined;
   const orgScope = effectiveScope === "org";
   // From the support pages themselves: no page to name in the ticket's details.
   const newTicket = () => router.push(newTicketPath());
@@ -338,7 +341,19 @@ const TicketList = () => {
         )}
       </Stack>
 
-      {!failed && !open.isLoading && !closed.isLoading && empty ? (
+      {!failed && !known ? (
+        <Stack spacing="8px" role="progressbar" aria-label={t("loading")}>
+          <Skeleton variant="rounded" height={36} width={220} sx={{ borderRadius: "8px", mb: 2 }} />
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton
+              key={index}
+              variant="rounded"
+              height={mobile ? MOBILE_ROW_HEIGHT : ROW_HEIGHT}
+              sx={{ borderRadius: "12px" }}
+            />
+          ))}
+        </Stack>
+      ) : !failed && empty ? (
         <EmptyState
           icon={ICON_NAME.HELP}
           title={t("support_empty_title")}
