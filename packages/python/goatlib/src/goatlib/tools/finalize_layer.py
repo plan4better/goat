@@ -14,7 +14,8 @@ replaced in place, whoever runs it, preserving the layer_id, project entries,
 and any user-customized style/tags. A layer shared with a project copy or
 template (inherited from it, or still shown by it) gets a new layer behind the
 same entry instead, so copies and their source never change each other's
-results. Identity is tracked entirely backend-side so workflows can run
+results; the new layer keeps the description, tags and column settings of the
+one it replaces. Identity is tracked entirely backend-side so workflows can run
 without the browser (long runs, remote triggers).
 
 Every run is authorized first: the runner must be able to write the project,

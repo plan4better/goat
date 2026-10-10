@@ -42,6 +42,7 @@ from goatlib.tools.project_schemas import (
     ExportWorkflow,
 )
 from goatlib.tools.schemas import ToolInputBase
+from goatlib.utils.builder_config import remap_layer_project_ids
 from goatlib.utils.layer import layer_schema_name, layer_table_path
 
 logger = logging.getLogger(__name__)
@@ -291,31 +292,12 @@ class ProjectImportRunner(SimpleToolRunner):
 
         Widget configs reference layer_project link IDs (integers) and
         layer_project_group IDs (integers) which both change on import.
-        For layer_project IDs, walks the serialized JSON and rewrites
-        `"layer_project_id": <int>` plus integers in arrays. For group IDs,
-        walks the deserialized tree and rewrites widget config keys of the
+        Link IDs are rewritten only where a widget names one
+        (`goatlib.utils.builder_config`), so other numbers keep their value.
+        For group IDs, walks the tree and rewrites widget config keys of the
         form `group_icon_<id>` and `group_info` object keys.
         """
-        config_str = json.dumps(config)
-        # Replace integer IDs carefully — match "layer_project_id": 66 patterns
-        # and also array references like [66, 67, 68]
-        for old_id, new_id in sorted(lp_id_map.items(), key=lambda x: -len(str(x[0]))):
-            # Replace in "layer_project_id": 66 (with and without space)
-            config_str = config_str.replace(
-                f'"layer_project_id": {old_id}', f'"layer_project_id": {new_id}'
-            )
-            config_str = config_str.replace(
-                f'"layer_project_id":{old_id}', f'"layer_project_id":{new_id}'
-            )
-        # Also remap downloadable_layers arrays and target_layers
-        for old_id, new_id in sorted(lp_id_map.items(), key=lambda x: -len(str(x[0]))):
-            # In arrays like [66, 67, 68] — careful with boundaries
-            config_str = re.sub(
-                rf"(?<=[[\s,]){old_id}(?=[,\]\s])",
-                str(new_id),
-                config_str,
-            )
-        remapped = json.loads(config_str)
+        remapped = remap_layer_project_ids(config, lp_id_map)
         if group_id_map:
             remapped = self._remap_group_ids_in_config(remapped, group_id_map)
         return remapped  # type: ignore[no-any-return]
