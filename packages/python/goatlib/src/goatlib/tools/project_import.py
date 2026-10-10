@@ -27,6 +27,7 @@ from uuid import uuid4
 import asyncpg
 from pydantic import BaseModel, Field
 
+from goatlib.io.bbox_columns import is_bbox_struct
 from goatlib.models.project import DEFAULT_INITIAL_VIEW_STATE
 from goatlib.tools.base import SimpleToolRunner
 from goatlib.tools.project_schemas import (
@@ -419,7 +420,8 @@ class ProjectImportRunner(SimpleToolRunner):
         # Ensure schema exists
         self.duckdb_con.execute(f"CREATE SCHEMA IF NOT EXISTS lake.{schema}")
 
-        # Read parquet columns, exclude bbox, sanitize names
+        # Read parquet columns, exclude bounding-box columns
+        # (goatlib.io.bbox_columns), sanitize names
         columns_result = self.duckdb_con.execute(
             f"DESCRIBE SELECT * FROM '{parquet_path}'"
         ).fetchall()
@@ -427,7 +429,7 @@ class ProjectImportRunner(SimpleToolRunner):
         columns = []
         for col in columns_result:
             name = col[0]
-            if name == "bbox":
+            if name == "bbox" or is_bbox_struct(str(col[1])):
                 continue
             if not safe_col_re.match(name):
                 logger.warning("Skipping unsafe column name: %r", name)

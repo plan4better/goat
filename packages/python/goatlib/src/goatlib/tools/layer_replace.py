@@ -21,6 +21,8 @@ from typing import Any, Protocol
 import asyncpg
 import duckdb
 
+from goatlib.io.bbox_columns import star_excluding, stray_bbox_columns
+
 logger = logging.getLogger(__name__)
 
 
@@ -134,17 +136,20 @@ class LayerReplaceMixin:
                 if "GEOMETRY" in col_type.upper():
                     geom_col = col_name
                     break
+            # Stray bounding-box copies stay out of the layer
+            # (goatlib.io.bbox_columns).
+            columns = star_excluding(stray_bbox_columns(cols))
 
             if geom_col:
                 con.execute(f"""
                     CREATE TABLE {full_table} AS
-                    SELECT * FROM read_parquet('{parquet_path}')
+                    SELECT {columns} FROM read_parquet('{parquet_path}')
                     ORDER BY ST_Hilbert({geom_col})
                 """)
             else:
                 con.execute(f"""
                     CREATE TABLE {full_table} AS
-                    SELECT * FROM read_parquet('{parquet_path}')
+                    SELECT {columns} FROM read_parquet('{parquet_path}')
                 """)
             con.execute("COMMIT")
         except BaseException:

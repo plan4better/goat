@@ -311,3 +311,38 @@ def test_uses_parquet_v2_encoding(
     col = rg.column(id_col_idx)
     encodings = col.encodings
     assert "DELTA_BINARY_PACKED" in encodings, f"Expected V2 encoding, got: {encodings}"
+
+
+def test_drops_inherited_and_stray_bbox_columns(
+    duckdb_con: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    """A source carrying bbox copies from older GOAT versions (bbox_1) and
+    GDAL's covering column (geometry_bbox) gets exactly one fresh bbox; a
+    user column whose name only contains 'bbox' stays."""
+    duckdb_con.execute("""
+        CREATE TABLE inherited AS
+        SELECT
+            i AS id,
+            'note ' || i AS bbox_note,
+            {'xmin': 0.0, 'ymin': 0.0, 'xmax': 1.0, 'ymax': 1.0} AS bbox,
+            {'xmin': 0.0, 'ymin': 0.0, 'xmax': 1.0, 'ymax': 1.0} AS bbox_1,
+            {'xmin': 0.0::FLOAT, 'ymin': 0.0::FLOAT, 'xmax': 1.0::FLOAT, 'ymax': 1.0::FLOAT}
+                AS geometry_bbox,
+            ST_Point(i, i) AS geometry
+        FROM range(10) t(i)
+    """)
+    output_path = tmp_path / "inherited.parquet"
+
+    write_optimized_geoparquet(duckdb_con, "inherited", output_path)
+
+    columns = [
+        r[0]
+        for r in duckdb_con.execute(
+            f"DESCRIBE SELECT * FROM read_parquet('{output_path}')"
+        ).fetchall()
+    ]
+    assert sorted(columns) == ["bbox", "bbox_note", "geometry", "id"]
+    xmax = duckdb_con.execute(
+        f"SELECT bbox.xmax FROM read_parquet('{output_path}') WHERE id = 5"
+    ).fetchone()
+    assert xmax == (5.0,)
