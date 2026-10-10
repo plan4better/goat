@@ -7,11 +7,10 @@ config around the author's ship/ask choice for each detected input.
 Tool-node ``config`` values are free-form per process (``Record<string,
 unknown>`` on the web side), so rewriting a layer reference inside them is
 best-effort: it walks the config tree and replaces scalar values equal to
-the old id, the same string/int replacement strategy ``_remap_builder_config``
-(``crud/crud_project_copy.py``) uses for builder widget configs. A tool
-parameter that is not itself a layer reference but happens to hold the same
-number or string would be rewritten too; this is accepted the same way the
-project-copy remap accepts it.
+the old id. A tool parameter that is not itself a layer reference but happens
+to hold the same number or string would be rewritten too; this is accepted
+because, unlike builder widget configs (``goatlib.utils.builder_config``),
+tool configs have no schema that says which fields hold a layer reference.
 """
 
 import copy

@@ -1,12 +1,12 @@
 """Shallow project copy — new metadata records sharing the same layer data."""
 
 import copy
-import json
 import logging
 import re
 from typing import Any
 from uuid import UUID
 
+from goatlib.utils.builder_config import remap_layer_project_ids
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -506,32 +506,12 @@ def _remap_builder_config(
 
     Widget configs reference layer_project link IDs (integers) and
     layer_project_group IDs (integers); both get new auto-increment IDs when
-    a project is copied. Link IDs are rewritten on the serialized config;
-    group IDs live in widget config keys (`group_icon_<id>`) and `group_info`
-    object keys, which are rewritten on the deserialized tree. Mirrors the
-    import path (`goatlib.tools.project_import`).
+    a project is copied. Link IDs are rewritten only where a widget names one
+    (`goatlib.utils.builder_config`), so other numbers keep their value; group
+    IDs live in widget config keys (`group_icon_<id>`) and `group_info` object
+    keys. Mirrors the import path (`goatlib.tools.project_import`).
     """
-    config_str = json.dumps(config)
-
-    # Replace "layer_project_id": 66 patterns (sort by descending ID to avoid
-    # partial matches, e.g. replacing "6" inside "66")
-    for old_id, new_id in sorted(lp_id_map.items(), key=lambda x: -x[0]):
-        config_str = config_str.replace(
-            f'"layer_project_id": {old_id}', f'"layer_project_id": {new_id}'
-        )
-        config_str = config_str.replace(
-            f'"layer_project_id":{old_id}', f'"layer_project_id":{new_id}'
-        )
-
-    # Also remap integers in arrays (e.g. downloadable_layers: [66, 67])
-    for old_id, new_id in sorted(lp_id_map.items(), key=lambda x: -x[0]):
-        config_str = re.sub(
-            rf"(?<=[\[,\s]){old_id}(?=[,\]\s])",
-            str(new_id),
-            config_str,
-        )
-
-    remapped: dict[str, Any] = json.loads(config_str)
+    remapped: dict[str, Any] = remap_layer_project_ids(config, lp_id_map)
     if group_id_map:
         remapped = _remap_group_ids_in_config(remapped, group_id_map)
     return remapped

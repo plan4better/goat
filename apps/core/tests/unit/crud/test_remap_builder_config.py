@@ -56,3 +56,60 @@ def test_group_map_omitted_keeps_group_keys_untouched() -> None:
     widget = result["interface"][0]["widgets"][0]
     assert "group_icon_94" in widget["options"]
     assert widget["setup"]["group_info"]["94"] == "Trees info"
+
+
+def test_numbers_that_equal_an_old_link_id_keep_their_value() -> None:
+    """Reported 2026-10-10: a copy of a project whose links had small ids
+    turned a panel's `shadow: 5` into 48 and `opacity: 1` into 29, and the web
+    app refused to open the copy. Only fields that name a link are mapped."""
+    config = {
+        "interface": [
+            {
+                "type": "panel",
+                "config": {
+                    "appearance": {"shadow": 5, "opacity": 1, "backgroundBlur": 15}
+                },
+                "widgets": [
+                    {
+                        "config": {
+                            "layer_project_id": 5,
+                            "options": {
+                                "x_axis_ticks": [1, 5],
+                                "downloadable_layers": [1, 5],
+                            },
+                            "setup": {
+                                "target_layers": [
+                                    {"layer_project_id": 1, "column_name": "a"}
+                                ]
+                            },
+                        }
+                    }
+                ],
+            }
+        ]
+    }
+
+    result = _remap_builder_config(config, {1: 29, 5: 48})
+
+    panel = result["interface"][0]
+    assert panel["config"]["appearance"] == {
+        "shadow": 5,
+        "opacity": 1,
+        "backgroundBlur": 15,
+    }
+    widget = panel["widgets"][0]["config"]
+    assert widget["layer_project_id"] == 48
+    assert widget["options"] == {
+        "x_axis_ticks": [1, 5],
+        "downloadable_layers": [29, 48],
+    }
+    assert widget["setup"]["target_layers"] == [
+        {"layer_project_id": 29, "column_name": "a"}
+    ]
+
+
+def test_an_id_is_mapped_once_when_new_and_old_ids_overlap() -> None:
+    """With {9: 6, 6: 3} the entry that was 9 must end up 6, not 3."""
+    config = {"widgets": [{"layer_project_id": 9}, {"layer_project_id": 6}]}
+    result = _remap_builder_config(config, {9: 6, 6: 3})
+    assert result == {"widgets": [{"layer_project_id": 6}, {"layer_project_id": 3}]}

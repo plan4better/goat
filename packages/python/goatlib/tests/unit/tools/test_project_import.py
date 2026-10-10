@@ -334,6 +334,35 @@ class TestProjectImportRunner:
         assert result["sections"][0]["layerId"] == new_uuid_1
         assert result["sections"][1]["layerId"] == new_uuid_2
 
+    def test_remap_builder_config_keeps_numbers_that_are_not_link_ids(
+        self, runner: ProjectImportRunner
+    ) -> None:
+        """Only fields that name a project entry are remapped; a panel's
+        shadow or opacity that equals an old link id keeps its value."""
+        config = {
+            "interface": [
+                {
+                    "config": {"appearance": {"shadow": 5, "opacity": 1}},
+                    "widgets": [
+                        {
+                            "config": {
+                                "layer_project_id": 5,
+                                "options": {"downloadable_layers": [1, 5]},
+                            }
+                        }
+                    ],
+                }
+            ]
+        }
+
+        result = runner._remap_builder_config(config, {1: 29, 5: 48})
+
+        panel = result["interface"][0]
+        assert panel["config"]["appearance"] == {"shadow": 5, "opacity": 1}
+        widget = panel["widgets"][0]["config"]
+        assert widget["layer_project_id"] == 48
+        assert widget["options"]["downloadable_layers"] == [29, 48]
+
     def test_remap_builder_config_remaps_group_icon_keys(
         self, runner: ProjectImportRunner
     ) -> None:
