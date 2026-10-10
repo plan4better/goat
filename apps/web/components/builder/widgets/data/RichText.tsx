@@ -22,6 +22,7 @@ import FontSize from "@/lib/extensions/font-size";
 import LineHeight from "@/lib/extensions/line-height";
 import { formatNumber } from "@/lib/utils/format-number";
 import { getMapExtentCQL } from "@/lib/utils/map/navigate";
+import { keepEmptyParagraphs } from "@/lib/utils/richTextHtml";
 import type { AggregationStatsQueryParams, ProjectLayer } from "@/lib/validations/project";
 import type { RichTextDataSchema, RichTextVariableSchema } from "@/lib/validations/widget";
 
@@ -289,7 +290,7 @@ const RichTextPreview = ({ html }: { html: string }) => {
             boxSizing: "border-box",
           },
         }}
-        dangerouslySetInnerHTML={{ __html: html || "<p><br></p>" }}
+        dangerouslySetInnerHTML={{ __html: keepEmptyParagraphs(html) || "<p><br></p>" }}
       />
       {viewPopover && (
         <InfoChipViewPopover
