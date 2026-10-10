@@ -975,6 +975,65 @@ async def test_claiming_a_project_entry_points_it_at_the_layer_and_keeps_its_set
 
 
 @pytest.mark.asyncio
+async def test_claiming_a_project_entry_carries_the_layers_description_over(
+    db_session: AsyncSession,
+    pg: asyncpg.Connection,
+    roles: dict[str, UUID],
+    make_user: MakeUser,
+    make_folder: MakeFolder,
+    make_layer: MakeLayer,
+    make_project: MakeProject,
+) -> None:
+    """The first run in a project copy or template writes a new layer; it
+    keeps the description, tags and column settings the template's author
+    gave the output, as an overwrite in place does. The source's layer is
+    left as it was."""
+    owner = await make_user()
+    folder = await make_folder(owner)
+    project = await make_project(owner, folder)
+    wf = await _workflow(db_session, project.id)
+    inherited = await make_layer(owner, folder)
+    inherited.description = "Wohnlagen, die das Vorhaben versorgen würde."
+    inherited.tags = ["Nahversorgung", "Ergebnis"]
+    inherited.field_config = {"einwohner": {"display_config": {"decimals": 0}}}
+    fresh = await make_layer(owner, folder)
+    db_session.add(inherited)
+    link_id = await _link(db_session, inherited.id, project.id)
+    await db_session.commit()
+
+    await claim_link(
+        pg,
+        S,
+        project_id=str(project.id),
+        link_id=link_id,
+        layer_id=str(fresh.id),
+        workflow_id=str(wf),
+        export_node_id=NODE,
+    )
+
+    rows = {
+        r.id: r
+        for r in (
+            await db_session.execute(
+                text(
+                    f"SELECT id, description, tags, field_config FROM {S}.layer "
+                    "WHERE id IN (:a, :b)"
+                ),
+                {"a": inherited.id, "b": fresh.id},
+            )
+        ).all()
+    }
+    expected = (
+        "Wohnlagen, die das Vorhaben versorgen würde.",
+        ["Nahversorgung", "Ergebnis"],
+        {"einwohner": {"display_config": {"decimals": 0}}},
+    )
+    for layer_id in (fresh.id, inherited.id):
+        row = rows[layer_id]
+        assert (row.description, row.tags, row.field_config) == expected
+
+
+@pytest.mark.asyncio
 async def test_claiming_an_entry_whose_other_properties_is_json_null(
     db_session: AsyncSession,
     pg: asyncpg.Connection,

@@ -249,9 +249,28 @@ async def claim_link(
     node's result. The entry keeps its id, name, style, position and filters,
     so dashboards, layouts and dataset nodes referring to it follow along.
 
+    ``layer_id`` takes over the description, tags and column settings of the
+    layer the entry showed, as an overwrite in place keeps them: a project
+    copy or template documents its outputs, and the first run there must not
+    drop that.
+
     Only an entry of ``project_id`` (the project the run was authorized for)
     is touched; any other raises, so a surrounding transaction rolls back.
     """
+    await conn.execute(
+        f"""
+        UPDATE {schema}.layer AS fresh
+        SET description = shown.description,
+            tags = shown.tags,
+            field_config = shown.field_config
+        FROM {schema}.layer_project AS link
+        JOIN {schema}.layer AS shown ON shown.id = link.layer_id
+        WHERE link.id = $1 AND link.project_id = $3 AND fresh.id = $2
+        """,
+        link_id,
+        uuid.UUID(layer_id),
+        uuid.UUID(project_id),
+    )
     status = await conn.execute(
         f"""
         UPDATE {schema}.layer_project
