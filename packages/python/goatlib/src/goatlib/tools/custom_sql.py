@@ -290,8 +290,20 @@ class CustomSqlToolRunner(BaseToolRunner[CustomSqlToolParams]):
                 f"numbers, and underscores, and start with a letter or underscore"
             )
 
+        # DuckDB writes no GeoParquet metadata for an empty table, so an empty
+        # input (e.g. an intermediate workflow result without rows) reads back
+        # with its geometry as WKB BLOB and spatial functions on it fail to
+        # bind. Restore the geometry type.
+        columns = con.execute(
+            f"DESCRIBE SELECT * FROM read_parquet('{parquet_path}')"
+        ).fetchall()
+        select = "*"
+        if any(c[0] == "geometry" and str(c[1]).upper() == "BLOB" for c in columns):
+            select = '* REPLACE (ST_GeomFromWKB("geometry") AS "geometry")'
+
         con.execute(
-            f"CREATE VIEW \"{alias}\" AS SELECT * FROM read_parquet('{parquet_path}')"
+            f'CREATE VIEW "{alias}" AS SELECT {select} '
+            f"FROM read_parquet('{parquet_path}')"
         )
         logger.info(f"Registered view '{alias}' from {parquet_path}")
 
