@@ -39,8 +39,11 @@ Why Bounding Box Columns?
 """
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from goatlib.io.bbox_columns import BBOX_COLUMN, star_excluding, stray_bbox_columns
 
 if TYPE_CHECKING:
     import duckdb
@@ -122,7 +125,7 @@ def write_optimized_parquet(
         geometry_column,
         add_bbox=add_bbox,
         hilbert_sort=hilbert_sort,
-        replace_bbox=add_bbox and _has_bbox_column(con, source_query),
+        exclude_columns=_bbox_columns_to_drop(con, source_query, add_bbox),
     )
 
     # Execute COPY with optimization
@@ -181,17 +184,26 @@ def _normalize_source(source: str) -> str:
     return f"SELECT * FROM {source}"
 
 
-def _has_bbox_column(
+def _bbox_columns_to_drop(
     con: "duckdb.DuckDBPyConnection",
     source_query: str,
-) -> bool:
-    """Check whether the source already carries a bbox column."""
+    add_bbox: bool,
+) -> list[str]:
+    """Bounding-box columns of the source that must not reach the output.
+
+    Stray copies (``bbox_1``, GDAL's ``geometry_bbox``, see
+    ``goatlib.io.bbox_columns``) always; an inherited ``bbox`` when a fresh one
+    replaces it, since DuckDB would otherwise rename the new one to ``bbox_1``.
+    """
     try:
         rows = con.execute(f"DESCRIBE {source_query}").fetchall()
-        return any(r[0] == "bbox" for r in rows)
     except Exception as e:
         logger.debug("bbox column check failed: %s", e)
-        return False
+        return []
+    drop = stray_bbox_columns(rows)
+    if add_bbox and any(r[0] == BBOX_COLUMN for r in rows):
+        drop.append(BBOX_COLUMN)
+    return drop
 
 
 def _check_geometry_column(
@@ -220,7 +232,7 @@ def _build_optimized_query(
     geometry_column: str,
     add_bbox: bool = True,
     hilbert_sort: bool = True,
-    replace_bbox: bool = False,
+    exclude_columns: Sequence[str] = (),
 ) -> str:
     """Build query with bbox columns and Hilbert sorting.
 
@@ -258,9 +270,8 @@ def _build_optimized_query(
         # ST_Hilbert(geometry) computes Hilbert index for the geometry
         order_by = f'ORDER BY ST_Hilbert("{geometry_column}")'
 
-    # Replace an inherited bbox rather than appending beside it: DuckDB would
-    # rename the new one to bbox_1, and the next tool run would add bbox_2.
-    star = "* EXCLUDE (bbox)" if replace_bbox else "*"
+    # Leave out the source's bounding-box columns (see _bbox_columns_to_drop).
+    star = star_excluding(exclude_columns)
 
     # Combine into final query
     return f"""

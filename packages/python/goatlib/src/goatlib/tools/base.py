@@ -48,6 +48,7 @@ import duckdb
 
 from goatlib.bundles.artifacts.storage import resolve_artifact
 from goatlib.config.io import DEFAULT_MAX_UPLOAD_BYTES
+from goatlib.io.bbox_columns import star_excluding, stray_bbox_columns
 from goatlib.io.config import (
     PARQUET_COMPRESSION,
     PARQUET_ROW_GROUP_SIZE,
@@ -1665,6 +1666,9 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                     if "GEOMETRY" in col_type.upper():
                         geom_col = col_name
                         break
+                # Stray bounding-box copies stay out of the layer
+                # (goatlib.io.bbox_columns).
+                columns = star_excluding(stray_bbox_columns(cols))
 
                 # Create table from parquet with Hilbert ordering for spatial locality
                 # This ensures spatially-close rows are stored together in row groups,
@@ -1672,7 +1676,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 if geom_col:
                     con.execute(f"""
                         CREATE TABLE {table_name} AS
-                        SELECT * FROM read_parquet('{parquet_path}')
+                        SELECT {columns} FROM read_parquet('{parquet_path}')
                         ORDER BY ST_Hilbert({geom_col})
                     """)
                     logger.info(
@@ -1684,7 +1688,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 else:
                     con.execute(f"""
                         CREATE TABLE {table_name} AS
-                        SELECT * FROM read_parquet('{parquet_path}')
+                        SELECT {columns} FROM read_parquet('{parquet_path}')
                     """)
                     logger.info(
                         "Created DuckLake table: %s from %s", table_name, parquet_path
