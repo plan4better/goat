@@ -224,6 +224,18 @@
       "label": "Opportunities",
       "description": "List of opportunity datasets with gravity parameters"
     },
+    "opportunity_layer_1": {
+      "label": "Opportunity layer 1",
+      "description": "Layer with the opportunities, connected on the canvas"
+    },
+    "opportunity_layer_2": {
+      "label": "Opportunity layer 2",
+      "description": "Layer with the opportunities, connected on the canvas"
+    },
+    "opportunity_layer_3": {
+      "label": "Opportunity layer 3",
+      "description": "Layer with the opportunities, connected on the canvas"
+    },
     "input_path": {
       "label": "Input layer",
       "description": "Select the input layer for analysis"

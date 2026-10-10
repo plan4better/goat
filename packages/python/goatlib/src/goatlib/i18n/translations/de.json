@@ -220,6 +220,18 @@
       "label": "Gelegenheiten",
       "description": "Liste der Gelegenheitsdatensätze mit Gravitationsparametern"
     },
+    "opportunity_layer_1": {
+      "label": "Gelegenheit 1",
+      "description": "Layer mit den Gelegenheiten, auf der Leinwand verbunden"
+    },
+    "opportunity_layer_2": {
+      "label": "Gelegenheit 2",
+      "description": "Layer mit den Gelegenheiten, auf der Leinwand verbunden"
+    },
+    "opportunity_layer_3": {
+      "label": "Gelegenheit 3",
+      "description": "Layer mit den Gelegenheiten, auf der Leinwand verbunden"
+    },
     "input_path": {
       "label": "Eingabe-Layer",
       "description": "Wählen Sie den Eingabe-Layer für die Analyse"
