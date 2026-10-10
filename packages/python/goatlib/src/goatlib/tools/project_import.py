@@ -416,8 +416,14 @@ class ProjectImportRunner(SimpleToolRunner):
             if not safe_col_re.match(name):
                 logger.warning("Skipping unsafe column name: %r", name)
                 continue
-            columns.append(name)
-        col_list = ", ".join(f'"{c}"' for c in columns)
+            # DuckDB writes no GeoParquet metadata for an empty table, so an
+            # exported empty layer (e.g. one users draw into) reads back with
+            # its geometry as WKB BLOB. Restore the geometry type.
+            if name == "geometry" and str(col[1]).upper() == "BLOB":
+                columns.append('ST_GeomFromWKB("geometry") AS "geometry"')
+                continue
+            columns.append(f'"{name}"')
+        col_list = ", ".join(columns)
 
         # Create table from parquet
         self.duckdb_con.execute(

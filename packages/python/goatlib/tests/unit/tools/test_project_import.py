@@ -1542,3 +1542,75 @@ class TestImportWorkflowExportLinks:
         }
         dataset_node = workflow_args[5]["nodes"][0]  # type: ignore[index]
         assert dataset_node["data"]["projectLayerId"] == 5001
+
+
+class TestImportDucklakeLayerGeometry:
+    """An exported empty layer must come back as a layer users can draw into."""
+
+    @pytest.fixture
+    def con(self) -> Any:
+        import duckdb
+
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial")
+        con.execute("ATTACH ':memory:' AS lake")
+        yield con
+        con.close()
+
+    def _import(self, con: Any, parquet_path: Path) -> dict[str, str]:
+        runner = ProjectImportRunner()
+        runner.settings = MagicMock()
+        runner._duckdb_con = con
+        tracker = ImportCleanupTracker()
+        runner._import_ducklake_layer(
+            parquet_path, "user", "0f0e8a4c-5d1f-4c1b-9a51-0d8f2c7e4a10", tracker
+        )
+        schema, table = tracker.ducklake_tables[0].split(".")[1:]
+        return dict(
+            con.execute(
+                "SELECT column_name, data_type FROM information_schema.columns "
+                "WHERE table_catalog = 'lake' AND table_schema = ? AND table_name = ?",
+                [schema, table],
+            ).fetchall()
+        )
+
+    def test_an_empty_layer_keeps_its_geometry_type(
+        self, con: Any, tmp_path: Path
+    ) -> None:
+        """DuckDB writes no GeoParquet metadata for an empty table, so the
+        geometry of an empty exported layer reads back as WKB BLOB."""
+        con.execute(
+            "CREATE TABLE src AS SELECT 'x' AS name, ST_Point(1, 1) AS geometry "
+            "WHERE false"
+        )
+        parquet_path = tmp_path / "data.parquet"
+        con.execute(f"COPY src TO '{parquet_path}' (FORMAT PARQUET)")
+        assert (
+            con.execute(f"DESCRIBE SELECT * FROM '{parquet_path}'").fetchall()[1][1]
+            == "BLOB"
+        )
+
+        types = self._import(con, parquet_path)
+
+        assert types["geometry"].startswith("GEOMETRY")
+        assert types["name"] == "VARCHAR"
+
+    def test_a_layer_with_features_keeps_its_geometry(
+        self, con: Any, tmp_path: Path
+    ) -> None:
+        con.execute(
+            "CREATE TABLE src AS SELECT 'x' AS name, ST_Point(7.1, 50.7) AS geometry"
+        )
+        parquet_path = tmp_path / "data.parquet"
+        con.execute(f"COPY src TO '{parquet_path}' (FORMAT PARQUET)")
+
+        types = self._import(con, parquet_path)
+
+        assert types["geometry"].startswith("GEOMETRY")
+        table = con.execute(
+            "SELECT table_schema, table_name FROM information_schema.tables "
+            "WHERE table_catalog = 'lake'"
+        ).fetchone()
+        assert con.execute(
+            f'SELECT ST_AsText(geometry) FROM lake."{table[0]}"."{table[1]}"'
+        ).fetchall() == [("POINT (7.1 50.7)",)]
