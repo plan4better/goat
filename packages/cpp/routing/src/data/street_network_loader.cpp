@@ -3,7 +3,9 @@
 
 #include "../output/sql_export.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <duckdb.hpp>
 #include <filesystem>
@@ -95,7 +97,8 @@ namespace routing::data
         SpatialFilter const &filter,
         std::vector<std::string> const &valid_classes,
         RoutingMode mode,
-        bool load_geometry)
+        bool load_geometry,
+        EdgeColumnSelection columns = {})
     {
         auto const &h3_3_cells = filter.h3_3_cells;
         auto const &h3_6_cells = filter.h3_6_cells;
@@ -139,8 +142,16 @@ namespace routing::data
         // The H3 columns exist to prune a hive-partitioned dataset. An uploaded
         // street network omits them, so every reference to them has to be
         // conditional, and the bbox below narrows those datasets instead.
+        // Environmental columns are only projected when the caller requests
+        // them via `columns` (e.g. walking with a positive weight). Otherwise
+        // the query selects a constant so DuckDB skips those Parquet column
+        // chunks entirely.
+        bool const need_shade = columns.need_shade;
+        bool const need_heat = columns.need_heat;
         bool has_edge_h3_3 = false;
         bool has_edge_h3_6 = false;
+        bool has_edge_shade = false;
+        bool has_edge_heat = false;
         auto edge_schema =
             con.Query("DESCRIBE SELECT * FROM " + parquet_scan + " LIMIT 0");
         if (edge_schema->HasError())
@@ -159,6 +170,26 @@ namespace routing::data
             {
                 has_edge_h3_6 = true;
             }
+            else if (col_name == "impedance_shade" && need_shade)
+            {
+                has_edge_shade = true;
+            }
+            else if (col_name == "impedance_heat" && need_heat)
+            {
+                has_edge_heat = true;
+            }
+        }
+        if (need_shade && !has_edge_shade)
+        {
+            std::fprintf(stderr,
+                         "[routing::data] Warning: shade requested but 'impedance_shade' column is missing from %s; falling back to 0.0\n",
+                         edge_dir.c_str());
+        }
+        if (need_heat && !has_edge_heat)
+        {
+            std::fprintf(stderr,
+                         "[routing::data] Warning: heat requested but 'impedance_heat' column is missing from %s; falling back to 0.0\n",
+                         edge_dir.c_str());
         }
 
         std::string node_x_expr;
@@ -235,6 +266,8 @@ namespace routing::data
             << "SELECT e.id, e.source, e.target, e.length_m, e.length_3857, "
             << "class_, impedance_slope, impedance_slope_reverse, "
             << "impedance_surface, maxspeed_forward, maxspeed_backward, "
+            << (has_edge_shade ? "e.impedance_shade::FLOAT AS impedance_shade, " : "0.0::FLOAT AS impedance_shade, ")
+            << (has_edge_heat ? "e.impedance_heat::FLOAT AS impedance_heat, " : "0.0::FLOAT AS impedance_heat, ")
             << (load_geometry ? "coordinates_3857, " : "")
             << "src_nodes.x_3857 AS source_x, "
             << "src_nodes.y_3857 AS source_y, "
@@ -286,6 +319,8 @@ namespace routing::data
             duckdb::UnifiedVectorFormat surface_vec;
             duckdb::UnifiedVectorFormat speed_fwd_vec;
             duckdb::UnifiedVectorFormat speed_back_vec;
+            duckdb::UnifiedVectorFormat shade_vec;
+            duckdb::UnifiedVectorFormat heat_vec;
             duckdb::UnifiedVectorFormat source_x_vec;
             duckdb::UnifiedVectorFormat source_y_vec;
             duckdb::UnifiedVectorFormat target_x_vec;
@@ -302,13 +337,15 @@ namespace routing::data
             chunk->data[8].ToUnifiedFormat(count, surface_vec);
             chunk->data[9].ToUnifiedFormat(count, speed_fwd_vec);
             chunk->data[10].ToUnifiedFormat(count, speed_back_vec);
-            // coordinates_3857 occupies column 11 when requested, shifting the
+            chunk->data[11].ToUnifiedFormat(count, shade_vec);
+            chunk->data[12].ToUnifiedFormat(count, heat_vec);
+            // coordinates_3857 occupies column 13 when requested, shifting the
             // node coordinates that follow it.
             int col_offset = load_geometry ? 1 : 0;
-            chunk->data[11 + col_offset].ToUnifiedFormat(count, source_x_vec);
-            chunk->data[12 + col_offset].ToUnifiedFormat(count, source_y_vec);
-            chunk->data[13 + col_offset].ToUnifiedFormat(count, target_x_vec);
-            chunk->data[14 + col_offset].ToUnifiedFormat(count, target_y_vec);
+            chunk->data[13 + col_offset].ToUnifiedFormat(count, source_x_vec);
+            chunk->data[14 + col_offset].ToUnifiedFormat(count, source_y_vec);
+            chunk->data[15 + col_offset].ToUnifiedFormat(count, target_x_vec);
+            chunk->data[16 + col_offset].ToUnifiedFormat(count, target_y_vec);
 
             auto const *id_data = reinterpret_cast<int64_t const *>(id_vec.data);
             auto const *source_data = reinterpret_cast<int64_t const *>(source_vec.data);
@@ -321,6 +358,8 @@ namespace routing::data
             auto const *surface_data = reinterpret_cast<float const *>(surface_vec.data);
             auto const *speed_fwd_data = reinterpret_cast<int16_t const *>(speed_fwd_vec.data);
             auto const *speed_back_data = reinterpret_cast<int16_t const *>(speed_back_vec.data);
+            auto const *shade_data = reinterpret_cast<float const *>(shade_vec.data);
+            auto const *heat_data = reinterpret_cast<float const *>(heat_vec.data);
             auto const *source_x_data = reinterpret_cast<double const *>(source_x_vec.data);
             auto const *source_y_data = reinterpret_cast<double const *>(source_y_vec.data);
             auto const *target_x_data = reinterpret_cast<double const *>(target_x_vec.data);
@@ -339,6 +378,8 @@ namespace routing::data
                 auto rid_surface = surface_vec.sel->get_index(i);
                 auto rid_speed_fwd = speed_fwd_vec.sel->get_index(i);
                 auto rid_speed_back = speed_back_vec.sel->get_index(i);
+                auto rid_shade = shade_vec.sel->get_index(i);
+                auto rid_heat = heat_vec.sel->get_index(i);
                 auto rid_source_x = source_x_vec.sel->get_index(i);
                 auto rid_source_y = source_y_vec.sel->get_index(i);
                 auto rid_target_x = target_x_vec.sel->get_index(i);
@@ -361,12 +402,19 @@ namespace routing::data
                 e.length_m = length_m_data[rid_length_m];
                 e.length_3857 = length_3857_data[rid_length_3857];
                 e.class_ = class_data[rid_class].GetString();
-                e.impedance_slope = slope_vec.validity.RowIsValid(rid_slope)
+                // Slope is stored unclamped: bicycle/pedelec use negative
+                // values as downhill boosts and values >1.0 for steep climbs.
+                // Only non-finite values are guarded here; the [0.0, 1.0]
+                // clamp for walking lives in mode_selector (Walking branch).
+                e.impedance_slope = (slope_vec.validity.RowIsValid(rid_slope) &&
+                                     std::isfinite(slope_data[rid_slope]))
                                         ? slope_data[rid_slope]
                                         : 0.0;
-                e.impedance_slope_reverse = slope_reverse_vec.validity.RowIsValid(rid_slope_reverse)
-                                                ? slope_reverse_data[rid_slope_reverse]
-                                                : 0.0;
+                e.impedance_slope_reverse =
+                    (slope_reverse_vec.validity.RowIsValid(rid_slope_reverse) &&
+                     std::isfinite(slope_reverse_data[rid_slope_reverse]))
+                        ? slope_reverse_data[rid_slope_reverse]
+                        : 0.0;
                 e.impedance_surface = surface_vec.validity.RowIsValid(rid_surface)
                                          ? surface_data[rid_surface]
                                          : 0.0f;
@@ -376,13 +424,21 @@ namespace routing::data
                 e.maxspeed_backward = speed_back_vec.validity.RowIsValid(rid_speed_back)
                                          ? speed_back_data[rid_speed_back]
                                          : static_cast<int16_t>(0);
+                e.impedance_shade = (shade_vec.validity.RowIsValid(rid_shade) &&
+                                     std::isfinite(shade_data[rid_shade]))
+                                        ? std::clamp(shade_data[rid_shade], 0.0f, 1.0f)
+                                        : 0.0f;
+                e.impedance_heat = (heat_vec.validity.RowIsValid(rid_heat) &&
+                                    std::isfinite(heat_data[rid_heat]))
+                                       ? std::clamp(heat_data[rid_heat], 0.0f, 1.0f)
+                                       : 0.0f;
                 e.source_coord = {source_x_data[rid_source_x], source_y_data[rid_source_y]};
                 e.target_coord = {target_x_data[rid_target_x], target_y_data[rid_target_y]};
 
-                // Parse geometry for active mobility (column 11 when present)
+                // Parse geometry for active mobility (column 13 when present)
                 if (load_geometry)
                 {
-                    auto geom_val = chunk->GetValue(11, i);
+                    auto geom_val = chunk->GetValue(13, i);
                     if (!geom_val.IsNull())
                     {
                         auto &coord_list = duckdb::ListValue::GetChildren(geom_val);
@@ -426,11 +482,13 @@ namespace routing::data
         double buffer_meters,
         std::vector<std::string> const &valid_classes,
         RoutingMode mode,
-        bool load_geometry)
+        bool load_geometry,
+        EdgeColumnSelection columns)
     {
         auto filter = compute_spatial_filter(con, starting_points, buffer_meters);
         return load_edges_impl(con, edge_dir, node_dir, filter,
-                               valid_classes, mode, load_geometry);
+                               valid_classes, mode, load_geometry,
+                               columns);
     }
 
     std::vector<Edge> load_edges(
@@ -440,10 +498,12 @@ namespace routing::data
         SpatialFilter const &filter,
         std::vector<std::string> const &valid_classes,
         RoutingMode mode,
-        bool load_geometry)
+        bool load_geometry,
+        EdgeColumnSelection columns)
     {
         return load_edges_impl(con, edge_dir, node_dir, filter,
-                               valid_classes, mode, load_geometry);
+                               valid_classes, mode, load_geometry,
+                               columns);
     }
 
 } // namespace routing::data

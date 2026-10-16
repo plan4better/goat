@@ -45,6 +45,9 @@ RequestConfig make_rcfg(StreetMatrixPrepInput const &in)
     rcfg.node_dir = in.node_dir;
     rcfg.starting_points = in.origins;  // never read past this point
     rcfg.steps = 1;
+    rcfg.shade_weight = in.shade_weight;
+    rcfg.heat_weight = in.heat_weight;
+    rcfg.slope_walk_weight = in.slope_walk_weight;
     return rcfg;
 }
 
@@ -96,6 +99,17 @@ RadialNetworkPrep finish_radial_network(std::vector<Edge> edges,
 
 } // namespace
 
+// Environmental columns are only relevant for walking with a positive weight.
+// The routing-mode rule lives here (caller-side), so the data loader only
+// receives a plain column request and stays free of routing domain logic.
+inline data::EdgeColumnSelection env_columns(RoutingMode mode,
+                                             double shade_weight,
+                                             double heat_weight)
+{
+    return {.need_shade = (mode == RoutingMode::Walking && shade_weight > 0.0),
+            .need_heat = (mode == RoutingMode::Walking && heat_weight > 0.0)};
+}
+
 RadialNetworkPrep prepare_radial_network(
     duckdb::Connection &con,
     RequestConfig const &cfg,
@@ -109,7 +123,8 @@ RadialNetworkPrep prepare_radial_network(
 
     auto edges = data::load_edges(
         con, cfg.edge_dir, cfg.node_dir,
-        cfg.starting_points, buffer_m, classes, cfg.mode, load_geometry);
+        cfg.starting_points, buffer_m, classes, cfg.mode, load_geometry,
+        env_columns(cfg.mode, cfg.shade_weight, cfg.heat_weight));
     return finish_radial_network(std::move(edges), cfg);
 }
 
@@ -158,11 +173,14 @@ StreetMatrixPrep prepare_street_matrix_network(
 
         auto bbox_filter = data::compute_spatial_filter_bbox(
             con, bmin_x, bmin_y, bmax_x, bmax_y, kBboxMarginM);
+        auto const cols = env_columns(in.mode, in.shade_weight, in.heat_weight);
         auto skeleton = data::load_edges(
-            con, in.edge_dir, in.node_dir, bbox_filter, skeleton_classes, in.mode);
+            con, in.edge_dir, in.node_dir, bbox_filter, skeleton_classes, in.mode,
+            /*load_geometry=*/false, cols);
         auto detail = data::load_edges(
             con, in.edge_dir, in.node_dir, all_points, kDetailBufferM,
-            detail_classes, in.mode);
+            detail_classes, in.mode, /*load_geometry=*/false,
+            cols);
 
         std::unordered_set<int64_t> seen;
         seen.reserve(skeleton.size() + detail.size());
@@ -183,7 +201,9 @@ StreetMatrixPrep prepare_street_matrix_network(
         auto bbox_filter = data::compute_spatial_filter_bbox(
             con, bmin_x, bmin_y, bmax_x, bmax_y, kBboxMarginM);
         edges = data::load_edges(
-            con, in.edge_dir, in.node_dir, bbox_filter, classes, in.mode);
+            con, in.edge_dir, in.node_dir, bbox_filter, classes, in.mode,
+            /*load_geometry=*/false,
+            env_columns(in.mode, in.shade_weight, in.heat_weight));
     }
 
     if (edges.empty())
@@ -222,6 +242,9 @@ HeatmapNetworkPrep prepare_radial_street_network(
     rcfg.node_dir = in.node_dir;
     rcfg.starting_points = in.opportunities;
     rcfg.steps = 1;
+    rcfg.shade_weight = in.shade_weight;
+    rcfg.heat_weight = in.heat_weight;
+    rcfg.slope_walk_weight = in.slope_walk_weight;
 
     // Geometry needed: the sampler interpolates along each edge's polyline.
     bool const over_area = in.area_cells && !in.area_cells->empty();
@@ -259,7 +282,8 @@ HeatmapNetworkPrep prepare_radial_street_network(
         core = finish_radial_network(
             data::load_edges(con, in.edge_dir, in.node_dir, filter,
                              input::valid_classes(in.mode), in.mode,
-                             /*load_geometry=*/true),
+                             /*load_geometry=*/true,
+                             env_columns(in.mode, in.shade_weight, in.heat_weight)),
             rcfg);
     }
     else

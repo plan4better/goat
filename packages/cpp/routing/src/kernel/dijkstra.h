@@ -111,10 +111,11 @@ namespace routing::kernel
     // Build the reverse-graph adjacency list. For every directed edge u→v
     // in the original graph G, the reverse graph G^T contains v→u with the
     // same cost. So a Dijkstra from node s on G^T gives, for every node v,
-    // the shortest path cost v→s in the original G. For symmetric modes
-    // (walking/bicycle/pedelec where cost == reverse_cost), G^T is
-    // structurally identical to G; for car, edges with reverse_cost=99999
-    // (one-way restrictions) drop out of the appropriate direction.
+    // the shortest path cost v→s in the original G. For symmetric costs
+    // (e.g. walking without environmental weights, where
+    // cost == reverse_cost), G^T is structurally identical to G; for
+    // asymmetric costs — car one-ways (reverse_cost=99999) and walking with
+    // slope/shade/heat penalties — the transposed costs preserve direction.
     inline std::vector<std::vector<AdjEntry>>
     build_reverse_adjacency_list(SubNetwork const &net)
     {

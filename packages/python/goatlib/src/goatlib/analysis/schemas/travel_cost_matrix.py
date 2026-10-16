@@ -8,6 +8,10 @@ from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from goatlib.analysis.schemas.environmental_walkability import (
+    EnvironmentalWalkabilityParams,
+)
+
 
 class RoutingMode(StrEnum):
     walking = "walking"
@@ -59,7 +63,7 @@ class PTTimeWindow(BaseModel):
     to_time: int = Field(..., description="End time in seconds from midnight")
 
 
-class TravelCostMatrixParams(BaseModel):
+class TravelCostMatrixParams(EnvironmentalWalkabilityParams):
     """Parameters for TravelCostMatrixTool (local C++ routing backend).
 
     Computes travel cost from every origin to every destination.

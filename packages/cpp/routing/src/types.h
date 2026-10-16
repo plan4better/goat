@@ -11,27 +11,29 @@ namespace routing
 
     struct Point3857
     {
-        double x;
-        double y;
+        double x = 0.0;
+        double y = 0.0;
     };
 
     struct Edge
     {
-        int64_t id;
-        int64_t source;
-        int64_t target;
-        double length_m;
-        double length_3857;
-        double cost;
-        double reverse_cost;
-        double impedance_slope;
-        double impedance_slope_reverse;
-        float impedance_surface;
-        int16_t maxspeed_forward;
-        int16_t maxspeed_backward;
+        int64_t id = 0;
+        int64_t source = 0;
+        int64_t target = 0;
+        double length_m = 0.0;
+        double length_3857 = 0.0;
+        double cost = 0.0;
+        double reverse_cost = 0.0;
+        double impedance_slope = 0.0;
+        double impedance_slope_reverse = 0.0;
+        float impedance_surface = 0.0f;
+        float impedance_shade = 0.0f;
+        float impedance_heat = 0.0f;
+        int16_t maxspeed_forward = 0;
+        int16_t maxspeed_backward = 0;
         std::string class_;
-        Point3857 source_coord;
-        Point3857 target_coord;
+        Point3857 source_coord{0.0, 0.0};
+        Point3857 target_coord{0.0, 0.0};
         std::vector<Point3857> geometry;
     };
 
@@ -117,6 +119,11 @@ namespace routing
 
         // Explicit output step thresholds (empty → derive from max_cost / steps)
         std::vector<int> cutoffs;
+
+        // Environmental walkability parameters (modular multi-criteria impedance)
+        double shade_weight = 0.0;
+        double heat_weight = 0.0;
+        double slope_walk_weight = 0.0;
     };
 
     struct MatrixConfig
@@ -155,6 +162,11 @@ namespace routing
         // (Reverse PT is served by compute_od_costs, not here.)
         bool reverse = false;
         bool sparse = false;  // emit only reachable pairs
+
+        // Environmental walkability parameters (modular multi-criteria impedance)
+        double shade_weight = 0.0;
+        double heat_weight = 0.0;
+        double slope_walk_weight = 0.0;
     };
 
     struct MatrixEntry
@@ -261,6 +273,11 @@ namespace routing
 
         // Output
         std::string output_path;    // parquet: (h3_index BIGINT, score DOUBLE)
+
+        // Environmental walkability parameters (modular multi-criteria impedance)
+        double shade_weight = 0.0;
+        double heat_weight = 0.0;
+        double slope_walk_weight = 0.0;
     };
 
     struct MatrixResult

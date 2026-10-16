@@ -94,7 +94,11 @@ PYBIND11_MODULE(_routing, m)
         // PointGrid settings
         .def_readwrite("grid_points_path", &routing::RequestConfig::grid_points_path)
         .def_readwrite("grid_snap_distance", &routing::RequestConfig::grid_snap_distance)
-        .def_readwrite("cutoffs", &routing::RequestConfig::cutoffs);
+        .def_readwrite("cutoffs", &routing::RequestConfig::cutoffs)
+        // Environmental walkability parameters
+        .def_readwrite("shade_weight", &routing::RequestConfig::shade_weight)
+        .def_readwrite("heat_weight", &routing::RequestConfig::heat_weight)
+        .def_readwrite("slope_walk_weight", &routing::RequestConfig::slope_walk_weight);
 
     py::class_<routing::MatrixConfig>(m, "MatrixConfig")
         .def(py::init<>())
@@ -125,7 +129,11 @@ PYBIND11_MODULE(_routing, m)
         .def_readwrite("egress_speed_km_h", &routing::MatrixConfig::egress_speed_km_h)
         .def_readwrite("transfer_cost", &routing::MatrixConfig::transfer_cost)
         .def_readwrite("reverse", &routing::MatrixConfig::reverse)
-        .def_readwrite("sparse", &routing::MatrixConfig::sparse);
+        .def_readwrite("sparse", &routing::MatrixConfig::sparse)
+        // Environmental walkability parameters
+        .def_readwrite("shade_weight", &routing::MatrixConfig::shade_weight)
+        .def_readwrite("heat_weight", &routing::MatrixConfig::heat_weight)
+        .def_readwrite("slope_walk_weight", &routing::MatrixConfig::slope_walk_weight);
 
     py::enum_<routing::HeatmapType>(m, "HeatmapType")
         .value("Gravity",        routing::HeatmapType::Gravity)
@@ -192,7 +200,11 @@ PYBIND11_MODULE(_routing, m)
         .def_readwrite("egress_table_path", &routing::HeatmapConfig::egress_table_path)
         .def_readwrite("connectivity_output_resolution", &routing::HeatmapConfig::connectivity_output_resolution)
         // Output
-        .def_readwrite("output_path",     &routing::HeatmapConfig::output_path);
+        .def_readwrite("output_path",     &routing::HeatmapConfig::output_path)
+        // Environmental walkability parameters
+        .def_readwrite("shade_weight",    &routing::HeatmapConfig::shade_weight)
+        .def_readwrite("heat_weight",     &routing::HeatmapConfig::heat_weight)
+        .def_readwrite("slope_walk_weight", &routing::HeatmapConfig::slope_walk_weight);
 
     py::class_<routing::preprocessing::AccessEgressConfig>(m, "AccessEgressConfig")
         .def(py::init<>())

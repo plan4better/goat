@@ -8,6 +8,10 @@ from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from goatlib.analysis.schemas.environmental_walkability import (
+    EnvironmentalWalkabilityParams,
+)
+
 
 class RoutingMode(StrEnum):
     walking = "walking"
@@ -81,7 +85,7 @@ class PTTimeWindow(BaseModel):
     )
 
 
-class CatchmentAreaV2Params(BaseModel):
+class CatchmentAreaV2Params(EnvironmentalWalkabilityParams):
     """Parameters for CatchmentAreaToolV2 (local C++ routing backend).
 
     Maps directly to the C++ RequestConfig. All transport modes are supported.

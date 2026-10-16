@@ -67,6 +67,9 @@ from goatlib.tools.catchment_area_v2 import (
 from goatlib.tools.catchment_area_v2 import (
     ROUTING_MODE_LABELS as _CATCHMENT_ROUTING_MODE_LABELS,
 )
+from goatlib.tools.environmental_walkability import (
+    EnvironmentalWalkabilityWindmillParams,
+)
 from goatlib.tools.pt_network import ensure_pt_date, pt_date_field
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase, get_default_layer_name
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
@@ -119,7 +122,9 @@ SECTION_RESULT = UISection(
 # =========================================================================
 
 
-class TravelCostMatrixWindmillParams(ToolInputBase):
+class TravelCostMatrixWindmillParams(
+    ToolInputBase, EnvironmentalWalkabilityWindmillParams
+):
     """Compute travel times and distances between origin and destination point layers.
 
     This schema extends ToolInputBase with travel cost matrix specific parameters.
@@ -1033,6 +1038,10 @@ class TravelCostMatrixToolRunner(BaseToolRunner[TravelCostMatrixWindmillParams])
                 access_speed=params.access_speed,
                 egress_speed=params.egress_speed,
                 output_path=str(matrix_output_path),
+                # Environmental walkability
+                shade_weight=params.shade_weight,
+                heat_weight=params.heat_weight,
+                slope_walk_weight=params.slope_walk_weight,
             )
 
             # A selected PT bundle's timetable replaces the global network.

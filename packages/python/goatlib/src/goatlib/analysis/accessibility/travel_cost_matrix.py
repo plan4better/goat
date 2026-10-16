@@ -139,6 +139,9 @@ class TravelCostMatrixTool(AnalysisTool):
         cfg.edge_dir = str(params.edge_path or self._edge_dir)
         cfg.node_dir = str(params.node_path or self._node_dir)
         cfg.output_path = params.output_path
+        cfg.shade_weight = params.shade_weight
+        cfg.heat_weight = params.heat_weight
+        cfg.slope_walk_weight = params.slope_walk_weight
 
         if params.routing_mode == RoutingMode.pt:
             # A selected PT bundle's timetable overrides the global network.

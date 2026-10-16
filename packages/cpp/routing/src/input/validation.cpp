@@ -25,7 +25,7 @@ namespace routing::input
             throw std::invalid_argument(
                 "shape_style=separated is only supported for active mobility modes");
         }
-        if (cfg.max_cost <= 0)
+        if (!(cfg.max_cost > 0.0))
             throw std::invalid_argument("max_cost must be positive");
         if (!cfg.cutoffs.empty())
         {
@@ -80,6 +80,8 @@ namespace routing::input
         if (cfg.output_format == OutputFormat::Parquet && cfg.output_path.empty())
             throw std::invalid_argument(
                 "output_path is required when output_format is Parquet");
+
+        validate_environmental_weights(cfg);
 
         if (cfg.mode == RoutingMode::PublicTransport)
         {

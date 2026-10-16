@@ -17,6 +17,9 @@ from goatlib.analysis.schemas.catchment_area_v2 import (
     CostType,
     RoutingMode,
 )
+from goatlib.analysis.schemas.environmental_walkability import (
+    EnvironmentalWalkabilityParams,
+)
 from goatlib.analysis.schemas.heatmap import OpportunityGravity
 from goatlib.analysis.schemas.pt_network import PTNetworkOverride
 
@@ -99,7 +102,7 @@ class OpportunityV2(OpportunityGravity):
     )
 
 
-class HeatmapV2Params(PTNetworkOverride):
+class HeatmapV2Params(PTNetworkOverride, EnvironmentalWalkabilityParams):
     """Parameters for HeatmapV2Tool (on-the-fly C++ routing).
 
     cost_type + max_cost define the budget:

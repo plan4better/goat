@@ -63,6 +63,9 @@ struct StreetMatrixPrepInput
     double speed_km_h;
     std::string const &edge_dir;
     std::string const &node_dir;
+    double shade_weight = 0.0;
+    double heat_weight = 0.0;
+    double slope_walk_weight = 0.0;
 };
 
 // Loads edges around the union of `origins` and `destinations` (tiered loading
@@ -76,10 +79,10 @@ StreetMatrixPrep prepare_street_matrix_network(
 // Heatmap prep (radial core + reverse adjacency)
 // ---------------------------------------------------------------------------
 
-// The forward adjacency supports symmetric modes (walking/bicycle/pedelec) and
-// any forward queries; the reverse adjacency lets the heatmap run
-// Dijkstra-from-opportunity queries that yield correct "access cost from node v
-// to the opportunity" values even on asymmetric (car) graphs.
+// The forward adjacency supports forward queries; the reverse adjacency lets
+// the heatmap run Dijkstra-from-opportunity queries that yield correct
+// "access cost from node v to the opportunity" values even on asymmetric
+// graphs (car one-ways, walking with slope/shade/heat penalties).
 struct HeatmapNetworkPrep
 {
     SubNetwork net;
@@ -102,6 +105,10 @@ struct HeatmapNetworkPrepInput
     // instead of around the opportunities, and the points are snapped in after
     // them (connector node + edges, no traversal of their own).
     std::vector<Point3857> const *area_cells = nullptr;
+    // Environmental walkability parameters (modular multi-criteria impedance)
+    double shade_weight = 0.0;
+    double heat_weight = 0.0;
+    double slope_walk_weight = 0.0;
 };
 
 // Radial prep for the heatmap: runs the shared radial core (snapping the

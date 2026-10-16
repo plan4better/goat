@@ -51,6 +51,9 @@ namespace routing::matrix
             rcfg.access_speed_km_h = cfg.access_speed_km_h;
             rcfg.egress_speed_km_h = cfg.egress_speed_km_h;
             rcfg.transfer_cost = cfg.transfer_cost;
+            rcfg.shade_weight = cfg.shade_weight;
+            rcfg.heat_weight = cfg.heat_weight;
+            rcfg.slope_walk_weight = cfg.slope_walk_weight;
             return rcfg;
         }
     } // namespace
@@ -65,6 +68,7 @@ namespace routing::matrix
             throw std::runtime_error("edge_dir is required");
         if (cfg.output_path.empty())
             throw std::runtime_error("output_path is required");
+        input::validate_environmental_weights(cfg);
 
         size_t n_origins = cfg.origins.size();
         size_t n_dests = cfg.destinations.size();
@@ -127,6 +131,9 @@ namespace routing::matrix
                 .speed_km_h = cfg.speed_km_h,
                 .edge_dir = cfg.edge_dir,
                 .node_dir = cfg.node_dir,
+                .shade_weight = cfg.shade_weight,
+                .heat_weight = cfg.heat_weight,
+                .slope_walk_weight = cfg.slope_walk_weight,
             };
             auto prep = network::prepare_street_matrix_network(con, prep_in);
 

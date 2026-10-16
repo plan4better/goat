@@ -79,6 +79,9 @@ from goatlib.tools.catchment_area_v2 import (
     SECTION_PT_NETWORK,
     SECTION_STREET_NETWORK,
 )
+from goatlib.tools.environmental_walkability import (
+    EnvironmentalWalkabilityWindmillParams,
+)
 from goatlib.tools.pt_network import (
     apply_pt_bundle_override,
     ensure_pt_date,
@@ -435,7 +438,7 @@ class OpportunityV2PointClosestAverage(OpportunityV2PointBase):
 # =========================================================================
 
 
-class HeatmapV2WindmillParams(ToolInputBase):
+class HeatmapV2WindmillParams(ToolInputBase, EnvironmentalWalkabilityWindmillParams):
     """Windmill-facing params for HeatmapV2.
 
     Mode/cost/PT fields mirror catchment_area_v2's structure exactly. The
@@ -1557,6 +1560,10 @@ class HeatmapV2ToolRunner(BaseToolRunner[HeatmapV2WindmillParams]):
             egress_max_time=params.egress_max_cost,
             # Output
             output_path=str(output_path),
+            # Environmental walkability
+            shade_weight=params.shade_weight,
+            heat_weight=params.heat_weight,
+            slope_walk_weight=params.slope_walk_weight,
         )
 
         # An uploaded street network bundle's graph replaces the global network.

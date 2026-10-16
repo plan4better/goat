@@ -49,6 +49,9 @@ from goatlib.bundles.artifacts.street_network import (
 )
 from goatlib.models.io import DatasetMetadata
 from goatlib.tools.catchment_area import CatchmentAreaToolRunner
+from goatlib.tools.environmental_walkability import (
+    EnvironmentalWalkabilityWindmillParams,
+)
 from goatlib.tools.pt_network import ensure_pt_date, pt_date_field
 from goatlib.tools.schemas import ToolInputBase, get_default_layer_name
 
@@ -192,7 +195,9 @@ CATCHMENT_TYPE_LABELS: dict[str, str] = {
 # =========================================================================
 
 
-class CatchmentAreaV2WindmillParams(ToolInputBase):
+class CatchmentAreaV2WindmillParams(
+    ToolInputBase, EnvironmentalWalkabilityWindmillParams
+):
     """Catchment areas show how far people can travel within a set travel time or distance from one or more selected points.
 
     This schema extends ToolInputBase with catchment area specific parameters.
@@ -1061,6 +1066,10 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
             shape_style=params.shape_style,
             output_format=params.output_format,
             output_path=str(output_path),
+            # Environmental walkability
+            shade_weight=params.shade_weight,
+            heat_weight=params.heat_weight,
+            slope_walk_weight=params.slope_walk_weight,
         )
 
         # A selected PT bundle's timetable overrides the global network.

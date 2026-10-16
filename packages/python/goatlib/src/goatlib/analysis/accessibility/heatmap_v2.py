@@ -408,6 +408,9 @@ class HeatmapV2Tool(HeatmapToolBase):
         cfg.max_sensitivity = params.max_sensitivity
         cfg.closest_k = closest_k
         cfg.output_path = output_path
+        cfg.shade_weight = params.shade_weight
+        cfg.heat_weight = params.heat_weight
+        cfg.slope_walk_weight = params.slope_walk_weight
 
         if params.heatmap_type == HeatmapType.two_sfca:
             cfg.two_sfca_type = {

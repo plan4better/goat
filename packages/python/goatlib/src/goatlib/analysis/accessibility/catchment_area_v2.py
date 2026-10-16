@@ -151,6 +151,10 @@ class CatchmentAreaToolV2(AnalysisTool):
         if params.cutoffs:
             cfg.cutoffs = list(params.cutoffs)
 
+        cfg.shade_weight = params.shade_weight
+        cfg.heat_weight = params.heat_weight
+        cfg.slope_walk_weight = params.slope_walk_weight
+
         # PT settings
         if params.routing_mode == RoutingMode.pt:
             # A bundle's routing graph overrides the global default network.

@@ -1,5 +1,6 @@
 #include "mode_selector.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace routing::kernel
@@ -32,8 +33,31 @@ namespace routing::kernel
             switch (cfg.mode)
             {
             case RoutingMode::Walking:
-                e.cost = e.length_m / speed_ms;
-                e.reverse_cost = e.length_m / speed_ms;
+                {
+                    // Walking is directed once slope_walk_weight is active:
+                    // forward uses impedance_slope, backward uses
+                    // impedance_slope_reverse. The [0.0, 1.0] clamp lives here
+                    // (not in the data loader) so bicycle/pedelec keep their
+                    // downhill (<0) and steep (>1) slope signals intact.
+                    auto calc_multiplier = [&](double slope_imp) {
+                        double m = 1.0;
+                        if (cfg.shade_weight > 0.0 && e.impedance_shade > 0.0f)
+                        {
+                            m += cfg.shade_weight * static_cast<double>(e.impedance_shade);
+                        }
+                        if (cfg.heat_weight > 0.0 && e.impedance_heat > 0.0f)
+                        {
+                            m += cfg.heat_weight * static_cast<double>(e.impedance_heat);
+                        }
+                        if (cfg.slope_walk_weight > 0.0 && std::isfinite(slope_imp) && slope_imp > 0.0)
+                        {
+                            m += cfg.slope_walk_weight * std::clamp(slope_imp, 0.0, 1.0);
+                        }
+                        return m;
+                    };
+                    e.cost = (e.length_m * calc_multiplier(e.impedance_slope)) / speed_ms;
+                    e.reverse_cost = (e.length_m * calc_multiplier(e.impedance_slope_reverse)) / speed_ms;
+                }
                 break;
 
             case RoutingMode::Bicycle:

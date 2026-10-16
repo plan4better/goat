@@ -3,6 +3,7 @@
 #include "../network/network_prep.h"
 
 #include "../data/duckdb_setup.h"
+#include "../input/validation.h"
 #include "../kernel/dijkstra.h"
 #include "../kernel/dijkstra_k_nearest.h"
 #include "../output/hex_resolution.h"
@@ -72,8 +73,8 @@ void validate(HeatmapConfig const &cfg)
         throw std::runtime_error("edge_dir is required");
     if (cfg.output_path.empty())
         throw std::runtime_error("output_path is required");
-    if (cfg.max_cost <= 0.0)
-        throw std::runtime_error("max_cost must be positive");
+    if (!(cfg.max_cost > 0.0))
+        throw std::invalid_argument("max_cost must be positive");
     // An unlimited budget is bounded by the area network instead, which only
     // the street ClosestAverage path loads.
     if (std::isinf(cfg.max_cost) &&
@@ -83,6 +84,7 @@ void validate(HeatmapConfig const &cfg)
         throw std::runtime_error(
             "An unlimited max_cost needs a street-mode ClosestAverage "
             "with area_cell_centroids");
+    input::validate_environmental_weights(cfg);
     if (cfg.mode == RoutingMode::PublicTransport)
     {
         // PT goes through run_pt (reverse RAPTOR + precomputed access/egress
@@ -120,38 +122,34 @@ inline double merc_y_to_lat(double y)
     return std::atan(std::sinh(y / (kHalfCirc / M_PI))) * 180.0 / M_PI;
 }
 
-// Shared: radial network prep in `mode` around `opp_points` + per-opportunity
+// Shared: radial network prep around the opportunities + per-opportunity
 // reverse-Dijkstra + reachability-field sampling, projected to H3 cells →
 // `out_table`(cell BIGINT, opp_idx INTEGER, min_cost DOUBLE). Used by both the
 // street heatmap and the PT direct-leg (which calls it with the access mode).
+//
+// Takes the network prep input struct directly (instead of a long positional
+// parameter list) so routing weights cannot be silently transposed at call
+// sites. The search runs on the reverse adjacency (G^T): a Dijkstra from an
+// opportunity yields inbound costs v→opp in the original graph, which is the
+// pedestrian direction (cell origin → opportunity destination). This already
+// handles asymmetric walking costs (uphill vs downhill) — no cost swapping is
+// needed; swapping would double-reverse and invert the slope penalty.
 void build_reach_per_opp(duckdb::Connection &con,
-                         std::vector<Point3857> const &opp_points,
-                         RoutingMode mode, CostType cost_type, double max_cost,
-                         double speed_km_h, std::string const &edge_dir,
-                         std::string const &node_dir, int32_t h3_resolution,
+                         network::HeatmapNetworkPrepInput const &prep_in,
+                         int32_t h3_resolution,
                          double spacing_m, std::string const &out_table,
                          std::vector<std::pair<int32_t, int32_t>> const &seed_offsets,
-                         PhaseTimer &timer, int32_t closest_k = 1,
-                         std::vector<Point3857> const *area_cells = nullptr)
+                         PhaseTimer &timer, int32_t closest_k = 1)
 {
-    network::HeatmapNetworkPrepInput prep_in{
-        .opportunities = opp_points,
-        .mode = mode,
-        .cost_type = cost_type,
-        .max_cost = max_cost,
-        .speed_km_h = speed_km_h,
-        .edge_dir = edge_dir,
-        .node_dir = node_dir,
-        .area_cells = area_cells,
-    };
     auto prep = network::prepare_radial_street_network(con, prep_in);
     std::fprintf(
         stderr,
         "[Pipeline] Network prep (%d nodes, %zu edges, %zu seeds): %.0f ms\n",
-        prep.net.node_count, prep.net.source.size(), opp_points.size(),
+        prep.net.node_count, prep.net.source.size(), prep_in.opportunities.size(),
         timer.elapsed_ms());
 
-    bool const use_distance = (cost_type == CostType::Distance);
+    bool const use_distance = (prep_in.cost_type == CostType::Distance);
+    double const max_cost = prep_in.max_cost;
     auto const &net = prep.net;
 
     // Incident edges by source node, as a CSR built once and reused across all
@@ -883,11 +881,23 @@ void run_pt(HeatmapConfig const &cfg, duckdb::Connection &con,
     direct_offsets.reserve(grp_points.size());
     for (int32_t i = 0; i < static_cast<int32_t>(grp_points.size()); ++i)
         direct_offsets.push_back({i, 1});
-    build_reach_per_opp(con, grp_points, cfg.access_mode, CostType::Time,
-                        static_cast<double>(cfg.access_max_time),
-                        default_mode_speed(cfg.access_mode), cfg.edge_dir,
-                        cfg.node_dir, output_resolution, kHeatmapSampleSpacingM,
-                        "_direct_per_opp", direct_offsets, timer);
+    network::HeatmapNetworkPrepInput const direct_prep_in{
+        .opportunities = grp_points,
+        .mode = cfg.access_mode,
+        .cost_type = CostType::Time,
+        .max_cost = static_cast<double>(cfg.access_max_time),
+        .speed_km_h = default_mode_speed(cfg.access_mode),
+        .edge_dir = cfg.edge_dir,
+        .node_dir = cfg.node_dir,
+        .area_cells = nullptr,
+        .shade_weight = 0.0,
+        .heat_weight = 0.0,
+        .slope_walk_weight = 0.0,
+    };
+    build_reach_per_opp(con, direct_prep_in,
+                        output_resolution, kHeatmapSampleSpacingM,
+                        "_direct_per_opp", direct_offsets, timer,
+                        /*closest_k=*/1);
 
     // 6b. PT-chain cells: boarding-stop cost + access walk, per (cell, group).
     //
@@ -1048,11 +1058,22 @@ void run_street(HeatmapConfig const &cfg, duckdb::Connection &con,
         (cfg.heatmap_type == HeatmapType::ClosestAverage && !collapse_to_nearest)
             ? std::max(1, cfg.closest_k)
             : 1;
-    build_reach_per_opp(con, opp_points, cfg.mode, cfg.cost_type, cfg.max_cost,
-                        cfg.speed_km_h, cfg.edge_dir, cfg.node_dir,
+    network::HeatmapNetworkPrepInput const prep_in{
+        .opportunities = opp_points,
+        .mode = cfg.mode,
+        .cost_type = cfg.cost_type,
+        .max_cost = cfg.max_cost,
+        .speed_km_h = cfg.speed_km_h,
+        .edge_dir = cfg.edge_dir,
+        .node_dir = cfg.node_dir,
+        .area_cells = &cfg.area_cell_centroids,
+        .shade_weight = cfg.shade_weight,
+        .heat_weight = cfg.heat_weight,
+        .slope_walk_weight = cfg.slope_walk_weight,
+    };
+    build_reach_per_opp(con, prep_in,
                         h3_resolution, kHeatmapSampleSpacingM, "_hm_per_opp",
-                        seed_offsets, timer, closest_k,
-                        &cfg.area_cell_centroids);
+                        seed_offsets, timer, closest_k);
     if (collapse_to_nearest)
     {
         // One synthetic meta row to match the single emitted opp_idx. weight and
