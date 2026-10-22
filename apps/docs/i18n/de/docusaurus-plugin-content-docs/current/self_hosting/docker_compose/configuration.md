@@ -104,7 +104,7 @@ Die Dienste von GOAT benennen ihre Datenbanksitzungen nach sich selbst (`goat-co
 |---|---|---|
 | `NEXT_PUBLIC_MAPTILER_KEY` | leer | MapTiler-Schlüssel für die Satelliten-/Hybrid-Grundkarte (ausgeblendet, wenn leer) |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | leer | Mapbox-Token für die Ortssuche |
-| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | leer | Der GOAT-Datenkatalog (schreibgeschützter Bucket mit den harmonisierten Datensätzen) |
+| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | leer | Der GOAT-Datenkatalog (schreibgeschützter Bucket mit den harmonisierten Datensätzen). Die Bereiche OpenStreetMap und Overture Maps unter *Layer hinzufügen › Dienst verbinden* lesen ihren Spiegel aus demselben Bucket; siehe [OpenStreetMap und Overture Maps](./external_services.md#open-data-mirror). |
 | `GEOCODING_URL`, `GEOCODING_AUTHORIZATION` | leer | Geocoding-Dienst, den Analyse-Werkzeuge verwenden |
 | `NEXT_PUBLIC_WEBSITE_URL` | leer | Eine Website, die GOATs Blog- und Changelog-Feeds veröffentlicht. Sie füllt die Neuigkeiten auf der Startseite und liefert das Willkommensvideo sowie den Link zum Datenschutz im Menü; solange leer, erscheint nichts davon. |
 | `NEXT_PUBLIC_SUPPORT_EMAIL` | leer | E-Mail-Adresse hinter *Problem melden*, solange [Support-Tickets](./external_services.md#support) aus sind, und in der Meldung, wenn der Support vorübergehend nicht erreichbar ist. Standard ist `support@plan4better.de`; tragen Sie für eine White-Label-Installation Ihre eigene Adresse ein. Eine ungültige Adresse wird ignoriert und der Standard verwendet. |

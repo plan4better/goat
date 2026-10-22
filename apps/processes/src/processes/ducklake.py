@@ -4,7 +4,11 @@ Creates a read-only singleton instance of BaseDuckLakeManager from goatlib.
 Processes API only reads data for sync analytics - all writes happen through the core app.
 """
 
-from goatlib.storage import BaseDuckLakeManager
+import tempfile
+import threading
+
+import duckdb
+from goatlib.storage import BaseDuckLakeManager, load_extensions
 
 from processes.config import settings
 
@@ -37,3 +41,36 @@ search_ducklake_manager = BaseDuckLakeManager(
     refresh_interval=settings.DUCKLAKE_SNAPSHOT_REFRESH_SECONDS,
     application_name="goat-processes-ducklake",
 )
+
+# mirror-values reads only S3, so it gets its own database, off the analytics lock.
+_mirror_db: duckdb.DuckDBPyConnection | None = None
+_mirror_db_lock = threading.Lock()
+
+
+def mirror_cursor() -> duckdb.DuckDBPyConnection:
+    """A cursor on the mirror database, made on first use."""
+    global _mirror_db
+    with _mirror_db_lock:
+        if _mirror_db is None:
+            from goatlib.tools.data_integration import ensure_s3
+
+            db = duckdb.connect()
+            db.execute("SET memory_limit = '256MB'")
+            db.execute(f"SET threads = {int(settings.DUCKDB_THREADS)}")
+            db.execute(
+                f"SET temp_directory = '{tempfile.gettempdir()}/goat_mirror_duckdb'"
+            )
+            # The image's baked extensions: images must not download them.
+            load_extensions(db, "httpfs", "spatial")
+            # Once here: cursors creating the secret together conflict.
+            ensure_s3(db)
+            _mirror_db = db
+        return _mirror_db.cursor()
+
+
+def close_mirror_db() -> None:
+    global _mirror_db
+    with _mirror_db_lock:
+        if _mirror_db is not None:
+            _mirror_db.close()
+            _mirror_db = None

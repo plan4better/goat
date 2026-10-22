@@ -58,6 +58,51 @@ class UniqueValuesProcessInput(UniqueValuesInput):
     collection: str = Field(description="Layer ID (UUID)")
 
 
+class MirrorValuesProcessInput(BaseModel):
+    """Which attributes, or which values of one attribute, occur in the mirror for an area."""
+
+    area: dict = Field(description="GeoJSON polygon the question is about")
+    source: str = Field(
+        "osm", description="Which mirrored source, e.g. osm or overture"
+    )
+    feature_type: str = Field(
+        "points", description="OSM layer, or Overture type when source is overture"
+    )
+    key: str | None = Field(
+        None, description="Attribute whose values to list; omitted lists the attributes"
+    )
+    limit: int = Field(100, ge=1, le=1000, description="Maximum entries")
+    quick: bool = Field(
+        False, description="Read a small sample first, without counts, for a fast list"
+    )
+    size_only: bool = Field(
+        False, description="Only the estimate of features in the area, no list"
+    )
+
+
+class MirrorValue(BaseModel):
+    value: str
+    count: int
+
+
+class MirrorValuesResult(BaseModel):
+    key: str | None = None
+    total: int = 0
+    sampled: bool = Field(
+        False, description="Counts are of a capped sample of the area, not totals"
+    )
+    complete: bool = Field(
+        False, description="A quick read that saw the whole area: no full read needed"
+    )
+    estimate: int | None = Field(
+        None, description="Features in the area, guessed from the mirror's index"
+    )
+    too_large: bool = Field(
+        False, description="More in the area than one fetch reads: a fetch is refused"
+    )
+    values: list[MirrorValue] = Field(default_factory=list)
+
+
 class ClassBreaksProcessInput(ClassBreaksInput):
     """Class breaks input with collection (layer ID)."""
 
@@ -147,6 +192,17 @@ ANALYTICS_DEFINITIONS: dict[str, dict[str, Any]] = {
         "output_model": UniqueValuesResult,
         "keywords": ["analytics", "statistics", "unique", "values"],
         "tool_key": "unique_values",
+        "hidden": True,
+    },
+    "mirror-values": {
+        "title": "Mirror Values",
+        "description": (
+            "Attributes, or the values of one attribute, in the mirror for an area"
+        ),
+        "input_model": MirrorValuesProcessInput,
+        "output_model": MirrorValuesResult,
+        "keywords": ["analytics", "osm", "tags", "values"],
+        "tool_key": "mirror_values",
         "hidden": True,
     },
     "class-breaks": {

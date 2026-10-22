@@ -531,6 +531,55 @@ export async function getUniqueValues(
   return executeProcess<UniqueValuesInput, UniqueValuesOutput>("unique-values", inputs);
 }
 
+export type MirrorValue = { value: string; count: number };
+export type MirrorValuesOutput = {
+  key: string | null;
+  total: number;
+  /** The area holds more than the tool reads, so the counts are of a sample, not totals. */
+  sampled?: boolean;
+  /** A quick read that saw the whole area, so its counts are final. */
+  complete?: boolean;
+  /** Features in the area, guessed from the mirror's index; with the attribute list only. */
+  estimate?: number | null;
+  /** More in the area than one fetch reads: a fetch would be refused. */
+  too_large?: boolean;
+  values: MirrorValue[];
+};
+
+/** Features in an area, estimated from the mirror's file parts, without any list. */
+export async function getMirrorSize(
+  area: GeoJSON.Polygon | GeoJSON.MultiPolygon,
+  featureType: string,
+  source: string
+): Promise<{ estimate?: number; tooLarge: boolean }> {
+  const result = await executeProcess<Record<string, unknown>, MirrorValuesOutput>("mirror-values", {
+    area,
+    source,
+    feature_type: featureType,
+    size_only: true,
+  });
+  return { estimate: result.estimate ?? undefined, tooLarge: !!result.too_large };
+}
+
+/** Attributes, or the values of one attribute, in the mirror for an area: OSM tags or Overture columns. */
+export async function getMirrorValues(
+  area: GeoJSON.Polygon | GeoJSON.MultiPolygon,
+  featureType: string,
+  key?: string,
+  limit = 200,
+  source = "osm",
+  quick = false
+): Promise<MirrorValuesOutput> {
+  return executeProcess<Record<string, unknown>, MirrorValuesOutput>("mirror-values", {
+    area,
+    source,
+    feature_type: featureType,
+    ...(key ? { key } : {}),
+    limit,
+    ...(quick ? { quick } : {}),
+  });
+}
+
 /**
  * Get class breaks for a numeric attribute
  */

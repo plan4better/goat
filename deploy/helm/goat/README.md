@@ -2,7 +2,7 @@
 
 Helm chart for deploying GOAT (Geo Open Accessibility Tool) on Kubernetes.
 
-## Scope (v0.7.0)
+## Scope (v0.8.0)
 
 | Service | Default | Notes |
 |---|---|---|
@@ -19,7 +19,7 @@ Helm chart for deploying GOAT (Geo Open Accessibility Tool) on Kubernetes.
 
 ```sh
 helm install goat oci://ghcr.io/plan4better/charts/goat \
-  --version 0.7.0 \
+  --version 0.8.0 \
   --namespace goat --create-namespace \
   --values your-values.yaml
 ```
@@ -446,7 +446,7 @@ override the key names via the `existingSecretUserKey` /
 | `data.size` | string | `200Gi` | PVC size when the chart creates it. |
 | `data.storageClassName` | string | `""` | Falls back to `global.storageClass`, then the cluster default. |
 | `catalog.enabled` | bool | `true` | Deploy `goat-catalog` (STAC API + MCP server). |
-| `catalog.s3.bucket` | string | `""` | Catalog bucket for previews/assets; unset means those routes 404 by design. |
+| `catalog.s3.bucket` | string | `""` | Catalog bucket for previews/assets, and the OpenStreetMap and Overture mirror (`mirror/osm`, `mirror/overture`) read by processes and the workers for Add layer › Connect service; unset means those routes 404 and the two panes find no data. |
 | `catalog.config.CATALOG_MCP_ALLOWED_HOSTS` | string | `'["*"]'` | `/mcp` Host allow-list (DNS-rebinding protection); narrow once you have a real hostname. |
 | `web.publicUrls.api` / `.geoapi` / `.processes` / `.catalog` | string | `""` | Browser-facing service URLs; each is derived from that service's own ingress (scheme from its TLS, host from its first entry) when empty. |
 | `web.websiteUrl` | string | `""` | Home's blog + changelog feeds; the surfaces hide when empty. |
@@ -980,6 +980,7 @@ below 3 for the workers: Windmill 1.607 workers stop at start with fewer.
 
 | Chart version | Adds | Notes |
 |---|---|---|
+| `0.8.0` | processes gets the catalog bucket (`catalog.s3`, `CATALOG_S3_*`) and reads the OpenStreetMap and Overture mirror goat-data publishes there (`mirror/osm`, `mirror/overture`) for Add layer › Connect service | No values change needed |
 | `0.7.0` | GOAT v3.0.9 (Windmill 1.751). Memory requests and limits and CPU requests for every service, and geoapi's and processes' DuckDB budgets to fit them (see "Resource defaults"); `postgresql.cluster.resources`; geoapi and processes run as root, so their DuckLake init can create the catalog directory on a fresh RWX volume; `postgresql.external.ducklakeHost` and `ducklakePort` for DuckLake's catalog connections and `transactionPooler` for the services when `host` is a transaction pooler; `windmill.bootstrap.image` (GOAT's core image instead of `python:3.11-slim` from Docker Hub); `POSTGRES_*` keys in a service's `config` render once and win; `global.auth.allowOrganizationCreation` (`ALLOW_ORGANIZATION_CREATION`: false lets only superusers create organizations); `global.auth.allowedClients` (`AUTH_ALLOWED_CLIENTS` for core, geoapi, processes and catalog: only tokens issued to the listed Keycloak clients are accepted); Windmill's database pools: the server at most 10 connections, every worker 3 (`windmill.workers.databaseConnections`); core's migrate hook gets the Keycloak settings and `core.extraEnv` like the core Deployment (with auth on, GOAT v3.0.5+ failed at the hook); pods roll when their ConfigMap changes (`checksum/config`), so a settings-only upgrade takes effect without a manual restart; `garage` (optional bundled S3 store, as in the Docker Compose bundle; `goatlib.storage.garage_init` replaces the bundle's init script) | Pods now have memory limits, geoapi and processes get smaller DuckDB budgets (geoapi two pooled queries instead of four), and geoapi and processes run as root — see "Upgrading 0.6.0 → 0.7.0" |
 | `0.6.0` | `global.s3` (one S3 store for core, geoapi, processes and the workers, uploads and uploaded images); the print, tools and workflows workers get GOAT's database, DuckLake, S3, catalog bucket, `PRINT_BASE_URL` and Keycloak client, with `WHITELIST_ENVS` built by the chart, and job timeouts per worker (`JOB_DEFAULT_TIMEOUT`); the chart's own Redis on the official image instead of the Bitnami sub-chart; `email` (SMTP for invitations, password from a Secret, email branding) with `CLIENT_URL` / `API_URL` derived for the links in emails; `global.auth.provisionInvitedUsers`; `odoo` (Plan4Better's Odoo, optional: the shared connection and `odoo.support` for support tickets, API key from a Secret) and `web.supportEmail`; `global.caBundle` (company CA for core, web and the print, tools and workflows workers) | The S3 and assets placeholders are gone from `core`, `geoapi` and `processes`, and the workers' fixed `WHITELIST_ENVS` is replaced by a built one — see "Upgrading 0.5.1 → 0.6.0" |
 | `0.5.1` | GOAT v3.0.3 (no runtime downloads in the workers, `ROOT_PATH`, `sync_base_data`); `global.auth`: one auth switch + one Keycloak Secret for core, web, geoapi, processes, catalog; `geoapi.auth` / `processes.auth` | Fixes: geoapi + processes ran auth ON at chart defaults (401 on feature edits and every job route) and, with auth on, validated tokens against plan4better's dev Keycloak; a fresh install's processes had no windmill token (every tool run failed until a manual restart); `processes.windmillAutoWire: false` was ignored. No values change needed — see "Upgrading 0.5.0 → 0.5.1" |

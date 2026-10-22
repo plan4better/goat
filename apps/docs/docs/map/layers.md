@@ -1,5 +1,5 @@
 ---
-description: "Add layers by file upload, drawing, a WFS, WMS, WMTS, XYZ or COG service, your datasets or the Catalog, then reorder, hide, group and edit them."
+description: "Add layers by file upload, drawing, a WFS, WMS, WMTS, XYZ or COG service, OpenStreetMap or Overture Maps data, your datasets or the Catalog, then reorder, hide, group and edit them."
 sidebar_position: 2
 ---
 
@@ -32,7 +32,7 @@ You can add layers from [different sources](../data/dataset_types) to your map:
 
 - **Upload dataset**: a dataset from your device (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
 - **Create layer**: a new empty layer you draw into
-- **Connect service**: a layer served by WFS, WMS, WMTS, XYZ Tiles or COG, added by URL
+- **Connect service**: a layer served by WFS, WMS, WMTS, XYZ Tiles or COG, added by URL, or features from OpenStreetMap or Overture Maps for an area
 
 **Existing data**
 
@@ -108,6 +108,14 @@ You can add layers from [different sources](../data/dataset_types) to your map:
 
 <div class="step">
   <div class="step-number">3</div>
+  <div class="content">On the left, choose <code>OGC services</code> to add a web service by its address, or <code>OpenStreetMap</code> or <code>Overture Maps</code> to add their features for an area.</div>
+</div>
+
+<Tabs>
+  <TabItem value="OGC" label="OGC services" default className="tabItemBox">
+
+<div class="step">
+  <div class="step-number">4</div>
   <div class="content">Enter the <code>URL</code> of the service, then follow the steps for the kind of source you are adding.</div>
 </div>
 
@@ -140,6 +148,43 @@ You can add layers from [different sources](../data/dataset_types) to your map:
     <div class="step">
       <div class="content"><p>A <strong>Cloud Optimized GeoTIFF (COG)</strong> is added by a direct <code>.tif</code>/<code>.tiff</code> link. The file is read in pieces straight from where it is stored, so nothing is uploaded to GOAT.</p></div>
     </div>
+  </TabItem>
+</Tabs>
+
+  </TabItem>
+
+  <TabItem value="OpenData" label="OpenStreetMap / Overture Maps" className="tabItemBox">
+
+GOAT keeps a copy of [OpenStreetMap](https://www.openstreetmap.org) and [Overture Maps](https://overturemaps.org) and copies the features you choose into a new layer, which you can then style, filter and analyse. The layer is a snapshot: later edits at the source do not show up in it.
+
+<div class="step">
+  <div class="step-number">4</div>
+  <div class="content">Pick what to add. For OpenStreetMap that is <code>Points</code>, <code>Lines</code> or <code>Polygons</code>; for Overture Maps one of its themes, such as <code>Places</code>, <code>Buildings</code> or <code>Divisions</code>. A layer has one geometry, so for a theme holding several, choose one under <code>Feature type</code>.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">5</div>
+  <div class="content">Choose the <code>Area</code>: the <code>Map view</code>, where you pan and zoom the map until the dashed box shows the area, or a <code>Region</code>, a <code>Point + buffer</code> or a <code>Polygon</code>, set with <code>Choose</code>. Every feature that touches the area is added, including one that crosses its border.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">6</div>
+  <div class="content"><p>To add only some features, click <code>Add filter</code> under <code>Tag filters</code> (OpenStreetMap) or <code>Attribute filters</code> (Overture Maps). Choose a <code>Tag</code> or <code>Attribute</code>, then one or more <code>Values</code>; leave the values empty to keep every feature that has the tag. The lists show what is found in the area, with the number of features where it has been counted. With several filters, choose whether to keep features matching <code>all</code> or <code>any</code> of them. The info button next to a filter opens what the tag means in the OpenStreetMap wiki, or the Overture Maps documentation.</p>For a condition the builder cannot express, switch to <code>SQL</code> and write one, for example <code>tags['amenity'] IN ('school', 'kindergarten')</code>.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">7</div>
+  <div class="content">Check the <code>Layer name</code> and where to <code>Save to</code>, then click <code>Add layer</code>. The layer appears when the job is done.</div>
+</div>
+
+:::info
+
+A layer holds up to 1,000,000 features. When the area holds more, GOAT asks you to <code>Choose values for a filter, or a smaller area</code>. A very large area, such as a whole country for buildings, is refused even with filters: zoom in or choose a smaller area. <code>Add layer</code> waits while GOAT checks the size of the area.
+
+:::
+
+The licence of the data is shown at the top of the pane: OpenStreetMap is published under the ODbL, Overture Maps under the ODbL, with places under CDLA-Permissive 2.0. Credit the source when you share maps made with it.
+
   </TabItem>
 </Tabs>
 

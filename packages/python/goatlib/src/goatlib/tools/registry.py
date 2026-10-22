@@ -217,6 +217,22 @@ TOOL_REGISTRY: tuple[ToolDefinition, ...] = (
         ),
     ),
     ToolDefinition(
+        name="data_integration",
+        display_name="Extract Features",
+        description=(
+            "Extract OpenStreetMap or Overture features for an area, "
+            "filtered by tag or attribute"
+        ),
+        module_path="goatlib.tools.data_integration",
+        params_class_name="DataIntegrationParams",
+        windmill_path="f/goat/tools/data_integration",
+        category="data",
+        keywords=(
+            "data_management", "osm", "openstreetmap", "overture", "extract",
+            "features", "tags", "poi",
+        ),
+    ),
+    ToolDefinition(
         name="merge",
         display_name="Merge",
         description="Combines multiple vector layers into one output layer",

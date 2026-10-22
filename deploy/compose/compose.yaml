@@ -567,7 +567,9 @@ services:
     image: ${GOAT_REGISTRY:-ghcr.io/plan4better/goat}/processes:${GOAT_VERSION:-latest}
     user: "0"
     environment:
-      <<: [*env-db, *env-s3, *env-auth, *env-service]
+      # The catalog bucket also holds the OpenStreetMap and Overture mirror
+      # that Add layer › Connect service reads.
+      <<: [*env-db, *env-s3, *env-catalog-s3, *env-auth, *env-service]
       ROOT_PATH: /processes
       WINDMILL_URL: http://windmill-server:8000
       WINDMILL_WORKSPACE: goat
@@ -575,7 +577,8 @@ services:
       TRAVELTIME_MATRICES_DIR: /app/data/traveltime_matrices
       PRINT_BASE_URL: http://web:3000
       # Three DuckDB connections (analytics, SQL previews, layer search) get
-      # this budget each; together they fit the memory limit below.
+      # this budget each; with the mirror lists' fixed 256 MB they fit the
+      # memory limit below.
       PROCESSES_DUCKDB_MEMORY_LIMIT: 384MB
     volumes:
       - goat-data:/app/data

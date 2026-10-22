@@ -1004,6 +1004,22 @@
     "potential_expression": {
       "area": "Area",
       "perimeter": "Perimeter"
+    },
+    "overture_type": {
+      "places": "Places",
+      "divisions": "Administrative areas",
+      "buildings": "Buildings",
+      "land_use": "Land use",
+      "land_use_lines": "Land use (lines)",
+      "land": "Natural land",
+      "land_points": "Natural features (points)",
+      "land_lines": "Natural features (lines)",
+      "water_areas": "Water areas",
+      "waterways": "Waterways",
+      "water_points": "Water (points)",
+      "infrastructure_points": "Infrastructure (points)",
+      "infrastructure_lines": "Infrastructure (lines)",
+      "infrastructure_areas": "Infrastructure (areas)"
     }
   },
   "tools": {

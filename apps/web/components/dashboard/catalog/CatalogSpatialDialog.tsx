@@ -49,7 +49,7 @@ const LEVEL_LABEL_KEYS: Record<number, string> = {
   3: "catalog_nuts_level_district",
 };
 
-type Mode = "region" | "point" | "polygon";
+export type Mode = "region" | "point" | "polygon";
 
 const modeOf = (filter: CatalogSpatialFilter | null): Mode =>
   filter?.kind === "point" ? "point" : filter?.kind === "polygon" ? "polygon" : "region";
@@ -57,11 +57,14 @@ const modeOf = (filter: CatalogSpatialFilter | null): Mode =>
 const CatalogSpatialDialog = ({
   open,
   initial,
+  initialMode,
   onClose,
   onApply,
 }: {
   open: boolean;
   initial: CatalogSpatialFilter | null;
+  /** The mode to open in when nothing is in force yet. */
+  initialMode?: Mode;
   onClose: () => void;
   onApply: (filter: CatalogSpatialFilter | null) => void;
 }) => {
@@ -69,7 +72,7 @@ const CatalogSpatialDialog = ({
   const theme = useTheme();
   const basemapStyle = useCatalogBasemapStyle();
 
-  const [mode, setMode] = useState<Mode>(() => modeOf(initial));
+  const [mode, setMode] = useState<Mode>(() => (initial ? modeOf(initial) : (initialMode ?? "region")));
   const [draft, setDraft] = useState<CatalogSpatialFilter | null>(initial);
   const [bufferKm, setBufferKm] = useState(initial?.kind === "point" ? initial.km : DEFAULT_BUFFER_KM);
   const [query, setQuery] = useState("");
@@ -78,11 +81,11 @@ const CatalogSpatialDialog = ({
   // the last time it was open.
   useEffect(() => {
     if (!open) return;
-    setMode(modeOf(initial));
+    setMode(initial ? modeOf(initial) : (initialMode ?? "region"));
     setDraft(initial);
     setBufferKm(initial?.kind === "point" ? initial.km : DEFAULT_BUFFER_KM);
     setQuery("");
-  }, [open, initial]);
+  }, [open, initial, initialMode]);
 
   const { regions, isLoading } = useCatalogNutsRegions(query);
   const regionIds = draft?.kind === "region" ? draft.nutsIds : [];

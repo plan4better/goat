@@ -48,6 +48,7 @@ from processes.dependencies import (
 )
 from processes.ducklake import (
     ducklake_manager,
+    mirror_cursor,
     preview_ducklake_manager,
     search_ducklake_manager,
 )
@@ -286,6 +287,31 @@ class AnalyticsService:
             )
 
         return result.model_dump()
+
+    def mirror_values(
+        self,
+        area: dict,
+        feature_type: str = "points",
+        key: str | None = None,
+        limit: int = 100,
+        source: str = "osm",
+        quick: bool = False,
+        size_only: bool = False,
+    ) -> dict[str, Any]:
+        """Attributes, or one attribute's values, in the mirror for an area."""
+        from goatlib.tools.data_integration import mirror_values
+
+        with mirror_cursor() as con:
+            return mirror_values(
+                con,
+                area=area,
+                feature_type=feature_type,
+                key=key,
+                limit=limit,
+                source_name=source,
+                quick=quick,
+                size_only=size_only,
+            )
 
     def class_breaks(
         self,

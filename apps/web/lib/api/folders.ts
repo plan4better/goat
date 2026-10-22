@@ -2,6 +2,7 @@ import useSWR from "swr";
 
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import type { GetContentQueryParams } from "@/lib/validations/common";
+import type { Space } from "@/lib/validations/content";
 import type {
   Folder,
   FolderGrantsResponse,
@@ -72,6 +73,24 @@ export const updateFolder = async (
 export const getWritableFolders = (folders: FolderResponse | undefined) =>
   folders?.filter((f) => f.is_owned || f.role === "folder-editor" || f.role === "folder-owner") ?? [];
 
+/** The writable folders plus every folder of a team or organisation space the caller edits. */
+export const getWritableDestinations = (folders: FolderResponse | undefined, spaces: Space[]) => {
+  const editable = new Set(
+    spaces
+      .filter((s) => s.kind !== "personal" && (s.my_role === "owner" || s.my_role === "editor"))
+      .map((s) => s.id)
+  );
+  return (
+    folders?.filter(
+      (f) =>
+        f.is_owned ||
+        f.role === "folder-editor" ||
+        f.role === "folder-owner" ||
+        (!!f.space_id && editable.has(f.space_id))
+    ) ?? []
+  );
+};
+
 /** The team/organisation spaces the caller reaches through membership, keyed
  * by space id and recognised by each space's own `home` root folder — a
  * root the caller did not create. Folders in these spaces belong to a
@@ -86,10 +105,7 @@ export const memberSpaceIds = (folders: FolderResponse | undefined): Set<string>
   );
 
 export const useFolderGrants = (folderId: string | null) => {
-  return useSWR<FolderGrantsResponse>(
-    folderId ? `${FOLDERS_API_BASE_URL}/${folderId}/share` : null,
-    fetcher
-  );
+  return useSWR<FolderGrantsResponse>(folderId ? `${FOLDERS_API_BASE_URL}/${folderId}/share` : null, fetcher);
 };
 
 export const shareFolderGrant = async (

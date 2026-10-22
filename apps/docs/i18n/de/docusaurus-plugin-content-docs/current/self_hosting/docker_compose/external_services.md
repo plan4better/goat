@@ -207,8 +207,14 @@ GOAT funktioniert ohne jede dieser Integrationen. Jede schaltet eine Funktion fr
 |---|---|---|
 | `NEXT_PUBLIC_MAPTILER_KEY` | Die Satelliten-/Hybrid-Grundkarte von MapTiler | Diese Grundkarte wird ausgeblendet; die anderen Grundkarten funktionieren |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Die Ortssuche im Suchfeld der Karte (über Mapbox) | Das Suchfeld findet keine Orte |
-| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | Den GOAT-Datenkatalog: ein schreibgeschützter Bucket mit den harmonisierten Datensätzen, der regelmäßig gespiegelt wird | Der Katalog bleibt leer, und seine Synchronisierung ist ausgeschaltet |
+| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | Den GOAT-Datenkatalog: ein schreibgeschützter Bucket mit den harmonisierten Datensätzen, der regelmäßig gespiegelt wird. Er enthält auch den Spiegel von OpenStreetMap und Overture Maps ([Details](#open-data-mirror)) | Der Katalog bleibt leer, seine Synchronisierung ist ausgeschaltet, und die Bereiche OpenStreetMap und Overture Maps finden keine Daten |
 | `GEOCODING_URL`, `GEOCODING_AUTHORIZATION` | Den Geocoding-Dienst, den Analyse-Werkzeuge verwenden | Analyseschritte, die Geocoding benötigen, können nicht laufen |
 | `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` | Den Export von Traces, Metriken und Logs an Ihren OpenTelemetry-Collector | Es wird nichts exportiert |
 
 Die Links, die in der App erscheinen, und die Quelle der Produktgrafiken finden Sie in der [Konfigurationsreferenz](./configuration.md#integrations). Die Quelle der Routing-Basisdaten ist unter [Routing-Basisdaten](./operations.md#base-data) beschrieben.
+
+### OpenStreetMap und Overture Maps {#open-data-mirror}
+
+Die Bereiche OpenStreetMap und Overture Maps unter *Layer hinzufügen › Dienst verbinden* kopieren die Features eines Gebiets in einen GOAT-Layer. Sie lesen aus einem Spiegel beider Datensätze, der als GeoParquet im Katalog-Bucket (`CATALOG_S3_*`) unter `mirror/osm` und `mirror/overture` liegt. Der Spiegel gehört nicht zu einer GOAT-Installation; eine eigene Pipeline legt ihn dort neben dem Katalog ab. Zwei Teile von GOAT lesen ihn: `processes` füllt die Attribut- und Wertelisten im Dialog, und der Windmill-Worker `tools` führt das Kopieren aus. Mehr ist nicht einzustellen: Ohne Katalog-Bucket finden die beiden Bereiche keine Daten.
+
+Die Lizenz wird an jedem neuen Layer vermerkt: ODbL 1.0 für OpenStreetMap, CDLA-Permissive 2.0 für Overture-Orte und ODbL 1.0 für die übrigen Overture-Typen.

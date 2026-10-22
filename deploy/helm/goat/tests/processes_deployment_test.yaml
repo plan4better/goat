@@ -24,6 +24,25 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].ports[0].containerPort
           value: 8000
+  - it: gets the catalog bucket, which holds the open-data mirror
+    set:
+      catalog.s3.bucket: goat-catalog
+      catalog.s3.existingSecret: catalog-s3
+    template: processes/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_S3_BUCKET
+            value: goat-catalog
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_S3_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: catalog-s3
+                key: secret_key
   - it: not rendered when processes.enabled false
     set:
       processes.enabled: false

@@ -598,8 +598,8 @@ processes:
     # service has its own host.
     # ROOT_PATH: "/processes"
     # Each of the three DuckDB connections (analytics, SQL previews, layer
-    # search) gets this budget; together they stay under 3/4 of
-    # `resources.limits.memory`. Raise it with the limit.
+    # search) gets this budget; with the mirror lists' fixed 256 MB they stay
+    # around 3/4 of `resources.limits.memory`. Raise it with the limit.
     PROCESSES_DUCKDB_MEMORY_LIMIT: "1GB"
   extraEnv: []
   # OIDC/Keycloak — per-service override of `global.auth` (see there). NEW in
@@ -623,7 +623,7 @@ processes:
   extraVolumes: []
   extraVolumeMounts: []
   # Three DuckDB connections of PROCESSES_DUCKDB_MEMORY_LIMIT (`config`) each,
-  # plus the service.
+  # 256 MB for the open-data mirror lists, plus the service.
   resources:
     requests:
       memory: 512Mi
@@ -720,7 +720,10 @@ catalog:
   # styles) are the only routes that read the catalog bucket rather than the
   # local mirror. Leave `bucket` unset and those routes answer 404 — by
   # design: an endpoint this deployment does not offer simply is not there.
-  # The rest of the STAC API is unaffected.
+  # The rest of the STAC API is unaffected. processes and the print, tools and
+  # workflows workers get the same settings: goat-data publishes the
+  # OpenStreetMap and Overture mirror for Add layer › Connect service into this
+  # bucket (mirror/osm, mirror/overture). Unset, those two panes find no data.
   #
   # If you set `bucket` but leave `existingSecret` empty, the chart still
   # emits CATALOG_S3_BUCKET/ENDPOINT_URL/REGION (so `catalog.extraEnv` can

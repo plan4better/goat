@@ -1,8 +1,8 @@
 "use client";
 
-import { Alert, useMediaQuery, useTheme } from "@mui/material";
+import { Alert, Box, useMediaQuery, useTheme } from "@mui/material";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMap } from "react-map-gl/maplibre";
 
@@ -13,12 +13,15 @@ import { useCatalogFlow } from "@/hooks/addLayer/useCatalogFlow";
 import { useConnectFlow } from "@/hooks/addLayer/useConnectFlow";
 import { useCreateFlow } from "@/hooks/addLayer/useCreateFlow";
 import { useDatasetPickerFlow } from "@/hooks/addLayer/useDatasetPickerFlow";
+import { type FetchSource, useFetchFlow } from "@/hooks/addLayer/useFetchFlow";
 import { useUploadFlow } from "@/hooks/addLayer/useUploadFlow";
 
 import CatalogBody from "@/components/addLayer/CatalogBody";
 import ConnectBody from "@/components/addLayer/ConnectBody";
+import { type ConnectKind, ConnectRail } from "@/components/addLayer/ConnectPicker";
 import CreateBody from "@/components/addLayer/CreateBody";
 import DatasetPickerBody from "@/components/addLayer/DatasetPickerBody";
+import FetchBody from "@/components/addLayer/FetchBody";
 import UploadBody from "@/components/addLayer/UploadBody";
 import { type AddLayerSourceId, addLayerSource } from "@/components/addLayer/sources";
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
@@ -36,11 +39,17 @@ import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
 const AddLayerFrame = ({
   sourceId,
   controller,
+  aside,
+  instant,
   onClose,
   children,
 }: {
   sourceId: AddLayerSourceId;
   controller: FlowController;
+  /** A rail beside the body that stays while the body changes. */
+  aside?: ReactNode;
+  /** Skips the opening animation, for a frame that replaces one already open. */
+  instant?: boolean;
   onClose: () => void;
   children: ReactNode;
 }) => {
@@ -65,6 +74,7 @@ const AddLayerFrame = ({
       // so the dialog does not pad it and leave it to undo that. Forms keep their padding.
       bleed={source.wide}
       bodySx={source.wide ? undefined : { pt: 5 }}
+      transitionDuration={instant ? 0 : undefined}
       notice={
         controller.action.notice ? (
           <Alert severity="info" icon={<Icon iconName={ICON_NAME.USERS} style={{ fontSize: 15 }} />}>
@@ -82,7 +92,22 @@ const AddLayerFrame = ({
           primaryTooltip={controller.action.disabled ? (controller.action.reason ?? "") : ""}
         />
       }>
-      {children}
+      {aside ? (
+        // One height for every pane, so changing what is chosen never resizes the dialog.
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: { xs: "column", md: "row" },
+            flex: 1,
+            minHeight: 0,
+            height: { md: 640 },
+          }}>
+          {aside}
+          <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>{children}</Box>
+        </Box>
+      ) : (
+        children
+      )}
     </AppDialog>
   );
 };
@@ -124,6 +149,76 @@ const CreateDialog = ({ projectId, onClose }: { projectId?: string; onClose: () 
   );
 };
 
+/** The map's bounds when a dialog opens; absent on the dashboard, where there is no map. */
+const useViewport = () => {
+  const { map } = useMap();
+  // Read once: the map cannot move behind a modal.
+  const [viewport] = useState<[number, number, number, number] | undefined>(() => {
+    const bounds = map?.getBounds();
+    return bounds ? [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()] : undefined;
+  });
+  return viewport;
+};
+
+type ConnectPaneProps = {
+  projectId?: string;
+  defaultFolderId?: string;
+  rail: ReactNode;
+  instant: boolean;
+  onClose: () => void;
+};
+
+const ServicePane = ({ projectId, defaultFolderId, rail, instant, onClose }: ConnectPaneProps) => {
+  const controller = useConnectFlow({ projectId, defaultFolderId, onDone: onClose });
+  return (
+    <AddLayerFrame
+      sourceId="connect"
+      controller={controller}
+      aside={rail}
+      instant={instant}
+      onClose={onClose}>
+      <ConnectBody controller={controller} />
+    </AddLayerFrame>
+  );
+};
+
+/** OpenStreetMap and Overture share one flow, so switching between them keeps the area. */
+const OpenDataPane = ({
+  source,
+  projectId,
+  defaultFolderId,
+  rail,
+  instant,
+  onClose,
+}: ConnectPaneProps & { source: FetchSource }) => {
+  const viewport = useViewport();
+  const controller = useFetchFlow({
+    projectId,
+    defaultFolderId,
+    viewport,
+    initialSource: source,
+    onDone: onClose,
+  });
+  const { fetch } = controller;
+  useEffect(() => {
+    if (fetch.source !== source) fetch.setSource(source);
+  }, [fetch, source]);
+  return (
+    <AddLayerFrame
+      sourceId="connect"
+      controller={controller}
+      aside={rail}
+      instant={instant}
+      onClose={onClose}>
+      <FetchBody controller={controller} />
+    </AddLayerFrame>
+  );
+};
+
+/**
+ * One dialog for everything that is connected rather than uploaded: a web service, or open
+ * data GOAT hosts. The rail stays; only the side beside it changes.
+ */
 const ConnectDialog = ({
   projectId,
   defaultFolderId,
@@ -133,25 +228,28 @@ const ConnectDialog = ({
   defaultFolderId?: string;
   onClose: () => void;
 }) => {
-  const controller = useConnectFlow({ projectId, defaultFolderId, onDone: onClose });
-  return (
-    <AddLayerFrame sourceId="connect" controller={controller} onClose={onClose}>
-      <ConnectBody controller={controller} />
-    </AddLayerFrame>
-  );
+  // Opens on services, as Connect service always has; the rail switches.
+  const [kind, setKind] = useState<ConnectKind>("service");
+  // The first frame opens as a dialog does; each one after replaces it in place.
+  const opened = useRef(false);
+  useEffect(() => {
+    opened.current = true;
+  });
+  const rail = <ConnectRail kind={kind} onPick={setKind} />;
+  const pane = {
+    projectId,
+    defaultFolderId,
+    rail,
+    instant: opened.current,
+    onClose,
+  };
+  if (kind === "service") return <ServicePane {...pane} />;
+  return <OpenDataPane {...pane} source={kind} />;
 };
 
 const CatalogDialog = ({ projectId, onClose }: { projectId?: string; onClose: () => void }) => {
-  const { map } = useMap();
-  /**
-   * Read once, when the dialog opens: the map cannot move behind a modal, and
-   * a value that changed would refetch the whole list. Absent on the dashboard,
-   * where there is no map — then nothing is boosted.
-   */
-  const [viewport] = useState<[number, number, number, number] | undefined>(() => {
-    const bounds = map?.getBounds();
-    return bounds ? [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()] : undefined;
-  });
+  // Absent on the dashboard, where there is no map: then nothing is boosted.
+  const viewport = useViewport();
   const controller = useCatalogFlow({ projectId, onDone: onClose, viewport });
   return (
     <AddLayerFrame sourceId="catalog" controller={controller} onClose={onClose}>
@@ -160,10 +258,6 @@ const CatalogDialog = ({ projectId, onClose }: { projectId?: string; onClose: ()
   );
 };
 
-/**
- * The user's own datasets. The flow owns the selection, so browsing the shelf
- * — searching, entering a folder, changing space — leaves it untouched.
- */
 const MyDatasetsDialog = ({ projectId, onClose }: { projectId?: string; onClose: () => void }) => {
   const theme = useTheme();
   // The frame full-screens below `sm` (AppDialog's default), and a full-screen

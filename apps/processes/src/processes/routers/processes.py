@@ -98,6 +98,12 @@ _analytics_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="anal
 # unauthenticated search fan-outs can never starve authenticated analytics.
 _search_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="layer-search")
 
+# Dedicated pool for the mirror's key and value lists (OSM tags, Overture
+# attributes, any source the mirror holds), for the same reason: one reads up to
+# a million features from remote storage, and two of them would otherwise hold
+# half the analytics slots while a user pans the map.
+_mirror_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mirror")
+
 # Non-standard exception type URIs (same namespace convention as the OGC-defined
 # ones) for guard responses that OGC API - Processes doesn't itself define.
 OGC_EXCEPTION_NOT_AUTHORIZED = (
@@ -138,7 +144,12 @@ PUBLIC_ALLOWED_PROCESSES = frozenset(
 # plus the two authenticated-only SQL helpers). Membership here routes a
 # request into `_execute_analytics_sync`; `PUBLIC_ALLOWED_PROCESSES` then
 # decides whether it may run without a caller.
-SYNC_ANALYTICS_PROCESSES = PUBLIC_ALLOWED_PROCESSES | {"preview-sql", "validate-sql"}
+SYNC_ANALYTICS_PROCESSES = PUBLIC_ALLOWED_PROCESSES | {
+    "preview-sql",
+    "validate-sql",
+    # Reads the mirror for an area the caller draws, so it is sync but not public.
+    "mirror-values",
+}
 
 
 # Cheap overload guard for layer-search fan-outs: reject instead of queueing
@@ -256,6 +267,16 @@ def _execute_analytics_sync(
                 filter_expr=inputs.get("filter"),
                 limit=inputs.get("limit", 100),
                 offset=inputs.get("offset", 0),
+            )
+        elif process_id == "mirror-values":
+            return analytics_service.mirror_values(
+                area=inputs["area"],
+                feature_type=inputs.get("feature_type", "points"),
+                key=inputs.get("key"),
+                limit=inputs.get("limit", 100),
+                source=inputs.get("source", "osm"),
+                quick=bool(inputs.get("quick", False)),
+                size_only=bool(inputs.get("size_only", False)),
             )
         elif process_id == "class-breaks":
             return analytics_service.class_breaks(
@@ -719,7 +740,13 @@ async def execute_process(
             # Apply timeout to prevent runaway queries
             # layer-search runs on its own pool so it can't starve authenticated
             # analytics (see _search_executor).
-            executor = _search_executor if is_search else _analytics_executor
+            executor = (
+                _search_executor
+                if is_search
+                else _mirror_executor
+                if process_id == "mirror-values"
+                else _analytics_executor
+            )
             loop = asyncio.get_event_loop()
             try:
                 result = await asyncio.wait_for(

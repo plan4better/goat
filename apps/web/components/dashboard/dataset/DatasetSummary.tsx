@@ -76,6 +76,7 @@ const DatasetSummary: React.FC<DatasetSummaryProps> = ({
     { field: "processing:lineage", i18nKey: "lineage", type: "markdown" },
     { field: "publisher", i18nKey: "publisher", type: "text" },
     { field: "license", i18nKey: "license", type: "text" },
+    { field: "attribution", i18nKey: "attribution", type: "text" },
     { field: "category", i18nKey: "data_category", type: "text" },
     { field: "language_code", i18nKey: "language_code", type: "text" },
   ].map(({ field, i18nKey, type }) => ({
@@ -93,9 +94,14 @@ const DatasetSummary: React.FC<DatasetSummaryProps> = ({
   // own record verbatim. So everything but `description` is read from that
   // record, in the catalog's vocabulary — `DL-DE-BY-2.0`, not an enum we would
   // have to map it into.
-  const catalogItem = (
-    dataset.other_properties as { catalog_item?: Record<string, string | number | null> } | undefined
-  )?.catalog_item;
+  // A fetched layer states its source in the same keys, under `provenance`.
+  const other = dataset.other_properties as
+    | {
+        catalog_item?: Record<string, string | number | null>;
+        provenance?: Record<string, string | number | null>;
+      }
+    | undefined;
+  const catalogItem = other?.catalog_item ?? other?.provenance;
 
   const valueOf = (field: string): string | undefined => {
     const raw = field === "description" ? dataset.description : catalogItem?.[field];
