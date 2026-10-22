@@ -53,64 +53,14 @@ from goatlib.utils.generated_fields import (
     generated_fields,
     needs_write_lock,
 )
+from goatlib.utils.layer_lock import advance_marks, lock_layer, read_marks
 
 from geoapi.services.computed_columns import fetch_field_config
 from geoapi.services.layer_service import layer_service
 
 logger = logging.getLogger(__name__)
 
-#: Namespaces the advisory-lock key, so it cannot collide with another feature
-#: that hashes a layer id into an advisory lock.
-LOCK_NAMESPACE = "goat.layer_serial:"
-
 COUNTER_TABLE = "customer.layer_serial_counter"
-
-
-def _lock_key(layer_id: str) -> str:
-    """The layer id in one spelling, whichever form the caller holds."""
-    return LOCK_NAMESPACE + layer_id.replace("-", "").lower()
-
-
-async def _lock(conn: Any, layer_id: str) -> None:
-    await conn.execute(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", _lock_key(layer_id)
-    )
-
-
-async def _read_marks(conn: Any, layer_id: str, names: list[str]) -> dict[str, int]:
-    """The stored marks of these columns; none for a column that has no row."""
-    try:
-        async with conn.transaction():
-            rows = await conn.fetch(
-                f"SELECT field_name, last_value FROM {COUNTER_TABLE} "
-                "WHERE layer_id = $1::uuid AND field_name = ANY($2::text[])",
-                layer_id,
-                names,
-            )
-    except asyncpg.UndefinedTableError:
-        # Core's migration has not run yet: numbers continue from max.
-        logger.warning("%s is missing; serial numbers fall back to max", COUNTER_TABLE)
-        return {}
-    return {row["field_name"]: int(row["last_value"]) for row in rows}
-
-
-async def _advance_marks(conn: Any, layer_id: str, assigned: dict[str, int]) -> None:
-    """Store the highest numbers handed out; a mark never moves down."""
-    try:
-        async with conn.transaction():
-            await conn.executemany(
-                f"INSERT INTO {COUNTER_TABLE} AS c "
-                "(layer_id, field_name, last_value, updated_at) "
-                "VALUES ($1::uuid, $2, $3, now()) "
-                "ON CONFLICT (layer_id, field_name) DO UPDATE SET "
-                "last_value = greatest(c.last_value, excluded.last_value), "
-                "updated_at = now()",
-                [(layer_id, name, value) for name, value in assigned.items()],
-            )
-    except asyncpg.UndefinedTableError:
-        logger.warning(
-            "%s is missing; serial high-water mark not stored", COUNTER_TABLE
-        )
 
 
 async def _forget_marks(conn: Any, layer_id: str, names: Iterable[str]) -> None:
@@ -154,12 +104,14 @@ async def layer_write_lock(
     serials = [f.name for f in fields if f.kind == "serial"]
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await _lock(conn, layer_id)
+            await lock_layer(conn, layer_id)
             await _forget_marks(conn, layer_id, reset)
-            counters.high_water = await _read_marks(conn, layer_id, serials)
+            counters.high_water = await read_marks(
+                conn, layer_id, serials, COUNTER_TABLE
+            )
             yield counters
             if counters.assigned:
-                await _advance_marks(conn, layer_id, counters.assigned)
+                await advance_marks(conn, layer_id, counters.assigned, COUNTER_TABLE)
 
 
 @dataclass
@@ -207,7 +159,7 @@ async def locked_layer_write(
         return
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await _lock(conn, layer_id)
+            await lock_layer(conn, layer_id)
             await _forget_marks(conn, layer_id, reset)
             field_config = await fetch_field_config(conn, UUID(layer_id))
             write = LayerWrite(field_config=field_config, conn=conn)
@@ -215,10 +167,14 @@ async def locked_layer_write(
                 f.name for f in generated_fields(field_config) if f.kind == "serial"
             ]
             if serials:
-                write.counters.high_water = await _read_marks(conn, layer_id, serials)
+                write.counters.high_water = await read_marks(
+                    conn, layer_id, serials, COUNTER_TABLE
+                )
             yield write
             if write.counters.assigned:
-                await _advance_marks(conn, layer_id, write.counters.assigned)
+                await advance_marks(
+                    conn, layer_id, write.counters.assigned, COUNTER_TABLE
+                )
 
 
 async def forget_serial_counter(layer_id: str, name: str) -> None:
@@ -228,7 +184,7 @@ async def forget_serial_counter(layer_id: str, name: str) -> None:
         return
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await _lock(conn, layer_id)
+            await lock_layer(conn, layer_id)
             await _forget_marks(conn, layer_id, [name])
 
 
@@ -243,7 +199,7 @@ async def rename_serial_counter(layer_id: str, old: str, new: str) -> None:
         return
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await _lock(conn, layer_id)
+            await lock_layer(conn, layer_id)
             await _forget_marks(conn, layer_id, [new])
             try:
                 async with conn.transaction():

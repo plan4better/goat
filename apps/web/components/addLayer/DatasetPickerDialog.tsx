@@ -26,16 +26,26 @@ export type DatasetPickerDialogProps = {
   onClose: () => void;
   /** The one item chosen; nothing is added to any project. */
   onPick: (item: ContentItem) => void;
+  /** Whether the host can take this item (e.g. it needs edit rights). */
+  canPick?: (item: ContentItem) => boolean;
+  /** Shown when the picked item fails `canPick`. */
+  cannotPickLabel?: string;
 };
 
 /** The open shelf, and the pick it holds. Mounted only while the dialog is
  * open, so the pick — like the shelf's scope, folder and search — starts
  * fresh every time it is opened, whoever closed it. */
-const DatasetPickerShelf = ({ onClose, onPick }: Omit<DatasetPickerDialogProps, "open">) => {
+const DatasetPickerShelf = ({
+  onClose,
+  onPick,
+  canPick,
+  cannotPickLabel,
+}: Omit<DatasetPickerDialogProps, "open">) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("md"));
   const [picked, setPicked] = useState<ContentItem | null>(null);
+  const blocked = !!picked && !!canPick && !canPick(picked);
 
   return (
     <Dialog
@@ -69,6 +79,11 @@ const DatasetPickerShelf = ({ onClose, onPick }: Omit<DatasetPickerDialogProps, 
           justifyContent: "flex-end",
           gap: 2,
         }}>
+        {blocked && cannotPickLabel && (
+          <Typography variant="body2" color="error.main" sx={{ mr: "auto" }}>
+            {cannotPickLabel}
+          </Typography>
+        )}
         <Button variant="text" onClick={onClose}>
           <Typography variant="body2" fontWeight="bold">
             {t("cancel")}
@@ -79,9 +94,9 @@ const DatasetPickerShelf = ({ onClose, onPick }: Omit<DatasetPickerDialogProps, 
             <Button
               variant="contained"
               color="primary"
-              disabled={!picked}
+              disabled={!picked || blocked}
               onClick={() => {
-                if (!picked) return;
+                if (!picked || blocked) return;
                 onPick(picked);
                 onClose();
               }}>
@@ -103,7 +118,7 @@ const DatasetPickerShelf = ({ onClose, onPick }: Omit<DatasetPickerDialogProps, 
  * Nothing is mounted until it is opened, so the shelf's queries only run
  * while it is on screen and a host may render this permanently.
  */
-const DatasetPickerDialog = ({ open, onClose, onPick }: DatasetPickerDialogProps) =>
-  open ? <DatasetPickerShelf onClose={onClose} onPick={onPick} /> : null;
+const DatasetPickerDialog = ({ open, ...props }: DatasetPickerDialogProps) =>
+  open ? <DatasetPickerShelf {...props} /> : null;
 
 export default DatasetPickerDialog;

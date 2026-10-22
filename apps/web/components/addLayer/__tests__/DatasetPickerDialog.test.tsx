@@ -54,6 +54,25 @@ describe("DatasetPickerDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("keeps Use dataset off for an item the host cannot take, and says why", () => {
+    const onPick = vi.fn();
+    render(
+      <DatasetPickerDialog
+        open
+        onClose={vi.fn()}
+        onPick={onPick}
+        canPick={() => false}
+        cannotPickLabel="append_target_needs_edit_rights"
+      />
+    );
+    fireEvent.click(screen.getByText("pick-roads"));
+    const use = screen.getByRole("button", { name: "use_dataset" }) as HTMLButtonElement;
+    expect(use.disabled).toBe(true);
+    expect(screen.getByText("append_target_needs_edit_rights")).toBeInTheDocument();
+    fireEvent.click(use);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
   it("renders nothing while closed", () => {
     const { container } = render(<DatasetPickerDialog open={false} onClose={vi.fn()} onPick={vi.fn()} />);
     expect(container.querySelector('[role="dialog"]')).toBeNull();

@@ -42,6 +42,7 @@ from goatlib.tools.base import (
     _get_or_create_event_loop,
     drops_unrecorded_tables,
 )
+from goatlib.tools.finalize_existing import ExistingDatasetMixin
 from goatlib.tools.layer_replace import LayerReplaceMixin
 from goatlib.tools.schemas import ToolInputBase
 from goatlib.tools.workflow_dataset_nodes import retarget_dataset_nodes
@@ -99,6 +100,17 @@ class FinalizeLayerParams(ToolInputBase):
         "resulting layer so subsequent runs with overwrite_previous=True "
         "can find it.",
     )
+    target_layer_id: str | None = Field(
+        default=None,
+        description="Add the rows to this existing dataset instead of saving a "
+        'new one ("Save as dataset" set to an existing dataset). Needs edit '
+        "rights on it; without them the step fails.",
+    )
+    add_to_project: bool = Field(
+        default=True,
+        description="With target_layer_id: show the target in the project if "
+        "it is not there yet.",
+    )
 
 
 class FinalizeLayerOutput(BaseModel):
@@ -111,16 +123,26 @@ class FinalizeLayerOutput(BaseModel):
     layer_id: str = Field(..., description="Permanent layer UUID (new or updated)")
     layer_name: str = Field(..., description="Layer name")
     project_id: str = Field(..., description="Project the layer was added to")
-    layer_project_id: int = Field(..., description="Layer-project association ID")
+    layer_project_id: int | None = Field(
+        default=None,
+        description="Layer-project association ID (none when rows were added "
+        "to an existing dataset the project does not show)",
+    )
     feature_count: int = Field(default=0, description="Number of features")
     geometry_type: str | None = Field(default=None, description="Geometry type")
     overwritten: bool = Field(
         default=False,
         description="True if an existing layer was replaced in place",
     )
+    rows_appended: int | None = Field(
+        default=None,
+        description="Rows added to an existing dataset (target_layer_id)",
+    )
 
 
-class FinalizeLayerRunner(LayerReplaceMixin, BaseToolRunner[FinalizeLayerParams]):
+class FinalizeLayerRunner(
+    ExistingDatasetMixin, LayerReplaceMixin, BaseToolRunner[FinalizeLayerParams]
+):
     """Tool runner for finalizing temporary layers."""
 
     tool_class: Literal["finalize_layer"] = "finalize_layer"
@@ -382,11 +404,15 @@ class FinalizeLayerRunner(LayerReplaceMixin, BaseToolRunner[FinalizeLayerParams]
         layer_id: str,
         project_id: str,
         name: str,
+        shareable_for: str | None = None,
     ) -> int:
         """Return the layer_project link id, creating one if it doesn't exist.
 
         If the user previously removed the layer from this project, the
-        overwrite re-attaches it. Project ownership is NOT checked here — in
+        overwrite re-attaches it. With ``shareable_for`` (a user id) a new
+        entry travels with the project only if that user may share the layer
+        (D7): "Save as dataset" into someone else's existing dataset must not
+        hand the project's members access to it. Project ownership is NOT checked here — in
         the future workflows will be runnable by users other than the project
         owner, and this helper must stay compatible with that.
         """
@@ -409,19 +435,40 @@ class FinalizeLayerRunner(LayerReplaceMixin, BaseToolRunner[FinalizeLayerParams]
             if row:
                 return int(row["id"])
 
-            inserted = await pool.fetchrow(
-                f"""
-                INSERT INTO {schema}.layer_project (
-                    layer_id, project_id, name, "order",
-                    created_at, updated_at
+            if shareable_for is None:
+                inserted = await pool.fetchrow(
+                    f"""
+                    INSERT INTO {schema}.layer_project (
+                        layer_id, project_id, name, "order",
+                        created_at, updated_at
+                    )
+                    VALUES ($1, $2, $3, 0, NOW(), NOW())
+                    RETURNING id
+                    """,
+                    uuid_module.UUID(layer_id),
+                    uuid_module.UUID(project_id),
+                    name,
                 )
-                VALUES ($1, $2, $3, 0, NOW(), NOW())
-                RETURNING id
-                """,
-                uuid_module.UUID(layer_id),
-                uuid_module.UUID(project_id),
-                name,
-            )
+            else:
+                inserted = await pool.fetchrow(
+                    f"""
+                    INSERT INTO {schema}.layer_project (
+                        layer_id, project_id, name, "order", shareable,
+                        created_at, updated_at
+                    )
+                    VALUES (
+                        $1, $2, $3, 0,
+                        {schema}.layer_is_catalog($1)
+                            OR {schema}.can('layer', $1, $4, 'share'),
+                        NOW(), NOW()
+                    )
+                    RETURNING id
+                    """,
+                    uuid_module.UUID(layer_id),
+                    uuid_module.UUID(project_id),
+                    name,
+                    uuid_module.UUID(shareable_for),
+                )
             if inserted is None:
                 raise RuntimeError(
                     f"Failed to link layer {layer_id} to project {project_id}"
@@ -457,6 +504,15 @@ class FinalizeLayerRunner(LayerReplaceMixin, BaseToolRunner[FinalizeLayerParams]
 
         loop = _get_or_create_event_loop()
         loop.run_until_complete(self._authorize(params))
+
+        if params.target_layer_id:
+            # "Save as dataset" set to an existing dataset: add the rows to it
+            # instead of creating or overwriting a layer.
+            saved = self._save_into_existing(params, parquet_path)
+            self._output_info = FinalizeLayerOutput(
+                project_id=params.project_id, **saved
+            )
+            return str(saved["layer_id"])
 
         if params.overwrite_previous and params.export_node_id:
             layer_id = self._export_with_overwrite(params, parquet_path, metadata)
@@ -752,6 +808,8 @@ def main(
     export_node_id: str | None = None,
     properties: dict[str, Any] | None = None,
     overwrite_previous: bool = False,
+    target_layer_id: str | None = None,
+    add_to_project: bool = True,
 ) -> dict:
     """Windmill entry point for finalize layer.
 
@@ -769,6 +827,8 @@ def main(
         properties=properties,
         overwrite_previous=overwrite_previous,
         export_node_id=export_node_id,
+        target_layer_id=target_layer_id,
+        add_to_project=add_to_project,
     )
 
     runner = FinalizeLayerRunner()

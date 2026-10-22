@@ -10,6 +10,7 @@
 import BlockIcon from "@mui/icons-material/Block";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import {
+  Alert,
   Box,
   Button,
   Checkbox,
@@ -34,6 +35,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { useDateFnsLocale } from "@/i18n/utils";
 
+import { useLayerWriteAccess } from "@/lib/api/layers";
 import { predictNodeSchema, useTempLayerFeatures, useWorkflowMetadata } from "@/lib/api/workflows";
 import type { InputSchemaInfo } from "@/lib/api/workflows";
 import { OEV_STATION_CONFIG_DEFAULT } from "@/lib/constants/oev-gueteklassen";
@@ -54,9 +56,11 @@ import {
   isSectionEnabled,
   processInputsWithSections,
 } from "@/lib/utils/ogc-utils";
+import type { ContentItem } from "@/lib/validations/content";
 import type { ProjectLayer } from "@/lib/validations/project";
 import type { ExportNodeData, WorkflowNode } from "@/lib/validations/workflow";
 
+import type { SelectorItem } from "@/types/map/common";
 import { OPPORTUNITY_LAYER_HANDLES } from "@/types/map/ogc-processes";
 import type { ProcessedSection } from "@/types/map/ogc-processes";
 
@@ -64,9 +68,11 @@ import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
 import { useProcessDescription } from "@/hooks/map/useOgcProcesses";
 import { useProjectBundleKinds } from "@/hooks/map/useProjectBundleKinds";
 
+import DatasetPickerDialog from "@/components/addLayer/DatasetPickerDialog";
 import Container from "@/components/map/panels/Container";
 import SectionHeader from "@/components/map/panels/common/SectionHeader";
 import SectionOptions from "@/components/map/panels/common/SectionOptions";
+import Selector from "@/components/map/panels/common/Selector";
 import ToolsHeader from "@/components/map/panels/common/ToolsHeader";
 import { DEFAULT_NETWORK_BUNDLE } from "@/components/map/panels/toolbox/generic/inputs/BundleInput";
 import OevStationConfigInput from "@/components/map/panels/toolbox/generic/inputs/OevStationConfigInput";
@@ -1472,6 +1478,80 @@ export default function WorkflowNodeSettings({
 
 // ----- Export Node Settings (inline sub-component) -----
 
+/** A dataset rows can go into: a feature layer or a table. Whether the user
+ * may edit it is not judged from the list's role but by the write-access
+ * check (the rule the run uses), which warns right after the pick. */
+export const canAppendTo = (item: ContentItem): boolean =>
+  item.type === "layer" && ((item as { layer_type?: string }).layer_type ?? "feature") !== "raster";
+
+interface ExportExistingTargetProps {
+  data: ExportNodeData;
+  onChange: (changes: Partial<ExportNodeData>) => void;
+}
+
+/**
+ * "Existing dataset" in the "Save as dataset" panel, laid out like the
+ * "Dataset name *" field it replaces: which dataset the rows are added to.
+ * The columns must match the dataset's; "Add to project" is the panel's own.
+ */
+function ExportExistingTarget({ data, onChange }: ExportExistingTargetProps) {
+  const { t } = useTranslation("common");
+  const theme = useTheme();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const { canWrite } = useLayerWriteAccess(data.targetLayerId);
+
+  return (
+    <Stack spacing={1} sx={{ mb: 2 }}>
+      <Typography variant="body2" color="text.secondary">
+        {t("append_target_layer")} *
+      </Typography>
+      {data.targetLayerId && (
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Icon
+            iconName={ICON_NAME.LAYERS}
+            style={{ fontSize: 14 }}
+            htmlColor={theme.palette.text.secondary}
+          />
+          <Typography
+            variant="body2"
+            fontWeight="bold"
+            sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+            {data.targetLayerName}
+          </Typography>
+        </Stack>
+      )}
+      <Button
+        variant="outlined"
+        size="small"
+        fullWidth
+        startIcon={
+          <Icon
+            iconName={data.targetLayerId ? ICON_NAME.LAYERS : ICON_NAME.PLUS}
+            style={{ fontSize: data.targetLayerId ? 16 : 15 }}
+          />
+        }
+        onClick={() => setPickerOpen(true)}
+        sx={{ borderRadius: 4, textTransform: "none", fontWeight: "bold" }}>
+        {data.targetLayerId ? t("change_dataset") : t("append_choose_target")}
+      </Button>
+
+      {data.targetLayerId && canWrite === false && (
+        <Alert severity="warning" sx={{ py: 0 }}>
+          {t("append_no_edit_rights_detail")}
+        </Alert>
+      )}
+
+      <DatasetPickerDialog
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={(item) => onChange({ targetLayerId: item.id, targetLayerName: item.name })}
+        canPick={canAppendTo}
+        cannotPickLabel={t("append_target_wrong_type")}
+      />
+    </Stack>
+  );
+}
+
 interface ExportNodeSettingsInlineProps {
   node: WorkflowNode;
   exportData: ExportNodeData;
@@ -1496,23 +1576,28 @@ function ExportNodeSettingsInline({
   const [datasetName, setDatasetName] = useState(exportData.datasetName || "");
   const [addToProject, setAddToProject] = useState(exportData.addToProject);
   const [overwritePrevious, setOverwritePrevious] = useState(exportData.overwritePrevious);
+  const isExisting = exportData.destination === "existing";
+
+  const saveToItems: SelectorItem[] = useMemo(
+    () => [
+      { value: "new", label: t("export_mode_new"), icon: ICON_NAME.PLUS },
+      { value: "existing", label: t("export_mode_existing"), icon: ICON_NAME.LAYERS },
+    ],
+    [t]
+  );
+
+  // Several fields at once (the "Add to existing" settings)
+  const saveChanges = useCallback(
+    (changes: Partial<ExportNodeData>) => {
+      dispatch(updateNode({ id: node.id, changes: { data: { ...node.data, ...changes } } }));
+    },
+    [dispatch, node.id, node.data]
+  );
 
   // Persist a field change to Redux (side effect, not driving UI)
   const syncToRedux = useCallback(
-    (field: keyof ExportNodeData, value: unknown) => {
-      dispatch(
-        updateNode({
-          id: node.id,
-          changes: {
-            data: {
-              ...node.data,
-              [field]: value,
-            },
-          },
-        })
-      );
-    },
-    [dispatch, node.id, node.data]
+    (field: keyof ExportNodeData, value: unknown) => saveChanges({ [field]: value }),
+    [saveChanges]
   );
 
   const handleDatasetNameChange = useCallback(
@@ -1594,25 +1679,43 @@ function ExportNodeSettingsInline({
             </Stack>
           )}
 
-          {/* Dataset name */}
-          <Stack spacing={1} sx={{ mb: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              {t("dataset_name")} *
-            </Typography>
-            <TextField
-              fullWidth
-              size="small"
-              required
-              placeholder={t("enter_dataset_name")}
-              value={datasetName}
-              onChange={handleDatasetNameChange}
-              error={!datasetName.trim()}
-              helperText={!datasetName.trim() ? t("dataset_name_required") : undefined}
-              inputProps={{
-                style: { fontSize: "0.875rem" },
+          {/* New dataset, or add the rows to an existing one */}
+          <Box sx={{ mb: 2 }}>
+            <Selector
+              selectedItems={saveToItems.find((item) => item.value === (isExisting ? "existing" : "new"))}
+              setSelectedItems={(item) => {
+                const picked = Array.isArray(item) ? item[0] : item;
+                if (picked) saveChanges({ destination: picked.value as "new" | "existing" });
               }}
+              items={saveToItems}
+              label={t("export_save_to")}
+              tooltip={t("export_save_to_help")}
             />
-          </Stack>
+          </Box>
+
+          {isExisting && <ExportExistingTarget data={exportData} onChange={saveChanges} />}
+
+          {/* Dataset name */}
+          {!isExisting && (
+            <Stack spacing={1} sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                {t("dataset_name")} *
+              </Typography>
+              <TextField
+                fullWidth
+                size="small"
+                required
+                placeholder={t("enter_dataset_name")}
+                value={datasetName}
+                onChange={handleDatasetNameChange}
+                error={!datasetName.trim()}
+                helperText={!datasetName.trim() ? t("dataset_name_required") : undefined}
+                inputProps={{
+                  style: { fontSize: "0.875rem" },
+                }}
+              />
+            </Stack>
+          )}
 
           {/* Options */}
           <FormControlLabel
@@ -1621,14 +1724,16 @@ function ExportNodeSettingsInline({
             sx={{ ml: 0, mb: 0.5 }}
           />
 
-          <FormControlLabel
-            control={<Checkbox checked={overwritePrevious} onChange={handleOverwriteChange} size="small" />}
-            label={<Typography variant="body2">{t("overwrite_on_rerun")}</Typography>}
-            sx={{ ml: 0 }}
-          />
+          {!isExisting && (
+            <FormControlLabel
+              control={<Checkbox checked={overwritePrevious} onChange={handleOverwriteChange} size="small" />}
+              label={<Typography variant="body2">{t("overwrite_on_rerun")}</Typography>}
+              sx={{ ml: 0 }}
+            />
+          )}
 
           {/* Completed state info */}
-          {nodeStatus === "completed" && exportData.exportedLayerId && (
+          {!isExisting && nodeStatus === "completed" && exportData.exportedLayerId && (
             <Box sx={{ mt: 3, mb: 2 }}>
               <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
                 {t("result")}
