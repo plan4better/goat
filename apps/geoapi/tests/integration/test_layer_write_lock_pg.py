@@ -28,11 +28,11 @@ import duckdb
 import pytest
 import pytest_asyncio
 from goatlib.utils.generated_fields import GeneratedValues, generated_fields
+from goatlib.utils.layer_lock import layer_lock_key
 
 from geoapi.config import settings
 from geoapi.services import layer_write_lock as lock_module
 from geoapi.services.layer_write_lock import (
-    _lock_key,
     forget_serial_counter,
     layer_write_lock,
     rename_serial_counter,
@@ -135,7 +135,7 @@ async def test_a_pod_that_dies_holding_the_lock_releases_it(pods) -> None:
     transaction = conn.transaction()
     await transaction.start()
     await conn.execute(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", _lock_key(LAYER)
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", layer_lock_key(LAYER)
     )
     conn.terminate()
 

@@ -9,7 +9,6 @@
 #include "../kernel/snap.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <duckdb.hpp>
 #include <stdexcept>
@@ -228,32 +227,12 @@ HeatmapNetworkPrep prepare_radial_street_network(
     RadialNetworkPrep core;
     if (over_area)
     {
-        std::array<double, 4> b{in.area_cells->front().x,
-                                in.area_cells->front().y,
-                                in.area_cells->front().x,
-                                in.area_cells->front().y};
-        for (auto const &p : *in.area_cells)
-        {
-            b[0] = std::min(b[0], p.x);
-            b[1] = std::min(b[1], p.y);
-            b[2] = std::max(b[2], p.x);
-            b[3] = std::max(b[3], p.y);
-        }
-        RequestConfig bcfg = rcfg;
-        bcfg.cost_type = CostType::Time;
-        bcfg.max_cost = in.mode == RoutingMode::Car ? input::kMaxTimeCarMin
-                                                     : input::kMaxTimeActiveMin;
-        double const buffer_m = input::buffer_distance(bcfg);
-        // The buffer bounds which opportunities count; the network covers the
-        // hull of the area and those, so routes to them stay connected while
-        // the area's bbox corners stay unloaded.
-        double const margin = data::ground_to_mercator(
-            buffer_m, std::abs(b[3]) > std::abs(b[1]) ? b[3] : b[1]);
+        // The caller passes only the opportunities that count for the area;
+        // the network covers the hull of the area and those, so routes to them
+        // stay connected while the area's bbox corners stay unloaded.
         std::vector<Point3857> extent = *in.area_cells;
-        for (auto const &p : in.opportunities)
-            if (p.x >= b[0] - margin && p.x <= b[2] + margin &&
-                p.y >= b[1] - margin && p.y <= b[3] + margin)
-                extent.push_back(p);
+        extent.insert(extent.end(), in.opportunities.begin(),
+                      in.opportunities.end());
         auto const filter = data::compute_spatial_filter_polygon(
             con, convex_hull(std::move(extent)), kAreaCoverRings);
         core = finish_radial_network(

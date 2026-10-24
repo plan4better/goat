@@ -98,9 +98,9 @@ struct HeatmapNetworkPrepInput
     std::string const &edge_dir;
     std::string const &node_dir;
     // When non-empty, edges load over the H3 cover of the convex hull of these
-    // points and the opportunities within the mode's maximum travel time,
-    // instead of around the opportunities, and the points are snapped in after
-    // them (connector node + edges, no traversal of their own).
+    // points and the opportunities, instead of around the opportunities, and
+    // the points are snapped in after them (connector node + edges, no
+    // traversal of their own).
     std::vector<Point3857> const *area_cells = nullptr;
 };
 

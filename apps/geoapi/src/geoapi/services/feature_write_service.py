@@ -21,6 +21,12 @@ import logging
 import re
 from typing import Any, Optional
 
+from goatlib.utils.field_config import (
+    allowed_value_columns,
+    column_defaults,
+    locked_column_names,
+    parse_computed_columns,
+)
 from goatlib.utils.generated_fields import (
     MAX_SERIAL_VALUE,
     GeneratedField,
@@ -35,13 +41,9 @@ from geoapi.dependencies import LayerInfo
 from geoapi.ducklake_write import ducklake_write_manager
 from geoapi.models.write import COLUMN_TYPE_MAP
 from geoapi.services.computed_columns import (
-    allowed_value_columns,
     apply_defaults,
     check_allowed_values,
-    column_defaults,
     fill_defaults,
-    locked_column_names,
-    parse_computed_columns,
     select_recompute_specs,
     validate_allowed_values,
 )

@@ -63,6 +63,36 @@ export const useDataset = (datasetId: string) => {
   return { dataset: data, isLoading, isError: error, mutate };
 };
 
+/** Statuses meaning the user may not reach the dataset at all. With login on
+ * the access check refuses a dataset they may not see before the question is
+ * answered: that is a "no" as well. Not 404: the endpoint answers an unknown
+ * dataset with `can_write: false`, so a 404 means a core without the route,
+ * which says nothing about rights. */
+const REFUSED = new Set([401, 403]);
+
+/** The edit right from the write-access answer or its error: `undefined`
+ * while loading or on an error that says nothing about rights. */
+export const writeAccessFrom = (
+  data: { can_write: boolean } | undefined,
+  error: unknown
+): boolean | undefined => {
+  if (data) return data.can_write;
+  const status = (error as { status?: number } | undefined)?.status;
+  return status !== undefined && REFUSED.has(status) ? false : undefined;
+};
+
+/** Whether the caller may edit a dataset's rows (the rule every layer write
+ * uses). `undefined` while loading or without an id. */
+export const useLayerWriteAccess = (datasetId: string | undefined) => {
+  const { data, error, isLoading } = useSWR<{ can_write: boolean }>(
+    () => (datasetId ? [`${LAYERS_API_BASE_URL}/${datasetId}/write-access`] : null),
+    fetcher,
+    // A refusal is an answer here, not a hiccup to retry.
+    { shouldRetryOnError: false }
+  );
+  return { canWrite: writeAccessFrom(data, error), isLoading };
+};
+
 export const getDataset = async (datasetId: string): Promise<Layer> => {
   // The reason why getDataset is used instead of useDataset is when you want to get the data inside a function
   const response = await apiRequestAuth(`${LAYERS_API_BASE_URL}/${datasetId}`, {

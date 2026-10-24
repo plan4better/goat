@@ -212,8 +212,6 @@ namespace routing
         // opportunities, and each is snapped in (500 m, as connectivity's
         // origins) so a cell without a street gets its cost via the nearest
         // one. Lets ClosestAverage run with an unlimited (+inf) max_cost.
-        // Opportunities outside the area count within the mode's maximum
-        // travel time (limit x speed, as a radial load).
         std::vector<Point3857> area_cell_centroids;
 
         // Formula

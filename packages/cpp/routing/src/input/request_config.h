@@ -19,12 +19,6 @@ namespace routing::input
     // bound the H3 search radius around starting points / PT stops.
     inline constexpr double kCarBufferSpeedKmH = 50.0;
 
-    // Maximum travel time (minutes) per street mode: the cap on a request's
-    // budget, and the reach within which opportunities outside a heatmap's
-    // reference area still count.
-    inline constexpr double kMaxTimeActiveMin = 45.0;
-    inline constexpr double kMaxTimeCarMin = 90.0;
-
     std::vector<std::string> valid_classes(RoutingMode mode);
 
     // Tiered-loading split of valid_classes(mode), used when loading a street

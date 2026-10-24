@@ -27,36 +27,45 @@ namespace routing::data
         return pos != std::string::npos && pos + 8 == path.size();
     }
 
-    static std::string parquet_scan_relation(std::string const &edge_dir)
+    // A hive-partitioned network names only the considered h3_3 folders: a glob
+    // over the whole directory lists every file before pruning, which on a world
+    // network over NFS costs tens of seconds per query. Cells without a folder
+    // have no data; if none has one, the layout is not partitioned by h3_3.
+    static std::string scan_relation(
+        std::string const &dir, std::vector<int32_t> const &h3_3_cells)
     {
-        std::string escaped = sql_escape(edge_dir);
         std::ostringstream rel;
-        if (is_glob_or_file_path(edge_dir))
+        if (is_glob_or_file_path(dir))
         {
-            rel << "read_parquet('" << escaped << "', hive_partitioning=true)";
+            rel << "read_parquet('" << sql_escape(dir) << "', hive_partitioning=true)";
             return rel.str();
         }
 
-        // Use a recursive glob so flat and partitioned layouts are both matched.
-        rel << "read_parquet('"
-            << escaped << "/**/*.parquet', hive_partitioning=true)";
-        return rel.str();
-    }
-
-    static std::string node_scan_relation(std::string const &node_dir)
-    {
-        std::string escaped = sql_escape(node_dir);
-        std::ostringstream rel;
-        // Same handling as the edge scan: a caller may name one parquet file
-        // rather than a directory. Without this, a bundle artifact would have to
-        // put its two files in separate subdirectories, since globbing a single
-        // directory holding both would union their schemas.
-        if (is_glob_or_file_path(node_dir))
+        std::vector<std::string> parts;
+        for (auto cell : h3_3_cells)
         {
-            rel << "read_parquet('" << escaped << "', hive_partitioning=true)";
+            auto part = std::filesystem::path(dir) / ("h3_3=" + std::to_string(cell));
+            if (!std::filesystem::is_directory(part))
+                continue;
+            for (auto const &f : std::filesystem::directory_iterator(part))
+            {
+                if (f.path().extension() == ".parquet")
+                {
+                    parts.push_back(sql_escape(part.string()) + "/*.parquet");
+                    break;
+                }
+            }
+        }
+        if (parts.empty())
+        {
+            // Use a recursive glob so flat and partitioned layouts are both matched.
+            rel << "read_parquet('" << sql_escape(dir) << "/**/*.parquet', hive_partitioning=true)";
             return rel.str();
         }
-        rel << "read_parquet('" << escaped << "/**/*.parquet', hive_partitioning=true)";
+        rel << "read_parquet([";
+        for (size_t i = 0; i < parts.size(); ++i)
+            rel << (i ? ", '" : "'") << parts[i] << "'";
+        rel << "], hive_partitioning=true)";
         return rel.str();
     }
 
@@ -102,8 +111,8 @@ namespace routing::data
 
         std::vector<Edge> edges;
 
-        std::string parquet_scan = parquet_scan_relation(edge_dir);
-        std::string node_scan = node_scan_relation(node_dir);
+        std::string parquet_scan = scan_relation(edge_dir, h3_3_cells);
+        std::string node_scan = scan_relation(node_dir, h3_3_cells);
 
         bool has_node_x_3857 = false;
         bool has_node_y_3857 = false;

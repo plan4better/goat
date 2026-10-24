@@ -4,6 +4,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DuplicateIcon from "@mui/icons-material/ContentCopy";
+import WarningIcon from "@mui/icons-material/Warning";
 import { Box, Stack, Tooltip, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { type NodeProps, NodeToolbar, Position } from "@xyflow/react";
@@ -15,11 +16,13 @@ import { v4 as uuidv4 } from "uuid";
 import type { AppDispatch } from "@/lib/store";
 import { selectNodes } from "@/lib/store/workflow/selectors";
 import { addNode, removeNodes } from "@/lib/store/workflow/slice";
+import { useLayerWriteAccess } from "@/lib/api/layers";
 import type { ExportNodeData } from "@/lib/validations/workflow";
 
 import { type TOOL_ICON_NAME, toolIconMap } from "@p4b/ui/assets/svg/ToolIcons";
 
 import StepIssueBadge from "@/components/workflows/issues/StepIssueBadge";
+import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
 
 import { useNodeExecutionStatus } from "../context/WorkflowExecutionContext";
 import {
@@ -41,6 +44,24 @@ const ParamRow = styled(Box)({
   gap: 16,
 });
 
+const WarningBadge = styled(Box)(({ theme }) => ({
+  position: "absolute",
+  bottom: -14,
+  width: 24,
+  height: 24,
+  borderRadius: "50%",
+  backgroundColor: theme.palette.warning.main,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: theme.palette.warning.contrastText,
+  zIndex: 3,
+}));
+
+/** Where the warning badge sits: in the corner, or left of the issue badge,
+ * which takes the corner when the step has issues and is wider with a count. */
+const warningBadgeRight = (issueCount: number) => (issueCount === 0 ? -8 : issueCount === 1 ? 20 : 33);
+
 interface ExportNodeProps extends NodeProps {
   data: ExportNodeData;
 }
@@ -52,6 +73,22 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
 
   const { status: nodeStatus_ } = useNodeExecutionStatus(id);
   const nodeStatus = nodeStatus_ || data.status;
+
+  const issueCount = useStepIssues(id).length;
+
+  // "Existing dataset" adds the rows to a target dataset instead of saving a new one
+  const isExisting = data.destination === "existing";
+  // Whether this user may edit the target only the browser can check, so it is
+  // a warning here, next to the step's issues: without edit rights the step
+  // fails when the workflow runs.
+  const { canWrite } = useLayerWriteAccess(isExisting ? data.targetLayerId : undefined);
+  const appendWarning = !isExisting
+    ? undefined
+    : !data.targetLayerId
+      ? t("append_target_required")
+      : canWrite === false
+        ? t("append_no_edit_rights")
+        : undefined;
 
   // Handle duplicate node
   const handleDuplicate = useCallback(
@@ -111,6 +148,14 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
       <NodeContainer selected={selected}>
         {/* The step's issues; stays after a run, next to the run status */}
         <StepIssueBadge nodeId={id} />
+        {/* The target warning, until the step runs; new nodes carry status "idle" */}
+        {appendWarning && !nodeStatus_ && (!data.status || data.status === "idle") && (
+          <Tooltip title={appendWarning} arrow>
+            <WarningBadge aria-label={appendWarning} sx={{ right: warningBadgeRight(issueCount) }}>
+              <WarningIcon sx={{ fontSize: 16 }} />
+            </WarningBadge>
+          </Tooltip>
+        )}
 
         {/* Input handle - left (receives tool output) */}
         <StyledHandle
@@ -149,7 +194,17 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
         {/* Parameters section — same layout as ToolNode's ParamRow */}
         <NodeParamsSection>
           <Stack spacing={0.25}>
-          {data.datasetName && (
+          {isExisting && data.targetLayerName && (
+            <ParamRow>
+              <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ fontSize: 11 }}>
+                {t("export_mode_existing")}:
+              </Typography>
+              <Typography variant="caption" fontWeight="medium" sx={{ fontSize: 11 }}>
+                {data.targetLayerName}
+              </Typography>
+            </ParamRow>
+          )}
+          {!isExisting && data.datasetName && (
             <ParamRow>
               <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ fontSize: 11 }}>
                 {t("dataset_name")}:
@@ -169,7 +224,7 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
               </Typography>
             </ParamRow>
           )}
-          {data.overwritePrevious && (
+          {!isExisting && data.overwritePrevious && (
             <ParamRow>
               <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ fontSize: 11 }}>
                 {t("overwrite")}:

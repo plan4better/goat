@@ -13,12 +13,12 @@ from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
+from goatlib.utils.layer_lock import layer_lock_key
 
 from geoapi.dependencies import LayerInfo
 from geoapi.models import BulkFeatureCreate, ColumnCreate, ColumnUpdate, FeatureCreate
 from geoapi.routers.metadata import _apply_field_config_to_properties
 from geoapi.services.layer_service import LayerMetadata, LayerService
-from geoapi.services.layer_write_lock import _lock_key
 
 OWNER = UUID("11111111-1111-1111-1111-111111111111")
 LAYER_HEX = "abc123def456789012345678901234ab"
@@ -231,7 +231,7 @@ async def test_a_create_into_a_serial_layer_runs_under_the_layers_lock(
             BulkFeatureCreate(features=[FeatureCreate(), FeatureCreate()]),
         )
 
-    key = _lock_key(LAYER_HEX)
+    key = layer_lock_key(LAYER_HEX)
     assert pool.events == [
         f"lock:{key}",
         "read_marks",
@@ -285,7 +285,11 @@ async def test_every_create_takes_the_lock_but_only_serials_read_marks(
     async with _routes(config) as (pool, _, _):
         await create_features(layer_info, OWNER, FeatureCreate(properties={}))
 
-    assert pool.events == [f"lock:{_lock_key(LAYER_HEX)}", "create:locked", "unlock"]
+    assert pool.events == [
+        f"lock:{layer_lock_key(LAYER_HEX)}",
+        "create:locked",
+        "unlock",
+    ]
 
 
 async def test_updates_take_the_lock_and_read_the_definitions_under_it(
@@ -302,7 +306,7 @@ async def test_updates_take_the_lock_and_read_the_definitions_under_it(
         )
         await replace_feature(layer_info, OWNER, FeatureReplace(), itemId="1")
 
-    assert pool.events.count(f"lock:{_lock_key(LAYER_HEX)}") == 2
+    assert pool.events.count(f"lock:{layer_lock_key(LAYER_HEX)}") == 2
     assert pool.events.count("unlock") == 2
     # The definitions the writer got are the ones read under the lock.
     kwargs = service.update_feature_properties.call_args.kwargs
@@ -311,8 +315,8 @@ async def test_updates_take_the_lock_and_read_the_definitions_under_it(
 
 def test_the_lock_key_does_not_depend_on_how_the_id_is_spelled() -> None:
     dashed = "ABC123DE-F456-7890-1234-5678901234AB"
-    assert _lock_key(dashed) == _lock_key(dashed.replace("-", "").lower())
-    assert _lock_key(dashed).startswith("goat.layer_serial:")
+    assert layer_lock_key(dashed) == layer_lock_key(dashed.replace("-", "").lower())
+    assert layer_lock_key(dashed).startswith("goat.layer_serial:")
 
 
 # --- adding a generated column -------------------------------------------------
@@ -340,7 +344,7 @@ async def test_adding_a_serial_column(layer_info) -> None:
     assert pool.events == [
         "ddl:unlocked",
         "field_config:unlocked",
-        f"lock:{_lock_key(LAYER_HEX)}",
+        f"lock:{layer_lock_key(LAYER_HEX)}",
         "forget:vorhaben_id",
         "read_marks",
         "backfill:locked",
@@ -518,7 +522,7 @@ async def test_converting_a_number_column_keeps_its_entry_and_sets_the_mark(
     # A stale mark is forgotten first; the highest value becomes the mark; the
     # new definition is stored before the lock is released.
     assert pool.events == [
-        f"lock:{_lock_key(LAYER_HEX)}",
+        f"lock:{layer_lock_key(LAYER_HEX)}",
         "forget:vorhaben_id",
         "convert:locked",
         "field_config:locked",

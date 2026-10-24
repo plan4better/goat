@@ -20,10 +20,9 @@ import uuid
 from typing import Any, Callable, Iterable, Sequence
 
 from goatlib.bundles.topology import EdgeCandidate, NodeCandidate
+from goatlib.utils.field_config import parse_computed_columns
 from goatlib.utils.generated_fields import GeneratedField, refuse_generated_changes
 from shapely import wkt
-
-from geoapi.services.computed_columns import parse_computed_columns
 
 # One definition of the rowid convention (a public feature id is rowid + 1,
 # because MapLibre treats MVT feature id 0 as "unset"), and one of the

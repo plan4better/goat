@@ -16,11 +16,12 @@ from fastapi import (
 from fastapi_pagination import Page
 from fastapi_pagination import Params as PaginationParams
 from pydantic import UUID4, BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlmodel import SQLModel
 
 # Local application imports
 from core.core import authz
+from core.core.config import settings
 from core.core.content import (
     read_content_by_id,
 )
@@ -103,6 +104,33 @@ async def create_layer_raster(
             ).model_dump()
         )
     return layer
+
+
+class LayerWriteAccess(BaseModel):
+    """Whether the caller may edit a layer's rows."""
+
+    can_write: bool
+
+
+@router.get(
+    "/{layer_id}/write-access",
+    summary="Whether the caller may edit a layer",
+    response_model=LayerWriteAccess,
+    status_code=200,
+    dependencies=[Depends(auth_z)],
+)
+async def read_layer_write_access(
+    async_session: AsyncSession = Depends(get_db),
+    user_id: UUID4 = Depends(get_user_id),
+    layer_id: UUID4 = Path(..., description="The ID of the layer"),
+) -> LayerWriteAccess:
+    """Whether the caller may edit the layer (``layer_write_allowed``). The
+    workflow's "Save as dataset" warns with it before a run."""
+    result = await async_session.execute(
+        text(f"SELECT {settings.SCHEMA}.layer_write_allowed(:layer, :user)"),
+        {"layer": layer_id, "user": user_id},
+    )
+    return LayerWriteAccess(can_write=bool(result.scalar()))
 
 
 @router.get(

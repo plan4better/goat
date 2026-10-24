@@ -95,6 +95,11 @@ export const exportNodeDataSchema = z.object({
   // The author's style for the result, from a workflow template: applied when
   // the export creates a new layer; an overwritten result keeps its own style
   outputStyle: z.record(z.unknown()).optional(),
+  // "Add to existing" (goatlib's layer_append) instead of a new dataset:
+  // the rows go into a dataset the user may edit. Absent means "new".
+  destination: z.enum(["new", "existing"]).optional(),
+  targetLayerId: z.string().uuid().optional(), // The dataset the rows are added to
+  targetLayerName: z.string().optional(), // Display only
   jobId: z.string().optional(), // Windmill job ID during finalization
   error: z.string().optional(), // Error message if status is "error"
 });
