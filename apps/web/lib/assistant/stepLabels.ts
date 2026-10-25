@@ -388,6 +388,7 @@ const STEP_KINDS: Record<string, string> = {
   project_count_features: "counts",
   project_field_statistics: "statistics",
   project_area_statistics: "statistics",
+  project_group_statistics: "statistics",
   project_get_workflows: "workflows",
   project_get_layouts: "layouts",
   ask_user: "ask",
@@ -396,6 +397,7 @@ const STEP_KINDS: Record<string, string> = {
   workflow_describe_tool: "tools",
   workflow_find_templates: "templates",
   workflow_check_draft: "draft_check",
+  workflow_last_run: "workflow_last_run",
 };
 
 /** Every kind a summary may name, with the one for tools the dock does not know. */
@@ -465,6 +467,7 @@ const COUNTED_BY: Record<
     return `${step.toolName}:${layer}:${canonical(Object.fromEntries(shape))}`;
   },
   instructions: (step) => text(fields(step.input).name),
+  workflow_last_run: (step) => text(fields(step.input).workflow_id),
 };
 
 /**

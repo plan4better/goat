@@ -47,6 +47,8 @@ import {
   pillButtonSx,
 } from "@/components/assistant/styles";
 import { useComposerContext } from "@/components/assistant/useComposerContext";
+import { useLayerAddRefresh } from "@/components/assistant/useLayerAddRefresh";
+import { useWorkflowRunRefresh } from "@/components/assistant/useWorkflowRunRefresh";
 
 /** How long Stop waits for the server's own end of the run before it drops the connection. */
 export const STOP_GRACE_MS = 5000;
@@ -365,6 +367,10 @@ export default function ChatView(props: ChatViewProps) {
   const openId = openCard?.card_id ?? null;
   // A workflow the running answer creates opens in the editor when the page allows.
   useOpenCreatedWorkflows(messages, props.initialMessages);
+  // The page reads the job lists (the Workflows canvas) and layers that a run changes.
+  useWorkflowRunRefresh(messages, props.initialMessages);
+  // The page reads the project's layers again when an answer adds a dataset to it.
+  useLayerAddRefresh(messages, props.initialMessages);
   useEffect(() => {
     statusRef.current = status;
     if (replaying.current) {

@@ -128,6 +128,37 @@ describe("ConnectionDialog secrets", () => {
   });
 });
 
+describe("ConnectionDialog provider order", () => {
+  it("offers the providers only for an OpenRouter connection, and sends them as a list", async () => {
+    const fetchMock = answer(201, {});
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ConnectionDialog
+        open
+        connection={null}
+        allowedProviders={["openai_compatible"]}
+        allowHttp={false}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
+    const baseUrl = screen.getByLabelText(/^ai_settings_field_base_url/);
+    await userEvent.type(baseUrl, "https://llm.example.org/v1");
+    expect(screen.queryByLabelText(/^ai_settings_field_provider_order/)).toBeNull();
+    await userEvent.clear(baseUrl);
+    await userEvent.type(baseUrl, "https://openrouter.ai/api/v1");
+    await userEvent.type(screen.getByLabelText(/^ai_settings_field_provider_order/), "DeepInfra, Together");
+    await userEvent.click(screen.getByLabelText("ai_settings_field_allow_fallbacks"));
+    await userEvent.type(screen.getByLabelText(/^name/), "OpenRouter");
+    await userEvent.type(screen.getByLabelText(/^ai_settings_field_model/), "deepseek/deepseek-v4.1-flash");
+    await userEvent.type(screen.getByLabelText(/^ai_settings_field_api_key/), "sk-or");
+    await userEvent.click(screen.getByRole("button", { name: "save" }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body).toMatchObject({ provider_order: ["DeepInfra", "Together"], allow_fallbacks: false });
+  });
+});
+
 describe("ConnectionDialog failed save", () => {
   const fillCompatible = async () => {
     await userEvent.type(screen.getByLabelText(/^name/), "LAN model");

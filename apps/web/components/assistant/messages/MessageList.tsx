@@ -26,6 +26,7 @@ import ResultCards from "@/components/assistant/messages/ResultCards";
 import RunStatusNote from "@/components/assistant/messages/RunStatusNote";
 import SafeMarkdown from "@/components/assistant/messages/SafeMarkdown";
 import StepGroup from "@/components/assistant/messages/StepGroup";
+import WorkflowRunNote from "@/components/assistant/messages/WorkflowRunNote";
 import { accentSoft, accentText, shimmerSx } from "@/components/assistant/styles";
 
 export interface MessageListProps {
@@ -276,6 +277,8 @@ function Answer({
       blocks.push(<CaveatNote key={index} data={part.data} />);
     } else if (part.type === "data-run-status") {
       blocks.push(<RunStatusNote key={index} data={part.data} />);
+    } else if (part.type === "data-workflow-run") {
+      blocks.push(<WorkflowRunNote key={part.id ?? index} data={part.data} live={running} />);
     }
   });
   flush("end");

@@ -40,6 +40,7 @@ const TOOLS = [
   "workflow_create",
   "workflow_create_from_template",
   "project_add_catalog_layer",
+  "project_add_dataset",
 ];
 const ROWS = [
   "q",

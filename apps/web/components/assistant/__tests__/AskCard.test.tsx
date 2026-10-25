@@ -1,3 +1,4 @@
+import { createTheme } from "@mui/material/styles";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -45,6 +46,12 @@ const CARD: AskCardData = {
     },
   ],
 };
+
+const hexToRgb = (hex: string) => ({
+  r: parseInt(hex.slice(1, 3), 16),
+  g: parseInt(hex.slice(3, 5), 16),
+  b: parseInt(hex.slice(5, 7), 16),
+});
 
 const renderCard = (props: Partial<AskCardProps> = {}) =>
   render(<AskCard card={CARD} answer={null} superseded={false} waiting={false} {...props} />);
@@ -101,6 +108,12 @@ describe("AskCard in the transcript", () => {
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(screen.queryByRole("radio")).toBeNull();
     expect(screen.queryByRole("button", { name: "Send answer" })).toBeNull();
+  });
+
+  it("marks an answered card in the theme's primary colour, GOAT's green", () => {
+    renderCard({ answer: ANSWER, waiting: false });
+    const { r, g, b } = hexToRgb(createTheme().palette.primary.main);
+    expect(getComputedStyle(screen.getByRole("status")).color).toBe(`rgb(${r}, ${g}, ${b})`);
   });
 
   it("says it was answered in a status that is there while it waits, and keeps the focused card named", async () => {

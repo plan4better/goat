@@ -34,6 +34,7 @@ const SAMPLE_PARAMS: Record<string, Record<string, unknown>> = {
   if_input_count: { step: "Conditional", count: 2 },
   if_condition_incomplete: { step: "Conditional" },
   export_name_missing: { step: "Save as dataset" },
+  export_target_missing: { step: "Save as dataset" },
   export_not_connected: { step: "Save as dataset" },
   loop: { steps: ["Buffer", "Clip"] },
   connection_to_removed_step: {},
@@ -42,6 +43,12 @@ const SAMPLE_PARAMS: Record<string, Record<string, unknown>> = {
   destination_not_writable: {},
   step_not_connected: { step: "Buffer" },
   field_maybe_missing: { step: "Join", label: "Join field", field_name: "school_id" },
+  field_renamed_by_join: {
+    step: "Aggregate Points",
+    label: "Group Fields",
+    field_name: "district",
+    joined_field: "join_district",
+  },
   too_many_destinations: { step: "Heatmap Closest Average", features: 934847, limit: 50000 },
   run_failed: { step: "Buffer", error: "Column population not found" },
 };
@@ -108,6 +115,12 @@ describe("workflow issue texts", () => {
   it("fills in the params", () => {
     expect(issueText(commonT("en"), issue("field_not_in_layer"))).toBe(
       "Join field uses the field school_id, which the input dataset does not have."
+    );
+  });
+
+  it("names the field a join renamed", () => {
+    expect(issueText(commonT("en"), issue("field_renamed_by_join"))).toBe(
+      "Group Fields uses the field district, which the step before does not produce: the join names it join_district."
     );
   });
 

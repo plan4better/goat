@@ -289,7 +289,7 @@ export default function AskPanel({
             {index < count ? card.questions[index].header : t("assistant_ask_review")}
             {done && (
               <>
-                <Icon iconName={ICON_NAME.CHECK} style={{ fontSize: 9, color: theme.palette.success.main }} />
+                <Icon iconName={ICON_NAME.CHECK} style={{ fontSize: 9, color: theme.palette.primary.main }} />
                 <Box component="span" sx={visuallyHidden}>
                   {` ${t("assistant_ask_answered")}`}
                 </Box>

@@ -67,6 +67,24 @@ describe("connection form", () => {
     expect(Object.keys(emptyConnectionForm("openai_compatible"))).not.toContain("background_model");
   });
 
+  it("sends a provider order only for OpenRouter, as a list", () => {
+    const openrouter = { ...compatible, base_url: "https://openrouter.ai/api/v1" };
+    const payload = toConnectionPayload(
+      { ...openrouter, provider_order: " DeepInfra, ,Together ", allow_fallbacks: false },
+      "create"
+    );
+    expect(payload).toMatchObject({ provider_order: ["DeepInfra", "Together"], allow_fallbacks: false });
+    const schema = connectionFormSchema({ mode: "create", allowHttp: false });
+    expect(schema.safeParse({ ...openrouter, provider_order: "DeepInfra" }).success).toBe(true);
+    const elsewhere = schema.safeParse({ ...compatible, provider_order: "DeepInfra" });
+    expect(elsewhere.success).toBe(false);
+    expect(elsewhere.error?.issues[0]).toMatchObject({
+      path: ["provider_order"],
+      message: "ai_settings_error_openrouter_only",
+    });
+    expect(toConnectionPayload({ ...compatible, provider_order: "" }, "create").provider_order).toEqual([]);
+  });
+
   it("drops fields the provider does not take", () => {
     const payload = toConnectionPayload(
       { ...compatible, provider: "openai", region: "eu-central-1", api_key: "sk-org", access_key_id: "x" },

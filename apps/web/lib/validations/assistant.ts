@@ -60,6 +60,9 @@ export interface AssistantConnection {
   base_url: string | null;
   region: string | null;
   model: string;
+  /** OpenRouter only: the providers to send the model to, in order; empty, OpenRouter chooses. */
+  provider_order: string[];
+  allow_fallbacks: boolean;
   key_last4: string | null;
   credentials_readable: boolean;
   capabilities: Record<string, unknown>;
@@ -128,10 +131,34 @@ export const PROVIDER_NAMES: Record<AssistantProvider, string | null> = {
   openai_compatible: null,
 };
 
+/** OpenRouter itself, not a host that merely starts with its name; as the assistant service judges it. */
+export function isOpenRouterUrl(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return host === "openrouter.ai" || host.endsWith(".openrouter.ai");
+  } catch {
+    return false;
+  }
+}
+
+/** The provider names of the comma-separated field, trimmed, without empty or repeated ones. */
+export const providerNames = (text: string): string[] =>
+  Array.from(
+    new Set(
+      text
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean)
+    )
+  );
+
 export interface ConnectionFormValues {
   name: string;
   provider: AssistantProvider;
   model: string;
+  /** Comma-separated in the form; a list in the payload. */
+  provider_order: string;
+  allow_fallbacks: boolean;
   base_url: string;
   region: string;
   api_key: string;
@@ -144,6 +171,8 @@ export const emptyConnectionForm = (provider: AssistantProvider): ConnectionForm
   name: "",
   provider,
   model: "",
+  provider_order: "",
+  allow_fallbacks: true,
   base_url: "",
   region: "",
   api_key: "",
@@ -157,6 +186,8 @@ export const toConnectionFormValues = (connection: AssistantConnection): Connect
   ...emptyConnectionForm(connection.provider),
   name: connection.name,
   model: connection.model,
+  provider_order: connection.provider_order.join(", "),
+  allow_fallbacks: connection.allow_fallbacks,
   base_url: connection.base_url ?? "",
   region: connection.region ?? "",
 });
@@ -176,6 +207,8 @@ export function connectionFormSchema({ mode, allowHttp, originalProvider }: Sche
       name: z.string().trim().min(1, "ai_settings_error_required").max(120),
       provider: z.enum(ASSISTANT_PROVIDERS),
       model: z.string().trim().min(1, "ai_settings_error_required").max(200),
+      provider_order: z.string(),
+      allow_fallbacks: z.boolean(),
       base_url: z.string(),
       region: z.string(),
       api_key: z.string(),
@@ -195,6 +228,8 @@ export function connectionFormSchema({ mode, allowHttp, originalProvider }: Sche
           issue("base_url", "ai_settings_error_https");
       }
       if (fields.region && !values.region.trim()) issue("region", "ai_settings_error_required");
+      if (providerNames(values.provider_order).length && !(fields.baseUrl && isOpenRouterUrl(baseUrl)))
+        issue("provider_order", "ai_settings_error_openrouter_only");
       if (fields.claudeOnly) {
         const model = values.model.trim();
         // An inference profile ARN does not name its model; the connection test shows whether it works.
@@ -224,6 +259,8 @@ export interface ConnectionPayload {
   name: string;
   provider: AssistantProvider;
   model: string;
+  provider_order: string[];
+  allow_fallbacks: boolean;
   base_url: string | null;
   region: string | null;
   credentials?: Partial<Record<SecretField, string>>;
@@ -243,6 +280,9 @@ export function toConnectionPayload(
     name: values.name.trim(),
     provider: values.provider,
     model: values.model.trim(),
+    provider_order:
+      fields.baseUrl && isOpenRouterUrl(values.base_url) ? providerNames(values.provider_order) : [],
+    allow_fallbacks: values.allow_fallbacks,
     base_url: fields.baseUrl ? values.base_url.trim() : null,
     region: fields.region ? values.region.trim() : null,
   };

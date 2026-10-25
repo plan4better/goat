@@ -1540,7 +1540,7 @@ function ExportExistingTarget({ data, onChange }: ExportExistingTargetProps) {
   const { canWrite } = useLayerWriteAccess(data.targetLayerId);
 
   return (
-    <Stack spacing={1} sx={{ mb: 2 }}>
+    <Stack spacing={1}>
       <Typography variant="body2" color="text.secondary">
         {t("append_target_layer")}
         <RequiredMark />
@@ -1678,9 +1678,11 @@ function ExportNodeSettingsInline({
             {t("export_dataset_description")}
           </Typography>
 
-          {/* The step's issues that no setting below carries; the name field shows only for a new dataset */}
+          {/* The step's issues that no setting below carries: the target picker shows for an existing dataset, the name field for a new one */}
           <StepIssuesSummary
-            issues={stepIssues.filter((issue) => isExisting || issue.field !== "datasetName")}
+            issues={stepIssues.filter(
+              (issue) => issue.field !== (isExisting ? "targetLayerId" : "datasetName")
+            )}
           />
 
           {/* Execution Status Section */}
@@ -1740,7 +1742,12 @@ function ExportNodeSettingsInline({
             />
           </Box>
 
-          {isExisting && <ExportExistingTarget data={exportData} onChange={saveChanges} />}
+          {/* The dataset the rows go into: none chosen is the `export_target_missing` issue, shown under the picker */}
+          {isExisting && (
+            <StepSettingField name="targetLayerId" issues={stepIssues} sx={{ mb: 2 }}>
+              <ExportExistingTarget data={exportData} onChange={saveChanges} />
+            </StepSettingField>
+          )}
 
           {/* Dataset name, for a new dataset: an empty one is the `export_name_missing` issue, shown under the field */}
           {!isExisting && (

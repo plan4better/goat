@@ -263,4 +263,21 @@ describe("WorkflowNodeSettings issues", () => {
     // The panel's own empty-name check is gone: the issue is the one message.
     expect(screen.queryByText("dataset_name_required")).not.toBeInTheDocument();
   });
+
+  it("shows a missing target under the dataset picker when adding to an existing dataset", async () => {
+    issuesByNode.set("export-1", [
+      makeIssue({
+        code: "export_target_missing",
+        node_ids: ["export-1"],
+        field: "targetLayerId",
+        message: "Pick the dataset the rows are added to.",
+      }),
+    ]);
+    renderSettings({ ...exportNode, data: { ...exportNode.data, destination: "existing" } } as WorkflowNode);
+    const field = screen.getByText("append_choose_target").closest("[data-field]");
+    await expect(field).toHaveAttribute("data-field", "targetLayerId");
+    expect(field).toHaveTextContent("Pick the dataset the rows are added to.");
+    expect(screen.queryByTestId("step-issues")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("enter_dataset_name")).not.toBeInTheDocument();
+  });
 });

@@ -542,4 +542,23 @@ describe("step group summaries", () => {
       "Searched the catalog, ran 2 steps"
     );
   });
+
+  it("keep a workflow run visible, and count reads of runs by workflow and group statistics as statistics", () => {
+    const ran = call("workflow_run", { workflow_id: "w1" }, { status: "succeeded" });
+    const lastRun = (workflow: string) => call("workflow_last_run", { workflow_id: workflow }, {});
+    const groups = (field: string) =>
+      call("project_group_statistics", { layer_project_id: 1, operation: "count", group_by: field }, {});
+    expect(label(ran)).toBe("Ran the workflow");
+    expect(label(lastRun("w1"))).toBe("Read the workflow's last run");
+    expect(label(groups("district"))).toBe("Computed statistics per group");
+    const rows = stepRows([ran, lastRun("w1"), lastRun("w1"), groups("district"), groups("type")]);
+    expect(rows.filter((row) => staysVisible(row, false)).map((row) => row.step)).toEqual([ran]);
+    expect(groupSummary(rows, enTranslate, false)).toBe(
+      "Read the last run of a workflow, computed 2 statistics"
+    );
+    expect(summary([lastRun("w1"), lastRun("w2")])).toBe("Read the last runs of 2 workflows");
+    expect(summary([lastRun("w1"), lastRun("w2")], deTranslate)).toBe(
+      "Die letzten Läufe von 2 Workflows gelesen"
+    );
+  });
 });

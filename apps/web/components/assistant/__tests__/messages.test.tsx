@@ -1322,3 +1322,76 @@ describe("whole answers in the transcript", () => {
     expect(drawn()).toEqual([1, 1, 1, 1, 1]);
   });
 });
+
+describe("workflow runs", () => {
+  const run = (data: Partial<Record<string, unknown>>) =>
+    ({
+      type: "data-workflow-run",
+      id: "workflow-run:j1",
+      data: {
+        workflow_id: "w1",
+        project_id: "p1",
+        job_id: "j1",
+        status: "running",
+        started: true,
+        card_id: null,
+        done: 2,
+        total: 7,
+        step: "Einzugsgebiet",
+        started_at: null,
+        saved: 0,
+        ...data,
+      },
+    }) as unknown as AssistantMessage["parts"][number];
+
+  it("shows the running step and opens the workflow in the Workflows view", () => {
+    renderRunning([run({})]);
+    expect(screen.getByText("assistant_workflow_run_step")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "assistant_workflow_run_open" }));
+    expect(actions.openInProjectMode).toHaveBeenCalledWith("p1", "workflows", "w1");
+  });
+
+  it("says how the run ended", () => {
+    renderRunning([run({ status: "failed", step: null })]);
+    expect(screen.getByText("assistant_workflow_run_failed")).toBeTruthy();
+  });
+
+  it("says in the past tense that a run was still going when a stored answer ended", () => {
+    // Stopped, or ended with the run still going: the part never says how the run ended.
+    render(
+      <DockActionsContext.Provider value={actions}>
+        <MessageList
+          messages={[
+            {
+              id: "r",
+              role: "assistant",
+              parts: [run({ started_at: new Date(Date.now() - 65_000).toISOString() })],
+            },
+          ]}
+          busy={false}
+          conversationId="c1"
+          conversationProjectId={null}
+          projectName={null}
+          readOnly={false}
+        />
+      </DockActionsContext.Provider>
+    );
+    expect(screen.getByText("assistant_workflow_run_ended_running")).toBeTruthy();
+    expect(screen.queryByText("assistant_workflow_run_step")).toBeNull();
+    expect(screen.queryByText(/^· \d+:\d\d$/)).toBeNull();
+    actions.openInProjectMode.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "assistant_workflow_run_open" }));
+    expect(actions.openInProjectMode).toHaveBeenCalledWith("p1", "workflows", "w1");
+  });
+
+  it("announces the step, not the ticking time or the button", () => {
+    renderRunning([run({ started_at: new Date(Date.now() - 65_000).toISOString() })]);
+    const status = screen
+      .getAllByRole("status")
+      .find((element) => element.textContent?.includes("assistant_workflow_run_step"));
+    expect(status?.textContent).toBe("assistant_workflow_run_step");
+    const timer = screen.getByText(/^· 1:0\d$/);
+    expect(timer.closest("[aria-hidden='true']")).toBeTruthy();
+    expect(status?.contains(screen.getByRole("button", { name: "assistant_workflow_run_open" }))).toBe(false);
+  });
+});

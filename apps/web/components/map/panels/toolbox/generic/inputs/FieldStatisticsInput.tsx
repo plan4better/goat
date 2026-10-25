@@ -45,6 +45,23 @@ interface FieldStatisticsValue {
 const EMPTY_LAYER_DATASET_IDS: Record<string, string> = {};
 const EMPTY_PREDICTED_COLUMNS: Record<string, Record<string, string>> = {};
 
+/**
+ * The column a statistic gets when its result name is left empty: "count"
+ * for a count, else the tool's `placeholder_template` with the field and the
+ * operation filled in. A tool that names none writes `{field}_{operation}`.
+ */
+export const defaultResultName = (
+  operation: string,
+  field: string | null | undefined,
+  template?: unknown
+): string => {
+  if (!operation) return "";
+  if (operation === "count") return "count";
+  if (!field) return "";
+  const pattern = typeof template === "string" ? template : "{field}_{operation}";
+  return pattern.replace(/\{(field|operation)\}/g, (_, key: string) => (key === "field" ? field : operation));
+};
+
 interface FieldStatisticsInputProps {
   input: ProcessedInput;
   value: unknown;
@@ -235,13 +252,12 @@ export default function FieldStatisticsInput({
     });
   };
 
-  // Generate placeholder for result name based on current selection
-  const resultNamePlaceholder = useMemo(() => {
-    if (!currentValue.operation) return "";
-    if (currentValue.operation === "count") return "count";
-    if (currentValue.field) return `${currentValue.field}_${currentValue.operation}`;
-    return "";
-  }, [currentValue.operation, currentValue.field]);
+  // Placeholder for the result name: the name the run writes when it is empty
+  const placeholderTemplate = input.uiMeta?.widget_options?.placeholder_template;
+  const resultNamePlaceholder = useMemo(
+    () => defaultResultName(currentValue.operation, currentValue.field, placeholderTemplate),
+    [currentValue.operation, currentValue.field, placeholderTemplate]
+  );
 
   // Get label from uiMeta or fallback to title
   const label = input.uiMeta?.label || input.title || input.name;

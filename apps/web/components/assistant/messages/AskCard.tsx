@@ -161,7 +161,7 @@ export default function AskCard({
         )}
         {/* One status for the card's whole life, empty until it is answered: a screen reader
             announces "Answered" when it comes in, also with the focus on the card after Send. */}
-        <Stack direction="row" alignItems="center" gap="6px" role="status" sx={{ color: "success.main" }}>
+        <Stack direction="row" alignItems="center" gap="6px" role="status" sx={{ color: "primary.main" }}>
           {answer && (
             <>
               <Icon iconName={ICON_NAME.CHECK} style={{ fontSize: 10, color: "inherit" }} />

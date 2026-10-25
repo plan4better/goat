@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Alert, MenuItem, Stack, TextField } from "@mui/material";
+import { Alert, Checkbox, FormControlLabel, MenuItem, Stack, TextField } from "@mui/material";
 import type { TFunction } from "i18next";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -19,6 +19,7 @@ import {
   PROVIDER_NAMES,
   connectionFormSchema,
   emptyConnectionForm,
+  isOpenRouterUrl,
   toConnectionFormValues,
   toConnectionPayload,
 } from "@/lib/validations/assistant";
@@ -146,6 +147,8 @@ export default function ConnectionDialog({
 
   const provider = watch("provider");
   const fields = PROVIDER_FIELDS[provider];
+  // OpenRouter sends one model to many providers; only its connections can name them.
+  const openRouter = fields.baseUrl && isOpenRouterUrl(watch("base_url"));
   const keepSecret = mode === "edit" && provider === connection?.provider;
   const keepHelp = keepSecret ? t("ai_settings_field_keep_secret") : undefined;
   const fieldError = (name: keyof ConnectionFormValues) => {
@@ -268,6 +271,35 @@ export default function ConnectionDialog({
           }
           {...register("model")}
         />
+        {openRouter && (
+          <>
+            <TextField
+              label={t("ai_settings_field_provider_order")}
+              placeholder="DeepInfra"
+              disabled={busy}
+              error={Boolean(fieldError("provider_order"))}
+              helperText={fieldError("provider_order") ?? t("ai_settings_field_provider_order_help")}
+              {...register("provider_order")}
+            />
+            <Controller
+              name="allow_fallbacks"
+              control={control}
+              render={({ field }) => (
+                <FormControlLabel
+                  label={t("ai_settings_field_allow_fallbacks")}
+                  disabled={busy}
+                  control={
+                    <Checkbox
+                      checked={field.value}
+                      onChange={(event) => field.onChange(event.target.checked)}
+                      onBlur={field.onBlur}
+                    />
+                  }
+                />
+              )}
+            />
+          </>
+        )}
         {fields.secrets.includes("api_key") && (
           <TextField
             type="password"

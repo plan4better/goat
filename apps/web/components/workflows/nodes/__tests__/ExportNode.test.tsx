@@ -1,8 +1,9 @@
 /**
  * "Save as dataset" in its two modes: a new dataset needs a name; "Add to
- * existing" needs a target dataset instead. A missing name or connection is a
- * workflow issue (the step's issue badge); the target warnings are the node's
- * own, as only the browser knows whether the user may edit the target.
+ * existing" needs a target dataset instead. A missing name, target or
+ * connection is a workflow issue (the step's issue badge); the edit-rights
+ * warning is the node's own, as only the browser knows whether the user may
+ * edit the target.
  */
 import { configureStore } from "@reduxjs/toolkit";
 import { render, screen } from "@testing-library/react";
@@ -148,9 +149,20 @@ describe("ExportNode adding to an existing dataset", () => {
     expect(screen.queryByText("Old name")).not.toBeInTheDocument();
   });
 
-  it("asks for a target when adding to an existing dataset without one", () => {
+  it("leaves a missing target to the check: the issue badge, no warning of its own", () => {
+    access.canWrite = false;
+    issuesByNode.set("export-1", [
+      makeIssue({ code: "export_target_missing", node_ids: ["export-1"], field: "targetLayerId" }),
+    ]);
     renderNode(fresh({ ...existing, targetLayerId: undefined, targetLayerName: undefined }));
-    expect(screen.getByLabelText("append_target_required")).toBeInTheDocument();
+    expect(screen.getByTestId("step-issue-badge")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^append_/)).not.toBeInTheDocument();
+  });
+
+  it("shows no warning for a missing target while the check reports nothing", () => {
+    renderNode(fresh({ ...existing, targetLayerId: undefined, targetLayerName: undefined }));
+    expect(screen.queryByTestId("step-issue-badge")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^append_/)).not.toBeInTheDocument();
   });
 
   it("warns before the run when the user may not edit the target", () => {
@@ -167,8 +179,7 @@ describe("ExportNode adding to an existing dataset", () => {
 
   it("does not warn when the user may edit the target", () => {
     renderNode(fresh(existing));
-    expect(screen.queryByLabelText("append_no_edit_rights")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("append_target_required")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^append_/)).not.toBeInTheDocument();
   });
 
   it("shows the target warning next to the step's issues", () => {

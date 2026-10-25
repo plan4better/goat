@@ -21,7 +21,7 @@ export interface AddedToProject {
 }
 
 /** The project's layer list, groups and project, as the add dialogs refresh them. */
-const refresh = (projectId: string) =>
+export const refreshProjectLayers = (projectId: string) =>
   Promise.all([
     mutate(projectLayersKey(projectId)),
     mutate(projectLayerGroupsKey(projectId)),
@@ -42,13 +42,13 @@ const layerIds = (links: unknown): number[] =>
 export async function addItemToProject(projectId: string, item: ResultItem): Promise<AddedToProject> {
   if (item.kind === "bundle") {
     const group = (await addBundleToProject(projectId, item.id)) as { id?: number };
-    await refresh(projectId);
+    await refreshProjectLayers(projectId);
     return {
       layers: [],
       undo: async () => {
         // A bundle's layers leave only together, with their group.
         if (typeof group.id === "number") await deleteProjectLayerGroup(projectId, group.id);
-        await refresh(projectId);
+        await refreshProjectLayers(projectId);
       },
     };
   }
@@ -63,13 +63,13 @@ export async function addItemToProject(projectId: string, item: ResultItem): Pro
     item.kind === "catalog"
       ? await addCatalogLayersToProject(projectId, [item.id])
       : await addProjectLayers(projectId, [item.datasetId ?? item.id]);
-  await refresh(projectId);
+  await refreshProjectLayers(projectId);
   const layers = layerIds(links).filter((layer) => !before.has(layer));
   return {
     layers,
     undo: async () => {
       await Promise.all(layers.map((layer) => deleteProjectLayer(projectId, layer)));
-      await refresh(projectId);
+      await refreshProjectLayers(projectId);
     },
   };
 }

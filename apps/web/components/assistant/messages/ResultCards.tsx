@@ -511,7 +511,7 @@ function ResultCard({
             {/* Centred on one line with each other; the group stays at the top of a two-line title. */}
             <Stack direction="row" alignItems="center" gap="6px" sx={{ flexShrink: 0 }}>
               {added && (
-                <Stack direction="row" alignItems="center" gap="3px" sx={{ color: "success.main" }}>
+                <Stack direction="row" alignItems="center" gap="3px" sx={{ color: "primary.main" }}>
                   <Icon iconName={ICON_NAME.CHECK} style={{ fontSize: 10, color: "inherit" }} />
                   <Typography sx={{ fontSize: 11.5, fontWeight: 600, color: "inherit" }}>
                     {t("assistant_item_added")}

@@ -78,17 +78,13 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
 
   // "Existing dataset" adds the rows to a target dataset instead of saving a new one
   const isExisting = data.destination === "existing";
-  // Whether this user may edit the target only the browser can check, so it is
-  // a warning here, next to the step's issues: without edit rights the step
-  // fails when the workflow runs.
+  // A missing target is a workflow issue (the issue badge). Whether this user
+  // may edit the chosen target only the browser can check, so it is a warning
+  // here, next to the step's issues: without edit rights the step fails when
+  // the workflow runs.
   const { canWrite } = useLayerWriteAccess(isExisting ? data.targetLayerId : undefined);
-  const appendWarning = !isExisting
-    ? undefined
-    : !data.targetLayerId
-      ? t("append_target_required")
-      : canWrite === false
-        ? t("append_no_edit_rights")
-        : undefined;
+  const noEditRightsWarning =
+    isExisting && data.targetLayerId && canWrite === false ? t("append_no_edit_rights") : undefined;
 
   // Handle duplicate node
   const handleDuplicate = useCallback(
@@ -148,10 +144,10 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
       <NodeContainer selected={selected}>
         {/* The step's issues; stays after a run, next to the run status */}
         <StepIssueBadge nodeId={id} />
-        {/* The target warning, until the step runs; new nodes carry status "idle" */}
-        {appendWarning && !nodeStatus_ && (!data.status || data.status === "idle") && (
-          <Tooltip title={appendWarning} arrow>
-            <WarningBadge aria-label={appendWarning} sx={{ right: warningBadgeRight(issueCount) }}>
+        {/* The edit-rights warning, until the step runs; new nodes carry status "idle" */}
+        {noEditRightsWarning && !nodeStatus_ && (!data.status || data.status === "idle") && (
+          <Tooltip title={noEditRightsWarning} arrow>
+            <WarningBadge aria-label={noEditRightsWarning} sx={{ right: warningBadgeRight(issueCount) }}>
               <WarningIcon sx={{ fontSize: 16 }} />
             </WarningBadge>
           </Tooltip>

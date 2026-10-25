@@ -187,12 +187,29 @@ export interface AssistantMetadata {
   /** When the message was stored (ISO 8601, UTC); only a reloaded message has it. */
   created_at?: string;
 }
+/** A workflow run the assistant started or waited for (`data-workflow-run`): one part per run, replaced as it goes. */
+export interface WorkflowRunData {
+  workflow_id: string;
+  project_id: string;
+  job_id: string | null;
+  status: "running" | "succeeded" | "failed" | "cancelled" | "refused";
+  /** The conversation started this run (not only waited for it). */
+  started: boolean;
+  card_id: string | null;
+  done: number;
+  total: number;
+  /** The step that is running, by name. */
+  step: string | null;
+  started_at: string | null;
+  saved: number;
+}
 export type AssistantDataParts = {
   proposal: Proposal;
   caveat: CaveatData;
   "run-status": RunStatusData;
   context: PageContext;
   ask: AskCardData;
+  "workflow-run": WorkflowRunData;
 };
 export type AssistantMessage = UIMessage<AssistantMetadata, AssistantDataParts>;
 
