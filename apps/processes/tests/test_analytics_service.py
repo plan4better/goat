@@ -272,6 +272,30 @@ class TestAnalyticsServiceAreaStatistics:
                         assert result["total_area"] == 1000.5
                         assert result["unit"] == "square_meters"
 
+    def test_area_statistics_passes_the_group_column(self):
+        service = AnalyticsService()
+        with (
+            patch.object(service, "_get_table_name") as mock_table,
+            patch.object(service, "_build_where_clause") as mock_where,
+            patch("processes.services.analytics_service.ducklake_manager") as mock_dm,
+            patch(
+                "processes.services.analytics_service.calculate_area_statistics"
+            ) as mock_calc,
+        ):
+            mock_table.return_value = "lake.schema.table"
+            mock_where.return_value = ("TRUE", [])
+            mock_dm.connection.return_value.__enter__ = MagicMock(
+                return_value=MagicMock()
+            )
+            mock_dm.connection.return_value.__exit__ = MagicMock(return_value=None)
+            mock_calc.return_value = MagicMock(model_dump=lambda: {"groups": []})
+
+            service.area_statistics(
+                "layer-123", operation="sum", group_by_column="zone"
+            )
+
+            assert mock_calc.call_args.kwargs["group_by_column"] == "zone"
+
 
 class TestCatalogLayers:
     """A promoted catalog layer is not in DuckLake.

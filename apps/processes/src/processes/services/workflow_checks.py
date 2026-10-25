@@ -90,6 +90,10 @@ EDITOR_DEFAULT_HANDLE = "input"
 GEOMETRY_COLUMNS = frozenset({"geometry", "geom"})
 # The heatmap input whose area can stand in for the travel budget.
 REFERENCE_AREA_INPUT = "reference_area_layer_id"
+# The join tool, and what it puts before the name of each field it adds from
+# the join layer (goatlib's `analysis/data_management/join.py`).
+JOIN_TOOL = "join"
+JOINED_FIELD_PREFIX = "join_"
 
 
 @lru_cache(maxsize=512)
@@ -559,8 +563,10 @@ class _WorkflowCheck:
     def _export_issues(self, node: dict[str, Any]) -> list[Issue]:
         """An export with nothing connected saves nothing and a run passes it
         by: a warning, and its name is not judged until something is
-        connected."""
-        node_id, step = str(node["id"]), self._step_name(node)
+        connected. An export adding the rows to an existing dataset
+        (`destination` "existing") saves no new dataset: it needs that
+        dataset, and has no name to judge."""
+        node_id, step, data = str(node["id"]), self._step_name(node), _data(node)
         if not self.incoming[node_id]:
             return [
                 Issue(
@@ -571,7 +577,20 @@ class _WorkflowCheck:
                     params={"step": step},
                 )
             ]
-        name = _data(node).get("datasetName")
+        if data.get("destination") == "existing":
+            if data.get("targetLayerId"):
+                return []
+            return [
+                Issue(
+                    "export_target_missing",
+                    "error",
+                    f"{step}: the dataset to add the rows to is not chosen.",
+                    (node_id,),
+                    "targetLayerId",
+                    {"step": step},
+                )
+            ]
+        name = data.get("datasetName")
         if not isinstance(name, str) or not name.strip():
             return [
                 Issue(
@@ -902,8 +921,11 @@ class _WorkflowCheck:
     ) -> list[Issue]:
         """Field settings naming a field their layer does not have
         (`field_not_in_layer`) or the step before may not produce
-        (`field_maybe_missing`). A setting the form hides is not judged: the
-        tool does not read it."""
+        (`field_maybe_missing`). A field the step before is predicted to have
+        only as `join_<field>`, the name a join gives the fields it adds, is
+        an error (`field_renamed_by_join`) when a join step lies upstream:
+        the join's prediction follows its run, so the run fails on that name.
+        A setting the form hides is not judged: the tool does not read it."""
         issues: list[Issue] = []
         for ref in _field_refs(description, _config(node), handles):
             entry = description.inputs.get(ref.setting)
@@ -915,6 +937,12 @@ class _WorkflowCheck:
             origin = self._origin(self._source_for(node, ref.source_input))
             if origin is None:
                 continue
+            params: dict[str, Any] = {
+                "step": step,
+                "label": ref.label,
+                "field_name": field_name,
+            }
+            joined = f"{JOINED_FIELD_PREFIX}{field_name}"
             if _kind(origin) == "dataset":
                 fields = await self._dataset_fields(origin)
                 code, level = "field_not_in_layer", "error"
@@ -924,6 +952,17 @@ class _WorkflowCheck:
                 fields = sorted(predicted) if predicted is not None else None
                 code, level = "field_maybe_missing", "warning"
                 message = f"{step}: {ref.label} names the field {field_name}, which the step before may not produce."
+                if (
+                    predicted is not None
+                    and joined in predicted
+                    and self._join_upstream(origin)
+                ):
+                    code, level = "field_renamed_by_join", "error"
+                    message = (
+                        f"{step}: {ref.label} names the field {field_name}, which "
+                        f"the step before does not produce: the join names it {joined}."
+                    )
+                    params["joined_field"] = joined
             if fields is None or field_name in fields:
                 continue
             issues.append(
@@ -933,7 +972,7 @@ class _WorkflowCheck:
                     message,
                     (str(node["id"]),),
                     ref.setting,
-                    {"step": step, "label": ref.label, "field_name": field_name},
+                    params,
                 )
             )
         return issues
@@ -1082,6 +1121,20 @@ class _WorkflowCheck:
         if not source_input and len(incoming) == 1:
             return self.by_id.get(str(incoming[0]["source"]))
         return None
+
+    def _join_upstream(self, node: dict[str, Any]) -> bool:
+        """Whether the step is a join or reads, through any steps, from one."""
+        seen: set[str] = set()
+        waiting = [str(node["id"])]
+        while waiting:
+            node_id = waiting.pop()
+            if node_id in seen or node_id not in self.by_id:
+                continue
+            seen.add(node_id)
+            if _data(self.by_id[node_id]).get("processId") == JOIN_TOOL:
+                return True
+            waiting += [str(edge["source"]) for edge in self.incoming[node_id]]
+        return False
 
     def _origin(self, node: dict[str, Any] | None) -> dict[str, Any] | None:
         """The step whose result reaches a tool through `node`: an If passes

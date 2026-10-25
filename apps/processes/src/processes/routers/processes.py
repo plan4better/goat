@@ -272,6 +272,7 @@ def _execute_analytics_sync(
                 collection=inputs.get("collection", ""),
                 operation=inputs.get("operation", "sum"),
                 filter_expr=inputs.get("filter"),
+                group_by_column=inputs.get("group_by_column"),
             )
         elif process_id == "extent":
             return analytics_service.extent(

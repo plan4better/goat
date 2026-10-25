@@ -468,6 +468,46 @@ async def test_an_export_behind_a_dataset_next_to_a_tool_needs_a_name() -> None:
     assert codes(await check(nodes, edges)) == ["export_name_missing"]
 
 
+async def test_an_export_adding_to_a_chosen_dataset_needs_no_name() -> None:
+    """Adding the rows to an existing dataset saves no new one, so there is
+    no name to give."""
+    nodes, edges = buffer_chain({"distances": [100]})
+    nodes.append(
+        step("out", "export", label="Save", destination="existing", targetLayerId=OTHER)
+    )
+    edges.append(edge("buffer", "out"))
+
+    assert await check(nodes, edges) == []
+
+
+async def test_an_export_adding_to_an_existing_dataset_needs_that_dataset() -> None:
+    nodes, edges = buffer_chain({"distances": [100]})
+    nodes.append(
+        step("out", "export", label="Save", destination="existing", datasetName="")
+    )
+    edges.append(edge("buffer", "out"))
+
+    issues = await check(nodes, edges)
+
+    # The hidden name field is not judged.
+    assert codes(issues) == ["export_target_missing"]
+    issue = issues[0]
+    assert issue.level == "error"
+    assert issue.node_ids == ("out",)
+    assert issue.field == "targetLayerId"
+    assert issue.params == {"step": "Save"}
+
+
+async def test_an_export_to_a_new_dataset_still_needs_a_name() -> None:
+    nodes, edges = buffer_chain({"distances": [100]})
+    nodes.append(
+        step("out", "export", label="Save", destination="new", targetLayerId=OTHER)
+    )
+    edges.append(edge("buffer", "out"))
+
+    assert codes(await check(nodes, edges)) == ["export_name_missing"]
+
+
 async def test_an_export_step_with_nothing_connected_is_only_a_warning() -> None:
     # It saves nothing, and a run passes it by.
     nodes, edges = buffer_chain({"distances": [100]})
@@ -754,6 +794,131 @@ async def test_a_field_the_step_before_may_not_produce_is_a_warning() -> None:
         "field_name": "width",
     }
     assert await check([dataset(), each, by_width], edges, fields=fields) == []
+
+
+def joined_then_grouped(
+    group_by: list[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Census points joined to their district, then summed per district by
+    `group_by` (aggregate_points' group fields read the joined points)."""
+    join = tool(
+        "join",
+        "join",
+        {
+            "use_spatial_relationship": True,
+            "spatial_relationship": "intersects",
+            "use_attribute_relationship": False,
+            "join_operation": "one_to_one",
+            "join_type": "inner",
+            "add_join_fields": True,
+            "join_fields": ["district_name"],
+        },
+        label="District per point",
+    )
+    agg = tool(
+        "agg",
+        "aggregate_points",
+        {
+            "area_type": "polygon",
+            "group_by_field": group_by,
+            "column_statistics": [{"operation": "sum", "field": "residents"}],
+        },
+        label="Residents per district",
+    )
+    nodes = [dataset("points"), dataset("districts", OTHER), join, agg]
+    edges = [
+        edge("points", "join", "target_layer_id"),
+        edge("districts", "join", "join_layer_id"),
+        edge("join", "agg", "source_layer_id"),
+        edge("districts", "agg", "area_layer_id"),
+    ]
+    return nodes, edges
+
+
+JOIN_FIELDS = FakeFields({LAYER: ["residents"], OTHER: ["district_name"]})
+
+
+async def test_a_field_the_join_renamed_is_an_error_naming_the_joined_field() -> None:
+    """A join names the fields it adds join_<field>; a step after it that
+    names the field as the join layer has it fails when it runs."""
+    nodes, edges = joined_then_grouped(["district_name"])
+
+    issue = only(await check(nodes, edges, fields=JOIN_FIELDS), "field_renamed_by_join")
+
+    assert issue.level == "error"
+    assert issue.node_ids == ("agg",)
+    assert issue.field == "group_by_field"
+    assert issue.params == {
+        "step": "Residents per district",
+        "label": "Group Fields",
+        "field_name": "district_name",
+        "joined_field": "join_district_name",
+    }
+    assert issue.message == (
+        "Residents per district: Group Fields names the field district_name, "
+        "which the step before does not produce: the join names it "
+        "join_district_name."
+    )
+
+
+async def test_the_field_by_its_joined_name_is_no_issue() -> None:
+    nodes, edges = joined_then_grouped(["join_district_name"])
+    assert await check(nodes, edges, fields=JOIN_FIELDS) == []
+
+
+async def test_a_field_both_layers_have_is_no_issue() -> None:
+    """The target keeps its own district_name beside the join's
+    join_district_name: the field is there."""
+    nodes, edges = joined_then_grouped(["district_name"])
+    fields = FakeFields(
+        {LAYER: ["residents", "district_name"], OTHER: ["district_name"]}
+    )
+    assert await check(nodes, edges, fields=fields) == []
+
+
+def buffered_by(field: str) -> dict[str, Any]:
+    """A buffer whose distance is read from `field` of the step before."""
+    return tool(
+        "by_field",
+        "buffer",
+        {"distance_type": "field", "distance_field": field},
+        label="By field",
+    )
+
+
+async def test_a_field_a_join_further_up_renamed_is_an_error() -> None:
+    """A buffer between keeps the join's fields, join_<field> among them."""
+    nodes, edges = joined_then_grouped([])
+    ring = tool("ring", "buffer", {"distances": [100]}, label="Ring")
+    nodes = [*nodes[:3], ring, buffered_by("district_name")]
+    edges = [
+        *edges[:2],
+        edge("join", "ring", "input_layer_id"),
+        edge("ring", "by_field", "input_layer_id"),
+    ]
+
+    issue = only(await check(nodes, edges, fields=JOIN_FIELDS), "field_renamed_by_join")
+
+    assert issue.node_ids == ("by_field",)
+    assert issue.params["joined_field"] == "join_district_name"
+
+
+async def test_a_join_prefixed_field_without_a_join_is_only_a_warning() -> None:
+    """A saved layer can carry join_<field> from an earlier workflow; with no
+    join in this one, the field is only one the step before may not
+    produce."""
+    ring = tool("ring", "buffer", {"distances": [100]}, label="Ring")
+    nodes = [dataset(), ring, buffered_by("district_name")]
+    edges = [
+        edge("data", "ring", "input_layer_id"),
+        edge("ring", "by_field", "input_layer_id"),
+    ]
+    fields = FakeFields({LAYER: ["join_district_name"]})
+
+    issue = only(await check(nodes, edges, fields=fields), "field_maybe_missing")
+
+    assert issue.level == "warning"
+    assert "joined_field" not in issue.params
 
 
 async def test_an_unreadable_dataset_is_reported_and_never_looked_up() -> None:
