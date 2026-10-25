@@ -16,7 +16,11 @@ from goatlib.analysis.accessibility.heatmap_v2 import MAX_SEED_POINTS_TOTAL
 from goatlib.tools.if_node import IF_FALSE_HANDLE, IF_TRUE_HANDLE
 from goatlib.workflows.checks import Issue
 
-from processes.services.workflow_checks import check_workflow, step_name
+from processes.services.workflow_checks import (
+    MAX_LISTED_FIELDS,
+    check_workflow,
+    step_name,
+)
 
 LAYER = "11111111-1111-1111-1111-111111111111"
 OTHER = "22222222-2222-2222-2222-222222222222"
@@ -919,6 +923,266 @@ async def test_a_join_prefixed_field_without_a_join_is_only_a_warning() -> None:
 
     assert issue.level == "warning"
     assert "joined_field" not in issue.params
+
+
+def joined_by_attribute(
+    target_field: str, join_field: str, *, buffered: str = "points"
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Residents' points and districts joined by `target_field` on the
+    points and `join_field` on the districts; the layer named by `buffered`
+    goes through a buffer first, which keeps its fields and adds
+    buffer_distance."""
+    join = tool(
+        "join",
+        "join",
+        {
+            "use_attribute_relationship": True,
+            "attribute_relationships": [
+                {"target_field": target_field, "join_field": join_field}
+            ],
+        },
+        label="District per point",
+    )
+    ring = tool("ring", "buffer", {"distances": [100]}, label="Ring")
+    nodes = [dataset("points"), dataset("districts", OTHER), ring, join]
+    targets = {"points": "target_layer_id", "districts": "join_layer_id"}
+    edges = [edge(buffered, "ring", "input_layer_id")]
+    for layer, handle in targets.items():
+        edges.append(edge("ring" if layer == buffered else layer, "join", handle))
+    return nodes, edges
+
+
+KEY_FIELDS = FakeFields(
+    {LAYER: ["residents", "district_id"], OTHER: ["district_id", "name"]}
+)
+
+
+async def test_a_join_key_the_step_before_does_not_produce_is_an_error() -> None:
+    """The join binds its key fields in SQL, so a key missing from a step's
+    predicted columns fails the run: an error that names what the step gives."""
+    nodes, edges = joined_by_attribute("district", "district_id")
+
+    issue = only(await check(nodes, edges, fields=KEY_FIELDS), "field_not_produced")
+
+    assert issue.level == "error"
+    assert issue.node_ids == ("join",)
+    assert issue.field == "attribute_relationships"
+    assert issue.params == {
+        "step": "District per point",
+        "label": "Match Fields · Target Field",
+        "field_name": "district",
+        "fields": ["buffer_distance", "district_id", "residents"],
+    }
+    assert issue.message == (
+        "District per point: Match Fields · Target Field names the field "
+        "district, which the step before does not produce. It gives: "
+        "buffer_distance, district_id, residents."
+    )
+
+
+async def test_a_join_key_on_the_join_side_is_checked_too() -> None:
+    nodes, edges = joined_by_attribute(
+        "district_id", "district_key", buffered="districts"
+    )
+
+    issue = only(await check(nodes, edges, fields=KEY_FIELDS), "field_not_produced")
+
+    assert issue.params["label"] == "Match Fields · Join Field"
+    assert issue.params["field_name"] == "district_key"
+    assert issue.params["fields"] == ["buffer_distance", "district_id", "name"]
+
+
+async def test_a_join_key_the_step_before_produces_is_no_issue() -> None:
+    nodes, edges = joined_by_attribute("district_id", "district_id")
+    assert await check(nodes, edges, fields=KEY_FIELDS) == []
+    nodes, edges = joined_by_attribute(
+        "district_id", "district_id", buffered="districts"
+    )
+    assert await check(nodes, edges, fields=KEY_FIELDS) == []
+
+
+async def test_a_join_key_whose_step_cannot_be_predicted_is_no_issue() -> None:
+    """Without the points' fields, the buffer's columns are unknown."""
+    nodes, edges = joined_by_attribute("district", "district_id")
+    fields = FakeFields({OTHER: ["district_id", "name"]})
+    assert await check(nodes, edges, fields=fields) == []
+
+
+async def test_a_join_key_a_join_further_up_renamed_names_the_joined_field() -> None:
+    """A key the join before renamed keeps the error that names the new
+    name."""
+    nodes, edges = joined_then_grouped([])
+    second = tool(
+        "second",
+        "join",
+        {
+            "use_attribute_relationship": True,
+            "attribute_relationships": [
+                {"target_field": "district_name", "join_field": "district_name"}
+            ],
+        },
+        label="Second join",
+    )
+    nodes = [*nodes[:3], second]
+    edges = [
+        *edges[:2],
+        edge("join", "second", "target_layer_id"),
+        edge("districts", "second", "join_layer_id"),
+    ]
+
+    issue = only(await check(nodes, edges, fields=JOIN_FIELDS), "field_renamed_by_join")
+
+    assert issue.node_ids == ("second",)
+    assert issue.params["joined_field"] == "join_district_name"
+    assert "field_not_produced" not in codes(
+        await check(nodes, edges, fields=JOIN_FIELDS)
+    )
+
+
+async def test_a_field_other_tools_read_stays_a_warning() -> None:
+    """Only a join's keys are errors: other field settings are judged
+    against predictions that may miss a column the run writes."""
+    ring = tool("ring", "buffer", {"distances": [100]}, label="Ring")
+    nodes = [dataset(), ring, buffered_by("district")]
+    edges = [
+        edge("data", "ring", "input_layer_id"),
+        edge("ring", "by_field", "input_layer_id"),
+    ]
+
+    issue = only(
+        await check(nodes, edges, fields=FakeFields({LAYER: ["residents"]})),
+        "field_maybe_missing",
+    )
+
+    assert issue.level == "warning"
+
+
+def joined_after(
+    process_id: str, inputs: dict[str, str], key: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """A `process_id` step fed by datasets (`inputs`: handle -> dataset step
+    id, connected in that order), its result joined to a revenue table
+    (dataset `revenue`) by `key` on both sides."""
+    step = tool("analysis", process_id, {"routing_mode": "walking"}, label="Analysis")
+    join = tool(
+        "join",
+        "join",
+        {
+            "use_attribute_relationship": True,
+            "attribute_relationships": [{"target_field": key, "join_field": "key"}],
+        },
+        label="Revenue per market",
+    )
+    layers = {"demand": LAYER, "markets": OTHER, "area": AREA, "revenue": REVENUE}
+    nodes = [*(dataset(name, layer) for name, layer in layers.items()), step, join]
+    edges = [edge(source, "analysis", handle) for handle, source in inputs.items()]
+    edges += [
+        edge("analysis", "join", "target_layer_id"),
+        edge("revenue", "join", "join_layer_id"),
+    ]
+    return nodes, edges
+
+
+AREA = "55555555-5555-5555-5555-555555555555"
+REVENUE = "44444444-4444-4444-4444-444444444444"
+MARKET_FIELDS = FakeFields(
+    {
+        LAYER: ["population", "geometry"],
+        OTHER: ["market_id", "name", "geometry"],
+        AREA: ["district", "geometry"],
+        REVENUE: ["key", "revenue"],
+    }
+)
+#: A Huff model's inputs, the demand connected first.
+HUFF_INPUTS = {
+    "demand_layer_id": "demand",
+    "opportunity_layer_id": "markets",
+    "reference_area_layer_id": "area",
+}
+
+
+@pytest.mark.parametrize("process_id", ["huff_model", "huff_model_legacy"])
+async def test_a_join_after_a_huff_model_reads_the_opportunities_fields(
+    process_id: str,
+) -> None:
+    """A Huff run writes the opportunity layer's fields and probability,
+    whichever layer was connected first."""
+    nodes, edges = joined_after(process_id, HUFF_INPUTS, "market_id")
+    issues = await check(nodes, edges, fields=MARKET_FIELDS)
+    assert "field_not_produced" not in codes(issues)
+    assert "field_maybe_missing" not in codes(issues)
+
+    nodes, edges = joined_after(process_id, HUFF_INPUTS, "population")
+    issue = only(await check(nodes, edges, fields=MARKET_FIELDS), "field_not_produced")
+    assert issue.params["fields"] == ["market_id", "name", "probability"]
+
+
+async def test_a_join_after_a_tool_without_its_own_prediction_is_a_warning() -> None:
+    """heatmap_2sfca_legacy's prediction is its first input's columns: a key
+    missing from them may still be in the result."""
+    inputs = {"demand_layer_id": "demand", "opportunity_layer_1_id": "markets"}
+    nodes, edges = joined_after("heatmap_2sfca_legacy", inputs, "accessibility")
+
+    issues = await check(nodes, edges, fields=MARKET_FIELDS)
+
+    assert "field_not_produced" not in codes(issues)
+    assert only(issues, "field_maybe_missing").node_ids == ("join",)
+
+
+async def test_a_join_after_such_a_tool_further_up_is_a_warning() -> None:
+    """A step after it predicts from its columns, so the join's key is not
+    judged either."""
+    inputs = {"demand_layer_id": "demand", "opportunity_layer_1_id": "markets"}
+    nodes, edges = joined_after("heatmap_2sfca_legacy", inputs, "accessibility")
+    ring = tool("ring", "buffer", {"distances": [100]}, label="Ring")
+    nodes = [*nodes, ring]
+    edges = [
+        *edges[:-2],
+        edge("analysis", "ring", "input_layer_id"),
+        edge("ring", "join", "target_layer_id"),
+        edges[-1],
+    ]
+
+    issues = await check(nodes, edges, fields=MARKET_FIELDS)
+
+    assert "field_not_produced" not in codes(issues)
+    assert only(issues, "field_maybe_missing").node_ids == ("join",)
+
+
+async def test_a_join_key_that_differs_only_in_case_is_no_issue() -> None:
+    """DuckDB binds quoted names regardless of case, so the join runs: on a
+    step's result and on a dataset alike."""
+    nodes, edges = joined_by_attribute("District_ID", "district_id")
+    assert await check(nodes, edges, fields=KEY_FIELDS) == []
+    nodes, edges = joined_by_attribute("district_id", "DISTRICT_ID")
+    assert await check(nodes, edges, fields=KEY_FIELDS) == []
+
+
+async def test_the_fields_listed_leave_out_the_geometry() -> None:
+    nodes, edges = joined_by_attribute("district", "district_id")
+    fields = FakeFields(
+        {LAYER: ["residents", "district_id", "geometry"], OTHER: ["district_id"]}
+    )
+
+    issue = only(await check(nodes, edges, fields=fields), "field_not_produced")
+
+    assert issue.params["fields"] == ["buffer_distance", "district_id", "residents"]
+    assert "more_fields" not in issue.params
+
+
+async def test_a_long_list_of_fields_is_cut_with_how_many_more() -> None:
+    nodes, edges = joined_by_attribute("district", "district_id")
+    names = [f"field_{n:02}" for n in range(30)]
+    fields = FakeFields({LAYER: [*names, "district_id"], OTHER: ["district_id"]})
+
+    issue = only(await check(nodes, edges, fields=fields), "field_not_produced")
+
+    listed = sorted([*names, "district_id", "buffer_distance"])
+    assert issue.params["fields"] == listed[:MAX_LISTED_FIELDS]
+    assert issue.params["more_fields"] == len(listed) - MAX_LISTED_FIELDS
+    assert issue.message.endswith(
+        f"{listed[MAX_LISTED_FIELDS - 1]} and {len(listed) - MAX_LISTED_FIELDS} more."
+    )
 
 
 async def test_an_unreadable_dataset_is_reported_and_never_looked_up() -> None:

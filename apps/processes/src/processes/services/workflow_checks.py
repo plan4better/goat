@@ -31,7 +31,10 @@ from goatlib.tools.if_node import (
     IF_TRUE_HANDLE,
     _statistic_row_to_sql_term,
 )
-from goatlib.tools.schema_prediction import predict_node_output_schema
+from goatlib.tools.schema_prediction import (
+    predict_node_output_schema,
+    predicts_own_output,
+)
 from goatlib.tools.workflow_arguments import build_check_arguments
 from goatlib.tools.workflow_runner import (
     VARIABLE_PATTERN,
@@ -94,6 +97,11 @@ REFERENCE_AREA_INPUT = "reference_area_layer_id"
 # the join layer (goatlib's `analysis/data_management/join.py`).
 JOIN_TOOL = "join"
 JOINED_FIELD_PREFIX = "join_"
+# The join's settings holding the fields it matches on, a target and a join
+# field per item, which its run names in SQL.
+JOIN_KEYS_SETTING = "attribute_relationships"
+# The most fields `field_not_produced` names; the rest it counts.
+MAX_LISTED_FIELDS = 20
 
 
 @lru_cache(maxsize=512)
@@ -124,6 +132,22 @@ def _kind(node: dict[str, Any]) -> str:
 def _handle(edge: dict[str, Any]) -> str:
     """The tool input a connection feeds, as the runner reads it."""
     return str(edge.get("targetHandle") or DEFAULT_TARGET_HANDLE)
+
+
+@lru_cache(maxsize=256)
+def _predicts_own_output(process_id: str) -> bool:
+    """Whether the tool's runner predicts its output itself
+    (`predicts_own_output`). Cached: it resolves the tool's runner."""
+    return predicts_own_output(process_id)
+
+
+def _listed_fields(predicted: set[str]) -> tuple[list[str], int]:
+    """The fields `field_not_produced` names, sorted, and how many more there
+    are (`MAX_LISTED_FIELDS`). The geometry is left out, being no field to
+    match on, unless the step gives nothing else."""
+    fields = sorted(name for name in predicted if name not in GEOMETRY_COLUMNS)
+    fields = fields or sorted(predicted)
+    return fields[:MAX_LISTED_FIELDS], max(0, len(fields) - MAX_LISTED_FIELDS)
 
 
 def _description(process_id: Any, language: str) -> ProcessDescription | None:
@@ -323,6 +347,11 @@ class _FieldRef:
     source_input: str | None  # the layer input it is read from, if known
 
 
+def _is_join_key(description: ProcessDescription, ref: _FieldRef) -> bool:
+    """Whether the field is one a join matches on (`JOIN_KEYS_SETTING`)."""
+    return description.id == JOIN_TOOL and ref.setting == JOIN_KEYS_SETTING
+
+
 def _is_field_widget(name: str, ui: dict[str, Any]) -> bool:
     widget = ui.get("widget")
     return widget == FIELD_WIDGET or (not widget and name.endswith("_field"))
@@ -461,6 +490,7 @@ class _WorkflowCheck:
         self._fields: dict[str, list[str] | None] = {}
         self._feature_counts: dict[str, int | None] = {}
         self._columns: dict[str, set[str] | None] = {}
+        self._own_predictions: dict[str, bool] = {}
         self.unreadable_steps = self._unreadable_steps()
 
     async def run(self) -> list[Issue]:
@@ -925,7 +955,15 @@ class _WorkflowCheck:
         only as `join_<field>`, the name a join gives the fields it adds, is
         an error (`field_renamed_by_join`) when a join step lies upstream:
         the join's prediction follows its run, so the run fails on that name.
-        A setting the form hides is not judged: the tool does not read it."""
+        A join's key field missing from the step before's predicted columns
+        is an error that lists them (`field_not_produced`): the run names its
+        keys in SQL, so it fails on a missing one. Only where every tool up to
+        that step predicts its output itself (`_predicted_by_own_tools`);
+        after a tool on the default prediction it stays a warning. A key that
+        differs only in case is no issue: DuckDB binds it. Other field
+        settings stay warnings, since a prediction may miss a column the run
+        writes. A setting the form hides is not judged: the tool does not
+        read it."""
         issues: list[Issue] = []
         for ref in _field_refs(description, _config(node), handles):
             entry = description.inputs.get(ref.setting)
@@ -963,7 +1001,27 @@ class _WorkflowCheck:
                         f"the step before does not produce: the join names it {joined}."
                     )
                     params["joined_field"] = joined
+                elif (
+                    predicted is not None
+                    and _is_join_key(description, ref)
+                    and self._predicted_by_own_tools(origin)
+                ):
+                    listed, more = _listed_fields(predicted)
+                    code, level = "field_not_produced", "error"
+                    message = (
+                        f"{step}: {ref.label} names the field {field_name}, which "
+                        f"the step before does not produce. It gives: "
+                        f"{', '.join(listed)}{f' and {more} more' if more else ''}."
+                    )
+                    params["fields"] = listed
+                    if more:
+                        params["more_fields"] = more
             if fields is None or field_name in fields:
+                continue
+            # The join's SQL binds its keys whatever their case.
+            if _is_join_key(description, ref) and field_name.casefold() in {
+                name.casefold() for name in fields
+            }:
                 continue
             issues.append(
                 Issue(
@@ -1160,6 +1218,34 @@ class _WorkflowCheck:
         if layer_id not in self._fields:
             self._fields[layer_id] = await self.layer_fields(layer_id)
         return self._fields[layer_id]
+
+    def _predicted_by_own_tools(self, node: dict[str, Any]) -> bool:
+        """Whether the columns predicted for the step come only from datasets
+        and from tools that predict their output themselves
+        (`_predicts_own_output`), through every step before it. A tool on the
+        default prediction passes one of its inputs' columns through, and the
+        steps after it predict from those."""
+        node_id = str(node["id"])
+        if node_id in self._own_predictions:
+            return self._own_predictions[node_id]
+        self._own_predictions[node_id] = False
+        own = _kind(node) == "dataset"
+        if _kind(node) == "tool":
+            process_id = _data(node).get("processId")
+            origins = [
+                self._origin(self.by_id.get(str(edge["source"])))
+                for edge in self.incoming[node_id]
+            ]
+            own = (
+                isinstance(process_id, str)
+                and _predicts_own_output(process_id)
+                and all(
+                    origin is not None and self._predicted_by_own_tools(origin)
+                    for origin in origins
+                )
+            )
+        self._own_predictions[node_id] = own
+        return own
 
     async def _output_columns(self, node: dict[str, Any]) -> set[str] | None:
         """The fields a dataset step has or a tool step is predicted to
