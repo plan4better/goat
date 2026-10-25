@@ -65,6 +65,7 @@ from goatlib.tools.pt_network import (
     pt_date_field,
     pt_network_bundle_field,
 )
+from goatlib.tools.schema_prediction import predict_huff_schema
 from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
@@ -600,6 +601,16 @@ class HuffModelV2ToolRunner(BaseToolRunner[HuffModelV2ToolParams]):
     tool_class = HuffmodelV2Tool
     output_geometry_type = None
     default_output_name = get_default_layer_name("huff_model", "en")
+
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """The opportunity layer's fields, ``probability`` and ``geometry``
+        (``predict_huff_schema``)."""
+        return predict_huff_schema(input_schemas)
 
     def get_layer_properties(
         self: Self,

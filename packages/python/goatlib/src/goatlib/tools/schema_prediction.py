@@ -497,6 +497,23 @@ def predict_passthrough_schema(
     return PredictedSchema(columns=columns, geometry_type=geom_type)
 
 
+def predict_huff_schema(input_schemas: dict[str, dict[str, str]]) -> dict[str, str]:
+    """The columns a Huff model run writes, both versions (each
+    ``_export_original_geom``): every opportunity keeps its own fields and
+    gets ``probability`` on its own geometry, which is renamed ``geometry``.
+    Read from the opportunity layer's input, whichever layer was connected
+    first."""
+    opportunities = input_schemas.get("opportunity_layer_id", {})
+    columns = {
+        name: dtype
+        for name, dtype in opportunities.items()
+        if "GEOMETRY" not in dtype.upper()
+    }
+    columns["probability"] = "DOUBLE"
+    columns["geometry"] = "GEOMETRY"
+    return columns
+
+
 def _extract_geometry_type(schema: dict[str, str]) -> str | None:
     """Extract geometry type from a schema's geometry column."""
     for col_name, col_type in schema.items():
@@ -563,6 +580,19 @@ def _get_runner_for_tool(process_id: str) -> type | None:
     except Exception as e:
         logger.warning(f"Failed to get runner for {process_id}: {e}")
     return None
+
+
+def predicts_own_output(process_id: str) -> bool:
+    """Whether the tool's runner predicts its output itself. The default
+    (``BaseToolRunner.predict_output_schema``) passes the first input's
+    columns through, which for a tool of several inputs can be any of them;
+    a runner without the method gets the legacy predictors below."""
+    from goatlib.tools.base import BaseToolRunner
+
+    runner = _get_runner_for_tool(process_id)
+    method = getattr(runner, "predict_output_schema", None)
+    default = BaseToolRunner.predict_output_schema.__func__
+    return method is not None and getattr(method, "__func__", None) is not default
 
 
 def predict_node_output_schema(

@@ -1003,6 +1003,33 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
     tool_class = CatchmentAreaToolV2
     default_output_name = get_default_layer_name("catchment_area", "en")
 
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """The columns the engine writes for the kind of catchment
+        (``_write_empty_result`` writes the same), after ``_resolve_origins``:
+        - id, cost_step and geometry for every kind;
+        - cost, each point's own travel cost, for a point grid;
+        - origin for separated shapes: the reference field's value of the
+          starting point a catchment comes from, in the field's type on the
+          starting points layer, or the point's number from 1 without a field.
+        """
+        columns = {"id": "INTEGER"}
+        if params.get("catchment_area_type") == CatchmentType.point_grid:
+            columns["cost"] = "DOUBLE"
+        columns["cost_step"] = "INTEGER"
+        if params.get("shape_style") == ShapeStyle.separated:
+            reference = params.get("reference_field")
+            starting_points = input_schemas.get("starting_points") or {}
+            columns["origin"] = (
+                starting_points.get(reference, "VARCHAR") if reference else "INTEGER"
+            )
+        columns["geometry"] = "GEOMETRY"
+        return columns
+
     def process(
         self: Self,
         params: CatchmentAreaV2WindmillParams,

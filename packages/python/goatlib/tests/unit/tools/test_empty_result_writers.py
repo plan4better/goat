@@ -26,6 +26,7 @@ from goatlib.tools.catchment_area_v2 import (
     CatchmentAreaV2WindmillParams,
 )
 from goatlib.tools.travel_cost_matrix import TravelCostMatrixToolRunner
+from goatlib.tools.trip_count import TripCountToolRunner
 
 POINT = "ST_Point(11.5, 48.1)::GEOMETRY('OGC:CRS84')"
 U = "00000000-0000-0000-0000-000000000001"
@@ -70,7 +71,12 @@ def test_trip_count_with_no_station_in_service(tmp_path: Path) -> None:
         tool._export_results(str(out))
     finally:
         tool.cleanup()
-    assert _types(out)["geom"].startswith("GEOMETRY")
+    types = _types(out)
+    assert types["geom"].startswith("GEOMETRY")
+    # The schema prediction holds the columns the run writes; it names the
+    # geometry column `geometry`, as every prediction does.
+    predicted = TripCountToolRunner.predict_output_schema({}, {})
+    assert set(predicted) - {"geometry"} == set(types) - {"geom"}
 
 
 def test_travel_cost_matrix_destinations_without_rows(tmp_path: Path) -> None:
@@ -190,6 +196,16 @@ def test_catchment_without_start_points(
     assert set(types) == columns
     assert types["geometry"].startswith("GEOMETRY")
     assert (metadata.path, metadata.geometry_type) == (str(out), "Polygon")
+    # The schema prediction holds the columns the run writes.
+    predicted = CatchmentAreaV2ToolRunner.predict_output_schema(
+        {},
+        {
+            "catchment_area_type": kind.value,
+            "shape_style": shape.value,
+            "routing_mode": mode,
+        },
+    )
+    assert set(predicted) == columns
 
 
 def _read_points_layer(
@@ -248,6 +264,50 @@ def test_an_empty_layer_finishes_without_routing(
     assert (metadata.path, metadata.geometry_type) == (str(out), "Polygon")
     assert types.get("origin") == origin_type
     assert set(types) - {"origin"} == {"id", "cost_step", "geometry"}
+    # The schema prediction holds the same columns, the origin in the
+    # reference field's type on the starting points layer.
+    predicted = CatchmentAreaV2ToolRunner.predict_output_schema(
+        {
+            "starting_points": {
+                "id": "INTEGER",
+                "name": "VARCHAR",
+                "geometry": "GEOMETRY",
+            }
+        },
+        params.model_dump(mode="json"),
+    )
+    assert set(predicted) == set(types)
+    assert predicted.get("origin") == origin_type
+
+
+def test_separated_shapes_without_a_reference_field_number_their_points(
+    tmp_path: Path,
+) -> None:
+    """Map clicks have no field to reference: the run numbers the points from
+    1, and the schema prediction types the origin as that number."""
+    engine_result = _write(
+        tmp_path / "engine.parquet",
+        "SELECT 0::INTEGER AS id, 0::INTEGER AS cost_step, "
+        f"0::INTEGER AS origin_idx, {POINT} AS geometry",
+    )
+    runner = CatchmentAreaV2ToolRunner()
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    runner._duckdb_con = con
+    runner._starting_point_references = None
+    runner._starting_point_reference_type = None
+    try:
+        out = runner._resolve_origins(engine_result, ShapeStyle.separated, tmp_path)
+        rows = con.execute(f"DESCRIBE SELECT * FROM read_parquet('{out}')").fetchall()
+    finally:
+        con.close()
+        runner._duckdb_con = None
+    written = {str(r[0]): str(r[1]) for r in rows}
+    predicted = CatchmentAreaV2ToolRunner.predict_output_schema(
+        {}, {"shape_style": "separated", "routing_mode": "walking"}
+    )
+    assert set(predicted) == set(written)
+    assert predicted["origin"] == written["origin"]
 
 
 def test_catchment_v1_still_refuses_an_empty_layer(
