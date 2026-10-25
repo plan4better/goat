@@ -14,9 +14,19 @@ from pydantic_ai.exceptions import ToolFailed
 
 from assistant.context import parse_context
 from assistant.db import Database
+from assistant.llm.types import DataPolicy
+from assistant.login import Login
 from assistant.repo import Repository
+from assistant.tools.http import SIGN_IN_EXPIRED
+from assistant.tools.policy import MIN_RESTRICTED_GROUP
 from assistant.tools.runtime import InputInvalid, execute
-from assistant.tools.testing import Answer, Recorder, fake_clients, tool_env
+from assistant.tools.testing import (
+    Answer,
+    Recorder,
+    fake_clients,
+    signed_in,
+    tool_env,
+)
 from assistant.tools.workflow_tools import clear_description_cache
 from assistant.tools.workflows import (
     CHECK_DRAFT,
@@ -115,6 +125,9 @@ OPEN_DRAFT: dict[str, Any] = {
         {"from": "walk", "to": "save"},
     ],
 }
+#: processes' feature count, which the check asks for a catchment's start points.
+FEATURE_COUNT = "/processes/feature-count/execution"
+FEW_STARTS = {"count": 12}
 MUNICH = {
     "type": "Feature",
     "properties": {
@@ -210,10 +223,11 @@ def _services(
     region: Any = MUNICH,
     descriptions: Mapping[str, Answer] | None = None,
     toolbox: Answer | None = None,
+    count: Answer = FEW_STARTS,
 ) -> tuple[Recorder, Recorder, Recorder, Recorder]:
     """Fake services; processes lists the captured toolbox (or ``toolbox``)
     and describes the captured tools, or the tools of ``descriptions`` (tool
-    id -> its answer) on top of them."""
+    id -> its answer) on top of them, and counts features with ``count``."""
     core = Recorder(
         {
             ("GET", f"/api/v2/project/{PROJECT}/layer"): LAYERS,
@@ -242,6 +256,7 @@ def _services(
             ("POST", "/workflows/check"): check
             if check is not None
             else _answer(issues or []),
+            ("POST", FEATURE_COUNT): count,
         }
     )
     geoapi = Recorder(
@@ -265,11 +280,18 @@ def _services(
 
 
 def _env(
-    core: Recorder, processes: Recorder, geoapi: Recorder, catalog: Recorder
+    core: Recorder,
+    processes: Recorder,
+    geoapi: Recorder,
+    catalog: Recorder,
+    login: Login | None = None,
+    data_policy: DataPolicy = "standard",
 ) -> Any:
     return tool_env(
         fake_clients(core=core, processes=processes, geoapi=geoapi, catalog=catalog),
         page=PAGE,
+        login=login,
+        data_policy=data_policy,
     )
 
 
@@ -310,6 +332,156 @@ async def test_check_converts_the_draft_and_maps_the_issues_back() -> None:
     assert core.paths() == [f"/api/v2/project/{PROJECT}/layer"]
 
 
+#: Residents' cells joined to the district they lie in, then summed per
+#: district by the field the join layer has, not the name the join gives it.
+JOIN_DRAFT: dict[str, Any] = {
+    "name": "Residents per district",
+    "steps": [
+        {"id": "cells", "kind": "dataset", "label": "Cells", "layer": 33},
+        {"id": "districts", "kind": "dataset", "label": "Districts", "layer": 31},
+        {
+            "id": "joined",
+            "kind": "tool",
+            "tool": "join",
+            "label": "District per cell",
+            "settings": {
+                "use_spatial_relationship": True,
+                "spatial_relationship": "intersects",
+                "join_operation": "one_to_one",
+                "add_join_fields": True,
+                "join_fields": ["district_name"],
+            },
+        },
+        {
+            "id": "sum",
+            "kind": "tool",
+            "tool": "aggregate_points",
+            "label": "Residents per district",
+            "settings": {
+                "area_type": "polygon",
+                "group_by_field": ["district_name"],
+                "column_statistics": [{"operation": "sum", "field": "residents"}],
+            },
+        },
+        {"id": "save", "kind": "export", "name": "Residents per district"},
+    ],
+    "connections": [
+        {"from": "cells", "to": "joined", "input": "target_layer_id"},
+        {"from": "districts", "to": "joined", "input": "join_layer_id"},
+        {"from": "joined", "to": "sum", "input": "source_layer_id"},
+        {"from": "districts", "to": "sum", "input": "area_layer_id"},
+        {"from": "sum", "to": "save"},
+    ],
+}
+#: Processes' check of a field the join before renamed.
+RENAMED_BY_JOIN = (
+    "Residents per district: Group Fields names the field district_name, which "
+    "the step before does not produce: the join names it join_district_name."
+)
+
+
+async def test_a_field_the_join_renamed_reaches_the_model_and_stops_the_create() -> (
+    None
+):
+    core, processes, geoapi, catalog = _services(
+        issues=[
+            _issue(
+                "field_renamed_by_join",
+                "sum",
+                RENAMED_BY_JOIN,
+                draft=JOIN_DRAFT,
+                field="group_by_field",
+            )
+        ]
+    )
+    env = _env(core, processes, geoapi, catalog)
+    result = await execute(CHECK_DRAFT, env, {"draft": JOIN_DRAFT})
+    assert result["issues"] == [
+        {
+            "code": "field_renamed_by_join",
+            "level": "error",
+            "steps": ["sum"],
+            "field": "group_by_field",
+            "message": RENAMED_BY_JOIN,
+        }
+    ]
+    assert result["blocking"] == 1
+    with pytest.raises(ToolFailed, match="the join names it join_district_name"):
+        await execute(CREATE, env, {"draft": JOIN_DRAFT})
+    assert [r.method for r in core.requests] == ["GET", "GET"]
+
+
+async def test_a_draft_with_two_notes_gets_a_warning_and_is_created() -> None:
+    draft = {
+        **DRAFT,
+        "notes": [
+            {"id": "about", "text": "Residents within 15 minutes of a school."},
+            {"id": "more", "text": "The count step sums the residents."},
+        ],
+    }
+    core, processes, geoapi, catalog = _services()
+    env = _env(core, processes, geoapi, catalog)
+    result = await execute(CHECK_DRAFT, env, {"draft": draft})
+    [issue] = [i for i in result["issues"] if i["code"] == "more_than_one_note"]
+    assert issue["level"] == "warning"
+    assert "one note per workflow unless the user asked for more" in issue["message"]
+    assert result["blocking"] == 0
+    created = await execute(CREATE, env, {"draft": draft})
+    assert created["workflow"]["id"] == WORKFLOW_ID
+
+
+async def test_a_create_without_a_check_still_gives_the_assistants_warnings() -> None:
+    """A draft sent straight to workflow_create hears the warnings of the
+    assistant's own advice too, apart from the issues left open for the
+    user; the workflow is created all the same."""
+    draft = json.loads(json.dumps(DRAFT))
+    walk = draft["steps"][2]
+    draft["steps"].insert(
+        3,
+        {
+            **walk,
+            "id": "walk10",
+            "label": "10 minutes on foot",
+            "settings": {**walk["settings"], "max_cost": 10},
+        },
+    )
+    draft["connections"].append(
+        {"from": "schools", "to": "walk10", "input": "starting_points"}
+    )
+    draft["notes"] = [
+        {"id": "about", "text": "Residents within 15 minutes of a school."},
+        {"id": "more", "text": "The count step sums the residents."},
+    ]
+    core, processes, geoapi, catalog = _services()
+    created = await execute(
+        CREATE, _env(core, processes, geoapi, catalog), {"draft": draft}
+    )
+    assert created["workflow"]["id"] == WORKFLOW_ID
+    assert created["open_issues"] == []
+    bands, notes = created["warnings"]
+    assert bands["code"] == "catchment_bands_split" and "step" not in bands
+    assert "max_cost 15, steps 2 and step_sizes [10, 15]" in bands["message"]
+    assert notes["code"] == "more_than_one_note" and "step" not in notes
+    assert "one note per workflow unless the user asked for more" in notes["message"]
+
+
+async def test_a_create_without_warnings_leaves_them_out() -> None:
+    created = await execute(CREATE, _env(*_services()), {"draft": DRAFT})
+    assert "warnings" not in created
+
+
+def test_a_warning_after_the_create_is_no_reason_to_create_again() -> None:
+    """The warnings come back once the workflow exists, and no tool changes
+    or deletes it: a corrected draft created for a warning would be a second
+    workflow."""
+    text = " ".join(CREATE.description.split())
+    assert (
+        "When it answers, the workflow exists: never create it again for a warning"
+        in text
+    )
+    assert "mention a warning in your answer when it matters" in text
+
+
 async def test_check_adds_a_filter_field_the_layer_lacks() -> None:
     draft = json.loads(json.dumps(DRAFT))
     draft["steps"][0]["filter"]["where"][0]["field"] = "type"
@@ -335,6 +507,448 @@ async def test_a_check_that_cannot_run_says_so() -> None:
         "open": 0,
         "note": NOT_CHECKED,
     }
+
+
+def _counted(processes: Recorder) -> list[dict[str, Any]]:
+    """The inputs of each feature count processes was asked for."""
+    return [
+        json.loads(request.content)["inputs"]
+        for request in processes.requests
+        if request.url.path == FEATURE_COUNT
+    ]
+
+
+def _too_many(result: Mapping[str, Any]) -> list[dict[str, Any]]:
+    return [i for i in result["issues"] if i["code"] == "too_many_starting_points"]
+
+
+async def test_check_counts_the_filtered_start_points() -> None:
+    """The start points a catchment reads from a dataset step are counted with
+    the step's area and conditions; above the limit the check says so, and
+    the create is refused."""
+    core, processes, geoapi, catalog = _services(count={"count": 4918})
+    env = _env(core, processes, geoapi, catalog)
+    result = await execute(CHECK_DRAFT, env, {"draft": DRAFT})
+    [issue] = _too_many(result)
+    assert (issue["level"], issue["steps"]) == ("error", ["walk", "schools"])
+    assert issue["message"].startswith("15 minutes on foot starts from 4,918 points")
+    assert "at most 1,000" in issue["message"]
+    assert result["blocking"] == 1
+    [inputs] = _counted(processes)
+    assert inputs["collection"] == "e2000000-0000-0000-0000-000000000031"
+    assert '"s_intersects"' in inputs["filter"] and '"schulart"' in inputs["filter"]
+    assert json.loads(inputs["filter"]) == {
+        "op": "and",
+        "args": [
+            {"op": "s_intersects", "args": [{"property": "geom"}, MUNICH["geometry"]]},
+            {"op": "=", "args": [{"property": "schulart"}, "Grundschule"]},
+        ],
+    }
+    with pytest.raises(ToolFailed, match="starts from 4,918 points"):
+        await execute(CREATE, env, {"draft": DRAFT})
+    assert [r.method for r in core.requests] == ["GET", "GET"]
+
+
+async def test_an_unfiltered_dataset_step_counts_the_whole_layer() -> None:
+    draft = json.loads(json.dumps(DRAFT))
+    del draft["steps"][0]["filter"]
+    core, processes, geoapi, catalog = _services(count={"count": 1500})
+    result = await execute(
+        CHECK_DRAFT, _env(core, processes, geoapi, catalog), {"draft": draft}
+    )
+    assert [i["steps"] for i in _too_many(result)] == [["walk", "schools"]]
+    assert _counted(processes) == [
+        {"collection": "e2000000-0000-0000-0000-000000000031"}
+    ]
+    assert geoapi.requests == []
+
+
+async def test_catchments_from_one_dataset_step_count_it_once() -> None:
+    draft = json.loads(json.dumps(DRAFT))
+    walk = draft["steps"][2]
+    for minutes in (5, 10):
+        draft["steps"].append(
+            {
+                **walk,
+                "id": f"walk{minutes}",
+                "label": f"{minutes} minutes on foot",
+                "settings": {**walk["settings"], "max_cost": minutes},
+            }
+        )
+        draft["connections"].append(
+            {"from": "schools", "to": f"walk{minutes}", "input": "starting_points"}
+        )
+    core, processes, geoapi, catalog = _services(count={"count": 4918})
+    result = await execute(
+        CHECK_DRAFT, _env(core, processes, geoapi, catalog), {"draft": draft}
+    )
+    assert sorted(i["steps"][0] for i in _too_many(result)) == [
+        "walk",
+        "walk10",
+        "walk5",
+    ]
+    assert len(_counted(processes)) == 1
+
+
+async def test_check_skips_start_points_from_a_result() -> None:
+    """Start points another step computes cannot be counted before the run:
+    the check reports nothing about them."""
+    draft = {
+        "name": "Around the buffered schools",
+        "steps": [
+            {"id": "schools", "kind": "dataset", "layer": 31},
+            {
+                "id": "ring",
+                "kind": "tool",
+                "tool": "buffer",
+                "settings": {"distances": [500]},
+            },
+            {
+                "id": "walk",
+                "kind": "tool",
+                "tool": "catchment_area_v2",
+                "settings": {"routing_mode": "walking", "max_cost": 15, "steps": 1},
+            },
+            {"id": "save", "kind": "export", "name": "Reach"},
+        ],
+        "connections": [
+            {"from": "schools", "to": "ring", "input": "input_layer_id"},
+            {"from": "ring", "to": "walk", "input": "starting_points"},
+            {"from": "walk", "to": "save"},
+        ],
+    }
+    core, processes, geoapi, catalog = _services(count={"count": 4918})
+    result = await execute(
+        CHECK_DRAFT, _env(core, processes, geoapi, catalog), {"draft": draft}
+    )
+    assert result["checked"] is True
+    assert _too_many(result) == []
+    assert FEATURE_COUNT not in processes.paths()
+
+
+@pytest.mark.parametrize(
+    "count",
+    [httpx.Response(500, json={"detail": "busy"}), {"detail": "no count"}],
+    ids=["failed", "no-count"],
+)
+async def test_an_unreadable_count_reports_nothing(count: Answer) -> None:
+    """The run's own limit still holds."""
+    core, processes, geoapi, catalog = _services(count=count)
+    result = await execute(
+        CHECK_DRAFT, _env(core, processes, geoapi, catalog), {"draft": DRAFT}
+    )
+    assert result["checked"] is True
+    assert _too_many(result) == []
+    assert len(_counted(processes)) == 1
+
+
+async def test_start_points_whose_fields_cannot_be_read_are_not_counted() -> None:
+    """A condition is compiled against the layer's fields: without them (a
+    catalog layer still being copied) the count is left to the run."""
+    core, processes, geoapi, catalog = _services(
+        count={"count": 4918},
+        queryables=httpx.Response(404, json={"detail": "not found"}),
+    )
+    result = await execute(
+        CHECK_DRAFT, _env(core, processes, geoapi, catalog), {"draft": DRAFT}
+    )
+    assert _too_many(result) == []
+    assert FEATURE_COUNT not in processes.paths()
+
+
+def _layer_input(name: str) -> dict[str, Any]:
+    return {
+        "title": name,
+        "schema": {"type": "string", "x-ui": {"widget": "layer-selector"}},
+        "minOccurs": 1,
+    }
+
+
+#: Tools that pass on how many features they read: a merge sums its two
+#: inputs, a centroid keeps one point per feature; and the travel cost
+#: matrix, which takes a limited number of pairs. Described with their layer
+#: inputs only.
+COUNTED_TOOLS: dict[str, dict[str, Any]] = {
+    tool: {"id": tool, "title": title, "inputs": {n: _layer_input(n) for n in inputs}}
+    for tool, title, inputs in [
+        ("merge", "Merge", ("input_path_1", "input_path_2")),
+        ("centroid", "Centroid", ("input_layer_id",)),
+        (
+            "travel_cost_matrix",
+            "Travel Cost Matrix",
+            ("origin_layer_id", "destination_layer_id"),
+        ),
+    ]
+}
+
+
+def _counted_services(
+    counts: Mapping[str, int | None],
+) -> tuple[Recorder, Recorder, Recorder, Recorder]:
+    """Fake services that know merge, centroid and the travel cost matrix,
+    and count each layer's features as ``counts`` says (by layer id; None
+    fails)."""
+
+    def count(request: httpx.Request) -> httpx.Response:
+        found = counts[json.loads(request.content)["inputs"]["collection"]]
+        if found is None:
+            return httpx.Response(500, json={"detail": "busy"})
+        return httpx.Response(200, json={"count": found})
+
+    return _services(
+        count=count,
+        descriptions=COUNTED_TOOLS,
+        toolbox=_toolbox(
+            extra=[
+                {"id": tool, "title": described["title"]}
+                for tool, described in COUNTED_TOOLS.items()
+            ]
+        ),
+    )
+
+
+SCHOOLS_LAYER = "e2000000-0000-0000-0000-000000000031"
+RESIDENTS_LAYER = "e2000000-0000-0000-0000-000000000033"
+#: Schools and the centroids of the residents' cells, merged into the start
+#: points of one catchment.
+MERGED_DRAFT: dict[str, Any] = {
+    "name": "Schools and homes: 5-minute walk",
+    "steps": [
+        {"id": "schools", "kind": "dataset", "label": "Schools", "layer": 31},
+        {"id": "homes", "kind": "dataset", "label": "Homes", "layer": 33},
+        {"id": "middle", "kind": "tool", "tool": "centroid"},
+        {"id": "all", "kind": "tool", "tool": "merge"},
+        {
+            "id": "walk",
+            "kind": "tool",
+            "tool": "catchment_area_v2",
+            "label": "5 minutes on foot",
+            "settings": {"routing_mode": "walking", "max_cost": 5, "steps": 1},
+        },
+        {"id": "save", "kind": "export", "name": "Reach"},
+    ],
+    "connections": [
+        {"from": "homes", "to": "middle", "input": "input_layer_id"},
+        {"from": "schools", "to": "all", "input": "input_path_1"},
+        {"from": "middle", "to": "all", "input": "input_path_2"},
+        {"from": "all", "to": "walk", "input": "starting_points"},
+        {"from": "walk", "to": "save"},
+    ],
+}
+
+
+async def test_start_points_through_merge_and_centroid_steps_are_counted() -> None:
+    """Each dataset step is counted once, and the catchment gets their sum."""
+    core, processes, geoapi, catalog = _counted_services(
+        {SCHOOLS_LAYER: 700, RESIDENTS_LAYER: 450}
+    )
+    result = await execute(
+        CHECK_DRAFT, _env(core, processes, geoapi, catalog), {"draft": MERGED_DRAFT}
+    )
+    [issue] = _too_many(result)
+    assert issue["steps"] == ["walk", "schools", "homes"]
+    assert issue["message"].startswith("5 minutes on foot starts from 1,150 points")
+    assert sorted(i["collection"] for i in _counted(processes)) == [
+        SCHOOLS_LAYER,
+        RESIDENTS_LAYER,
+    ]
+
+
+async def test_merged_start_points_within_the_limit_are_fine() -> None:
+    services = _counted_services({SCHOOLS_LAYER: 500, RESIDENTS_LAYER: 450})
+    result = await execute(CHECK_DRAFT, _env(*services), {"draft": MERGED_DRAFT})
+    assert result["checked"] is True
+    assert _too_many(result) == []
+
+
+async def test_a_merge_with_a_count_that_failed_is_not_reported() -> None:
+    """One input's count failed: the sum is unknown, never reported low."""
+    services = _counted_services({SCHOOLS_LAYER: 5000, RESIDENTS_LAYER: None})
+    result = await execute(CHECK_DRAFT, _env(*services), {"draft": MERGED_DRAFT})
+    assert result["checked"] is True
+    assert _too_many(result) == []
+
+
+#: The residents' centroids to the schools as a pair matrix.
+MATRIX_DRAFT: dict[str, Any] = {
+    "name": "Homes to schools",
+    "steps": [
+        {"id": "homes", "kind": "dataset", "label": "Homes", "layer": 33},
+        {"id": "schools", "kind": "dataset", "label": "Schools", "layer": 31},
+        {"id": "middle", "kind": "tool", "tool": "centroid"},
+        {
+            "id": "times",
+            "kind": "tool",
+            "tool": "travel_cost_matrix",
+            "label": "Travel times",
+            "settings": {"routing_mode": "walking"},
+        },
+        {"id": "save", "kind": "export", "name": "Travel times"},
+    ],
+    "connections": [
+        {"from": "homes", "to": "middle", "input": "input_layer_id"},
+        {"from": "middle", "to": "times", "input": "origin_layer_id"},
+        {"from": "schools", "to": "times", "input": "destination_layer_id"},
+        {"from": "times", "to": "save"},
+    ],
+}
+
+
+def _too_many_pairs(result: Mapping[str, Any]) -> list[dict[str, Any]]:
+    return [i for i in result["issues"] if i["code"] == "too_many_matrix_pairs"]
+
+
+async def test_a_matrix_over_the_pair_cap_is_refused() -> None:
+    core, processes, geoapi, catalog = _counted_services(
+        {RESIDENTS_LAYER: 559, SCHOOLS_LAYER: 313}
+    )
+    env = _env(core, processes, geoapi, catalog)
+    result = await execute(CHECK_DRAFT, env, {"draft": MATRIX_DRAFT})
+    [issue] = _too_many_pairs(result)
+    assert (issue["level"], issue["steps"]) == ("error", ["times", "homes", "schools"])
+    assert issue["message"].startswith(
+        "Travel times pairs 559 origins with 313 destinations, 174,967 pairs"
+    )
+    assert result["blocking"] == 1
+    with pytest.raises(ToolFailed, match="174,967 pairs"):
+        await execute(CREATE, env, {"draft": MATRIX_DRAFT})
+
+
+async def test_a_matrix_within_the_pair_cap_is_fine() -> None:
+    services = _counted_services({RESIDENTS_LAYER: 100, SCHOOLS_LAYER: 100})
+    result = await execute(CHECK_DRAFT, _env(*services), {"draft": MATRIX_DRAFT})
+    assert result["checked"] is True
+    assert _too_many_pairs(result) == []
+
+
+async def test_a_matrix_with_one_side_from_another_result_is_not_reported() -> None:
+    """Destinations from a buffer's result are not known before the run."""
+    draft = json.loads(json.dumps(MATRIX_DRAFT))
+    draft["steps"].insert(
+        3,
+        {
+            "id": "ring",
+            "kind": "tool",
+            "tool": "buffer",
+            "settings": {"distances": [500]},
+        },
+    )
+    draft["connections"][2] = {
+        "from": "schools",
+        "to": "ring",
+        "input": "input_layer_id",
+    }
+    draft["connections"].append(
+        {"from": "ring", "to": "times", "input": "destination_layer_id"}
+    )
+    core, processes, geoapi, catalog = _counted_services(
+        {RESIDENTS_LAYER: 559, SCHOOLS_LAYER: 313}
+    )
+    result = await execute(
+        CHECK_DRAFT, _env(core, processes, geoapi, catalog), {"draft": draft}
+    )
+    assert result["checked"] is True
+    assert _too_many_pairs(result) == []
+    # The origins alone are no issue, and are not counted for nothing.
+    assert _counted(processes) == []
+
+
+#: A few schools picked by a condition as the origins, the residents'
+#: centroids as the destinations: the reversed matrix.
+FILTERED_ORIGINS_DRAFT: dict[str, Any] = {
+    "name": "Schools to homes",
+    "steps": [
+        {
+            "id": "schools",
+            "kind": "dataset",
+            "label": "Schools",
+            "layer": 31,
+            "filter": {
+                "where": [{"field": "schulart", "op": "=", "value": "Gymnasium"}]
+            },
+        },
+        {"id": "homes", "kind": "dataset", "label": "Homes", "layer": 33},
+        {"id": "middle", "kind": "tool", "tool": "centroid"},
+        {
+            "id": "times",
+            "kind": "tool",
+            "tool": "travel_cost_matrix",
+            "label": "Travel times",
+            "settings": {"routing_mode": "walking"},
+        },
+        {"id": "save", "kind": "export", "name": "Travel times"},
+    ],
+    "connections": [
+        {"from": "schools", "to": "times", "input": "origin_layer_id"},
+        {"from": "homes", "to": "middle", "input": "input_layer_id"},
+        {"from": "middle", "to": "times", "input": "destination_layer_id"},
+        {"from": "times", "to": "save"},
+    ],
+}
+
+
+@pytest.mark.parametrize(
+    ("policy", "origins", "reported"),
+    [
+        ("standard", 3, True),
+        # project_count_features withholds a filtered count below
+        # MIN_RESTRICTED_GROUP, and the issue's message would name it.
+        ("restricted", 3, False),
+        ("restricted", MIN_RESTRICTED_GROUP, True),
+    ],
+)
+async def test_under_restricted_a_small_filtered_count_is_not_named(
+    policy: DataPolicy, origins: int, reported: bool
+) -> None:
+    services = _counted_services({SCHOOLS_LAYER: origins, RESIDENTS_LAYER: 5000})
+    env = _env(*services, data_policy=policy)
+    result = await execute(CHECK_DRAFT, env, {"draft": FILTERED_ORIGINS_DRAFT})
+    assert result["checked"] is True
+    issues = _too_many_pairs(result)
+    assert bool(issues) is reported
+    assert result["blocking"] == int(reported)
+    if reported:
+        assert issues[0]["message"].startswith(
+            f"Travel times pairs {origins} origins with 5,000 destinations"
+        )
+
+
+@pytest.mark.parametrize(
+    ("policy", "reported"), [("standard", True), ("restricted", False)]
+)
+async def test_under_restricted_start_points_with_a_small_filtered_part_are_not_summed(
+    policy: DataPolicy, reported: bool
+) -> None:
+    """The start-point check reads the same counts: a sum with a withheld
+    count is unknown."""
+    draft = json.loads(json.dumps(MERGED_DRAFT))
+    draft["steps"][0]["filter"] = {
+        "where": [{"field": "schulart", "op": "=", "value": "Gymnasium"}]
+    }
+    services = _counted_services({SCHOOLS_LAYER: 3, RESIDENTS_LAYER: 2000})
+    result = await execute(
+        CHECK_DRAFT, _env(*services, data_policy=policy), {"draft": draft}
+    )
+    assert result["checked"] is True
+    issues = _too_many(result)
+    assert bool(issues) is reported
+    if reported:
+        assert issues[0]["message"].startswith(
+            "5 minutes on foot starts from 2,003 points"
+        )
+
+
+async def test_under_restricted_an_unfiltered_count_is_still_used() -> None:
+    """Only a filtered count is withheld: a whole layer's count is allowed
+    under Restricted."""
+    services = _counted_services({SCHOOLS_LAYER: 3, RESIDENTS_LAYER: 2000})
+    result = await execute(
+        CHECK_DRAFT,
+        _env(*services, data_policy="restricted"),
+        {"draft": MERGED_DRAFT},
+    )
+    [issue] = _too_many(result)
+    assert issue["message"].startswith("5 minutes on foot starts from 2,003 points")
 
 
 async def test_create_saves_the_config_the_check_checked() -> None:
@@ -369,6 +983,45 @@ async def test_create_saves_the_config_the_check_checked() -> None:
             }
         ],
     }
+
+
+async def test_create_saves_the_notes_after_the_steps() -> None:
+    """A note is the editor's note node: checked and saved with the steps,
+    and no issue of the check is about it."""
+    note = {
+        "id": "about",
+        "text": "Counts the residents within 15 minutes on foot of a school.",
+        "near": ["count", "save"],
+    }
+    draft = {**DRAFT, "notes": [note]}
+    core, processes, geoapi, catalog = _services()
+    env = _env(core, processes, geoapi, catalog)
+    result = await execute(CREATE, env, {"draft": draft}, tool_call_id="c1")
+    checked = json.loads(
+        next(r for r in processes.requests if r.url.path == "/workflows/check").content
+    )
+    posted = json.loads(next(r for r in core.requests if r.method == "POST").content)
+    nodes = posted["config"]["nodes"]
+    assert checked["nodes"] == nodes
+    assert [node["type"] for node in nodes] == [
+        *(step["kind"] for step in DRAFT["steps"]),
+        "textAnnotation",
+    ]
+    assert nodes[-1]["id"].startswith("text-")
+    assert nodes[-1]["data"]["text"] == (
+        "<p>Counts the residents within 15 minutes on foot of a school.</p>"
+    )
+    assert result["open_issues"] == []
+
+
+def test_the_draft_tools_ask_for_a_short_note_without_data() -> None:
+    for spec in (CHECK_DRAFT, CREATE):
+        assert "one short note" in spec.description, spec.name
+        assert "what it answers" in spec.description, spec.name
+        assert "how to read its results" in spec.description, spec.name
+        assert "personal data" in spec.description, spec.name
+    draft = CREATE.json_schema()["properties"]["draft"]
+    assert "notes" in draft["description"]
 
 
 def _checked_ids(processes: Recorder) -> list[list[str]]:
@@ -591,6 +1244,7 @@ async def test_each_tool_is_described_once_and_names_its_step() -> None:
         "/processes",
         "/processes/aggregate_polygon",
         "/processes/catchment_area_v2",
+        FEATURE_COUNT,
         "/workflows/check",
     ]
     posted = json.loads(next(r for r in core.requests if r.method == "POST").content)
@@ -936,18 +1590,55 @@ async def test_a_draft_processes_refuses_goes_back_to_the_model(
     assert [r.method for r in core.requests] == ["GET"]
 
 
+#: A refusal of the project: (status, the token's seconds left, the message).
+#: Core answers 401 also when its authorization denies the request, so only
+#: an expired token names the sign-in.
+PROJECT_REFUSALS = pytest.mark.parametrize(
+    ("status", "expires_in", "message"),
+    [
+        (401, -60, SIGN_IN_EXPIRED),
+        (401, 300, NOT_READABLE),
+        (403, 300, NOT_READABLE),
+        (404, 300, NOT_READABLE),
+    ],
+    ids=["401 expired", "401", "403", "404"],
+)
+
+
 @BOTH_TOOLS
-@pytest.mark.parametrize("status", [401, 403, 404])
+@PROJECT_REFUSALS
 async def test_a_project_processes_will_not_check_for_the_user_says_so(
-    tool: Any, status: int
+    tool: Any, status: int, expires_in: float, message: str
 ) -> None:
     core, processes, geoapi, catalog = _services(
         check=httpx.Response(status, json={"detail": "Project not found"})
     )
+    env = _env(core, processes, geoapi, catalog, login=signed_in(expires_in))
     with pytest.raises(ToolFailed) as caught:
-        await execute(tool, _env(core, processes, geoapi, catalog), {"draft": DRAFT})
-    assert caught.value.message == NOT_READABLE
+        await execute(tool, env, {"draft": DRAFT})
+    assert caught.value.message == message
     assert [r.method for r in core.requests] == ["GET"]
+
+
+@BOTH_TOOLS
+@PROJECT_REFUSALS
+async def test_a_project_whose_layers_core_will_not_list_says_so(
+    tool: Any, status: int, expires_in: float, message: str
+) -> None:
+    core, processes, geoapi, catalog = _services()
+    core.routes[("GET", f"/api/v2/project/{PROJECT}/layer")] = httpx.Response(
+        status, json={"detail": "Unauthorized"}
+    )
+    env = _env(core, processes, geoapi, catalog, login=signed_in(expires_in))
+    with pytest.raises(ToolFailed) as caught:
+        await execute(tool, env, {"draft": DRAFT})
+    assert caught.value.message == message
+    assert [r.method for r in core.requests] == ["GET"]
+
+
+def test_a_project_not_readable_names_no_sign_in() -> None:
+    """The project tools name an expired sign-in with SIGN_IN_EXPIRED."""
+    assert "sign" not in NOT_READABLE
 
 
 #: A tool processes describes and runs but keeps out of every toolbox.

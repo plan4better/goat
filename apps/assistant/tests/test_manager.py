@@ -8,14 +8,22 @@ from uuid import UUID
 
 import pytest
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelMessagesTypeAdapter,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+)
 from pydantic_ai.models.function import AgentInfo, DeltaToolCalls, FunctionModel
 from pydantic_ai.models.test import TestModel
 
 from assistant.agent import INSTRUCTIONS, RunDeps
 from assistant.bus import EventBus, InMemoryEventBus
 from assistant.config import AssistantSettings
-from assistant.events import RunEnded, RunEvent, TextDelta
+from assistant.events import RunEnded, RunEvent, TextDelta, ToolCalled, ToolReturned
 from assistant.llm.providers import default_target
 from assistant.llm.resolution import Resolution
 from assistant.repo import (
@@ -756,6 +764,37 @@ def test_partial_history_omits_the_response_without_text() -> None:
     )
     assert [m["kind"] for m in with_text] == ["request", "response"]
     assert with_text[1]["parts"][0]["content"] == "part"
+
+
+def test_a_stopped_answer_keeps_what_it_showed_the_user() -> None:
+    """A card, a created workflow: the next answer must see them, or an answer to
+    the card points at nothing and the workflow is created again. Look-ups that
+    showed nothing are left out, as the history shortens them anyway."""
+    card = {"questions": [{"header": "Create", "question": "Create it?"}]}
+    events: list[RunEvent] = [
+        ToolCalled(tool_call_id="c1", tool_name="catalog_search", args={"q": "x"}),
+        ToolReturned(tool_call_id="c1", output={"items": []}),
+        ToolCalled(tool_call_id="c2", tool_name="ask_user", args=card),
+        ToolReturned(tool_call_id="c2", output={"status": "asked"}),
+        ToolCalled(tool_call_id="c3", tool_name="ask_user", args=card),
+        TextDelta(part_id="p", delta="The card is below."),
+    ]
+    history = ModelMessagesTypeAdapter.validate_python(
+        _partial_history("hello", events)
+    )
+    assert [type(m).__name__ for m in history] == [
+        "ModelRequest",
+        "ModelResponse",
+        "ModelRequest",
+        "ModelResponse",
+    ]
+    call = history[1].parts[0]
+    assert isinstance(call, ToolCallPart)
+    assert (call.tool_name, call.args, call.tool_call_id) == ("ask_user", card, "c2")
+    returned = history[2].parts[0]
+    assert isinstance(returned, ToolReturnPart)
+    assert (returned.tool_call_id, returned.content) == ("c2", {"status": "asked"})
+    assert history[3].parts[0] == TextPart(content="The card is below.")
 
 
 class _FailingRepo:

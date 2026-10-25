@@ -110,6 +110,7 @@ def test_a_setting_says_its_type_choices_and_default() -> None:
     assert by_name["routing_mode"] == {
         "name": "routing_mode",
         "title": "Transport mode",
+        "description": "Select the transport mode for accessibility analysis",
         "type": "choice",
         "required": True,
         "choices": ["walking", "bicycle", "pedelec", "car", "pt"],
@@ -117,6 +118,7 @@ def test_a_setting_says_its_type_choices_and_default() -> None:
     assert by_name["max_cost"] == {
         "name": "max_cost",
         "title": "Limit",
+        "description": "Upper limit for the selected measure type: travel time or travel distance.",
         "type": "integer",
         "default": 15,
         "default_hint": (
@@ -128,6 +130,36 @@ def test_a_setting_says_its_type_choices_and_default() -> None:
     }
     assert by_name["step_sizes"]["type"] == "list of integer"
     assert by_name["pt_modes"]["type"] == "choices"
+
+
+def test_a_setting_says_what_it_means_and_shows_an_example() -> None:
+    """The name and type do not say what a value means: step_sizes are band
+    edges, not the width of each band. The description says it, in full, and
+    the tool's own example shows it."""
+    by_name = {
+        setting.name: setting
+        for setting in tool_info.settings(DESCRIPTIONS["catchment_area_v2"])
+    }
+    edges = by_name["step_sizes"]
+    assert edges.description is not None and "band edges" in edges.description
+    assert "e.g. 5, 10, 15" in edges.description
+    assert edges.example == [5, 10, 15]
+    assert by_name["routing_mode"].example is None
+
+
+def test_a_description_that_only_repeats_the_title_is_left_out() -> None:
+    [setting] = tool_info.settings(
+        {
+            "inputs": {
+                "units": {
+                    "title": "Units",
+                    "description": "Units.",
+                    "schema": {"type": "string", "title": "Units"},
+                }
+            }
+        }
+    )
+    assert setting.description is None
 
 
 def test_a_default_the_form_derives_is_given_in_short_form() -> None:

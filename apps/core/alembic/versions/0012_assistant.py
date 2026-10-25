@@ -207,6 +207,18 @@ def upgrade() -> None:
             sa.Column("base_url", sa.Text(), nullable=True),
             sa.Column("region", sa.Text(), nullable=True),
             sa.Column("model", sa.Text(), nullable=False),
+            sa.Column(
+                "provider_order",
+                postgresql.JSONB(astext_type=sa.Text()),
+                server_default=sa.text("'[]'::jsonb"),
+                nullable=False,
+            ),
+            sa.Column(
+                "allow_fallbacks",
+                sa.Boolean(),
+                server_default=sa.text("true"),
+                nullable=False,
+            ),
             sa.Column("credentials_encrypted", sa.Text(), nullable=False),
             sa.Column(
                 "capabilities",

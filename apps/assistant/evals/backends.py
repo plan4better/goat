@@ -13,7 +13,10 @@ adding a catalog dataset adds its layers. Processes answers with descriptions
 captured from processes (``tests/fixtures/process_descriptions.json``) and a
 stand-in for its workflow check (``fixture_check``) that follows processes'
 check, the tools' own parameter models included. Core keeps the workflows it
-saves for the graders.
+saves for the graders. A fourth project holds a workflow whose run processes
+refuses before it starts, and processes' runs are a stand-in too
+(``_run_routes``): after the same check, a run of a saved workflow saves
+``RESULT_LAYER``, which ``aggregation-stats`` groups.
 """
 
 import contextlib
@@ -559,6 +562,11 @@ VIEWER_PROJECT_ID = "00000000-0000-0000-0000-0000000005e5"
 EMPTY_PROJECT_ID = "00000000-0000-0000-0000-0000000005e6"
 WF_PROJECT_NAME = "Erreichbarkeit Leipzig"
 EMPTY_PROJECT_NAME = "Neues Projekt München"
+RUN_PROJECT_ID = "00000000-0000-0000-0000-0000000005e7"
+RUN_PROJECT_NAME = "Schulwege Leipzig"
+RUN_WORKFLOW_ID = "0b6f0000-0000-0000-0000-0000000000e1"
+#: Every fixture project's folder: a run is submitted with it.
+FOLDER_ID = "0f000000-0000-0000-0000-000000000001"
 
 
 def _build_workflow_layers() -> tuple[FixtureLayer, ...]:
@@ -624,6 +632,90 @@ def _build_workflow_layers() -> tuple[FixtureLayer, ...]:
 
 
 WORKFLOW_LAYERS = _build_workflow_layers()
+#: Residents per district and band: what a run of a saved workflow saves for
+#: each of its export steps.
+RESULT_ROWS: tuple[tuple[str, int, int], ...] = (
+    ("Mitte", 5, 1200),
+    ("Mitte", 10, 2600),
+    ("Mitte", 15, 4100),
+    ("Nord", 5, 300),
+    ("Nord", 10, 900),
+    ("Nord", 15, 1500),
+    ("Süd", 5, 800),
+    ("Süd", 10, 1700),
+    ("Süd", 15, 2900),
+)
+RESULT_LAYER = FixtureLayer(
+    37,
+    "e2000000-0000-0000-0000-000000000037",
+    "Einwohner je Bezirk und Band",
+    "polygon",
+    {"name": "string", "band": "integer", "einwohner": "integer"},
+    tuple(
+        {"name": name, "band": band, "einwohner": people, "_at": (12.37, 51.34)}
+        for name, band, people in RESULT_ROWS
+    ),
+)
+#: The run project's workflow: walking catchments in three bands whose band
+#: edges do not rise, so the check finds its catchment's settings invalid and
+#: processes refuses its run before it starts.
+RUN_WORKFLOW: dict[str, Any] = {
+    "id": RUN_WORKFLOW_ID,
+    "project_id": RUN_PROJECT_ID,
+    "name": "Schulwege 15 Minuten",
+    "description": None,
+    "is_default": False,
+    "config": {
+        "nodes": [
+            {
+                "id": "dataset-schulen",
+                "type": "dataset",
+                "position": {"x": 0, "y": 0},
+                "data": {
+                    "type": "dataset",
+                    "label": "Schulen",
+                    "layerId": WORKFLOW_LAYERS[0].layer_id,
+                },
+            },
+            {
+                "id": "tool-walk",
+                "type": "tool",
+                "position": {"x": 320, "y": 0},
+                "data": {
+                    "type": "tool",
+                    "processId": "catchment_area_v2",
+                    "label": "15 Minuten zu Fuß",
+                    "config": {
+                        "routing_mode": "walking",
+                        "max_cost": 15,
+                        "steps": 3,
+                        "step_sizes": [5, 5, 5],
+                    },
+                },
+            },
+            {
+                "id": "export-walk",
+                "type": "export",
+                "position": {"x": 640, "y": 0},
+                "data": {
+                    "type": "export",
+                    "label": "Save as dataset",
+                    "datasetName": "Schulwege",
+                },
+            },
+        ],
+        "edges": [
+            {
+                "id": "e1",
+                "source": "dataset-schulen",
+                "target": "tool-walk",
+                "targetHandle": "starting_points",
+            },
+            {"id": "e2", "source": "tool-walk", "target": "export-walk"},
+        ],
+        "variables": [],
+    },
+}
 #: The layer adding a catalog dataset gives, by catalog id.
 CATALOG_LAYERS: dict[str, FixtureLayer] = {
     "eval-supermaerkte-bayern": replace(
@@ -717,7 +809,12 @@ TEMPLATE_CONFIG: dict[str, Any] = {
 }
 _BY_ID = {
     layer.layer_id: layer
-    for layer in (*FIXTURE_LAYERS, *WORKFLOW_LAYERS, *CATALOG_LAYERS.values())
+    for layer in (
+        *FIXTURE_LAYERS,
+        *WORKFLOW_LAYERS,
+        RESULT_LAYER,
+        *CATALOG_LAYERS.values(),
+    )
 }
 
 
@@ -838,6 +935,16 @@ ORG_DATASET = {
     "matched_on": ["name"],
     "updated_at": "2026-09-01T00:00:00Z",
 }
+#: The layer adding ``ORG_DATASET`` to a workflow project gives. The dataset's
+#: data is not part of the fixture: the layer has no fields and no features.
+ORG_DATASET_LAYER = FixtureLayer(
+    38,
+    str(ORG_DATASET["id"]),
+    str(ORG_DATASET["name"]),
+    str(ORG_DATASET["geometry_type"]),
+    {},
+    (),
+)
 
 
 def _content_search(request: httpx.Request) -> httpx.Response:
@@ -867,7 +974,7 @@ def _core_routes() -> dict[tuple[str, str], Any]:
         for order, layer in enumerate(FIXTURE_LAYERS)
     ]
     return {
-        ("GET", base): {"id": PROJECT_ID, "name": PROJECT_NAME},
+        ("GET", base): {"id": PROJECT_ID, "name": PROJECT_NAME, "folder_id": FOLDER_ID},
         ("GET", f"{base}/layer"): layers,
         ("GET", f"{base}/group"): [
             {"id": 1, "name": "Verkehr", "parent_id": None, "order": 0}
@@ -990,23 +1097,91 @@ def _process(
             "std_dev": statistics.pstdev(numbers),
         }
     if name == "area-statistics":
-        areas = [float(f.get("flaeche_m2", 0.0)) for f in selected]
-        stats = {
-            "sum": sum(areas),
-            "min": min(areas, default=None),
-            "max": max(areas, default=None),
-        }
-        result = stats[str(inputs["operation"])]
+        operation = str(inputs["operation"])
+
+        def area_of(features: list[dict[str, Any]]) -> dict[str, Any]:
+            areas = [float(f.get("flaeche_m2", 0.0)) for f in features]
+            stats = {
+                "sum": sum(areas),
+                "min": min(areas, default=None),
+                "max": max(areas, default=None),
+            }
+            return {
+                "result": stats[operation],
+                "total_area": sum(areas),
+                "feature_count": len(features),
+            }
+
+        group = inputs.get("group_by_column")
+        groups: list[dict[str, Any]] = []
+        if group:
+            members: dict[str | None, list[dict[str, Any]]] = {}
+            for feature in selected:
+                value = feature.get(group)
+                members.setdefault(None if value is None else str(value), []).append(
+                    feature
+                )
+            # As the service orders them: largest total area first.
+            groups = sorted(
+                (
+                    {"grouped_value": value, **area_of(features)}
+                    for value, features in members.items()
+                ),
+                key=lambda row: row["total_area"],
+                reverse=True,
+            )
         return {
-            "result": result,
-            "total_area": sum(areas),
-            "feature_count": len(selected),
+            **area_of(selected),
             "unit": "m²",
+            "groups": groups[:100],
+            "total_groups": len(groups) if group else None,
         }
     if name == "extent":
         return {
             "bbox": _bbox(layer, selected) if selected else None,
             "feature_count": len(selected),
+        }
+    if name == "aggregation-stats":
+        group = inputs.get("group_by_column")
+        then = inputs.get("group_by_secondary_column")
+        column = inputs.get("operation_column")
+        operation = str(inputs.get("operation", "count"))
+        buckets: dict[tuple[Any, Any], list[float]] = {}
+        for feature in selected:
+            key = (
+                feature.get(group) if group else None,
+                feature.get(then) if then else None,
+            )
+            buckets.setdefault(key, []).append(
+                float(feature.get(column) or 0) if column else 1.0
+            )
+
+        def value(numbers: list[float]) -> float:
+            if operation == "count":
+                return float(len(numbers))
+            if operation == "sum":
+                return sum(numbers)
+            if operation == "mean":
+                return statistics.fmean(numbers)
+            return min(numbers) if operation == "min" else max(numbers)
+
+        rows: list[dict[str, Any]] = [
+            {
+                "grouped_value": None if key[0] is None else str(key[0]),
+                "grouped_secondary_value": None if key[1] is None else str(key[1]),
+                "operation_value": value(numbers),
+            }
+            for key, numbers in buckets.items()
+        ]
+        items = sorted(
+            rows,
+            key=lambda item: item["operation_value"],
+            reverse=inputs.get("order", "descendent") == "descendent",
+        )
+        return {
+            "items": items[: int(inputs.get("limit", 100))],
+            "total_items": len(items),
+            "total_count": len(selected),
         }
     raise ValueError(name)
 
@@ -1014,6 +1189,18 @@ def _process(
 #: A layer id -> the layer, for the layers of one task (fixture layers and
 #: the ones its catalog adds gave); None for a layer the fixture does not have.
 LayerOf = Callable[[str], FixtureLayer | None]
+#: The issue levels at which processes refuses a run (its ``BLOCKING_LEVELS``).
+_BLOCKING_LEVELS = frozenset({"damaged", "error"})
+
+
+def _fields_of(layer_of: LayerOf) -> Callable[[str], list[str] | None]:
+    """A layer id -> its field names, for the layers of one task."""
+
+    def fields(layer_id: str) -> list[str] | None:
+        layer = layer_of(layer_id)
+        return list(layer.fields) if layer is not None else None
+
+    return fields
 
 
 def _processes_routes(layer_of: LayerOf) -> dict[tuple[str, str], Any]:
@@ -1035,6 +1222,7 @@ def _processes_routes(layer_of: LayerOf) -> dict[tuple[str, str], Any]:
             "class-breaks",
             "area-statistics",
             "extent",
+            "aggregation-stats",
         )
     }
 
@@ -1044,9 +1232,7 @@ def _processes_routes(layer_of: LayerOf) -> dict[tuple[str, str], Any]:
             200, json={"processes": PROCESSES["list"][language], "links": []}
         )
 
-    def fields(layer_id: str) -> list[str] | None:
-        layer = layer_of(layer_id)
-        return list(layer.fields) if layer is not None else None
+    fields = _fields_of(layer_of)
 
     def check(request: httpx.Request) -> httpx.Response:
         issues = fixture_check(json.loads(request.content), fields)
@@ -1056,6 +1242,114 @@ def _processes_routes(layer_of: LayerOf) -> dict[tuple[str, str], Any]:
     for tool_id, described in PROCESSES["descriptions"].items():
         routes[("GET", f"/processes/{tool_id}")] = described
     routes[("POST", "/workflows/check")] = check
+    return routes
+
+
+def _run_routes(
+    saved: list[dict[str, Any]], add_result: Callable[[str], None], layer_of: LayerOf
+) -> dict[tuple[str, str], Any]:
+    """Processes' runs for one task. As processes' execute does, a run first
+    gets the workflow check (``fixture_check`` of the stored config, with the
+    task's layer fields): a damaged or error issue refuses it with 422 and
+    every issue, and nothing is submitted. Any other run of a workflow core
+    saved finishes at once and saves RESULT_LAYER for each export step. Job
+    ids are j-1, j-2, ... in the order runs start."""
+    jobs: list[dict[str, Any]] = []
+    fields = _fields_of(layer_of)
+
+    def found(workflow_id: str) -> tuple[dict[str, Any], str] | None:
+        if workflow_id == RUN_WORKFLOW_ID:
+            return RUN_WORKFLOW["config"], RUN_PROJECT_ID
+        row = next((row for row in saved if row["id"] == workflow_id), None)
+        # A workflow made from a template is kept without a config, so the
+        # check refuses its run as damaged.
+        return (row.get("config") or {}, row["project_id"]) if row is not None else None
+
+    def execute(workflow_id: str) -> Callable[[httpx.Request], httpx.Response]:
+        def respond(request: httpx.Request) -> httpx.Response:
+            workflow = found(workflow_id)
+            if workflow is None:
+                return httpx.Response(404, json={"detail": "Workflow not found"})
+            config, project_id = workflow
+            issues = fixture_check(config, fields)
+            if any(issue["level"] in _BLOCKING_LEVELS for issue in issues):
+                return httpx.Response(
+                    422,
+                    json={
+                        "detail": {
+                            "message": "The workflow has issues.",
+                            "issues": issues,
+                        }
+                    },
+                )
+            job_id = f"j-{len(jobs) + 1}"
+            at = f"2026-10-23T09:{len(jobs):02d}:00Z"
+            job: dict[str, Any] = {
+                "jobID": job_id,
+                "processID": "workflow_runner",
+                "inputs": {"workflow_id": workflow_id},
+                "created": at,
+                "started": at,
+            }
+            results: dict[str, Any] = {}
+            for node in config.get("nodes") or []:
+                data = node.get("data") or {}
+                if data.get("type") == "tool":
+                    results[node["id"]] = {
+                        "status": "success",
+                        "feature_count": len(RESULT_ROWS),
+                    }
+                elif data.get("type") == "export":
+                    add_result(project_id)
+                    results[node["id"]] = {
+                        "layer_id": RESULT_LAYER.layer_id,
+                        "layer_name": data.get("datasetName") or RESULT_LAYER.name,
+                        "layer_project_id": RESULT_LAYER.layer_project_id,
+                        "feature_count": len(RESULT_ROWS),
+                    }
+            job.update(
+                status="successful",
+                result={
+                    "status": "success",
+                    "errors": [],
+                    "node_jobs": {},
+                    "node_results": results,
+                },
+            )
+            jobs.append(job)
+            return httpx.Response(
+                200,
+                json={
+                    "job_id": job_id,
+                    "workflow_id": workflow_id,
+                    "status": "submitted",
+                },
+            )
+
+        return respond
+
+    def status(job_id: str) -> Callable[[httpx.Request], httpx.Response]:
+        def respond(request: httpx.Request) -> httpx.Response:
+            job = next((job for job in jobs if job["jobID"] == job_id), None)
+            if job is None:
+                return httpx.Response(404, json={"detail": "Job not found"})
+            return httpx.Response(200, json=job)
+
+        return respond
+
+    routes: dict[tuple[str, str], Any] = {
+        ("GET", "/jobs"): lambda request: httpx.Response(
+            200, json={"jobs": list(reversed(jobs))}
+        ),
+    }
+    for workflow_id in (
+        RUN_WORKFLOW_ID,
+        *(f"0b6f0000-0000-0000-0000-{n:012d}" for n in range(1, 6)),
+    ):
+        routes[("POST", f"/workflows/{workflow_id}/execute")] = execute(workflow_id)
+    for n in range(1, 6):
+        routes[("GET", f"/jobs/j-{n}")] = status(f"j-{n}")
+        routes[("DELETE", f"/jobs/j-{n}")] = {"status": "dismissed"}
     return routes
 
 
@@ -1075,8 +1369,11 @@ PROCESSES: dict[str, Any] = json.loads(
 # (`goatlib.tools.registry`) and the arguments a run would build
 # (`goatlib.tools.workflow_arguments`). What it leaves out: the access check
 # (the fixture's layers are all readable), the columns predicted for a step
-# that reads another tool's result (processes only warns about them), If
-# steps (drafts have none) and the `step_not_connected` warning.
+# that reads another tool's result (processes warns about them), except a
+# join's right before a step, which it predicts with goatlib's join runner to
+# find a field the join renamed; a join further up is left out. Also left
+# out: If steps (drafts have none) and the `step_not_connected` warning. A
+# draft's notes (`textAnnotation`) it skips, as processes does.
 
 #: Layer id -> its field names; None for a layer whose fields are not known.
 LayerFields = Callable[[str], Sequence[str] | None]
@@ -1578,6 +1875,43 @@ class _StepCheck:
             return name, str(inputs[name].get("title") or name)
         return None, ""
 
+    def _joined_columns(self, join: Mapping[str, Any]) -> set[str] | None:
+        """The columns a join step writes when both its inputs are datasets
+        with known fields (goatlib's ``predict_output_schema`` of the join
+        runner, with the tool's defaults under the step's settings); None for
+        any other step, and for settings the prediction fails on, which
+        leave the step after it unjudged, as in processes
+        (``predict_node_output_schema``)."""
+        data = _data(join)
+        if data.get("processId") != "join":
+            return None
+        schemas: dict[str, dict[str, str]] = {}
+        for edge in self.edges:
+            if str(edge.get("target")) != str(join["id"]):
+                continue
+            source = self.by_id.get(str(edge.get("source")))
+            layer_id = _data(source).get("layerId") if source is not None else None
+            known = self.fields(layer_id) if isinstance(layer_id, str) else None
+            if known is None:
+                return None
+            schemas[str(edge.get("targetHandle"))] = dict.fromkeys(known, "VARCHAR")
+        if set(schemas) != {"target_layer_id", "join_layer_id"}:
+            return None
+        described = PROCESSES["descriptions"]["join"]["inputs"]
+        defaults = {
+            name: _schema(entry)["default"]
+            for name, entry in described.items()
+            if "default" in _schema(entry)
+        }
+        settings = {**defaults, **(data.get("config") or {})}
+        runner = get_tool("join").get_runner_class()
+        if runner is None:
+            return None
+        try:
+            return set(runner.predict_output_schema(schemas, settings))
+        except Exception:
+            return None
+
     def field_issues(
         self,
         step: str,
@@ -1587,9 +1921,11 @@ class _StepCheck:
         handles: set[str],
     ) -> list[Issue]:
         """``field_not_in_layer``: a field setting naming a field that the
-        dataset it reads does not have. Only a dataset with a layer is
-        judged: an open step has no fields yet, and a field read from another
-        tool's result is a prediction processes only warns about."""
+        dataset it reads does not have. ``field_renamed_by_join``: one that
+        the join step right before writes only as ``join_<field>``, its
+        columns predicted by goatlib's join runner from two datasets. Nothing
+        else is judged: an open step has no fields yet, and processes only
+        warns about a field read from any other tool's result."""
         inputs: dict[str, Any] = described["inputs"]
         layer_inputs = [
             name
@@ -1603,7 +1939,27 @@ class _StepCheck:
                 continue
             name = _resolved(ref.field, self.var_map)
             origin = _source_node(self.incoming, ref.source, self.by_id)
-            if name is None or origin is None or _kind(origin) != "dataset":
+            if name is None or origin is None:
+                continue
+            if _kind(origin) == "tool":
+                joined = f"join_{name}"
+                columns = self._joined_columns(origin)
+                if columns is None or name in columns or joined not in columns:
+                    continue
+                found.append(
+                    self.issue(
+                        "field_renamed_by_join",
+                        f"{step}: {ref.label} names the field {name}, which the "
+                        f"step before does not produce: the join names it {joined}.",
+                        ref.setting,
+                        step=step,
+                        label=ref.label,
+                        field_name=name,
+                        joined_field=joined,
+                    )
+                )
+                continue
+            if _kind(origin) != "dataset":
                 continue
             layer_id = _data(origin).get("layerId")
             known = self.fields(layer_id) if isinstance(layer_id, str) else None
@@ -1706,6 +2062,20 @@ def fixture_check(
                     params={"step": step},
                 )
             )
+        elif kind == "export" and data.get("destination") == "existing":
+            # Adds the rows to an existing dataset: no name to judge, only
+            # that dataset.
+            if not data.get("targetLayerId"):
+                issues.append(
+                    Issue(
+                        "export_target_missing",
+                        "error",
+                        f"{step}: the dataset to add the rows to is not chosen.",
+                        (node_id,),
+                        "targetLayerId",
+                        {"step": step},
+                    )
+                )
         elif kind == "export" and not str(data.get("datasetName") or "").strip():
             issues.append(
                 Issue(
@@ -1777,20 +2147,25 @@ def _workflow_core_routes(
     catalog: FastAPI,
     register: Callable[[FixtureLayer], None],
     saved: list[dict[str, Any]],
+    results: dict[str, list[FixtureLayer]],
 ) -> dict[tuple[str, str], Any]:
     """Core for the workflow suite's projects, fresh for each task: adding a
-    catalog dataset puts its layers into the project's list (and geoapi's,
-    through ``register``), and every workflow core saves goes into ``saved``,
-    where the graders read it."""
+    catalog dataset or the user's own (``ORG_DATASET``) puts its layers into
+    the project's list (and geoapi's, through ``register``), and every
+    workflow core saves goes into ``saved``, where the graders read it.
+    ``results`` holds, by project id, the layers the task's runs saved, which
+    the project's list ends with."""
     layers: dict[str, list[FixtureLayer]] = {
         WF_PROJECT_ID: list(WORKFLOW_LAYERS),
         VIEWER_PROJECT_ID: list(WORKFLOW_LAYERS),
         EMPTY_PROJECT_ID: [],
+        RUN_PROJECT_ID: list(WORKFLOW_LAYERS),
     }
     names = {
         WF_PROJECT_ID: WF_PROJECT_NAME,
         VIEWER_PROJECT_ID: WF_PROJECT_NAME,
         EMPTY_PROJECT_ID: EMPTY_PROJECT_NAME,
+        RUN_PROJECT_ID: RUN_PROJECT_NAME,
     }
     #: Catalog item id -> the layer adding it gave in this task.
     added: dict[str, FixtureLayer] = {}
@@ -1828,7 +2203,10 @@ def _workflow_core_routes(
 
     def layer_list(project_id: str) -> Callable[[httpx.Request], httpx.Response]:
         def respond(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=_layer_rows(layers[project_id]))
+            return httpx.Response(
+                200,
+                json=_layer_rows([*layers[project_id], *results.get(project_id, [])]),
+            )
 
         return respond
 
@@ -1848,6 +2226,30 @@ def _workflow_core_routes(
                 if layer not in layers[project_id]:
                     layers[project_id].append(layer)
             return httpx.Response(200, json=_layer_rows(found))
+
+        return respond
+
+    def add_layers(project_id: str) -> Callable[[httpx.Request], httpx.Response]:
+        """Core's link of existing datasets: the fixture has one the user can
+        read, ``ORG_DATASET``."""
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            if project_id == VIEWER_PROJECT_ID:
+                return httpx.Response(
+                    403,
+                    json={
+                        "detail": "Adding layers to a project requires editor access"
+                    },
+                )
+            layer = ORG_DATASET_LAYER
+            if request.url.params.get_list("layer_ids") != [layer.layer_id]:
+                return httpx.Response(
+                    404, json={"detail": "One or several Layers were not found"}
+                )
+            register(layer)
+            if layer not in layers[project_id]:
+                layers[project_id].append(layer)
+            return httpx.Response(200, json=_layer_rows([layer]))
 
         return respond
 
@@ -1949,17 +2351,21 @@ def _workflow_core_routes(
     }
     for project_id, name in names.items():
         base = f"/api/v2/project/{project_id}"
-        routes[("GET", base)] = {"id": project_id, "name": name}
+        routes[("GET", base)] = {"id": project_id, "name": name, "folder_id": FOLDER_ID}
         routes[("GET", f"{base}/layer")] = layer_list(project_id)
         routes[("GET", f"{base}/group")] = []
         routes[("GET", f"{base}/workflow")] = []
         routes[("GET", f"{base}/report-layout")] = []
         routes[("POST", f"{base}/workflow")] = create(project_id)
         routes[("POST", f"{base}/layer-catalog")] = add_catalog(project_id)
+        routes[("POST", f"{base}/layer")] = add_layers(project_id)
         # The ids keep() gives, in order: a task creates a few at most.
         for n in range(1, 6):
             workflow_id = f"0b6f0000-0000-0000-0000-{n:012d}"
             routes[("GET", f"{base}/workflow/{workflow_id}")] = workflow(workflow_id)
+    run_base = f"/api/v2/project/{RUN_PROJECT_ID}"
+    routes[("GET", f"{run_base}/workflow")] = [RUN_WORKFLOW]
+    routes[("GET", f"{run_base}/workflow/{RUN_WORKFLOW_ID}")] = RUN_WORKFLOW
     return routes
 
 
@@ -1980,6 +2386,25 @@ class _Processes(Recorder):
         return response
 
 
+class _Core(Recorder):
+    """Core's routes; a dataset or a bundle it does not have answers 404, as
+    core does, so a card that adds an id no dataset has is refused as it
+    would be."""
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        # Checked before the routes answer: some answer with a coroutine.
+        if (
+            request.method == "GET"
+            and ("GET", request.url.path) not in self.routes
+            and re.fullmatch(
+                r"/api/v2/(layer/[^/]+|bundle/[^/]+/layers)", request.url.path
+            )
+        ):
+            self.requests.append(request)
+            return httpx.Response(404, json={"detail": "Not found"})
+        return super().__call__(request)
+
+
 class Backends:
     """One eval run's backends; ``clients()`` gives each task fresh recorders."""
 
@@ -1998,6 +2423,7 @@ class Backends:
         geoapi = Recorder(_geoapi_routes())
         added: dict[str, FixtureLayer] = {}
         saved: list[dict[str, Any]] = []
+        results: dict[str, list[FixtureLayer]] = {}
 
         def register(layer: FixtureLayer) -> None:
             added[layer.layer_id] = layer
@@ -2006,10 +2432,20 @@ class Backends:
         def layer_of(layer_id: str) -> FixtureLayer | None:
             return _BY_ID.get(layer_id) or added.get(layer_id)
 
-        core = Recorder(
-            {**_core_routes(), **_workflow_core_routes(self.catalog, register, saved)}
+        def add_result(project_id: str) -> None:
+            if RESULT_LAYER not in results.setdefault(project_id, []):
+                results[project_id].append(RESULT_LAYER)
+            register(RESULT_LAYER)
+
+        core = _Core(
+            {
+                **_core_routes(),
+                **_workflow_core_routes(self.catalog, register, saved, results),
+            }
         )
-        processes = _Processes(_processes_routes(layer_of))
+        processes = _Processes(
+            {**_processes_routes(layer_of), **_run_routes(saved, add_result, layer_of)}
+        )
         catalog = RecordingTransport(httpx.ASGITransport(app=self.catalog))
         services = fake_clients(
             core=core, geoapi=geoapi, processes=processes, catalog=catalog

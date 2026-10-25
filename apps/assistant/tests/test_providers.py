@@ -1058,3 +1058,66 @@ async def test_openai_style_endpoints_cache_by_themselves(
         assert not models.main.settings
     finally:
         await models.aclose()
+
+
+async def test_an_openrouter_connection_can_pin_its_providers() -> None:
+    """OpenRouter sends one model to many providers, at other prices and
+    precisions; a connection can name the ones to use, in order."""
+    models = open_models(
+        _target(
+            "openai_compatible",
+            model="deepseek/deepseek-v4.1-flash",
+            base_url="https://openrouter.ai/api/v1",
+            credentials={"api_key": "sk-or"},
+            provider_order=("DeepInfra", "Together"),
+            allow_fallbacks=False,
+        ),
+        STRICT,
+    )
+    try:
+        assert isinstance(models.main, OpenRouterModel)
+        assert models.main.settings == {
+            **providers.OPENROUTER_CACHE,
+            "openrouter_provider": {
+                "order": ["DeepInfra", "Together"],
+                "allow_fallbacks": False,
+            },
+        }
+    finally:
+        await models.aclose()
+
+
+def test_a_provider_order_is_trimmed_and_only_for_openrouter() -> None:
+    fields = normalize_connection(
+        "openai_compatible",
+        "https://openrouter.ai/api/v1",
+        None,
+        "deepseek/deepseek-v4.1-flash",
+        STRICT,
+        provider_order=[" DeepInfra ", "", "DeepInfra", "Together"],
+        allow_fallbacks=False,
+    )
+    assert (fields.provider_order, fields.allow_fallbacks) == (
+        ("DeepInfra", "Together"),
+        False,
+    )
+    with pytest.raises(ConnectionInvalid) as other_endpoint:
+        normalize_connection(
+            "openai_compatible",
+            "https://llm.example.org/v1",
+            None,
+            "m",
+            STRICT,
+            provider_order=["DeepInfra"],
+        )
+    assert other_endpoint.value.field == "provider_order"
+    with pytest.raises(ConnectionInvalid) as bad_name:
+        normalize_connection(
+            "openai_compatible",
+            "https://openrouter.ai/api/v1",
+            None,
+            "m",
+            STRICT,
+            provider_order=["Deep;Infra"],
+        )
+    assert bad_name.value.field == "provider_order"

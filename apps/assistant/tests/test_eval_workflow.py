@@ -24,15 +24,21 @@ from pydantic_ai.models.function import (
 
 from assistant.asks import AskUserInput
 from assistant.config import AssistantSettings
+from assistant.tools.ask import ASK_USER
 from assistant.tools.catalog import NO_SUCH_WORD, NOTHING_FOUND
-from assistant.tools.testing import ScriptedModel, TurnModel
+from assistant.tools.runtime import InputInvalid, execute
+from assistant.tools.testing import ScriptedModel, TurnModel, tool_env
 from assistant.tools.toolset import FRUITLESS_SEARCHES, SEARCHED_ENOUGH
 from assistant.tools.workflow_tools import clear_description_cache
 from assistant.workflows.draft import Draft, ProjectLayer, to_config
 from evals.backends import (
     CATALOG_LAYERS,
     EMPTY_PROJECT_ID,
+    ORG_DATASET,
+    RESULT_LAYER,
+    RUN_WORKFLOW_ID,
     TEMPLATE_ID,
+    VIEWER_PROJECT_ID,
     WF_PROJECT_ID,
     WORKFLOW_LAYERS,
     Backends,
@@ -176,15 +182,15 @@ def _codes(issues: list[dict[str, Any]]) -> list[str]:
     return [issue["code"] for issue in issues if issue["level"] != "warning"]
 
 
-def test_the_suite_has_nine_tasks_on_the_two_workflow_pages() -> None:
+def test_the_suite_has_eleven_tasks_on_the_two_workflow_pages() -> None:
     tasks = load_tasks("workflow")
-    assert [task.id for task in tasks] == [f"wf-{n:02d}" for n in range(1, 10)]
+    assert [task.id for task in tasks] == [f"wf-{n:02d}" for n in range(1, 12)]
     assert {task.context["surface"] for task in tasks} == {
         "project.map",
         "project.workflows",
     }
     assert [task.id for task in tasks if task.critical] == ["wf-06"]
-    assert sum(task.answer_card for task in tasks) == 3
+    assert sum(task.answer_card for task in tasks) == 4
 
 
 def test_the_fixture_check_passes_the_shared_drafts_except_open_steps() -> None:
@@ -740,6 +746,73 @@ def test_the_fixture_check_reads_a_field_from_the_dataset_its_setting_reads() ->
     assert found(opened) == [("layer_not_chosen", None)]
 
 
+def _joined_then_summed(group_by: list[str]) -> dict[str, Any]:
+    """Residents' cells joined to their district, then summed per district
+    by ``group_by``, read from the join's result."""
+    return {
+        "name": "Residents per district",
+        "steps": [
+            {"id": "cells", "kind": "dataset", "layer": 33},
+            {"id": "districts", "kind": "dataset", "layer": 35},
+            {"id": "join", "kind": "tool", "tool": "join", "settings": JOIN_SETTINGS},
+            {
+                "id": "sum",
+                "kind": "tool",
+                "tool": "aggregate_polygon",
+                "settings": {
+                    "area_type": "polygon",
+                    "group_by_field": group_by,
+                    "column_statistics": [{"operation": "sum", "field": "einwohner"}],
+                },
+            },
+            {"id": "save", "kind": "export", "name": "Residents per district"},
+        ],
+        "connections": [
+            {"from": "cells", "to": "join", "input": "target_layer_id"},
+            {"from": "districts", "to": "join", "input": "join_layer_id"},
+            {"from": "join", "to": "sum", "input": "source_layer_id"},
+            {"from": "districts", "to": "sum", "input": "area_layer_id"},
+            {"from": "sum", "to": "save"},
+        ],
+    }
+
+
+def test_the_fixture_check_names_a_field_the_join_before_renamed() -> None:
+    """As processes does: a join names the fields it adds join_<field>, so a
+    step reading the join's result by the join layer's name is refused."""
+    [issue] = fixture_check(_config(_joined_then_summed(["name"])))
+    assert (issue["code"], issue["level"], issue["field"]) == (
+        "field_renamed_by_join",
+        "error",
+        "group_by_field",
+    )
+    assert issue["message"].endswith("the join names it join_name.")
+    assert issue["params"]["joined_field"] == "join_name"
+    assert fixture_check(_config(_joined_then_summed(["join_name"]))) == []
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"calculate_statistics": True, "field_statistics": ["count"]},
+        {"join_fields": 5},
+    ],
+    ids=["statistics as names", "fields as a number"],
+)
+def test_a_malformed_join_leaves_the_field_after_it_unjudged(
+    settings: dict[str, Any],
+) -> None:
+    """As processes does: a join whose columns cannot be predicted from its
+    settings gets its setting_invalid, and the step after it is not judged
+    by the join's columns."""
+    draft = _joined_then_summed(["name"])
+    join = next(step for step in draft["steps"] if step["id"] == "join")
+    join["settings"] = {**JOIN_SETTINGS, **settings}
+    codes = [code for code, _ in _found(fixture_check(_config(draft)))]
+    assert "setting_invalid" in codes
+    assert "field_renamed_by_join" not in codes
+
+
 def test_the_fixture_check_finds_loops_and_connections_to_no_input() -> None:
     assert _found(fixture_check(_config(LOOP_DRAFT))) == [("loop", None)]
     into: dict[str, Any] = {
@@ -906,6 +979,37 @@ async def test_the_fixture_finds_templates_as_core_does(backends: Backends) -> N
         await services.aclose()
 
 
+async def test_the_fixture_adds_the_users_own_dataset_as_core_does(
+    backends: Backends,
+) -> None:
+    """The dataset core_find finds goes into a workflow project's layer list,
+    and geoapi knows its fields; a viewer is refused, an unknown id is not
+    found."""
+    services = backends.clients()[0]
+    own = str(ORG_DATASET["id"])
+    base = f"/api/v2/project/{WF_PROJECT_ID}"
+    try:
+        assert (await services.core.get(f"/api/v2/layer/{own}")).status_code == 200
+        added = await services.core.post(f"{base}/layer", params={"layer_ids": own})
+        [row] = added.json()
+        assert (row["layer_id"], row["name"]) == (own, ORG_DATASET["name"])
+        listed = (await services.core.get(f"{base}/layer")).json()
+        assert row["id"] in [layer["id"] for layer in listed]
+        queryables = await services.geoapi.get(f"/collections/{own}/queryables")
+        assert queryables.status_code == 200
+        viewer = await services.core.post(
+            f"/api/v2/project/{VIEWER_PROJECT_ID}/layer", params={"layer_ids": own}
+        )
+        assert viewer.status_code == 403
+        unknown = await services.core.post(
+            f"{base}/layer",
+            params={"layer_ids": "00000000-0000-0000-0000-00000000dead"},
+        )
+        assert unknown.status_code == 404
+    finally:
+        await services.aclose()
+
+
 PLAYGROUND_CARD: dict[str, Any] = {
     "questions": [
         {
@@ -922,6 +1026,44 @@ PLAYGROUND_CARD: dict[str, Any] = {
         }
     ]
 }
+
+
+def _adding(*adds: str) -> dict[str, Any]:
+    return {
+        "questions": [
+            {
+                "question": "Which data should the workflow use?",
+                "header": "Data",
+                "options": [
+                    {"label": "These datasets", "value": "picked", "adds": list(adds)},
+                    {"label": "Leave it open", "description": "Choose it later"},
+                ],
+            }
+        ]
+    }
+
+
+async def test_the_fixture_services_check_the_ids_a_card_adds(
+    backends: Backends,
+) -> None:
+    """As in GOAT: the catalog knows its datasets, core the user's own, and
+    an id neither has refuses the card."""
+    services, _, _ = backends.clients()
+
+    async def emit(
+        name: str, data: dict[str, Any], *, part_id: str | None = None
+    ) -> str:
+        return part_id or "p"
+
+    env = tool_env(services, emit_data=emit)
+    shown = await execute(
+        ASK_USER, env, _adding("eval-supermaerkte-bayern", str(ORG_DATASET["id"]))
+    )
+    assert shown["status"] == "asked"
+    unknown = "d1000000-0000-0000-0000-000000000001"
+    with pytest.raises(InputInvalid) as refused:
+        await execute(ASK_USER, env, _adding("eval-supermaerkte", unknown))
+    assert f"'eval-supermaerkte', '{unknown}'" in refused.value.message
 
 
 async def test_a_catalog_dataset_found_in_munich_can_be_added(
@@ -993,11 +1135,12 @@ async def test_each_turn_has_its_own_time_limit(
             ([("catalog_find_region", {"name": "München"})], "Thanks."),
         ]
     )
-    # Each turn takes about 1.2 s; both together take longer than the limit.
-    limited = settings.model_copy(update={"run_max_seconds": 2})
+    # The card ends the first turn after one call (about 0.6 s), the second
+    # takes two (about 1.2 s): each fits the limit, both together do not.
+    limited = settings.model_copy(update={"run_max_seconds": 1.5})
     transcript = await run_task(_task("wf-09"), model.model, backends, limited)
     assert transcript.error is None, transcript.error
-    assert len(model.requests) == 4
+    assert len(model.requests) == 3
 
 
 async def test_a_write_repeated_after_the_card_is_not_made_twice(
@@ -1321,7 +1464,8 @@ async def test_a_model_that_answers_nothing_after_the_layers_still_asks(
         "ask_user",
     ]
     assert len(offered[2]) > 1 and len(offered[3]) > 1 and offered[4] == ["ask_user"]
-    assert transcript.answer == "Pick the school layer in the card."
+    # The card ends the answer: no call for text follows it.
+    assert len(offered) == 5 and transcript.answer == ""
     assert [g.passed for g in await grade(task, transcript, backends)] == [True, True]
 
 
@@ -1486,3 +1630,355 @@ async def test_a_catalog_record_describes_the_layer_adding_it_gives(
     for call, layer in zip(transcript.tool_calls, CATALOG_LAYERS.values(), strict=True):
         [member] = call.result["goat:items"]
         assert member["geometry_type"] == layer.geometry, member
+
+
+async def test_the_check_names_catchments_split_by_budget(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """Three catchments for 5, 10 and 15 minutes from the same places: the
+    check warns that one with three steps returns all of them, and the warning
+    does not stop workflow_create."""
+    steps: list[dict[str, Any]] = [{"id": "schools", "kind": "dataset", "layer": 31}]
+    connections: list[dict[str, Any]] = []
+    for minutes in (5, 10, 15):
+        steps.append(
+            {
+                "id": f"walk{minutes}",
+                "kind": "tool",
+                "tool": "catchment_area_v2",
+                "settings": {
+                    "routing_mode": "walking",
+                    "max_cost": minutes,
+                    "steps": 1,
+                },
+            }
+        )
+        connections.append(
+            {"from": "schools", "to": f"walk{minutes}", "input": "starting_points"}
+        )
+    draft = {"name": "Bänder", "steps": steps, "connections": connections}
+    model = ScriptedModel(calls=[("workflow_check_draft", {"draft": draft})])
+    transcript = await run_task(_task("wf-01"), model.model, backends, settings)
+    [checked] = transcript.tool_calls
+    assert not checked.failed, checked.result
+    [split] = [
+        i for i in checked.result["issues"] if i["code"] == "catchment_bands_split"
+    ]
+    assert split["level"] == "warning"
+    assert split["steps"] == ["walk5", "walk10", "walk15"]
+    assert "max_cost 15 and steps 3" in split["message"]
+    assert checked.result["blocking"] == 0
+
+
+async def test_a_run_of_a_saved_workflow_saves_the_result_layer(
+    backends: Backends,
+) -> None:
+    services, _, saved = backends.clients()
+    try:
+        saved.append(
+            {
+                "id": "0b6f0000-0000-0000-0000-000000000001",
+                "project_id": WF_PROJECT_ID,
+                "config": {
+                    "nodes": [
+                        {
+                            "id": "export-1",
+                            "type": "export",
+                            "data": {"type": "export", "datasetName": "Ergebnis"},
+                        }
+                    ],
+                    "edges": [],
+                },
+            }
+        )
+        started = await services.processes.post(
+            "/workflows/0b6f0000-0000-0000-0000-000000000001/execute", json={}
+        )
+        job = (await services.processes.get(f"/jobs/{started.json()['job_id']}")).json()
+        assert job["status"] == "successful"
+        [result] = job["result"]["node_results"].values()
+        assert result["layer_project_id"] == RESULT_LAYER.layer_project_id
+        layers = (
+            await services.core.get(f"/api/v2/project/{WF_PROJECT_ID}/layer")
+        ).json()
+        assert RESULT_LAYER.layer_project_id in {row["id"] for row in layers}
+        stats = await services.processes.post(
+            "/processes/aggregation-stats/execution",
+            json={
+                "inputs": {
+                    "collection": RESULT_LAYER.layer_id,
+                    "operation": "sum",
+                    "operation_column": "einwohner",
+                    "group_by_column": "name",
+                    "group_by_secondary_column": "band",
+                    "limit": 100,
+                }
+            },
+        )
+        assert {
+            "grouped_value": "Mitte",
+            "grouped_secondary_value": "5",
+            "operation_value": 1200.0,
+        } in stats.json()["items"]
+    finally:
+        await services.aclose()
+
+
+def _blocking(response: httpx.Response) -> list[dict[str, Any]]:
+    """The issues of a run processes refused, at the levels that refuse it."""
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert detail["message"] == "The workflow has issues."
+    return [i for i in detail["issues"] if i["level"] in ("damaged", "error")]
+
+
+async def test_the_run_projects_workflow_is_refused_before_it_starts(
+    backends: Backends,
+) -> None:
+    """As processes' execute does: the check of the stored config finds the
+    band edges invalid, so nothing is submitted."""
+    services, _, _ = backends.clients()
+    try:
+        refused = await services.processes.post(
+            f"/workflows/{RUN_WORKFLOW_ID}/execute", json={}
+        )
+        [issue] = _blocking(refused)
+        assert issue["code"] == "setting_invalid"
+        assert issue["node_ids"] == ["tool-walk"]
+        assert "band edges" in issue["message"]
+        assert (await services.processes.get("/jobs")).json() == {"jobs": []}
+    finally:
+        await services.aclose()
+
+
+async def test_a_run_with_an_open_dataset_step_is_refused(
+    backends: Backends,
+) -> None:
+    services, _, saved = backends.clients()
+    try:
+        saved.append(
+            {
+                "id": "0b6f0000-0000-0000-0000-000000000001",
+                "project_id": WF_PROJECT_ID,
+                "config": {
+                    "nodes": [
+                        {
+                            "id": "dataset-open",
+                            "type": "dataset",
+                            "data": {"type": "dataset", "label": "Schools"},
+                        },
+                        {
+                            "id": "export-1",
+                            "type": "export",
+                            "data": {"type": "export", "datasetName": "Ergebnis"},
+                        },
+                    ],
+                    "edges": [
+                        {"id": "e1", "source": "dataset-open", "target": "export-1"}
+                    ],
+                },
+            }
+        )
+        refused = await services.processes.post(
+            "/workflows/0b6f0000-0000-0000-0000-000000000001/execute", json={}
+        )
+        assert [i["code"] for i in _blocking(refused)] == ["layer_not_chosen"]
+        assert (await services.processes.get("/jobs")).json() == {"jobs": []}
+        layers = (
+            await services.core.get(f"/api/v2/project/{WF_PROJECT_ID}/layer")
+        ).json()
+        assert RESULT_LAYER.layer_project_id not in {row["id"] for row in layers}
+    finally:
+        await services.aclose()
+
+
+#: The skill's "Bands per district": one catchment in three bands, cut by the
+#: districts, the residents summed per band and district.
+BANDS_DRAFT: dict[str, Any] = {
+    "name": "Residents within 5, 10 and 15 minutes of a supermarket per district",
+    "steps": [
+        {"id": "shops", "kind": "dataset", "layer": 34},
+        {"id": "people", "kind": "dataset", "layer": 33},
+        {"id": "districts", "kind": "dataset", "layer": 35},
+        {
+            "id": "walk",
+            "kind": "tool",
+            "tool": "catchment_area_v2",
+            "settings": {"routing_mode": "walking", "max_cost": 15, "steps": 3},
+        },
+        {"id": "cut", "kind": "tool", "tool": "intersection", "settings": {}},
+        {
+            "id": "count",
+            "kind": "tool",
+            "tool": "aggregate_polygon",
+            "settings": {
+                "area_type": "polygon",
+                "column_statistics": [{"operation": "sum", "field": "einwohner"}],
+            },
+        },
+        {"id": "save", "kind": "export", "name": "Residents per band and district"},
+    ],
+    "connections": [
+        {"from": "shops", "to": "walk", "input": "starting_points"},
+        {"from": "walk", "to": "cut", "input": "input_layer_id"},
+        {"from": "districts", "to": "cut", "input": "overlay_layer_id"},
+        {"from": "cut", "to": "count", "input": "area_layer_id"},
+        {"from": "people", "to": "count", "input": "source_layer_id"},
+        {"from": "count", "to": "save"},
+    ],
+}
+
+
+async def test_the_build_and_run_task_can_pass(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """wf-10 end to end on the fixture: the created workflow runs without a
+    card, its run saves RESULT_LAYER and the residents per district and band
+    are read from it."""
+    created = "0b6f0000-0000-0000-0000-000000000001"
+    model = ScriptedModel(
+        calls=[
+            ("workflow_check_draft", {"draft": BANDS_DRAFT}),
+            ("workflow_create", {"draft": BANDS_DRAFT}),
+            ("workflow_run", {"workflow_id": created}),
+            (
+                "project_group_statistics",
+                {
+                    "layer_project_id": RESULT_LAYER.layer_project_id,
+                    "operation": "sum",
+                    "field": "einwohner",
+                    "group_by": "name",
+                    "then_by": "band",
+                },
+            ),
+        ],
+        answer=(
+            "Within 5 minutes on foot of a supermarket live 1,200 residents in "
+            "Mitte and 300 in Nord; the table has the 10 and 15 minute bands too."
+        ),
+    )
+    transcript = await run_task(_task("wf-10"), model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    assert not any(call.failed for call in transcript.tool_calls), transcript.tool_calls
+    checked = transcript.tool_calls[0].result
+    assert checked["blocking"] == 0, checked
+    run = transcript.tool_calls[2].result
+    assert run["status"] == "succeeded", run
+    [layer] = run["saved"]
+    assert layer["layer_project_id"] == RESULT_LAYER.layer_project_id
+    assert [f["name"] for f in layer["fields"]] == list(RESULT_LAYER.fields)
+    rows = transcript.tool_calls[3].result["rows"]
+    assert {"group": "Nord", "then": "5", "value": 300.0} in [
+        {key: row[key] for key in ("group", "then", "value")} for row in rows
+    ]
+    grades = await grade(_task("wf-10"), transcript, backends)
+    assert [g.passed for g in grades] == [True] * 5, grades
+
+
+NOTED_BANDS_DRAFT: dict[str, Any] = {
+    **BANDS_DRAFT,
+    "notes": [
+        {
+            "id": "about",
+            "text": (
+                "Residents within 5, 10 and 15 minutes on foot of a supermarket, "
+                "per district.\n\n"
+                "- Residents per band and district: one row per band, district and "
+                "separate area\n"
+                "- band: the minutes on foot"
+            ),
+            "near": ["count", "save"],
+        }
+    ],
+}
+
+
+async def test_a_note_is_saved_and_neither_checked_nor_run(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """The fixture's check and runs skip a note as processes' do: the draft
+    checks the same with and without it, the saved workflow holds it, and
+    its run succeeds."""
+    created = "0b6f0000-0000-0000-0000-000000000001"
+    model = ScriptedModel(
+        calls=[
+            ("workflow_check_draft", {"draft": BANDS_DRAFT}),
+            ("workflow_check_draft", {"draft": NOTED_BANDS_DRAFT}),
+            ("workflow_create", {"draft": NOTED_BANDS_DRAFT}),
+            ("workflow_run", {"workflow_id": created}),
+        ],
+        answer="The workflow ran; its note says how to read the result.",
+    )
+    transcript = await run_task(_task("wf-10"), model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    assert not any(call.failed for call in transcript.tool_calls), transcript.tool_calls
+    without, noted, _, run = (call.result for call in transcript.tool_calls)
+    assert noted == without
+    [saved] = transcript.saved
+    [note] = [
+        node for node in saved["config"]["nodes"] if node["type"] == "textAnnotation"
+    ]
+    assert note["data"]["text"] == (
+        "<p>Residents within 5, 10 and 15 minutes on foot of a supermarket, per "
+        "district.</p><ul><li><p>Residents per band and district: one row per "
+        "band, district and separate area</p></li><li><p>band: the minutes on "
+        "foot</p></li></ul>"
+    )
+    assert fixture_check(saved["config"]) == []
+    assert run["status"] == "succeeded", run
+
+
+RUN_CARD: dict[str, Any] = {
+    "questions": [
+        {
+            "question": "Run Schulwege 15 Minuten now?",
+            "header": "Run",
+            "options": [
+                {
+                    "label": "Run",
+                    "description": "Starts the workflow now",
+                    "recommended": True,
+                    "value": f"run:{RUN_WORKFLOW_ID}",
+                },
+                {"label": "Not now", "description": "Nothing is started"},
+            ],
+        }
+    ]
+}
+
+
+async def test_the_run_task_runs_after_the_card_and_can_pass(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """wf-11 end to end on the fixture: a run of the project's workflow
+    needs the user's pick of Run in a card; processes then refuses it before
+    it starts, for its band edges, and the answer explains that."""
+    model = TurnModel(
+        [
+            (
+                [
+                    ("project_get_workflows", {}),
+                    ("workflow_run", {"workflow_id": RUN_WORKFLOW_ID}),
+                    ("ask_user", RUN_CARD),
+                ],
+                "Shall I run it?",
+            ),
+            (
+                [("workflow_run", {"workflow_id": RUN_WORKFLOW_ID})],
+                "The run was refused before it started: in 15 Minuten zu Fuß the "
+                "step sizes are band edges and must rise, so use 5, 10, 15 "
+                "instead of 5, 5, 5.",
+            ),
+        ]
+    )
+    transcript = await run_task(_task("wf-11"), model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    listed, refused, _, ran = transcript.tool_calls
+    assert [w["id"] for w in listed.result["workflows"]] == [RUN_WORKFLOW_ID]
+    assert refused.failed and "ask_user" in str(refused.result)
+    assert not ran.failed, ran.result
+    assert ran.result["status"] == "refused", ran.result
+    [issue] = ran.result["issues"]
+    assert "band edges" in issue
+    grades = await grade(_task("wf-11"), transcript, backends)
+    assert [g.passed for g in grades] == [True] * 4, grades

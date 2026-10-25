@@ -9,7 +9,13 @@ from pydantic import SecretStr, ValidationError
 from pydantic_ai.exceptions import ToolFailed
 
 from assistant.config import AssistantSettings
-from assistant.tools.http import ServiceClients, ServiceError, call_service
+from assistant.tools.http import (
+    ServiceClients,
+    ServiceError,
+    call_service,
+    sign_in_expired,
+)
+from assistant.tools.testing import signed_in
 
 _TOOL_ENV = (
     "GOAT_PROCESSES_URL",
@@ -28,6 +34,7 @@ _TOOL_ENV = (
     "ASSISTANT_KEYCLOAK_CLIENT_ID",
     "ASSISTANT_KEYCLOAK_CLIENT_SECRET",
     "ASSISTANT_MCP_AUDIT_RETENTION_DAYS",
+    "ASSISTANT_RUN_WAIT_MAX_SECONDS",
 )
 
 
@@ -122,6 +129,12 @@ def test_mcp_audit_retention_is_read_and_at_least_a_day(
             _build()
     description = AssistantSettings.model_fields["mcp_audit_retention_days"].description
     assert description and "MCP" in description
+
+
+def test_the_wait_limit_is_read(clean_env: pytest.MonkeyPatch) -> None:
+    assert AssistantSettings().run_wait_max_seconds == 1800
+    clean_env.setenv("ASSISTANT_RUN_WAIT_MAX_SECONDS", "600")
+    assert AssistantSettings().run_wait_max_seconds == 600
 
 
 def test_token_exchange_needs_the_assistant_client(
@@ -224,6 +237,41 @@ async def test_errors_become_tool_failures(
     assert expected in caught.value.message
     # Server internals of a 5xx never reach the model.
     assert "secrets" not in caught.value.message
+
+
+SIGN_IN_TEXT = (
+    "The GOAT core service did not accept the user's sign-in. "
+    "The user may need to sign in again."
+)
+
+
+@pytest.mark.parametrize(
+    ("expires_in", "expected"),
+    [
+        (None, SIGN_IN_TEXT),
+        (-60, SIGN_IN_TEXT),
+        (
+            300,
+            "The GOAT core service refused the request: the user has no access "
+            "to this.",
+        ),
+    ],
+    ids=["no token", "expired token", "valid token"],
+)
+async def test_a_401_names_the_sign_in_only_for_an_expired_one(
+    expires_in: float | None, expected: str
+) -> None:
+    """Core answers 401 also when its authorization denies a request, so a
+    401 for a token that is still valid is no access, not a sign-in to renew."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"detail": "Unauthorized"})
+
+    bearer = None if expires_in is None else signed_in(expires_in).token
+    with pytest.raises(ServiceError) as caught:
+        await call_service(_clients(handler), "core", "GET", "/x", bearer=bearer)
+    assert caught.value.message == expected
+    assert sign_in_expired(caught.value) is (expected == SIGN_IN_TEXT)
 
 
 async def test_unreachable_and_slow_services_are_tool_failures() -> None:
@@ -459,3 +507,28 @@ def test_auth_without_a_web_client_warns_at_startup(
         with caplog.at_level(logging.WARNING, logger="assistant.app"):
             create_app(authed.model_copy(update=update))
         assert not [r for r in caplog.records if "refresh" in r.getMessage()]
+
+
+async def test_a_refusal_with_issues_keeps_them() -> None:
+    """processes refuses a run with its check's issues under detail.issues."""
+    issues = [{"code": "setting_invalid", "level": "error", "message": "Walk: bad."}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            422,
+            json={"detail": {"message": "The workflow has issues.", "issues": issues}},
+        )
+
+    with pytest.raises(ServiceError) as caught:
+        await call_service(_clients(handler), "processes", "POST", "/x", bearer=None)
+    assert caught.value.status == 422
+    assert caught.value.issues == issues
+
+
+async def test_a_refusal_without_issues_has_none() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"detail": "Project not found"})
+
+    with pytest.raises(ServiceError) as caught:
+        await call_service(_clients(handler), "core", "GET", "/x", bearer=None)
+    assert caught.value.issues is None

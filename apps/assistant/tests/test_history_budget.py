@@ -35,7 +35,13 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.usage import RequestUsage, RunUsage
 
 from assistant.agent import RunDeps, build_agent
-from assistant.budget import NextCall, RunBudget, next_call, weighted_tokens
+from assistant.budget import (
+    RESULT_READS,
+    NextCall,
+    RunBudget,
+    next_call,
+    weighted_tokens,
+)
 from assistant.bus import InMemoryEventBus
 from assistant.config import AssistantSettings
 from assistant.context import parse_context
@@ -285,6 +291,27 @@ def test_the_card_is_offered_only_when_both_calls_fit(
     assert budget.can_ask(usage, LONG) is can_ask
 
 
+@pytest.mark.parametrize(
+    ("usage", "fits"),
+    [
+        # The read step, the answer step and a retry of it at 43,000 each,
+        # and 8,000 for answering: 200,000 at 63,000 spent.
+        (_spent_so_far(63_000), True),
+        # 201,000: the answer step and a spare fit, but a retry after a read
+        # would not.
+        (_spent_so_far(64_000), False),
+    ],
+)
+def test_a_read_past_the_look_ups_needs_room_for_three_calls(
+    usage: RunUsage, fits: bool
+) -> None:
+    """A response with only reasoning is asked again, so a read step that
+    took the spare would leave the answer no retry."""
+    budget = RunBudget(max_tokens=200_000, max_tool_calls=30)
+    assert budget.read_fits(usage, LONG) is fits
+    assert budget.answer_fits(usage, LONG)
+
+
 def test_cache_reads_count_at_a_tenth_and_the_rest_fully() -> None:
     usage = RunUsage(
         input_tokens=1000,
@@ -300,8 +327,14 @@ def test_cache_reads_count_at_a_tenth_and_the_rest_fully() -> None:
 def test_the_hard_limit_counts_tokens_as_the_budget_does() -> None:
     limits = RunBudget(max_tokens=1000, max_tool_calls=30).usage_limits()
     # The run's own limit is kept call by call (StepGuard); this one only
-    # stops a single step of more calls than the run's whole limit.
-    assert limits.tool_calls_limit == 60
+    # stops a single step of more calls than the run's whole limit, with
+    # room for the reads of a run's result past it and a refused fourth.
+    assert limits.tool_calls_limit == 2 * 30 + RESULT_READS + 1
+    # Without tool calls there is no run's result to read.
+    assert (
+        RunBudget(max_tokens=1000, max_tool_calls=0).usage_limits().tool_calls_limit
+        == 0
+    )
     # Checked while a response streams, too.
     assert limits.has_token_limits()
     # 100 uncached, 30 output and 2900 read from the cache count as 420.
@@ -532,10 +565,8 @@ async def test_a_run_out_of_budget_still_asks_with_the_card(
     run = await repo.get_run(run_id)
     assert run is not None and (run["status"], run["error"]) == ("succeeded", None)
     assert [tool.name for tool in script.infos[5].function_tools] == ["ask_user"]
-    # After the card: no tools and no word of the card, the answer ends.
-    assert len(script.infos) == 7 and script.infos[6].function_tools == []
-    parts = script.infos[6].model_request_parameters.instruction_parts or []
-    assert ANSWER_NOW in [part.content for part in parts]
+    # The card ends the answer: no model call follows it.
+    assert len(script.infos) == 6
     [message] = [
         m
         for m in await repo.list_messages(conversation_id, None)
@@ -687,20 +718,16 @@ async def test_the_answer_now_step_fits_although_it_misses_the_cache(
     assert model.offered[-1] == ["ask_user"] and model.usages[-1][1] == 0
 
 
-async def test_a_card_at_the_answer_now_step_leaves_room_for_the_closing_call(
+async def test_a_card_at_the_answer_now_step_ends_the_answer(
     repo: Repository, settings: AssistantSettings
 ) -> None:
-    """After the card the answer closes with a call that offers no tools, so
-    it misses the cache again."""
+    """The card offered at the answer step is the answer's last call: no call
+    to close it follows."""
     model = _Provider(start=20_000, growth=3_000, asks=True)
     run = await _run(repo, settings, model)
     assert run["status"] == "succeeded", run["error"]
-    assert model.offered[-2:] == [["ask_user"], []]
-    assert model.usages[-2][1] == model.usages[-1][1] == 0
-    # The card is named only while it is offered.
-    assert ANSWER_NOW_CARD in model.instructions[-2]
-    assert ANSWER_NOW in model.instructions[-1]
-    assert ANSWER_NOW_CARD not in model.instructions[-1]
+    assert model.offered[-1] == ["ask_user"]
+    assert ANSWER_NOW_CARD in model.instructions[-1]
 
 
 async def test_a_run_reading_from_the_cache_is_not_stopped_at_its_raw_tokens(

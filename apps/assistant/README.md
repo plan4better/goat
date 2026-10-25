@@ -40,7 +40,7 @@ the model made up or an item the user cannot open. Which buttons a card has is d
 other people wrote, and a button it chose could act on an instruction hidden in that text. Each card has at most one
 button: Open a project, or a workflow or layout in its project's Workflows or Layouts view, Zoom to a layer of the open project (anything already in it has no preview, the real map is
 beside the dock), or Add to an editable open project, which adds on the click with an Undo notice; the model adds a
-catalog dataset of its own choosing only with `project_add_catalog_layer`, after the user picked it in a card, and a
+dataset of its own choosing only with `project_add_catalog_layer` or `project_add_dataset`, after the user picked it in a card, and a
 workflow template it uses brings the datasets the template ships (Write tools and Templates, below). The thumbnail,
 owner and last change are read by the web app when the card is shown, with
 the user's session, not taken from the tool result: thumbnail links expire, and names of colleagues need not go to the
@@ -60,36 +60,113 @@ can still look for several datasets.
 to four options each, and a free-text field the card adds by itself. It is a general mechanism, not tied to
 workflows. The card is a `data-ask` part named by its card id, `ask-` and an id the tool mints (`tools/ask.py`), not
 the provider's tool call id, which some providers number per response and so repeat in a later answer; the tool's
-stored result carries the card id, by which `asks.AskHistory` finds the card again. After a card the run offers no
-more tools, so the answer ends there. The user's answer is the next run's message (`RunMessage.answer`): it is
-checked against the stored card before anything is stored (a card is answered once), kept with the user message and
-returned as that message's `metadata.answer`, and given to the model with the values the card attached
-(`asks.answer_lines`, in a block of its own after the user's text, `prompt.with_note`). The card never carries its
-option values, such as a layer or a catalog id, to the web: the card part leaves them out (`asks.card_data`), so do
-the stream and the transcript of the `ask_user` call (`asks.public_args`), and the stored rows keep them. An id the
-model then passes to another tool is streamed with that call, as any argument is. The card is not on `/mcp`: its
-clients cannot show one.
+stored result carries the card id, by which `asks.AskHistory` finds the card again. A shown card ends the answer
+before the model is called again (`runs/turn.py`): a model that reasons before it replies otherwise kept the answer
+running while the card already waited; the card's result stays in the history. An answer shows one card: a second
+`ask_user` call in the same response runs after the first and is refused, without a card, with a note to put every
+question into one card (`tools/toolset.py`). A card is refused the same way after a finished workflow run's result
+while no response written after that result holds text (`ToolSpec.report_first`): cards withheld finished runs'
+numbers or asked whether to go on, and a response that made the run's call wrote its text before the result. The refusal
+says to write the text and the card in one response, since text alone ends the answer. Cards were refused in a loop for
+two reasons: at the step that answers, which offered only `ask_user`, a model that meant to call another tool called
+`ask_user`, and a model that knew text alone ends its answer kept its card and sent it again without text. So cards are
+refused in at most two responses per result (`REPORT_REFUSALS`), a repeat of the card refused before it with a shorter
+note, and the gate lets the next one through. A card that fails validation (a placeholder label, say) gets that error
+instead, which leaves the count alone. A stopped answer keeps the cards and workflows it showed in the history too, so a
+later answer to the card finds it. The user's answer is the next run's message (`RunMessage.answer`): it is checked
+against the stored card before anything is stored (a card is answered once), kept with the user message and returned as
+that message's `metadata.answer`, and given to the model with the values the card attached (`asks.answer_lines`, in a
+block of its own after the user's text, `prompt.with_note`). The card never carries its option values, such as a layer
+or a catalog id, to the web: the card part leaves them out (`asks.card_data`), so do the stream and the transcript of
+the `ask_user` call (`asks.public_args`), and the stored rows keep them. An option that adds datasets names their ids in
+`adds`, hidden the same way, and its `value` can then be a short key: models gave such an option a slug as its value,
+the add tool found no pick of the dataset, and the card was asked again. Each id in `adds` is looked up before the card
+is shown, in the catalog and, for a UUID, in core as a dataset or a bundle the user can read, as the add tools check
+them: an id neither knows refuses the card, so a cut-off id is fixed before the user picks it, and a lookup the service
+fails for lets the card through, since the add tools check again. A card names at most `MAX_CHECKED_ADDS` (50) distinct
+ids in `adds`; one with more is refused unchecked. An id the model then passes to another tool is streamed with that
+call, as any argument is. The card is not on `/mcp`: its clients cannot show one.
 
 **Write tools.** Next to read tools and proposals there is a third risk class, `write` (`ToolSpec.risk` in
-`tools/runtime.py`): tools that create a workflow in the open project or add a catalog dataset to it. They create;
-nothing changes or deletes what exists (changing workflows waits for their version history). They belong to the
-workflows pack (`tools/workflows.py`), which is offered on the Map and Workflows pages only and never on `/mcp`.
-Every write goes into the project of the page: no write tool takes a project id, so text inside a dataset, a template
-or a tool description cannot make the assistant write into another project. The user's rights apply, since every call
-carries their token: a viewer is told they can view the project but not create workflows or add datasets in it, and
-the instructions tell the model not to try again (core answers 401 for missing rights as well as 403). A write called
-again with the same arguments anywhere in the conversation returns its first result: each run starts with the
-conversation's earlier write results (`toolset.earlier_writes`, from the stored parts, which also keep the calls of
-an answer cancelled afterwards), and writes run one at a time, so an identical twin in the same response finds the
-first one's result. A retry or a "try again" with the same arguments thus never creates a second workflow (a changed
-draft is a new call); only a write that returned counts, so one that failed can be tried again. The audit row of a
-write keeps what it created (the `created` column of `assistant.tool_call`, from the result's `created()`); if
-reading that fails, it is logged and the call still answers, since what was created exists. A catalog dataset the
-model chooses is added only when the user picked it in a card: `asks.user_chose` reads the stored card and answer,
-never the model's words, and a typed reply is no pick; the datasets a workflow template ships come with the template
-instead (Templates, below). Consent is only as good as the card's labels: the model writes them and the option values
-stay hidden, so the user agrees to what a label and its description say; a pick adds one public catalog dataset to
-the page's project, where it is visible and can be removed.
+`tools/runtime.py`): tools that create a workflow in the open project, run one or add a dataset to it. They create, and
+a run replaces its workflow's previous results; nothing else changes or deletes what exists (changing workflows waits
+for their version history). They belong to the workflows pack (`tools/workflows.py`, the runs in
+`tools/workflow_runs.py`), which is offered on the Map and Workflows pages only and never on `/mcp`. Every write goes
+into the project of the page: no write tool takes a project id, so text inside a dataset, a template or a tool
+description cannot make the assistant write into another project. The user's rights apply, since every call carries
+their token: a viewer is told they can view the project but not create workflows or add datasets in it, and the
+instructions tell the model not to try again (core answers 401 for missing rights as well as 403). So a tool says the
+sign-in expired only when the request's token is missing or past its `exp` (`http.sign_in_expired`); any other 401 from
+core means no access. A write called again with the same arguments anywhere in the conversation returns its first
+result, a repeatable write (`ToolSpec.repeatable`) only within one answer: `workflow_run` repeated in an answer returns
+that answer's first summary and runs again in a later answer, where "run it again" asks for a new run. Each answer
+starts with the conversation's earlier results of the other writes (`toolset.earlier_writes`, from the stored parts,
+which also keep the calls of an answer cancelled afterwards), and writes run one at a time, so an identical twin in the
+same response finds the first one's result. A retry or a "try again" with the same arguments thus never creates a second
+workflow (a changed draft is a new call); only a write that returned counts, so one that failed can be tried again. The
+audit row of a write keeps what it created (the `created` column of `assistant.tool_call`, from the result's
+`created()`); if reading that fails, it is logged and the call still answers, since what was created exists. A dataset
+the model chooses, a catalog dataset (`project_add_catalog_layer`) or one of the user's own (`project_add_dataset`, with
+the id `core_find` gives), is added only when the user picked it in a card: `dataset_picked` in `tools/workflows.py`
+reads the stored cards and answers (`asks.recent_picked_ids`), never the model's words, and a typed reply is no pick. A
+pick counts when the option's `value` or `adds` names the dataset or a bundle it belongs to. The user's own dataset is
+read with their sign-in before it is added, so only a dataset they can read reaches the project. A catalog id can be a
+UUID like a user's dataset's, and models gave one to the other's tool (and a dataset of the user's to
+`catalog_get_record`): when an add or that read fails, the other service is asked whether it knows the id (core only for
+a UUID), and the error names the tool that takes it. The lookup runs only on that failure, so an add that works costs no
+second call. The datasets a workflow template ships come with the template instead (Templates, below). Consent is only
+as good as the card's labels: the model writes them and the option values stay hidden, so the user agrees to what a
+label and its description say; a pick adds one dataset to the page's project, where it is visible and can be removed.
+
+**Running workflows.** `workflow_run` runs a workflow of the open project through processes'
+`POST /workflows/{id}/execute`, as the Run button does, and waits for it inside the tool call: no model call is made
+while it waits, and the run's progress goes out as a `workflow-run` data part (one per job, replaced as it changes, sent
+again after `HEARTBEAT_SECONDS` without a change, `tools/workflow_runs.py`). A run replaces the workflow's previous
+results, so it starts without asking only for a workflow this conversation created, with no export set to overwrite and
+whose latest run, if any, this conversation started (`run_permission` in `workflows/runs.py`, read from the
+conversation's stored parts); any other run needs the user's pick of Run in a card, one pick per run, and the refusal
+names the condition that failed, so the card says what a run does. A run processes refuses and a wait on a run already
+going use up the pick as well. A run already going is waited for, never started twice. The answer keeps one clock:
+`ASSISTANT_RUN_MAX_SECONDS`, which a waiting run moves to `ASSISTANT_RUN_WAIT_MAX_SECONDS` from the answer's start
+(`clock.AnswerClock`); a run is not started when the answer has too little time left to wait for its first status, and
+when the wait has to end first, the run goes on and `workflow_last_run` reads it later. Stopping the answer cancels the
+run it started, never one it only waited for; a Stop while the start request is still on its way cannot, since the
+job's id comes only with processes' answer. A shutdown of the service, or a run that lost its lease to the sweeper and
+is ended here for it, ends the answer, not the run (`ToolEnv.stopping`): the job goes on, and `workflow_last_run` reads
+it in the next answer. Once the run has started, a read does not fail the call, since a failed call may be tried
+again and that would start the workflow again: a status read that fails because processes is briefly unavailable is read
+again while the answer has time, any other failed read ends the wait with the run as still going, and a saved layer's
+fields are read best effort. The permission and the wait for a run already going read processes' job list, which holds
+the user's jobs of the last three days, at most 100 of them: the permission does not see a run of the user's older than
+that, and an active run whose workflow the list does not name (processes leaves out the inputs of a job it could not
+read) stops a start, since it may be this workflow's. The summary of a failed or cancelled run names the failing step
+and its error and marks each step the run reports nothing for as `unknown`, which may have finished: processes attaches
+the steps' results to a successful run only and their statuses while it runs. Each tool step lists the settings the
+run was sent, its variables resolved (`step_settings` in `workflows/runs.py`), so the answer states the method as it
+ran (time window, mode, limits): the nodes and variables processes keeps with the job, since the toolbox runs with
+other variable values than the stored ones and the editor with its unsaved nodes, and the stored config for what the
+job lacks. Plain values are listed as they are, statistics as `sum(field)` and opportunities by name and `max_cost`;
+ids, filters, geometries, SQL text (its literals can hold data values) and the names of result layers are left out,
+before the cap counts. Besides the settings it was sent, each tool step lists the settings it left out at the tool's
+default (`step_defaults`): the assistant's drafts hold only what the model wrote, so a run at the defaults would
+otherwise state no time window. They come from the tool's process description, read once per tool and cached, and a
+description that cannot be read leaves them out. A default is listed only when the editor shows its setting for the
+step's values (`goatlib.workflows.visibility`, advanced settings counted as shown, since they apply all the same)
+and the tool applies that very value: a setting whose form value follows other settings (`default_from`,
+`default_by_field`, ...) is left out, since tools resolve those themselves and the static default is not always what
+runs: a catchment's limit follows its mode, and a travel cost matrix's street limit (`max_cost`) left out is
+unbounded, not the form's value. `project_group_statistics` reads results per group, or one row for the whole
+filtered layer without `group_by`, through processes' `aggregation-stats`, the statistics behind the dashboard
+charts; with `share_of` it reads the other layer's statistic too, with a filter of its own (residents in a catchment
+over all residents: the denominator needs another filter than the numerator), and divides each row's value by the
+other layer's for the same group, or by its total, in this service, so shares and totals in an answer never come
+from the model's arithmetic, and its note says how many groups have no share and why.
+The rows stop at 100 groups, but the denominator is read with up to `DENOMINATOR_GROUPS`, since a row's group may come
+anywhere in the other layer's list. A denominator from another layer gets a note: if the layers come from different
+sources, check that both count the same population (source and year).
+Under Restricted it sends counts only, for few groups (judged over the whole layer, also with a filter), no count of a
+group under `MIN_RESTRICTED_GROUP` features, nothing for a filter that matches fewer features than that, and nothing at
+all with `share_of`.
 
 **Building a workflow.** The model is shown only the tools of the user's toolbox (`offered` in
 `tools/workflow_tools.py`: `GET /processes` for the user, without the tools hidden from the toolbox, such as custom
@@ -99,12 +176,28 @@ the whole workflow. A pure function turns the draft into the editor's config (`t
 ids derived from the draft's and a salt, the editor's handles and dataset filter format, a layout and a stored
 viewport, since the editor opens a workflow at its stored view), so the check, the create and the editor read the
 same config. Every call converts the draft once with a fresh salt: the create saves the config it has just checked,
-and two workflows made from one draft share no node id, which goatlib finds an export's result layer by. The check is
+and two workflows made from one draft share no node id, which goatlib finds an export's result layer by. A draft's
+notes (at most 5) become the editor's note nodes (`textAnnotation`), placed above the steps they explain, which the
+runner and the check skip: the model writes plain text, escaped into the editor's HTML, so no markup of its own
+reaches the canvas. More than one note gets a warning (`note_issues`), not an error, since only the user can ask for
+more; an over-long note is refused with the words to shorten it by, so the model never asks the user about a note.
+The check is
 the editor's own (`POST /workflows/check` on processes) plus the assistant's check of filter fields
 (`filter_field_issues` in `workflows/issues.py`, which does not judge a layer geoapi lists no fields for yet, such as
-a catalog dataset just added); its issues come back in the draft's ids, the message of a one-step issue starting with
-the step's name (`draft_issues`). It needs the user's toolbox and the tools' process descriptions, for the steps'
+a catalog dataset just added), a warning for catchments split by budget where one with bands would do
+(`band_issues`), and an error for a catchment whose dataset steps give more start points than one run takes and
+for a travel cost matrix with more origin and destination pairs than one run takes (`starting_point_issues`,
+`matrix_pair_issues`: each dataset step's layer counted once with its filter through processes' `feature-count`,
+against the limits in goatlib's `tools/limits.py`), which the run would otherwise fail on only once it reaches that
+step. The count follows merge and centroid steps, whose rows are their inputs' together, and stops at any other
+step, whose rows only its run knows; a sum with a count that could not be read is left out rather than reported low.
+Under Restricted, a filtered count below `MIN_RESTRICTED_GROUP` counts as one that could not be read: the issues'
+messages name the counts, and `project_count_features` withholds such a count too.
+The check's issues come back in the draft's ids, the message of a one-step issue starting with the step's name
+(`draft_issues`). It needs the user's toolbox and the tools' process descriptions, for the steps'
 titles, the layer inputs and the field settings: without them a draft is unchecked and `workflow_create` refuses.
+Each setting reaches the model with what it means, its description and the tool's example where it gives one
+(`workflows/tool_info.py`): a name and a type do not tell a band edge from the width of a band.
 Processes' 400 or 422 on a draft goes back to the model as an error to fix; only when processes cannot be reached or
 fails is a draft left unchecked.
 The model can tell a dataset that covers far more than the place asked about, which then gets an area filter:
@@ -126,7 +219,9 @@ a layer (the input itself, a field setting or a list whose items read it, the se
 handle, and the opportunities as a whole while every connected one reads such a layer, since processes then cannot
 say which one an error belongs to). A rejection of such a step as a whole, naming no setting, stays open too,
 whatever its cause, since the check does not name one. Everything else blocks, a rejected setting that reads no such
-layer among them (`split_issues`, fed by `layer_settings`). Nothing starts a run: the user clicks Run.
+layer among them (`split_issues`, fed by `layer_settings`). The create also answers with the assistant's own warnings
+(bands, notes), apart from the issues left open, since a model may create a draft without checking it first and would
+not hear them otherwise. Creating starts no run: `workflow_run` does (Running workflows, above), or the user with Run.
 
 **Templates.** `workflow_find_templates` searches the whole query and also its longer words (`MAX_SEARCH_WORDS` and
 `MIN_SEARCH_WORD_CHARS` in `tools/workflows.py`), because core matches the whole query as one piece of a template's
@@ -177,29 +272,40 @@ Prompt caching: every model call of an answer resends the instructions, tool def
 far. OpenAI, Azure OpenAI, DeepSeek and Mistral cache that prefix by themselves; Claude (direct, Bedrock, Vertex) and
 models behind OpenRouter that need it get explicit cache markers (`llm/providers.py`). The page note (language,
 page, filters) travels in each user message (`prompt.with_note`), not in the instructions: it changes when the user
-moves or filters, and anything that changed ahead of the conversation would make every call read it again. Cached tokens are recorded per run and shown in the
-answer details.
+moves or filters, and anything that changed ahead of the conversation would make every call read it again. Cached
+tokens are recorded per run and shown in the answer details.
 
-Long conversations: because every call resends the conversation, earlier answers' search results and reasoning soon
-made up most of each call, and an answer ran into `ASSISTANT_RUN_MAX_TOKENS` after a few searches. So before each call
+OpenRouter sends one model to many providers, which differ in price, speed and precision (some serve 4-bit weights),
+and picks one per call unless told otherwise. An OpenRouter connection can therefore name its providers in order
+(`provider_order`, with `allow_fallbacks` for when those fail); the connection test runs with them, so it tests the
+pinned provider. Only OpenRouter connections take them (`llm/providers.normalize_connection`).
+
+Long conversations: because every call resends the conversation, earlier answers' search results and reasoning soon made
+up most of each call, and an answer ran into `ASSISTANT_RUN_MAX_TOKENS` after a few searches. So before each call
 earlier answers' long tool results go to the model as their counts and their reasoning is left out
-(`assistant/history.py`); what the answers said and the cards they showed stay, and the stored history keeps
-everything. And before either run limit, the model's next call is told to answer with what it found and keeps only
-`ask_user` (`assistant/budget.py`), so a long search ends in an answer, or in a card when the user has to choose, not
-only in the limit error. `ASSISTANT_RUN_MAX_TOKENS` counts tokens read from the provider's cache at a tenth, roughly
-what they cost: every call rereads the cached prefix, and counting it fully stopped answers on cheap rereads. The
-budget and the hard limit count the same way. The step that answers offers other tools and instructions than the calls
-before it, so the provider reads none of it from its cache, and a card's closing call misses again. So both are sized
-at their whole context, read from the run's messages: the newest call's input and output plus the tool results the next
-call sends. One more look-up is allowed only while, after it, both still fit with the run's largest step added; the card
-only while both fit, and otherwise the step answers in text. Within a step, calls past the run's tool-call limit are
-refused as they run, and every call let run counts toward that limit, failed ones too. A call a service failed twice
-for (a 429 or 5xx answer, no answer in time, or none: `http.service_failed`) is refused on its next repeat without
-asking the service again (`SERVICE_FAILED_TWICE` in `assistant/tools/toolset.py`); the first retry still runs, since a
-service can fail for a moment. A 4xx answer does not count: it is the service's verdict on the call. A result that
-would leave the answer step too little room is refused (`StepGuard`), which ends the run's look-ups (`answer_step` in
-`assistant/tools/toolset.py`). The step's other calls go on, and where the answer step still fits after the run's
-first call (which is not checked), the run answers with what it found instead of failing at a limit.
+(`assistant/history.py`); what the answers said and the cards they showed stay, and the stored history keeps everything.
+And before either run limit, the model's next call is told to answer with what it found and keeps only `ask_user`
+(`assistant/budget.py`), so a long search ends in an answer, or in a card when the user has to choose, not only in the
+limit error. A finished workflow run's result the answer has not written about yet is the exception: the answer may
+still read it with the project's read tools and `workflow_describe_tool` (what the result's fields and scales mean),
+`RESULT_READS` (3) calls in all, also past the tool-call limit, while three answer-sized calls fit before each read
+step: the read step, the answer step and a retry of it, since a response with only reasoning is asked again. The answer
+step keeps its room (`StepGuard`); after reading, the run looks nothing else up. Offered only the card, answers could
+not read more of their results, and their attempts to read came out as cards. `ASSISTANT_RUN_MAX_TOKENS` counts tokens
+read from the provider's cache at a tenth, roughly what they cost: every call rereads the cached prefix, and counting it
+fully stopped answers on cheap rereads. The budget and the hard limit count the same way. The step that answers offers
+other tools and instructions than the calls before it, so the provider reads none of it from its cache. So the answer
+step and one spare call are sized at their whole context, read from the run's messages: the newest call's input and
+output plus the tool results the next call sends. One more look-up is allowed only while, after it, both still fit with
+the run's largest step added; the card only while both fit, and otherwise the step answers in text. Within a step, calls
+past the run's tool-call limit are refused as they run, and every call let run counts toward that limit, failed ones
+too. A call a service failed twice for (a 429 or 5xx answer, no answer in time, or none: `http.service_failed`) is
+refused on its next repeat without asking the service again (`SERVICE_FAILED_TWICE` in `assistant/tools/toolset.py`);
+the first retry still runs, since a service can fail for a moment. A 4xx answer does not count: it is the service's
+verdict on the call. A result that would leave the answer step too little room is refused (`StepGuard`), which ends the
+run's look-ups (`answer_step` in `assistant/tools/toolset.py`). The step's other calls go on, and where the answer step
+still fits after the run's first call (which is not checked), the run answers with what it found instead of failing at a
+limit.
 
 An answer also has to end in text. Pydantic AI asks again after a response without text or a tool call (only
 reasoning, or nothing), with the same tools, and a model that gave one often gave the next alike until the run failed

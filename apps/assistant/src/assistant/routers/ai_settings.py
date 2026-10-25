@@ -8,7 +8,7 @@ found. Keys go in, never out: responses carry the last 4 characters only.
 """
 
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -60,7 +60,14 @@ RESOLVER: Resolver = system_resolver
 PROBE: Callable[[Target, EndpointPolicy], Awaitable[ProbeResult]] = probe_target
 
 #: Fields whose change needs a new test (P8).
-_RELEVANT = ("provider", "base_url", "region", "model")
+_RELEVANT = (
+    "provider",
+    "base_url",
+    "region",
+    "model",
+    "provider_order",
+    "allow_fallbacks",
+)
 
 
 def _error(
@@ -129,6 +136,8 @@ class ConnectionOut(BaseModel):
     base_url: str | None
     region: str | None
     model: str
+    provider_order: list[str]
+    allow_fallbacks: bool
     key_last4: str | None
     credentials_readable: bool
     capabilities: dict[str, Any]
@@ -148,6 +157,9 @@ class ConnectionCreate(BaseModel):
     base_url: str | None = None
     region: str | None = None
     model: str = Field(min_length=1, max_length=200)
+    #: OpenRouter only (``normalize_connection``).
+    provider_order: list[str] = Field(default_factory=list, max_length=20)
+    allow_fallbacks: bool = True
     credentials: dict[str, str] = Field(default_factory=dict)
 
 
@@ -159,6 +171,8 @@ class ConnectionUpdate(BaseModel):
     base_url: str | None = None
     region: str | None = None
     model: str | None = Field(default=None, min_length=1, max_length=200)
+    provider_order: list[str] | None = Field(default=None, max_length=20)
+    allow_fallbacks: bool | None = None
     credentials: dict[str, str] | None = None
 
 
@@ -237,6 +251,8 @@ async def _connection_out(
         base_url=row["base_url"],
         region=row["region"],
         model=row["model"],
+        provider_order=list(row["provider_order"] or []),
+        allow_fallbacks=row["allow_fallbacks"],
         key_last4=hint,
         credentials_readable=readable,
         capabilities=row["capabilities"] or {},
@@ -291,9 +307,19 @@ async def _checked_fields(
     base_url: str | None,
     region: str | None,
     model: str,
+    provider_order: Sequence[str],
+    allow_fallbacks: bool,
 ) -> ConnectionFields:
     try:
-        fields = normalize_connection(provider, base_url, region, model, caller.policy)
+        fields = normalize_connection(
+            provider,
+            base_url,
+            region,
+            model,
+            caller.policy,
+            provider_order=provider_order,
+            allow_fallbacks=allow_fallbacks,
+        )
         if fields.base_url is not None:
             await check_resolves(fields.base_url, caller.policy, RESOLVER)
     except EndpointNotAllowed as exc:
@@ -325,6 +351,8 @@ def _target(
         connection_id=connection_id,
         provider=fields.provider,
         model=fields.model,
+        provider_order=fields.provider_order,
+        allow_fallbacks=fields.allow_fallbacks,
         base_url=fields.base_url,
         region=fields.region,
         credentials=credentials,
@@ -489,6 +517,8 @@ async def create_connection(
         body.base_url,
         body.region,
         body.model,
+        body.provider_order,
+        body.allow_fallbacks,
     )
     credentials = _checked_credentials(body.provider, body.credentials)
     try:
@@ -524,6 +554,12 @@ async def update_connection(
         body.base_url if "base_url" in sent else row["base_url"],
         body.region if "region" in sent else row["region"],
         body.model if body.model is not None else row["model"],
+        body.provider_order
+        if body.provider_order is not None
+        else row["provider_order"] or [],
+        body.allow_fallbacks
+        if body.allow_fallbacks is not None
+        else row["allow_fallbacks"],
     )
 
     entered = {
@@ -547,6 +583,8 @@ async def update_connection(
         "base_url": fields.base_url,
         "region": fields.region,
         "model": fields.model,
+        "provider_order": list(fields.provider_order),
+        "allow_fallbacks": fields.allow_fallbacks,
     }
     relevant = credentials is not None or any(
         changes[key] != row[key] for key in _RELEVANT

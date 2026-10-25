@@ -92,6 +92,33 @@ def test_an_eval_runs_workflows_join_the_set_once_and_only_if_they_can_run(
     assert runs.add_from_report(report_path, path)[0] == 0
 
 
+def test_a_workflow_with_a_note_converts_runs_and_joins_the_set(
+    tmp_path: Path,
+) -> None:
+    """A note is no step: it changes neither where a case runs nor whether
+    the runners can run it."""
+    case = json.loads(
+        json.dumps(next(case for case in SET["cases"] if "draft" in case))
+    )
+    first = case["draft"]["steps"][0]["id"]
+    case["draft"]["notes"] = [
+        {"id": "about", "text": "What the workflow answers.", "near": [first]}
+    ]
+    config = runs.convert(case, SET["titles"])
+    assert [node["type"] for node in config["nodes"]].count("textAnnotation") == 1
+    assert runs.run_kind(config) == case["run"]
+    report_path = tmp_path / "results.json"
+    report_path.write_text(
+        json.dumps(
+            {"tasks": [{"id": "wf-01", "workflows": [{"name": "W", "config": config}]}]}
+        ),
+        encoding="utf-8",
+    )
+    path = tmp_path / "runs.json"
+    path.write_text(json.dumps({"titles": {}, "cases": []}), encoding="utf-8")
+    assert runs.add_from_report(report_path, path) == (1, [])
+
+
 def test_a_report_keeps_the_workflows_a_task_created() -> None:
     task = next(task for task in load_tasks() if task.suite == "workflow")
     config: dict[str, Any] = {"nodes": [], "edges": []}

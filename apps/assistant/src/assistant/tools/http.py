@@ -9,6 +9,7 @@ internals of a 5xx are not passed on.
 """
 
 import json
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -18,6 +19,7 @@ import httpx
 from pydantic_ai.exceptions import ToolFailed
 
 from assistant.config import AssistantSettings
+from assistant.login import LoginFailed, token_claims
 from assistant.tls import ssl_context
 
 Service = Literal["core", "geoapi", "processes", "catalog"]
@@ -31,11 +33,22 @@ SERVICE_LABELS: dict[Service, str] = {
 
 _DETAIL_CHARS = 300
 
+#: A tool's failure when a service refused the run's sign-in itself
+#: (``sign_in_expired``).
+SIGN_IN_EXPIRED = (
+    "The sign-in expired: the user needs to sign in again (reload the page). "
+    "Nothing was read."
+)
 
-def _message(service: Service, status: int, detail: str) -> str:
+
+def _message(service: Service, status: int, detail: str, token_expired: bool) -> str:
     label = SERVICE_LABELS[service]
-    if status == 401:
+    # Core answers 401 also when its authorization denies a request, so only a
+    # request sent without a token or with an expired one names the sign-in.
+    if status == 401 and token_expired:
         return f"The {label} did not accept the user's sign-in. The user may need to sign in again."
+    if status == 401:
+        return f"The {label} refused the request: the user has no access to this."
     if status == 403:
         return f"The user has no access to this in the {label}."
     if status == 404:
@@ -53,11 +66,49 @@ class ServiceError(ToolFailed):
     """A service answered with an error. ``status`` lets a tool turn a 404 into
     a message that names what was not found."""
 
-    def __init__(self, service: Service, status: int, detail: str) -> None:
+    def __init__(
+        self,
+        service: Service,
+        status: int,
+        detail: str,
+        issues: list[dict[str, Any]] | None = None,
+        *,
+        token_expired: bool = False,
+    ) -> None:
         self.service = service
         self.status = status
         self.detail = detail
-        super().__init__(_message(service, status, detail))
+        #: A workflow check's issues when the service refused with them
+        #: (processes' 422 for a run with blocking issues); None otherwise.
+        self.issues = issues
+        #: Whether the request went without a token or with one whose ``exp``
+        #: had passed (``sign_in_expired``).
+        self.token_expired = token_expired
+        super().__init__(_message(service, status, detail, token_expired))
+
+
+def _token_expired(bearer: str | None) -> bool:
+    """Whether ``bearer`` is missing or its ``exp`` has passed. Its claims are
+    read without checking the signature: it is the run's own token, and the
+    answer only picks the message. A token without a readable ``exp`` counts
+    as valid."""
+    if not bearer:
+        return True
+    try:
+        exp = token_claims(bearer).get("exp")
+    except LoginFailed:
+        return False
+    if not isinstance(exp, (int, float)) or isinstance(exp, bool):
+        return False
+    return exp <= time.time()
+
+
+def sign_in_expired(exc: ServiceError) -> bool:
+    """Whether a 401 refused the run's sign-in rather than the request. Core
+    answers 401 also when its authorization denies a request (no access, or
+    nothing under that id), so only a request sent without a token or with an
+    expired one counts; any other 401 means what the tool's 403 means."""
+    return exc.status == 401 and exc.token_expired
 
 
 def service_failed(exc: BaseException) -> bool:
@@ -90,6 +141,18 @@ def _detail(response: httpx.Response) -> str:
             if value:
                 return str(value)[:_DETAIL_CHARS]
     return json.dumps(body)[:_DETAIL_CHARS]
+
+
+def _issues(response: httpx.Response) -> list[dict[str, Any]] | None:
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    issues = detail.get("issues") if isinstance(detail, dict) else None
+    if not isinstance(issues, list):
+        return None
+    return [issue for issue in issues if isinstance(issue, dict)]
 
 
 def _query(params: Mapping[str, object] | None) -> dict[str, str] | None:
@@ -230,7 +293,13 @@ async def call_service(
         raise ToolFailed(f"The {label} is not reachable right now.") from exc
     # Redirects are not followed (``follow_redirects=False``); a 3xx is an error too.
     if response.status_code >= 300:
-        raise ServiceError(service, response.status_code, _detail(response))
+        raise ServiceError(
+            service,
+            response.status_code,
+            _detail(response),
+            _issues(response),
+            token_expired=response.status_code == 401 and _token_expired(bearer),
+        )
     if not response.content:
         return None
     try:

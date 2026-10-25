@@ -12,9 +12,16 @@ same draft and salt give the same config. A tool converts a draft once per
 call with a fresh salt, so the create saves the config its check checked, and
 two workflows made from one draft share no node id (an export's node id names
 its result layer, ``goatlib.tools.workflow_export_target``).
+
+A draft's notes become the editor's note nodes (``textAnnotation``), which
+the runner and the check skip: the model writes plain text, the conversion
+escapes it into the editor's HTML and places each note beside the steps it
+names.
 """
 
+import html
 import json
+import math
 import uuid
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
@@ -60,6 +67,43 @@ NODE_WIDTH = 360
 NODE_HEIGHT = 160
 #: The editor's smallest zoom (``WORKFLOW_CANVAS_MIN_ZOOM``).
 MIN_ZOOM = 0.1
+
+MAX_NOTES = 5
+MAX_NOTE_CHARS = 1000
+MAX_NOTE_STEPS = 10
+#: What the refusal of an over-long note asks of the model.
+NOTE_TOO_LONG = (
+    "Shorten the note itself to what the workflow answers and how to read its "
+    "results, and send the draft again; never ask the user about a note."
+)
+#: The space between a note and what lies above or below it, between notes
+#: above neighbouring columns, and between the workflow and the notes right
+#: of it: the space between the steps of a column.
+NOTE_GAP = ROW_SPACING - NODE_HEIGHT
+#: A note's size: a column's width less the gap, so notes above neighbouring
+#: columns keep the gap between them, and the editor's height for a new
+#: note; a longer text makes it taller.
+NOTE_WIDTH = DEPTH_SPACING - NOTE_GAP
+NOTE_HEIGHT = 200
+#: The colours a note can take: the editor's colour for a new note
+#: (``TextAnnotationNode``) and swatches of its preset palette
+#: (``ColorsByTheme``), upper-case as the palette marks the chosen one.
+NOTE_COLORS: dict[str, str] = {
+    "yellow": "#F2CE58",
+    "blue": "#5297DA",
+    "green": "#7DC97F",
+    "red": "#EA4444",
+    "grey": "#A6A5A5",
+}
+NoteColor = Literal["yellow", "blue", "green", "red", "grey"]
+#: What a note's height is estimated from: the box's padding and border, the
+#: editor's line height, the characters a line of the box's width holds (a
+#: list item's line is indented), and a list's margins.
+_NOTE_FRAME = 36
+_NOTE_LINE_HEIGHT = 24
+_NOTE_LINE_CHARS = 31
+_NOTE_ITEM_CHARS = 27
+_NOTE_LIST_MARGINS = 32
 
 #: A region boundary larger than this, as JSON, is stored as its bounding box:
 #: the filter travels inside the workflow's config and into every run's tool
@@ -247,6 +291,42 @@ class Variable(_Model):
     description: str | None = Field(default=None, max_length=500)
 
 
+class DraftNote(_Model):
+    id: str = Field(
+        pattern=STEP_ID_PATTERN, description="Unique among the steps and notes."
+    )
+    # The limit is checked in ``_says_something``, whose refusal says how to
+    # shorten the note; the schema still shows it to the model.
+    text: str = Field(
+        min_length=1,
+        description=(
+            "Plain text in the language of the user's message, no HTML: a blank "
+            "line starts a new paragraph, lines starting with '- ' form a list."
+        ),
+        json_schema_extra={"maxLength": MAX_NOTE_CHARS},
+    )
+    near: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_NOTE_STEPS,
+        description=(
+            "The ids of the steps the note explains; it is placed above them. "
+            "Empty: beside the whole workflow."
+        ),
+    )
+    color: NoteColor = Field(default="yellow", description="Default: yellow.")
+
+    @model_validator(mode="after")
+    def _says_something(self) -> "DraftNote":
+        if not self.text.strip():
+            raise ValueError(f"note {self.id!r}: the text is empty")
+        if len(self.text) > MAX_NOTE_CHARS:
+            raise ValueError(
+                f"note {self.id!r}: the text has {len(self.text):,} characters, "
+                f"more than the {MAX_NOTE_CHARS:,} a note takes. " + NOTE_TOO_LONG
+            )
+        return self
+
+
 class Draft(_Model):
     name: str = Field(
         min_length=1,
@@ -258,6 +338,11 @@ class Draft(_Model):
         default_factory=list, max_length=MAX_CONNECTIONS
     )
     variables: list[Variable] = Field(default_factory=list, max_length=20)
+    notes: list[DraftNote] = Field(
+        default_factory=list,
+        max_length=MAX_NOTES,
+        description="Notes on the canvas that explain the workflow.",
+    )
 
     @model_validator(mode="after")
     def _graph_fits(self) -> "Draft":
@@ -297,6 +382,21 @@ class Draft(_Model):
         names = [variable.name for variable in self.variables]
         if len(set(names)) != len(names):
             raise ValueError("two variables have the same name")
+        notes: set[str] = set()
+        for note in self.notes:
+            if note.id in by_id:
+                raise ValueError(
+                    f"note {note.id!r} has the id of a step; give it an id of its own"
+                )
+            if note.id in notes:
+                raise ValueError(f"two notes have the id {note.id!r}")
+            notes.add(note.id)
+            for step_id in note.near:
+                if step_id not in by_id:
+                    raise ValueError(
+                        f"note {note.id!r} names the unknown step {step_id!r} in "
+                        "near, which takes the ids of the draft's steps"
+                    )
         return self
 
 
@@ -338,6 +438,11 @@ def _namespace(salt: str) -> uuid.UUID:
 
 def node_id(step: Step, salt: str = "") -> str:
     return f"{step.kind}-{uuid.uuid5(_namespace(salt), step.id)}"
+
+
+def note_node_id(note: DraftNote, salt: str = "") -> str:
+    """The note's node id, with the prefix the editor gives a note it makes."""
+    return f"text-{uuid.uuid5(_namespace(salt), note.id)}"
 
 
 def _edge_id(connection: Connection, salt: str) -> str:
@@ -437,13 +542,132 @@ def layout(draft: Draft) -> dict[str, dict[str, int]]:
     return positions
 
 
-def viewport(positions: Mapping[str, Mapping[str, int]]) -> dict[str, float]:
-    """A viewport that shows every step on a canvas of ``CANVAS_WIDTH`` by
+@dataclass(frozen=True)
+class Box:
+    """Where a node lies on the canvas: its position and size."""
+
+    x: int
+    y: int
+    width: int = NODE_WIDTH
+    height: int = NODE_HEIGHT
+
+    @property
+    def right(self) -> int:
+        return self.x + self.width
+
+    @property
+    def bottom(self) -> int:
+        return self.y + self.height
+
+    def crowds(self, other: "Box") -> bool:
+        """Whether the two overlap, or lie less than ``NOTE_GAP`` apart one
+        above the other."""
+        return (
+            self.x < other.right
+            and other.x < self.right
+            and self.y < other.bottom + NOTE_GAP
+            and other.y < self.bottom + NOTE_GAP
+        )
+
+
+def _note_blocks(text: str) -> list[tuple[Literal["p", "ul"], list[str]]]:
+    """The note's paragraphs (``p``, their lines) and lists (``ul``, their
+    items), in order: a blank line ends a paragraph or a list, a line
+    starting with "- " is a list item. In each line, every run of whitespace
+    (tabs and non-breaking spaces too) becomes one space, and the whitespace
+    at its start and end is dropped."""
+    blocks: list[tuple[Literal["p", "ul"], list[str]]] = []
+    after_blank = True
+    for raw in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = " ".join(raw.split())
+        if not line:
+            after_blank = True
+            continue
+        kind: Literal["p", "ul"] = "ul" if line.startswith("- ") else "p"
+        content = line[2:] if kind == "ul" else line
+        if blocks and not after_blank and blocks[-1][0] == kind:
+            blocks[-1][1].append(content)
+        else:
+            blocks.append((kind, [content]))
+        after_blank = False
+    return blocks
+
+
+def note_html(text: str) -> str:
+    """A note's plain text as the HTML the editor's note writes (TipTap):
+    escaped, each paragraph a ``<p>`` with its lines apart by ``<br>``, each
+    list a ``<ul>`` whose items hold a ``<p>``."""
+    parts: list[str] = []
+    for kind, lines in _note_blocks(text):
+        escaped = [html.escape(line, quote=False) for line in lines]
+        if kind == "p":
+            parts.append(f"<p>{'<br>'.join(escaped)}</p>")
+        else:
+            items = "".join(f"<li><p>{item}</p></li>" for item in escaped)
+            parts.append(f"<ul>{items}</ul>")
+    return "".join(parts)
+
+
+def _note_height(text: str) -> int:
+    """The height that shows the whole text: ``NOTE_HEIGHT``, or more for a
+    longer text, in steps of 20."""
+    lines = 0
+    margins = 0
+    for kind, contents in _note_blocks(text):
+        chars = _NOTE_LINE_CHARS if kind == "p" else _NOTE_ITEM_CHARS
+        lines += sum(max(1, math.ceil(len(content) / chars)) for content in contents)
+        if kind == "ul":
+            margins += _NOTE_LIST_MARGINS
+    needed = _NOTE_FRAME + lines * _NOTE_LINE_HEIGHT + margins
+    return max(NOTE_HEIGHT, math.ceil(needed / 20) * 20)
+
+
+def note_layout(draft: Draft, positions: Mapping[str, Mapping[str, int]]) -> list[Box]:
+    """Each note's box, in draft order: above the steps it names, from the
+    leftmost one's left edge, or right of the whole workflow when it names
+    none. A note that would crowd a step or a note placed before it moves up
+    past it (one right of the workflow moves down)."""
+    steps = {
+        step_id: Box(position["x"], position["y"])
+        for step_id, position in positions.items()
+    }
+    taken = list(steps.values())
+    right = max(step.right for step in taken) + NOTE_GAP
+    top = min(step.y for step in taken)
+    placed: list[Box] = []
+    for note in draft.notes:
+        height = _note_height(note.text)
+        named = [steps[step_id] for step_id in note.near]
+        upward = bool(named)
+        if upward:
+            box = Box(
+                min(step.x for step in named),
+                min(step.y for step in named) - NOTE_GAP - height,
+                NOTE_WIDTH,
+                height,
+            )
+        else:
+            box = Box(right, top, NOTE_WIDTH, height)
+        while crowded := [other for other in taken if box.crowds(other)]:
+            y = (
+                min(other.y for other in crowded) - NOTE_GAP - height
+                if upward
+                else max(other.bottom for other in crowded) + NOTE_GAP
+            )
+            box = Box(box.x, y, NOTE_WIDTH, height)
+        taken.append(box)
+        placed.append(box)
+    return placed
+
+
+def viewport(boxes: Iterable[Box]) -> dict[str, float]:
+    """A viewport that shows every box on a canvas of ``CANVAS_WIDTH`` by
     ``CANVAS_HEIGHT``, at most at zoom 1."""
-    xs = [p["x"] for p in positions.values()]
-    ys = [p["y"] for p in positions.values()]
-    width = max(xs) + NODE_WIDTH - min(xs)
-    height = max(ys) + NODE_HEIGHT - min(ys)
+    shown = list(boxes)
+    left = min(box.x for box in shown)
+    top = min(box.y for box in shown)
+    width = max(box.right for box in shown) - left
+    height = max(box.bottom for box in shown) - top
     fit = min(
         1.0,
         (CANVAS_WIDTH - 2 * CANVAS_MARGIN) / width,
@@ -452,8 +676,8 @@ def viewport(positions: Mapping[str, Mapping[str, int]]) -> dict[str, float]:
     # Rounded down, so the steps still fit after rounding.
     zoom = max(MIN_ZOOM, int(fit * 100) / 100)
     return {
-        "x": round(CANVAS_MARGIN - min(xs) * zoom, 1),
-        "y": round(CANVAS_MARGIN - min(ys) * zoom, 1),
+        "x": round(CANVAS_MARGIN - left * zoom, 1),
+        "y": round(CANVAS_MARGIN - top * zoom, 1),
         "zoom": zoom,
     }
 
@@ -607,6 +831,23 @@ def _variable(index: int, variable: Variable, salt: str) -> dict[str, Any]:
     return out
 
 
+def _note(note: DraftNote, box: Box, salt: str) -> dict[str, Any]:
+    """The note as the editor's note node (``createTextAnnotationNode``)."""
+    return {
+        "id": note_node_id(note, salt),
+        "type": "textAnnotation",
+        "position": {"x": box.x, "y": box.y},
+        "zIndex": -1000,
+        "data": {
+            "type": "textAnnotation",
+            "text": note_html(note.text),
+            "backgroundColor": NOTE_COLORS[note.color],
+            "width": box.width,
+            "height": box.height,
+        },
+    }
+
+
 def to_config(
     draft: Draft,
     *,
@@ -615,11 +856,13 @@ def to_config(
     titles: Mapping[str, str],
     salt: str = "",
 ) -> Converted:
-    """The editor's workflow config for ``draft``. ``layers`` by
-    layer_project_id, ``regions`` by nuts_id, ``titles`` (the tools' titles in
-    the user's language) by tool id; ``salt`` enters every derived id (node,
-    edge, filter condition, variable). Raises ``DraftError`` for a layer or a
-    region that is not given."""
+    """The editor's workflow config for ``draft``: its steps' nodes, then its
+    notes'. ``layers`` by layer_project_id, ``regions`` by nuts_id,
+    ``titles`` (the tools' titles in the user's language) by tool id;
+    ``salt`` enters every derived id (node, edge, filter condition,
+    variable). Raises ``DraftError`` for a layer or a region that is not
+    given. The ``Converted`` maps name the steps only: the check skips
+    notes."""
     by_id: dict[str, Step] = {step.id: step for step in draft.steps}
     positions = layout(draft)
     nodes: list[dict[str, Any]] = []
@@ -632,10 +875,18 @@ def to_config(
                 "data": _data(step, layers, regions, titles, salt),
             }
         )
+    note_boxes = note_layout(draft, positions)
+    step_boxes = [Box(position["x"], position["y"]) for position in positions.values()]
     config = {
-        "nodes": nodes,
+        # The notes after the steps: the editor draws notes below the steps
+        # whatever their order (``WorkflowCanvas``).
+        "nodes": nodes
+        + [
+            _note(note, box, salt)
+            for note, box in zip(draft.notes, note_boxes, strict=True)
+        ],
         "edges": [_edge(connection, by_id, salt) for connection in draft.connections],
-        "viewport": viewport(positions),
+        "viewport": viewport(step_boxes + note_boxes),
         "variables": [
             _variable(index, variable, salt)
             for index, variable in enumerate(draft.variables)

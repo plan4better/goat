@@ -48,7 +48,11 @@ def authed(settings: AssistantSettings) -> AssistantSettings:
 
 @pytest.fixture(autouse=True)
 def _dns(monkeypatch: pytest.MonkeyPatch) -> None:
-    table = {"llm.example.org": "93.184.215.14", "inside.example.org": "10.0.0.5"}
+    table = {
+        "llm.example.org": "93.184.215.14",
+        "openrouter.ai": "104.18.2.115",
+        "inside.example.org": "10.0.0.5",
+    }
 
     async def resolve(host: str, port: int) -> list[IPAddress]:
         if host not in table:
@@ -209,6 +213,37 @@ async def test_a_connection_has_one_model(
     for body in (created, updated.json()):
         assert body["model"] == CREATE["model"]
         assert "background_model" not in body
+
+
+async def test_an_openrouter_connection_keeps_its_provider_order(
+    db: Database, authed: AssistantSettings, probe: FakeProbe
+) -> None:
+    openrouter = {**CREATE, "base_url": "https://openrouter.ai/api/v1"}
+    async with _client(db, authed, ADMIN) as client:
+        created = await _create(
+            client, **openrouter, provider_order=["DeepInfra"], allow_fallbacks=False
+        )
+        changed = await client.patch(
+            f"/connections/{created['id']}",
+            json={"provider_order": ["DeepInfra", "Together"]},
+        )
+        kept = await client.patch(
+            f"/connections/{created['id']}", json={"name": "Own 2"}
+        )
+        elsewhere = await client.post(
+            "/connections",
+            json={**CREATE, "name": "Other", "provider_order": ["DeepInfra"]},
+        )
+    assert (created["provider_order"], created["allow_fallbacks"]) == (
+        ["DeepInfra"],
+        False,
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["provider_order"] == ["DeepInfra", "Together"]
+    assert changed.json()["allow_fallbacks"] is False
+    assert kept.json()["provider_order"] == ["DeepInfra", "Together"]
+    assert elsewhere.status_code == 422
+    assert elsewhere.json()["detail"]["field"] == "provider_order"
 
 
 async def test_key_is_write_only(

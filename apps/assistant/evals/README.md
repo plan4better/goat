@@ -1,6 +1,6 @@
 # GOAT eval set
 
-36 catalog, 24 project and 9 workflow tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
+36 catalog, 24 project and 11 workflow tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
 prompt, tools and limits are the production ones; the services behind the tools are fixed (decision E16): the
 catalog app over its fixture catalog plus its named rows, and canned answers for one fixture project
 ("Radverkehr Leipzig"). Checks are deterministic (expected records, filters, numbers, named values, tools, layers
@@ -10,13 +10,20 @@ those as cards and not list them again.
 
 The workflow suite (`workflow_tasks.jsonl`, `wf-NN`) builds workflows in three more fixture projects: one to build in
 ("Erreichbarkeit Leipzig"), the same layers for a user who may only view them, and an empty one in Munich, where
-adding a catalog dataset adds its layers. Processes answers with descriptions captured from processes
+adding a catalog dataset adds its layers. A fourth project ("Schulwege Leipzig") holds one workflow whose run is
+refused before it starts. Processes answers with descriptions captured from processes
 (`tests/fixtures/process_descriptions.json`: what processes' `tool_registry.get_process_list` and
-`get_process_description` give for the seven tools the tasks use) and a stand-in for its workflow check
+`get_process_description` give for the eight tools the tasks use) and a stand-in for its workflow check
 (`backends.fixture_check`) that follows processes' check step by step, each tool step validated with the tool's own
-parameter model, so a draft production refuses is refused here too. The graders read the workflows core saved. A task
-with `answer_card` runs a second turn when the first one showed a card: the eval user answers every question with its
-first option, the recommended one when there is one, and the turn gets the answer as the app renders it.
+parameter model, so a draft production refuses is refused here too. One gap: it predicts no tool's columns but a
+join's right before a step, so a field that a join further up renamed passes here and is refused in production.
+Processes' runs are a stand-in too
+(`_run_routes`): as in processes, a run whose stored config has a damaged or error issue in that check is refused with
+its issues and nothing starts; any other run of a workflow core saved finishes at once and saves `RESULT_LAYER`
+(residents per district and band) for each export step, and `aggregation-stats` groups the fixture layers' features,
+so the answer's numbers can be checked. The graders read the workflows core saved. A task with `answer_card` runs a
+second turn when the first one showed a card: the eval user answers every question with its first option, the
+recommended one when there is one, and the turn gets the answer as the app renders it.
 
 `run` spends provider tokens, so it runs by hand, never in CI: it refuses when `CI` is set. The other commands spend
 none.

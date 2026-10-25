@@ -97,6 +97,56 @@ async def test_get_record_unknown_id_is_a_clean_failure(env: ToolEnv) -> None:
     assert caught.value.message == "Catalog record 'does-not-exist' not found"
 
 
+OWN_DATASET = "bd000000-0000-0000-0000-0000000000d1"
+
+
+async def test_get_record_names_the_tools_for_a_dataset_of_the_users_own(
+    catalog_transport: RecordingTransport,
+) -> None:
+    """A dataset id from core_find given to the catalog: the error says
+    what it is and which tools take it."""
+    core = Recorder(
+        {("GET", f"/api/v2/layer/{OWN_DATASET}"): {"id": OWN_DATASET, "name": "x"}}
+    )
+    env = tool_env(fake_clients(catalog=catalog_transport, core=core))
+    with pytest.raises(ToolFailed) as caught:
+        await execute(GET_RECORD, env, {"item_id": OWN_DATASET})
+    assert caught.value.message == (
+        f"Catalog record {OWN_DATASET!r} not found: it is a dataset of the user's "
+        "own (core_find lists it), not a catalog record. On a project page, "
+        "project_add_dataset adds it."
+    )
+
+
+@pytest.mark.parametrize("status", [403, 404])
+async def test_get_record_of_an_id_neither_service_knows(
+    catalog_transport: RecordingTransport, status: int
+) -> None:
+    """Another user's private dataset (403) reads as an unknown id (404)."""
+    core = Recorder(
+        {
+            ("GET", f"/api/v2/layer/{OWN_DATASET}"): httpx.Response(
+                status, json={"detail": "no"}
+            )
+        }
+    )
+    env = tool_env(fake_clients(catalog=catalog_transport, core=core))
+    with pytest.raises(ToolFailed) as caught:
+        await execute(GET_RECORD, env, {"item_id": OWN_DATASET})
+    assert caught.value.message == f"Catalog record {OWN_DATASET!r} not found"
+
+
+async def test_get_record_asks_core_only_about_a_uuid(
+    catalog_transport: RecordingTransport,
+) -> None:
+    core = Recorder()
+    env = tool_env(fake_clients(catalog=catalog_transport, core=core))
+    with pytest.raises(ToolFailed):
+        await execute(GET_RECORD, env, {"item_id": "does-not-exist"})
+    await execute(GET_RECORD, env, {"item_id": "radverkehrsnetz-dresden-0"})
+    assert core.requests == []
+
+
 async def test_describe_lists_filters_with_real_values(env: ToolEnv) -> None:
     result = await execute(DESCRIBE, env, {})
     assert result["items"] > 0 and result["collections"] > 0

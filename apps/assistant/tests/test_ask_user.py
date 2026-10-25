@@ -3,23 +3,75 @@ values that never reach the web, and a run that ends after asking."""
 
 import json
 import re
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any
 
+import httpx
 import pytest
 from pydantic import ValidationError
 from pydantic_ai.exceptions import ToolFailed
+from pydantic_ai.messages import (
+    FunctionToolResultEvent,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    ToolReturnPart,
+)
+from pydantic_ai.models import StreamedResponse
+from pydantic_ai.models.function import (
+    AgentInfo,
+    DeltaToolCall,
+    DeltaToolCalls,
+    FunctionModel,
+)
+from pydantic_ai.usage import RequestUsage
 
 from assistant.agent import RunDeps, build_agent
-from assistant.asks import CARD_ID_PATTERN, AskUserInput, card_data, public_args
+from assistant.asks import (
+    CARD_ID_PATTERN,
+    AskHistory,
+    AskOption,
+    AskUserInput,
+    CardAnswer,
+    answer_lines,
+    card_data,
+    picked_ids,
+    public_args,
+    recent_picked_ids,
+    user_chose,
+)
+from assistant.budget import RESULT_READS, RunBudget
 from assistant.context import parse_context
 from assistant.encoding.ai_sdk import AiSdkEncoder
 from assistant.events import DataPart, ToolCalled, to_ui_message
-from assistant.prompt import render_note
-from assistant.tools.ask import ASK_USER, ASKED_NOTE
+from assistant.login import Login
+from assistant.prompt import CARD_AFTER_TEXT, READ_THE_RESULT, render_note
+from assistant.runs.turn import Turn, run_turn
+from assistant.tools.ask import (
+    ASK_USER,
+    ASKED_NOTE,
+    ONE_CARD,
+    REPEATED_CARD,
+    REPORT_FIRST,
+)
 from assistant.tools.registry import BY_WIRE_NAME
-from assistant.tools.runtime import execute
-from assistant.tools.testing import ScriptedModel, fake_clients, tool_env
-from assistant.tools.toolset import _call_key
+from assistant.tools.runtime import InputInvalid, execute
+from assistant.tools.testing import (
+    Recorder,
+    ScriptedModel,
+    fake_clients,
+    signed_in,
+    tool_env,
+)
+from assistant.tools.toolset import (
+    LOOK_UPS_USED_UP,
+    REPORT_REFUSALS,
+    RESULT_READ_TOOLS,
+    _call_key,
+)
 
 CARD: dict[str, Any] = {
     "questions": [
@@ -61,7 +113,7 @@ def _question(**changes: Any) -> dict[str, Any]:
     question: dict[str, Any] = {
         "question": "Which one?",
         "header": "Data",
-        "options": [{"label": "A"}, {"label": "B"}],
+        "options": [{"label": "First"}, {"label": "Second"}],
     }
     question.update(changes)
     return question
@@ -90,27 +142,133 @@ def test_a_question_is_a_sentence_ending_in_a_question_mark() -> None:
 
 
 def test_a_header_is_a_chip_of_at_most_twelve_characters() -> None:
-    assert "at most 12" in _rejected({"questions": [_question(header="Destinations!")]})
+    def header(text: str) -> str:
+        card = AskUserInput.model_validate({"questions": [_question(header=text)]})
+        return card.questions[0].header
+
+    # Longer ones are cut at the last word end that fits, else at twelve.
+    assert header("Destinations!") == "Destinations"
+    assert header("Schools near parks") == "Schools near"
+    assert header("Data, time and place") == "Data, time"
+    assert header("Schools") == "Schools"
     assert "at least 1" in _rejected({"questions": [_question(header="")]})
+    assert "valid string" in _rejected({"questions": [_question(header=12)]})
+
+
+def test_a_long_header_is_shortened() -> None:
+    card = AskUserInput.model_validate(
+        {
+            "questions": [
+                {
+                    "question": "Which data?",
+                    "header": "Bevölkerungsdaten",
+                    "options": [{"label": "Zensus"}, {"label": "Blocks"}],
+                }
+            ]
+        }
+    )
+    header = card.questions[0].header
+    assert len(header) <= 12
+    assert header.startswith("Bevölkerung")
+
+
+@pytest.mark.parametrize(
+    "labels", [["A", "Blocks"], ["Zensus", "zensus "], ["...", "Blocks"]]
+)
+def test_options_need_distinct_labels_of_two_letters(labels: list[str]) -> None:
+    with pytest.raises(ValidationError, match="distinct labels"):
+        AskUserInput.model_validate(
+            {
+                "questions": [
+                    {
+                        "question": "Which data?",
+                        "header": "Data",
+                        "options": [{"label": label} for label in labels],
+                    }
+                ]
+            }
+        )
+
+
+#: A card shown before the label rule: one character, and twice the same label.
+_OLD_CARD: dict[str, Any] = {
+    "questions": [
+        {
+            "question": "How many minutes?",
+            "header": "Minutes",
+            "options": [
+                {"label": "5", "value": "run:w1"},
+                {"label": "5 ", "value": "five"},
+            ],
+        }
+    ]
+}
+
+
+def test_a_stored_card_is_read_back_under_the_rules_it_was_shown_with() -> None:
+    """The label rule is for new cards: a stored card that breaks it is still
+    read back, and its answer still counts."""
+    answer = {"card_id": "ask-c1", "answers": [{"question": 0, "options": [0]}]}
+    stored = [
+        {
+            "role": "assistant",
+            "parts": [
+                {
+                    "type": "tool",
+                    "tool_name": "ask_user",
+                    "state": "output",
+                    "args": _OLD_CARD,
+                    "output": {"card_id": "ask-c1", "status": "asked"},
+                }
+            ],
+        },
+        {"role": "user", "parts": [{"type": "answer", "answer": answer}]},
+    ]
+    history = AskHistory.from_stored(stored)
+    card = history.cards["ask-c1"]
+    assert [option.label for option in card.questions[0].options] == ["5", "5 "]
+    assert user_chose(history, "run:w1")
+    assert picked_ids(history) == {"run:w1"}
+    assert answer_lines(card, CardAnswer.model_validate(answer)) == (
+        "Minutes: 5 (value run:w1)"
+    )
+
+
+async def test_a_new_card_with_such_labels_is_refused() -> None:
+    async def emit(
+        name: str, data: dict[str, Any], *, part_id: str | None = None
+    ) -> str:
+        raise AssertionError("no card is shown")
+
+    env = tool_env(fake_clients(), emit_data=emit)
+    with pytest.raises(InputInvalid, match="distinct labels"):
+        await execute(ASK_USER, env, _OLD_CARD, tool_call_id="call-1")
+
+
+def test_ask_user_runs_once_per_answer() -> None:
+    assert ASK_USER.once_per_answer and "one card" in ASK_USER.once_per_answer.lower()
 
 
 def test_a_question_has_two_to_four_options() -> None:
     assert "at least 2" in _rejected(
-        {"questions": [_question(options=[{"label": "A"}])]}
+        {"questions": [_question(options=[{"label": "First"}])]}
     )
     five = [{"label": f"O{n}"} for n in range(5)]
     assert "at most 4" in _rejected({"questions": [_question(options=five)]})
 
 
 def test_labels_and_descriptions_are_short() -> None:
-    long_label = [{"label": "x" * 61}, {"label": "B"}]
+    long_label = [{"label": "x" * 61}, {"label": "Second"}]
     assert "at most 60" in _rejected({"questions": [_question(options=long_label)]})
-    long_text = [{"label": "A", "description": "x" * 201}, {"label": "B"}]
+    long_text = [{"label": "First", "description": "x" * 201}, {"label": "Second"}]
     assert "at most 200" in _rejected({"questions": [_question(options=long_text)]})
 
 
 def test_at_most_one_option_is_recommended_and_it_comes_first() -> None:
-    both = [{"label": "A", "recommended": True}, {"label": "B", "recommended": True}]
+    both = [
+        {"label": "First", "recommended": True},
+        {"label": "Second", "recommended": True},
+    ]
     assert "at most one option" in _rejected({"questions": [_question(options=both)]})
     card = AskUserInput.model_validate(CARD)
     assert [o.label for o in card.questions[0].options] == [
@@ -121,7 +279,7 @@ def test_at_most_one_option_is_recommended_and_it_comes_first() -> None:
 
 @pytest.mark.parametrize("label", ["Other", "other…", "Andere", "Sonstiges"])
 def test_the_model_never_adds_other_the_card_does(label: str) -> None:
-    options = [{"label": "A"}, {"label": label}]
+    options = [{"label": "First"}, {"label": label}]
     assert "free-text 'Other' itself" in _rejected(
         {"questions": [_question(options=options)]}
     )
@@ -288,3 +446,1068 @@ def test_ask_user_is_never_answered_from_an_earlier_call() -> None:
 def test_ask_user_is_on_every_page_and_not_on_mcp() -> None:
     assert ASK_USER.wire_name == "ask_user"
     assert ASK_USER.risk == "read" and not ASK_USER.mcp and not ASK_USER.returns_data
+
+
+async def test_a_shown_card_ends_the_answer_before_the_model_is_called_again() -> None:
+    """The card is the end of the answer: no further model call, which with a
+    slow model kept the answer running while the card already waited."""
+    script = ScriptedModel([("ask_user", CARD)], answer="I asked you above.")
+    page = parse_context({"surface": "catalog"})
+    events: list[Any] = []
+
+    async def emit(event: Any) -> None:
+        events.append(event)
+
+    deps = RunDeps(
+        message_id="m1", emit=emit, prompt_note=render_note(page, None, "en")
+    )
+    deps.env = tool_env(fake_clients(), page=page, emit_data=deps.emit_data)
+    streamed: list[Any] = []
+
+    async def on_event(event: Any) -> None:
+        streamed.append(event)
+
+    turn = await run_turn(
+        build_agent(script.model), "which data?", deps=deps, on_event=on_event
+    )
+    assert len(script.infos) == 1
+    assert turn.output is None
+    last = turn.messages[-1]
+    assert isinstance(last, ModelRequest)
+    assert [(p.part_kind, p.tool_name) for p in last.parts] == [
+        ("tool-return", "ask_user")
+    ]
+    assert any(isinstance(e, DataPart) and e.name == "ask" for e in events)
+    assert any(isinstance(e, FunctionToolResultEvent) for e in streamed)
+
+
+async def test_a_second_card_in_the_same_answer_is_refused() -> None:
+    """One card per answer: of two cards in one response the first is shown
+    and ends the answer; the second is refused with the note, shows nothing
+    and names no card id, so the first card's answer still finds its card."""
+    second = {"questions": [_question()]}
+
+    async def stream(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | DeltaToolCalls]:
+        if any(isinstance(message, ModelResponse) for message in messages):
+            yield "I asked you above."
+            return
+        yield {
+            0: DeltaToolCall(
+                name="ask_user", json_args=json.dumps(CARD), tool_call_id="call-a"
+            ),
+            1: DeltaToolCall(
+                name="ask_user", json_args=json.dumps(second), tool_call_id="call-b"
+            ),
+        }
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        raise AssertionError("the run streams")
+
+    page = parse_context({"surface": "catalog"})
+    events: list[Any] = []
+
+    async def emit(event: Any) -> None:
+        events.append(event)
+
+    deps = RunDeps(
+        message_id="m1", emit=emit, prompt_note=render_note(page, None, "en")
+    )
+    deps.env = tool_env(fake_clients(), page=page, emit_data=deps.emit_data)
+
+    async def on_event(event: Any) -> None:
+        return None
+
+    turn = await run_turn(
+        build_agent(FunctionModel(respond, stream_function=stream)),
+        "which data?",
+        deps=deps,
+        on_event=on_event,
+    )
+    assert turn.output is None
+    [card] = [e for e in events if isinstance(e, DataPart) and e.name == "ask"]
+    last = turn.messages[-1]
+    assert isinstance(last, ModelRequest)
+    shown, refused = last.parts
+    assert isinstance(shown, ToolReturnPart) and isinstance(refused, ToolReturnPart)
+    assert shown.tool_call_id == "call-a" and isinstance(shown.content, dict)
+    assert shown.content["card_id"] == card.part_id
+    assert refused.tool_call_id == "call-b" and refused.outcome == "failed"
+    assert refused.content == ASK_USER.once_per_answer
+
+
+async def test_a_run_without_a_card_ends_with_its_answer() -> None:
+    script = ScriptedModel(answer="Here is the answer.")
+    page = parse_context({"surface": "catalog"})
+
+    async def emit(event: Any) -> None:
+        return None
+
+    deps = RunDeps(
+        message_id="m1", emit=emit, prompt_note=render_note(page, None, "en")
+    )
+    deps.env = tool_env(fake_clients(), page=page, emit_data=deps.emit_data)
+
+    async def on_event(event: Any) -> None:
+        return None
+
+    turn = await run_turn(
+        build_agent(script.model), "which data?", deps=deps, on_event=on_event
+    )
+    assert turn.output == "Here is the answer."
+    assert isinstance(turn.messages[-1], ModelResponse)
+
+
+def test_chosen_cards_lists_the_cards_where_the_value_was_picked() -> None:
+    from assistant.asks import AskHistory, CardAnswer, chosen_cards
+
+    card = AskUserInput.model_validate(
+        {
+            "questions": [
+                {
+                    "question": "Run it now?",
+                    "header": "Run",
+                    "options": [
+                        {
+                            "label": "Run",
+                            "description": "Starts it.",
+                            "value": "run:w1",
+                        },
+                        {
+                            "label": "Not now",
+                            "description": "Leaves it.",
+                            "value": "no",
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+    picked = CardAnswer.model_validate(
+        {"card_id": "ask-c1", "answers": [{"question": 0, "options": [0]}]}
+    )
+    declined = CardAnswer.model_validate(
+        {"card_id": "ask-c2", "answers": [{"question": 0, "options": [1]}]}
+    )
+    history = AskHistory(
+        cards={"ask-c1": card, "ask-c2": card},
+        answers={"ask-c1": picked, "ask-c2": declined},
+    )
+    assert chosen_cards(history, "run:w1") == ["ask-c1"]
+    assert chosen_cards(history, "run:w2") == []
+
+
+def _answered(option: dict[str, Any]) -> AskHistory:
+    card = AskUserInput.model_validate(
+        {
+            "questions": [
+                {
+                    "question": "Which data?",
+                    "header": "Data",
+                    "options": [option, {"label": "Leave it open", "value": "open"}],
+                }
+            ]
+        }
+    )
+    answer = CardAnswer.model_validate(
+        {"card_id": "ask-c1", "answers": [{"question": 0, "options": [0]}]}
+    )
+    return AskHistory(cards={"ask-c1": card}, answers={"ask-c1": answer})
+
+
+def test_a_pick_names_the_ids_it_adds() -> None:
+    history = _answered(
+        {"label": "Population", "value": "zensus", "adds": ["de_zensus_2022_100m"]}
+    )
+    assert picked_ids(history) == {"zensus", "de_zensus_2022_100m"}
+
+
+def test_an_option_left_unpicked_names_nothing() -> None:
+    card = AskUserInput.model_validate(
+        {
+            "questions": [
+                {
+                    "question": "Which data?",
+                    "header": "Data",
+                    "options": [
+                        {"label": "Population", "adds": ["de_zensus"]},
+                        {"label": "Leave it open"},
+                    ],
+                }
+            ]
+        }
+    )
+    typed = CardAnswer.model_validate(
+        {"card_id": "ask-c1", "answers": [{"question": 0, "other": "de_zensus"}]}
+    )
+    other = CardAnswer.model_validate(
+        {"card_id": "ask-c2", "answers": [{"question": 0, "options": [1]}]}
+    )
+    history = AskHistory(
+        cards={"ask-c1": card, "ask-c2": card},
+        answers={"ask-c1": typed, "ask-c2": other},
+    )
+    assert picked_ids(history) == set()
+
+
+def test_adds_never_stands_for_a_run() -> None:
+    with pytest.raises(ValidationError):
+        AskOption.model_validate(
+            {"label": "Use it", "adds": ["run:00000000-0000-0000-0000-000000000001"]}
+        )
+    history = _answered(
+        {"label": "Population", "value": "zensus", "adds": ["de_zensus"]}
+    )
+    # Run permissions and values read an option's value only.
+    assert not user_chose(history, "de_zensus")
+
+
+def test_adds_holds_ids_only() -> None:
+    with pytest.raises(ValidationError):
+        AskOption.model_validate({"label": "Use it", "adds": ["two words"]})
+    with pytest.raises(ValidationError):
+        AskOption.model_validate({"label": "Use it", "adds": ["x"] * 26})
+
+
+@pytest.mark.parametrize("item", [".", ".."])
+def test_adds_never_holds_a_dot_segment(item: str) -> None:
+    """They fit the id pattern, but would climb out of a lookup's path."""
+    with pytest.raises(ValidationError, match="is not a dataset id"):
+        AskOption.model_validate({"label": "Use it", "adds": [item]})
+
+
+CATALOG_ITEM = "de_zensus_2022_100m"
+OWN_DATASET = "d1000000-0000-0000-0000-000000000001"
+
+
+def _adding(*adds: str) -> dict[str, Any]:
+    """A card whose first option adds ``adds``; the second option adds the
+    first id again, which is looked up once."""
+    return {
+        "questions": [
+            {
+                "question": "Which population data should the workflow use?",
+                "header": "Population",
+                "options": [
+                    {"label": "Census grid", "value": "census", "adds": list(adds)},
+                    {"label": "Both grids", "value": "both", "adds": list(adds[:1])},
+                ],
+            }
+        ]
+    }
+
+
+def _adds_env(
+    catalog: Recorder, core: Recorder | None = None, login: Login | None = None
+) -> tuple[Any, list[str]]:
+    shown: list[str] = []
+
+    async def emit(
+        name: str, data: dict[str, Any], *, part_id: str | None = None
+    ) -> str:
+        shown.append(name)
+        return part_id or "m:1"
+
+    env = tool_env(
+        fake_clients(catalog=catalog, core=core or Recorder()),
+        emit_data=emit,
+        login=login,
+    )
+    return env, shown
+
+
+def _not_found(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(404, json={"detail": "Catalog entry not found"})
+
+
+async def test_a_card_adding_a_truncated_catalog_id_is_refused() -> None:
+    catalog = Recorder(
+        {("GET", f"/stac/resolve/{CATALOG_ITEM}"): {"kind": "item", "item": {}}}
+    )
+    catalog.routes[("GET", "/stac/resolve/de_zensus_2022")] = _not_found
+    env, shown = _adds_env(catalog)
+    with pytest.raises(InputInvalid) as refused:
+        await execute(ASK_USER, env, _adding("de_zensus_2022"), tool_call_id="c1")
+    assert refused.value.message == (
+        "adds names 'de_zensus_2022', which is no catalog dataset and no dataset "
+        "you can read: take the id from catalog_search or core_find."
+    )
+    assert shown == []
+
+
+async def test_a_card_adding_known_datasets_is_shown_after_one_lookup_each() -> None:
+    """A catalog item and a dataset of the user's own pass; each id is looked
+    up once, however many options add it."""
+    catalog = Recorder(
+        {
+            ("GET", f"/stac/resolve/{CATALOG_ITEM}"): {"kind": "item", "item": {}},
+            ("GET", f"/stac/resolve/{OWN_DATASET}"): _not_found,
+        }
+    )
+    core = Recorder(
+        {("GET", f"/api/v2/layer/{OWN_DATASET}"): {"id": OWN_DATASET, "name": "x"}}
+    )
+    env, shown = _adds_env(catalog, core)
+    result = await execute(
+        ASK_USER, env, _adding(CATALOG_ITEM, OWN_DATASET), tool_call_id="c1"
+    )
+    assert result["status"] == "asked" and shown == ["ask"]
+    assert sorted(catalog.paths()) == sorted(
+        [f"/stac/resolve/{CATALOG_ITEM}", f"/stac/resolve/{OWN_DATASET}"]
+    )
+    assert core.paths() == [f"/api/v2/layer/{OWN_DATASET}"]
+
+
+async def test_a_card_adding_a_dataset_the_user_cannot_read_is_refused() -> None:
+    catalog = Recorder({("GET", f"/stac/resolve/{OWN_DATASET}"): _not_found})
+    core = Recorder(
+        {
+            ("GET", f"/api/v2/layer/{OWN_DATASET}"): httpx.Response(
+                403, json={"detail": "no access"}
+            ),
+            ("GET", f"/api/v2/bundle/{OWN_DATASET}/layers"): httpx.Response(
+                404, json={"detail": "Bundle not found"}
+            ),
+        }
+    )
+    env, shown = _adds_env(catalog, core)
+    with pytest.raises(InputInvalid, match=f"adds names '{OWN_DATASET}'"):
+        await execute(ASK_USER, env, _adding(OWN_DATASET), tool_call_id="c1")
+    assert shown == []
+
+
+async def test_a_catalog_that_fails_lets_the_card_through() -> None:
+    """The add tools check the ids again: a lookup the service failed for
+    leaves the card to them."""
+    catalog = Recorder(
+        {
+            ("GET", "/stac/resolve/de_zensus_2022"): httpx.Response(
+                500, json={"detail": "boom"}
+            )
+        }
+    )
+    env, shown = _adds_env(catalog)
+    result = await execute(ASK_USER, env, _adding("de_zensus_2022"), tool_call_id="c1")
+    assert result["status"] == "asked" and shown == ["ask"]
+
+
+OWN_BUNDLE = "b0000000-0000-0000-0000-0000000000b1"
+
+
+def _bundle_core(answer: Any) -> Recorder:
+    """Core without a layer under OWN_BUNDLE (bundles have their own table),
+    and ``answer`` for the bundle's layers."""
+    return Recorder(
+        {
+            ("GET", f"/api/v2/layer/{OWN_BUNDLE}"): httpx.Response(
+                404, json={"detail": "Layer not found"}
+            ),
+            ("GET", f"/api/v2/bundle/{OWN_BUNDLE}/layers"): answer,
+        }
+    )
+
+
+async def test_a_card_adding_a_bundle_of_the_users_is_shown() -> None:
+    catalog = Recorder({("GET", f"/stac/resolve/{OWN_BUNDLE}"): _not_found})
+    core = _bundle_core([{"layer_id": OWN_DATASET, "role": "stops"}])
+    env, shown = _adds_env(catalog, core)
+    result = await execute(ASK_USER, env, _adding(OWN_BUNDLE), tool_call_id="c1")
+    assert result["status"] == "asked" and shown == ["ask"]
+    assert core.paths() == [
+        f"/api/v2/layer/{OWN_BUNDLE}",
+        f"/api/v2/bundle/{OWN_BUNDLE}/layers",
+    ]
+
+
+async def test_a_card_adding_a_bundle_the_user_cannot_read_is_refused() -> None:
+    catalog = Recorder({("GET", f"/stac/resolve/{OWN_BUNDLE}"): _not_found})
+    core = _bundle_core(httpx.Response(403, json={"detail": "no access"}))
+    env, shown = _adds_env(catalog, core)
+    with pytest.raises(InputInvalid, match=f"adds names '{OWN_BUNDLE}'"):
+        await execute(ASK_USER, env, _adding(OWN_BUNDLE), tool_call_id="c1")
+    assert shown == []
+
+
+async def test_a_core_that_fails_lets_the_card_through() -> None:
+    catalog = Recorder({("GET", f"/stac/resolve/{OWN_DATASET}"): _not_found})
+    core = Recorder(
+        {
+            ("GET", f"/api/v2/layer/{OWN_DATASET}"): httpx.Response(
+                503, json={"detail": "busy"}
+            )
+        }
+    )
+    env, shown = _adds_env(catalog, core)
+    result = await execute(ASK_USER, env, _adding(OWN_DATASET), tool_call_id="c1")
+    assert result["status"] == "asked" and shown == ["ask"]
+    assert core.paths() == [f"/api/v2/layer/{OWN_DATASET}"]
+
+
+async def test_an_expired_sign_in_lets_the_card_through() -> None:
+    """Core refuses the sign-in, not the dataset: the add tools will say so."""
+    catalog = Recorder({("GET", f"/stac/resolve/{OWN_DATASET}"): _not_found})
+    core = Recorder(
+        {
+            ("GET", f"/api/v2/layer/{OWN_DATASET}"): httpx.Response(
+                401, json={"detail": "Unauthorized"}
+            )
+        }
+    )
+    env, shown = _adds_env(catalog, core, login=signed_in(-60))
+    result = await execute(ASK_USER, env, _adding(OWN_DATASET), tool_call_id="c1")
+    assert result["status"] == "asked" and shown == ["ask"]
+    assert core.paths() == [f"/api/v2/layer/{OWN_DATASET}"]
+
+
+async def test_a_card_adding_more_than_50_datasets_is_refused_unchecked() -> None:
+    options = [
+        {"label": f"Option {name}", "adds": [f"{name}-{n}" for n in range(25)]}
+        for name in ("one", "two", "three")
+    ]
+    card = {"questions": [_question(options=options)]}
+    catalog = Recorder()
+    env, shown = _adds_env(catalog)
+    with pytest.raises(InputInvalid) as refused:
+        await execute(ASK_USER, env, card, tool_call_id="c1")
+    assert refused.value.message == (
+        "The card's options add 75 different datasets; a card adds at most 50: "
+        "put fewer ids in it."
+    )
+    assert catalog.requests == [] and shown == []
+
+
+def test_card_data_and_public_args_hide_adds() -> None:
+    args = {
+        "questions": [
+            {
+                "question": "Which data?",
+                "header": "Data",
+                "options": [
+                    {"label": "Population", "adds": ["x1"]},
+                    {"label": "Other data", "value": "o"},
+                ],
+            }
+        ]
+    }
+    card = AskUserInput.model_validate(args)
+    assert "adds" not in json.dumps(card_data("ask-c1", card))
+    public = public_args("ask_user", args)
+    assert "adds" not in json.dumps(public) and "x1" not in json.dumps(public)
+
+
+def test_recent_picks_come_newest_first() -> None:
+    card = AskUserInput.model_validate(
+        {
+            "questions": [
+                {
+                    "question": "Which data?",
+                    "header": "Data",
+                    "options": [
+                        {"label": "Population", "value": "zensus", "adds": ["z1"]},
+                        {"label": "Schools", "value": "schools"},
+                    ],
+                }
+            ]
+        }
+    )
+    first = CardAnswer.model_validate(
+        {"card_id": "ask-c1", "answers": [{"question": 0, "options": [1]}]}
+    )
+    second = CardAnswer.model_validate(
+        {"card_id": "ask-c2", "answers": [{"question": 0, "options": [0]}]}
+    )
+    again = CardAnswer.model_validate(
+        {"card_id": "ask-c3", "answers": [{"question": 0, "options": [1]}]}
+    )
+    history = AskHistory(
+        cards={"ask-c1": card, "ask-c2": card, "ask-c3": card},
+        answers={"ask-c1": first, "ask-c2": second, "ask-c3": again},
+    )
+    assert recent_picked_ids(history) == ["schools", "zensus", "z1"]
+    assert picked_ids(history) == {"schools", "zensus", "z1"}
+
+
+# -- a card while a finished run is not yet reported ------------------------------
+
+RUN_PROJECT = "00000000-0000-0000-0000-0000000005e4"
+RUN_WORKFLOW = "0b6f0000-0000-0000-0000-00000000f10f"
+FINISHED_RUN = {
+    "jobID": "j1",
+    "processID": "workflow_runner",
+    "status": "successful",
+    "inputs": {"workflow_id": RUN_WORKFLOW},
+    "created": "2026-10-23T08:41:30Z",
+    "result": {
+        "status": "success",
+        "node_results": {"tool-walk": {"status": "success", "feature_count": 3}},
+    },
+}
+#: One response of the scripted model: text and tool calls, in this order.
+Response = list[str | tuple[str, dict[str, Any]]]
+
+
+@dataclass
+class Answered:
+    turn: Turn
+    #: The cards shown, as their data-ask parts.
+    shown: list[DataPart]
+    deps: RunDeps
+    #: What each model call was offered, in order.
+    infos: list[AgentInfo]
+
+
+async def _answer(*responses: Response) -> tuple[Turn, list[DataPart]]:
+    answered = await _answer_run(*responses)
+    return answered.turn, answered.shown
+
+
+#: A model call's usage as the provider reports it: input tokens, the input
+#: read from the cache, output tokens.
+Usage = tuple[int, int, int]
+
+
+class _Metered(FunctionModel):
+    """A streamed model whose ``n``-th call reports ``usages[n]`` (the
+    estimate of the function model after the last)."""
+
+    def __init__(self, stream: Any, usages: Sequence[Usage]) -> None:
+        super().__init__(stream_function=stream)
+        self.usages = usages
+        self.calls = 0
+
+    @asynccontextmanager
+    async def request_stream(
+        self, *args: Any, **kwargs: Any
+    ) -> AsyncIterator[StreamedResponse]:
+        n, self.calls = self.calls, self.calls + 1
+        async with super().request_stream(*args, **kwargs) as response:
+            if n < len(self.usages):
+                input_tokens, cached, output = self.usages[n]
+                response._usage = RequestUsage(
+                    input_tokens=input_tokens,
+                    cache_read_tokens=cached,
+                    output_tokens=output,
+                )
+            yield response
+
+
+async def _answer_run(
+    *responses: Response,
+    budget: RunBudget | None = None,
+    usages: Sequence[Usage] = (),
+) -> Answered:
+    """One answer on a workflow page whose model gives ``responses`` in order,
+    then a closing text, under the run's limits as the run manager sets them
+    from ``budget``. The open project's workflow has a finished run, and its
+    layers can be listed."""
+    core = Recorder(
+        {
+            ("GET", f"/api/v2/project/{RUN_PROJECT}/workflow/{RUN_WORKFLOW}"): {
+                "id": RUN_WORKFLOW,
+                "config": {
+                    "nodes": [
+                        {
+                            "id": "tool-walk",
+                            "type": "tool",
+                            "data": {"type": "tool", "processId": "buffer"},
+                        }
+                    ],
+                    "edges": [],
+                },
+            },
+            ("GET", f"/api/v2/project/{RUN_PROJECT}"): {"name": "Run project"},
+            ("GET", f"/api/v2/project/{RUN_PROJECT}/layer"): [],
+            ("GET", f"/api/v2/project/{RUN_PROJECT}/group"): [],
+        }
+    )
+    # Listed while it was still going: workflow_run waits for it instead of
+    # starting one, and its status is the finished run.
+    processes = Recorder(
+        {
+            ("GET", "/jobs"): {"jobs": [{**FINISHED_RUN, "status": "running"}]},
+            ("GET", "/jobs/j1"): FINISHED_RUN,
+            ("GET", "/processes"): {"processes": []},
+        }
+    )
+
+    infos: list[AgentInfo] = []
+
+    async def stream(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | DeltaToolCalls]:
+        infos.append(info)
+        step = sum(isinstance(message, ModelResponse) for message in messages)
+        if step >= len(responses):
+            yield "The run buffered 3 features."
+            return
+        for index, item in enumerate(responses[step]):
+            if isinstance(item, str):
+                yield item
+            else:
+                name, args = item
+                yield {
+                    index: DeltaToolCall(
+                        name=name,
+                        json_args=json.dumps(args),
+                        tool_call_id=f"call-{step}-{index}",
+                    )
+                }
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        raise AssertionError("the run streams")
+
+    page = parse_context({"surface": "project.workflows", "project_id": RUN_PROJECT})
+    shown: list[DataPart] = []
+
+    async def emit(event: Any) -> None:
+        if isinstance(event, DataPart) and event.name == "ask":
+            shown.append(event)
+
+    deps = RunDeps(
+        message_id="m1",
+        emit=emit,
+        prompt_note=render_note(page, None, "en"),
+        budget=budget,
+    )
+    deps.env = tool_env(
+        fake_clients(core=core, processes=processes),
+        page=page,
+        emit_data=deps.emit_data,
+    )
+
+    async def on_event(event: Any) -> None:
+        return None
+
+    model = (
+        _Metered(stream, usages)
+        if usages
+        else FunctionModel(respond, stream_function=stream)
+    )
+    turn = await run_turn(
+        build_agent(model),
+        "Run it",
+        deps=deps,
+        on_event=on_event,
+        usage_limits=budget.usage_limits() if budget is not None else None,
+    )
+    return Answered(turn=turn, shown=shown, deps=deps, infos=infos)
+
+
+def _results(turn: Turn, tool: str) -> list[ToolReturnPart]:
+    return [
+        part
+        for message in turn.messages
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if isinstance(part, ToolReturnPart) and part.tool_name == tool
+    ]
+
+
+def _card_results(turn: Turn) -> list[ToolReturnPart]:
+    return _results(turn, "ask_user")
+
+
+def _run_finished(turn: Turn, tool: str = "workflow_last_run") -> bool:
+    [run] = _results(turn, tool)
+    return isinstance(run.content, dict) and run.content["status"] == "succeeded"
+
+
+LAST_RUN_CALL = ("workflow_last_run", {"workflow_id": RUN_WORKFLOW})
+
+
+@pytest.mark.parametrize("tool", ["workflow_run", "workflow_last_run"])
+async def test_a_card_before_the_finished_runs_numbers_is_refused(tool: str) -> None:
+    """A finished run's numbers come first: a card right after its result is
+    not shown, and the model writes its answer instead."""
+    call = (tool, {"workflow_id": RUN_WORKFLOW})
+    turn, shown = await _answer([call], [("ask_user", CARD)])
+    assert _run_finished(turn, tool)
+    assert shown == []
+    [refused] = _card_results(turn)
+    assert refused.outcome == "failed" and refused.content == REPORT_FIRST
+    assert turn.output == "The run buffered 3 features."
+
+
+def test_the_refusal_fits_a_read_of_how_a_layer_was_made() -> None:
+    """workflow_last_run also arms the refusal when it only checks how a layer
+    the answer considers was made: the refusal asks for what the result tells,
+    which is a run's numbers only when the question is about them."""
+    assert "write the text first (what the result tells you:" in REPORT_FIRST
+    assert "a run's numbers, what failed" in REPORT_FIRST
+    assert "what it says about a layer you consider" in REPORT_FIRST
+    assert "report what the run found" not in REPORT_FIRST
+
+
+def test_the_refusal_says_how_the_card_passes() -> None:
+    """A model that knows a response with text alone ends its answer kept
+    its card and sent it again without text: the refusal says the text and
+    the card go in one response, text first."""
+    assert REPORT_FIRST.startswith("This card was not shown. In the same response,")
+    assert "then call ask_user" in REPORT_FIRST
+    assert "A response with text alone ends the answer without the card." in (
+        REPORT_FIRST
+    )
+    assert REPEATED_CARD == (
+        "The card was refused because this response has no text: write the text "
+        "in this response, then the card."
+    )
+
+
+async def test_a_card_in_the_same_response_as_the_run_is_refused() -> None:
+    """Text written before the run's result reports nothing of it."""
+    turn, shown = await _answer(["Let me run it.", LAST_RUN_CALL, ("ask_user", CARD)])
+    assert _run_finished(turn)
+    assert shown == []
+    [refused] = _card_results(turn)
+    assert refused.outcome == "failed" and refused.content == REPORT_FIRST
+
+
+async def test_a_card_after_the_runs_numbers_are_written_is_shown() -> None:
+    turn, shown = await _answer(
+        [LAST_RUN_CALL], ["The run buffered 3 features.", ("ask_user", CARD)]
+    )
+    assert _run_finished(turn)
+    assert len(shown) == 1
+    [asked] = _card_results(turn)
+    assert asked.outcome != "failed" and isinstance(asked.content, dict)
+    assert asked.content["card_id"] == shown[0].part_id
+    assert turn.output is None
+
+
+async def test_a_card_before_any_run_is_shown() -> None:
+    turn, shown = await _answer([("ask_user", CARD)])
+    assert len(shown) == 1
+    assert turn.output is None
+
+
+def _card(question: str) -> tuple[str, dict[str, Any]]:
+    return ("ask_user", {"questions": [_question(question=question)]})
+
+
+def _retries(turn: Turn, tool: str) -> list[RetryPromptPart]:
+    return [
+        part
+        for message in turn.messages
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if isinstance(part, RetryPromptPart) and part.tool_name == tool
+    ]
+
+
+async def test_the_gate_refuses_a_card_at_most_twice_per_result() -> None:
+    """A model that kept sending its card without the text looped on the
+    refusal until its budget was gone: the third card in a row after the
+    same result is shown."""
+    assert REPORT_REFUSALS == 2
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        [_card("Which first?")],
+        [_card("Which second?")],
+        [_card("Which third?")],
+    )
+    first, second, third = _card_results(answered.turn)
+    assert first.outcome == "failed" and first.content == REPORT_FIRST
+    assert second.outcome == "failed" and second.content == REPORT_FIRST
+    assert third.outcome != "failed" and isinstance(third.content, dict)
+    assert [part.part_id for part in answered.shown] == [third.content["card_id"]]
+
+
+async def test_an_identical_repeat_of_a_refused_card_is_told_what_is_missing() -> None:
+    answered = await _answer_run(
+        [LAST_RUN_CALL], [("ask_user", CARD)], [("ask_user", CARD)]
+    )
+    first, second = _card_results(answered.turn)
+    assert first.content == REPORT_FIRST
+    assert second.outcome == "failed" and second.content == REPEATED_CARD
+    assert answered.shown == []
+
+
+async def test_a_changed_card_gets_the_full_refusal_again() -> None:
+    answered = await _answer_run(
+        [LAST_RUN_CALL], [_card("Which first?")], [_card("Which second?")]
+    )
+    assert [part.content for part in _card_results(answered.turn)] == [
+        REPORT_FIRST,
+        REPORT_FIRST,
+    ]
+
+
+async def test_each_result_to_report_gets_its_own_refusals() -> None:
+    """The count is per result: a second finished run's result starts it
+    again."""
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        [_card("Which first?")],
+        [_card("Which second?")],
+        [("workflow_run", {"workflow_id": RUN_WORKFLOW})],
+        [_card("Which third?")],
+    )
+    assert _run_finished(answered.turn, "workflow_run")
+    assert [part.content for part in _card_results(answered.turn)] == [REPORT_FIRST] * 3
+    assert answered.shown == []
+
+
+async def test_a_card_with_placeholder_labels_gets_the_label_error_first() -> None:
+    """A probe card ("x?", options "A" and "B") is told what is wrong with
+    it, not to report the run, and leaves the gate's count alone."""
+    placeholder = {"questions": [_question(options=[{"label": "A"}, {"label": "B"}])]}
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        [("ask_user", placeholder)],
+        [_card("Which first?")],
+        [_card("Which second?")],
+    )
+    [retry] = _retries(answered.turn, "ask_user")
+    assert "no placeholders" in str(retry.content)
+    assert [part.content for part in _card_results(answered.turn)] == [
+        REPORT_FIRST,
+        REPORT_FIRST,
+    ]
+
+
+async def test_a_second_card_is_refused_before_its_labels_are_checked() -> None:
+    placeholder = {"questions": [_question(options=[{"label": "A"}, {"label": "B"}])]}
+    answered = await _answer_run(
+        ["Which schools?", ("ask_user", CARD), ("ask_user", placeholder)]
+    )
+    shown, second = _card_results(answered.turn)
+    assert isinstance(shown.content, dict)
+    assert second.outcome == "failed" and second.content == ONE_CARD
+    assert _retries(answered.turn, "ask_user") == []
+
+
+async def test_refused_cards_take_none_of_the_answers_look_ups() -> None:
+    """Refused before the look-ups count it: each refused card still costs a
+    model call, but no tool call of the run's limit."""
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        [_card("Which first?")],
+        [_card("Which second?")],
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=30),
+    )
+    assert len(_card_results(answered.turn)) == 2
+    # The run's read only.
+    assert list(answered.deps.admitted_calls.values()) == [1]
+
+
+# -- reading a finished run's result past the look-up budget ----------------------
+
+READ_CALL: tuple[str, dict[str, Any]] = ("project_get_layers", {})
+LOOK_UP: Response = [("core_page_context", {})]
+
+
+def _offered(info: AgentInfo) -> set[str]:
+    return {tool.name for tool in info.function_tools}
+
+
+def _instructions(info: AgentInfo) -> str:
+    parts = info.model_request_parameters.instruction_parts or []
+    return "\n".join(part.content for part in parts)
+
+
+def test_the_result_is_read_with_the_project_reads_and_tool_descriptions() -> None:
+    assert RESULT_READS == 3
+    # The count is per result, also at the second and third read.
+    assert "at most 3 calls in all" in READ_THE_RESULT
+    assert "card" not in READ_THE_RESULT
+    assert CARD_AFTER_TEXT == (
+        "Write the text first and the card after it, in the same response."
+    )
+    assert "project_get_layers" in RESULT_READ_TOOLS
+    assert "project_group_statistics" in RESULT_READ_TOOLS
+    # What a result's scale or field means, from the tool that made it.
+    assert "workflow_describe_tool" in RESULT_READ_TOOLS
+    assert BY_WIRE_NAME["workflow_describe_tool"].returns_data is False
+    for name in RESULT_READ_TOOLS:
+        assert BY_WIRE_NAME[name].risk == "read"
+    # Not a proposal, and not a run read, which would arm the gate again.
+    assert "map_propose_view" not in RESULT_READ_TOOLS
+    assert "workflow_last_run" not in RESULT_READ_TOOLS
+
+
+async def test_past_its_budget_an_answer_still_reads_its_runs_result() -> None:
+    """An answer whose look-ups were spent right after its run was offered
+    only the card, and could not read its own result: it may still read it
+    with the project tools, up to three calls."""
+    answered = await _answer_run(
+        # Five tool calls kept in reserve of 30: the run is the 25th.
+        *[LOOK_UP] * 24,
+        [LAST_RUN_CALL],
+        [READ_CALL],
+        ["The run buffered 3 features.", ("ask_user", CARD)],
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=30),
+    )
+    reading = answered.infos[25]
+    assert _offered(reading) == (_offered(answered.infos[0]) & RESULT_READ_TOOLS) | {
+        "ask_user"
+    }
+    assert "project_get_layers" in _offered(reading)
+    assert READ_THE_RESULT in _instructions(reading)
+    assert CARD_AFTER_TEXT in _instructions(reading)
+    [read] = _results(answered.turn, "project_get_layers")
+    assert read.outcome != "failed"
+    # The tools stay the same while the result is read.
+    assert _offered(answered.infos[26]) == _offered(reading)
+    assert len(answered.shown) == 1
+
+
+async def test_the_result_reads_run_past_the_tool_call_limit() -> None:
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        [READ_CALL],
+        [READ_CALL, READ_CALL, READ_CALL],
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
+    )
+    # The run took the run's only tool call; no card fits after it.
+    assert _offered(answered.infos[1]) == _offered(answered.infos[0]) & (
+        RESULT_READ_TOOLS
+    )
+    assert READ_THE_RESULT in _instructions(answered.infos[1])
+    assert "card" not in _instructions(answered.infos[1]).split(READ_THE_RESULT)[1]
+    reads = _results(answered.turn, "project_get_layers")
+    assert [read.outcome != "failed" for read in reads] == [True, True, True, False]
+    assert reads[-1].content == LOOK_UPS_USED_UP
+    assert list(answered.deps.admitted_calls.values()) == [1 + RESULT_READS]
+    # Its reads used, the answer writes its text.
+    assert _offered(answered.infos[3]) == set()
+    assert answered.turn.output == "The run buffered 3 features."
+
+
+DESCRIBE_CALL: tuple[str, dict[str, Any]] = (
+    "workflow_describe_tool",
+    {"tool_ids": ["buffer"]},
+)
+
+
+async def test_the_description_of_the_tool_is_one_of_the_reads() -> None:
+    """Past its budget, an answer reads which way a result's scale runs, or
+    what a field means, from the description of the tool that made it,
+    instead of asking the user."""
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        [DESCRIBE_CALL],
+        [READ_CALL, READ_CALL, READ_CALL],
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
+    )
+    assert "workflow_describe_tool" in _offered(answered.infos[1])
+    [described] = _results(answered.turn, "workflow_describe_tool")
+    assert described.outcome != "failed"
+    reads = _results(answered.turn, "project_get_layers")
+    assert [read.outcome != "failed" for read in reads] == [True, True, False]
+    assert reads[-1].content == LOOK_UPS_USED_UP
+
+
+async def test_a_reported_result_ends_its_reads() -> None:
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        ["The run buffered 3 features.", READ_CALL],
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
+    )
+    assert "project_get_layers" in _offered(answered.infos[1])
+    assert _offered(answered.infos[2]) == set()
+    assert READ_THE_RESULT not in _instructions(answered.infos[2])
+
+
+async def test_without_a_result_to_report_the_budget_ends_the_reads() -> None:
+    answered = await _answer_run(
+        [READ_CALL],
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
+    )
+    assert _offered(answered.infos[1]) == set()
+    assert READ_THE_RESULT not in _instructions(answered.infos[1])
+
+
+#: A run whose result arrives as its token budget is spent: the run's call
+#: misses the cache at 50,000 tokens. The first read step misses it too (its
+#: tools changed) at a smaller context, which would let the budget allow a
+#: look-up again.
+RUN_ON_TOKENS: tuple[Usage, Usage] = ((50_000, 0, 1_000), (20_000, 0, 500))
+#: After the run's call (51,000 spent, a context of about 51,200 with its
+#: result), a look-up and the two calls after it would need about 229,600:
+#: the look-ups are spent. Three calls of that context fit (about 212,600:
+#: the read step, the answer step and a retry of it), so its result is read.
+READ_ON_TOKENS = RunBudget(max_tokens=220_000, max_tool_calls=30)
+
+
+async def test_when_tokens_end_the_look_ups_the_result_is_read_while_three_calls_fit() -> (
+    None
+):
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        [READ_CALL],
+        [READ_CALL],
+        budget=READ_ON_TOKENS,
+        # The second read step reads its input from the cache and writes a
+        # long output: after it, not even the answer step and a spare fit.
+        usages=[*RUN_ON_TOKENS, (20_600, 20_000, 40_000), (60_700, 0, 1_000)],
+    )
+    everything, first, second, last = (_offered(info) for info in answered.infos)
+    assert first == (everything & RESULT_READ_TOOLS) | {"ask_user"}
+    assert READ_THE_RESULT in _instructions(answered.infos[1])
+    # Still reading, not a look-up with every tool.
+    assert second == first
+    assert last == set()
+    assert READ_THE_RESULT not in _instructions(answered.infos[3])
+    assert len(_results(answered.turn, "project_get_layers")) == 2
+    assert answered.turn.output == "The run buffered 3 features."
+
+
+async def test_a_run_that_read_past_its_budget_looks_nothing_else_up() -> None:
+    """Once the result is reported, the read step's smaller context would let
+    the budget allow a look-up with every tool again."""
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        ["The run buffered 3 features.", READ_CALL],
+        budget=READ_ON_TOKENS,
+        usages=RUN_ON_TOKENS,
+    )
+    assert "project_get_layers" in _offered(answered.infos[1])
+    assert _offered(answered.infos[2]) == {"ask_user"}
+
+
+async def test_a_read_step_needs_room_for_a_retry_of_the_answer() -> None:
+    """At 200,000, the answer step and a spare fit after the run's call
+    (about 161,400), but not a read step, the answer and a retry (about
+    212,600): a read would leave the answer no room to be asked again after
+    a response with only reasoning. The answer comes at once, with its
+    card."""
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        budget=RunBudget(max_tokens=200_000, max_tool_calls=30),
+        usages=RUN_ON_TOKENS,
+    )
+    assert _offered(answered.infos[1]) == {"ask_user"}
+    assert READ_THE_RESULT not in _instructions(answered.infos[1])
+    assert answered.turn.output == "The run buffered 3 features."
+
+
+async def test_two_cards_in_one_response_take_one_refusal() -> None:
+    """The count is of responses: a response with two cards and no text gets
+    one round of the refusal, not both."""
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        [_card("Which first?"), _card("Which second?")],
+        [_card("Which third?")],
+        [_card("Which fourth?")],
+    )
+    results = _card_results(answered.turn)
+    assert [part.content for part in results[:3]] == [REPORT_FIRST] * 3
+    assert results[3].outcome != "failed" and isinstance(results[3].content, dict)
+    assert len(answered.shown) == 1
+
+
+async def test_a_read_that_reaches_the_limit_leaves_the_card_of_its_response() -> None:
+    """The card offered with the reads is not crowded out by a read in the
+    same response that takes the last tool call."""
+    answered = await _answer_run(
+        # One tool call kept in reserve of six: the run is the fifth.
+        *[LOOK_UP] * 4,
+        [LAST_RUN_CALL],
+        ["The run buffered 3 features.", READ_CALL, ("ask_user", CARD)],
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=6),
+    )
+    assert "ask_user" in _offered(answered.infos[5])
+    [card] = _card_results(answered.turn)
+    assert card.outcome != "failed" and isinstance(card.content, dict)
+    assert len(answered.shown) == 1

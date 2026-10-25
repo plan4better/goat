@@ -154,11 +154,16 @@ class AssistantSettings(BaseSettings):
     #: Rotation: put the new key first, then ``python -m assistant.llm.vault rotate``.
     secrets_key: SecretStr = SecretStr("")
 
+    #: Tool calls per answer. Reading a finished workflow run's result may
+    #: take up to ``RESULT_READS`` + 1 more (``assistant.budget``).
     run_max_tool_calls: int = 30
     #: Tokens per answer, input and output; tokens read from the provider's
     #: cache count at a tenth (``assistant.budget.CACHE_READ_WEIGHT``).
     run_max_tokens: int = 200_000
     run_max_seconds: int = 900
+    #: How long in all an answer may take that waits for a workflow run
+    #: (``assistant.clock.AnswerClock``); the run itself goes on after it.
+    run_wait_max_seconds: int = Field(default=1800, ge=1)
     user_max_concurrent_runs: int = 3
     #: A running run's lease; a replica renews it while the run is alive.
     lease_seconds: int = 30

@@ -27,6 +27,7 @@ from assistant.context import (
 )
 from assistant.llm import failures
 from assistant.surfaces import SURFACES, Surface
+from assistant.tools.ask import users_dataset
 from assistant.tools.http import ServiceError
 from assistant.tools.proposals import (
     CatalogFiltersPayload,
@@ -667,6 +668,14 @@ async def _get_record(env: ToolEnv, args: GetRecordInput) -> CatalogRecord:
         resolved = await _get(env, f"/resolve/{quote(args.item_id, safe='')}")
     except ServiceError as exc:
         if exc.status == 404:
+            # Asked on this failure alone: a dataset id from core_find looks
+            # like a catalog id.
+            if await users_dataset(env, args.item_id):
+                raise ToolFailed(
+                    f"Catalog record {args.item_id!r} not found: it is a dataset "
+                    "of the user's own (core_find lists it), not a catalog "
+                    "record. On a project page, project_add_dataset adds it."
+                ) from exc
             raise ToolFailed(f"Catalog record {args.item_id!r} not found") from exc
         raise
     base = str(env.services.catalog.base_url).rstrip("/")

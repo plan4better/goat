@@ -20,17 +20,21 @@ from pydantic_ai.toolsets import AbstractToolset, FunctionToolset
 from pydantic_core import SchemaValidator, core_schema
 
 from assistant.asks import ASK_TOOL
-from assistant.budget import StepGuard, next_call
+from assistant.budget import RESULT_READS, StepGuard, next_call
 from assistant.history import SHOWN_TOOLS
+from assistant.tools.ask import REPEATED_CARD, REPORT_FIRST
 from assistant.tools.http import service_failed
+from assistant.tools.project import PROJECT_TOOLS
 from assistant.tools.registry import ALL_TOOLS, BY_WIRE_NAME, tools_for
 from assistant.tools.runtime import (
     InputInvalid,
     ResultOverCap,
+    ToolEnv,
     ToolSpec,
     execute,
     refuse,
 )
+from assistant.tools.workflow_tools import DESCRIBE_TOOL
 
 if TYPE_CHECKING:
     from assistant.agent import RunDeps
@@ -100,6 +104,25 @@ SEARCHED_ENOUGH = (
     "answer without it, and in a workflow leave that dataset step open."
 )
 
+#: Responses whose cards ``ask_user`` refuses with ``REPORT_FIRST`` (or
+#: ``REPEATED_CARD``) per result to report; the next card is shown although
+#: no text came before it.
+#: A model that keeps its card would otherwise send it again until the
+#: answer's budget is gone.
+REPORT_REFUSALS = 2
+
+#: The tools that read a finished run's result past the look-up budget
+#: (``assistant.budget.RESULT_READS``): the project pack's reads, and
+#: ``workflow_describe_tool`` for what a result's fields and scales mean, as
+#: the tool that made them describes them. Not ``workflow_last_run``, whose
+#: result would be one to report again.
+RESULT_READ_TOOLS = frozenset(
+    [
+        *(spec.wire_name for spec in PROJECT_TOOLS if spec.risk == "read"),
+        DESCRIBE_TOOL.wire_name,
+    ]
+)
+
 #: Responses of a run with neither text nor a tool call (only reasoning, only
 #: whitespace, or nothing) that end its look-ups: the next call is the answer
 #: step. Each is asked again with the same tools (by Pydantic AI, or for only
@@ -143,8 +166,10 @@ def earlier_writes(messages: Sequence[Mapping[str, Any]]) -> dict[str, dict[str,
     """The first result of each write call stored in a conversation, by call
     key. A run starts with them in ``RunDeps.earlier_results``, so a write
     repeated in a later answer (a retry, "try again") returns what the first
-    call created. Read from the stored parts (``events.fold_parts``), which
-    keep every call that returned, also of an answer cancelled afterwards."""
+    call created. A repeatable write (``ToolSpec.repeatable``) is left out: a
+    later answer runs it again. Read from the stored parts
+    (``events.fold_parts``), which keep every call that returned, also of an
+    answer cancelled afterwards."""
     found: dict[str, dict[str, Any]] = {}
     for message in messages:
         if message.get("role") != "assistant":
@@ -157,6 +182,7 @@ def earlier_writes(messages: Sequence[Mapping[str, Any]]) -> dict[str, dict[str,
             if (
                 spec is None
                 or spec.risk != "write"
+                or spec.repeatable is not None
                 or part.get("state") != "output"
                 or not isinstance(output, dict)
                 or not isinstance(args, dict)
@@ -176,8 +202,37 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
         env = ctx.deps.env
         if env is None:  # filtered out below; kept as a guard
             raise ModelRetry("This tool is not available here.")
+        if spec.wire_name == ASK_TOOL and ctx.deps.asked:
+            # One card per answer. Refused rather than answered with the
+            # first card's result: that names the first card's id, and a card
+            # id stored twice names no card (``AskHistory.from_stored``).
+            await refuse(
+                spec,
+                env,
+                arguments,
+                spec.once_per_answer or REPEATED_CALL,
+                tool_call_id=ctx.tool_call_id,
+            )
+        if spec.wire_name == ASK_TOOL and _unreported(ctx):
+            await _report_first(ctx, spec, env, arguments)
+        reading = ctx.deps.reading_step == (ctx.run_id, ctx.run_step)
+        reads_result = reading and spec.wire_name in RESULT_READ_TOOLS
+        if reads_result:
+            reads = ctx.deps.result_reads.get(ctx.run_id, 0)
+            if reads >= RESULT_READS:
+                await refuse(
+                    spec,
+                    env,
+                    arguments,
+                    LOOK_UPS_USED_UP,
+                    tool_call_id=ctx.tool_call_id,
+                )
+            ctx.deps.result_reads[ctx.run_id] = reads + 1
         guard = _step_guard(ctx)
-        if guard is not None and not guard.admit_call():
+        # In a step prepared for reading a run's result, the reads and the
+        # card offered with them run although a read took the last call.
+        past_limit = reads_result or (reading and spec.wire_name == ASK_TOOL)
+        if guard is not None and not guard.admit_call(past_limit=past_limit):
             await refuse(
                 spec, env, arguments, LOOK_UPS_USED_UP, tool_call_id=ctx.tool_call_id
             )
@@ -208,7 +263,7 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
             check = _result_check(ctx, spec, guard, key)
             if earlier is not None:
                 if spec.risk == "write":
-                    note = REPEATED_WRITE
+                    note = spec.repeatable or REPEATED_WRITE
                 else:
                     note = spec.once_per_answer or REPEATED_CALL
                 again = {**earlier, "repeated_call": note}
@@ -223,6 +278,7 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                         result_bytes=size,
                     )
                 _count_search(ctx, spec, again)
+                _note_report(ctx, spec, again)
                 return again
             try:
                 result = await execute(
@@ -254,6 +310,7 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
             if key:
                 ctx.deps.earlier_results[key] = result
             _count_search(ctx, spec, result)
+            _note_report(ctx, spec, result)
             return result
         except InputInvalid as exc:
             # ctx.retry / ctx.max_retries are this tool's own (FunctionToolset sets them).
@@ -271,7 +328,8 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
         takes_ctx=True,
         # The calls of one response run concurrently. A write, and a tool
         # that runs once per answer, runs alone, so its twin in the same
-        # response finds the first result above instead of running again.
+        # response finds the first result (a card: the card shown) above
+        # instead of running again.
         sequential=spec.risk == "write" or spec.once_per_answer is not None,
     )
     tool.function_schema.validator = _ARGUMENTS_VALIDATOR
@@ -289,6 +347,88 @@ def _count_search(
     counts[ctx.run_id] = (
         counts.get(ctx.run_id, 0) + 1 if spec.found_nothing(result) else 0
     )
+
+
+def _run_responses(
+    messages: Sequence[ModelMessage], run_id: str | None
+) -> list[ModelResponse]:
+    return [
+        message
+        for message in messages
+        if isinstance(message, ModelResponse) and message.run_id == run_id
+    ]
+
+
+def _has_text(response: ModelResponse) -> bool:
+    return any(
+        isinstance(part, TextPart) and part.content.strip() for part in response.parts
+    )
+
+
+def _note_report(
+    ctx: "RunContext[RunDeps]", spec: ToolSpec[Any, Any], result: dict[str, Any]
+) -> None:
+    """Marks a result the answer reports before it asks
+    (``ToolSpec.report_first``): the messages end with the response that made
+    the call, so the responses after it are the ones written after the
+    result. The cards refused and the reads made for an earlier result count
+    no more."""
+    if spec.report_first is not None and spec.report_first(result):
+        ctx.deps.unreported[ctx.run_id] = len(_run_responses(ctx.messages, ctx.run_id))
+        ctx.deps.refused_cards.pop(ctx.run_id, None)
+        ctx.deps.result_reads.pop(ctx.run_id, None)
+
+
+def _unreported(ctx: "RunContext[RunDeps]") -> bool:
+    """Whether the answer has a result to report and no response written
+    after it holds text. A response that made the call too wrote its text
+    before the result."""
+    seen = ctx.deps.unreported.get(ctx.run_id)
+    if seen is None:
+        return False
+    later = _run_responses(ctx.messages, ctx.run_id)[seen:]
+    return not any(_has_text(response) for response in later)
+
+
+def _card_key(spec: ToolSpec[Any, Any], arguments: dict[str, Any]) -> str | None:
+    """The card as it would be shown, as canonical JSON: the same for two
+    calls that ask the same. None for a card that does not validate."""
+    try:
+        card = spec.input_model.model_validate(arguments)
+    except ValidationError:
+        return None
+    return json.dumps(card.model_dump(mode="json"), sort_keys=True)
+
+
+async def _report_first(
+    ctx: "RunContext[RunDeps]",
+    spec: ToolSpec[Any, Any],
+    env: ToolEnv,
+    arguments: dict[str, Any],
+) -> None:
+    """Refuses a card while the answer has a result to report, before the
+    look-ups count it, so the answer still has its tools: the model writes
+    the text, and the card after it in the same response. A card that does
+    not validate is left to ``execute``, which says what is wrong with it (a
+    placeholder label, say). After refusals in ``REPORT_REFUSALS`` responses
+    for the same result the card is shown; a second card of a response
+    already refused is refused with it."""
+    card = _card_key(spec, arguments)
+    if card is None:
+        return
+    refused = ctx.deps.refused_cards.setdefault(ctx.run_id, [])
+    steps = {step for step, _ in refused}
+    if ctx.run_step not in steps and len(steps) >= REPORT_REFUSALS:
+        return
+    reason = REPEATED_CARD if refused and refused[-1][1] == card else REPORT_FIRST
+    refused.append((ctx.run_step, card))
+    await refuse(spec, env, arguments, reason, tool_call_id=ctx.tool_call_id)
+
+
+def _result_to_read(ctx: "RunContext[RunDeps]") -> bool:
+    """Whether the answer has a result to report and reads of it left
+    (``RESULT_READS``)."""
+    return _unreported(ctx) and ctx.deps.result_reads.get(ctx.run_id, 0) < RESULT_READS
 
 
 def _step_guard(ctx: "RunContext[RunDeps]") -> StepGuard | None:
@@ -338,14 +478,12 @@ def _result_check(
 
 
 #: Where a run stands at the model call being prepared (``answer_step``).
-Stage = Literal["look up", "answer or ask", "answer"]
+Stage = Literal["look up", "read or ask", "read", "answer or ask", "answer"]
 
 
 def _silent(response: ModelResponse) -> bool:
-    return not any(
-        isinstance(part, ToolCallPart)
-        or (isinstance(part, TextPart) and part.content.strip())
-        for part in response.parts
+    return not _has_text(response) and not any(
+        isinstance(part, ToolCallPart) for part in response.parts
     )
 
 
@@ -361,11 +499,13 @@ def silent_responses(messages: Sequence[ModelMessage], run_id: str | None) -> in
 
 
 def answer_step(ctx: "RunContext[RunDeps]") -> Stage | None:
-    """Whether the call being prepared may look things up, or is the step
-    that answers, with or without room for a card (``assistant.budget``).
-    None without a budget. A result refused for its size has ended the run's
-    look-ups (``_result_check``), and so have ``SILENT_RESPONSES`` responses
-    without text or a tool call."""
+    """Whether the call being prepared may look things up, may still read a
+    finished run's result it has not written about (``RESULT_READS``), or is
+    the step that answers; with or without room for a card
+    (``assistant.budget``). None without a budget. A result refused for its
+    size has ended the run's look-ups (``_result_check``), and so have
+    ``SILENT_RESPONSES`` responses without text or a tool call; then the
+    result is not read either."""
     budget = ctx.deps.budget
     if budget is None:
         return None
@@ -373,15 +513,26 @@ def answer_step(ctx: "RunContext[RunDeps]") -> Stage | None:
     # Every call let run counts, failed ones too (StepGuard); pydantic_ai's
     # count has only the successful ones.
     tool_calls = max(ctx.usage.tool_calls, ctx.deps.admitted_calls.get(ctx.run_id, 0))
+    ended = (
+        ctx.deps.refused_run == ctx.run_id
+        or silent_responses(ctx.messages, ctx.run_id) >= SILENT_RESPONSES
+    )
+    reading = not ended and _result_to_read(ctx) and budget.read_fits(ctx.usage, call)
+    # A run that read past its budget looks nothing else up: the reading
+    # step's smaller context would let the budget allow a look-up it has no
+    # room for, and a look-up step offers other tools, so the provider would
+    # read none of the next call from its cache. A new result to read, which
+    # starts the reads again, comes only from a look-up.
     if (
-        ctx.deps.refused_run != ctx.run_id
-        and silent_responses(ctx.messages, ctx.run_id) < SILENT_RESPONSES
+        not ended
+        and ctx.run_id not in ctx.deps.result_reads
         and not budget.spent(ctx.usage, call, tool_calls)
     ):
         return "look up"
-    if budget.can_ask(ctx.usage, call, tool_calls):
-        return "answer or ask"
-    return "answer"
+    ask = budget.can_ask(ctx.usage, call, tool_calls)
+    if reading:
+        return "read or ask" if ask else "read"
+    return "answer or ask" if ask else "answer"
 
 
 def _size(result: dict[str, Any]) -> int:
@@ -402,8 +553,13 @@ async def _surface_tools(
     # Near the run's limits the model answers with what it has
     # (assistant.budget), or asks with a card when the user has to choose: the
     # card ends the answer, and the user's answer starts a run of its own.
+    # Before it answers, it may still read a finished run's result.
     stage = answer_step(ctx)
-    if stage == "answer or ask":
+    if stage in ("read or ask", "read"):
+        ctx.deps.reading_step = (ctx.run_id, ctx.run_step)
+        ctx.deps.result_reads.setdefault(ctx.run_id, 0)
+        loaded &= RESULT_READ_TOOLS | ({ASK_TOOL} if stage == "read or ask" else set())
+    elif stage == "answer or ask":
         loaded &= {ASK_TOOL}
     elif stage == "answer":
         loaded = set()

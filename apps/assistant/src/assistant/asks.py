@@ -2,14 +2,17 @@
 
 A card holds up to four questions the user answers together; the dock adds a
 free-text field to each. An option may carry a ``value`` the asking side
-attaches (a layer_project_id, a catalog id, a template id). Values stay on the
-server: the stream and the stored transcript the web reads leave them out
-(``public_args``), and the model gets them back with the user's answer
-(``answer_lines``); ``user_chose`` reads the stored history, never the model's
-words.
+attaches (a layer_project_id, a catalog id, a template id) and ``adds``, the
+datasets picking it authorises. Both stay on the server: the stream and the
+stored transcript the web reads leave them out (``public_args``), and the model
+gets the value back with the user's answer (``answer_lines``). ``user_chose``
+and ``picked_ids`` read the stored history, never the model's words; only
+``picked_ids`` reads ``adds``, so an option's ``adds`` never stands for a value
+such as a workflow run's.
 """
 
-from collections.abc import Mapping, Sequence
+import re
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -18,9 +21,12 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
+
+from assistant.context import RECORD_ID_PATTERN
 
 #: The tool's wire name.
 ASK_TOOL = "ask_user"
@@ -30,7 +36,19 @@ CARD_PREFIX = "ask-"
 CARD_ID_PATTERN = r"^ask-[A-Za-z0-9_.:-]{1,200}$"
 MAX_QUESTIONS = 4
 MAX_OPTIONS = 4
+MAX_HEADER_CHARS = 12
+#: Left off the end of a shortened header.
+_HEADER_TRAILING = " ,;:/-"
+#: Validation context key of a card read back from the stored history
+#: (``AskHistory.from_stored``): the label rule is for new cards, so a card
+#: shown before it stays answerable.
+_STORED_CARD = "stored_card"
 MAX_OTHER_CHARS = 500
+MAX_ADDS = 25
+#: The prefix of a value that stands for a workflow run
+#: (``assistant.workflows.runs.RUN_VALUE``); never one of ``adds``.
+RUN_PREFIX = "run:"
+_RECORD_ID = re.compile(RECORD_ID_PATTERN)
 #: Labels of the free-text option the card adds by itself.
 _OTHER_LABELS = frozenset(
     {
@@ -62,7 +80,16 @@ class AskOption(BaseModel):
         description=(
             "What the choice stands for, never shown to the user: a "
             "layer_project_id, a catalog id or a template id. It comes back with "
-            "the answer."
+            "the answer. When the option adds datasets, their ids go in adds and "
+            "value may be any short key."
+        ),
+    )
+    adds: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_ADDS,
+        description=(
+            "The datasets choosing it adds: catalog ids or ids of the user's own "
+            "datasets, as the add tools take them. Never shown to the user."
         ),
     )
 
@@ -73,6 +100,18 @@ class AskOption(BaseModel):
             raise ValueError("the card adds a free-text 'Other' itself; leave it out")
         return label
 
+    @field_validator("adds")
+    @classmethod
+    def _dataset_ids(cls, adds: list[str]) -> list[str]:
+        for item in adds:
+            # A dot segment fits the pattern, but in a lookup's path it would
+            # name another route.
+            if not _RECORD_ID.fullmatch(item) or item in (".", ".."):
+                raise ValueError(f"{item!r} is not a dataset id")
+            if item.startswith(RUN_PREFIX):
+                raise ValueError("adds names datasets, never a workflow run")
+        return adds
+
 
 class AskQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -82,13 +121,24 @@ class AskQuestion(BaseModel):
     )
     header: str = Field(
         min_length=1,
-        max_length=12,
-        description="A short chip naming the question, e.g. 'Schools'.",
+        max_length=MAX_HEADER_CHARS,
+        description="A short chip naming the question, at most 12 characters, e.g. 'Schools'.",
     )
     options: list[AskOption] = Field(min_length=2, max_length=MAX_OPTIONS)
     multi_select: bool = Field(
         default=False, description="True when the user may pick several options."
     )
+
+    @field_validator("header", mode="before")
+    @classmethod
+    def _short_header(cls, header: Any) -> Any:
+        """A longer chip is cut at the last word end that fits, else at the
+        limit; anything else is left for the field's own checks."""
+        if not isinstance(header, str) or len(header) <= MAX_HEADER_CHARS:
+            return header
+        space = header.rfind(" ", 0, MAX_HEADER_CHARS + 1)
+        words = header[:space].rstrip(_HEADER_TRAILING) if space > 0 else ""
+        return words or header[:MAX_HEADER_CHARS]
 
     @field_validator("question")
     @classmethod
@@ -98,7 +148,17 @@ class AskQuestion(BaseModel):
         return question
 
     @model_validator(mode="after")
-    def _recommended_first(self) -> "AskQuestion":
+    def _recommended_first(self, info: ValidationInfo) -> "AskQuestion":
+        labels = [option.label.strip().casefold() for option in self.options]
+        if not (info.context or {}).get(_STORED_CARD) and (
+            len(set(labels)) != len(labels)
+            or any(
+                sum(ch.isalnum() for ch in option.label) < 2 for option in self.options
+            )
+        ):
+            raise ValueError(
+                "options need distinct labels of at least two letters, no placeholders"
+            )
         recommended = [option for option in self.options if option.recommended]
         if len(recommended) > 1:
             raise ValueError("at most one option of a question is recommended")
@@ -121,7 +181,8 @@ class AskUserInput(BaseModel):
 
 
 def card_data(card_id: str, card: AskUserInput) -> dict[str, Any]:
-    """The ``data-ask`` part the dock renders: the card without its values."""
+    """The ``data-ask`` part the dock renders: the card without its values and
+    the ids its options add."""
     return {
         "card_id": card_id,
         "questions": [
@@ -144,8 +205,8 @@ def card_data(card_id: str, card: AskUserInput) -> dict[str, Any]:
 
 
 def public_args(tool_name: str, args: Mapping[str, Any]) -> dict[str, Any]:
-    """A tool call's arguments as the web may see them: the option values of
-    an ``ask_user`` card stay on the server."""
+    """A tool call's arguments as the web may see them: the option values and
+    ``adds`` of an ``ask_user`` card stay on the server."""
     if tool_name != ASK_TOOL:
         return dict(args)
     # Rebuilt from the keys and shapes of a card, not filtered: anything else
@@ -165,7 +226,8 @@ def public_args(tool_name: str, args: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-#: The keys of a card the web may see; an option's ``value`` is not one.
+#: The keys of a card the web may see; an option's ``value`` and ``adds`` are
+#: not among them.
 _QUESTION_KEYS = frozenset({"question", "header", "multi_select"})
 _OPTION_KEYS = frozenset({"label", "description", "recommended"})
 
@@ -300,7 +362,9 @@ class AskHistory:
                         shared.add(card_id)
                     shown.add(card_id)
                     try:
-                        card = AskUserInput.model_validate(part.get("args") or {})
+                        card = AskUserInput.model_validate(
+                            part.get("args") or {}, context={_STORED_CARD: True}
+                        )
                     except ValidationError:
                         continue
                     cards[card_id] = card
@@ -321,9 +385,10 @@ class AskHistory:
         )
 
 
-def user_chose(history: AskHistory, value: str) -> bool:
-    """Whether an answered card of this conversation offered an option with
-    ``value`` and the user picked it. A typed reply is no pick: it is text."""
+def _picked_options(history: AskHistory) -> Iterator[tuple[str, AskOption]]:
+    """The options the user picked in the answered cards of this conversation,
+    each with its card id, in the order the cards were answered. A typed reply
+    is no pick: it is text."""
     for card_id, answer in history.answers.items():
         card = history.cards.get(card_id)
         if card is None:
@@ -332,9 +397,43 @@ def user_chose(history: AskHistory, value: str) -> bool:
             if reply.question >= len(card.questions):
                 continue
             options = card.questions[reply.question].options
-            if any(
-                index < len(options) and options[index].value == value
-                for index in reply.options
-            ):
-                return True
-    return False
+            for index in reply.options:
+                if index < len(options):
+                    yield card_id, options[index]
+
+
+def chosen_cards(history: AskHistory, value: str) -> list[str]:
+    """The answered cards of this conversation that offered an option with
+    ``value`` and where the user picked it, by card id, in the order they were
+    answered. Reads an option's ``value`` only, never its ``adds``."""
+    found: list[str] = []
+    for card_id, option in _picked_options(history):
+        if option.value == value and card_id not in found:
+            found.append(card_id)
+    return found
+
+
+def user_chose(history: AskHistory, value: str) -> bool:
+    """Whether an answered card of this conversation offered an option with
+    ``value`` and the user picked it."""
+    return bool(chosen_cards(history, value))
+
+
+def recent_picked_ids(history: AskHistory) -> list[str]:
+    """Every id the user picked in an answered card of this conversation, each
+    once, the newest pick first: a picked option's ``value`` and each of its
+    ``adds``."""
+    picks = list(_picked_options(history))
+    ids = (
+        item
+        for _, option in reversed(picks)
+        for item in (option.value, *option.adds)
+        if item
+    )
+    return list(dict.fromkeys(ids))
+
+
+def picked_ids(history: AskHistory) -> set[str]:
+    """Every id the user picked in an answered card of this conversation: a
+    picked option's ``value`` and each of its ``adds``."""
+    return set(recent_picked_ids(history))

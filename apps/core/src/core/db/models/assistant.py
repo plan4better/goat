@@ -295,6 +295,10 @@ class AssistantConnection(SQLModel, table=True):
     base_url: str | None = _text(nullable=True)
     region: str | None = _text(nullable=True)
     model: str = _text(nullable=False)
+    #: OpenRouter only: the providers to send the model to, in order (empty:
+    #: OpenRouter chooses), and whether others may answer when those fail.
+    provider_order: list[str] | None = _jsonb_list()
+    allow_fallbacks: bool = _flag(True)
     credentials_encrypted: str = _text(nullable=False)
     #: The capability profile recorded by the last passed Test connection (§4.3).
     capabilities: dict[str, Any] | None = _jsonb_object()

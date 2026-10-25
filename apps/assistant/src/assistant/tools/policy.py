@@ -17,6 +17,16 @@ from pydantic import BaseModel
 from assistant.llm.types import DataPolicy
 
 LOW_CARDINALITY_LIMIT = 50
+#: Under Restricted, a filter that matches fewer features than this is not
+#: allowed to return the values of what it matches: a filter that isolates one
+#: feature would make its minimum, maximum and class breaks that feature's own
+#: values, and its count says whether it exists ("none" against "one"). So a
+#: filtered count below it is withheld, by the project tools and by the
+#: workflow check alike. Class breaks are capped so every class holds at least
+#: this many features with a value, filtered or not: quantile breaks over as
+#: many classes as values are the values themselves. ``k`` break points make
+#: ``k + 1`` classes.
+MIN_RESTRICTED_GROUP = 5
 
 RESTRICTED_REASON = (
     "Withheld: the organization's data policy (Restricted) does not allow sending "

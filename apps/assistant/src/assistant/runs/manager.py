@@ -21,14 +21,17 @@ from uuid import UUID
 
 import asyncpg
 from pydantic import ValidationError
-from pydantic_ai import Agent, AgentRunResultEvent
+from pydantic_ai import Agent
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.messages import (
+    AgentStreamEvent,
     ModelMessage,
     ModelMessagesTypeAdapter,
     ModelRequest,
     ModelResponse,
     TextPart,
+    ToolCallPart,
+    ToolReturnPart,
     UserPromptPart,
 )
 from pydantic_ai.models import Model
@@ -39,6 +42,7 @@ from assistant.agent import PartIds, RunDeps, build_agent
 from assistant.asks import AskHistory, CardAnswer, answer_lines, answer_problem
 from assistant.budget import RunBudget
 from assistant.bus import CONTROL_CHANNEL, EventBus, events_channel
+from assistant.clock import AnswerClock
 from assistant.config import AssistantSettings
 from assistant.context import NO_PAGE, PageContext, dump_context, parse_context
 from assistant.events import (
@@ -48,9 +52,12 @@ from assistant.events import (
     RunEvent,
     RunStarted,
     RunStatus,
+    ToolCalled,
+    ToolReturned,
     UsageReported,
     fold_parts,
 )
+from assistant.history import SHOWN_TOOLS
 from assistant.llm.endpoints import EndpointPolicy
 from assistant.llm.failures import (
     ProviderFailure,
@@ -70,10 +77,12 @@ from assistant.prompt import render_note, with_note
 from assistant.repo import ACTIVE, Repository
 from assistant.runs.titles import generate_title
 from assistant.runs.translate import EventTranslator
+from assistant.runs.turn import run_turn
 from assistant.surfaces import Locale, Surface
 from assistant.tools.http import ServiceClients
 from assistant.tools.runtime import ToolEnv, client_secrets
 from assistant.tools.toolset import earlier_writes
+from assistant.workflows.runs import ConversationRuns
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +150,8 @@ class RunSetup:
     #: The first result of each write call in this conversation, by call key
     #: (assistant.tools.toolset.earlier_writes).
     earlier_writes: Mapping[str, dict[str, Any]] = field(default_factory=dict)
+    #: What the conversation created and ran (assistant.workflows.runs).
+    runs: ConversationRuns = field(default_factory=ConversationRuns)
 
     @classmethod
     def default(cls) -> "RunSetup":
@@ -241,11 +252,43 @@ def usage_event(provider: str, model: str, usage: RunUsage) -> UsageReported:
 
 
 def _partial_history(text: str, events: list[RunEvent]) -> list[dict[str, Any]]:
-    """Model history for a turn that did not succeed: the user's prompt and
-    whatever answer text was streamed, so the next turn still sees the exchange."""
+    """Model history for a turn that did not succeed: the user's prompt, the
+    finished calls whose results the user was shown (a card, a created
+    workflow), and whatever answer text was streamed, so the next turn still
+    sees the exchange: an answer to the card, a workflow not to create twice."""
     messages: list[ModelRequest | ModelResponse] = [
         ModelRequest(parts=[UserPromptPart(content=text)])
     ]
+    shown = {
+        event.tool_call_id: event
+        for event in events
+        if isinstance(event, ToolCalled) and event.tool_name in SHOWN_TOOLS
+    }
+    for event in events:
+        if isinstance(event, ToolReturned) and event.tool_call_id in shown:
+            call = shown[event.tool_call_id]
+            messages.append(
+                ModelResponse(
+                    parts=[
+                        ToolCallPart(
+                            tool_name=call.tool_name,
+                            args=call.args,
+                            tool_call_id=call.tool_call_id,
+                        )
+                    ]
+                )
+            )
+            messages.append(
+                ModelRequest(
+                    parts=[
+                        ToolReturnPart(
+                            tool_name=call.tool_name,
+                            content=event.output,
+                            tool_call_id=call.tool_call_id,
+                        )
+                    ]
+                )
+            )
     answer = _assistant_text(events)
     if answer:
         messages.append(ModelResponse(parts=[TextPart(content=answer)]))
@@ -283,6 +326,10 @@ class RunManager:
         #: Runs whose agent part is over and whose end is being recorded. Cancelling
         #: them again would abort the bookkeeping, so cancel requests skip them.
         self._ending: set[UUID] = set()
+        #: Runs whose lease was lost (ended elsewhere) and that are cancelled
+        #: here for it: like a shutdown, not the user's Stop, so a workflow
+        #: run they started goes on (``ToolEnv.stopping``).
+        self._lost: set[UUID] = set()
         self._background: list[asyncio.Task[None]] = []
         self._stopping = False
 
@@ -366,6 +413,7 @@ class RunManager:
             answer=answer_text,
             asks=asks,
             earlier_writes=earlier_writes(stored),
+            runs=ConversationRuns.from_stored(stored),
         )
         user_parts: list[dict[str, Any]] = [{"type": "user_text", "text": text}]
         # A home page with @ mentioned sources still has context worth showing.
@@ -505,6 +553,7 @@ class RunManager:
             # A write repeated in this answer returns its first result, as in
             # the answer that made it (assistant.tools.toolset).
             deps.earlier_results.update(setup.earlier_writes)
+            clock = AnswerClock(self.settings.run_wait_max_seconds)
             if self.tool_services is not None:
                 deps.env = ToolEnv(
                     services=self.tool_services,
@@ -518,11 +567,15 @@ class RunManager:
                     repo=self.repo,
                     extra_secrets=client_secrets(self.settings),
                     asks=setup.asks,
+                    clock=clock,
+                    runs=setup.runs,
+                    stopping=lambda: self._stopping or run_id in self._lost,
                 )
             targets = [resolution.main]
             if resolution.fallback is not None:
                 targets.append(resolution.fallback)
             async with asyncio.timeout(self.settings.run_max_seconds) as deadline:
+                clock.timeout = deadline
                 for index, target in enumerate(targets):
                     attempted = target
                     # Usage is per attempt: only the last attempt's is recorded,
@@ -620,6 +673,7 @@ class RunManager:
         finally:
             if heartbeat is not None:
                 heartbeat.cancel()
+            self._lost.discard(run_id)
             # The agent part is over on every path. The login, and the refresh
             # token in it, lives for the run only (spec §6.5): this task drops
             # its references here, before the bookkeeping and the title. The
@@ -715,20 +769,21 @@ class RunManager:
             agent = self.agent_factory(models.main)
             translator = EventTranslator(part_ids)
             limits = self._budget().usage_limits()
-            model_messages: list[dict[str, Any]] = []
-            async with agent.run_stream_events(
+
+            async def on_event(event: AgentStreamEvent) -> None:
+                for translated in translator.translate(event):
+                    await emit(translated)
+
+            turn = await run_turn(
+                agent,
                 with_note(deps.prompt_note, text, deps.prompt_answer),
                 deps=deps,
+                on_event=on_event,
                 message_history=history,
                 usage_limits=limits,
                 usage=usage,
-            ) as events:
-                async for event in events:
-                    if isinstance(event, AgentRunResultEvent):
-                        model_messages = to_jsonable_python(event.result.new_messages())
-                    else:
-                        for translated in translator.translate(event):
-                            await emit(translated)
+            )
+            model_messages: list[dict[str, Any]] = to_jsonable_python(turn.messages)
             return model_messages
 
     async def _note_failure(
@@ -880,6 +935,7 @@ class RunManager:
                 # cancel takes the normal path, where finish_run loses the
                 # compare-and-set and nothing more is recorded.
                 logger.warning("Run %s lost its lease; cancelling it here", run_id)
+                self._lost.add(run_id)
                 self._cancel_local(run_id)
                 return
 

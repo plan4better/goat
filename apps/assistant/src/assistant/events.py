@@ -168,14 +168,27 @@ def fold_parts(events: list[RunEvent]) -> list[dict[str, Any]]:
                 state="approval_requested", approval_id=event.approval_id
             )
         elif isinstance(event, DataPart):
-            parts.append(
-                {
-                    "type": "data",
-                    "name": event.name,
-                    "id": event.part_id,
-                    "data": event.data,
-                }
+            # A part sent again under its id (a run's progress) replaces the
+            # earlier one where it stood, as the web app's stream does.
+            earlier = next(
+                (
+                    part
+                    for part in parts
+                    if part.get("type") == "data" and part.get("id") == event.part_id
+                ),
+                None,
             )
+            if earlier is not None:
+                earlier.update(name=event.name, data=event.data)
+            else:
+                parts.append(
+                    {
+                        "type": "data",
+                        "name": event.name,
+                        "id": event.part_id,
+                        "data": event.data,
+                    }
+                )
         elif isinstance(event, UsageReported):
             # One usage part per message: per-answer details show the run's total
             # (spec §10), and the model of the last report.

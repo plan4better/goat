@@ -13,21 +13,29 @@ from pygeofilter.util import parse_datetime
 
 from assistant.context import parse_context
 from assistant.login import StaticLogin
-from assistant.tools.filters import CONDITION_EXAMPLE, FILTER_EXAMPLES
+from assistant.tools.filters import (
+    CONDITION_EXAMPLE,
+    FILTER_EXAMPLES,
+    FeatureFilter,
+    to_cql2,
+)
+from assistant.tools.http import SIGN_IN_EXPIRED
 from assistant.tools.project import (
     AREA_STATISTICS,
     COUNT_FEATURES,
     FIELD_STATISTICS,
     GET_FIELDS,
     GET_LAYERS,
+    GROUP_STATISTICS,
     PROJECT_SURFACES,
     PROJECT_TOOLS,
     PROPOSE_VIEW,
     SAMPLE_FEATURES,
+    STILL_COPYING,
 )
 from assistant.tools.proposals import MapCamera, MapViewPayload
 from assistant.tools.runtime import MAX_RESULT_BYTES, InputInvalid, ToolEnv, execute
-from assistant.tools.testing import Recorder, fake_clients, tool_env
+from assistant.tools.testing import Recorder, fake_clients, signed_in, tool_env
 
 PROJECT = UUID(int=500)
 LINES = "11111111-1111-1111-1111-111111111111"
@@ -177,6 +185,23 @@ def _processes(
                         "unit": "m²",
                     },
                 )
+            if process == "aggregation-stats":
+                # One group per distinct value, as many as the limit allows.
+                return httpx.Response(
+                    200,
+                    json={
+                        "items": [
+                            {
+                                "grouped_value": f"v{i}",
+                                "grouped_secondary_value": None,
+                                "operation_value": float(100 - i),
+                            }
+                            for i in range(min(unique_total, inputs["limit"]))
+                        ],
+                        "total_items": unique_total,
+                        "total_count": count,
+                    },
+                )
             if process == "extent":
                 return httpx.Response(
                     200,
@@ -197,6 +222,7 @@ def _processes(
                 "class-breaks",
                 "unique-values",
                 "area-statistics",
+                "aggregation-stats",
                 "extent",
             )
         }
@@ -464,6 +490,53 @@ async def test_not_null_and_any_compile() -> None:
     }
 
 
+def test_contains_matches_text_anywhere() -> None:
+    # The services' LIKE takes no escape character: a % or _ in the text stays
+    # a wildcard, so it is sent as it is.
+    cql = to_cql2(
+        FeatureFilter.model_validate(
+            {"conditions": [{"field": "name", "op": "contains", "value": "50%_off"}]}
+        ),
+        {"name": "string"},
+    )
+    assert cql == {"op": "like", "args": [{"property": "name"}, "%50%_off%"]}
+
+
+def test_the_operator_description_names_contains() -> None:
+    schema = COUNT_FEATURES.json_schema()["$defs"]["Condition"]["properties"]["op"]
+    assert "contains" in schema["enum"]
+    assert "'contains'" in schema["description"]
+
+
+def test_contains_needs_a_text_field() -> None:
+    with pytest.raises(InputInvalid, match="text"):
+        to_cql2(
+            FeatureFilter.model_validate(
+                {"conditions": [{"field": "n", "op": "contains", "value": "1"}]}
+            ),
+            {"n": "integer"},
+        )
+
+
+async def test_project_tools_filter_with_contains() -> None:
+    processes = _processes()
+    env = _env(_core(), _geoapi(), processes)
+    await execute(
+        COUNT_FEATURES,
+        env,
+        {
+            "layer_project_id": 11,
+            "filter": {
+                "conditions": [{"field": "art", "op": "contains", "value": "weg"}]
+            },
+        },
+    )
+    assert json.loads(processes.bodies()[0]["inputs"]["filter"]) == {
+        "op": "like",
+        "args": [{"property": "art"}, "%weg%"],
+    }
+
+
 async def test_fields_say_which_can_be_filtered() -> None:
     result = await execute(
         GET_FIELDS, _env(_core(), _geoapi(), _processes()), {"layer_project_id": 11}
@@ -478,7 +551,10 @@ async def test_fields_say_which_can_be_filtered() -> None:
     assert "geom" not in by_name
 
 
-async def test_a_401_from_core_names_every_cause() -> None:
+@pytest.mark.parametrize(
+    "login", [StaticLogin(None), signed_in(-60)], ids=["no token", "expired token"]
+)
+async def test_an_expired_sign_in_is_named(login: StaticLogin) -> None:
     core = Recorder(
         {
             ("GET", f"/api/v2/project/{PROJECT}/layer"): httpx.Response(
@@ -486,15 +562,74 @@ async def test_a_401_from_core_names_every_cause() -> None:
             )
         }
     )
+    with pytest.raises(ToolFailed, match="sign-in expired") as caught:
+        await execute(
+            COUNT_FEATURES,
+            _env(core, _geoapi(), _processes(), login=login),
+            {"layer_project_id": 11},
+        )
+    assert caught.value.message == SIGN_IN_EXPIRED
+
+
+@pytest.mark.parametrize("status", [401, 403, 404])
+async def test_a_project_the_user_cannot_open_is_named(status: int) -> None:
+    """Core answers 401 also when its authorization denies the request: with
+    a token that is still valid, that is no access, not an expired sign-in."""
+    core = Recorder(
+        {
+            ("GET", f"/api/v2/project/{PROJECT}/layer"): httpx.Response(
+                status, json={"detail": "x"}
+            )
+        }
+    )
     with pytest.raises(ToolFailed) as caught:
         await execute(
             COUNT_FEATURES,
-            _env(core, _geoapi(), _processes()),
+            _env(core, _geoapi(), _processes(), login=signed_in(300)),
             {"layer_project_id": 11},
         )
     assert caught.value.message == (
-        "The project does not exist, the user cannot open it, or the sign-in expired."
+        "The project does not exist or the user cannot open it."
     )
+
+
+@pytest.mark.parametrize("status", ["pending", "running"])
+async def test_a_layer_being_copied_says_so(status: str) -> None:
+    copying = {
+        "id": 7,
+        "layer_id": str(UUID(int=7)),
+        "name": "Stops",
+        "type": "feature",
+        "feature_layer_geometry_type": "point",
+        "other_properties": {"catalog_materialize": {"status": status}},
+    }
+    geoapi = _geoapi()
+    with pytest.raises(ToolFailed, match="still being copied") as caught:
+        await execute(
+            COUNT_FEATURES,
+            _env(_core_with([copying]), geoapi, _processes()),
+            {"layer_project_id": 7},
+        )
+    assert caught.value.message == STILL_COPYING
+    assert geoapi.requests == []
+
+
+@pytest.mark.parametrize("status", ["ready", "failed", None])
+async def test_a_copied_layer_is_read(status: str | None) -> None:
+    row = {
+        "id": 7,
+        "layer_id": LINES,
+        "name": "Stops",
+        "type": "feature",
+        "feature_layer_geometry_type": "point",
+        "other_properties": {"catalog_materialize": {"status": status}},
+    }
+    result = await execute(
+        COUNT_FEATURES,
+        _env(_core_with([row]), _geoapi(), _processes()),
+        {"layer_project_id": 7},
+    )
+    assert result["count"] == 42
 
 
 async def test_home_needs_an_explicit_project() -> None:
@@ -617,6 +752,131 @@ async def test_area_statistics_for_polygons_only() -> None:
         )
 
 
+def _areas_by_district(*, null_group: bool = False) -> tuple[Recorder, Recorder]:
+    """geoapi with a ``district`` field on the polygon layer, and processes
+    answering area-statistics per district when asked to group by it;
+    ``null_group`` adds the group of features without a district."""
+    queryables = {
+        "properties": {
+            **QUERYABLES["properties"],
+            "district": {"name": "district", "type": "string"},
+        }
+    }
+    geoapi = Recorder({("GET", f"/collections/{POLYGONS}/queryables"): queryables})
+
+    def area(request: httpx.Request) -> httpx.Response:
+        inputs = json.loads(request.content)["inputs"]
+        body: dict[str, Any] = {
+            "result": 30.0,
+            "total_area": 30.0,
+            "feature_count": 3,
+            "unit": "m²",
+            "groups": [],
+            "total_groups": None,
+        }
+        if inputs.get("group_by_column") == "district":
+            body["groups"] = [
+                {
+                    "grouped_value": "A",
+                    "result": 20.0,
+                    "total_area": 20.0,
+                    "feature_count": 2,
+                },
+                {
+                    "grouped_value": "B",
+                    "result": 10.0,
+                    "total_area": 10.0,
+                    "feature_count": 1,
+                },
+            ]
+            body["total_groups"] = 2
+            if null_group:
+                body["groups"].append(
+                    {
+                        "grouped_value": None,
+                        "result": 5.0,
+                        "total_area": 5.0,
+                        "feature_count": 1,
+                    }
+                )
+                body["total_groups"] = 3
+        return httpx.Response(200, json=body)
+
+    processes = Recorder({("POST", "/processes/area-statistics/execution"): area})
+    return geoapi, processes
+
+
+async def test_area_per_group() -> None:
+    """One area row per value of the group field, from one processes call."""
+    geoapi, processes = _areas_by_district()
+    out = await execute(
+        AREA_STATISTICS,
+        _env(_core(), geoapi, processes),
+        {"layer_project_id": 12, "group_by": "district"},
+    )
+    assert [(g["group"], g["total_area"], g["mean_area"]) for g in out["groups"]] == [
+        ("A", 20.0, 10.0),
+        ("B", 10.0, 10.0),
+    ]
+    assert [g["feature_count"] for g in out["groups"]] == [2, 1]
+    assert out["groups_total"] == 2
+    assert out["total_area"] == 30.0
+    # Only the sum is grouped; the smallest and largest stay whole-layer, and
+    # no empty group column is ever sent.
+    calls = _calls(processes, "area-statistics")
+    assert {c["operation"]: c.get("group_by_column") for c in calls} == {
+        "sum": "district",
+        "min": None,
+        "max": None,
+    }
+    assert sum("group_by_column" in c for c in calls) == 1
+
+
+async def test_area_of_features_without_a_group_value_is_named() -> None:
+    """The row of features without a value carries no group key, so it could
+    pass for a total: the note names the field."""
+    geoapi, processes = _areas_by_district(null_group=True)
+    out = await execute(
+        AREA_STATISTICS,
+        _env(_core(), geoapi, processes),
+        {"layer_project_id": 12, "group_by": "district"},
+    )
+    assert "group" not in out["groups"][-1] and out["groups_total"] == 3
+    assert "no value in 'district'" in out["note"]
+
+
+async def test_area_without_group_by_sends_no_group_column() -> None:
+    geoapi, processes = _areas_by_district()
+    out = await execute(
+        AREA_STATISTICS, _env(_core(), geoapi, processes), {"layer_project_id": 12}
+    )
+    assert "groups" not in out and "groups_total" not in out
+    assert not any("group_by_column" in c for c in _calls(processes, "area-statistics"))
+
+
+async def test_area_per_group_needs_a_field_of_the_layer() -> None:
+    geoapi, processes = _areas_by_district()
+    with pytest.raises(InputInvalid, match="distrikt"):
+        await execute(
+            AREA_STATISTICS,
+            _env(_core(), geoapi, processes),
+            {"layer_project_id": 12, "group_by": "distrikt"},
+        )
+    assert processes.requests == []
+
+
+async def test_area_per_group_is_withheld_under_restricted() -> None:
+    geoapi, processes = _areas_by_district()
+    out = await execute(
+        AREA_STATISTICS,
+        _env(_core(), geoapi, processes, data_policy="restricted"),
+        {"layer_project_id": 12, "group_by": "district"},
+    )
+    assert out.get("groups") is None
+    assert "groups_total" not in out and "total_area" not in out
+    assert "per group" in out["note"]
+
+
 async def test_sample_features_are_bounded_and_carry_no_geometry() -> None:
     geoapi = _geoapi()
     result = await execute(
@@ -720,7 +980,12 @@ async def test_restricted_never_carries_rows_means_or_long_value_lists() -> None
     )
     area = await execute(AREA_STATISTICS, env, {"layer_project_id": 12})
     sample = await execute(SAMPLE_FEATURES, env, {"layer_project_id": 11})
-    for result in (numeric, categorical, area, sample):
+    grouped = await execute(
+        GROUP_STATISTICS,
+        env,
+        {"layer_project_id": 11, "operation": "count", "group_by": "art"},
+    )
+    for result in (numeric, categorical, area, sample, grouped):
         assert not {
             "mean",
             "std_dev",
@@ -728,11 +993,13 @@ async def test_restricted_never_carries_rows_means_or_long_value_lists() -> None
             "mean_area",
             "features",
             "values",
+            "rows",
         } & set(result)
     assert {spec.wire_name for spec in PROJECT_TOOLS if spec.returns_data} == {
         "project_get_layers",
         "project_count_features",
         "project_field_statistics",
+        "project_group_statistics",
         "project_area_statistics",
         "project_sample_features",
     }
@@ -1295,6 +1562,7 @@ def test_every_filter_argument_shows_a_condition_and_a_range() -> None:
     assert {spec.wire_name for spec in with_filter} == {
         "project_count_features",
         "project_field_statistics",
+        "project_group_statistics",
         "project_area_statistics",
         "project_sample_features",
         "map_propose_view",
@@ -1515,6 +1783,7 @@ async def test_size_and_extent_keep_a_long_layer_list_small() -> None:
         (("laenge", ">=", 1.4), "'>='"),
         (("laenge", "<", 2), "'<'"),
         (("art", "like", "Rad%"), "'like'"),
+        (("art", "contains", "Rad"), "'contains'"),
     ],
 )
 async def test_restricted_filters_cannot_compare_values(

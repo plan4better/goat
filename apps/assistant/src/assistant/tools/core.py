@@ -5,11 +5,19 @@ import asyncio
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
+from pydantic_ai.exceptions import ToolFailed
 
 from assistant.context import SURFACE_LABELS, dump_context
 from assistant.surfaces import SURFACES
-from assistant.tools.http import ServiceError
+from assistant.tools.http import SIGN_IN_EXPIRED, ServiceError, sign_in_expired
 from assistant.tools.runtime import ToolEnv, ToolSpec
 
 ALL_SURFACES = frozenset(SURFACES)
@@ -302,7 +310,8 @@ FIND: ToolSpec[FindInput, FindResult] = ToolSpec(
         "a folder, the owner's name, and for workflows and layouts their project's "
         "name; each hit says where it is, who owns it and why it matched. Also "
         "lists matching templates. Try German terms too (Schulung for training). "
-        "Not the public catalog: that is catalog_search."
+        "Not the public catalog: that is catalog_search. On the Map and Workflows "
+        "pages, a dataset's id (not a bundle's) is what project_add_dataset takes."
     ),
     input_model=FindInput,
     output_model=FindResult,
@@ -468,14 +477,19 @@ class ItemRef(BaseModel):
 
 
 class ItemGroupInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     title: str | None = Field(
         default=None,
         max_length=60,
         description="A short heading for the group, in the user's language.",
     )
-    items: list[ItemRef] = Field(min_length=1, max_length=_MAX_ITEMS)
+    # ``records``, as catalog_show_records names its list, is taken too.
+    items: list[ItemRef] = Field(
+        min_length=1,
+        max_length=_MAX_ITEMS,
+        validation_alias=AliasChoices("items", "records"),
+    )
 
 
 class ShowItemsInput(BaseModel):
@@ -490,6 +504,19 @@ class ShowItemsInput(BaseModel):
             "group without a title is fine."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _one_group(cls, data: Any) -> Any:
+        """A bare list (``items`` or ``records``) without groups is one group
+        without a title."""
+        if not isinstance(data, dict) or "groups" in data:
+            return data
+        key = next((key for key in ("items", "records") if key in data), None)
+        if key is None:
+            return data
+        rest = {name: value for name, value in data.items() if name != key}
+        return {**rest, "groups": [{"items": data[key]}]}
 
     @field_validator("groups")
     @classmethod
@@ -540,10 +567,13 @@ class ShowItemsResult(BaseModel):
 
 async def _optional(env: ToolEnv, path: str) -> Any:
     """A core document, or None when it does not exist or the user may not read
-    it (core answers 401 for no access too)."""
+    it (core answers 401 for no access too). An expired sign-in fails the call:
+    nothing was looked at."""
     try:
         return await env.call("core", "GET", path)
     except ServiceError as exc:
+        if sign_in_expired(exc):
+            raise ToolFailed(SIGN_IN_EXPIRED) from exc
         if exc.status in (401, 403, 404, 422):
             return None
         raise

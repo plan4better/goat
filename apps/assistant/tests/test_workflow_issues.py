@@ -1,18 +1,31 @@
 """The check's issues in the draft's terms, the assistant's own filter check,
 and which issues may stay open when the workflow is created (spec §4.3, §4.4)."""
 
+import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from assistant.workflows.draft import Draft, ProjectLayer, open_steps, to_config
+from assistant.workflows.draft import (
+    MAX_STEPS,
+    Draft,
+    ProjectLayer,
+    ToolStep,
+    open_steps,
+    to_config,
+)
 from assistant.workflows.issues import (
     FILTER_FIELD_CODE,
     DraftIssue,
+    band_issues,
+    counted_steps,
     draft_issues,
     filter_field_issues,
+    matrix_pair_issues,
+    note_issues,
     split_issues,
+    starting_point_issues,
 )
 
 DRAFT = Draft.model_validate(
@@ -317,6 +330,7 @@ def test_a_required_other_setting_downstream_blocks() -> None:
         ("opportunity_not_connected", "walk"),
         ("variable_undefined", "walk"),
         ("export_name_missing", "save"),
+        ("export_target_missing", "save"),
     ],
 )
 def test_an_issue_no_layer_choice_fixes_blocks_downstream(code: str, step: str) -> None:
@@ -380,3 +394,338 @@ def test_an_error_of_the_whole_workflow_blocks() -> None:
 def test_an_issue_naming_an_open_and_another_step_blocks() -> None:
     issue = _issue("loop", "error", "walk", "ring")
     assert split_issues([issue], OPEN) == ([issue], [])
+
+
+def _catchments(budgets: list[int], **changes: Any) -> Draft:
+    """Catchments from one dataset step, one per budget, each cut and counted."""
+    steps: list[dict[str, Any]] = [{"id": "schools", "kind": "dataset", "layer": 31}]
+    connections: list[dict[str, Any]] = []
+    for budget in budgets:
+        settings = {
+            "routing_mode": "walking",
+            "max_cost": budget,
+            "steps": 1,
+            **changes,
+        }
+        steps.append(
+            {
+                "id": f"walk{budget}",
+                "kind": "tool",
+                "tool": "catchment_area_v2",
+                "settings": settings,
+            }
+        )
+        connections.append(
+            {"from": "schools", "to": f"walk{budget}", "input": "starting_points"}
+        )
+    return Draft.model_validate(
+        {"name": "Bands", "steps": steps, "connections": connections}
+    )
+
+
+def test_catchments_split_by_budget_are_named_as_one_with_bands() -> None:
+    [issue] = band_issues(_catchments([5, 10, 15]))
+    assert (issue.code, issue.level) == ("catchment_bands_split", "warning")
+    assert issue.steps == ["walk5", "walk10", "walk15"]
+    assert "max_cost 15 and steps 3" in issue.message
+    assert "step_sizes" not in issue.message
+    [uneven] = band_issues(_catchments([5, 15, 30]))
+    assert "max_cost 30, steps 3 and step_sizes [5, 15, 30]" in uneven.message
+
+
+def test_catchments_that_differ_in_more_than_the_budget_are_left_alone() -> None:
+    assert band_issues(_catchments([15])) == []
+    draft = _catchments([10, 15])
+    cycling = draft.steps[2].model_copy(
+        update={"settings": {**draft.steps[2].settings, "routing_mode": "bicycle"}}
+    )
+    assert (
+        band_issues(draft.model_copy(update={"steps": [*draft.steps[:2], cycling]}))
+        == []
+    )
+
+
+def test_a_catchment_over_the_start_point_limit_is_an_error() -> None:
+    draft = _catchments([5])
+    [step] = [s for s in draft.steps if isinstance(s, ToolStep)]
+    [issue] = starting_point_issues(draft, {"schools": 4918}, {})
+    assert (issue.code, issue.level) == ("too_many_starting_points", "error")
+    assert "4,918" in issue.message and "1,000" in issue.message
+    assert issue.steps == [step.id, "schools"]
+    # When every start point counts, the answer is a run in parts, combined.
+    assert "run it in parts" in issue.message
+    assert "merged and dissolved" in issue.message
+    assert "cannot take them all" not in issue.message
+    # Narrowing is the answer only when the question is about that part.
+    assert "part of them already" in issue.message
+
+
+def test_public_transport_has_its_own_limit() -> None:
+    draft = _catchments([30])
+    [step] = [s for s in draft.steps if isinstance(s, ToolStep)]
+    step.settings["routing_mode"] = "pt"
+    [issue] = starting_point_issues(draft, {"schools": 291}, {})
+    assert "291" in issue.message and "100" in issue.message
+    assert "public transport" in issue.message
+
+
+def test_within_the_limit_or_uncounted_is_fine() -> None:
+    draft = _catchments([5])
+    assert starting_point_issues(draft, {"schools": 1000}, {}) == []
+    assert starting_point_issues(draft, {}, {}) == []
+
+
+def _chain(
+    steps: list[dict[str, Any]], connections: list[tuple[str, str, str]]
+) -> Draft:
+    """A draft of these steps, each connection as (from, to, input)."""
+    return Draft.model_validate(
+        {
+            "name": "Chain",
+            "steps": steps,
+            "connections": [
+                {"from": source, "to": target, "input": name}
+                for source, target, name in connections
+            ],
+        }
+    )
+
+
+def _dataset(step_id: str, layer: int = 31) -> dict[str, Any]:
+    return {"id": step_id, "kind": "dataset", "layer": layer}
+
+
+def _tool(step_id: str, tool: str, **settings: Any) -> dict[str, Any]:
+    return {"id": step_id, "kind": "tool", "tool": tool, "settings": settings}
+
+
+#: Bus, rail and ferry stops merged in two steps into one catchment's start
+#: points.
+MERGED_STOPS = _chain(
+    [
+        _dataset("bus"),
+        _dataset("rail"),
+        _dataset("ferry"),
+        _tool("land", "merge"),
+        _tool("all", "merge"),
+        _tool("walk", "catchment_area_v2", routing_mode="walking", max_cost=5),
+    ],
+    [
+        ("bus", "land", "input_path_1"),
+        ("rail", "land", "input_path_2"),
+        ("land", "all", "input_path_1"),
+        ("ferry", "all", "input_path_2"),
+        ("all", "walk", "starting_points"),
+    ],
+)
+
+
+def test_start_points_through_merges_are_the_sum_of_their_datasets() -> None:
+    counts = {"bus": 1900, "rail": 300, "ferry": 113}
+    [issue] = starting_point_issues(MERGED_STOPS, counts, {"walk": "Walk"})
+    assert (issue.code, issue.level) == ("too_many_starting_points", "error")
+    assert issue.steps == ["walk", "bus", "rail", "ferry"]
+    assert issue.message.startswith("Walk starts from 2,313 points")
+    assert "at most 1,000" in issue.message
+    assert counted_steps(MERGED_STOPS) == ["bus", "rail", "ferry"]
+
+
+def test_merged_start_points_within_the_limit_are_fine() -> None:
+    counts = {"bus": 600, "rail": 300, "ferry": 100}
+    assert starting_point_issues(MERGED_STOPS, counts, {}) == []
+
+
+def test_a_merge_with_an_uncounted_dataset_is_not_counted() -> None:
+    """A count that failed leaves its sum unknown, never reported low."""
+    counts = {"bus": 1900, "rail": 300}
+    assert starting_point_issues(MERGED_STOPS, counts, {}) == []
+
+
+def test_a_centroid_has_one_start_point_per_feature() -> None:
+    draft = _chain(
+        [
+            _dataset("districts", 33),
+            _tool("middle", "centroid"),
+            _tool("walk", "catchment_area_v2", routing_mode="walking"),
+        ],
+        [
+            ("districts", "middle", "input_layer_id"),
+            ("middle", "walk", "starting_points"),
+        ],
+    )
+    [issue] = starting_point_issues(draft, {"districts": 1200}, {})
+    assert issue.steps == ["walk", "districts"]
+    assert "1,200 points" in issue.message
+
+
+def test_a_chain_through_another_tool_is_not_counted() -> None:
+    """A buffer's result has as many rows as its input, or one when it
+    dissolves: only merge and centroid are followed."""
+    draft = _chain(
+        [
+            _dataset("bus"),
+            _dataset("rail"),
+            _tool("ring", "buffer", distances=[100]),
+            _tool("all", "merge"),
+            _tool("walk", "catchment_area_v2", routing_mode="walking"),
+        ],
+        [
+            ("bus", "ring", "input_layer_id"),
+            ("ring", "all", "input_path_1"),
+            ("rail", "all", "input_path_2"),
+            ("all", "walk", "starting_points"),
+        ],
+    )
+    assert starting_point_issues(draft, {"bus": 5000, "rail": 5000}, {}) == []
+    assert counted_steps(draft) == []
+
+
+def test_a_merge_with_one_input_left_unconnected_is_not_counted() -> None:
+    draft = _chain(
+        [
+            _dataset("bus"),
+            _tool("all", "merge"),
+            _tool("walk", "catchment_area_v2", routing_mode="walking"),
+        ],
+        [("bus", "all", "input_path_1"), ("all", "walk", "starting_points")],
+    )
+    assert starting_point_issues(draft, {"bus": 5000}, {}) == []
+
+
+def test_steps_that_read_from_each_other_are_not_counted() -> None:
+    """A loop is processes' issue; the count only must not run forever."""
+    draft = _chain(
+        [
+            _dataset("bus"),
+            _tool("all", "merge"),
+            _tool("middle", "centroid"),
+            _tool("walk", "catchment_area_v2", routing_mode="walking"),
+        ],
+        [
+            ("bus", "all", "input_path_1"),
+            ("middle", "all", "input_path_2"),
+            ("all", "middle", "input_layer_id"),
+            ("all", "walk", "starting_points"),
+        ],
+    )
+    assert starting_point_issues(draft, {"bus": 5000}, {}) == []
+
+
+def test_a_chain_of_self_merges_is_counted_at_once() -> None:
+    """Each merge reads the step before on both inputs, so the start points
+    double at every step: as many steps as a draft takes are counted by
+    multiplicity, not walked once per path."""
+    merges = MAX_STEPS - 2
+    steps = [_dataset("stops")]
+    connections: list[tuple[str, str, str]] = []
+    previous = "stops"
+    for index in range(merges):
+        steps.append(_tool(f"m{index}", "merge"))
+        connections += [
+            (previous, f"m{index}", "input_path_1"),
+            (previous, f"m{index}", "input_path_2"),
+        ]
+        previous = f"m{index}"
+    steps.append(_tool("walk", "catchment_area_v2", routing_mode="walking"))
+    connections.append((previous, "walk", "starting_points"))
+    draft = _chain(steps, connections)
+
+    started = time.monotonic()
+    [issue] = starting_point_issues(draft, {"stops": 1}, {"walk": "Walk"})
+    assert counted_steps(draft) == ["stops"]
+    assert time.monotonic() - started < 1
+
+    assert issue.message.startswith(f"Walk starts from {2**merges:,} points")
+    assert issue.steps == ["walk", "stops"]
+
+
+#: Residential areas' centroids to the workplaces of two layers, merged.
+MATRIX = _chain(
+    [
+        _dataset("homes", 33),
+        _dataset("industry", 34),
+        _dataset("offices", 34),
+        _tool("middle", "centroid"),
+        _tool("targets", "merge"),
+        _tool("times", "travel_cost_matrix", routing_mode="pt"),
+    ],
+    [
+        ("homes", "middle", "input_layer_id"),
+        ("industry", "targets", "input_path_1"),
+        ("offices", "targets", "input_path_2"),
+        ("middle", "times", "origin_layer_id"),
+        ("targets", "times", "destination_layer_id"),
+    ],
+)
+
+
+def test_a_matrix_over_the_pair_cap_is_an_error() -> None:
+    counts = {"homes": 559, "industry": 200, "offices": 113}
+    [issue] = matrix_pair_issues(MATRIX, counts, {"times": "Travel times"})
+    assert (issue.code, issue.level) == ("too_many_matrix_pairs", "error")
+    assert issue.steps == ["times", "homes", "industry", "offices"]
+    message = issue.message
+    assert message.startswith("Travel times pairs 559 origins with 313 destinations")
+    assert "174,967 pairs" in message and "at most 10,000" in message
+    # The larger side first: areas to larger areas, or a filter; only the
+    # kind of destination asked about.
+    assert "Make the larger side smaller, here the origins" in message
+    assert "larger areas first, one centroid each" in message
+    assert "filter" in message
+    # Every kind the question names stays in (SKILL.md).
+    assert "only the kinds the question asks about" in message
+    assert "the one kind" not in message
+    # By public transport, area centroids go on the destination side.
+    assert "area centroids belong on the destination side" in message
+    assert "the reversed matrix" in message
+    # A heatmap when every place matters.
+    assert "heatmap" in message
+    assert counted_steps(MATRIX) == ["homes", "industry", "offices"]
+
+
+def test_a_reversed_matrix_names_its_destinations_as_the_larger_side() -> None:
+    """From a few stops to many area centroids, the destinations are what
+    to make fewer; the verdict itself does not depend on the direction."""
+    counts = {"homes": 3, "industry": 4000, "offices": 1000}
+    [issue] = matrix_pair_issues(MATRIX, counts, {"times": "Travel times"})
+    assert "15,000 pairs" in issue.message
+    assert "Make the larger side smaller, here the destinations" in issue.message
+
+
+def test_a_matrix_within_the_pair_cap_is_fine() -> None:
+    counts = {"homes": 50, "industry": 100, "offices": 100}
+    assert matrix_pair_issues(MATRIX, counts, {}) == []
+
+
+def test_a_matrix_with_one_side_unknown_is_not_reported() -> None:
+    assert matrix_pair_issues(MATRIX, {"homes": 559, "industry": 200}, {}) == []
+    assert matrix_pair_issues(MATRIX, {"industry": 9000, "offices": 9000}, {}) == []
+
+
+def _with_notes(count: int) -> Draft:
+    return Draft.model_validate(
+        {
+            "name": "Notes",
+            "steps": [_dataset("schools")],
+            "notes": [
+                {"id": f"note{index}", "text": "What it answers."}
+                for index in range(count)
+            ],
+        }
+    )
+
+
+def test_more_than_one_note_is_a_warning() -> None:
+    [issue] = note_issues(_with_notes(3))
+    assert (issue.code, issue.level, issue.steps) == (
+        "more_than_one_note",
+        "warning",
+        [],
+    )
+    assert issue.message.startswith("The draft has 3 notes.")
+    assert "one note per workflow unless the user asked for more" in issue.message
+
+
+def test_one_note_or_none_is_fine() -> None:
+    assert note_issues(_with_notes(1)) == []
+    assert note_issues(_with_notes(0)) == []

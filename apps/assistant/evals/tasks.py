@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from assistant.surfaces import Locale
 
-EVAL_SET_VERSION = 16
+EVAL_SET_VERSION = 17
 
 HERE = Path(__file__).resolve().parent
 Suite = Literal["catalog", "project", "workflow"]

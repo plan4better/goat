@@ -31,6 +31,36 @@
     "x-ui-beta": false
    },
    {
+    "id": "intersection",
+    "title": "Intersection",
+    "description": "Computes the geometric intersection of two layers. Features or portions of features that overlap in both layers are written to the output, preserving attributes from both.",
+    "version": "1.0.0",
+    "keywords": [
+     "geoprocessing",
+     "intersect",
+     "intersection",
+     "overlay"
+    ],
+    "jobControlOptions": [
+     "async-execute"
+    ],
+    "outputTransmission": [
+     "value",
+     "reference"
+    ],
+    "links": [
+     {
+      "href": "http://processes/processes/intersection",
+      "rel": "self",
+      "type": "application/json",
+      "title": "Process description"
+     }
+    ],
+    "x-ui-toolbox-hidden": false,
+    "x-ui-category": "geoprocessing",
+    "x-ui-beta": false
+   },
+   {
     "id": "join",
     "title": "Join Features",
     "description": "Transfers attributes from one layer to another based on spatial and attribute relationships. Optionally, statistics can be calculated for the joined features.",
@@ -255,6 +285,36 @@
     "links": [
      {
       "href": "http://processes/processes/buffer",
+      "rel": "self",
+      "type": "application/json",
+      "title": "Process description"
+     }
+    ],
+    "x-ui-toolbox-hidden": false,
+    "x-ui-category": "geoprocessing",
+    "x-ui-beta": false
+   },
+   {
+    "id": "intersection",
+    "title": "Überschneiden",
+    "description": "Berechnet die geometrische Überschneidung von Eingabe- und Überlagerungs-Layer. Nur überlappende Bereiche werden mit Attributen beider Layer ausgegeben.",
+    "version": "1.0.0",
+    "keywords": [
+     "geoprocessing",
+     "intersect",
+     "intersection",
+     "overlay"
+    ],
+    "jobControlOptions": [
+     "async-execute"
+    ],
+    "outputTransmission": [
+     "value",
+     "reference"
+    ],
+    "links": [
+     {
+      "href": "http://processes/processes/intersection",
       "rel": "self",
       "type": "application/json",
       "title": "Process description"
@@ -1455,7 +1515,7 @@
      "schema": {
       "description": "Statistical operations to perform on the aggregated polygons.",
       "items": {
-       "$ref": "#/$defs/AggregateFieldStatistic"
+       "$ref": "#/$defs/AggregatePolygonFieldStatistic"
       },
       "minItems": 1,
       "title": "Statistics Configuration",
@@ -1564,17 +1624,17 @@
     },
     "weighted_by_intersecting_area": {
      "title": "Weight by Intersection Area",
-     "description": "If enabled, statistics are weighted proportionally by the area of intersection between source and target polygons.",
+     "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either.",
      "schema": {
       "default": false,
-      "description": "If enabled, statistics are weighted proportionally by the area of intersection between source and target polygons.",
+      "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either.",
       "title": "Weight by Intersection Area",
       "type": "boolean",
       "x-ui": {
        "field_order": 3,
        "section": "statistics",
        "label": "Weight by Intersection Area",
-       "description": "If enabled, statistics are weighted proportionally by the area of intersection between source and target polygons."
+       "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either."
       }
      },
      "minOccurs": 0,
@@ -1997,8 +2057,8 @@
     }
    ],
    "$defs": {
-    "AggregateFieldStatistic": {
-     "description": "Aggregate column statistic with UI wiring to source_layer_id.",
+    "AggregatePolygonFieldStatistic": {
+     "description": "Aggregate polygon statistic: named ``{operation}_{field}`` by default.",
      "properties": {
       "operation": {
        "$ref": "#/$defs/StatisticOperation",
@@ -2056,21 +2116,21 @@
         }
        ],
        "default": null,
-       "description": "Custom name for the result column. If not provided, defaults to '{field}_{operation}' or 'count' for count operations.",
+       "description": "Custom name for the result column. If empty, \"{operation}_{field}\" is used, or \"count\" for \"Count\".",
        "title": "Result column name",
        "x-ui": {
         "widget_options": {
-         "placeholder_template": "{field}_{operation}"
+         "placeholder_template": "{operation}_{field}"
         },
         "label": "Result column name",
-        "description": "Custom name for the result column. If empty, \"{field}_{operation}\" is used, or \"count\" for \"Count\"."
+        "description": "Custom name for the result column. If empty, \"{operation}_{field}\" is used, or \"count\" for \"Count\"."
        }
       }
      },
      "required": [
       "operation"
      ],
-     "title": "AggregateFieldStatistic",
+     "title": "AggregatePolygonFieldStatistic",
      "type": "object"
     },
     "AggregationAreaType": {
@@ -3647,7 +3707,7 @@
     },
     "step_sizes": {
      "title": "Step sizes",
-     "description": "Step size intervals for the catchment area",
+     "description": "The band edges in rising order up to the limit: each band ends at one, e.g. 5, 10, 15 for three bands of 5 minutes.",
      "schema": {
       "anyOf": [
        {
@@ -3661,7 +3721,14 @@
        }
       ],
       "default": null,
-      "description": "Step size intervals for the catchment area",
+      "description": "The band edges in rising order up to the limit: each band ends at one, e.g. 5, 10, 15 for three bands of 5 minutes.",
+      "examples": [
+       [
+        5,
+        10,
+        15
+       ]
+      ],
       "title": "Step sizes",
       "x-ui": {
        "field_order": 7,
@@ -3686,7 +3753,7 @@
         }
        },
        "label": "Step sizes",
-       "description": "Step size intervals for the catchment area"
+       "description": "The band edges in rising order up to the limit: each band ends at one, e.g. 5, 10, 15 for three bands of 5 minutes."
       }
      },
      "minOccurs": 0,
@@ -4344,11 +4411,11 @@
     },
     "catchment_area_type": {
      "title": "Catchment area shape",
-     "description": "Select the shape of the catchment area geometry",
+     "description": "The shape of the result: polygons around the reached area, the reached street network, a hexagon grid, or the points of a point layer. A hexagon counts as reached when any reached part of the network lies in it, so the grid's area is an upper estimate.",
      "schema": {
       "$ref": "#/$defs/CatchmentType",
       "default": "polygon",
-      "description": "Select the shape of the catchment area geometry",
+      "description": "The shape of the result: polygons around the reached area, the reached street network, a hexagon grid, or the points of a point layer. A hexagon counts as reached when any reached part of the network lies in it, so the grid's area is an upper estimate.",
       "x-ui": {
        "enum_labels": {
         "hexagonal_grid": "Hexagonal grid",
@@ -4360,7 +4427,7 @@
        "field_order": 4,
        "section": "configuration",
        "label": "Catchment area shape",
-       "description": "Select the shape of the catchment area geometry"
+       "description": "The shape of the result: polygons around the reached area, the reached street network, a hexagon grid, or the points of a point layer. A hexagon counts as reached when any reached part of the network lies in it, so the grid's area is an upper estimate."
       },
       "title": "Catchment area shape"
      },
@@ -4414,11 +4481,11 @@
     },
     "steps_style": {
      "title": "Steps style",
-     "description": "How steps are displayed in the output",
+     "description": "Separate gives each step as a ring (only the area between the previous step and this one); cumulative gives each step the whole area reached up to it.",
      "schema": {
       "$ref": "#/$defs/StepsStyle",
       "default": "separate",
-      "description": "How steps are displayed in the output",
+      "description": "Separate gives each step as a ring (only the area between the previous step and this one); cumulative gives each step the whole area reached up to it.",
       "x-ui": {
        "enum_labels": {
         "cumulative": "Cumulative steps",
@@ -4437,7 +4504,7 @@
         ]
        },
        "label": "Steps style",
-       "description": "How steps are displayed in the output"
+       "description": "Separate gives each step as a ring (only the area between the previous step and this one); cumulative gives each step the whole area reached up to it."
       },
       "title": "Steps style"
      },
@@ -8709,6 +8776,534 @@
      "type": "string"
     }
    }
+  },
+  "intersection": {
+   "id": "intersection",
+   "title": "Intersection",
+   "description": "Computes the geometric intersection of two layers. Features or portions of features that overlap in both layers are written to the output, preserving attributes from both.",
+   "version": "1.0.0",
+   "keywords": [
+    "geoprocessing",
+    "intersect",
+    "intersection",
+    "overlay"
+   ],
+   "jobControlOptions": [
+    "async-execute"
+   ],
+   "outputTransmission": [
+    "value",
+    "reference"
+   ],
+   "links": [
+    {
+     "href": "http://processes/processes/intersection",
+     "rel": "self",
+     "type": "application/json",
+     "title": "Process description"
+    },
+    {
+     "href": "http://processes/processes/intersection/execution",
+     "rel": "http://www.opengis.net/def/rel/ogc/1.0/execute",
+     "type": "application/json",
+     "title": "Execute process"
+    },
+    {
+     "href": "http://processes/processes",
+     "rel": "up",
+     "type": "application/json",
+     "title": "Process list"
+    },
+    {
+     "href": "/toolbox/geoprocessing/intersection",
+     "rel": "describedby",
+     "type": "text/html",
+     "title": "Documentation"
+    }
+   ],
+   "x-ui-toolbox-hidden": false,
+   "x-ui-category": "geoprocessing",
+   "x-ui-beta": false,
+   "inputs": {
+    "input_fields": {
+     "title": "Input Fields",
+     "description": "Fields to keep from input layer",
+     "schema": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Fields to keep from input layer",
+      "title": "Input Fields",
+      "x-ui": {
+       "field_order": 1,
+       "section": "field_selection",
+       "widget": "field-selector",
+       "widget_options": {
+        "multiple": true,
+        "source_layer": "input_layer_id"
+       },
+       "label": "Input Fields",
+       "description": "Fields to keep from input layer"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "overlay_fields": {
+     "title": "Overlay Fields",
+     "description": "Fields to keep from overlay layer",
+     "schema": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Fields to keep from overlay layer",
+      "title": "Overlay Fields",
+      "x-ui": {
+       "field_order": 2,
+       "section": "field_selection",
+       "widget": "field-selector",
+       "widget_options": {
+        "multiple": true,
+        "source_layer": "overlay_layer_id"
+       },
+       "label": "Overlay Fields",
+       "description": "Fields to keep from overlay layer"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "overlay_fields_prefix": {
+     "title": "Overlay Fields Prefix",
+     "description": "Prefix for overlay field names",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "intersection_",
+      "description": "Prefix for overlay field names",
+      "title": "Overlay Fields Prefix",
+      "x-ui": {
+       "field_order": 3,
+       "section": "field_selection",
+       "label": "Overlay Fields Prefix",
+       "description": "Prefix for overlay field names"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "input_layer_id": {
+     "title": "Input layer",
+     "description": "Select the input layer for analysis",
+     "schema": {
+      "description": "Select the input layer for analysis",
+      "title": "Input layer",
+      "type": "string",
+      "x-ui": {
+       "field_order": 1,
+       "section": "input",
+       "widget": "layer-selector",
+       "label": "Input layer",
+       "description": "Select the input layer for analysis"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 1,
+     "maxOccurs": 1,
+     "keywords": [
+      "layer"
+     ],
+     "metadata": [
+      {
+       "title": "data_type",
+       "role": "constraint",
+       "href": null,
+       "value": "vector"
+      }
+     ]
+    },
+    "input_layer_filter": {
+     "title": "Input Layer Filter",
+     "description": "CQL2-JSON filter to apply to the input layer",
+     "schema": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "CQL2-JSON filter to apply to the input layer",
+      "title": "Input Layer Filter",
+      "x-ui": {
+       "field_order": 2,
+       "hidden": true,
+       "section": "input"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "overlay_layer_id": {
+     "title": "Overlay Layer",
+     "description": "Select the overlay layer",
+     "schema": {
+      "description": "Select the overlay layer",
+      "title": "Overlay Layer",
+      "type": "string",
+      "x-ui": {
+       "field_order": 1,
+       "section": "overlay",
+       "widget": "layer-selector",
+       "label": "Overlay Layer",
+       "description": "Select the overlay layer"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 1,
+     "maxOccurs": 1,
+     "keywords": [
+      "layer"
+     ],
+     "metadata": [
+      {
+       "title": "data_type",
+       "role": "constraint",
+       "href": null,
+       "value": "vector"
+      }
+     ]
+    },
+    "overlay_layer_filter": {
+     "title": "Overlay Layer Filter",
+     "description": "CQL2-JSON filter to apply to the overlay layer",
+     "schema": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "CQL2-JSON filter to apply to the overlay layer",
+      "title": "Overlay Layer Filter",
+      "x-ui": {
+       "field_order": 2,
+       "hidden": true,
+       "section": "overlay"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "user_id": {
+     "title": "User Id",
+     "description": "User UUID (injected by GeoAPI)",
+     "schema": {
+      "description": "User UUID (injected by GeoAPI)",
+      "title": "User Id",
+      "type": "string",
+      "x-ui": {
+       "field_order": 99,
+       "hidden": true,
+       "section": "output"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 1,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "triggered_by_email": {
+     "title": "Triggered By Email",
+     "description": "User email (injected by GeoAPI for job tracking/Windmill labels)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "User email (injected by GeoAPI for job tracking/Windmill labels)",
+      "title": "Triggered By Email",
+      "x-ui": {
+       "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "folder_id": {
+     "title": "Folder Id",
+     "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
+      "title": "Folder Id",
+      "x-ui": {
+       "field_order": 98,
+       "hidden": true,
+       "section": "output"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "project_id": {
+     "title": "Project Id",
+     "description": "If provided, add result layer to this project",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "If provided, add result layer to this project",
+      "title": "Project Id",
+      "x-ui": {
+       "field_order": 97,
+       "hidden": true,
+       "section": "output"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "result_layer_name": {
+     "title": "Result layer name",
+     "description": "Custom name for the result layer",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "Intersection",
+      "description": "Custom name for the result layer",
+      "title": "Result layer name",
+      "x-ui": {
+       "field_order": 1,
+       "section": "result",
+       "widget_options": {},
+       "label": "Result layer name",
+       "description": "Custom name for the result layer"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "temp_mode": {
+     "title": "Temp Mode",
+     "description": "If True, write to temp storage instead of DuckLake (for workflow preview)",
+     "schema": {
+      "default": false,
+      "description": "If True, write to temp storage instead of DuckLake (for workflow preview)",
+      "title": "Temp Mode",
+      "type": "boolean",
+      "x-ui": {
+       "field_order": 90,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "workflow_id": {
+     "title": "Workflow Id",
+     "description": "Workflow UUID (required when temp_mode=True)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Workflow UUID (required when temp_mode=True)",
+      "title": "Workflow Id",
+      "x-ui": {
+       "field_order": 91,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "node_id": {
+     "title": "Node Id",
+     "description": "Node ID in workflow (required when temp_mode=True)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Node ID in workflow (required when temp_mode=True)",
+      "title": "Node Id",
+      "x-ui": {
+       "field_order": 92,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    }
+   },
+   "outputs": {
+    "result": {
+     "title": "Result",
+     "description": "Processing result with layer metadata",
+     "schema": {
+      "type": "object",
+      "properties": {
+       "layer_id": {
+        "type": "string",
+        "format": "uuid"
+       },
+       "name": {
+        "type": "string"
+       },
+       "feature_count": {
+        "type": "integer"
+       }
+      }
+     },
+     "metadata": [
+      {
+       "title": "data_type",
+       "role": "constraint",
+       "href": null,
+       "value": "vector"
+      }
+     ]
+    }
+   },
+   "x-ui-sections": [
+    {
+     "icon": "layers",
+     "id": "input",
+     "order": 1,
+     "label": "Input"
+    },
+    {
+     "icon": "layers",
+     "id": "overlay",
+     "order": 2,
+     "label": "Overlay"
+    },
+    {
+     "collapsed": true,
+     "collapsible": true,
+     "icon": "list",
+     "id": "field_selection",
+     "order": 3,
+     "label": "Field Selection"
+    },
+    {
+     "depends_on": {
+      "input_layer_id": {
+       "$ne": null
+      }
+     },
+     "icon": "save",
+     "id": "result",
+     "order": 7,
+     "label": "Results"
+    },
+    {
+     "icon": "table",
+     "id": "output",
+     "order": 10,
+     "label": "Output"
+    }
+   ],
+   "$defs": {}
   },
   "join": {
    "id": "join",

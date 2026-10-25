@@ -91,6 +91,8 @@ class ModelResolver:
             connection_id=connection["id"],
             provider=connection["provider"],
             model=connection["model"],
+            provider_order=tuple(connection["provider_order"] or ()),
+            allow_fallbacks=connection["allow_fallbacks"],
             base_url=connection["base_url"],
             region=connection["region"],
             credentials=self.decrypt(connection),

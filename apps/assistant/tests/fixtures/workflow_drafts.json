@@ -30,7 +30,7 @@
   },
   "cases": [
     {
-      "note": "the spec's example: two datasets, a catchment area, an aggregation and an export, the schools limited to Munich and to one category",
+      "note": "the spec's example: two datasets, a catchment area, an aggregation and an export, the schools limited to Munich and to one category; a note above the steps that give the result",
       "draft": {
         "name": "Schools: 15-minute walk",
         "steps": [
@@ -86,7 +86,14 @@
           {"from": "residents", "to": "count", "input": "source_layer_id"},
           {"from": "count", "to": "save"}
         ],
-        "variables": []
+        "variables": [],
+        "notes": [
+          {
+            "id": "about",
+            "text": "Counts the residents within a 15 minute walk of any school.\n\n- Residents within 15 minutes: one row per separate area of the walk; their sum is the residents within a 15 minute walk of any school, each grid cell by its share inside the walk",
+            "near": ["count", "save"]
+          }
+        ]
       },
       "regions": [
         {
@@ -207,6 +214,19 @@
               "addToProject": true,
               "overwritePrevious": false
             }
+          },
+          {
+            "id": "text-cdf7b0bd-e6ef-527f-a50c-269043253960",
+            "type": "textAnnotation",
+            "position": {"x": 720, "y": -340},
+            "zIndex": -1000,
+            "data": {
+              "type": "textAnnotation",
+              "text": "<p>Counts the residents within a 15 minute walk of any school.</p><ul><li><p>Residents within 15 minutes: one row per separate area of the walk; their sum is the residents within a 15 minute walk of any school, each grid cell by its share inside the walk</p></li></ul>",
+              "backgroundColor": "#F2CE58",
+              "width": 320,
+              "height": 300
+            }
           }
         ],
         "edges": [
@@ -237,12 +257,12 @@
             "targetHandle": "input"
           }
         ],
-        "viewport": {"x": 40.0, "y": 90.0, "zoom": 0.5},
+        "viewport": {"x": 40.0, "y": 210.0, "zoom": 0.5},
         "variables": []
       }
     },
     {
-      "note": "a heatmap fed by two datasets, one of them left open, conditions with 'in' and 'contains', and a variable",
+      "note": "a heatmap fed by two datasets, one of them left open, conditions with 'in' and 'contains', and a variable; a blue note beside the workflow",
       "draft": {
         "name": "Nahversorgung zu Fuß",
         "steps": [
@@ -302,6 +322,13 @@
             "type": "number",
             "defaultValue": 15,
             "label": "Minuten"
+          }
+        ],
+        "notes": [
+          {
+            "id": "hinweis",
+            "text": "Zeigt, wie gut Supermärkte und Hausärzte zu Fuß erreichbar sind.\n\nNahversorgung: je Zelle die mittlere Gehzeit zu den nächsten Zielen; weniger Minuten heißt näher.",
+            "color": "blue"
           }
         ]
       },
@@ -377,6 +404,19 @@
               "addToProject": true,
               "overwritePrevious": false
             }
+          },
+          {
+            "id": "text-3919c07b-1961-5249-9c6a-339a350c3aa2",
+            "type": "textAnnotation",
+            "position": {"x": 1120, "y": -100},
+            "zIndex": -1000,
+            "data": {
+              "type": "textAnnotation",
+              "text": "<p>Zeigt, wie gut Supermärkte und Hausärzte zu Fuß erreichbar sind.</p><p>Nahversorgung: je Zelle die mittlere Gehzeit zu den nächsten Zielen; weniger Minuten heißt näher.</p>",
+              "backgroundColor": "#5297DA",
+              "width": 320,
+              "height": 220
+            }
           }
         ],
         "edges": [
@@ -400,7 +440,7 @@
             "targetHandle": "input"
           }
         ],
-        "viewport": {"x": 40.0, "y": 106.0, "zoom": 0.66},
+        "viewport": {"x": 40.0, "y": 90.0, "zoom": 0.5},
         "variables": [
           {
             "id": "variable-5cf99bc2-d726-54f1-8c7f-a0166376927a",

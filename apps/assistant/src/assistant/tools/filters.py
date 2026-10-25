@@ -21,7 +21,9 @@ from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema, model_validat
 
 from assistant.tools.runtime import InputInvalid
 
-Op = Literal["=", "!=", "<", "<=", ">", ">=", "in", "like", "is_null", "is_not_null"]
+Op = Literal[
+    "=", "!=", "<", "<=", ">", ">=", "in", "like", "contains", "is_null", "is_not_null"
+]
 Scalar = str | int | float | bool
 
 FILTERABLE_KINDS = frozenset({"string", "number", "integer", "boolean", "date-time"})
@@ -92,7 +94,10 @@ class Condition(BaseModel):
 
     field: str = Field(description="Field name, as project_get_fields lists it.")
     op: Op = Field(
-        description="'like': case-insensitive, % as wildcard; is_null and is_not_null take no value."
+        description=(
+            "'like': case-insensitive, % as wildcard; 'contains': the text "
+            "anywhere, case-insensitive; is_null and is_not_null take no value."
+        )
     )
     # Typed for validation; the model sees one line instead of six alternatives,
     # and a wrong type comes back as a message saying what fits.
@@ -229,6 +234,15 @@ def _condition(condition: Condition, fields: Mapping[str, str]) -> dict[str, Any
         raise InputInvalid(
             f"Operator {condition.op!r} takes one value, not a list; use 'in' for a list."
         )
+    if condition.op == "contains":
+        if kind != "string" or not isinstance(condition.value, str):
+            raise InputInvalid(
+                "'contains' works on text fields and takes a text, e.g. 'Schule'."
+            )
+        # The services' LIKE takes no escape character (goatlib's CQL2
+        # evaluator sends the pattern to DuckDB's ILIKE as it is), so a % or _
+        # in the text stays a wildcard and matches at least the text itself.
+        return {"op": "like", "args": [prop, f"%{condition.value}%"]}
     if condition.op == "like":
         if kind != "string" or not isinstance(condition.value, str):
             raise InputInvalid(

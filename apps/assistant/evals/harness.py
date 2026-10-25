@@ -15,8 +15,8 @@ from uuid import UUID, uuid4
 
 import httpx
 from pydantic import ValidationError
-from pydantic_ai import AgentRunResultEvent
 from pydantic_ai.messages import (
+    AgentStreamEvent,
     FunctionToolCallEvent,
     FunctionToolResultEvent,
     ModelMessage,
@@ -43,13 +43,16 @@ from assistant.asks import (
     answer_lines,
 )
 from assistant.budget import RunBudget
+from assistant.clock import AnswerClock
 from assistant.config import AssistantSettings
 from assistant.context import PageContext, parse_context
 from assistant.events import DataPart, RunEvent
 from assistant.login import StaticLogin
 from assistant.prompt import render_note, with_note
+from assistant.runs.turn import run_turn
 from assistant.tools.runtime import ToolEnv, client_secrets
 from assistant.tools.toolset import earlier_writes
+from assistant.workflows.runs import ConversationRuns
 from evals.backends import Backends
 from evals.tasks import EvalTask
 
@@ -90,6 +93,17 @@ class Transcript:
     #: without failing the task.
     reasoning_only: int = 0
     retries: int = 0
+
+
+def _text(messages: Iterable[ModelMessage]) -> str:
+    """The text of an answer's model responses, in order."""
+    return "".join(
+        part.content
+        for message in messages
+        if isinstance(message, ModelResponse)
+        for part in message.parts
+        if isinstance(part, TextPart)
+    )
 
 
 def stalls(messages: Iterable[ModelMessage]) -> tuple[int, int]:
@@ -272,6 +286,9 @@ async def run_task(
     usages: list[RunUsage] = []
     #: Each turn's own messages, for the providers that answered them.
     answered: list[ModelMessage] = []
+    #: What the conversation created and ran, shared by its turns as the
+    #: stored conversation is in the app (ConversationRuns.from_stored).
+    runs = ConversationRuns()
 
     async def turn(
         prompt: str,
@@ -284,6 +301,7 @@ async def run_task(
         """One run of the conversation, as RunManager runs it: its own limits
         and time, the conversation's earlier write results (``written``)."""
         nonlocal first_text, output
+        clock = AnswerClock(settings.run_wait_max_seconds)
         env = ToolEnv(
             services=services,
             login=StaticLogin("eval-token"),
@@ -293,6 +311,8 @@ async def run_task(
             locale=task.locale,
             extra_secrets=client_secrets(settings),
             asks=asks,
+            clock=clock,
+            runs=runs,
         )
         deps = RunDeps(
             message_id=str(uuid4()),
@@ -309,24 +329,28 @@ async def run_task(
         # or times out are still counted.
         usage = RunUsage()
         usages.append(usage)
-        messages: list[ModelMessage] = []
-        async with asyncio.timeout(settings.run_max_seconds):
-            async with agent.run_stream_events(
+
+        async def on_event(event: AgentStreamEvent) -> None:
+            nonlocal first_text
+            log.see(event)
+            if first_text is None and _is_text(event):
+                first_text = time.monotonic() - started
+
+        async with asyncio.timeout(settings.run_max_seconds) as deadline:
+            clock.timeout = deadline
+            result = await run_turn(
+                agent,
                 with_note(deps.prompt_note, prompt, answer),
                 deps=deps,
+                on_event=on_event,
                 message_history=history or None,
                 usage_limits=limits,
                 usage=usage,
-            ) as stream:
-                async for event in stream:
-                    log.see(event)
-                    if isinstance(event, AgentRunResultEvent):
-                        output = str(event.result.output)
-                        messages = event.result.all_messages()
-                        answered.extend(event.result.new_messages())
-                    elif first_text is None and _is_text(event):
-                        first_text = time.monotonic() - started
-        return messages
+            )
+        # A shown card ends the answer: its text is what came before the card.
+        output = result.output if result.output is not None else _text(result.messages)
+        answered.extend(result.messages)
+        return [*history, *result.messages]
 
     try:
         messages = await turn(

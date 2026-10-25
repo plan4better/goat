@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_ai.exceptions import ToolFailed
 
 from assistant.context import ProjectMapContext, project_of
@@ -35,8 +35,8 @@ from assistant.tools.filters import (
     to_cql2,
     unknown_field,
 )
-from assistant.tools.http import ServiceError
-from assistant.tools.policy import LOW_CARDINALITY_LIMIT, Withheld
+from assistant.tools.http import SIGN_IN_EXPIRED, ServiceError, sign_in_expired
+from assistant.tools.policy import LOW_CARDINALITY_LIMIT, MIN_RESTRICTED_GROUP, Withheld
 from assistant.tools.proposals import (
     MapCamera,
     MapViewPayload,
@@ -63,18 +63,18 @@ SAMPLE_FIELDS_MAX = 20
 _SAMPLE_VALUE_CHARS = 200
 #: Values listed per categorical field; also the Restricted cardinality limit.
 UNIQUE_VALUES = LOW_CARDINALITY_LIMIT
-#: Under Restricted, a filter that matches fewer features than this is not
-#: allowed to return the values of what it matches: a filter that isolates one
-#: feature would make its minimum, maximum and class breaks that feature's own
-#: values. Class breaks are capped so every class holds at least this many
-#: features with a value, filtered or not: quantile breaks over as many classes
-#: as values are the values themselves. ``k`` break points make ``k + 1``
-#: classes.
-MIN_RESTRICTED_GROUP = 5
 #: A server extent narrower than this (a single point, or features on one
 #: meridian or parallel) is widened to it before it becomes a map view, because
 #: a zero-sized box cannot be fitted. In degrees, roughly 200 m.
 _MIN_EXTENT_DEGREES = 0.004
+#: A catalog layer whose copy into GOAT is queued or running
+#: (``other_properties.catalog_materialize.status`` of core's layer row) has no
+#: data to read yet.
+STILL_COPYING = (
+    "This layer is still being copied into GOAT. Try again in a moment; until "
+    "then its data cannot be read."
+)
+_COPYING = frozenset({"pending", "running"})
 
 
 class ProjectInput(BaseModel):
@@ -118,11 +118,12 @@ async def _core(env: ToolEnv, path: str) -> Any:
     try:
         return await env.call("core", "GET", f"/api/v2/project{path}")
     except ServiceError as exc:
-        # Core's authorization answers 401 for "no access" too, not only for an
-        # expired sign-in, so the message names both.
+        if sign_in_expired(exc):
+            raise ToolFailed(SIGN_IN_EXPIRED) from exc
+        # Core's authorization answers 401 for "no access" too.
         if exc.status in (401, 403, 404):
             raise ToolFailed(
-                "The project does not exist, the user cannot open it, or the sign-in expired."
+                "The project does not exist or the user cannot open it."
             ) from exc
         raise
 
@@ -136,6 +137,15 @@ class _Layer:
     geometry_type: str | None
 
 
+def _copy_status(row: Mapping[str, Any]) -> str | None:
+    """The status of a catalog layer's copy into GOAT (``pending``,
+    ``running``, ``ready`` or ``failed``); None for any other layer."""
+    props = row.get("other_properties")
+    doc = props.get("catalog_materialize") if isinstance(props, dict) else None
+    status = doc.get("status") if isinstance(doc, dict) else None
+    return status if isinstance(status, str) else None
+
+
 async def _readable_layer(env: ToolEnv, args: LayerInput) -> _Layer:
     project_id = _project_id(env, args.project_id)
     for row in await _core(env, f"/{project_id}/layer"):
@@ -146,6 +156,8 @@ async def _readable_layer(env: ToolEnv, args: LayerInput) -> _Layer:
             raise ToolFailed(
                 f"{name!r} is in the project, but the user has no access to its data."
             )
+        if _copy_status(row) in _COPYING:
+            raise ToolFailed(STILL_COPYING)
         if row.get("type") not in _DATA_LAYER_TYPES:
             raise ToolFailed(
                 f"{name!r} is a {row.get('type')} layer; only feature and table layers have data to read."
@@ -795,6 +807,20 @@ FIELD_STATISTICS: ToolSpec[StatisticsInput, FieldStatistics] = ToolSpec(
 # -- project.area_statistics ---------------------------------------------------
 
 
+class AreaStatisticsInput(FilteredLayerInput):
+    group_by: str | None = Field(
+        default=None,
+        description="A field whose values form groups: the area per value, largest first (at most 100).",
+    )
+
+
+class AreaGroup(BaseModel):
+    group: str | None
+    feature_count: int
+    total_area: float | None = None
+    mean_area: float | None = None
+
+
 class AreaStatistics(BaseModel):
     layer: str
     filter: str
@@ -804,13 +830,25 @@ class AreaStatistics(BaseModel):
     min_area: float | None = None
     max_area: float | None = None
     unit: str = "m²"
+    #: With group_by: the area per value of the field, largest total first, as
+    #: many as processes lists (MAX_GROUPS); groups_total counts all of them.
+    groups: list[AreaGroup] | None = None
+    groups_total: int | None = None
     note: str | None = None
     #: Whether a filter was applied; never serialized.
     filtered: bool = Field(default=False, exclude=True)
 
     def restricted(self) -> "AreaStatistics":
-        update: dict[str, Any] = {"total_area": None, "mean_area": None}
+        update: dict[str, Any] = {
+            "total_area": None,
+            "mean_area": None,
+            # A group's area is the total of its features' areas.
+            "groups": None,
+            "groups_total": None,
+        }
         note = "Total and mean area are withheld by the data policy (Restricted)."
+        if self.groups is not None:
+            note += " So is the area per group: it is a total too."
         if self.filtered and self.feature_count < MIN_RESTRICTED_GROUP:
             update.update(min_area=None, max_area=None)
             note += (
@@ -820,12 +858,27 @@ class AreaStatistics(BaseModel):
         return self.model_copy(update={**update, "note": note})
 
 
-async def _area_statistics(env: ToolEnv, args: FilteredLayerInput) -> AreaStatistics:
+def _area_group(item: Mapping[str, Any]) -> AreaGroup:
+    count = int(item.get("feature_count") or 0)
+    area = item.get("total_area")
+    return AreaGroup(
+        group=_group_value(item.get("grouped_value")),
+        feature_count=count,
+        total_area=area,
+        mean_area=area / count if area is not None and count else None,
+    )
+
+
+async def _area_statistics(env: ToolEnv, args: AreaStatisticsInput) -> AreaStatistics:
     layer = await _readable_layer(env, args)
     if layer.geometry_type != "polygon":
         raise ToolFailed(
             f"Area statistics need a polygon layer; {layer.name!r} has {layer.geometry_type} features."
         )
+    if args.group_by is not None:
+        fields = await _fields(env, layer)
+        if args.group_by not in fields:
+            raise InputInvalid(unknown_field(args.group_by, fields))
     # The filter cannot name the geometry (it is not a filterable field), so it
     # cannot be padded with rows that have none: the count the group-size guard
     # reads is the number of features the filter matches.
@@ -835,13 +888,34 @@ async def _area_statistics(env: ToolEnv, args: FilteredLayerInput) -> AreaStatis
             _analytics(
                 env,
                 "area-statistics",
-                {"collection": layer.layer_id, "operation": operation, "filter": cql},
+                {
+                    "collection": layer.layer_id,
+                    "operation": operation,
+                    "filter": cql,
+                    # The sum call answers the groups as well; the smallest and
+                    # largest stay over the whole (filtered) layer.
+                    "group_by_column": args.group_by if operation == "sum" else None,
+                },
             )
             for operation in ("sum", "min", "max")
         )
     )
     count = int(total.get("feature_count") or 0)
     area = total.get("total_area")
+    groups: list[AreaGroup] | None = None
+    groups_total: int | None = None
+    note: str | None = None
+    if args.group_by is not None:
+        groups = [
+            _area_group(item)
+            for item in total.get("groups") or []
+            if isinstance(item, dict)
+        ]
+        listed = total.get("total_groups")
+        groups_total = listed if isinstance(listed, int) else len(groups)
+        if any(group.group is None for group in groups):
+            # Sent without its group key, the row could pass for a total.
+            note = f"A row without group holds the features with no value in {args.group_by!r}."
     return AreaStatistics(
         layer=layer.name,
         filter=describe_filter(args.filter),
@@ -851,14 +925,21 @@ async def _area_statistics(env: ToolEnv, args: FilteredLayerInput) -> AreaStatis
         min_area=smallest.get("result"),
         max_area=largest.get("result"),
         unit=total.get("unit") or "m²",
+        groups=groups,
+        groups_total=groups_total,
+        note=note,
         filtered=args.filter is not None,
     )
 
 
-AREA_STATISTICS: ToolSpec[FilteredLayerInput, AreaStatistics] = ToolSpec(
+AREA_STATISTICS: ToolSpec[AreaStatisticsInput, AreaStatistics] = ToolSpec(
     name="project.area_statistics",
-    description="Area of a polygon layer's features: count, total, mean, smallest and largest, in square metres.",
-    input_model=FilteredLayerInput,
+    description=(
+        "Area of a polygon layer's features: count, total, mean, smallest and "
+        "largest, in square metres. With group_by, the area per value of a field. "
+        "Areas are measured on the ellipsoid in m²."
+    ),
+    input_model=AreaStatisticsInput,
     output_model=AreaStatistics,
     run=_area_statistics,
     surfaces=PROJECT_SURFACES,
@@ -1278,11 +1359,462 @@ GET_LAYOUTS: ToolSpec[ProjectInput, ProjectLayouts] = ToolSpec(
     returns_data=False,
 )
 
+
+# -- project.group_statistics --------------------------------------------------
+
+GroupOperation = Literal["count", "sum", "mean", "min", "max"]
+#: The groups a result lists at most, as its rows.
+MAX_GROUPS = 100
+#: The groups of a share's denominator read at most (processes' aggregation-stats
+#: takes a limit of up to 1000): a row's group may come anywhere in the other
+#: layer's list, and only the rows go to the model.
+DENOMINATOR_GROUPS = 1000
+SHARE_DECIMALS = 6
+
+
+class ShareOf(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    layer_project_id: int = Field(
+        ge=1,
+        description=(
+            "The other layer, in the same project; the same layer with its own "
+            "filter is fine."
+        ),
+    )
+    operation: GroupOperation = Field(
+        default="sum", description="Its statistic, as operation."
+    )
+    field: str | None = Field(
+        default=None, description="Its field the statistic is of; left out for count."
+    )
+    group_by: str | None = Field(
+        default=None,
+        description=(
+            "Its field holding the same values as the first layer's group_by; left "
+            "out to divide every row by the other layer's total."
+        ),
+    )
+    filter: FeatureFilter | None = Field(
+        default=None,
+        description=(
+            "Its own filter, for the denominator only (the first layer's filter "
+            "does not apply to it). " + FILTER_EXAMPLES
+        ),
+    )
+
+
+class GroupStatisticsInput(FilteredLayerInput):
+    operation: GroupOperation = Field(
+        description="sum, mean, min or max of field, or count of features."
+    )
+    field: str | None = Field(
+        default=None,
+        description="The numeric field the statistic is of; left out for count.",
+    )
+    group_by: str | None = Field(
+        default=None,
+        description=(
+            "The field whose values form the groups; left out for one row over the "
+            "whole (filtered) layer."
+        ),
+    )
+    then_by: str | None = Field(
+        default=None, description="A second field: groups inside each group_by value."
+    )
+    share_of: ShareOf | None = Field(
+        default=None,
+        description=(
+            "Divide each row's value by a statistic of another layer, or of the "
+            "same layer with its own filter: with share_of.group_by, its value for "
+            "the same group (residents per district and band by residents per "
+            "district); without, its total."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _groups_need_group_by(self) -> "GroupStatisticsInput":
+        if self.group_by is None:
+            if self.then_by is not None:
+                raise ValueError("then_by needs group_by: it groups inside group_by")
+            if self.share_of is not None and self.share_of.group_by is not None:
+                raise ValueError(
+                    "share_of.group_by needs group_by: a grouped denominator "
+                    "matches groups of the first layer"
+                )
+        return self
+
+
+class GroupRow(BaseModel):
+    group: str | None
+    then: str | None = None
+    value: float | None
+    denominator: float | None = None
+    share: float | None = None
+
+
+class GroupStatistics(BaseModel):
+    layer: str
+    operation: GroupOperation
+    field: str | None = None
+    group_by: str | None
+    then_by: str | None = None
+    filter: str
+    rows: list[GroupRow]
+    #: Groups before the limit of MAX_GROUPS.
+    groups: int
+    features: int
+    #: With share_of.group_by: distinct group values the other layer has no
+    #: group for.
+    #: Counted only when the other layer's list of groups is complete, never
+    #: for the null group; left out when that list was cut at
+    #: DENOMINATOR_GROUPS (it may hold them further down), so it never reads
+    #: as all matched.
+    unmatched: int | None = None
+    note: str | None = None
+    with_share: bool = Field(default=False, exclude=True)
+    #: Whether a filter was applied; never serialized.
+    filtered: bool = Field(default=False, exclude=True)
+    #: Whether group_by and then_by have few distinct values over the whole
+    #: layer, not only over the filtered features. Set under Restricted with a
+    #: filter; never serialized.
+    low_cardinality: bool | None = Field(default=None, exclude=True)
+
+    def restricted(self) -> BaseModel:
+        # Restricted sends counts, never sums or means (spec §4.7): only counts
+        # per group, of fields with few values, and no count of a group so small
+        # it singles out its features. A copy, because the policy treats a
+        # reduction that returns the same object as no reduction. Without a
+        # filter, few groups means few values of each field; with one, the
+        # whole layer decides (low_cardinality), and a filter that matches
+        # fewer than MIN_RESTRICTED_GROUP features sends nothing: its total
+        # and its groups would say how many, which project.count_features
+        # withholds.
+        if (
+            self.operation != "count"
+            or self.with_share
+            or self.groups > LOW_CARDINALITY_LIMIT
+            or (
+                self.filtered
+                and (
+                    self.low_cardinality is not True
+                    or self.features < MIN_RESTRICTED_GROUP
+                )
+            )
+        ):
+            return Withheld()
+        rows = [
+            row
+            if row.value is None or row.value >= MIN_RESTRICTED_GROUP
+            else row.model_copy(update={"value": None})
+            for row in self.rows
+        ]
+        hidden = sum(1 for row in rows if row.value is None) - sum(
+            1 for row in self.rows if row.value is None
+        )
+        # The note is built here, not taken from the full result: only these
+        # parts of it may leave under Restricted.
+        notes = _null_notes(self.rows, self.group_by, self.then_by)
+        if hidden:
+            notes.append(
+                f"{hidden} group(s) have fewer than {MIN_RESTRICTED_GROUP} features; "
+                "the data policy (Restricted) withholds their counts."
+            )
+        return self.model_copy(update={"rows": rows, "note": " ".join(notes) or None})
+
+
+def _null_notes(
+    rows: list[GroupRow], group_by: str | None, then_by: str | None
+) -> list[str]:
+    """A row of the features with no value in a grouping field is sent without
+    that key, so it could pass for a total: the note names the field. Without
+    group_by the one row has no group by design, and there is nothing to name."""
+    if group_by is None:
+        return []
+    notes = []
+    if any(row.group is None for row in rows):
+        notes.append(
+            f"A row without group holds the features with no value in {group_by!r}."
+        )
+    if then_by is not None and any(row.then is None for row in rows):
+        notes.append(
+            f"A row without then holds the features with no value in {then_by!r}."
+        )
+    return notes
+
+
+def _group_value(value: Any) -> str | None:
+    return None if value is None else str(value)
+
+
+def _number_value(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _need_fields(
+    fields: Mapping[str, str],
+    layer: _Layer,
+    operation: str,
+    field: str | None,
+    *groups: str | None,
+) -> None:
+    if operation != "count":
+        if field is None:
+            raise InputInvalid(
+                f"{operation} needs field: the numeric field the statistic is of."
+            )
+        if field not in fields:
+            raise InputInvalid(
+                f"{layer.name!r} has no field {field!r}; project_get_fields lists them."
+            )
+        if fields[field] not in _NUMERIC:
+            raise InputInvalid(
+                f"{field!r} is not numeric; {operation} needs a number field."
+            )
+    for name in groups:
+        if name is not None and name not in fields:
+            raise InputInvalid(
+                f"{layer.name!r} has no field {name!r}; project_get_fields lists them."
+            )
+
+
+def _aggregation(
+    layer: _Layer,
+    operation: str,
+    field: str | None,
+    group_by: str | None,
+    then_by: str | None,
+    cql: str | None,
+    limit: int = MAX_GROUPS,
+) -> dict[str, Any]:
+    return {
+        "collection": layer.layer_id,
+        "operation": operation,
+        "operation_column": field if operation != "count" else None,
+        "group_by_column": group_by,
+        "group_by_secondary_column": then_by,
+        "filter": cql,
+        "order": "descendent",
+        "limit": limit,
+    }
+
+
+def _items(answer: Any) -> list[dict[str, Any]]:
+    items = answer.get("items") if isinstance(answer, dict) else None
+    return [item for item in items or [] if isinstance(item, dict)]
+
+
+def _lists_every_group(answer: Any, listed: int, limit: int) -> bool:
+    """Whether an aggregation answer with ``listed`` non-null groups holds all
+    of them. ``total_items`` is a COUNT(DISTINCT), which leaves the null group
+    out, so it is compared with the non-null groups. Without a total, a list
+    shorter than the request's ``limit`` was not cut."""
+    total = answer.get("total_items") if isinstance(answer, dict) else None
+    if isinstance(total, int) and not isinstance(total, bool):
+        return total <= listed
+    return len(_items(answer)) < limit
+
+
+async def _group_statistics(
+    env: ToolEnv, args: GroupStatisticsInput
+) -> GroupStatistics:
+    layer = await _readable_layer(env, args)
+    fields = await _fields(env, layer)
+    _need_fields(fields, layer, args.operation, args.field, args.group_by, args.then_by)
+    cql = await _cql(env, layer, args.filter)
+    low_cardinality: bool | None = None
+    if env.data_policy == "restricted" and cql is not None:
+        # The filtered groups say little about the fields: a filter on one
+        # district leaves few names of a field that holds one per feature.
+        # Cardinality is judged on the whole layer, as in field statistics.
+        grouping = [name for name in (args.group_by, args.then_by) if name is not None]
+        wholes = await asyncio.gather(
+            *(
+                _analytics(
+                    env,
+                    "unique-values",
+                    {
+                        "collection": layer.layer_id,
+                        "attribute": name,
+                        "order": "descendent",
+                        "limit": 1,
+                    },
+                )
+                for name in grouping
+            )
+        )
+        low_cardinality = all(
+            _distinct_total(whole) <= LOW_CARDINALITY_LIMIT for whole in wholes
+        )
+    answer = await _analytics(
+        env,
+        "aggregation-stats",
+        _aggregation(
+            layer, args.operation, args.field, args.group_by, args.then_by, cql
+        ),
+    )
+    rows = [
+        GroupRow(
+            group=_group_value(item.get("grouped_value")),
+            then=_group_value(item.get("grouped_secondary_value")),
+            value=_number_value(item.get("operation_value")),
+        )
+        for item in _items(answer)
+    ]
+    notes: list[str] = []
+    unmatched: int | None = None
+    if args.share_of is not None:
+        share = args.share_of
+        other = await _readable_layer(
+            env,
+            LayerInput(
+                project_id=args.project_id, layer_project_id=share.layer_project_id
+            ),
+        )
+        _need_fields(
+            await _fields(env, other),
+            other,
+            share.operation,
+            share.field,
+            share.group_by,
+        )
+        if share.layer_project_id != args.layer_project_id:
+            notes.append(
+                f"Numerator and denominator are read from two layers "
+                f"({layer.name!r}, {other.name!r}). If the layers come from "
+                "different sources, check that both count the same population "
+                "(source and year)."
+            )
+        # The first layer's filter never reaches the denominator: share_of
+        # names its own, so the same layer can be divided by its whole.
+        share_cql = await _cql(env, other, share.filter)
+        totals = await _analytics(
+            env,
+            "aggregation-stats",
+            _aggregation(
+                other,
+                share.operation,
+                share.field,
+                share.group_by,
+                None,
+                share_cql,
+                limit=DENOMINATOR_GROUPS,
+            ),
+        )
+        if share.group_by is None:
+            # One total for every row, the row without a group included: its
+            # features are part of the whole as much as any group's.
+            whole = next(
+                (_number_value(item.get("operation_value")) for item in _items(totals)),
+                None,
+            )
+            undivided_rows = 0
+            for row in rows:
+                row.denominator = whole
+                if row.value is not None and whole:
+                    row.share = round(row.value / whole, SHARE_DECIMALS)
+                else:
+                    undivided_rows += 1
+            if undivided_rows:
+                notes.append(
+                    f"{undivided_rows} row(s) have no value or a denominator of 0, "
+                    "so they have no share."
+                )
+        else:
+            # The null group is no value to match: its features have none, in
+            # either layer.
+            denominators: dict[str, float | None] = {}
+            for item in _items(totals):
+                key = _group_value(item.get("grouped_value"))
+                if key is not None:
+                    denominators[key] = _number_value(item.get("operation_value"))
+            missing: set[str] = set()
+            undivided: set[str] = set()
+            for row in rows:
+                if row.group is None:
+                    continue
+                if row.group not in denominators:
+                    missing.add(row.group)
+                    continue
+                denominator = denominators[row.group]
+                row.denominator = denominator
+                if row.value is not None and denominator:
+                    row.share = round(row.value / denominator, SHARE_DECIMALS)
+                else:
+                    undivided.add(row.group)
+            complete = _lists_every_group(totals, len(denominators), DENOMINATOR_GROUPS)
+            unmatched = len(missing) if complete else None
+            if missing and complete:
+                notes.append(
+                    f"{len(missing)} group(s) have no matching value of "
+                    f"{share.group_by!r} in {other.name!r}, so they have no share."
+                )
+            elif missing:
+                notes.append(
+                    f"{len(missing)} group(s) have no share: {other.name!r} has more "
+                    f"than {DENOMINATOR_GROUPS} values of {share.group_by!r}, and only "
+                    f"its first {DENOMINATOR_GROUPS} (largest first) are matched."
+                )
+            if undivided:
+                notes.append(
+                    f"{len(undivided)} group(s) have no value or a denominator of 0, "
+                    "so they have no share."
+                )
+    notes += _null_notes(rows, args.group_by, args.then_by)
+    total_items = answer.get("total_items") if isinstance(answer, dict) else None
+    total_count = answer.get("total_count") if isinstance(answer, dict) else None
+    return GroupStatistics(
+        layer=layer.name,
+        operation=args.operation,
+        field=args.field,
+        group_by=args.group_by,
+        then_by=args.then_by,
+        filter=describe_filter(args.filter),
+        rows=rows,
+        groups=int(total_items) if isinstance(total_items, int) else len(rows),
+        features=int(total_count) if isinstance(total_count, int) else 0,
+        unmatched=unmatched,
+        note=" ".join(notes) or None,
+        with_share=args.share_of is not None,
+        filtered=cql is not None,
+        low_cardinality=low_cardinality,
+    )
+
+
+GROUP_STATISTICS: ToolSpec[GroupStatisticsInput, GroupStatistics] = ToolSpec(
+    name="project.group_statistics",
+    description=(
+        "A statistic of a layer per group: sum, mean, min or max of a numeric "
+        "field, or the count of features, per value of group_by and optionally per "
+        "value of then_by inside each (up to 100 groups, largest first). Without "
+        "group_by, one row for the whole (filtered) layer. With share_of, each "
+        "row's value is divided on the server by a statistic of another layer "
+        "with its own operation (sum by default): its value for the same group "
+        "with share_of.group_by, e.g. residents per district and band by "
+        "residents per district, or its total without. share_of takes its own "
+        "filter for the denominator, e.g. residents in a catchment over all "
+        "residents. Use those shares, never compute them yourself. Groups "
+        "without a share are counted in the note. Under the Restricted data "
+        "policy only counts are sent."
+    ),
+    input_model=GroupStatisticsInput,
+    output_model=GroupStatistics,
+    run=_group_statistics,
+    surfaces=PROJECT_SURFACES,
+    returns_data=True,
+)
+
 PROJECT_TOOLS: tuple[ToolSpec[Any, Any], ...] = (
     GET_LAYERS,
     GET_FIELDS,
     COUNT_FEATURES,
     FIELD_STATISTICS,
+    GROUP_STATISTICS,
     AREA_STATISTICS,
     SAMPLE_FEATURES,
     PROPOSE_VIEW,

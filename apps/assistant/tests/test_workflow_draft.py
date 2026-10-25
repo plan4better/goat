@@ -6,7 +6,7 @@ own rule (isDrawableWorkflowConfig) on every converted config."""
 import json
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from pydantic import ValidationError
@@ -17,15 +17,25 @@ from assistant.workflows.draft import (
     CANVAS_WIDTH,
     EXPRESSIONS,
     ID_NAMESPACE,
+    MAX_NOTE_CHARS,
+    MAX_NOTES,
     MIN_ZOOM,
     NODE_HEIGHT,
     NODE_WIDTH,
+    NOTE_COLORS,
+    NOTE_GAP,
+    NOTE_HEIGHT,
+    NOTE_WIDTH,
+    ROW_SPACING,
     Condition,
     Draft,
     DraftError,
+    DraftNote,
+    NoteColor,
     ProjectLayer,
     Region,
     node_id,
+    note_html,
     open_steps,
     region_from_feature,
     to_config,
@@ -523,3 +533,287 @@ def test_variables_get_the_editors_shape() -> None:
 def test_a_step_id_is_short_and_plain(step_id: str) -> None:
     with pytest.raises(ValidationError):
         _draft([_shops(id=step_id)])
+
+
+# -- notes ---------------------------------------------------------------------
+
+
+def _noted(
+    notes: list[dict[str, Any]],
+    steps: list[dict[str, Any]] | None = None,
+    connections: list[dict[str, Any]] | None = None,
+) -> Draft:
+    return Draft.model_validate(
+        {
+            "name": "Test",
+            "steps": steps or [_shops()],
+            "connections": connections or [],
+            "notes": notes,
+        }
+    )
+
+
+def _note(note_id: str = "about", **changes: Any) -> dict[str, Any]:
+    return {"id": note_id, "text": "Counts the shops.", **changes}
+
+
+def test_a_note_becomes_the_editors_text_annotation() -> None:
+    draft = _noted([_note(near=["shops"])])
+    converted = to_config(draft, layers=LAYERS, regions={}, titles=TITLES)
+    step, note = converted.config["nodes"]
+    assert step["id"] == node_id(draft.steps[0])
+    assert note == {
+        "id": f"text-{uuid.uuid5(ID_NAMESPACE, 'about')}",
+        "type": "textAnnotation",
+        "position": note["position"],
+        "zIndex": -1000,
+        "data": {
+            "type": "textAnnotation",
+            "text": "<p>Counts the shops.</p>",
+            "backgroundColor": NOTE_COLORS["yellow"],
+            "width": NOTE_WIDTH,
+            "height": NOTE_HEIGHT,
+        },
+    }
+    assert NOTE_COLORS["yellow"] == "#F2CE58"
+    # A note is no step: the issues of the check map to steps only.
+    assert converted.node_ids == {"shops": step["id"]}
+    assert converted.step_of == {step["id"]: "shops"}
+    assert converted.labels == {"shops": "Supermärkte"}
+
+
+def test_a_salt_enters_a_notes_id() -> None:
+    draft = _noted([_note()])
+
+    def note_id(salt: str) -> str:
+        config = to_config(
+            draft, layers=LAYERS, regions={}, titles=TITLES, salt=salt
+        ).config
+        return str(config["nodes"][1]["id"])
+
+    assert note_id("a1") == note_id("a1")
+    assert len({note_id(""), note_id("a1"), note_id("b2")}) == 3
+
+
+@pytest.mark.parametrize(
+    ("text", "html"),
+    [
+        ("Counts the shops.", "<p>Counts the shops.</p>"),
+        (
+            "Counts <b>shops</b> & more.",
+            "<p>Counts &lt;b&gt;shops&lt;/b&gt; &amp; more.</p>",
+        ),
+        ("First.\n\nSecond.", "<p>First.</p><p>Second.</p>"),
+        ("One line\nthe next line", "<p>One line<br>the next line</p>"),
+        (
+            "Bands:\n- 0 to 5 minutes\n- 5 to 10 minutes\n\nRead the export.",
+            "<p>Bands:</p><ul><li><p>0 to 5 minutes</p></li>"
+            "<li><p>5 to 10 minutes</p></li></ul><p>Read the export.</p>",
+        ),
+        (
+            "  - indented item\n-not an item",
+            "<ul><li><p>indented item</p></li></ul><p>-not an item</p>",
+        ),
+        ("\r\n  Text  \r\n\r\n\r\n", "<p>Text</p>"),
+        # The editor collapses runs of spaces and writes a non-breaking space
+        # as &nbsp;: a text it would rewrite on opening marks the workflow as
+        # changed.
+        ("a  b\tc d", "<p>a b c d</p>"),
+        ("a\u00a0b \u00a0c", "<p>a b c</p>"),
+        ("-\u00a0item", "<ul><li><p>item</p></li></ul>"),
+    ],
+)
+def test_a_notes_text_becomes_the_editors_html(text: str, html: str) -> None:
+    assert note_html(text) == html
+
+
+@pytest.mark.parametrize("color", sorted(NOTE_COLORS))
+def test_a_notes_color_is_one_the_editor_offers(color: str) -> None:
+    config = _convert(_noted([_note(color=color)]))
+    assert config["nodes"][1]["data"]["backgroundColor"] == NOTE_COLORS[color]
+    assert NOTE_COLORS[color] == NOTE_COLORS[color].upper()
+
+
+def test_every_note_color_has_a_swatch() -> None:
+    assert set(get_args(NoteColor)) == set(NOTE_COLORS)
+
+
+@pytest.mark.parametrize(
+    ("notes", "message"),
+    [
+        ([_note(text="")], "at least 1 character"),
+        ([_note(text=" \n\n ")], "note 'about': the text is empty"),
+        ([_note(near=["shops"] * 11)], "at most 10 items"),
+        ([_note(color="pink")], r"color\n  Input should be 'yellow'"),
+        ([_note(note_id="has space")], r"id\n  String should match pattern"),
+        ([_note(html="<p>x</p>")], r"html\n  Extra inputs are not permitted"),
+        (
+            [_note(f"n{index}") for index in range(MAX_NOTES + 1)],
+            f"at most {MAX_NOTES} items",
+        ),
+        (
+            [_note(near=["shops", "nowhere"])],
+            "note 'about' names the unknown step 'nowhere'",
+        ),
+        ([_note("shops")], "note 'shops' has the id of a step"),
+        ([_note(), _note()], "two notes have the id 'about'"),
+        (
+            [_note("first"), _note("second", near=["first"])],
+            "note 'second' names the unknown step 'first'",
+        ),
+    ],
+)
+def test_a_note_follows_the_drafts_rules(
+    notes: list[dict[str, Any]], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        _noted(notes)
+
+
+def test_an_over_long_note_is_refused_with_how_to_shorten_it() -> None:
+    """The model shortens an over-long note itself; it never asks the user
+    about a note."""
+    assert _noted([_note(text="x" * MAX_NOTE_CHARS)]).notes[0].text
+    with pytest.raises(ValidationError) as refused:
+        _noted([_note(text="x" * (MAX_NOTE_CHARS + 1))])
+    message = " ".join(refused.value.errors()[0]["msg"].split())
+    assert "note 'about': the text has 1,001 characters, more than the 1,000" in message
+    assert (
+        "Shorten the note itself to what the workflow answers and how to read "
+        "its results" in message
+    )
+    assert "never ask the user about a note" in message
+
+
+def test_the_note_limit_stays_in_the_schema_the_model_reads() -> None:
+    schema = DraftNote.model_json_schema()
+    assert schema["properties"]["text"]["maxLength"] == MAX_NOTE_CHARS == 1000
+
+
+def test_notes_are_optional() -> None:
+    assert _draft([_shops()]).notes == []
+
+
+def _box(node: dict[str, Any]) -> tuple[int, int, int, int]:
+    """A node's left, top, right and bottom: a note by its size, a step by
+    the largest size a step is drawn at."""
+    x, y = node["position"]["x"], node["position"]["y"]
+    if node["type"] == "textAnnotation":
+        width, height = node["data"]["width"], node["data"]["height"]
+    else:
+        width, height = NODE_WIDTH, NODE_HEIGHT
+    return x, y, x + width, y + height
+
+
+def _overlap(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    a, b = _box(first), _box(second)
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def _apart(first: dict[str, Any], second: dict[str, Any]) -> tuple[int, int]:
+    """How far apart the two nodes are across and down; negative where they
+    overlap on that axis."""
+    a, b = _box(first), _box(second)
+    return max(b[0] - a[2], a[0] - b[2]), max(b[1] - a[3], a[1] - b[3])
+
+
+def _clear(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """Two notes keep NOTE_GAP between them across or down; a note and a
+    step keep it down when one lies above the other (steps of neighbouring
+    columns touch at their widest)."""
+    across, down = _apart(first, second)
+    if "textAnnotation" == first["type"] == second["type"]:
+        return across >= NOTE_GAP or down >= NOTE_GAP
+    if "textAnnotation" in (first["type"], second["type"]):
+        return across >= 0 or down >= NOTE_GAP
+    return not _overlap(first, second)
+
+
+#: Three datasets in the first column, a tool and an export after them.
+_COLUMNS: dict[str, Any] = {
+    "steps": [
+        _shops(),
+        {"id": "people", "kind": "dataset", "layer": 33},
+        {"id": "schools", "kind": "dataset", "layer": 31},
+        _ring(),
+        {"id": "save", "kind": "export", "name": "Rings"},
+    ],
+    "connections": [
+        {"from": "shops", "to": "ring", "input": "input_layer_id"},
+        {"from": "ring", "to": "save"},
+    ],
+}
+
+
+def test_a_note_sits_directly_above_the_step_it_explains() -> None:
+    config = _convert(_noted([_note(near=["shops"])]))
+    step, note = config["nodes"]
+    gap = ROW_SPACING - NODE_HEIGHT
+    assert note["position"] == {
+        "x": step["position"]["x"],
+        "y": step["position"]["y"] - gap - NOTE_HEIGHT,
+    }
+
+
+def test_notes_sit_beside_their_steps_and_overlap_nothing() -> None:
+    draft = _noted(
+        [
+            _note("middle", near=["people"]),
+            _note("again", near=["people"]),
+            _note("tail", near=["ring", "save"]),
+            _note("whole"),
+            _note("more", text="A longer note. " * 60),
+        ],
+        **_COLUMNS,
+    )
+    config = _convert(draft)
+    nodes = config["nodes"]
+    by_id = {step.id: nodes[index] for index, step in enumerate(draft.steps)}
+    notes = nodes[len(draft.steps) :]
+    assert [node["type"] for node in notes] == ["textAnnotation"] * MAX_NOTES
+    for index, node in enumerate(nodes):
+        for other in nodes[index + 1 :]:
+            assert _clear(node, other), (node["id"], other["id"])
+    steps_right = max(_box(node)[2] for node in by_id.values())
+    for note, node in zip(draft.notes, notes, strict=True):
+        left, top, right, bottom = _box(node)
+        if not note.near:
+            # Right of the whole workflow.
+            assert left > steps_right
+            continue
+        named = [_box(by_id[step_id]) for step_id in note.near]
+        # Above the named steps, and level with them.
+        assert bottom < min(box[1] for box in named)
+        assert left < max(box[2] for box in named)
+        assert right > min(box[0] for box in named)
+
+
+def test_notes_above_neighbouring_columns_keep_the_gap_between_them() -> None:
+    draft = _noted(
+        [_note("first", near=["shops"]), _note("second", near=["ring"])],
+        [_shops(), _ring()],
+        [{"from": "shops", "to": "ring", "input": "input_layer_id"}],
+    )
+    _, _, first, second = _convert(draft)["nodes"]
+    assert first["position"]["y"] == second["position"]["y"]
+    assert _apart(first, second)[0] == NOTE_GAP
+
+
+def test_a_long_note_grows_to_hold_its_text() -> None:
+    config = _convert(_noted([_note(text="A longer note. " * 60, near=["shops"])]))
+    step, note = config["nodes"]
+    assert note["data"]["height"] > NOTE_HEIGHT
+    assert note["data"]["width"] == NOTE_WIDTH
+    assert not _overlap(step, note)
+
+
+def test_the_viewport_shows_the_notes_too() -> None:
+    draft = _noted([_note("tail", near=["save"]), _note("whole")], **_COLUMNS)
+    config = _convert(draft)
+    view = config["viewport"]
+    for node in config["nodes"]:
+        left, top, right, bottom = _box(node)
+        assert left * view["zoom"] + view["x"] >= 0
+        assert top * view["zoom"] + view["y"] >= 0
+        assert right * view["zoom"] + view["x"] <= CANVAS_WIDTH
+        assert bottom * view["zoom"] + view["y"] <= CANVAS_HEIGHT

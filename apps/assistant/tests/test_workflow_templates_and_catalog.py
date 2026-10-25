@@ -33,12 +33,14 @@ from assistant.context import parse_context
 from assistant.repo import Repository
 from assistant.runs.manager import RunManager
 from assistant.skills import BUILT_IN
+from assistant.tools.http import SIGN_IN_EXPIRED
 from assistant.tools.runtime import InputInvalid, ToolEnv, execute
 from assistant.tools.testing import (
     Recorder,
     ScriptedModel,
     TurnModel,
     fake_clients,
+    signed_in,
     tool_env,
 )
 from assistant.tools.toolset import REPEATED_WRITE, _tool
@@ -47,6 +49,7 @@ from assistant.tools.workflows import (
     ADD_CATALOG_LAYER,
     CREATE_FROM_TEMPLATE,
     FIND_TEMPLATES,
+    MAX_BUNDLE_LOOKUPS,
     MAX_LISTED_TEMPLATES,
     MAX_SEARCH_WORDS,
     MAX_TEMPLATES,
@@ -59,6 +62,7 @@ from assistant.tools.workflows import (
     TEMPLATES_SEARCHED,
     VIEWER_LAYERS,
     WorkflowCreated,
+    own_dataset,
 )
 
 USER = UUID(int=1)
@@ -1375,6 +1379,151 @@ async def test_the_id_typed_into_the_cards_free_text_is_no_pick() -> None:
     assert core.requests == []
 
 
+def _picked(option: dict[str, Any]) -> AskHistory:
+    """A card whose first option the user picked."""
+    card = AskUserInput.model_validate(
+        {
+            "questions": [
+                {
+                    "question": "Which data should the workflow use?",
+                    "header": "Data",
+                    "options": [option, {"label": "Leave it open"}],
+                }
+            ]
+        }
+    )
+    answer = CardAnswer(
+        card_id="ask-c1", answers=[QuestionAnswer(question=0, options=[0])]
+    )
+    return AskHistory(cards={"ask-c1": card}, answers={"ask-c1": answer})
+
+
+#: The catalog's answer for a bundle: its members under ``items``.
+BUNDLE = {
+    "kind": "collection",
+    "collection": {"id": "cat_bundle", "title": "Population"},
+    "items": [{"id": "cat_item_2"}, {"id": "cat_item_3"}],
+    "goat:member_count": 2,
+}
+
+
+async def test_a_pick_with_adds_authorises_its_ids() -> None:
+    core = _core()
+    env = tool_env(fake_clients(core=core), page=PAGE)
+    env.asks = _picked(
+        {"label": "Population", "value": "population", "adds": ["cat_item_1"]}
+    )
+    out = await execute(ADD_CATALOG_LAYER, env, {"catalog_id": "cat_item_1"})
+    assert out["layers"]
+    [request] = core.requests
+    assert request.url.params.get_list("catalog_ids") == ["cat_item_1"]
+
+
+async def test_a_picked_bundle_authorises_its_members() -> None:
+    core = _core()
+    catalog = Recorder({("GET", "/stac/resolve/cat_bundle"): BUNDLE})
+    env = tool_env(fake_clients(core=core, catalog=catalog), page=PAGE)
+    env.asks = _picked({"label": "Population", "value": "cat_bundle"})
+    out = await execute(ADD_CATALOG_LAYER, env, {"catalog_id": "cat_item_2"})
+    assert out["layers"]
+    assert catalog.paths() == ["/stac/resolve/cat_bundle"]
+
+
+async def test_a_slug_authorises_nothing() -> None:
+    core = _core()
+    catalog = Recorder(
+        {
+            ("GET", "/stac/resolve/population"): httpx.Response(
+                404, json={"detail": "Catalog entry not found: population"}
+            )
+        }
+    )
+    env = tool_env(fake_clients(core=core, catalog=catalog), page=PAGE)
+    env.asks = _picked({"label": "Population", "value": "population"})
+    with pytest.raises(ToolFailed, match="not picked") as caught:
+        await execute(ADD_CATALOG_LAYER, env, {"catalog_id": "cat_item_1"})
+    assert caught.value.message == NO_CONSENT
+    assert core.requests == []
+
+
+async def test_a_picked_member_does_not_authorise_its_bundle() -> None:
+    """A bundle's pick covers its members; one member's pick is that member."""
+    core = _core()
+    item = {
+        "kind": "item",
+        "item": {"id": "cat_item_2"},
+        "collection_id": "cat_bundle",
+    }
+    catalog = Recorder({("GET", "/stac/resolve/cat_item_2"): item})
+    env = tool_env(fake_clients(core=core, catalog=catalog), page=PAGE)
+    env.asks = _picked({"label": "Population", "value": "cat_item_2"})
+    with pytest.raises(ToolFailed) as caught:
+        await execute(ADD_CATALOG_LAYER, env, {"catalog_id": "cat_bundle"})
+    assert caught.value.message == NO_CONSENT
+    assert core.requests == []
+
+
+async def test_a_value_that_is_no_catalog_id_is_not_looked_up() -> None:
+    """A value is any short key; only ids are sent to the catalog."""
+    core = _core()
+    catalog = Recorder()
+    env = tool_env(fake_clients(core=core, catalog=catalog), page=PAGE)
+    for value in ("..", "two words", "run:0b6f0000-0000-0000-0000-00000000f10f"):
+        env.asks = _picked({"label": "Population", "value": value})
+        with pytest.raises(ToolFailed) as caught:
+            await execute(ADD_CATALOG_LAYER, env, {"catalog_id": "cat_item_1"})
+        assert caught.value.message == NO_CONSENT
+    assert catalog.requests == []
+    assert core.requests == []
+
+
+def _many_picks(*values: str) -> AskHistory:
+    """One answered card per value, answered in this order, each picking the
+    option with that value."""
+    cards: dict[str, AskUserInput] = {}
+    answers: dict[str, CardAnswer] = {}
+    for n, value in enumerate(values):
+        card_id = f"ask-c{n}"
+        cards[card_id] = AskUserInput.model_validate(
+            {
+                "questions": [
+                    {
+                        "question": "Which one?",
+                        "header": "Data",
+                        "options": [
+                            {"label": "Picked", "value": value},
+                            {"label": "Not now", "value": "no"},
+                        ],
+                    }
+                ]
+            }
+        )
+        answers[card_id] = CardAnswer(
+            card_id=card_id, answers=[QuestionAnswer(question=0, options=[0])]
+        )
+    return AskHistory(cards=cards, answers=answers)
+
+
+async def test_the_newest_bundle_pick_is_looked_up_first() -> None:
+    """More picks than bundle lookups: run values and other picks do not
+    crowd out the bundle picked last."""
+    core = _core()
+    catalog = Recorder({("GET", "/stac/resolve/cat_bundle"): BUNDLE})
+    env = tool_env(fake_clients(core=core, catalog=catalog), page=PAGE)
+    earlier = [
+        *(str(n) for n in range(31, 39)),
+        *(str(UUID(int=n)) for n in range(1, 5)),
+        *(f"run:{UUID(int=n)}" for n in range(5, 9)),
+    ]
+    env.asks = _many_picks(*earlier, "cat_bundle")
+    out = await execute(ADD_CATALOG_LAYER, env, {"catalog_id": "cat_item_2"})
+    assert out["layers"]
+    looked_up = catalog.paths()
+    assert "/stac/resolve/cat_bundle" in looked_up
+    assert len(looked_up) <= MAX_BUNDLE_LOOKUPS
+    assert not any("run" in path for path in looked_up)
+
+
 async def test_a_viewer_cannot_add_a_dataset() -> None:
     core = _core(
         **{
@@ -1392,6 +1541,33 @@ async def test_a_viewer_cannot_add_a_dataset() -> None:
     assert caught.value.message == VIEWER_LAYERS
 
 
+@pytest.mark.parametrize(
+    ("expires_in", "message"),
+    [
+        (-60, SIGN_IN_EXPIRED),
+        # Core answers 401 also when its authorization denies the request.
+        (300, VIEWER_LAYERS),
+    ],
+)
+async def test_an_expired_sign_in_is_no_missing_right_to_add(
+    expires_in: float, message: str
+) -> None:
+    core = _core(
+        **{
+            f"POST /api/v2/project/{PROJECT}/layer-catalog": httpx.Response(
+                401, json={"detail": "Unauthorized"}
+            )
+        }
+    )
+    env = tool_env(fake_clients(core=core), page=PAGE, login=signed_in(expires_in))
+    env.asks = PICKED
+    with pytest.raises(ToolFailed) as caught:
+        await execute(
+            ADD_CATALOG_LAYER, env, {"catalog_id": "eval-supermaerkte-bayern"}
+        )
+    assert caught.value.message == message
+
+
 async def test_an_unknown_catalog_dataset_goes_back_to_the_model() -> None:
     core = _core(
         **{
@@ -1406,6 +1582,68 @@ async def test_an_unknown_catalog_dataset_goes_back_to_the_model() -> None:
         await execute(
             ADD_CATALOG_LAYER, env, {"catalog_id": "eval-supermaerkte-bayern"}
         )
+
+
+OWN_DATASET = "bd000000-0000-0000-0000-0000000000d1"
+
+
+async def test_a_dataset_of_the_users_own_is_sent_to_its_add_tool() -> None:
+    """A dataset id from core_find given to the catalog's add tool: the
+    error names the tool that adds it."""
+    core = _core(
+        **{
+            f"POST /api/v2/project/{PROJECT}/layer-catalog": httpx.Response(
+                404, json={"detail": f"Catalog item not found: {OWN_DATASET}"}
+            ),
+            f"GET /api/v2/layer/{OWN_DATASET}": {"id": OWN_DATASET, "name": "Classes"},
+        }
+    )
+    env = tool_env(fake_clients(core=core), page=PAGE)
+    env.asks = _picked({"label": "Classes", "value": "classes", "adds": [OWN_DATASET]})
+    with pytest.raises(InputInvalid) as caught:
+        await execute(ADD_CATALOG_LAYER, env, {"catalog_id": OWN_DATASET})
+    assert caught.value.message == own_dataset(OWN_DATASET)
+    assert "project_add_dataset adds it" in caught.value.message
+
+
+@pytest.mark.parametrize("status", [403, 404])
+async def test_an_id_core_cannot_read_stays_unknown_to_the_catalog(
+    status: int,
+) -> None:
+    """Another user's private dataset (403) reads as an unknown id (404)."""
+    core = _core(
+        **{
+            f"POST /api/v2/project/{PROJECT}/layer-catalog": httpx.Response(
+                404, json={"detail": f"Catalog item not found: {OWN_DATASET}"}
+            ),
+            f"GET /api/v2/layer/{OWN_DATASET}": httpx.Response(
+                status, json={"detail": "no"}
+            ),
+        }
+    )
+    env = tool_env(fake_clients(core=core), page=PAGE)
+    env.asks = _picked({"label": "Classes", "value": OWN_DATASET})
+    with pytest.raises(InputInvalid) as caught:
+        await execute(ADD_CATALOG_LAYER, env, {"catalog_id": OWN_DATASET})
+    assert caught.value.message == f"The catalog has no dataset {OWN_DATASET!r}."
+
+
+async def test_an_id_that_is_no_uuid_is_not_looked_up_in_core() -> None:
+    """The user's datasets have UUIDs: another id is no dataset of theirs."""
+    core = _core(
+        **{
+            f"POST /api/v2/project/{PROJECT}/layer-catalog": httpx.Response(
+                404, json={"detail": "Catalog item not found: eval-supermaerkte-bayern"}
+            )
+        }
+    )
+    env = tool_env(fake_clients(core=core), page=PAGE)
+    env.asks = PICKED
+    with pytest.raises(InputInvalid):
+        await execute(
+            ADD_CATALOG_LAYER, env, {"catalog_id": "eval-supermaerkte-bayern"}
+        )
+    assert [request.method for request in core.requests] == ["POST"]
 
 
 async def test_a_project_that_is_gone_is_not_an_unknown_dataset() -> None:

@@ -7,12 +7,19 @@ issue's message starts with the step's name, so the answer can quote it; an
 issue of several steps or of the whole workflow keeps processes' message.
 """
 
-from collections.abc import Mapping, Sequence
+import json
+from collections import Counter
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
+from goatlib.tools.limits import (
+    CATCHMENT_MAX_STARTING_POINTS,
+    CATCHMENT_MAX_STARTING_POINTS_PT,
+    TRAVEL_COST_MATRIX_MAX_PAIRS,
+)
 from pydantic import BaseModel, Field
 
-from assistant.workflows.draft import Converted, DatasetStep, Draft
+from assistant.workflows.draft import Converted, DatasetStep, Draft, ToolStep
 
 #: Levels that stop a run (``goatlib.workflows.checks``).
 BLOCKING_LEVELS = frozenset({"damaged", "error"})
@@ -164,3 +171,284 @@ def split_issues(
         else:
             blocking.append(issue)
     return blocking, still_open
+
+
+#: The catchment tool: its budget can hold several bands in one run, and one
+#: run takes a limited number of start points.
+CATCHMENT_TOOL = "catchment_area_v2"
+#: The settings that set a catchment's budget and its bands.
+_BUDGET_SETTINGS = frozenset({"max_cost", "steps", "step_sizes"})
+
+
+#: The travel cost matrix: one run takes a limited number of origin and
+#: destination pairs.
+MATRIX_TOOL = "travel_cost_matrix"
+#: Tools whose result has as many rows as their inputs together, by the
+#: inputs that count: a merge has the rows of both its inputs, a centroid one
+#: point per feature of its input.
+_COUNTED_INPUTS: dict[str, tuple[str, ...]] = {
+    "merge": ("input_path_1", "input_path_2"),
+    "centroid": ("input_layer_id",),
+}
+#: The layer inputs whose features a run's limit counts, per tool.
+_LIMITED_INPUTS: dict[str, tuple[str, ...]] = {
+    CATCHMENT_TOOL: ("starting_points",),
+    MATRIX_TOOL: ("origin_layer_id", "destination_layer_id"),
+}
+
+
+def _feeds(draft: Draft) -> dict[tuple[str, str], str]:
+    """(step id, input) -> the id of the step its connection reads from."""
+    return {
+        (connection.target, connection.input): connection.source
+        for connection in draft.connections
+        if connection.input is not None
+    }
+
+
+def counted_datasets(draft: Draft, step_id: str) -> Counter[str] | None:
+    """The dataset steps whose features make up the rows of the step's
+    result, each with how often it counts: a dataset step itself once, the
+    datasets of both inputs of a merge added up, those of a centroid's input.
+    None when the rows are not known before the run: any other tool, or a
+    merge or a centroid with an input that is not connected or not known
+    either. Each step is read once, so a step that several paths reach costs
+    no more than one that a single path reaches."""
+    by_id = {step.id: step for step in draft.steps}
+    feeds = _feeds(draft)
+    # A step being read is None until it is done, so a loop reads as unknown.
+    known: dict[str, Counter[str] | None] = {}
+
+    def walk(step_id: str) -> Counter[str] | None:
+        if step_id in known:
+            return known[step_id]
+        known[step_id] = None
+        step = by_id.get(step_id)
+        found: Counter[str] | None = None
+        if isinstance(step, DatasetStep):
+            found = Counter({step.id: 1})
+        elif isinstance(step, ToolStep) and step.tool in _COUNTED_INPUTS:
+            found = Counter()
+            for name in _COUNTED_INPUTS[step.tool]:
+                source = feeds.get((step_id, name))
+                datasets = None if source is None else walk(source)
+                if datasets is None:
+                    found = None
+                    break
+                found.update(datasets)
+        known[step_id] = found
+        return found
+
+    return walk(step_id)
+
+
+def _limited(draft: Draft, step: ToolStep, name: str) -> Counter[str] | None:
+    """The dataset steps a limited input of the step sums up
+    (``counted_datasets``); None when it is not connected or not known."""
+    source = _feeds(draft).get((step.id, name))
+    return None if source is None else counted_datasets(draft, source)
+
+
+def counted_steps(draft: Draft) -> list[str]:
+    """The dataset steps whose features the start-point and pair checks
+    count, each once: those that make up a catchment's start points, and a
+    matrix's origins and destinations when both sides can be counted
+    (``counted_datasets``)."""
+    found: dict[str, None] = {}
+    for step in draft.steps:
+        if not isinstance(step, ToolStep) or step.tool not in _LIMITED_INPUTS:
+            continue
+        sides = [_limited(draft, step, name) for name in _LIMITED_INPUTS[step.tool]]
+        if any(side is None for side in sides):
+            continue
+        for side in sides:
+            found.update(dict.fromkeys(side or {}))
+    return list(found)
+
+
+def _total(datasets: Mapping[str, int] | None, counts: Mapping[str, int]) -> int | None:
+    """The datasets' counts, each times how often it counts; None when one of
+    them is not counted, so a sum is never reported low."""
+    if datasets is None or any(dataset not in counts for dataset in datasets):
+        return None
+    return sum(counts[dataset] * times for dataset, times in datasets.items())
+
+
+def _once(step_ids: Iterable[str]) -> list[str]:
+    return list(dict.fromkeys(step_ids))
+
+
+def starting_point_sources(draft: Draft) -> dict[str, str]:
+    """Catchment step id -> the id of the step its ``starting_points`` input
+    reads from."""
+    return {
+        connection.target: connection.source
+        for connection in draft.connections
+        if connection.input == "starting_points"
+    }
+
+
+def _number(value: float) -> str:
+    return f"{value:g}"
+
+
+def band_issues(draft: Draft) -> list[DraftIssue]:
+    """A warning for catchments that start from the same step with the same
+    settings and differ only in their budget: one catchment with that many
+    steps returns them all as bands, so the steps after it run once instead of
+    once per budget."""
+    starts = starting_point_sources(draft)
+    groups: dict[tuple[str, str], list[ToolStep]] = {}
+    for step in draft.steps:
+        if not isinstance(step, ToolStep) or step.tool != CATCHMENT_TOOL:
+            continue
+        if step.id not in starts:
+            continue
+        rest = {k: v for k, v in step.settings.items() if k not in _BUDGET_SETTINGS}
+        key = (starts[step.id], json.dumps(rest, sort_keys=True, default=str))
+        groups.setdefault(key, []).append(step)
+    issues: list[DraftIssue] = []
+    for steps in groups.values():
+        budgets = sorted(
+            {
+                float(step.settings["max_cost"])
+                for step in steps
+                if isinstance(step.settings.get("max_cost"), int | float)
+            }
+        )
+        if len(steps) < 2 or len(budgets) < 2:
+            continue
+        largest, count = budgets[-1], len(budgets)
+        even = all(
+            abs(budget - largest * (index + 1) / count) < 1e-9
+            for index, budget in enumerate(budgets)
+        )
+        listed = ", ".join(_number(budget) for budget in budgets)
+        setting = (
+            f"max_cost {_number(largest)} and steps {count}"
+            if even
+            else f"max_cost {_number(largest)}, steps {count} and step_sizes [{listed}]"
+        )
+        issues.append(
+            DraftIssue(
+                code="catchment_bands_split",
+                level="warning",
+                steps=[step.id for step in steps],
+                message=(
+                    "These catchments start from the same step with the same settings "
+                    f"and differ only in their budget ({listed}). One catchment with "
+                    f"{setting} returns them all at once as bands: use it instead, and "
+                    "connect the steps after it once."
+                ),
+            )
+        )
+    return issues
+
+
+def starting_point_issues(
+    draft: Draft, counts: Mapping[str, int], labels: Mapping[str, str]
+) -> list[DraftIssue]:
+    """An error for a catchment whose dataset steps give it more start points
+    than one run takes, read directly or through merge and centroid steps
+    (``counted_datasets``); ``counts``: dataset step id -> its features after
+    its filter. A catchment whose start points are not all counted is not
+    judged; the issue names the catchment and each dataset step it sums."""
+    issues: list[DraftIssue] = []
+    for step in draft.steps:
+        if not isinstance(step, ToolStep) or step.tool != CATCHMENT_TOOL:
+            continue
+        datasets = _limited(draft, step, "starting_points")
+        count = _total(datasets, counts)
+        if datasets is None or count is None:
+            continue
+        pt = step.settings.get("routing_mode") == "pt"
+        limit = (
+            CATCHMENT_MAX_STARTING_POINTS_PT if pt else CATCHMENT_MAX_STARTING_POINTS
+        )
+        if count <= limit:
+            continue
+        mode = "public transport" if pt else "this mode"
+        issues.append(
+            DraftIssue(
+                code="too_many_starting_points",
+                level="error",
+                steps=_once([step.id, *datasets]),
+                field=None,
+                message=(
+                    f"{labels.get(step.id, step.id)} starts from {count:,} points; one "
+                    f"catchment takes at most {limit:,} for {mode}. When every start "
+                    "point counts, run it in parts: several catchment steps, each on "
+                    f"a part of the dataset with at most {limit:,} points (a filter "
+                    "by district or by a range of a field), merged and dissolved into "
+                    "one area. When the question is about part of them already (a "
+                    "district, a stop type), narrow the dataset step's filter to "
+                    "that part and say so; otherwise narrowing is an option to "
+                    "offer as such."
+                ),
+            )
+        )
+    return issues
+
+
+def matrix_pair_issues(
+    draft: Draft, counts: Mapping[str, int], labels: Mapping[str, str]
+) -> list[DraftIssue]:
+    """An error for a travel cost matrix whose origins times destinations
+    exceed the pairs one run takes, each side counted as the start points
+    are (``starting_point_issues``); a matrix with a side not counted is not
+    judged."""
+    issues: list[DraftIssue] = []
+    for step in draft.steps:
+        if not isinstance(step, ToolStep) or step.tool != MATRIX_TOOL:
+            continue
+        starts = _limited(draft, step, "origin_layer_id")
+        ends = _limited(draft, step, "destination_layer_id")
+        origins, destinations = _total(starts, counts), _total(ends, counts)
+        if starts is None or ends is None or origins is None or destinations is None:
+            continue
+        pairs = origins * destinations
+        if pairs <= TRAVEL_COST_MATRIX_MAX_PAIRS:
+            continue
+        larger = "origins" if origins >= destinations else "destinations"
+        issues.append(
+            DraftIssue(
+                code="too_many_matrix_pairs",
+                level="error",
+                steps=_once([step.id, *starts, *ends]),
+                field=None,
+                message=(
+                    f"{labels.get(step.id, step.id)} pairs {origins:,} origins with "
+                    f"{destinations:,} destinations, {pairs:,} pairs; one matrix "
+                    f"takes at most {TRAVEL_COST_MATRIX_MAX_PAIRS:,}. Make the larger "
+                    f"side smaller, here the {larger}: areas aggregated to larger "
+                    "areas first, one centroid each, or a narrower filter on the "
+                    "dataset step; destinations of only the kinds the question "
+                    "asks about. By public transport, area centroids belong on the "
+                    "destination side, with the centre as origin (the reversed "
+                    "matrix). When every place matters, use a heatmap instead "
+                    "(heatmap_closest_average), which covers the whole area without "
+                    "pairs. A narrower matrix than the question asks for is an "
+                    "option to offer as such."
+                ),
+            )
+        )
+    return issues
+
+
+def note_issues(draft: Draft) -> list[DraftIssue]:
+    """A warning for a draft with more than one note: one per workflow says
+    what it answers, unless the user asked for more, which the check cannot
+    know."""
+    if len(draft.notes) <= 1:
+        return []
+    return [
+        DraftIssue(
+            code="more_than_one_note",
+            level="warning",
+            message=(
+                f"The draft has {len(draft.notes)} notes. Write one note per "
+                "workflow unless the user asked for more: what the workflow "
+                "answers and how to read its results."
+            ),
+        )
+    ]

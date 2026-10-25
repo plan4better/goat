@@ -1,6 +1,7 @@
 """The workflows pack (spec §3, §4, §5.3): check a workflow draft and create it
-in the open project, create one from a template, and add a catalog dataset
-the user picked in a card. On the Map and Workflows pages, never over MCP.
+in the open project, create one from a template, and add a catalog dataset or
+one of the user's own datasets the user picked in a card. On the Map and
+Workflows pages, never over MCP.
 
 Every write goes into the project of the page: no tool takes a project id, so
 text inside a dataset, a template or a tool description cannot make the
@@ -14,19 +15,24 @@ created (``created()``).
 """
 
 import asyncio
+import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Annotated, Any
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai.exceptions import ToolFailed
 
-from assistant.asks import user_chose
+from assistant.asks import RUN_PREFIX, recent_picked_ids
 from assistant.context import RECORD_ID_PATTERN, project_of
+from assistant.tools.ask import in_catalog, users_dataset
 from assistant.tools.core import ShownItem, ShownItemGroup
-from assistant.tools.http import ServiceError
+from assistant.tools.filters import FeatureFilter, field_kind, to_cql2
+from assistant.tools.http import SIGN_IN_EXPIRED, ServiceError, sign_in_expired
+from assistant.tools.policy import MIN_RESTRICTED_GROUP
 from assistant.tools.runtime import InputInvalid, ToolEnv, ToolSpec
 from assistant.tools.workflow_tools import (
     WORKFLOW_SURFACES,
@@ -52,9 +58,14 @@ from assistant.workflows.draft import (
 )
 from assistant.workflows.issues import (
     DraftIssue,
+    band_issues,
+    counted_steps,
     draft_issues,
     filter_field_issues,
+    matrix_pair_issues,
+    note_issues,
     split_issues,
+    starting_point_issues,
 )
 
 VIEWER_WORKFLOWS = "You can view this project but not create workflows in it."
@@ -65,13 +76,21 @@ TEMPLATE_REFUSED = (
 )
 NO_CONSENT = (
     "Not added: the user has not picked this catalog dataset in a card. Ask with "
-    "ask_user, the dataset as an option whose value is its catalog id, and add "
-    "it once they picked it."
+    "ask_user, the dataset as an option (its catalog id as the value, or in "
+    "adds), and add it once they picked it."
 )
 ADDED_NOTE = (
     "Added to the project. Its data is copied in the background: until it is "
     "ready, the check does not judge the fields of steps that read it."
 )
+NOT_PICKED_DATASET = (
+    "Not added: the user has not picked this dataset in a card. Ask with ask_user, "
+    "the dataset as an option (its id as the value, or in adds), and add it once "
+    "they picked it."
+)
+CANNOT_READ_DATASET = "Not added: the user cannot read this dataset."
+#: The note on an added dataset of the user's: its data is in GOAT already.
+ADDED_DATASET_NOTE = "Added to the project."
 NO_TEMPLATE = "There is no such template; find one with workflow_find_templates."
 MAX_TEMPLATES = 10
 #: Core finds a template whose name or description holds the search text as
@@ -129,9 +148,7 @@ _BINDING_KEY_CHARS = 200
 #: (a step's name, a setting's value), so they are clipped too.
 _TEMPLATE_ISSUE_CHARS = 400
 NO_PROJECT = "Open a project first: workflows are created in the open project."
-NOT_READABLE = (
-    "The project does not exist, the user cannot open it, or the sign-in expired."
-)
+NOT_READABLE = "The project does not exist or the user cannot open it."
 NOT_CHECKED = (
     "The draft could not be checked right now; it is unchecked. workflow_create "
     "checks it again."
@@ -142,6 +159,15 @@ CHECK_UNAVAILABLE = (
 )
 #: Blocking issues named in a refused create.
 MAX_LISTED_ISSUES = 10
+#: What the draft tools say about a draft's notes.
+NOTE_RULE = (
+    "Give every workflow you create one short note (notes) of at most three "
+    "short lines: what it answers and how to read its results, e.g. which "
+    "result holds the answer or what the bands mean. State only what the steps "
+    "fix, such as a join's `join_` prefix. Never put data values or personal "
+    "data in a note, nor counts that come from the data (rows, classes or "
+    "features)."
+)
 TEMPLATE_NOT_CHECKED = (
     "Not created: the workflow the template makes could not be checked right "
     "now. Try again in a moment."
@@ -175,6 +201,8 @@ async def project_layers(
     try:
         rows = await env.call("core", "GET", f"/api/v2/project/{project_id}/layer")
     except ServiceError as exc:
+        if sign_in_expired(exc):
+            raise ToolFailed(SIGN_IN_EXPIRED) from exc
         if exc.status in (401, 403, 404):
             raise ToolFailed(NOT_READABLE) from exc
         raise
@@ -357,12 +385,12 @@ async def prepare(env: ToolEnv, project_id: UUID, draft: Draft) -> Prepared:
     return Prepared(draft, converted, layers, regions, descriptions, toolbox)
 
 
-async def _layer_fields(env: ToolEnv, layer: ProjectLayer) -> list[str] | None:
-    """The layer's field names; None while geoapi cannot read them (a catalog
-    dataset whose data is still being copied). A layer with no field besides
-    its geometry counts as not read: geoapi lists no field of a table its
-    catalog snapshot does not see yet, such as the table of a catalog dataset
-    just added."""
+async def _layer_fields(env: ToolEnv, layer: ProjectLayer) -> dict[str, str] | None:
+    """The layer's field names and their kinds (``field_kind``); None while
+    geoapi cannot read them (a catalog dataset whose data is still being
+    copied). A layer with no field besides its geometry counts as not read:
+    geoapi lists no field of a table its catalog snapshot does not see yet,
+    such as the table of a catalog dataset just added."""
     try:
         doc = await env.call(
             "geoapi", "GET", f"/collections/{layer.layer_id}/queryables"
@@ -372,17 +400,22 @@ async def _layer_fields(env: ToolEnv, layer: ProjectLayer) -> list[str] | None:
     properties = doc.get("properties") if isinstance(doc, dict) else None
     if not isinstance(properties, dict):
         return None
-    fields = [
-        name
+    fields = {
+        name: field_kind(schema)
         for name, schema in properties.items()
         if isinstance(schema, dict) and "$ref" not in schema
-    ]
+    }
     return fields or None
+
+
+#: Dataset step id -> its layer's fields and their kinds (``_layer_fields``).
+Fields = Mapping[str, Mapping[str, str] | None]
 
 
 async def _filter_fields(
     env: ToolEnv, prepared: Prepared
-) -> dict[str, list[str] | None]:
+) -> dict[str, dict[str, str] | None]:
+    """The fields of the layer of each dataset step with ``where`` conditions."""
     filtered = [
         (step.id, prepared.layers[step.layer])
         for step in _dataset_steps(prepared.draft)
@@ -391,6 +424,99 @@ async def _filter_fields(
     found = await asyncio.gather(*(_layer_fields(env, layer) for _, layer in filtered))
     return {
         step_id: fields for (step_id, _), fields in zip(filtered, found, strict=True)
+    }
+
+
+def _step_cql(
+    step: DatasetStep, fields: Mapping[str, str], regions: Mapping[str, Region]
+) -> dict[str, Any] | None:
+    """The dataset step's filter as CQL2-JSON: its area as an ``s_intersects``
+    on ``geom`` (processes maps it to the geometry column) and each condition
+    checked against the layer's fields, all of them required; None without a
+    filter. Raises ``InputInvalid`` for a condition the fields do not take."""
+    if step.filter is None:
+        return None
+    parts: list[dict[str, Any]] = []
+    if step.filter.area is not None:
+        geometry = regions[step.filter.area].geometry
+        parts.append({"op": "s_intersects", "args": [{"property": "geom"}, geometry]})
+    for condition in step.filter.where:
+        one = FeatureFilter.model_validate({"conditions": [condition.model_dump()]})
+        parts.append(to_cql2(one, fields))
+    return parts[0] if len(parts) == 1 else {"op": "and", "args": parts}
+
+
+async def _count(
+    env: ToolEnv,
+    prepared: Prepared,
+    step: DatasetStep,
+    fields: Mapping[str, str] | None,
+) -> int | None:
+    """The features of the step's layer that its filter keeps; None when they
+    cannot be counted now: its conditions' fields cannot be read or do not
+    take them, or processes answers without a count."""
+    if step.layer is None:
+        return None
+    if step.filter is not None and step.filter.where and fields is None:
+        return None
+    try:
+        cql = _step_cql(step, fields or {}, prepared.regions)
+    except InputInvalid:
+        return None
+    inputs: dict[str, Any] = {"collection": prepared.layers[step.layer].layer_id}
+    if cql is not None:
+        inputs["filter"] = json.dumps(cql)
+    try:
+        answer = await env.call(
+            "processes",
+            "POST",
+            "/processes/feature-count/execution",
+            json_body={"inputs": inputs},
+        )
+    except ToolFailed:
+        return None
+    count = answer.get("count") if isinstance(answer, dict) else None
+    return count if isinstance(count, int) and not isinstance(count, bool) else None
+
+
+def _withheld(env: ToolEnv, step: DatasetStep, count: int) -> bool:
+    """Whether the data policy keeps the step's count from the model, as
+    ``project_count_features`` does: under Restricted, a filtered count below
+    ``MIN_RESTRICTED_GROUP``, since "none" against "one" says whether a
+    feature exists."""
+    return (
+        env.data_policy == "restricted"
+        and step.filter is not None
+        and count < MIN_RESTRICTED_GROUP
+    )
+
+
+async def _dataset_counts(
+    env: ToolEnv, prepared: Prepared, fields: Fields
+) -> dict[str, int]:
+    """The features of each dataset step that a catchment's start points or
+    a matrix's origins or destinations are made of (``counted_steps``:
+    directly or through merge and centroid steps), counted through processes
+    with the step's filter, once per dataset step and concurrently. A count
+    that cannot be read is left out, and with it every sum it is part of
+    (the run's own limit still holds); so is a count the data policy
+    withholds (``_withheld``), which the issues' messages would name. Rows
+    of any other step's result exist only once the run gets there."""
+    by_id = {step.id: step for step in prepared.draft.steps}
+    datasets = [
+        step
+        for step_id in counted_steps(prepared.draft)
+        if isinstance(step := by_id.get(step_id), DatasetStep)
+        and step.layer is not None
+        and step.layer in prepared.layers
+    ]
+    found = await asyncio.gather(
+        *(_count(env, prepared, step, fields.get(step.id)) for step in datasets)
+    )
+    return {
+        step.id: count
+        for step, count in zip(datasets, found, strict=True)
+        if count is not None and not _withheld(env, step, count)
     }
 
 
@@ -419,6 +545,8 @@ async def _checked(
         # draft gets it again, so the model has to change the draft.
         if exc.status in (400, 422):
             raise InputInvalid(exc.message) from exc
+        if sign_in_expired(exc):
+            raise ToolFailed(SIGN_IN_EXPIRED) from exc
         if exc.status in (401, 403, 404):
             raise ToolFailed(NOT_READABLE) from exc
         return None
@@ -434,16 +562,27 @@ async def check(
     env: ToolEnv, project_id: UUID, prepared: Prepared
 ) -> list[DraftIssue] | None:
     """The issues of the converted draft as the editor's check sees them,
-    plus the assistant's filter check; None when the check could not run
+    plus the assistant's own checks of the filters' fields, the catchments'
+    start points and the matrices' pairs; None when the check could not run
     now. A draft processes refuses goes back to the model."""
     if prepared.descriptions is None or prepared.toolbox is None:
         return None
     issues = await _checked(env, project_id, prepared.converted)
     if issues is None:
         return None
+    # One read of each filtered layer's fields serves both checks.
     fields = await _filter_fields(env, prepared)
-    return issues + filter_field_issues(
-        prepared.draft, fields, prepared.converted.labels
+    counts = await _dataset_counts(env, prepared, fields)
+    names = {
+        step_id: None if known is None else list(known)
+        for step_id, known in fields.items()
+    }
+    labels = prepared.converted.labels
+    return (
+        issues
+        + filter_field_issues(prepared.draft, names, labels)
+        + starting_point_issues(prepared.draft, counts, labels)
+        + matrix_pair_issues(prepared.draft, counts, labels)
     )
 
 
@@ -586,8 +725,8 @@ class DraftInput(BaseModel):
 
     draft: Draft = Field(
         description=(
-            "The whole workflow: name, steps (dataset, tool, export), connections "
-            "and variables, as the build-a-workflow skill describes."
+            "The whole workflow: name, steps (dataset, tool, export), connections, "
+            "variables and notes, as the build-a-workflow skill describes."
         )
     )
 
@@ -603,6 +742,12 @@ class DraftCheck(BaseModel):
     note: str | None = None
 
 
+def _advice(draft: Draft) -> list[DraftIssue]:
+    """The assistant's own advice on top of the editor's check: warnings,
+    which neither stop workflow_create nor are the user's to resolve."""
+    return [*band_issues(draft), *note_issues(draft)]
+
+
 async def _check_draft(env: ToolEnv, args: DraftInput) -> DraftCheck:
     project_id = open_project(env)
     prepared = await prepare(env, project_id, args.draft)
@@ -610,6 +755,7 @@ async def _check_draft(env: ToolEnv, args: DraftInput) -> DraftCheck:
     issues = await check(env, project_id, prepared)
     if issues is None:
         return DraftCheck(checked=False, notes=notes, note=NOT_CHECKED)
+    issues = [*issues, *_advice(prepared.draft)]
     blocking, still_open = _split(
         draft_graph(prepared.draft), prepared.descriptions, issues
     )
@@ -628,7 +774,7 @@ CHECK_DRAFT: ToolSpec[DraftInput, DraftCheck] = ToolSpec(
     description=(
         "Check a workflow draft the way the Workflows editor checks a workflow, "
         "before creating it. The issues come back by your step ids; a one-step "
-        "issue's message starts with the step's name. Nothing is saved."
+        "issue's message starts with the step's name. Nothing is saved. " + NOTE_RULE
     ),
     input_model=DraftInput,
     output_model=DraftCheck,
@@ -658,6 +804,9 @@ class WorkflowCreated(BaseModel):
     #: The card the dock shows, in the shape of core_show_items' result.
     groups: list[ShownItemGroup]
     notes: list[str] | None = None
+    #: The assistant's own advice on the draft (``_advice``), so a create
+    #: with no check before it hears it too; not the user's to resolve.
+    warnings: list[OpenIssue] | None = None
 
     def created(self) -> dict[str, Any]:
         return {
@@ -684,6 +833,13 @@ def workflow_card(workflow: CreatedWorkflow) -> list[ShownItemGroup]:
 
 def _open_issue(issue: DraftIssue, labels: Mapping[str, str]) -> OpenIssue:
     step = labels.get(issue.steps[0]) if issue.steps else None
+    return OpenIssue(step=step, code=issue.code, message=issue.message)
+
+
+def _warning(issue: DraftIssue, labels: Mapping[str, str]) -> OpenIssue:
+    """A warning by the step it concerns; one about several steps names them
+    in its message."""
+    step = labels.get(issue.steps[0]) if len(issue.steps) == 1 else None
     return OpenIssue(step=step, code=issue.code, message=issue.message)
 
 
@@ -724,13 +880,14 @@ async def _create(env: ToolEnv, args: DraftInput) -> WorkflowCreated:
         name=str(row.get("name") or args.draft.name),
         project_id=str(row.get("project_id") or project_id),
     )
+    env.runs.created.add(workflow.id)
+    labels = prepared.converted.labels
     return WorkflowCreated(
         workflow=workflow,
-        open_issues=[
-            _open_issue(issue, prepared.converted.labels) for issue in still_open
-        ],
+        open_issues=[_open_issue(issue, labels) for issue in still_open],
         groups=workflow_card(workflow),
         notes=area_notes(prepared) or None,
+        warnings=[_warning(i, labels) for i in _advice(prepared.draft)] or None,
     )
 
 
@@ -739,9 +896,12 @@ CREATE: ToolSpec[DraftInput, WorkflowCreated] = ToolSpec(
     description=(
         "Create the draft as a new workflow in the open project. It is checked "
         "again first and refused while an issue remains that the user cannot "
-        "resolve by choosing the layers of the steps left open. It never starts "
-        "the workflow: the user runs it. Answers with the workflow and the issues "
-        "left open for the user."
+        "resolve by choosing the layers of the steps left open. It does not start "
+        "the workflow: workflow_run does, or the user with Run. Answers with the "
+        "workflow, the issues left open for the user, and warnings on the draft "
+        "for you. When it answers, the workflow exists: never create it again "
+        "for a warning, and mention a warning in your answer when it matters. "
+        + NOTE_RULE
     ),
     input_model=DraftInput,
     output_model=WorkflowCreated,
@@ -1367,6 +1527,7 @@ async def _from_template(env: ToolEnv, args: FromTemplateInput) -> WorkflowCreat
         name=args.name or _clip(template.get("name")) or "",
         project_id=str(project_id),
     )
+    env.runs.created.add(workflow.id)
     return WorkflowCreated(
         workflow=workflow,
         open_issues=_left_open(preview, still_open, names),
@@ -1383,7 +1544,8 @@ CREATE_FROM_TEMPLATE: ToolSpec[FromTemplateInput, WorkflowCreated] = ToolSpec(
         "as workflow_create checks a draft, and refused while an issue remains "
         "that the user cannot resolve by choosing the layers of the inputs left "
         "unbound. Answers with the workflow and the issues left open for the "
-        "user. Never starts it."
+        "user. It does not start the workflow: workflow_run does, or the user "
+        "with Run."
     ),
     input_model=FromTemplateInput,
     output_model=WorkflowCreated,
@@ -1396,6 +1558,74 @@ CREATE_FROM_TEMPLATE: ToolSpec[FromTemplateInput, WorkflowCreated] = ToolSpec(
 
 # -- catalog datasets --------------------------------------------------------------
 
+#: How many picked ids are looked up as bundles at most, the newest picks
+#: first.
+MAX_BUNDLE_LOOKUPS = 10
+_RECORD_ID = re.compile(RECORD_ID_PATTERN)
+
+
+def _may_be_bundle(item: str) -> bool:
+    """Whether a picked id may name a bundle: a picked value is any short key,
+    so only a record id that is no dot segment goes into a lookup's path, and
+    a workflow run's value never names a dataset."""
+    return (
+        _RECORD_ID.fullmatch(item) is not None
+        and item not in (".", "..")
+        and not item.startswith(RUN_PREFIX)
+    )
+
+
+async def dataset_picked(
+    env: ToolEnv,
+    dataset_id: str,
+    *,
+    members: Callable[[str], Awaitable[set[str]]],
+    candidate: Callable[[str], bool] | None = None,
+) -> bool:
+    """Whether the user picked this dataset in a card: an option's value or
+    adds names it, or names a bundle it belongs to. ``members`` lists a
+    bundle's datasets (an empty set for an id that is no bundle);
+    ``candidate`` tells which ids ``members`` can find a bundle under at all.
+    Both filters apply before the lookups are capped, so newer picks of ids
+    that name no bundle do not push an older bundle pick out."""
+    picked = recent_picked_ids(env.asks)
+    if dataset_id in picked:
+        return True
+    candidates = [
+        item
+        for item in picked
+        if _may_be_bundle(item) and (candidate is None or candidate(item))
+    ]
+    found = await asyncio.gather(
+        *(members(item) for item in candidates[:MAX_BUNDLE_LOOKUPS])
+    )
+    return any(dataset_id in ids for ids in found)
+
+
+def _catalog_members(env: ToolEnv) -> Callable[[str], Awaitable[set[str]]]:
+    """The datasets of a catalog bundle, as the catalog resolves its id: the
+    ids of its members (the catalog sends a capped list), an empty set for a
+    dataset, an unknown id or a catalog that does not answer."""
+
+    async def members(item_id: str) -> set[str]:
+        if not _may_be_bundle(item_id):
+            return set()
+        try:
+            resolved = await env.call(
+                "catalog", "GET", f"/stac/resolve/{quote(item_id, safe='')}"
+            )
+        except ToolFailed:
+            return set()
+        if not isinstance(resolved, dict) or resolved.get("kind") != "collection":
+            return set()
+        return {
+            str(member["id"])
+            for member in resolved.get("items") or []
+            if isinstance(member, dict) and member.get("id")
+        }
+
+    return members
+
 
 class AddCatalogLayerInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -1403,8 +1633,9 @@ class AddCatalogLayerInput(BaseModel):
     catalog_id: str = Field(
         pattern=RECORD_ID_PATTERN,
         description=(
-            "The catalog dataset the user picked in your card: the option's value, "
-            "an id from catalog_search."
+            "The catalog dataset the user picked in your card, an id from "
+            "catalog_search: the picked option's value, one of its adds, or a "
+            "member of the bundle it names."
         ),
     )
 
@@ -1429,33 +1660,9 @@ class AddedLayers(BaseModel):
         }
 
 
-async def _add_catalog_layer(env: ToolEnv, args: AddCatalogLayerInput) -> AddedLayers:
-    project_id = open_project(env)
-    # The user's pick in a card, read from the stored conversation: never the
-    # model's word, never a typed reply (spec §5.3).
-    if not user_chose(env.asks, args.catalog_id):
-        raise ToolFailed(NO_CONSENT)
-    try:
-        rows = await env.call(
-            "core",
-            "POST",
-            f"/api/v2/project/{project_id}/layer-catalog",
-            # One id as a string: the endpoint takes repeated keys, and a list
-            # here would be joined with commas into one value.
-            params={"catalog_ids": args.catalog_id},
-        )
-    except ServiceError as exc:
-        if exc.status in (401, 403):
-            raise ToolFailed(VIEWER_LAYERS) from exc
-        # Core answers 404 both for an id the catalog does not have and for a
-        # trashed project; only the first is the model's to fix.
-        if exc.status == 404 and exc.detail.startswith("Catalog item not found"):
-            raise InputInvalid(
-                f"The catalog has no dataset {args.catalog_id!r}."
-            ) from exc
-        if exc.status == 404:
-            raise ToolFailed(NOT_READABLE) from exc
-        raise
+def _added_layers(project_id: UUID, rows: Any, note: str) -> AddedLayers:
+    """The project layers core's add answered with: its rows that have a
+    layer_project_id."""
     return AddedLayers(
         project_id=str(project_id),
         layers=[
@@ -1468,19 +1675,174 @@ async def _add_catalog_layer(env: ToolEnv, args: AddCatalogLayerInput) -> AddedL
             for row in rows or []
             if isinstance(row, dict) and isinstance(row.get("id"), int)
         ],
+        note=note,
     )
+
+
+async def _add_catalog_layer(env: ToolEnv, args: AddCatalogLayerInput) -> AddedLayers:
+    project_id = open_project(env)
+    # The user's pick in a card, read from the stored conversation: never the
+    # model's word, never a typed reply (spec §5.3).
+    if not await dataset_picked(env, args.catalog_id, members=_catalog_members(env)):
+        raise ToolFailed(NO_CONSENT)
+    try:
+        rows = await env.call(
+            "core",
+            "POST",
+            f"/api/v2/project/{project_id}/layer-catalog",
+            # One id as a string: the endpoint takes repeated keys, and a list
+            # here would be joined with commas into one value.
+            params={"catalog_ids": args.catalog_id},
+        )
+    except ServiceError as exc:
+        if sign_in_expired(exc):
+            raise ToolFailed(SIGN_IN_EXPIRED) from exc
+        if exc.status in (401, 403):
+            raise ToolFailed(VIEWER_LAYERS) from exc
+        # Core answers 404 both for an id the catalog does not have and for a
+        # trashed project; only the first is the model's to fix.
+        if exc.status == 404 and exc.detail.startswith("Catalog item not found"):
+            if await users_dataset(env, args.catalog_id):
+                raise InputInvalid(own_dataset(args.catalog_id)) from exc
+            raise InputInvalid(
+                f"The catalog has no dataset {args.catalog_id!r}."
+            ) from exc
+        if exc.status == 404:
+            raise ToolFailed(NOT_READABLE) from exc
+        raise
+    return _added_layers(project_id, rows, ADDED_NOTE)
 
 
 ADD_CATALOG_LAYER: ToolSpec[AddCatalogLayerInput, AddedLayers] = ToolSpec(
     name="project.add_catalog_layer",
     description=(
         "Add a catalog dataset to the open project, only one the user picked in "
-        "your ask_user card (its option's value). Answers with the new layers "
-        "and their layer_project_ids."
+        "your ask_user card (its option's value or adds, or a bundle it belongs "
+        "to). Answers with the new layers and their layer_project_ids."
     ),
     input_model=AddCatalogLayerInput,
     output_model=AddedLayers,
     run=_add_catalog_layer,
+    surfaces=WORKFLOW_SURFACES,
+    returns_data=False,
+    risk="write",
+    scope="goat:write",
+)
+
+# -- the user's own datasets -------------------------------------------------------
+
+
+def _is_uuid(item: str) -> bool:
+    """Whether a picked id is a UUID, the only id a bundle in GOAT has."""
+    try:
+        UUID(item)
+    except ValueError:
+        return False
+    return True
+
+
+def catalog_dataset(item: str) -> str:
+    """The failure of ``project_add_dataset`` for an id the catalog has."""
+    return (
+        f"Not added: {item!r} is a catalog dataset or bundle, not one of the "
+        "user's own: project_add_catalog_layer adds it, or a bundle's datasets."
+    )
+
+
+def own_dataset(item: str) -> str:
+    """The failure of ``project_add_catalog_layer`` for a dataset of the
+    user's own."""
+    return (
+        f"The catalog has no dataset {item!r}: it is one of the user's own, and "
+        "project_add_dataset adds it."
+    )
+
+
+def _bundle_members(env: ToolEnv) -> Callable[[str], Awaitable[set[str]]]:
+    """The datasets of a bundle in GOAT, as core lists its layers: their layer
+    ids; an empty set for an id that is no UUID, a dataset, an unknown id or a
+    bundle the user cannot read."""
+
+    async def members(item_id: str) -> set[str]:
+        try:
+            bundle_id = UUID(item_id)
+        except ValueError:
+            return set()
+        try:
+            rows = await env.call("core", "GET", f"/api/v2/bundle/{bundle_id}/layers")
+        except ToolFailed:
+            return set()
+        return {
+            str(row["layer_id"])
+            for row in (rows if isinstance(rows, list) else [])
+            if isinstance(row, dict) and row.get("layer_id")
+        }
+
+    return members
+
+
+class AddDatasetInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dataset_id: UUID = Field(
+        description=(
+            "One of the user's own datasets the user picked in your card: the id "
+            "core_find returned for it (a dataset, not a bundle)."
+        )
+    )
+
+
+async def _add_dataset(env: ToolEnv, args: AddDatasetInput) -> AddedLayers:
+    project_id = open_project(env)
+    dataset_id = str(args.dataset_id)
+    # The user's pick in a card, read from the stored conversation, as for a
+    # catalog dataset.
+    if not await dataset_picked(
+        env, dataset_id, members=_bundle_members(env), candidate=_is_uuid
+    ):
+        raise ToolFailed(NOT_PICKED_DATASET)
+    # Core links any existing layer it is sent, without checking that the
+    # user can read it: the read is checked here, before the add.
+    try:
+        await env.call("core", "GET", f"/api/v2/layer/{dataset_id}")
+    except ServiceError as exc:
+        if sign_in_expired(exc):
+            raise ToolFailed(SIGN_IN_EXPIRED) from exc
+        if exc.status in (401, 403, 404, 422):
+            # A catalog id in the card's adds looks like the user's: only
+            # the catalog can tell, asked on this failure alone.
+            if await in_catalog(env, dataset_id):
+                raise ToolFailed(catalog_dataset(dataset_id)) from exc
+            raise ToolFailed(CANNOT_READ_DATASET) from exc
+        raise
+    try:
+        rows = await env.call(
+            "core",
+            "POST",
+            f"/api/v2/project/{project_id}/layer",
+            params={"layer_ids": dataset_id},
+        )
+    except ServiceError as exc:
+        if sign_in_expired(exc):
+            raise ToolFailed(SIGN_IN_EXPIRED) from exc
+        if exc.status in (401, 403):
+            raise ToolFailed(VIEWER_LAYERS) from exc
+        if exc.status == 404:
+            raise ToolFailed(NOT_READABLE) from exc
+        raise
+    return _added_layers(project_id, rows, ADDED_DATASET_NOTE)
+
+
+ADD_DATASET: ToolSpec[AddDatasetInput, AddedLayers] = ToolSpec(
+    name="project.add_dataset",
+    description=(
+        "Add one of the user's own datasets (from core_find) to the open project, "
+        "only one the user picked in your ask_user card. Answers with the new layer "
+        "and its layer_project_id. Catalog datasets: project_add_catalog_layer."
+    ),
+    input_model=AddDatasetInput,
+    output_model=AddedLayers,
+    run=_add_dataset,
     surfaces=WORKFLOW_SURFACES,
     returns_data=False,
     risk="write",
@@ -1493,4 +1855,5 @@ WORKFLOW_TOOLS: tuple[ToolSpec[Any, Any], ...] = (
     FIND_TEMPLATES,
     CREATE_FROM_TEMPLATE,
     ADD_CATALOG_LAYER,
+    ADD_DATASET,
 )

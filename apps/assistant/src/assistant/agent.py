@@ -30,8 +30,10 @@ from assistant.prompt import (
     ANSWER_IN_TEXT,
     ANSWER_NOW,
     ANSWER_NOW_CARD,
+    CARD_AFTER_TEXT,
     INSTRUCTIONS,
     NO_ANSWER_TEXT,
+    READ_THE_RESULT,
     static_instructions,
 )
 from assistant.tools.runtime import ToolEnv
@@ -112,6 +114,29 @@ class RunDeps:
     #: ``FRUITLESS_SEARCHES`` on, the answer's catalog searches do not run
     #: (``assistant.tools.toolset``).
     fruitless_searches: dict[str | None, int] = field(default_factory=dict)
+    #: By run id: how many responses of the run there were when a tool
+    #: returned a result the answer reports before it asks
+    #: (``ToolSpec.report_first``). ``ask_user`` is refused until a later
+    #: response of the run holds text (``assistant.tools.toolset``), in at
+    #: most ``REPORT_REFUSALS`` responses per result.
+    unreported: dict[str | None, int] = field(default_factory=dict)
+    #: By run id: the cards refused for the result in ``unreported``, each
+    #: with the step that made it and the canonical JSON of its arguments:
+    #: the refusals count per step, and an identical repeat is told what is
+    #: missing (``assistant.tools.ask.REPEATED_CARD``).
+    refused_cards: dict[str | None, list[tuple[int, str]]] = field(default_factory=dict)
+    #: By run id: the reads of the result in ``unreported`` made past the
+    #: look-up budget (``assistant.budget.RESULT_READS``); there from the
+    #: first step prepared for them on.
+    result_reads: dict[str | None, int] = field(default_factory=dict)
+    #: The step (run id, step number) prepared for reading a finished run's
+    #: result past the look-up budget: its reads count as such
+    #: (``assistant.tools.toolset.RESULT_READ_TOOLS``). Matched by the step
+    #: number, which Pydantic AI (2.52) keeps the same for preparing a step's
+    #: tools and for running its calls (``ToolManager.for_run_step``); it
+    #: prepares them again within a step only when a capability's
+    #: availability changes, which this agent's capabilities do not.
+    reading_step: tuple[str | None, int] | None = None
 
     def __post_init__(self) -> None:
         if self.part_ids is None:
@@ -178,9 +203,15 @@ def answer_now(ctx: RunContext[RunDeps]) -> str:
     stage = answer_step(ctx)
     if stage is None or stage == "look up":
         return ""
-    silent = silent_responses(ctx.messages, ctx.run_id) >= SILENT_RESPONSES
-    lead = ANSWER_IN_TEXT if silent else ANSWER_NOW
+    if stage in ("read or ask", "read"):
+        lead = READ_THE_RESULT
+    elif silent_responses(ctx.messages, ctx.run_id) >= SILENT_RESPONSES:
+        lead = ANSWER_IN_TEXT
+    else:
+        lead = ANSWER_NOW
     # Named only while the card is offered (assistant.tools.toolset).
+    if stage == "read or ask" and not ctx.deps.asked:
+        return f"{lead} {ANSWER_NOW_CARD} {CARD_AFTER_TEXT}"
     if stage == "answer or ask" and not ctx.deps.asked:
         return f"{lead} {ANSWER_NOW_CARD}"
     return lead

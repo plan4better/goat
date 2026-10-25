@@ -33,6 +33,7 @@ from pydantic import BaseModel, ValidationError
 from pydantic_ai.exceptions import ToolFailed
 
 from assistant.asks import AskHistory
+from assistant.clock import AnswerClock
 from assistant.config import AssistantSettings
 from assistant.context import PageContext
 from assistant.llm import failures
@@ -42,6 +43,7 @@ from assistant.repo import Repository
 from assistant.surfaces import Locale, Surface
 from assistant.tools.http import Service, ServiceClients, call_service
 from assistant.tools.policy import Withheld, apply_policy
+from assistant.workflows.runs import ConversationRuns
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +76,10 @@ _ARG_STRING_CHARS = 200
 _ARG_LIST_ITEMS = 20
 _ARG_DEPTH = 2
 _ERROR_CHARS = 500
+
+
+def _not_stopping() -> bool:
+    return False
 
 
 def client_secrets(settings: AssistantSettings) -> list[str]:
@@ -111,6 +117,15 @@ class ToolEnv:
     #: The conversation's cards and their answers, for tools that act only on
     #: what the user picked in a card (``assistant.asks.user_chose``).
     asks: AskHistory = field(default_factory=AskHistory)
+    #: The answer's clock, for a tool that waits (a workflow run); None over
+    #: MCP and in tests that give none.
+    clock: AnswerClock | None = None
+    #: What this conversation created and ran, for the run tools' permission;
+    #: the tools add to it as they create and run.
+    runs: ConversationRuns = field(default_factory=ConversationRuns)
+    #: Whether the service is shutting down, so a cancelled tool knows it was
+    #: not the user's Stop (a workflow run then goes on).
+    stopping: Callable[[], bool] = field(default=_not_stopping, repr=False)
 
     def secrets(self) -> list[str]:
         """Everything to mask in this run's errors, logs and audit rows."""
@@ -165,7 +180,8 @@ class ToolSpec(Generic[In, Out]):
     #: it returns data values, so none is exempt by omission.
     returns_data: bool
     #: Spec §8.1: read, propose (a card the user applies) or write (creates
-    #: something new; nothing changes or deletes).
+    #: something new, or, a workflow run, replaces a workflow's previous
+    #: results; nothing else changes or deletes).
     risk: Risk = "read"
     #: Published over MCP (spec §9.1).
     mcp: bool = False
@@ -173,14 +189,26 @@ class ToolSpec(Generic[In, Out]):
     scope: str = "goat:read"
     #: Set on a read tool, it runs once per answer: a later call in the same
     #: answer, whatever its arguments, gets the first call's result with this
-    #: note instead of running (``assistant.tools.toolset``). Over MCP every
-    #: call runs.
+    #: note instead of running (``assistant.tools.toolset``). ``ask_user``'s
+    #: later card is refused with this note instead, since the first card's
+    #: result names that card. Over MCP every call runs.
     once_per_answer: str | None = None
     #: Set on a tool that searches the catalog's text: whether its result (as
     #: ``execute`` returns it) found nothing. After ``FRUITLESS_SEARCHES`` such
     #: results in a row of these tools, later calls of them in the same answer
     #: do not run (``assistant.tools.toolset``). Over MCP every call runs.
     found_nothing: Callable[[dict[str, Any]], bool] | None = None
+    #: Set on a write tool whose calls may repeat in later answers (a workflow
+    #: run): a later answer runs it again instead of getting the first call's
+    #: result, and a repeated call within one answer gets the first result
+    #: with this note (``assistant.tools.toolset``).
+    repeatable: str | None = None
+    #: Set on a tool whose result the answer reports before it asks: whether
+    #: its result (as ``execute`` returns it) is one to report (a finished
+    #: workflow run). After such a result, ``ask_user`` is refused in that
+    #: answer until a later response of the model holds text
+    #: (``assistant.tools.toolset``). Over MCP there is no card.
+    report_first: Callable[[dict[str, Any]], bool] | None = None
 
     @property
     def wire_name(self) -> str:

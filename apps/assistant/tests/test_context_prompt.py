@@ -604,3 +604,40 @@ def test_one_rule_says_what_to_do_when_the_data_policy_withholds_data() -> None:
     [cards] = [bullet for bullet in bullets if "core_show_items" in bullet]
     assert rule != cards
     assert bullets.index(rule) == bullets.index(cards) + 1
+
+
+@pytest.mark.parametrize(
+    ("words", "phrase"),
+    [
+        # 1 A share cited from another project's broken run, and one offered
+        # in a card although this conversation never showed it.
+        ("Never invent", "Cite numbers only from runs and reads in this conversation"),
+        # Another project's result counts once its method is checked, or
+        # when the user asks about that project.
+        (
+            "Never invent",
+            "Another project's result counts only when the user asks about it or "
+            "you checked how it was made",
+        ),
+        ("Never invent", "otherwise compute it again or leave it out"),
+        ("Never invent", "A result you found faulty is never cited or offered"),
+        # 2 Cards asking which field holds the population and which way a
+        # scale runs.
+        ("ask_user", "Never ask what you can read"),
+        ("ask_user", "which way a scale runs (high good or bad)"),
+        (
+            "ask_user",
+            "the description of the dataset or of the tool that made them",
+        ),
+        # 3 A third read as "most", a share read as a larger fraction.
+        ("Never invent", "Give a share as its number"),
+        ("Never invent", "only when they match it"),
+    ],
+)
+def test_the_prompt_holds_the_rule_of_the_fourth_pass(words: str, phrase: str) -> None:
+    """Rules from the fourth live pass, each in the bullet on its topic: the
+    numbers rule beside "Never invent", the asking rule in the one bullet
+    on asking."""
+    bullets = [" ".join(bullet.split()) for bullet in INSTRUCTIONS.split("\n- ")]
+    [rule] = [bullet for bullet in bullets if words in bullet]
+    assert phrase in rule

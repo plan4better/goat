@@ -4,7 +4,9 @@ Shipped with the package, like Pydantic AI's TestModel, so the unit tests and
 the eval CLI (plan 5) share it. Nothing here opens a network connection.
 """
 
+import base64
 import json
+import time
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from typing import Any
 from uuid import UUID
@@ -116,6 +118,17 @@ def fake_clients(
         catalog=client("catalog", catalog),
         keycloak=client("keycloak", keycloak) if keycloak is not None else None,
     )
+
+
+def signed_in(expires_in: float, user_id: UUID = UUID(int=1)) -> StaticLogin:
+    """A login whose token, an unsigned JWT, expires ``expires_in`` seconds
+    from now (has expired, when negative): for tools that read its expiry."""
+
+    def segment(data: dict[str, Any]) -> str:
+        return base64.urlsafe_b64encode(json.dumps(data).encode()).rstrip(b"=").decode()
+
+    claims = {"sub": str(user_id), "exp": int(time.time() + expires_in)}
+    return StaticLogin(f"{segment({'alg': 'none'})}.{segment(claims)}.unsigned")
 
 
 def tool_env(

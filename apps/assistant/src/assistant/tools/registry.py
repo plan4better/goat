@@ -14,6 +14,7 @@ from assistant.tools.core import CORE_TOOLS
 from assistant.tools.project import PROJECT_TOOLS
 from assistant.tools.runtime import ToolSpec
 from assistant.tools.skills import SKILLS_LOAD
+from assistant.tools.workflow_runs import WORKFLOW_RUN_TOOLS
 from assistant.tools.workflow_tools import TOOL_CATALOG_TOOLS
 from assistant.tools.workflows import WORKFLOW_TOOLS
 
@@ -27,6 +28,7 @@ ALL_TOOLS: tuple[ToolSpec[Any, Any], ...] = tuple(
             *PROJECT_TOOLS,
             *TOOL_CATALOG_TOOLS,
             *WORKFLOW_TOOLS,
+            *WORKFLOW_RUN_TOOLS,
         ),
         key=lambda spec: spec.wire_name,
     )

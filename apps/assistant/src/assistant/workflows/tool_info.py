@@ -5,7 +5,9 @@ A description is the JSON schema the editor builds its forms from. The model
 needs less: which inputs take a layer (the editor's handles), and each
 setting's name, type, choices, default (and how the form derives it from
 other settings), when it is shown and which layer input a field setting
-reads. Pure: the tools of ``assistant.tools.workflow_tools``
+reads. And what a value means: a name and type do not say that step_sizes are
+band edges rather than the width of each band, so each setting carries its
+description and, where the tool gives one, an example. Pure: the tools of ``assistant.tools.workflow_tools``
 fetch the descriptions.
 """
 
@@ -36,7 +38,21 @@ OPPORTUNITY_NOTE = (
     "opportunity_layer_2_id and opportunity_layer_3_id. Set the settings of each "
     "(per_opportunity) as opportunity_<N>_<name>, e.g. opportunity_1_max_cost."
 )
+#: Widget options with which the form fills a setting in from other
+#: settings (``_default_hint``). The tool resolves such a setting itself when
+#: a step leaves it out, not always to the form's value, so its static
+#: default is not what runs.
+DERIVED_DEFAULTS = frozenset(
+    {"default_by_field", "default_from", "compute_from", "default_all"}
+)
+#: A network selector, and what it answers for the default network (the web's
+#: ``DEFAULT_NETWORK_BUNDLE``, also in ``goatlib.tools.schemas``).
+BUNDLE_WIDGET = "bundle-selector"
+DEFAULT_NETWORK_BUNDLE = "default"
 _SUMMARY_CHARS = 160
+#: A setting's description is kept whole up to this length: its meaning often
+#: lies in an example that a cut at the first sentence would drop.
+_SETTING_CHARS = 240
 _OPS = {"$eq": "=", "$ne": "!=", "$gt": ">", "$gte": ">=", "$lt": "<", "$lte": "<="}
 
 
@@ -53,6 +69,11 @@ class LayerInputInfo(BaseModel):
 class SettingInfo(BaseModel):
     name: str
     title: str
+    #: What a value means, as the tool describes it; left out when it only
+    #: repeats the title.
+    description: str | None = None
+    #: A value the tool gives as an example.
+    example: Any = None
     #: ``string``, ``integer``, ``number``, ``boolean``, ``choice`` (one of
     #: ``choices``), ``choices`` (several), ``list`` (of ``items``) or
     #: ``list of <type>``.
@@ -64,8 +85,10 @@ class SettingInfo(BaseModel):
     visible_when: str | None = None
     hidden_when: str | None = None
     #: The value the form fills in from other settings, in short, e.g.
-    #: ``5 if routing_mode = "walking", else 15 if routing_mode = "bicycle"``;
-    #: the tool applies the same value when the setting is left out.
+    #: ``5 if routing_mode = "walking", else 15 if routing_mode = "bicycle"``.
+    #: A step that leaves the setting out gets what the tool resolves, not
+    #: always this value: a travel cost matrix's street ``max_cost`` is then
+    #: unbounded (``DERIVED_DEFAULTS``).
     default_hint: str | None = None
     #: A field setting: the layer input whose fields it takes.
     reads_layer: str | None = None
@@ -272,9 +295,11 @@ def _setting(
     required: bool,
     defs: Mapping[str, Any],
     names: Mapping[str, str] | None = None,
+    description: Any = None,
 ) -> SettingInfo:
     """``names`` renames fields the setting's conditions and ``reads_layer``
-    refer to (an opportunity's ``input_path`` is a numbered handle)."""
+    refer to (an opportunity's ``input_path`` is a numbered handle).
+    ``description`` is the input's own, when it has one beside its schema's."""
     names = names or {}
     ui = _ui(schema)
     kind, choices, items = _kind(schema, defs)
@@ -296,9 +321,12 @@ def _setting(
             for item_name, item_schema in (items.get("properties") or {}).items()
             if isinstance(item_schema, dict) and not _ui(item_schema).get("hidden")
         ] or None
+    examples = schema.get("examples")
     return SettingInfo(
         name=name,
         title=title,
+        description=_meaning(description or schema.get("description"), title),
+        example=examples[0] if isinstance(examples, list) and examples else None,
         type=kind,
         required=True if required else None,
         default=schema.get("default"),
@@ -312,6 +340,17 @@ def _setting(
         else None,
         items=sub,
     )
+
+
+def _meaning(text: Any, title: str) -> str | None:
+    """A setting's description on one line, or None when it says no more
+    than the title."""
+    if not isinstance(text, str):
+        return None
+    line = " ".join(text.split())
+    if not line or line.rstrip(".").casefold() == title.rstrip(".").casefold():
+        return None
+    return line if len(line) <= _SETTING_CHARS else line[: _SETTING_CHARS - 1] + "…"
 
 
 def _inputs(description: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
@@ -439,6 +478,60 @@ def opportunity_fields(description: Mapping[str, Any]) -> list[str]:
     return [str(name) for name in items.get("properties") or {}]
 
 
+def _is_setting(ui: Mapping[str, Any]) -> bool:
+    """An input a step stores as a setting: not hidden, no layer input, no
+    result name."""
+    return not (
+        ui.get("hidden")
+        or ui.get("widget") in NOT_SETTING_WIDGETS
+        or ui.get("section") in NOT_SETTING_SECTIONS
+    )
+
+
+def form_values(
+    description: Mapping[str, Any], config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The values the editor decides a setting's visibility on: each input's
+    static default, the step's settings over them, and for each network
+    selector the flag the form computes, ``_<name>_is_custom`` (a network
+    other than the default one is chosen). The project's flags
+    (``_project_has_*``) and ``_all_layers_have_geometry`` are not known
+    here, so a setting shown only through one of them counts as hidden."""
+    inputs = _inputs(description)
+    values: dict[str, Any] = {
+        name: _schema(described)["default"]
+        for name, described in inputs.items()
+        if "default" in _schema(described)
+    }
+    values.update(config)
+    for name, described in inputs.items():
+        if _ui(_schema(described)).get("widget") == BUNDLE_WIDGET:
+            chosen = values.get(name)
+            values[f"_{name}_is_custom"] = isinstance(chosen, str) and chosen not in (
+                "",
+                DEFAULT_NETWORK_BUNDLE,
+            )
+    return values
+
+
+def static_defaults(
+    description: Mapping[str, Any],
+) -> list[tuple[str, Any, dict[str, Any]]]:
+    """Each setting's static default with the setting's ``x-ui``, in the
+    form's order: the value the tool applies when a step leaves the setting
+    out. Not listed: a default of None, and a setting whose form value
+    follows other settings (``DERIVED_DEFAULTS``)."""
+    found: list[tuple[str, Any, dict[str, Any]]] = []
+    for name, described in _inputs(description).items():
+        schema = _schema(described)
+        ui = _ui(schema)
+        options = ui.get("widget_options")
+        derived = isinstance(options, dict) and not DERIVED_DEFAULTS.isdisjoint(options)
+        if _is_setting(ui) and not derived and schema.get("default") is not None:
+            found.append((name, schema["default"], ui))
+    return found
+
+
 def settings(description: Mapping[str, Any]) -> list[SettingInfo]:
     """The settings a step stores in its config, in the form's order: no
     hidden ones, no layer inputs, no result names."""
@@ -446,12 +539,7 @@ def settings(description: Mapping[str, Any]) -> list[SettingInfo]:
     found: list[SettingInfo] = []
     for name, described in _inputs(description).items():
         schema = _schema(described)
-        ui = _ui(schema)
-        if (
-            ui.get("hidden")
-            or ui.get("widget") in NOT_SETTING_WIDGETS
-            or ui.get("section") in NOT_SETTING_SECTIONS
-        ):
+        if not _is_setting(_ui(schema)):
             continue
         found.append(
             _setting(
@@ -460,6 +548,7 @@ def settings(description: Mapping[str, Any]) -> list[SettingInfo]:
                 title=str(described.get("title") or name),
                 required=int(described.get("minOccurs") or 0) > 0,
                 defs=defs,
+                description=described.get("description"),
             )
         )
     return found

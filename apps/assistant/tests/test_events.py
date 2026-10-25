@@ -228,3 +228,33 @@ def test_to_ui_message_carries_the_stored_time_in_utc() -> None:
     assert "metadata" not in to_ui_message(
         "u2", "user", [{"type": "user_text", "text": "hi"}]
     )
+
+
+def test_fold_parts_keeps_the_last_data_part_of_an_id() -> None:
+    """A run's progress is sent again under its id; the stored message keeps
+    one part with the last data, where the first one stood."""
+    events = [
+        DataPart(
+            name="workflow-run",
+            part_id="workflow-run:j1",
+            data={"status": "running", "done": 0},
+        ),
+        TextStarted(part_id="t1"),
+        TextDelta(part_id="t1", delta="Läuft."),
+        DataPart(
+            name="workflow-run",
+            part_id="workflow-run:j1",
+            data={"status": "succeeded", "done": 2},
+        ),
+    ]
+    parts = fold_parts(events)
+    data = [part for part in parts if part["type"] == "data"]
+    assert data == [
+        {
+            "type": "data",
+            "name": "workflow-run",
+            "id": "workflow-run:j1",
+            "data": {"status": "succeeded", "done": 2},
+        }
+    ]
+    assert parts[0]["type"] == "data"

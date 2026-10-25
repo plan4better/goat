@@ -205,8 +205,8 @@ def test_a_run_writes_a_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
 
 def test_promotion_is_refused_below_the_score() -> None:
-    # 58 of 69 (0.84): below the score, while each suite stays at 0.8 or more
-    # (catalog 29 of 36, project 21 of 24, workflow 8 of 9).
+    # 60 of 71 (0.845): below the score, while each suite stays at 0.8 or more
+    # (catalog 29 of 36, project 21 of 24, workflow 10 of 11).
     plain = (
         _plain_ids("catalog", False, 7)
         + _plain_ids("project", False, 3)
@@ -246,7 +246,7 @@ def test_promotion_goes_by_the_task_records_not_the_summary() -> None:
     )
     report = _report(fail=plain)
     report["summary"] = {
-        "tasks": 69,
+        "tasks": 71,
         "score": 1.0,
         "undecided": 0,
         "critical_failed": [],

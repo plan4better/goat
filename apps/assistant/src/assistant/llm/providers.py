@@ -32,7 +32,7 @@ import json
 import os
 import re
 import ssl
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from typing import Any
@@ -115,6 +115,10 @@ _PLAIN_KEY = re.compile(r"[\x21-\x7e]+")
 _PLAIN_KEY_FIELDS = ("api_key", "access_key_id", "secret_access_key")
 
 _MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$")
+#: A provider name as OpenRouter lists it, e.g. "DeepInfra" or "Sail Research".
+_PROVIDER_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,59}$")
+#: The providers a connection may name in its order.
+MAX_PROVIDER_ORDER = 8
 _AWS_REGION = re.compile(r"^[a-z]{2}(-[a-z]+)+-\d{1,2}$")
 _VERTEX_REGION = re.compile(r"^(global|[a-z]+-[a-z]+\d{1,2})$")
 
@@ -153,6 +157,10 @@ class ConnectionFields:
     base_url: str | None
     region: str | None
     model: str
+    #: OpenRouter only: the providers to send the model to, in order (empty:
+    #: OpenRouter chooses), and whether others may answer when those fail.
+    provider_order: tuple[str, ...] = ()
+    allow_fallbacks: bool = True
 
 
 @dataclass(frozen=True)
@@ -166,6 +174,9 @@ class Target:
     base_url: str | None = None
     region: str | None = None
     credentials: Mapping[str, str] = field(default_factory=dict, repr=False)
+    #: As in ``ConnectionFields``.
+    provider_order: tuple[str, ...] = ()
+    allow_fallbacks: bool = True
 
     @property
     def own(self) -> bool:
@@ -178,6 +189,9 @@ def normalize_connection(
     region: str | None,
     model: str,
     policy: EndpointPolicy,
+    *,
+    provider_order: Sequence[str] = (),
+    allow_fallbacks: bool = True,
 ) -> ConnectionFields:
     """Validate an own connection's fields for its provider type."""
     main = model.strip()
@@ -217,11 +231,28 @@ def normalize_connection(
     elif zone is not None:
         raise ConnectionInvalid("region", "This provider does not take a region.")
 
+    order = tuple(
+        dict.fromkeys(name.strip() for name in provider_order if name.strip())
+    )
+    if order and not _is_openrouter(url):
+        raise ConnectionInvalid(
+            "provider_order", "Only OpenRouter connections take a provider order."
+        )
+    if len(order) > MAX_PROVIDER_ORDER or not all(
+        _PROVIDER_NAME.match(name) for name in order
+    ):
+        raise ConnectionInvalid(
+            "provider_order",
+            f"Name up to {MAX_PROVIDER_ORDER} providers as OpenRouter lists them.",
+        )
+
     return ConnectionFields(
         provider=provider,
         base_url=url,
         region=zone,
         model=main,
+        provider_order=order,
+        allow_fallbacks=allow_fallbacks,
     )
 
 
@@ -400,10 +431,17 @@ def _openai(target: Target, model: str, client: httpx2.AsyncClient) -> Model:
         max_retries=SDK_RETRIES,
     )
     if _is_openrouter(target.base_url):
+        settings = OPENROUTER_CACHE
+        if target.provider_order:
+            settings = OpenRouterModelSettings(
+                **OPENROUTER_CACHE,
+                openrouter_provider={
+                    "order": list(target.provider_order),
+                    "allow_fallbacks": target.allow_fallbacks,
+                },
+            )
         return OpenRouterModel(
-            model,
-            provider=OpenRouterProvider(openai_client=sdk),
-            settings=OPENROUTER_CACHE,
+            model, provider=OpenRouterProvider(openai_client=sdk), settings=settings
         )
     return OpenAIChatModel(model, provider=OpenAIProvider(openai_client=sdk))
 

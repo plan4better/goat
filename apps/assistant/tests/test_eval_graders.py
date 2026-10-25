@@ -42,13 +42,13 @@ def backends(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Backends]:
     backends.close()
 
 
-def test_the_set_has_36_catalog_24_project_and_9_workflow_tasks_with_valid_contexts() -> (
+def test_the_set_has_36_catalog_24_project_and_11_workflow_tasks_with_valid_contexts() -> (
     None
 ):
     tasks = load_tasks()
     assert sum(t.suite == "catalog" for t in tasks) == 36
     assert sum(t.suite == "project" for t in tasks) == 24
-    assert sum(t.suite == "workflow" for t in tasks) == 9
+    assert sum(t.suite == "workflow" for t in tasks) == 11
     for task in tasks:
         parse_context(task.context)  # raises on a context the dock could not send
     assert sum(any(c.kind == "judge" for c in t.checks) for t in tasks) == 6
@@ -763,3 +763,31 @@ async def test_an_answer_in_the_language_of_the_earlier_turns_fails(
     german = "Das Projekt hat keine Workflows, die Liste ist leer."
     grades = await grade(task, _transcript(german), backends)
     assert ("language", False) in [(g.check, g.passed) for g in grades]
+
+
+async def test_an_answer_a_card_ended_is_read_in_the_language_of_the_card(
+    backends: Backends,
+) -> None:
+    """A card can end an answer before any text: what the user reads is then the
+    card, so its questions give the answer's language."""
+    task = _task('{"kind": "language", "expected": "de"}')
+    card = {
+        "questions": [
+            {
+                "header": "Anlegen",
+                "question": "Soll ich den Workflow für die Stadtbezirke jetzt anlegen?",
+                "options": [{"label": "Ja, jetzt anlegen"}, {"label": "Nein, nicht"}],
+            }
+        ]
+    }
+    carded = _transcript(
+        tool_calls=[ToolCall("ask_user", card, {"status": "asked"}, False)]
+    )
+    bare = _transcript()
+    assert [g.passed for g in await grade(task, carded, backends)] == [True]
+    assert [g.passed for g in await grade(task, bare, backends)] == [False]
+    # Text of its own still decides.
+    english = _transcript(
+        "I will create it for the districts now.", tool_calls=carded.tool_calls
+    )
+    assert [g.passed for g in await grade(task, english, backends)] == [False]

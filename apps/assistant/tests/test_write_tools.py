@@ -377,3 +377,54 @@ async def test_a_write_whose_created_fails_still_returns_its_result(
         {"tool": "workflow_create_thing", "status": "ok", "created": None}
     ]
     assert "workflow_create_thing" in caplog.text
+
+
+RUN_THING = dataclasses.replace(
+    CREATE_THING,
+    name="workflow.run_thing",
+    repeatable="You ran this earlier in this answer; this is its result again.",
+)
+
+
+def test_earlier_writes_leave_out_repeatable_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run repeated in a later answer runs again: its first result is not
+    carried into later answers."""
+    monkeypatch.setattr(
+        toolset, "BY_WIRE_NAME", {**BY_WIRE_NAME, "workflow_run_thing": RUN_THING}
+    )
+    messages = [
+        {
+            "role": "assistant",
+            "parts": [
+                _tool_part(
+                    "workflow_run_thing", {"name": "A"}, {"id": "t1", "name": "A"}
+                )
+            ],
+        }
+    ]
+    assert earlier_writes(messages) == {}
+
+
+async def test_a_repeatable_write_repeated_in_one_answer_runs_once_with_its_note() -> (
+    None
+):
+    things = _things()
+    script = ScriptedModel(
+        [("workflow_run_thing", {"name": "A"}), ("workflow_run_thing", {"name": "A"})]
+    )
+
+    async def emit(event: Any) -> None:
+        return None
+
+    deps = RunDeps(message_id="m1", emit=emit, env=tool_env(fake_clients(core=things)))
+    await _agent(script.model, RUN_THING).run("run A", deps=deps)
+    assert things.paths() == ["/api/v2/things"]
+    first, repeated = [
+        part.content
+        for message in script.requests[-1]
+        for part in getattr(message, "parts", [])
+        if isinstance(part, ToolReturnPart)
+    ]
+    assert repeated == {**first, "repeated_call": RUN_THING.repeatable}

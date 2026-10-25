@@ -11,8 +11,9 @@ from assistant.context import parse_context
 from assistant.login import StaticLogin
 from assistant.surfaces import SURFACES
 from assistant.tools.core import FIND, FIND_LAYERS, PAGE_CONTEXT, SHOW_ITEMS, WHOAMI
+from assistant.tools.http import SIGN_IN_EXPIRED
 from assistant.tools.runtime import InputInvalid, execute
-from assistant.tools.testing import Recorder, fake_clients, tool_env
+from assistant.tools.testing import Recorder, fake_clients, signed_in, tool_env
 
 PROJECT = UUID(int=500)
 
@@ -435,7 +436,8 @@ async def test_show_items_resolves_every_card_in_core_in_the_answers_order() -> 
     core = _items_core()
     result = await execute(
         SHOW_ITEMS,
-        tool_env(fake_clients(core=core)),
+        # A valid sign-in: the 401 for the other project is no access.
+        tool_env(fake_clients(core=core), login=signed_in(300)),
         {
             "groups": [
                 {
@@ -560,6 +562,59 @@ async def test_show_items_checks_ids_before_calling_core(item: dict[str, str]) -
             {"groups": [{"items": [item]}]},
         )
     assert core.requests == []
+
+
+@pytest.mark.parametrize(
+    "login", [StaticLogin(None), signed_in(-60)], ids=["no token", "expired token"]
+)
+async def test_show_items_names_an_expired_sign_in(login: StaticLogin) -> None:
+    """A 401 for an expired sign-in is not an item that was not found: the
+    model must not say the item does not exist."""
+    core = _items_core()
+    core.routes[("GET", f"/api/v2/layer/{DATASET}")] = httpx.Response(
+        401, json={"detail": "x"}
+    )
+    with pytest.raises(ToolFailed, match="sign-in expired") as caught:
+        await execute(
+            SHOW_ITEMS,
+            tool_env(fake_clients(core=core), login=login),
+            {"groups": [{"items": [{"kind": "dataset", "id": str(DATASET)}]}]},
+        )
+    assert caught.value.message == SIGN_IN_EXPIRED
+
+
+async def test_show_items_takes_records_for_items() -> None:
+    expected = {
+        "groups": [
+            {
+                "items": [
+                    {
+                        "kind": "dataset",
+                        "id": str(DATASET),
+                        "dataset_id": str(DATASET),
+                        "name": "Fahrradständer 2024",
+                        "detail": "table",
+                    }
+                ]
+            }
+        ],
+        "not_found": [],
+        "left_out": [],
+    }
+    item = {"kind": "dataset", "id": str(DATASET)}
+    for args in (
+        {"groups": [{"records": [item]}]},
+        # A bare list is one untitled group.
+        {"items": [item]},
+        {"records": [item]},
+    ):
+        result = await execute(
+            SHOW_ITEMS, tool_env(fake_clients(core=_items_core())), args
+        )
+        assert result == expected, args
+    # The schema still names the list ``items``.
+    group = SHOW_ITEMS.json_schema()["$defs"]["ItemGroupInput"]["properties"]
+    assert "items" in group and "records" not in group
 
 
 async def test_show_items_is_offered_everywhere_and_returns_no_data_values() -> None:

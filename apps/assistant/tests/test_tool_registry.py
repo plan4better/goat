@@ -81,6 +81,7 @@ def test_packs_per_surface_follow_the_spec() -> None:
         "project_get_layers",
         "project_get_layouts",
         "project_get_workflows",
+        "project_group_statistics",
         "project_sample_features",
     }
     # The public catalog is searchable from every page, and a filter suggestion
@@ -89,11 +90,14 @@ def test_packs_per_surface_follow_the_spec() -> None:
     # Spec 2026-10-17 §3: the workflows pack, on the two pages that build workflows.
     workflows = {
         "project_add_catalog_layer",
+        "project_add_dataset",
         "workflow_check_draft",
         "workflow_create",
         "workflow_create_from_template",
         "workflow_describe_tool",
         "workflow_find_templates",
+        "workflow_last_run",
+        "workflow_run",
         "workflow_tools",
     }
     # Decision T16: Home reads other projects (with an explicit project_id).
@@ -111,9 +115,9 @@ def test_packs_per_surface_follow_the_spec() -> None:
         assert names(surface) == wire_names, surface
     for surface in SURFACES:
         # The spec's target is 10-20 per page (§7.3); the map and Workflows pages
-        # carry the workflows pack, the card and the skills, 30 on the map.
-        # Raising this again is a decision, not a fix.
-        assert len(tools_for(surface)) <= 30
+        # carry the workflows pack (with runs and both add tools), the card and
+        # the skills, 34 on the map. Raising this again is a decision, not a fix.
+        assert len(tools_for(surface)) <= 34
         assert [s.wire_name for s in tools_for(surface)] == sorted(
             s.wire_name for s in tools_for(surface)
         )
@@ -133,8 +137,10 @@ def test_mcp_publishes_the_five_read_only_catalog_tools() -> None:
 #: The write tools (spec 2026-10-17 §3): they create, never change or delete.
 WRITE_TOOLS = {
     "project_add_catalog_layer",
+    "project_add_dataset",
     "workflow_create",
     "workflow_create_from_template",
+    "workflow_run",
 }
 
 

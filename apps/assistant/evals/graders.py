@@ -118,6 +118,22 @@ _GRAMMAR_WORDS = {
 }
 
 
+def _card_text(transcript: Transcript) -> str:
+    """The questions and options of the cards the answer showed."""
+    texts: list[str] = []
+    for call in transcript.tool_calls:
+        if call.name != "ask_user" or call.failed:
+            continue
+        for question in call.args.get("questions") or []:
+            if not isinstance(question, dict):
+                continue
+            texts.append(str(question.get("question") or ""))
+            for option in question.get("options") or []:
+                if isinstance(option, dict):
+                    texts.append(str(option.get("label") or ""))
+    return " ".join(texts)
+
+
 def answer_language(text: str) -> str | None:
     """English or German, by the grammar words; None when neither leads."""
     words = re.findall(r"[^\W\d_]+", text.casefold())
@@ -358,6 +374,10 @@ async def _grade_one(
         return not leaked, f"{len(leaked)} of {len(calls)} results carried values"
     if isinstance(check, LanguageCheck):
         answered = answer_language(transcript.answer)
+        if answered is None:
+            # An answer a card ended may carry no text of its own: the card's
+            # questions are then what the user reads.
+            answered = answer_language(_card_text(transcript))
         return (
             answered == check.expected,
             f"expected {check.expected}, answered {answered}",
