@@ -7,16 +7,30 @@ finds one (`goatlib.io.config.parquet_copy_options`).
 """
 
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import duckdb
 import pytest
+from goatlib.analysis.accessibility import CatchmentAreaToolV2
 from goatlib.analysis.accessibility.trip_count import TripCountStationTool
-from goatlib.analysis.schemas.catchment_area_v2 import ShapeStyle
+from goatlib.analysis.schemas.catchment_area import StartingPointsLayer
+from goatlib.analysis.schemas.catchment_area_v2 import CatchmentType, ShapeStyle
 from goatlib.io.config import parquet_copy_options
-from goatlib.tools.catchment_area_v2 import CatchmentAreaV2ToolRunner
+from goatlib.tools.catchment_area import (
+    CatchmentAreaRoutingMode,
+    CatchmentAreaToolRunner,
+)
+from goatlib.tools.catchment_area_v2 import (
+    CatchmentAreaV2ToolRunner,
+    CatchmentAreaV2WindmillParams,
+)
 from goatlib.tools.travel_cost_matrix import TravelCostMatrixToolRunner
 
 POINT = "ST_Point(11.5, 48.1)::GEOMETRY('OGC:CRS84')"
+U = "00000000-0000-0000-0000-000000000001"
+# A starting-points filter that matches none of the layer's points.
+NO_POINT = {"op": "=", "args": [{"property": "name"}, "Stop B"]}
 
 
 def _types(path: Path) -> dict[str, str]:
@@ -97,3 +111,161 @@ def test_catchment_area_bands_without_rows(
         runner._duckdb_con = None
     assert out != engine_result
     assert _types(out)["geometry"].startswith("GEOMETRY")
+
+
+def _empty_params(
+    kind: CatchmentType, shape: ShapeStyle, mode: str = "walking"
+) -> SimpleNamespace:
+    """The runner's params as process reads them; only the fields the empty
+    writer reads matter."""
+    return SimpleNamespace(
+        catchment_area_type=kind,
+        shape_style=shape,
+        routing_mode=CatchmentAreaRoutingMode(mode),
+        reference_field=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "shape", "mode", "columns"),
+    [
+        (
+            CatchmentType.polygon,
+            ShapeStyle.combined,
+            "walking",
+            {"id", "cost_step", "geometry"},
+        ),
+        (
+            CatchmentType.polygon,
+            ShapeStyle.separated,
+            "walking",
+            {"id", "cost_step", "geometry", "origin"},
+        ),
+        (
+            CatchmentType.polygon,
+            ShapeStyle.combined,
+            "car",
+            {"id", "cost_step", "geometry"},
+        ),
+        (
+            CatchmentType.network,
+            ShapeStyle.combined,
+            "walking",
+            {"id", "cost_step", "geometry"},
+        ),
+        (
+            CatchmentType.hexagonal_grid,
+            ShapeStyle.combined,
+            "walking",
+            {"id", "cost_step", "geometry"},
+        ),
+        (
+            CatchmentType.point_grid,
+            ShapeStyle.combined,
+            "walking",
+            {"id", "cost", "cost_step", "geometry"},
+        ),
+    ],
+)
+def test_catchment_without_start_points(
+    tmp_path: Path,
+    kind: CatchmentType,
+    shape: ShapeStyle,
+    mode: str,
+    columns: set[str],
+) -> None:
+    runner = CatchmentAreaV2ToolRunner()
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    runner._duckdb_con = con
+    runner._starting_point_references = None
+    try:
+        out, metadata = runner._write_empty_result(
+            _empty_params(kind, shape, mode), tmp_path
+        )
+    finally:
+        con.close()
+        runner._duckdb_con = None
+    types = _types(out)
+    assert set(types) == columns
+    assert types["geometry"].startswith("GEOMETRY")
+    assert (metadata.path, metadata.geometry_type) == (str(out), "Polygon")
+
+
+def _read_points_layer(
+    runner: CatchmentAreaToolRunner, monkeypatch: pytest.MonkeyPatch
+) -> duckdb.DuckDBPyConnection:
+    """The runner reads its starting-points layer from a table with one point,
+    on its own connection, in place of the lake."""
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    con.execute(
+        f"CREATE TABLE points AS SELECT 1 AS id, 'Stop A' AS name, {POINT} AS geometry"
+    )
+    runner._duckdb_con = con
+    monkeypatch.setattr(runner, "get_layer_owner_id_sync", lambda layer_id: U)
+    monkeypatch.setattr(runner, "resolve_layer_table_path", lambda layer_id: "points")
+    return con
+
+
+@pytest.mark.parametrize(
+    ("shape", "reference_field", "origin_type"),
+    [(ShapeStyle.separated, "name", "VARCHAR"), (ShapeStyle.combined, None, None)],
+    ids=["one polygon per point", "one polygon for all"],
+)
+def test_an_empty_layer_finishes_without_routing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    shape: ShapeStyle,
+    reference_field: str | None,
+    origin_type: str | None,
+) -> None:
+    """The starting points' filter matches none: the result has no rows and
+    the columns of a run with points, its origin in the reference field's
+    type, and the router is not asked."""
+
+    def route(*_: Any, **__: Any) -> None:
+        raise AssertionError("the router was asked to route no starting point")
+
+    monkeypatch.setattr(CatchmentAreaToolV2, "run", route)
+    runner = CatchmentAreaV2ToolRunner()
+    con = _read_points_layer(runner, monkeypatch)
+    params = CatchmentAreaV2WindmillParams(
+        user_id=U,
+        folder_id=U,
+        routing_mode="walking",
+        starting_points={"layer_id": U, "layer_filter": NO_POINT},
+        shape_style=shape,
+        reference_field=reference_field,
+    )
+    try:
+        out, metadata = runner.process(params, tmp_path)
+    finally:
+        con.close()
+        runner._duckdb_con = None
+    types = _types(out)
+    assert types["geometry"].startswith("GEOMETRY")
+    assert (metadata.path, metadata.geometry_type) == (str(out), "Polygon")
+    assert types.get("origin") == origin_type
+    assert set(types) - {"origin"} == {"id", "cost_step", "geometry"}
+
+
+def test_catchment_v1_still_refuses_an_empty_layer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = CatchmentAreaToolRunner()
+    con = _read_points_layer(runner, monkeypatch)
+    params = SimpleNamespace(
+        starting_points=StartingPointsLayer(layer_id=U, layer_filter=NO_POINT),
+        user_id=U,
+        routing_mode=CatchmentAreaRoutingMode.walking,
+    )
+    try:
+        with pytest.raises(ValueError) as refused:
+            runner.process(params, tmp_path)
+    finally:
+        con.close()
+        runner._duckdb_con = None
+    assert str(refused.value) == (
+        "No valid geometries found in the starting points layer"
+    )

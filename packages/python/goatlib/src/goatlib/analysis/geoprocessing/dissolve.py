@@ -11,6 +11,7 @@ from typing import List, Self, Tuple
 
 from goatlib.analysis.core.base import AnalysisTool
 from goatlib.analysis.schemas.geoprocessing import DissolveParams
+from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.io.parquet import write_optimized_parquet
 from goatlib.models.io import DatasetMetadata
 
@@ -134,7 +135,9 @@ class DissolveTool(AnalysisTool):
         """
         # Build dissolve fields clause
         if params.dissolve_fields:
-            dissolve_cols = ", ".join([f'"{f}"' for f in params.dissolve_fields])
+            dissolve_cols = ", ".join(
+                quote_identifier(f) for f in params.dissolve_fields
+            )
             group_by_clause = f"GROUP BY {dissolve_cols}"
             select_dissolve_cols = f"{dissolve_cols},"
         else:
@@ -147,14 +150,11 @@ class DissolveTool(AnalysisTool):
         if params.field_statistics:
             for stat in params.field_statistics:
                 stat_sql = self.get_statistics_sql(
-                    f'"{stat.field}"' if stat.field else "",
+                    quote_identifier(stat.field) if stat.field else "",
                     stat.operation.value,
                 )
-                # Column name: "count" for count, otherwise "{operation}_{field}"
-                if stat.operation.value == "count":
-                    col_name = "count"
-                else:
-                    col_name = f"{stat.operation.value}_{stat.field}"
+                # The result_name, else "count" or "{operation}_{field}"
+                col_name = quote_identifier(stat.get_operation_first_column_name())
                 stats_columns.append(f"{stat_sql} AS {col_name}")
 
         stats_select = ", ".join(stats_columns) if stats_columns else ""
@@ -168,7 +168,7 @@ class DissolveTool(AnalysisTool):
         sql = f"""
             CREATE OR REPLACE TABLE dissolve_result AS
             SELECT
-                ST_Union_Agg({input_geom}) AS geometry
+                ST_Union_Agg({quote_identifier(input_geom)}) AS geometry
                 {"," + select_dissolve_cols.rstrip(",") if select_dissolve_cols else ""}
                 {stats_select}
             FROM {input_table}

@@ -170,7 +170,7 @@
     },
     "step_sizes": {
       "label": "Schrittgrößen",
-      "description": "Schrittgrößen-Intervalle für das Einzugsgebiet"
+      "description": "Die Grenzen der Stufen in aufsteigender Reihenfolge bis zum Limit: jede Stufe endet an einer, z. B. 5, 10, 15 für drei Stufen zu je 5 Minuten."
     },
     "advanced_options": {
       "label": "Erweiterte Optionen",
@@ -194,7 +194,7 @@
     },
     "catchment_area_type": {
       "label": "Form des Einzugsgebiets",
-      "description": "Wählen Sie die Form der Einzugsgebietsgeometrie aus."
+      "description": "Die Form des Ergebnisses: Polygone um die erreichte Fläche, das erreichte Straßennetz, ein Sechseckgitter oder die Punkte eines Punkt-Layers. Ein Sechseck gilt als erreicht, sobald ein erreichter Teil des Netzes darin liegt; die Fläche des Gitters ist daher eine Obergrenze."
     },
     "shape_style": {
       "label": "Form der Geometrien",
@@ -202,7 +202,7 @@
     },
     "steps_style": {
       "label": "Darstellung der Schritte",
-      "description": "Darstellungsart der Schritte in der Ausgabe"
+      "description": "Getrennt liefert jeden Schritt als Ring (nur die Fläche zwischen dem vorigen und diesem Schritt); kumulativ liefert für jeden Schritt die ganze bis dahin erreichte Fläche."
     },
     "choose_pt_mode": {
       "label": "ÖV-Modi wählen",
@@ -642,7 +642,7 @@
     },
     "weighted_by_intersecting_area": {
       "label": "Nach Schnittfläche gewichten",
-      "description": "Wenn aktiviert, werden die Statistiken proportional zur Schnittfläche zwischen Quell- und Zielpolygonen gewichtet."
+      "description": "Wenn aktiviert, wird der Wert jedes Quellpolygons mit seinem Anteil innerhalb der Fläche gewichtet (dem Anteil seiner Fläche, der darin liegt). Eine reine Anzahl bleibt ungewichtet; Minimum und Maximum, die Standardabweichung sowie ein H3-Gitter (jedes Polygon kommt in die Zelle seines Zentroids) werden ebenfalls nicht gewichtet."
     },
     "select_statistics_configuration": {
       "label": "Statistik-Konfiguration",
@@ -859,6 +859,10 @@
     "statistic_result_name": {
       "label": "Name der Ergebnisspalte",
       "description": "Eigener Name für die Ergebnisspalte. Ohne Angabe wird „{field}_{operation}“ bzw. bei „Anzahl“ „count“ verwendet."
+    },
+    "statistic_result_name_operation_first": {
+      "label": "Name der Ergebnisspalte",
+      "description": "Eigener Name für die Ergebnisspalte. Ohne Angabe wird „{operation}_{field}“ bzw. bei „Anzahl“ „count“ verwendet."
     }
   },
   "enums": {
@@ -1045,7 +1049,7 @@
     },
     "difference": {
       "title": "Radieren",
-      "description": "Entfernt Bereiche des Eingabe-Layers, die sich mit dem Überlagerungs-Layer überschneiden. Nur die Teile außerhalb der Überlagerung werden beibehalten."
+      "description": "Entfernt die Teile der Eingabeobjekte, die der Überlagerungs-Layer abdeckt. Das Ergebnis enthält die Eingabeobjekte zugeschnitten auf den Teil außerhalb der Überlagerung, nicht ganze Objekte."
     },
     "origin_destination": {
       "title": "Quell-Ziel-Beziehungen",

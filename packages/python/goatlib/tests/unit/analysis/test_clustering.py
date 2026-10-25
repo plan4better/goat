@@ -287,3 +287,37 @@ class TestZonesClustering:
 
         print(f"  Mean: {size_mean:.1f}, Std: {size_std:.1f}, CV: {cv:.3f}")
         assert cv < 0.5, f"Weighted zones are not well balanced: CV = {cv:.3f}"
+
+
+def test_metric_coordinates_keep_east_as_x():
+    """A point at 10 E, 53.5 N lies 10 degrees of longitude east of Greenwich in Web Mercator."""
+    tool = ClusteringZones()
+    tool.con.execute("""
+        CREATE TEMP TABLE axis_points AS
+        SELECT row_number() OVER () AS id, ST_Point(10 + i * 0.01, 53.5) AS geometry
+        FROM range(4) t(i)
+    """)
+    temp_dir = RESULT_DIR / "test_clustering_axes"
+    temp_dir.mkdir(exist_ok=True)
+    params = ClusteringParams(
+        input_path="axis_points",
+        output_path=str(temp_dir / "result.parquet"),
+        output_summary_path=str(temp_dir / "summary.parquet"),
+        nb_cluster=2,
+        cluster_type=ClusterType.kmean,
+    )
+
+    def mock_import(path, view_name):
+        tool.con.execute(f"CREATE OR REPLACE VIEW {view_name} AS SELECT * FROM {path}")
+        metadata = type(
+            "obj", (object,), {"geometry_column": "geometry", "crs": None}
+        )()
+        return metadata, view_name
+
+    tool.import_input = mock_import
+    tool._run_implementation(params)
+    x, y = tool.con.execute(
+        "SELECT x, y FROM features_metric ORDER BY lon LIMIT 1"
+    ).fetchone()
+    assert abs(x - 1_113_194.9) < 1.0
+    assert abs(y - 7_076_025.3) < 50.0

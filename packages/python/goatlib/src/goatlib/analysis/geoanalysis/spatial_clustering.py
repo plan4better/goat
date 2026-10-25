@@ -114,8 +114,8 @@ class ClusteringZones(AnalysisTool):
                 ST_X({input_geom}) AS lon,
                 ST_Y({input_geom}) AS lat,
                 {weight_expr} AS weight,
-                ST_X(ST_Transform({input_geom}, '{crs_str}', 'EPSG:3857')) AS x,
-                ST_Y(ST_Transform({input_geom}, '{crs_str}', 'EPSG:3857')) AS y
+                ST_X(ST_Transform({input_geom}, '{crs_str}', 'EPSG:3857', always_xy := true)) AS x,
+                ST_Y(ST_Transform({input_geom}, '{crs_str}', 'EPSG:3857', always_xy := true)) AS y
             FROM {input_view}
         """)
         n_features = self.con.execute(

@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from goatlib.analysis.schemas.base import (
     FieldStatistic,
     GeometryType,
+    operation_first_result_name,
 )
 from goatlib.analysis.schemas.ui import (
     SECTION_AREA,
@@ -107,6 +108,12 @@ class AggregateFieldStatistic(FieldStatistic):
             }
         },
     )
+
+
+class AggregatePolygonFieldStatistic(AggregateFieldStatistic):
+    """Aggregate polygon statistic: named ``{operation}_{field}`` by default."""
+
+    result_name: Optional[str] = operation_first_result_name()
 
 
 class AggregatePointsParams(BaseModel):
@@ -278,7 +285,13 @@ class AggregatePolygonParams(AggregatePointsParams):
     # ---- Polygon-specific Configuration ----
     weighted_by_intersecting_area: bool = Field(
         False,
-        description="If true, statistics are weighted by the intersection area ratio between source and area polygons.",
+        description=(
+            "If enabled, the value of each source polygon is weighted by its share "
+            "inside the area (the share of each source polygon's area that lies in "
+            "it). A plain count stays unweighted; min and max, the standard "
+            "deviation, and an H3 grid (each polygon goes to the cell of its "
+            "centroid), are not weighted either."
+        ),
         json_schema_extra=ui_field(
             section="statistics",
             field_order=3,

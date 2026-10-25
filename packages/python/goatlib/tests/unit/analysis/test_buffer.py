@@ -6,6 +6,7 @@ import duckdb
 import pytest
 from goatlib.analysis.geoprocessing.buffer import BufferTool
 from goatlib.analysis.schemas.geoprocessing import BufferParams, DistanceType
+from pydantic import ValidationError
 
 # Test data and result directories
 TEST_DATA_DIR = Path(__file__).parent.parent.parent / "data" / "vector"
@@ -292,3 +293,16 @@ class TestBufferParams:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_a_buffer_distance_given_twice_is_refused() -> None:
+    """Each distance is a ring of its own: the same one twice draws the same
+    ring twice, which is always a slip."""
+    with pytest.raises(ValidationError, match="once"):
+        BufferParams(
+            input_path="in.parquet", output_path="out.parquet", distances=[500, 500]
+        )
+    kept = BufferParams(
+        input_path="in.parquet", output_path="out.parquet", distances=[500, 1000]
+    )
+    assert kept.distances == [500, 1000]

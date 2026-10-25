@@ -39,6 +39,7 @@ from goatlib.analysis.schemas.heatmap_v2 import (
     OpportunityV2,
     TwoSFCAType,
 )
+from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.config.settings import settings
 from goatlib.io.config import parquet_copy_options
 from goatlib.models.io import DatasetMetadata
@@ -98,6 +99,22 @@ _PT_ACCESSEGRESS_MODES = frozenset(
 # the combined seed count, which is what this bounds. Connectivity has its own
 # AOI-cell cap.
 MAX_SEED_POINTS_TOTAL = 50_000
+
+#: The routing module's member for each decay, looked up only for the one a
+#: run uses: a routing build without a member still runs the others.
+_DECAY_MEMBERS = {
+    GravityDecay.gaussian: "Gaussian",
+    GravityDecay.exponential: "Exponential",
+    GravityDecay.linear: "Linear",
+    GravityDecay.power: "Power",
+    GravityDecay.cumulative: "Cumulative",
+}
+
+
+def _score_column(label: str) -> str:
+    """The quoted score column of one opportunity layer. A sanitized label
+    can start with a digit, and such a name only parses quoted."""
+    return quote_identifier(f"{label}_accessibility")
 
 
 def _unbounded_by_reference_area(params: HeatmapV2Params) -> bool:
@@ -354,13 +371,6 @@ class HeatmapV2Tool(HeatmapToolBase):
             HeatmapType.connectivity: routing.HeatmapType.Connectivity,
             HeatmapType.two_sfca: routing.HeatmapType.TwoSFCA,
         }
-        decay_map = {
-            GravityDecay.gaussian: routing.GravityDecay.Gaussian,
-            GravityDecay.exponential: routing.GravityDecay.Exponential,
-            GravityDecay.linear: routing.GravityDecay.Linear,
-            GravityDecay.power: routing.GravityDecay.Power,
-            GravityDecay.cumulative: routing.GravityDecay.Cumulative,
-        }
 
         cfg = routing.HeatmapConfig()
         cfg.mode = routing_mode_map[params.routing_mode]
@@ -392,7 +402,13 @@ class HeatmapV2Tool(HeatmapToolBase):
             for (seeds, w, rx, ry) in opp_groups
         ]
         cfg.heatmap_type = htype_map[params.heatmap_type]
-        cfg.decay = decay_map[params.decay]
+        member = _DECAY_MEMBERS[params.decay]
+        decay = getattr(routing.GravityDecay, member, None)
+        if decay is None:
+            raise ValueError(
+                f"This routing build does not support the {params.decay.value} decay."
+            )
+        cfg.decay = decay
         cfg.sensitivity = sensitivity
         cfg.max_sensitivity = params.max_sensitivity
         cfg.closest_k = closest_k
@@ -691,11 +707,12 @@ class HeatmapV2Tool(HeatmapToolBase):
         # supply-to-demand ratios that are routinely < 0.01 — rounding those to
         # 2 dp collapses them to zero, so 2SFCA keeps more precision.
         decimals = 6 if params.heatmap_type == HeatmapType.two_sfca else 2
+        score_col = _score_column(col)
         self.con.execute(
             f"""
             CREATE OR REPLACE TEMP TABLE {score_table} AS
             SELECT h3_index::UBIGINT AS h3_index,
-                   ROUND(score, {decimals}) AS {col}_accessibility
+                   ROUND(score, {decimals}) AS {score_col}
             FROM read_parquet('{score_path}')
             """
         )
@@ -707,14 +724,15 @@ class HeatmapV2Tool(HeatmapToolBase):
     ) -> None:
         """Surface per-layer score distribution so regressions like
         'almost always zero' are visible in the worker log."""
+        score_col = _score_column(col)
         stats = self.con.execute(
             f"""
             SELECT
                 count(*) AS n_rows,
-                count(*) FILTER (WHERE {col}_accessibility > 0) AS n_nonzero,
-                coalesce(min({col}_accessibility), 0) AS min_s,
-                coalesce(max({col}_accessibility), 0) AS max_s,
-                coalesce(avg({col}_accessibility), 0) AS avg_s
+                count(*) FILTER (WHERE {score_col} > 0) AS n_nonzero,
+                coalesce(min({score_col}), 0) AS min_s,
+                coalesce(max({score_col}), 0) AS max_s,
+                coalesce(avg({score_col}), 0) AS avg_s
             FROM {score_table}
             """
         ).fetchone()
@@ -742,20 +760,21 @@ class HeatmapV2Tool(HeatmapToolBase):
         layer are dropped); closest-average totals are the mean of reached
         layers' costs. Unreached layers stay NULL. Materialises
         `heatmap_v2_results`."""
+        score_cols = [_score_column(col) for col, _ in score_tables]
         select_cols = ", ".join(
-            f"s{idx}.{col}_accessibility AS {col}_accessibility"
-            for idx, (col, _) in enumerate(score_tables)
+            f"s{idx}.{score_col} AS {score_col}"
+            for idx, score_col in enumerate(score_cols)
         )
         sum_expr = " + ".join(
-            f"s{idx}.{col}_accessibility" for idx, (col, _) in enumerate(score_tables)
+            f"s{idx}.{score_col}" for idx, score_col in enumerate(score_cols)
         )
         # 2SFCA totals are tiny per-capita ratios; keep more precision so they
         # don't round to zero (2 dp is fine for the other formulas).
         decimals = 6 if heatmap_type == HeatmapType.two_sfca else 2
         if heatmap_type == HeatmapType.closest_average:
             cnt_expr = " + ".join(
-                f"(s{idx}.{col}_accessibility IS NOT NULL)::INT"
-                for idx, (col, _) in enumerate(score_tables)
+                f"(s{idx}.{score_col} IS NOT NULL)::INT"
+                for idx, score_col in enumerate(score_cols)
             )
             total_select = f"ROUND(({sum_expr}) / NULLIF({cnt_expr}, 0), {decimals}) AS total_accessibility"
             drop_null_total = False

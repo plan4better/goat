@@ -17,6 +17,7 @@ from goatlib.analysis.schemas.base import (
     POLYGON_TYPES,
     FieldStatistic,
     GeometryType,
+    operation_first_result_name,
 )
 from goatlib.analysis.schemas.ui import (
     SECTION_INPUT,
@@ -220,6 +221,10 @@ class BufferParams(BaseModel):
                 )
             if not all(isinstance(d, (int, float)) and d > 0 for d in self.distances):
                 raise ValueError("All buffer distances must be positive numbers.")
+            if len(set(self.distances)) != len(self.distances):
+                raise ValueError(
+                    "Give each buffer distance once: each one draws a ring of its own."
+                )
         elif self.distance_type == DistanceType.field:
             if not self.distance_field:
                 raise ValueError(
@@ -494,6 +499,12 @@ class DifferenceParams(BaseModel):
     def accepted_overlay_geometry_types(self: Self) -> List[GeometryType]:
         """Geometry types accepted for overlay layer in difference operation (typically polygon)."""
         return POLYGON_TYPES
+
+
+class DissolveFieldStatistic(FieldStatistic):
+    """Dissolve statistic: named ``{operation}_{field}`` by default."""
+
+    result_name: Optional[str] = operation_first_result_name()
 
 
 class DissolveParams(BaseModel):

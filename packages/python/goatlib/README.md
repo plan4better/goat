@@ -204,6 +204,27 @@ for a table holds none, or only the keys the web's layer tree writes
 keys they hold, which win (`style_entries_as_feature_layer`); an entry's own
 style stays. A feature layer never becomes a table.
 
+## Catchment start points
+
+A catchment area (`tools/catchment_area_v2.py`) whose starting points are
+empty after their filter writes a result without rows itself, with the columns
+of its kind, since the routing engine refuses zero points: a filter that
+matches nothing, such as a district without the stops asked about, gives a
+run with 0 rows instead of a failed one. More start points than one run takes
+are refused; the limits live in `tools/limits.py`, a module without imports,
+so the assistant's workflow check reads the same numbers and refuses such a
+draft before it runs. The travel cost matrix's cap on origin and destination
+pairs lives there for the same reason.
+
+## Measuring areas
+
+Area statistics (`analysis/statistics/area_statistics.py`, processes'
+`area-statistics`, also per value of a group column) measure square metres on
+the WGS84 spheroid, not in a projection: Web Mercator is not equal-area and
+enlarges areas more the farther they lie from the equator. A geometry in
+another CRS is brought to lon/lat first, with `always_xy` so its axes are not
+swapped.
+
 ## DuckLake catalog connections
 
 Every DuckLake read runs a few catalog queries inside a Postgres transaction,

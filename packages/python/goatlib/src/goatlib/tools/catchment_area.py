@@ -433,6 +433,9 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
     # coordinates were read. None when there is nothing to reference: map
     # clicks, or a layer run that asked for no field.
     _starting_point_references: "list[Any] | None" = None
+    # The reference field's column type on the layer, so a result without
+    # points still types its origin as the field. None without a field.
+    _starting_point_reference_type: str | None = None
 
     @classmethod
     def predict_output_schema(
@@ -588,6 +591,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             Tuple of (latitudes, longitudes) lists
         """
         self._starting_point_references = None
+        self._starting_point_reference_type = None
         is_temp_layer = ":" in layer_id
         if is_temp_layer:
             # export_layer_to_parquet resolves temp layers
@@ -600,15 +604,14 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             parquet_info = self._get_table_info(self.duckdb_con, f"'{temp_parquet}'")
             geom_col = parquet_info.get("geometry_column", "geometry")
 
+            column_types = {
+                str(c[0]): str(c[1])
+                for c in self.duckdb_con.execute(
+                    f"DESCRIBE SELECT * FROM '{temp_parquet}'"
+                ).fetchall()
+            }
             ref_col = self._validated_reference_column(
-                reference_field,
-                [
-                    c[0]
-                    for c in self.duckdb_con.execute(
-                        f"DESCRIBE SELECT * FROM '{temp_parquet}'"
-                    ).fetchall()
-                ],
-                layer_id,
+                reference_field, list(column_types), layer_id
             )
             ref_select = f', "{ref_col}" as ref' if ref_col else ""
 
@@ -647,8 +650,10 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             )
             geom_col = "geometry"  # default
             column_names: list[str] = []
+            column_types = {}
             for col_name, col_type, *_ in cols_result.fetchall():
                 column_names.append(col_name)
+                column_types[col_name] = col_type
                 if "GEOMETRY" in col_type.upper():
                     geom_col = col_name
 
@@ -680,8 +685,12 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             """
             result = self.duckdb_con.execute(query, params).fetchall()
 
+        if ref_col:
+            self._starting_point_reference_type = column_types[ref_col]
+
+        # No point left after the filter: the caller decides what that means.
         if not result:
-            raise ValueError(f"No valid geometries found in layer {layer_id}")
+            return [], []
 
         # One pass: a row dropped for a null coordinate has to take its
         # reference value with it, or every later point is misidentified.
@@ -727,6 +736,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             # Map clicks have no attributes to reference. The generated layer
             # numbers them from 1, so position already is the identifier.
             self._starting_point_references = None
+            self._starting_point_reference_type = None
             return starting_points.latitude, starting_points.longitude
         elif isinstance(starting_points, StartingPointsLayer):
             # Extract from existing layer - don't create duplicate starting points layer
@@ -753,6 +763,8 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             params.starting_points,
             params.user_id,
         )
+        if not latitudes:
+            raise ValueError("No valid geometries found in the starting points layer")
 
         # Validate starting point limits based on routing mode
         # These limits match the frontend validation in apps/web/lib/validations/tools.ts

@@ -7,6 +7,7 @@ Uses the same test data as GOAT Core:
 These tests verify actual computed values, not just row counts.
 """
 
+import json
 from pathlib import Path
 
 import duckdb
@@ -263,6 +264,223 @@ class TestAggregatePolygonToH3:
         # Total should match source total (within floating point tolerance)
         total_sum = df["sum_value"].sum()
         assert abs(total_sum - TOTAL_VALUE) < 1.0  # Allow 1 sqm tolerance
+
+
+#: Result names as users type them: spaces, an umlaut, an embedded quote.
+SUM_NAME = "Einwohner im Einzugsbereich"
+MAX_NAME = "Einwohner über 65"
+COUNT_NAME = 'Anzahl "alt"'
+
+
+def _as_dict(value: object) -> dict:
+    return json.loads(value) if isinstance(value, str) else dict(value)
+
+
+def _square(x: float, y: float, half: float = 0.0002) -> str:
+    return (
+        f"POLYGON(({x - half} {y - half}, {x + half} {y - half}, "
+        f"{x + half} {y + half}, {x - half} {y + half}, {x - half} {y - half}))"
+    )
+
+
+class TestAggregatePolygonResultNames:
+    """A result name becomes the output column name exactly as given."""
+
+    @staticmethod
+    def _write_inputs(tmp_path: Path) -> tuple[str, str]:
+        """One area and three small squares inside it whose centroids share
+        one H3 cell at res 6."""
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        areas = str(tmp_path / "areas.parquet")
+        sources = str(tmp_path / "sources.parquet")
+        con.execute(f"""
+            COPY (
+                SELECT 1 AS id, ST_GeomFromText(
+                    'POLYGON((11.5 48.1, 11.51 48.1, 11.51 48.11, 11.5 48.11, 11.5 48.1))'
+                ) AS geom
+            ) TO '{areas}' (FORMAT PARQUET)
+        """)
+        con.execute(f"""
+            COPY (
+                SELECT value, category, ST_GeomFromText(wkt) AS geom
+                FROM (VALUES
+                    (10, 'a', '{_square(11.501, 48.101)}'),
+                    (20, 'a', '{_square(11.502, 48.102)}'),
+                    (40, 'b', '{_square(11.503, 48.103)}')
+                ) t(value, category, wkt)
+            ) TO '{sources}' (FORMAT PARQUET)
+        """)
+        con.close()
+        return areas, sources
+
+    @pytest.mark.parametrize(
+        ("area_type", "weighted"),
+        [
+            (AggregationAreaType.polygon, False),
+            (AggregationAreaType.polygon, True),
+            (AggregationAreaType.h3_grid, False),
+        ],
+    )
+    @pytest.mark.parametrize("group_by", [None, ["category"]])
+    def test_result_names_with_spaces_and_quotes_are_kept_exactly(
+        self,
+        tmp_path: Path,
+        area_type: AggregationAreaType,
+        weighted: bool,
+        group_by: list[str] | None,
+    ) -> None:
+        areas, sources = self._write_inputs(tmp_path)
+        output_path = str(tmp_path / "out.parquet")
+        on_polygons = area_type == AggregationAreaType.polygon
+        params = AggregatePolygonParams(
+            source_path=sources,
+            area_type=area_type,
+            area_layer_path=areas if on_polygons else None,
+            h3_resolution=None if on_polygons else 6,
+            column_statistics=[
+                FieldStatistic(
+                    operation=StatisticOperation.sum,
+                    field="value",
+                    result_name=SUM_NAME,
+                ),
+                FieldStatistic(
+                    operation=StatisticOperation.max,
+                    field="value",
+                    result_name=MAX_NAME,
+                ),
+                FieldStatistic(
+                    operation=StatisticOperation.count, result_name=COUNT_NAME
+                ),
+            ],
+            weighted_by_intersecting_area=weighted,
+            group_by_field=group_by,
+            output_path=output_path,
+        )
+        AggregatePolygonTool().run(params)
+        con = duckdb.connect()
+        con.execute("LOAD spatial;")
+        df = con.execute(f"SELECT * FROM '{output_path}'").fetchdf()
+        con.close()
+
+        assert len(df) == 1
+        assert {SUM_NAME, MAX_NAME, COUNT_NAME} <= set(df.columns)
+        assert not any(c.startswith('"') for c in df.columns)
+        row = df.iloc[0]
+        # Every square lies wholly inside the area, so a weighted sum is the
+        # plain one.
+        assert row[SUM_NAME] == pytest.approx(70)
+        assert row[MAX_NAME] == 40
+        assert row[COUNT_NAME] == 3
+        if group_by:
+            sums = _as_dict(row[f"{SUM_NAME}_grouped"])
+            assert sums == {"a": pytest.approx(30), "b": pytest.approx(40)}
+            assert _as_dict(row[f"{MAX_NAME}_grouped"]) == {"a": 20, "b": 40}
+            assert _as_dict(row[f"{COUNT_NAME}_grouped"]) == {"a": 2, "b": 1}
+
+    @pytest.mark.parametrize(
+        "area_type", [AggregationAreaType.polygon, AggregationAreaType.h3_grid]
+    )
+    @pytest.mark.parametrize("group_by", [None, ["category"]])
+    @pytest.mark.parametrize(
+        "statistics",
+        [
+            [{"operation": "sum", "field": "value"}],
+            [{"operation": "count"}],
+            [
+                {"operation": "max", "field": "value"},
+                {"operation": "count", "result_name": COUNT_NAME},
+            ],
+        ],
+        ids=["sum", "count", "max-and-named-count"],
+    )
+    def test_the_prediction_holds_exactly_the_columns_the_run_writes(
+        self,
+        tmp_path: Path,
+        area_type: AggregationAreaType,
+        group_by: list[str] | None,
+        statistics: list[dict[str, str]],
+    ) -> None:
+        """One column per statistic, a `<statistic>_grouped` column each when
+        grouped and never the group fields themselves, a count only when one
+        is asked for; the area's columns or the H3 cell id."""
+        from goatlib.tools.aggregate_polygon import AggregatePolygonToolRunner
+
+        areas, sources = self._write_inputs(tmp_path)
+        output_path = str(tmp_path / "out.parquet")
+        on_polygons = area_type == AggregationAreaType.polygon
+        AggregatePolygonTool().run(
+            AggregatePolygonParams(
+                source_path=sources,
+                area_type=area_type,
+                area_layer_path=areas if on_polygons else None,
+                h3_resolution=None if on_polygons else 6,
+                column_statistics=[FieldStatistic(**s) for s in statistics],
+                group_by_field=group_by,
+                output_path=output_path,
+            )
+        )
+        inputs = {"source_layer_id": {"value": "INTEGER", "category": "VARCHAR"}}
+        if on_polygons:
+            inputs["area_layer_id"] = {"id": "INTEGER", "geometry": "GEOMETRY"}
+        predicted = AggregatePolygonToolRunner.predict_output_schema(
+            inputs,
+            {
+                "area_type": area_type.value,
+                "h3_resolution": None if on_polygons else 6,
+                "group_by_field": group_by,
+                "column_statistics": statistics,
+            },
+        )
+        con = duckdb.connect()
+        con.execute("LOAD spatial;")
+        rel = con.execute(f"SELECT * FROM '{output_path}'")
+        names = [d[0] for d in rel.description]
+        con.close()
+
+        # The parquet writer adds a bbox column; it is no layer column.
+        assert set(predicted) == set(names) - {"bbox"}
+
+    def test_the_run_writes_the_predicted_columns(self, tmp_path: Path) -> None:
+        """Without a result_name a statistic is `{operation}_{field}`, a count
+        is `count`; the schema prediction names the same columns."""
+        from goatlib.tools.aggregate_polygon import AggregatePolygonToolRunner
+
+        areas, sources = self._write_inputs(tmp_path)
+        output_path = str(tmp_path / "out.parquet")
+        statistics = [
+            {"operation": "sum", "field": "value"},
+            {"operation": "max", "field": "value", "result_name": MAX_NAME},
+            {"operation": "count", "result_name": COUNT_NAME},
+        ]
+        AggregatePolygonTool().run(
+            AggregatePolygonParams(
+                source_path=sources,
+                area_type=AggregationAreaType.polygon,
+                area_layer_path=areas,
+                column_statistics=[FieldStatistic(**s) for s in statistics],
+                output_path=output_path,
+            )
+        )
+        predicted = AggregatePolygonToolRunner.predict_output_schema(
+            {
+                "source_layer_id": {"value": "INTEGER", "category": "VARCHAR"},
+                "area_layer_id": {"id": "INTEGER", "geometry": "GEOMETRY"},
+            },
+            {"area_type": "polygon", "column_statistics": statistics},
+        )
+        con = duckdb.connect()
+        con.execute("LOAD spatial;")
+        rel = con.execute(f"SELECT * FROM '{output_path}'")
+        names = [d[0] for d in rel.description]
+        row = dict(zip(names, rel.fetchone()))
+        con.close()
+
+        # The parquet writer adds a bbox column; it is no layer column.
+        assert set(names) - {"bbox"} == set(predicted)
+        assert row["sum_value"] == 70
+        assert row[MAX_NAME] == 40
+        assert row[COUNT_NAME] == 3
 
 
 class TestAggregatePolygonValidation:

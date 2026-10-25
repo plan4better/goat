@@ -17,6 +17,7 @@ from goatlib.analysis.schemas.aggregate import (
     AggregatePolygonParams,
     AggregationAreaType,
 )
+from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.io.parquet import write_optimized_parquet
 from goatlib.models.io import DatasetMetadata
 
@@ -163,10 +164,19 @@ class AggregatePolygonTool(AnalysisTool):
             "area",
         )
 
+        # Geometry columns are named by the data: quoted identifiers.
+        area_g = quote_identifier(area_geom)
+        source_g = quote_identifier(source_geom)
         agg_specs = self._build_agg_specs(params, source_geom, area_geom)
-        total_select = ", ".join(f"{sql} AS {col}" for col, sql in agg_specs)
+        # Result names are user-given: each one, and each name derived
+        # from one, goes into SQL as one quoted identifier.
+        stat_cols = [
+            (quote_identifier(col), quote_identifier(f"{col}_grouped"), sql)
+            for col, sql in agg_specs
+        ]
+        total_select = ", ".join(f"{sql} AS {col}" for col, _, sql in stat_cols)
         coalesced_total_select = ", ".join(
-            f"COALESCE(t.{col}, 0) AS {col}" for col, _ in agg_specs
+            f"COALESCE(t.{col}, 0) AS {col}" for col, _, _ in stat_cols
         )
 
         # DESCRIBE reads only this view; unqualified information_schema
@@ -175,7 +185,9 @@ class AggregatePolygonTool(AnalysisTool):
         area_col_names = [
             row[0] for row in area_columns if row[0] not in (area_geom, "bbox")
         ]
-        area_select_with_prefix = ", ".join([f'a."{col}"' for col in area_col_names])
+        area_select_with_prefix = ", ".join(
+            f"a.{quote_identifier(col)}" for col in area_col_names
+        )
 
         self.con.execute(f"""
             CREATE OR REPLACE TEMP TABLE area_with_id AS
@@ -186,9 +198,14 @@ class AggregatePolygonTool(AnalysisTool):
         """)
 
         if params.group_by_field:
-            group_cols = ", ".join([f"s.{col}" for col in params.group_by_field])
+            group_cols = ", ".join(
+                f"s.{quote_identifier(col)}" for col in params.group_by_field
+            )
             group_col_concat = " || '_' || ".join(
-                [f"CAST(s.{col} AS VARCHAR)" for col in params.group_by_field]
+                [
+                    f"CAST(s.{quote_identifier(col)} AS VARCHAR)"
+                    for col in params.group_by_field
+                ]
             )
 
             self.con.execute(f"""
@@ -199,13 +216,13 @@ class AggregatePolygonTool(AnalysisTool):
                     {total_select}
                 FROM area_with_id a
                 JOIN {source_view} s
-                ON ST_Intersects(a.{area_geom}, s.{source_geom})
+                ON ST_Intersects(a.{area_g}, s.{source_g})
                 GROUP BY a.area_id, {group_cols}
             """)
 
             grouped_json_select = ", ".join(
-                f"JSON_GROUP_OBJECT(group_name, {col}) AS {col}_grouped"
-                for col, _ in agg_specs
+                f"JSON_GROUP_OBJECT(group_name, {col}) AS {grouped}"
+                for col, grouped, _ in stat_cols
             )
             self.con.execute(f"""
                 CREATE OR REPLACE TEMP TABLE grouped_json AS
@@ -219,14 +236,14 @@ class AggregatePolygonTool(AnalysisTool):
                 SELECT a.area_id, {total_select}
                 FROM area_with_id a
                 JOIN {source_view} s
-                ON ST_Intersects(a.{area_geom}, s.{source_geom})
+                ON ST_Intersects(a.{area_g}, s.{source_g})
                 GROUP BY a.area_id
             """)
 
             grouped_proj = ", ".join(
-                f"g.{col}_grouped AS {col}_grouped" for col, _ in agg_specs
+                f"g.{grouped} AS {grouped}" for _, grouped, _ in stat_cols
             )
-            select_parts = [f"a.{area_geom} AS geometry"]
+            select_parts = [f"a.{area_g} AS geometry"]
             if area_select_with_prefix:
                 select_parts.append(area_select_with_prefix)
             select_parts.append(coalesced_total_select)
@@ -245,11 +262,11 @@ class AggregatePolygonTool(AnalysisTool):
                 SELECT a.area_id, {total_select}
                 FROM area_with_id a
                 JOIN {source_view} s
-                ON ST_Intersects(a.{area_geom}, s.{source_geom})
+                ON ST_Intersects(a.{area_g}, s.{source_g})
                 GROUP BY a.area_id
             """)
 
-            select_parts = [f"a.{area_geom} AS geometry"]
+            select_parts = [f"a.{area_g} AS geometry"]
             if area_select_with_prefix:
                 select_parts.append(area_select_with_prefix)
             select_parts.append(coalesced_total_select)
@@ -289,12 +306,14 @@ class AggregatePolygonTool(AnalysisTool):
         Returns:
             SQL expression for weighted statistics
         """
+        area_g = quote_identifier(area_geom)
+        source_g = quote_identifier(source_geom)
         # For count, we can weight by area ratio
         if operation == "count":
             return f"""
                 SUM(
-                    ST_Area(ST_Intersection(a.{area_geom}, s.{source_geom})) /
-                    NULLIF(ST_Area(s.{source_geom}), 0)
+                    ST_Area(ST_Intersection(a.{area_g}, s.{source_g})) /
+                    NULLIF(ST_Area(s.{source_g}), 0)
                 )
             """
 
@@ -303,8 +322,8 @@ class AggregatePolygonTool(AnalysisTool):
             return f"""
                 SUM(
                     {field} *
-                    ST_Area(ST_Intersection(a.{area_geom}, s.{source_geom})) /
-                    NULLIF(ST_Area(s.{source_geom}), 0)
+                    ST_Area(ST_Intersection(a.{area_g}, s.{source_g})) /
+                    NULLIF(ST_Area(s.{source_g}), 0)
                 )
             """
 
@@ -313,12 +332,12 @@ class AggregatePolygonTool(AnalysisTool):
             return f"""
                 SUM(
                     {field} *
-                    ST_Area(ST_Intersection(a.{area_geom}, s.{source_geom})) /
-                    NULLIF(ST_Area(s.{source_geom}), 0)
+                    ST_Area(ST_Intersection(a.{area_g}, s.{source_g})) /
+                    NULLIF(ST_Area(s.{source_g}), 0)
                 ) /
                 NULLIF(SUM(
-                    ST_Area(ST_Intersection(a.{area_geom}, s.{source_geom})) /
-                    NULLIF(ST_Area(s.{source_geom}), 0)
+                    ST_Area(ST_Intersection(a.{area_g}, s.{source_g})) /
+                    NULLIF(ST_Area(s.{source_g}), 0)
                 ), 0)
             """
 
@@ -346,18 +365,30 @@ class AggregatePolygonTool(AnalysisTool):
         agg_specs = self._build_agg_specs(
             params, source_geom="", area_geom="", source_prefix=""
         )
-        total_select = ", ".join(f"{sql} AS {col}" for col, sql in agg_specs)
+        # Result names are user-given: each one, and each name derived
+        # from one, goes into SQL as one quoted identifier.
+        stat_cols = [
+            (quote_identifier(col), quote_identifier(f"{col}_grouped"), sql)
+            for col, sql in agg_specs
+        ]
+        total_select = ", ".join(f"{sql} AS {col}" for col, _, sql in stat_cols)
+        source_g = quote_identifier(source_geom)
         h3_cell_expr = (
             f"h3_latlng_to_cell("
-            f"ST_Y(ST_Centroid({source_geom})), "
-            f"ST_X(ST_Centroid({source_geom})), "
+            f"ST_Y(ST_Centroid({source_g})), "
+            f"ST_X(ST_Centroid({source_g})), "
             f"{h3_resolution})"
         )
 
         if params.group_by_field:
-            group_cols = ", ".join(params.group_by_field)
+            group_cols = ", ".join(
+                quote_identifier(col) for col in params.group_by_field
+            )
             group_col_concat = " || '_' || ".join(
-                [f"CAST({col} AS VARCHAR)" for col in params.group_by_field]
+                [
+                    f"CAST({quote_identifier(col)} AS VARCHAR)"
+                    for col in params.group_by_field
+                ]
             )
 
             self.con.execute(f"""
@@ -371,8 +402,8 @@ class AggregatePolygonTool(AnalysisTool):
             """)
 
             grouped_json_select = ", ".join(
-                f"JSON_GROUP_OBJECT(group_name, {col}) AS {col}_grouped"
-                for col, _ in agg_specs
+                f"JSON_GROUP_OBJECT(group_name, {col}) AS {grouped}"
+                for col, grouped, _ in stat_cols
             )
             self.con.execute(f"""
                 CREATE OR REPLACE TEMP TABLE grouped_json AS
@@ -388,9 +419,9 @@ class AggregatePolygonTool(AnalysisTool):
                 GROUP BY {h3_cell_expr}
             """)
 
-            total_proj = ", ".join(f"t.{col} AS {col}" for col, _ in agg_specs)
+            total_proj = ", ".join(f"t.{col} AS {col}" for col, _, _ in stat_cols)
             grouped_proj = ", ".join(
-                f"g.{col}_grouped AS {col}_grouped" for col, _ in agg_specs
+                f"g.{grouped} AS {grouped}" for _, grouped, _ in stat_cols
             )
             select_parts = [
                 "ST_GeomFromText(h3_cell_to_boundary_wkt(t.h3_index)) AS geometry",
@@ -413,7 +444,7 @@ class AggregatePolygonTool(AnalysisTool):
                 GROUP BY {h3_cell_expr}
             """)
 
-            total_proj = ", ".join(f"{col} AS {col}" for col, _ in agg_specs)
+            total_proj = ", ".join(f"{col} AS {col}" for col, _, _ in stat_cols)
             select_parts = [
                 "ST_GeomFromText(h3_cell_to_boundary_wkt(h3_index)) AS geometry",
                 f"h3_h3_to_string(h3_index) AS h3_{h3_resolution}",
@@ -441,15 +472,16 @@ class AggregatePolygonTool(AnalysisTool):
     ) -> List[Tuple[str, str]]:
         """Return [(result_col, sql_expr), ...] — one per FieldStatistic entry.
 
-        Output columns are named ``{operation}_{field}`` (e.g. ``sum_population``)
-        unless ``result_name`` is set. Pass empty ``source_geom``/``area_geom`` to
-        skip area-weighted SQL (used for H3 mode).
+        Output columns are named by
+        ``FieldStatistic.get_operation_first_column_name``. Pass empty
+        ``source_geom``/``area_geom`` to skip area-weighted SQL (used for H3
+        mode).
         """
         specs: list[Tuple[str, str]] = []
         weighted = params.weighted_by_intersecting_area and source_geom and area_geom
         for stat in params.column_statistics:
             field = stat.field or ""
-            qualified = f"{source_prefix}{field}" if field else ""
+            qualified = f"{source_prefix}{quote_identifier(field)}" if field else ""
             if weighted and field:
                 sql_expr = self._get_weighted_statistics_sql(
                     qualified,
@@ -459,14 +491,5 @@ class AggregatePolygonTool(AnalysisTool):
                 )
             else:
                 sql_expr = self.get_statistics_sql(qualified, stat.operation.value)
-            op = stat.operation.value
-            if stat.result_name:
-                result_col = stat.result_name
-            elif op == "count":
-                result_col = "count"
-            elif field:
-                result_col = f"{op}_{field}"
-            else:
-                result_col = op
-            specs.append((result_col, sql_expr))
+            specs.append((stat.get_operation_first_column_name(), sql_expr))
         return specs

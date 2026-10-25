@@ -66,6 +66,10 @@ class AreaStatisticsInput(BaseModel):
 
     operation: AreaOperation = Field(description="Statistical operation")
     filter: str | None = Field(default=None, description="CQL2 filter expression")
+    group_by_column: str | None = Field(
+        default=None,
+        description="Field whose values form groups, each with its own area statistics",
+    )
 
 
 class UniqueValuesInput(BaseModel):
@@ -134,6 +138,21 @@ class ClassBreaksResult(BaseModel):
     std_dev: float | None = Field(None, description="Standard deviation")
 
 
+class AreaStatisticsGroup(BaseModel):
+    """Area statistics of the features sharing one value of the group field."""
+
+    grouped_value: str | None = Field(
+        None, description="The group's value (null for features without one)"
+    )
+    result: float | None = Field(
+        None, description="Result of the operation in the group"
+    )
+    total_area: float | None = Field(
+        None, description="Total area of the group's features"
+    )
+    feature_count: int = Field(0, description="Number of features in the group")
+
+
 class AreaStatisticsResult(BaseModel):
     """Result of area statistics calculation."""
 
@@ -143,6 +162,13 @@ class AreaStatisticsResult(BaseModel):
     total_area: float | None = Field(None, description="Total area of all features")
     feature_count: int = Field(0, description="Number of features")
     unit: str = Field("m²", description="Unit of area measurement")
+    groups: list[AreaStatisticsGroup] = Field(
+        default_factory=list,
+        description="Per value of group_by_column, largest total area first",
+    )
+    total_groups: int | None = Field(
+        None, description="Number of groups before the limit (null without grouping)"
+    )
 
 
 class ExtentInput(BaseModel):
@@ -189,7 +215,7 @@ class AggregationStatsInput(BaseModel):
     limit: int = Field(
         default=100,
         ge=1,
-        le=100,
+        le=1000,
         description="Maximum number of grouped values to return",
     )
 

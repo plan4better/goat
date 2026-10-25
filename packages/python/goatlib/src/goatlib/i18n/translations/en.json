@@ -174,7 +174,7 @@
     },
     "step_sizes": {
       "label": "Step sizes",
-      "description": "Step size intervals for the catchment area"
+      "description": "The band edges in rising order up to the limit: each band ends at one, e.g. 5, 10, 15 for three bands of 5 minutes."
     },
     "advanced_options": {
       "label": "Advanced options",
@@ -198,7 +198,7 @@
     },
     "catchment_area_type": {
       "label": "Catchment area shape",
-      "description": "Select the shape of the catchment area geometry"
+      "description": "The shape of the result: polygons around the reached area, the reached street network, a hexagon grid, or the points of a point layer. A hexagon counts as reached when any reached part of the network lies in it, so the grid's area is an upper estimate."
     },
     "shape_style": {
       "label": "Shape style",
@@ -206,7 +206,7 @@
     },
     "steps_style": {
       "label": "Steps style",
-      "description": "How steps are displayed in the output"
+      "description": "Separate gives each step as a ring (only the area between the previous step and this one); cumulative gives each step the whole area reached up to it."
     },
     "choose_pt_mode": {
       "label": "Choose PT modes",
@@ -626,7 +626,7 @@
     },
     "weighted_by_intersecting_area": {
       "label": "Weight by Intersection Area",
-      "description": "If enabled, statistics are weighted proportionally by the area of intersection between source and target polygons."
+      "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either."
     },
     "select_statistics_configuration": {
       "label": "Statistics Configuration",
@@ -847,6 +847,10 @@
     "statistic_result_name": {
       "label": "Result column name",
       "description": "Custom name for the result column. If empty, \"{field}_{operation}\" is used, or \"count\" for \"Count\"."
+    },
+    "statistic_result_name_operation_first": {
+      "label": "Result column name",
+      "description": "Custom name for the result column. If empty, \"{operation}_{field}\" is used, or \"count\" for \"Count\"."
     }
   },
   "enums": {
@@ -1033,7 +1037,7 @@
     },
     "difference": {
       "title": "Erase",
-      "description": "Creates a feature class by overlaying input features with erase features. Only portions of input features falling outside the erase geometry are kept."
+      "description": "Removes the parts of the input features that the overlay covers. The result holds the input features cut to what lies outside the overlay, not whole features."
     },
     "origin_destination": {
       "title": "Origin-Destination",

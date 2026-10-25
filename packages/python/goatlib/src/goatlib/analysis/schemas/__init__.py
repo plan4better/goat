@@ -78,6 +78,7 @@ from .oev_gueteklasse import (
 )
 from .statistics import (
     AreaOperation,
+    AreaStatisticsGroup,
     AreaStatisticsInput,
     AreaStatisticsResult,
     ClassBreakMethod,
@@ -185,6 +186,7 @@ __all__ = [
     "UniqueValue",
     "UniqueValuesResult",
     "ClassBreaksResult",
+    "AreaStatisticsGroup",
     "AreaStatisticsResult",
     # Catchment Area schemas
     "PTMode",

@@ -189,10 +189,10 @@ async def test_a_failing_step_stops_the_run_with_its_own_message(
     run_workflow: Any,
 ) -> None:
     """The intersection keeps an input field the buffer before it does not
-    write. The check before a run can only warn about a field of a step's
-    result (`field_maybe_missing`), so a submitted run gets this far. The run
-    stops at the step and reports the step's own message, without the stack
-    Windmill records for the failed job."""
+    write. The check before a run only warns about a field of a step's
+    result that no join renamed (`field_maybe_missing`), so a submitted run
+    gets this far. The run stops at the step and reports the step's own
+    message, without the stack Windmill records for the failed job."""
     config = workflow(
         [
             dataset("schools", SCHULEN),

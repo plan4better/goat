@@ -69,6 +69,7 @@ from goatlib.tools.catchment_area_v2 import (
 from goatlib.tools.catchment_area_v2 import (
     ROUTING_MODE_LABELS as _CATCHMENT_ROUTING_MODE_LABELS,
 )
+from goatlib.tools.limits import TRAVEL_COST_MATRIX_MAX_PAIRS
 from goatlib.tools.pt_network import ensure_pt_date, pt_date_field
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase, get_default_layer_name
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
@@ -964,10 +965,11 @@ class TravelCostMatrixToolRunner(BaseToolRunner[TravelCostMatrixWindmillParams])
 
         # Validate matrix size
         n_combos = len(origin_lats) * len(dest_lats)
-        if n_combos > 10_000:
+        if n_combos > TRAVEL_COST_MATRIX_MAX_PAIRS:
             raise ValueError(
                 f"Matrix size ({len(origin_lats)} origins × {len(dest_lats)} destinations "
-                f"= {n_combos:,} pairs) exceeds the maximum of 10,000. "
+                f"= {n_combos:,} pairs) exceeds the maximum of "
+                f"{TRAVEL_COST_MATRIX_MAX_PAIRS:,}. "
                 f"Reduce the number of origins or destinations."
             )
 

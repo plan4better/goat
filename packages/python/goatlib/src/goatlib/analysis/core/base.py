@@ -9,6 +9,7 @@ from typing import Any, List, Self, Tuple, final
 import duckdb
 
 from goatlib.analysis.schemas.base import GeometryType
+from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.io.utils import Metadata, download_if_remote, get_metadata
 from goatlib.models.io import DatasetMetadata
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
@@ -178,17 +179,18 @@ class AnalysisTool:
             # Get all columns except existing bbox (if any) to avoid conflicts
             cols = self.con.execute(f"DESCRIBE {base_view}").fetchall()
             col_names = [c[0] for c in cols if c[0] != "bbox"]
-            col_select = ", ".join(f'"{c}"' for c in col_names)
+            col_select = ", ".join(quote_identifier(c) for c in col_names)
+            geom = quote_identifier(geom_column)
 
             logger.info("Computing bbox from geometry for %s", path)
             self.con.execute(f"""
                 CREATE OR REPLACE VIEW {table_name} AS
                 SELECT {col_select},
                     {{
-                        'xmin': ST_XMin({geom_column}),
-                        'xmax': ST_XMax({geom_column}),
-                        'ymin': ST_YMin({geom_column}),
-                        'ymax': ST_YMax({geom_column})
+                        'xmin': ST_XMin({geom}),
+                        'xmax': ST_XMax({geom}),
+                        'ymin': ST_YMin({geom}),
+                        'ymax': ST_YMax({geom})
                     }} AS bbox
                 FROM {base_view}
             """)
@@ -223,10 +225,11 @@ class AnalysisTool:
             return  # No validation needed if no types specified
 
         # Get unique geometry types from the dataset
+        geom = quote_identifier(geom_column)
         actual_types = self.con.execute(f"""
-            SELECT DISTINCT ST_GeometryType({geom_column}) as geom_type
+            SELECT DISTINCT ST_GeometryType({geom}) as geom_type
             FROM {view_name}
-            WHERE {geom_column} IS NOT NULL
+            WHERE {geom} IS NOT NULL
             LIMIT 1
         """).fetchall()
 
@@ -270,10 +273,11 @@ class AnalysisTool:
         None keeps every type, also for an input without geometries, which
         gives no pieces to drop.
         """
+        geom = quote_identifier(geom_column)
         row = self.con.execute(f"""
-            SELECT ST_GeometryType({geom_column})
+            SELECT ST_GeometryType({geom})
             FROM {view_name}
-            WHERE {geom_column} IS NOT NULL
+            WHERE {geom} IS NOT NULL
             LIMIT 1
         """).fetchone()
         input_geom_upper = str(row[0]).upper() if row else ""

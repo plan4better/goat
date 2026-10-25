@@ -128,7 +128,9 @@ class HeatmapToolBase(AnalysisTool):
     def __init__(self: Self) -> None:
         super().__init__()
         self._setup_heatmap_extensions()
-        # Additional initialization for heatmap tools can go here
+        #: The time-cost columns (`cost`, `traveltime`) the files of the OD
+        #: matrix in use hold, as `_detect_od_columns` found them.
+        self._od_cost_columns: list[str] = []
 
     def _setup_heatmap_extensions(self: Self) -> None:
         """Install required extensions and register helper functions."""
@@ -186,6 +188,9 @@ class HeatmapToolBase(AnalysisTool):
                 "distance",
             ],
         }
+        # Stored travel-time matrices name the time cost `cost` or
+        # `traveltime`; the files of one matrix may hold both.
+        self._od_cost_columns = [c for c in ("cost", "traveltime") if c in columns]
 
         mapping = {}
         for target, options in candidates.items():
@@ -225,6 +230,9 @@ class HeatmapToolBase(AnalysisTool):
         # Default mapping that should trigger auto-detection
         default_mapping = {"orig_id": "orig_id", "dest_id": "dest_id", "cost": "cost"}
 
+        # Only auto-detection sets it; an explicit mapping reads one layout.
+        self._od_cost_columns = []
+
         # Auto-detect column mapping if not provided or using defaults
         if od_column_map is None or od_column_map == default_mapping:
             od_column_map = self._detect_od_columns(od_matrix_path)
@@ -238,14 +246,25 @@ class HeatmapToolBase(AnalysisTool):
                 return f'"{source}"'
             return f'"{source}" AS {target}'
 
+        # Files in both time-cost layouts are matched by column name and give
+        # the cost from whichever column each has. Matching by name reads every
+        # file footer on each bind of the view and turns a missing column into
+        # NULLs, so a single layout keeps the plain read, which fails on it.
+        if len(self._od_cost_columns) > 1:
+            cost_sql = 'COALESCE("cost", "traveltime") AS cost'
+            reader = f"read_parquet('{path}', union_by_name = true)"
+        else:
+            cost_sql = col_expr("cost")
+            reader = f"read_parquet('{path}')"
+
         try:
             self.con.execute(f"""
                 CREATE OR REPLACE TEMP VIEW {view_name} AS
                 SELECT
                     {col_expr('orig_id')},
                     {col_expr('dest_id')},
-                    {col_expr('cost')}
-                FROM read_parquet('{path}')
+                    {cost_sql}
+                FROM {reader}
             """)
         except Exception as e:
             raise ValueError(

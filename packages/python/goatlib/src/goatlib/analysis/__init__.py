@@ -13,6 +13,7 @@ from .geoanalysis import GeocodingTool, OriginDestinationTool
 from .geoprocessing import BufferTool
 from .statistics import (
     AreaOperation,
+    AreaStatisticsGroup,
     AreaStatisticsResult,
     ClassBreakMethod,
     ClassBreaksResult,
@@ -48,6 +49,7 @@ __all__ = [
     "UniqueValue",
     "UniqueValuesResult",
     "ClassBreaksResult",
+    "AreaStatisticsGroup",
     "AreaStatisticsResult",
     # Accessibility tools
     "CatchmentAreaTool",

@@ -13,6 +13,7 @@ from goatlib.analysis.schemas.aggregate import (
     AggregatePointsParams,
     AggregationAreaType,
 )
+from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.io.parquet import write_optimized_parquet
 from goatlib.models.io import DatasetMetadata
 
@@ -156,10 +157,19 @@ class AggregatePointsTool(AnalysisTool):
             "area",
         )
 
+        # Geometry columns are named by the data: quoted identifiers.
+        area_g = quote_identifier(area_geom)
+        source_g = quote_identifier(source_geom)
         agg_specs = self._build_agg_specs(params, source_prefix="s.")
-        total_select = ", ".join(f"{sql} AS {col}" for col, sql in agg_specs)
+        # Result names are user-given: each one, and each name derived
+        # from one, goes into SQL as one quoted identifier.
+        stat_cols = [
+            (quote_identifier(col), quote_identifier(f"{col}_grouped"), sql)
+            for col, sql in agg_specs
+        ]
+        total_select = ", ".join(f"{sql} AS {col}" for col, _, sql in stat_cols)
         coalesced_total_select = ", ".join(
-            f"COALESCE(t.{col}, 0) AS {col}" for col, _ in agg_specs
+            f"COALESCE(t.{col}, 0) AS {col}" for col, _, _ in stat_cols
         )
 
         # DESCRIBE reads only this view; unqualified information_schema
@@ -168,7 +178,9 @@ class AggregatePointsTool(AnalysisTool):
         area_col_names = [
             row[0] for row in area_columns if row[0] not in (area_geom, "bbox")
         ]
-        area_select_with_prefix = ", ".join([f'a."{col}"' for col in area_col_names])
+        area_select_with_prefix = ", ".join(
+            f"a.{quote_identifier(col)}" for col in area_col_names
+        )
 
         self.con.execute(f"""
             CREATE OR REPLACE TEMP TABLE area_with_id AS
@@ -178,27 +190,52 @@ class AggregatePointsTool(AnalysisTool):
             FROM {area_view}
         """)
 
+        # A dissolved area is one multipolygon whose bounding box covers every
+        # point; its parts have their own, smaller boxes for the spatial join.
+        # A point on an edge two parts share matches both, so the pairs are
+        # made distinct before anything is aggregated.
+        self.con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE area_parts AS
+            SELECT area_id, UNNEST(ST_Dump({area_g})).geom AS part
+            FROM area_with_id
+        """)
+        self.con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE source_numbered AS
+            SELECT ROW_NUMBER() OVER () AS __aggregate_point_id, * FROM {source_view}
+        """)
+        self.con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE area_points AS
+            SELECT DISTINCT p.area_id, s.__aggregate_point_id
+            FROM area_parts p
+            JOIN source_numbered s ON ST_Intersects(p.part, s.{source_g})
+        """)
+
         if params.group_by_field:
-            group_cols = ", ".join([f"s.{col}" for col in params.group_by_field])
+            group_cols = ", ".join(
+                f"s.{quote_identifier(col)}" for col in params.group_by_field
+            )
             group_col_concat = " || '_' || ".join(
-                [f"CAST(s.{col} AS VARCHAR)" for col in params.group_by_field]
+                [
+                    f"CAST(s.{quote_identifier(col)} AS VARCHAR)"
+                    for col in params.group_by_field
+                ]
             )
 
             self.con.execute(f"""
                 CREATE OR REPLACE TEMP TABLE grouped_stats AS
                 SELECT
-                    a.area_id,
+                    ap.area_id,
                     {group_col_concat} AS group_name,
                     {total_select}
-                FROM area_with_id a
-                JOIN {source_view} s
-                ON ST_Intersects(a.{area_geom}, s.{source_geom})
-                GROUP BY a.area_id, {group_cols}
+                FROM area_points ap
+                JOIN source_numbered s
+                ON s.__aggregate_point_id = ap.__aggregate_point_id
+                GROUP BY ap.area_id, {group_cols}
             """)
 
             grouped_json_select = ", ".join(
-                f"JSON_GROUP_OBJECT(group_name, {col}) AS {col}_grouped"
-                for col, _ in agg_specs
+                f"JSON_GROUP_OBJECT(group_name, {col}) AS {grouped}"
+                for col, grouped, _ in stat_cols
             )
             self.con.execute(f"""
                 CREATE OR REPLACE TEMP TABLE grouped_json AS
@@ -209,17 +246,17 @@ class AggregatePointsTool(AnalysisTool):
 
             self.con.execute(f"""
                 CREATE OR REPLACE TEMP TABLE total_stats AS
-                SELECT a.area_id, {total_select}
-                FROM area_with_id a
-                JOIN {source_view} s
-                ON ST_Intersects(a.{area_geom}, s.{source_geom})
-                GROUP BY a.area_id
+                SELECT ap.area_id, {total_select}
+                FROM area_points ap
+                JOIN source_numbered s
+                ON s.__aggregate_point_id = ap.__aggregate_point_id
+                GROUP BY ap.area_id
             """)
 
             grouped_proj = ", ".join(
-                f"g.{col}_grouped AS {col}_grouped" for col, _ in agg_specs
+                f"g.{grouped} AS {grouped}" for _, grouped, _ in stat_cols
             )
-            select_parts = [f"a.{area_geom} AS geometry"]
+            select_parts = [f"a.{area_g} AS geometry"]
             if area_select_with_prefix:
                 select_parts.append(area_select_with_prefix)
             select_parts.append(coalesced_total_select)
@@ -235,14 +272,14 @@ class AggregatePointsTool(AnalysisTool):
         else:
             self.con.execute(f"""
                 CREATE OR REPLACE TEMP TABLE total_stats AS
-                SELECT a.area_id, {total_select}
-                FROM area_with_id a
-                JOIN {source_view} s
-                ON ST_Intersects(a.{area_geom}, s.{source_geom})
-                GROUP BY a.area_id
+                SELECT ap.area_id, {total_select}
+                FROM area_points ap
+                JOIN source_numbered s
+                ON s.__aggregate_point_id = ap.__aggregate_point_id
+                GROUP BY ap.area_id
             """)
 
-            select_parts = [f"a.{area_geom} AS geometry"]
+            select_parts = [f"a.{area_g} AS geometry"]
             if area_select_with_prefix:
                 select_parts.append(area_select_with_prefix)
             select_parts.append(coalesced_total_select)
@@ -274,18 +311,30 @@ class AggregatePointsTool(AnalysisTool):
         h3_resolution = params.h3_resolution
 
         agg_specs = self._build_agg_specs(params, source_prefix="")
-        total_select = ", ".join(f"{sql} AS {col}" for col, sql in agg_specs)
+        # Result names are user-given: each one, and each name derived
+        # from one, goes into SQL as one quoted identifier.
+        stat_cols = [
+            (quote_identifier(col), quote_identifier(f"{col}_grouped"), sql)
+            for col, sql in agg_specs
+        ]
+        total_select = ", ".join(f"{sql} AS {col}" for col, _, sql in stat_cols)
+        source_g = quote_identifier(source_geom)
         h3_cell_expr = (
             f"h3_latlng_to_cell("
-            f"ST_Y(ST_Centroid({source_geom})), "
-            f"ST_X(ST_Centroid({source_geom})), "
+            f"ST_Y(ST_Centroid({source_g})), "
+            f"ST_X(ST_Centroid({source_g})), "
             f"{h3_resolution})"
         )
 
         if params.group_by_field:
-            group_cols = ", ".join(params.group_by_field)
+            group_cols = ", ".join(
+                quote_identifier(col) for col in params.group_by_field
+            )
             group_col_concat = " || '_' || ".join(
-                [f"CAST({col} AS VARCHAR)" for col in params.group_by_field]
+                [
+                    f"CAST({quote_identifier(col)} AS VARCHAR)"
+                    for col in params.group_by_field
+                ]
             )
 
             self.con.execute(f"""
@@ -299,8 +348,8 @@ class AggregatePointsTool(AnalysisTool):
             """)
 
             grouped_json_select = ", ".join(
-                f"JSON_GROUP_OBJECT(group_name, {col}) AS {col}_grouped"
-                for col, _ in agg_specs
+                f"JSON_GROUP_OBJECT(group_name, {col}) AS {grouped}"
+                for col, grouped, _ in stat_cols
             )
             self.con.execute(f"""
                 CREATE OR REPLACE TEMP TABLE grouped_json AS
@@ -316,9 +365,9 @@ class AggregatePointsTool(AnalysisTool):
                 GROUP BY {h3_cell_expr}
             """)
 
-            total_proj = ", ".join(f"t.{col} AS {col}" for col, _ in agg_specs)
+            total_proj = ", ".join(f"t.{col} AS {col}" for col, _, _ in stat_cols)
             grouped_proj = ", ".join(
-                f"g.{col}_grouped AS {col}_grouped" for col, _ in agg_specs
+                f"g.{grouped} AS {grouped}" for _, grouped, _ in stat_cols
             )
             select_parts = [
                 "ST_GeomFromText(h3_cell_to_boundary_wkt(t.h3_index)) AS geometry",
@@ -341,7 +390,7 @@ class AggregatePointsTool(AnalysisTool):
                 GROUP BY {h3_cell_expr}
             """)
 
-            total_proj = ", ".join(f"{col} AS {col}" for col, _ in agg_specs)
+            total_proj = ", ".join(f"{col} AS {col}" for col, _, _ in stat_cols)
             select_parts = [
                 "ST_GeomFromText(h3_cell_to_boundary_wkt(h3_index)) AS geometry",
                 f"h3_h3_to_string(h3_index) AS h3_{h3_resolution}",
@@ -369,7 +418,11 @@ class AggregatePointsTool(AnalysisTool):
         specs: list[Tuple[str, str]] = []
         for stat in params.column_statistics:
             source_field = stat.field or ""
-            field_expr = f"{source_prefix}{source_field}" if source_field else ""
+            field_expr = (
+                f"{source_prefix}{quote_identifier(source_field)}"
+                if source_field
+                else ""
+            )
             sql_expr = self.get_statistics_sql(field_expr, stat.operation.value)
             specs.append((stat.get_result_column_name(), sql_expr))
         return specs
