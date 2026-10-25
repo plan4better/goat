@@ -49,6 +49,12 @@ const SAMPLE_PARAMS: Record<string, Record<string, unknown>> = {
     field_name: "district",
     joined_field: "join_district",
   },
+  field_not_produced: {
+    step: "Join",
+    label: "Match Fields · Target Field",
+    field_name: "school_id",
+    fields: ["origin", "destination", "travel_cost"],
+  },
   too_many_destinations: { step: "Heatmap Closest Average", features: 934847, limit: 50000 },
   run_failed: { step: "Buffer", error: "Column population not found" },
 };
@@ -121,6 +127,15 @@ describe("workflow issue texts", () => {
   it("names the field a join renamed", () => {
     expect(issueText(commonT("en"), issue("field_renamed_by_join"))).toBe(
       "Group Fields uses the field district, which the step before does not produce: the join names it join_district."
+    );
+  });
+
+  it("lists the fields of the step before a join", () => {
+    expect(issueText(commonT("en"), issue("field_not_produced"))).toBe(
+      "Match Fields · Target Field uses the field school_id, which the step before does not produce. It gives: origin, destination, travel_cost."
+    );
+    expect(issueText(commonT("de"), issue("field_not_produced"))).toBe(
+      "Match Fields · Target Field verwendet das Feld school_id, das der vorherige Schritt nicht erzeugt. Er erzeugt: origin, destination, travel_cost."
     );
   });
 

@@ -214,6 +214,12 @@ describe("assistant messages", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("says in the UI language that an answer could not be written after its results", () => {
+    render(<CaveatNote data={{ kind: "no_answer", text: "The assistant could not write this answer." }} />);
+    expect(screen.getByText("assistant_caveat_no_answer")).toBeTruthy();
+    expect(screen.queryByText("The assistant could not write this answer.")).toBeNull();
+  });
+
   it("shows no cards for search results the answer did not recommend", () => {
     render(
       <DockActionsContext.Provider value={actions}>

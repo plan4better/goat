@@ -9,6 +9,7 @@ import DockNote from "@/components/assistant/messages/DockNote";
 /** The caveat kinds the dock can explain, by the translated text that states them. */
 const CAVEAT_KEYS: Record<string, string> = {
   fallback: "assistant_caveat_fallback",
+  no_answer: "assistant_caveat_no_answer",
 };
 
 /**
