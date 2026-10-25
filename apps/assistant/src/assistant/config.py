@@ -155,7 +155,7 @@ class AssistantSettings(BaseSettings):
     secrets_key: SecretStr = SecretStr("")
 
     #: Tool calls per answer. Reading a finished workflow run's result may
-    #: take up to ``RESULT_READS`` + 1 more (``assistant.budget``).
+    #: take up to ``MAX_RESULT_READS`` + 1 more (``assistant.budget``).
     run_max_tool_calls: int = 30
     #: Tokens per answer, input and output; tokens read from the provider's
     #: cache count at a tenth (``assistant.budget.CACHE_READ_WEIGHT``).

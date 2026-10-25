@@ -17,6 +17,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
+#: The prefix the join tool gives the fields it carries over from the joined
+#: layer: its field ``x`` is ``join_x`` in the result.
+JOINED_PREFIX = "join_"
 #: Inputs the editor draws as handles: connections, not settings.
 LAYER_WIDGETS = frozenset({"layer-selector", "starting-points"})
 #: Not settings a step keeps: layer inputs, and the names the runner gives results.

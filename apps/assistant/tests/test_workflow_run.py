@@ -259,6 +259,36 @@ async def test_a_workflow_built_here_runs_at_once_and_reports_what_it_saved() ->
     assert emitted[-1][2]["status"] == "succeeded"
 
 
+async def test_the_fields_the_run_added_lead_a_cut_field_list() -> None:
+    """A saved layer lists at most 30 fields: a joined field and a statistic's
+    result name come first, also when the layer's own fields come before."""
+    properties: dict[str, Any] = {
+        f"feld_{n:02d}": {"type": "integer"} for n in range(40)
+    }
+    properties["bewohner"] = {"type": "integer"}
+    properties["join_oev_guete_mittel"] = {"type": "number"}
+    properties["geometry"] = {"$ref": "#/geometry"}
+    config = copy.deepcopy(CONFIG)
+    config["nodes"][1]["data"]["config"] = {
+        "column_statistics": [
+            {"operation": "sum", "field": "einwohner", "result_name": "bewohner"}
+        ]
+    }
+    services = _services(queryables={"properties": properties})
+    services[0].routes[("GET", f"/api/v2/project/{PROJECT}/workflow/{WF}")] = {
+        "id": WF,
+        "project_id": PROJECT,
+        "config": config,
+    }
+    out = await execute(
+        RUN, _env(services, runs=ConversationRuns(created={WF})), {"workflow_id": WF}
+    )
+    names = [f["name"] for f in out["saved"][0]["fields"]]
+    assert names[:2] == ["bewohner", "join_oev_guete_mittel"]
+    assert names[2:] == [f"feld_{n:02d}" for n in range(28)]
+    assert "added" not in out
+
+
 async def test_a_workflow_from_elsewhere_asks_first_and_starts_nothing() -> None:
     services = _services()
     with pytest.raises(ToolFailed) as refused:

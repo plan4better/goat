@@ -13,15 +13,16 @@ way ``assistant.asks.AskHistory`` reads its cards.
 """
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from goatlib.workflows.visibility import is_shown
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from assistant.asks import AskHistory, chosen_cards
 from assistant.workflows import tool_info
+from assistant.workflows.tool_info import JOINED_PREFIX
 
 #: The data part a run's progress travels in, one part id per job.
 RUN_PART = "workflow-run"
@@ -130,6 +131,10 @@ class RunSummary(BaseModel):
     #: Why a refused run did not start.
     issues: list[str] | None = None
     note: str
+    #: The result names the run's steps write (``_result_names``), to list a
+    #: saved layer's fields the run added first (``first_added``); never
+    #: serialized.
+    added: frozenset[str] = Field(default=frozenset(), exclude=True)
 
 
 def _clip(value: Any) -> str | None:
@@ -338,6 +343,51 @@ def step_defaults(
     return found or None
 
 
+def _result_names(value: Any) -> set[str]:
+    """The columns a tool step's resolved settings name for its results:
+    each ``result_name``, and for a statistic without one the names the tools
+    give it: ``count`` for a count, else ``{field}_{operation}`` (join,
+    aggregate points) and ``{operation}_{field}`` (aggregate polygons,
+    dissolve), both since the step's tool is not consulted; with
+    ``calculate_statistics``, ``count`` and a join's ``match_count``. A name
+    no saved layer has changes nothing."""
+    found: set[str] = set()
+    if isinstance(value, list):
+        for item in value:
+            found |= _result_names(item)
+        return found
+    if not isinstance(value, Mapping):
+        return found
+    if value.get("calculate_statistics") is True:
+        found |= {"count", "match_count"}
+    named = value.get("result_name")
+    operation = value.get("operation")
+    if isinstance(named, str) and named.strip():
+        found.add(named.strip())
+    elif isinstance(operation, str) and operation:
+        column = value.get("field")
+        if operation == "count":
+            found.add("count")
+        elif isinstance(column, str) and column:
+            found |= {f"{column}_{operation}", f"{operation}_{column}"}
+    for item in value.values():
+        if isinstance(item, (list, Mapping)):
+            found |= _result_names(item)
+    return found
+
+
+def first_added(names: Sequence[str], added: Collection[str]) -> list[str]:
+    """A saved layer's field ``names`` as a summary lists them: the ones the
+    run added first (joined fields, ``JOINED_PREFIX``, and the ``added``
+    result names), then the rest, each in their order, at most
+    ``MAX_SAVED_FIELDS``. A join adds its fields after the target layer's,
+    so a cut in the layer's own order would drop them first."""
+    lead = [name for name in names if name.startswith(JOINED_PREFIX) or name in added]
+    chosen = set(lead)
+    rest = [name for name in names if name not in chosen]
+    return (lead + rest)[:MAX_SAVED_FIELDS]
+
+
 def _step_status(
     node_id: str,
     result: Any,
@@ -401,6 +451,7 @@ def summarize(
     steps: list[RunStep] = []
     saved: list[SavedLayer] = []
     layer_ids: dict[int, str] = {}
+    added: set[str] = set()
     for node_id, data in run_steps(config):
         result = results.get(node_id)
         own = _mapping(result)
@@ -423,6 +474,8 @@ def summarize(
             ),
         )
         steps.append(step)
+        if node.get("type") == "tool":
+            added |= _result_names(_resolved(node.get("config"), variables))
         layer_project_id = _int(own.get("layer_project_id"))
         if data.get("type") == "export" and layer_project_id is not None:
             saved.append(
@@ -443,6 +496,7 @@ def summarize(
         steps=steps,
         saved=saved,
         note=_note(status, saved),
+        added=frozenset(added),
     )
     return summary, layer_ids
 

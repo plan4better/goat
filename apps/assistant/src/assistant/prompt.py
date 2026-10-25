@@ -15,7 +15,6 @@ must read as data, never as instructions (Decision T19).
 
 import json
 
-from assistant.budget import RESULT_READS
 from assistant.context import (
     SURFACE_LABELS,
     CatalogContext,
@@ -47,8 +46,9 @@ Never compute shares or totals yourself: project_group_statistics gives them. \
 Cite numbers only from runs and reads in this conversation. Another project's \
 result counts only when the user asks about it or you checked how it was made; \
 otherwise compute it again or leave it out. A result you found faulty is never \
-cited or offered. Give a share as its number, and words like "most", "a third" \
-or "two fifths" only when they match it.
+cited or offered. Give a share as its number, never in words ("most", "almost \
+half"), and say what it is a share of: area, residents or features (pieces, \
+cells, stops).
 - Answer questions that are not about data (who founded a city, what a planning \
 term means) directly from your own knowledge, without searching the catalog. When \
 a planner might rely on such a detail, like which district a quarter belongs to or \
@@ -154,23 +154,32 @@ ANSWER_IN_TEXT = (
     "look-ups are over. Answer now from what you found, and say briefly what you "
     "could not check."
 )
-#: In place of ANSWER_NOW while the answer may still read a finished workflow
-#: run's result it has not written about (assistant.budget.RESULT_READS).
-READ_THE_RESULT = (
-    "This answer has used up its budget for looking things up, except for reading "
-    "the workflow run's result: read what you need of it with the tools offered, "
-    f"at most {RESULT_READS} calls in all. Then write what it tells you and what "
-    "you could not check."
-)
-#: Follows ANSWER_NOW (or ANSWER_IN_TEXT, READ_THE_RESULT) while ask_user is
+
+
+def read_the_result(reads: int) -> str:
+    """In place of ANSWER_NOW while the answer may still read a finished
+    workflow run's result it has not written about, ``reads`` calls in all
+    (assistant.budget.read_allowance). Each read step of the same result
+    gets the same text, so the provider reads it from its cache."""
+    return (
+        "This answer has used up its budget for looking things up, except for "
+        "reading the workflow run's result: read what you need of it with the "
+        f"tools offered, at most {reads} calls in all. Then write what it tells "
+        "you and what you could not check."
+    )
+
+
+#: Follows ANSWER_NOW (or ANSWER_IN_TEXT, read_the_result) while ask_user is
 #: still offered there.
 ANSWER_NOW_CARD = (
     "If the user has to choose, ask with ask_user (one card) instead of asking in "
     "text: the card ends this answer, and the user's choice starts a new one with a "
     "fresh budget."
 )
-#: Follows ANSWER_NOW_CARD after READ_THE_RESULT: a card refused for want of
-#: text before it (assistant.tools.ask.REPORT_FIRST) costs a model call.
+#: Follows ANSWER_NOW_CARD after read_the_result, and after ANSWER_NOW or
+#: ANSWER_IN_TEXT while a finished run's result is not yet in the answer's
+#: text: a card refused for want of text before it
+#: (assistant.tools.ask.REPORT_FIRST) costs a model call.
 CARD_AFTER_TEXT = "Write the text first and the card after it, in the same response."
 
 #: Sent back when a final response holds no text beyond whitespace

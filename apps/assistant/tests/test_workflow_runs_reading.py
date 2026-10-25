@@ -10,12 +10,14 @@ from typing import Any
 from assistant.asks import AskHistory, AskUserInput, CardAnswer
 from assistant.workflows.runs import (
     FAILED,
+    MAX_SAVED_FIELDS,
     MAX_STEP_SETTINGS,
     RUN_VALUE,
     RUNNING,
     SUCCEEDED,
     SUCCEEDED_UNSAVED,
     ConversationRuns,
+    first_added,
     is_active,
     latest_job,
     overwrites,
@@ -652,6 +654,97 @@ def test_a_step_lists_at_most_15_defaults_in_the_descriptions_order() -> None:
     [step] = summary.steps
     assert step.settings is not None and len(step.settings) == MAX_STEP_SETTINGS
     assert step.defaults == {f"setting_{n:02d}": n for n in range(15)}
+
+
+def test_a_run_records_the_result_names_its_steps_write() -> None:
+    """Explicit result names, resolved as the run used them, and the default
+    names the tools give a statistic without one: ``{field}_{operation}``
+    (join, aggregate points), ``{operation}_{field}`` (aggregate polygons,
+    dissolve), ``count``, and a join's ``match_count``."""
+    config = {
+        "nodes": [
+            {
+                "id": "tool-mean",
+                "type": "tool",
+                "data": {
+                    "type": "tool",
+                    "processId": "aggregate_polygon",
+                    "config": {
+                        "column_statistics": [
+                            {
+                                "operation": "mean",
+                                "field": "pt_class",
+                                "result_name": "{{@name}}",
+                            },
+                            {"operation": "sum", "field": "einwohner"},
+                            {"operation": "count", "field": None},
+                        ]
+                    },
+                },
+            },
+            {
+                "id": "tool-join",
+                "type": "tool",
+                "data": {
+                    "type": "tool",
+                    "processId": "join",
+                    "config": {
+                        "calculate_statistics": True,
+                        "field_statistics": {
+                            "operation": "max",
+                            "field": "flaeche",
+                            "result_name": "",
+                        },
+                    },
+                },
+            },
+            {
+                "id": "tool-walk",
+                "type": "tool",
+                "data": {
+                    "type": "tool",
+                    "processId": "catchment_area_v2",
+                    "config": {"result_layer_name": "Einzugsgebiet"},
+                },
+            },
+        ],
+        "variables": [{"name": "name", "defaultValue": "oev_guete_mittel"}],
+    }
+    summary, _ = summarize(_job("successful"), config, workflow_id=WF)
+    assert summary.added == {
+        "oev_guete_mittel",
+        "einwohner_sum",
+        "sum_einwohner",
+        "count",
+        "flaeche_max",
+        "max_flaeche",
+        "match_count",
+    }
+    assert "added" not in summary.model_dump()
+    # A run that was sent its nodes and variables names what it was sent.
+    sent = _job(
+        "successful",
+        inputs={
+            "workflow_id": WF,
+            "nodes": [config["nodes"][0]],
+            "variables": [{"name": "name", "defaultValue": "guete"}],
+        },
+    )
+    summary, _ = summarize(sent, config, workflow_id=WF)
+    assert "guete" in summary.added and "oev_guete_mittel" not in summary.added
+
+
+def test_a_cut_field_list_keeps_the_fields_the_run_added_first() -> None:
+    names = [f"feld_{n:02d}" for n in range(40)]
+    names[35] = "join_oev_guete_mittel"
+    names[38] = "bewohner"
+    listed = first_added(names, {"bewohner", "nicht_da"})
+    assert len(listed) == MAX_SAVED_FIELDS == 30
+    assert listed[:2] == ["join_oev_guete_mittel", "bewohner"]
+    assert listed[2:] == [f"feld_{n:02d}" for n in range(28)]
+    plain = [f"feld_{n:02d}" for n in range(40)]
+    assert first_added(plain, frozenset()) == plain[:30]
+    assert first_added(["a", "join_b"], frozenset()) == ["join_b", "a"]
 
 
 def test_a_refused_run_lists_its_issues() -> None:

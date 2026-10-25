@@ -1,32 +1,53 @@
 """How a run ends, as the dock reads it (spec §10: run errors in the UI language)."""
 
 import asyncio
+import json
+import logging
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
 import pytest
 from pydantic_ai import Agent
-from pydantic_ai.exceptions import ModelAPIError, UsageLimitExceeded
+from pydantic_ai.exceptions import (
+    ContentFilterError,
+    IncompleteToolCall,
+    ModelAPIError,
+    UsageLimitExceeded,
+)
 from pydantic_ai.messages import (
     ModelMessage,
+    ModelMessagesTypeAdapter,
     ModelResponse,
     RetryPromptPart,
     TextPart,
     ToolCallPart,
+    ToolReturnPart,
 )
-from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.models.function import (
+    AgentInfo,
+    DeltaThinkingCalls,
+    DeltaThinkingPart,
+    DeltaToolCall,
+    DeltaToolCalls,
+    FunctionModel,
+)
 
 from assistant.agent import INSTRUCTIONS, RunDeps, build_agent
 from assistant.budget import RunBudget
 from assistant.bus import InMemoryEventBus
 from assistant.config import AssistantSettings
+from assistant.context import parse_context
 from assistant.encoding.ai_sdk import AiSdkEncoder
 from assistant.events import (
+    DataPart,
     RunEnded,
+    RunEvent,
     RunStarted,
     TextDelta,
     TextStarted,
+    ToolReturned,
     UsageReported,
     fold_parts,
     to_ui_message,
@@ -38,9 +59,11 @@ from assistant.llm.failures import (
     user_message,
 )
 from assistant.llm.providers import OpenModels, Target
+from assistant.login import StaticLogin
 from assistant.prompt import NO_ANSWER_TEXT
 from assistant.repo import Repository
 from assistant.runs.manager import RunManager
+from assistant.runs.turn import NO_ANSWER_CAVEAT
 from assistant.tools.testing import Recorder, fake_clients, tool_env
 from assistant.tools.toolset import TOOL_RETRIES
 from tests.test_manager import _gated_agent
@@ -330,3 +353,291 @@ def test_the_request_for_the_text_says_what_to_write() -> None:
     assert (
         "Write" in NO_ANSWER_TEXT and "language of the user's message" in NO_ANSWER_TEXT
     )
+
+
+# -- an answer whose model writes no text after its results -----------------------
+
+SILENT_PROJECT = "00000000-0000-0000-0000-0000000005e5"
+SILENT_WORKFLOW = "0b6f0000-0000-0000-0000-00000000f110"
+RUN_CALL = ("workflow_run", {"workflow_id": SILENT_WORKFLOW})
+LAST_RUN_CALL = ("workflow_last_run", {"workflow_id": SILENT_WORKFLOW})
+
+
+def _job(status: str, saved: int) -> dict[str, Any]:
+    """The workflow's run as processes reports it, ended with ``status``,
+    with ``saved`` export steps that each saved a layer."""
+    results: dict[str, Any] = {"tool-walk": {"status": "success", "feature_count": 3}}
+    for n in range(saved):
+        results[f"save-{n}"] = {
+            "status": "success",
+            "feature_count": 3,
+            "layer_project_id": 100 + n,
+        }
+    return {
+        "jobID": "j1",
+        "processID": "workflow_runner",
+        "status": status,
+        "inputs": {"workflow_id": SILENT_WORKFLOW},
+        "created": "2026-10-25T11:12:30Z",
+        "result": {"status": "success", "node_results": results},
+    }
+
+
+def _nodes(saved: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": "tool-walk",
+            "type": "tool",
+            "data": {"type": "tool", "processId": "buffer"},
+        },
+        *(
+            {"id": f"save-{n}", "type": "export", "data": {"type": "export"}}
+            for n in range(saved)
+        ),
+    ]
+
+
+def _thinks_only(
+    first_call: tuple[str, dict[str, Any]] | None,
+    *,
+    raises: Exception | None = None,
+    writes: str | None = None,
+) -> FunctionModel:
+    """A model that makes ``first_call`` when given, and then gives only
+    reasoning: no text and no tool call, as the answer step got in a live
+    run after a workflow run had finished. ``raises``: raised by the call
+    after ``first_call`` instead. ``writes``: the call after ``first_call``
+    writes it and looks something up, before the reasoning only."""
+
+    async def stream(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | DeltaToolCalls | DeltaThinkingCalls]:
+        responses = sum(isinstance(message, ModelResponse) for message in messages)
+        if first_call is not None and responses == 0:
+            name, args = first_call
+            yield {
+                0: DeltaToolCall(
+                    name=name, json_args=json.dumps(args), tool_call_id="c0"
+                )
+            }
+            return
+        if raises is not None:
+            raise raises
+        if writes is not None and responses == 1:
+            yield writes
+            yield {1: DeltaToolCall(name="core_page_context", tool_call_id="c1")}
+            return
+        yield {0: DeltaThinkingPart(content="The numbers are in the layer.")}
+
+    return FunctionModel(stream_function=stream)
+
+
+@dataclass
+class Silent:
+    ended: RunEnded
+    events: list[RunEvent]
+    #: The conversation's history after the answer.
+    history: list[ModelMessage]
+    message_id: UUID
+
+
+async def _silent_answer(
+    repo: Repository,
+    settings: AssistantSettings,
+    model: FunctionModel,
+    *,
+    status: str = "successful",
+    saved: int = 1,
+    then: FunctionModel | None = None,
+) -> Silent:
+    """One answer on a workflow page whose ``model`` runs or reads the
+    workflow's run, which ended with ``status`` and saved ``saved`` layers
+    (it is still going when listed, so workflow_run waits for it). With
+    ``then``, a next answer on ``then`` follows in the same conversation,
+    and that one is returned instead."""
+    core = Recorder(
+        {
+            ("GET", f"/api/v2/project/{SILENT_PROJECT}/workflow/{SILENT_WORKFLOW}"): {
+                "id": SILENT_WORKFLOW,
+                "config": {"nodes": _nodes(saved), "edges": []},
+            },
+        }
+    )
+    job = _job(status, saved)
+    processes = Recorder(
+        {
+            ("GET", "/jobs"): {"jobs": [{**job, "status": "running"}]},
+            ("GET", "/jobs/j1"): job,
+            ("GET", "/processes"): {"processes": []},
+        }
+    )
+    models = [model, *([then] if then is not None else [])]
+    manager = RunManager(
+        repo,
+        InMemoryEventBus(),
+        settings,
+        owner="a",
+        agent_factory=lambda _: build_agent(models.pop(0)),
+        tool_services=fake_clients(core=core, processes=processes),
+    )
+    conversation = UUID(
+        str(
+            (
+                await repo.create_conversation(
+                    USER, "project.workflows", UUID(SILENT_PROJECT), None
+                )
+            )["id"]
+        )
+    )
+    for text in ["Was hat der Lauf ergeben?", "Welche Zahlen?"][: 1 + bool(then)]:
+        run_id, message_id = await manager.start_run(
+            conversation,
+            USER,
+            text,
+            parse_context(
+                {"surface": "project.workflows", "project_id": SILENT_PROJECT}
+            ),
+            locale="de",
+            login=StaticLogin("token"),
+            target=UUID(SILENT_PROJECT),
+        )
+        await manager.wait(run_id)
+    return Silent(
+        ended=await _ended(repo, run_id),
+        events=[event for _, event in await repo.list_events(run_id)],
+        history=ModelMessagesTypeAdapter.validate_python(
+            await repo.history(conversation)
+        ),
+        message_id=message_id,
+    )
+
+
+def _caveats(events: list[RunEvent]) -> list[DataPart]:
+    return [e for e in events if isinstance(e, DataPart) and e.name == "caveat"]
+
+
+async def test_an_answer_without_text_after_a_run_that_saved_layers_ends_with_a_fixed_text(
+    repo: Repository, settings: AssistantSettings, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A live answer ended as internal_error after a run that saved its
+    layers: the answer step got only reasoning until Pydantic AI gave up on
+    its output retries. The run card and the layers are there, so the answer
+    ends with a fixed text the dock shows in the user's language, the run
+    completes, and the log says why."""
+    caplog.set_level(logging.WARNING, logger="assistant.runs.turn")
+    answer = await _silent_answer(repo, settings, _thinks_only(RUN_CALL))
+    assert (answer.ended.status, answer.ended.code, answer.ended.error) == (
+        "succeeded",
+        None,
+        None,
+    )
+    caveats = _caveats(answer.events)
+    assert [caveat.data for caveat in caveats] == [
+        {"kind": "no_answer", "text": NO_ANSWER_CAVEAT}
+    ]
+    # After the run card and the run's result: the last of the answer's parts.
+    assert any(
+        isinstance(e, DataPart) and e.name == "workflow-run" for e in answer.events
+    )
+    assert answer.events.index(caveats[0]) > max(
+        answer.events.index(e)
+        for e in answer.events
+        if isinstance(e, ToolReturned) or isinstance(e, DataPart) and e != caveats[0]
+    )
+    # The next answer reads the run's result and what the dock showed.
+    assert any(
+        isinstance(part, ToolReturnPart) and part.tool_name == "workflow_run"
+        for message in answer.history
+        for part in message.parts
+    )
+    last = answer.history[-1]
+    assert isinstance(last, ModelResponse)
+    assert last.parts[-1] == TextPart(content=NO_ANSWER_CAVEAT)
+    [logged] = [r for r in caplog.records if r.name == "assistant.runs.turn"]
+    assert logged.levelno == logging.WARNING
+    assert str(answer.message_id) in logged.getMessage()
+    assert "Exceeded maximum output retries (3)" in logged.getMessage()
+
+
+async def test_the_next_answer_reads_the_fixed_text_and_the_runs_result(
+    repo: Repository, settings: AssistantSettings
+) -> None:
+    """The user asks for the numbers: the next answer gets the run's result
+    and the fixed text in its history, and answers."""
+    sent: list[list[ModelMessage]] = []
+
+    async def stream(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str]:
+        sent.append(list(messages))
+        yield "163 von 218 Flächen liegen teils außerhalb."
+
+    answer = await _silent_answer(
+        repo,
+        settings,
+        _thinks_only(RUN_CALL),
+        then=FunctionModel(stream_function=stream),
+    )
+    assert (answer.ended.status, answer.ended.code) == ("succeeded", None)
+    [request] = sent
+    parts = [part for message in request for part in message.parts]
+    assert TextPart(content=NO_ANSWER_CAVEAT) in parts
+    assert any(
+        isinstance(part, ToolReturnPart) and part.tool_name == "workflow_run"
+        for part in parts
+    )
+    assert answer.history[-1].parts == [
+        TextPart(content="163 von 218 Flächen liegen teils außerhalb.")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("model", "status", "saved"),
+    [
+        # No result at all.
+        (_thinks_only(None), "successful", 1),
+        # A run that failed: no layers, no numbers.
+        (_thinks_only(RUN_CALL), "failed", 0),
+        # A run that saved no layer.
+        (_thinks_only(RUN_CALL), "successful", 0),
+        # A run read with workflow_last_run, which shows no run card.
+        (_thinks_only(LAST_RUN_CALL), "successful", 1),
+        # Text written after the result: the answer is not empty.
+        (_thinks_only(RUN_CALL, writes="The run saved one layer."), "successful", 1),
+    ],
+)
+async def test_without_a_shown_run_that_saved_layers_and_no_text_since_it_still_fails(
+    repo: Repository,
+    settings: AssistantSettings,
+    model: FunctionModel,
+    status: str,
+    saved: int,
+) -> None:
+    answer = await _silent_answer(repo, settings, model, status=status, saved=saved)
+    assert (answer.ended.status, answer.ended.code) == ("failed", "internal_error")
+    assert _caveats(answer.events) == []
+
+
+@pytest.mark.parametrize(
+    ("raised", "code"),
+    [
+        (ContentFilterError("Content filter triggered.", body="{}"), "internal_error"),
+        (IncompleteToolCall("The tool call was cut off."), "internal_error"),
+        (ModelAPIError("test", "Connection error."), "goat_ai_unreachable"),
+    ],
+)
+async def test_other_failures_after_a_run_that_saved_layers_still_fail(
+    repo: Repository, settings: AssistantSettings, raised: Exception, code: str
+) -> None:
+    """A provider's filter, a tool call cut off at the token limit and a
+    provider that cannot be reached end the answer as before."""
+    answer = await _silent_answer(repo, settings, _thinks_only(RUN_CALL, raises=raised))
+    assert (answer.ended.status, answer.ended.code) == ("failed", code)
+    assert _caveats(answer.events) == []
+
+
+def test_the_fixed_text_says_what_happened_and_what_to_do() -> None:
+    assert NO_ANSWER_CAVEAT.startswith("The assistant could not write this answer.")
+    assert "workflow run is shown above" in NO_ANSWER_CAVEAT
+    assert "layers it saved" in NO_ANSWER_CAVEAT
+    assert "Ask for the numbers" in NO_ANSWER_CAVEAT

@@ -20,7 +20,7 @@ from pydantic_ai.toolsets import AbstractToolset, FunctionToolset
 from pydantic_core import SchemaValidator, core_schema
 
 from assistant.asks import ASK_TOOL
-from assistant.budget import RESULT_READS, StepGuard, next_call
+from assistant.budget import RESULT_READS, StepGuard, next_call, read_allowance
 from assistant.history import SHOWN_TOOLS
 from assistant.tools.ask import REPEATED_CARD, REPORT_FIRST
 from assistant.tools.http import service_failed
@@ -112,7 +112,7 @@ SEARCHED_ENOUGH = (
 REPORT_REFUSALS = 2
 
 #: The tools that read a finished run's result past the look-up budget
-#: (``assistant.budget.RESULT_READS``): the project pack's reads, and
+#: (``assistant.budget.read_allowance``): the project pack's reads, and
 #: ``workflow_describe_tool`` for what a result's fields and scales mean, as
 #: the tool that made them describes them. Not ``workflow_last_run``, whose
 #: result would be one to report again.
@@ -215,11 +215,23 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
             )
         if spec.wire_name == ASK_TOOL and _unreported(ctx):
             await _report_first(ctx, spec, env, arguments)
+        guard = _step_guard(ctx)
         reading = ctx.deps.reading_step == (ctx.run_id, ctx.run_step)
-        reads_result = reading and spec.wire_name in RESULT_READ_TOOLS
+        # A read of a run's result past the look-up budget: every read of a
+        # step prepared for it, and in any other step a read past the
+        # tool-call limit while the result was not yet in the answer's text
+        # when the step began. Both take one of the result's reads.
+        reads_result = spec.wire_name in RESULT_READ_TOOLS and (
+            reading
+            or (
+                guard is not None
+                and guard.at_limit()
+                and _unreported(ctx, before_step=True)
+            )
+        )
         if reads_result:
             reads = ctx.deps.result_reads.get(ctx.run_id, 0)
-            if reads >= RESULT_READS:
+            if reads >= read_allowance_of(ctx):
                 await refuse(
                     spec,
                     env,
@@ -228,9 +240,9 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                     tool_call_id=ctx.tool_call_id,
                 )
             ctx.deps.result_reads[ctx.run_id] = reads + 1
-        guard = _step_guard(ctx)
-        # In a step prepared for reading a run's result, the reads and the
-        # card offered with them run although a read took the last call.
+        # The reads of a run's result, and the card offered with them in a
+        # step prepared for them, run although a call took the last of the
+        # limit.
         past_limit = reads_result or (reading and spec.wire_name == ASK_TOOL)
         if guard is not None and not guard.admit_call(past_limit=past_limit):
             await refuse(
@@ -372,21 +384,31 @@ def _note_report(
     (``ToolSpec.report_first``): the messages end with the response that made
     the call, so the responses after it are the ones written after the
     result. The cards refused and the reads made for an earlier result count
-    no more."""
+    no more, and the result's reads past the look-up budget follow from the
+    layers the run saved (``read_allowance``)."""
     if spec.report_first is not None and spec.report_first(result):
         ctx.deps.unreported[ctx.run_id] = len(_run_responses(ctx.messages, ctx.run_id))
         ctx.deps.refused_cards.pop(ctx.run_id, None)
         ctx.deps.result_reads.pop(ctx.run_id, None)
+        saved = result.get("saved")
+        ctx.deps.read_allowances[ctx.run_id] = read_allowance(
+            len(saved) if isinstance(saved, list) else 0
+        )
 
 
-def _unreported(ctx: "RunContext[RunDeps]") -> bool:
+def _unreported(ctx: "RunContext[RunDeps]", *, before_step: bool = False) -> bool:
     """Whether the answer has a result to report and no response written
     after it holds text. A response that made the call too wrote its text
-    before the result."""
+    before the result. ``before_step``: as the step whose call runs began,
+    without its own response (the last of the messages while its calls
+    run); a result that came in this step is none yet."""
     seen = ctx.deps.unreported.get(ctx.run_id)
     if seen is None:
         return False
-    later = _run_responses(ctx.messages, ctx.run_id)[seen:]
+    responses = _run_responses(ctx.messages, ctx.run_id)
+    if before_step and seen >= len(responses):
+        return False
+    later = responses[seen:-1] if before_step else responses[seen:]
     return not any(_has_text(response) for response in later)
 
 
@@ -425,10 +447,25 @@ async def _report_first(
     await refuse(spec, env, arguments, reason, tool_call_id=ctx.tool_call_id)
 
 
+def result_unreported(ctx: "RunContext[RunDeps]") -> bool:
+    """Whether the answer has a finished run's result to report and has
+    written no text since (``ToolSpec.report_first``): a card it sends
+    without text before it is refused (``_report_first``)."""
+    return _unreported(ctx)
+
+
+def read_allowance_of(ctx: "RunContext[RunDeps]") -> int:
+    """The reads past the look-up budget of the result the answer has to
+    report (``read_allowance``)."""
+    return ctx.deps.read_allowances.get(ctx.run_id, RESULT_READS)
+
+
 def _result_to_read(ctx: "RunContext[RunDeps]") -> bool:
     """Whether the answer has a result to report and reads of it left
-    (``RESULT_READS``)."""
-    return _unreported(ctx) and ctx.deps.result_reads.get(ctx.run_id, 0) < RESULT_READS
+    (``read_allowance_of``)."""
+    return _unreported(ctx) and (
+        ctx.deps.result_reads.get(ctx.run_id, 0) < read_allowance_of(ctx)
+    )
 
 
 def _step_guard(ctx: "RunContext[RunDeps]") -> StepGuard | None:
@@ -481,7 +518,9 @@ def _result_check(
 Stage = Literal["look up", "read or ask", "read", "answer or ask", "answer"]
 
 
-def _silent(response: ModelResponse) -> bool:
+def silent(response: ModelResponse) -> bool:
+    """Whether ``response`` holds neither a tool call nor text beyond
+    whitespace (only reasoning, or nothing)."""
     return not _has_text(response) and not any(
         isinstance(part, ToolCallPart) for part in response.parts
     )
@@ -493,14 +532,14 @@ def silent_responses(messages: Sequence[ModelMessage], run_id: str | None) -> in
     return sum(
         isinstance(message, ModelResponse)
         and message.run_id == run_id
-        and _silent(message)
+        and silent(message)
         for message in messages
     )
 
 
 def answer_step(ctx: "RunContext[RunDeps]") -> Stage | None:
     """Whether the call being prepared may look things up, may still read a
-    finished run's result it has not written about (``RESULT_READS``), or is
+    finished run's result it has not written about (``read_allowance``), or is
     the step that answers; with or without room for a card
     (``assistant.budget``). None without a budget. A result refused for its
     size has ended the run's look-ups (``_result_check``), and so have

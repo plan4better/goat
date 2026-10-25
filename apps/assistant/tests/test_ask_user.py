@@ -43,12 +43,13 @@ from assistant.asks import (
     recent_picked_ids,
     user_chose,
 )
-from assistant.budget import RESULT_READS, RunBudget
+from assistant.budget import MAX_RESULT_READS, RESULT_READS, RunBudget, read_allowance
+from assistant.config import AssistantSettings
 from assistant.context import parse_context
 from assistant.encoding.ai_sdk import AiSdkEncoder
 from assistant.events import DataPart, ToolCalled, to_ui_message
 from assistant.login import Login
-from assistant.prompt import CARD_AFTER_TEXT, READ_THE_RESULT, render_note
+from assistant.prompt import CARD_AFTER_TEXT, read_the_result, render_note
 from assistant.runs.turn import Turn, run_turn
 from assistant.tools.ask import (
     ASK_USER,
@@ -70,6 +71,7 @@ from assistant.tools.toolset import (
     LOOK_UPS_USED_UP,
     REPORT_REFUSALS,
     RESULT_READ_TOOLS,
+    RESULT_TOO_LARGE,
     _call_key,
 )
 
@@ -190,6 +192,103 @@ def test_options_need_distinct_labels_of_two_letters(labels: list[str]) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "label",
+    [
+        "Option 1",
+        "option 2",
+        "Option A",
+        "Erste Option",
+        "Zweite Option",
+        "zweite Variante",
+        "Variante 1",
+        "Variante 12",
+        "Option II",
+        "Auswahl A",
+        "Choice 2",
+        "First option",
+        "Placeholder",
+        "Platzhalter",
+        "Test",
+        "test.",
+        "Test 1",
+        "Test 2",
+        "Test A",
+        "B",
+        "3",
+    ],
+)
+def test_placeholder_labels_are_refused(label: str) -> None:
+    """A probe card with generic options ("Erste Option", "Zweite Option")
+    passed the two-letter rule and was shown to the user."""
+    options = [{"label": "Zensus 2022"}, {"label": label}]
+    assert "no placeholders such as 'Option 1' or 'Test'" in _rejected(
+        {"questions": [_question(options=options)]}
+    )
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [
+        ["Variante mit Fahrrad", "Variante zu Fuß"],
+        ["Option Fahrrad", "Testgebiet Nord"],
+        ["Testgebiet 1", "Test-Region"],
+        ["Erste Ausbaustufe", "Zweite Ausbaustufe"],
+        ["Auswahl der Schulen", "Alle Schulen"],
+        ["Ja", "Nein"],
+        # Scenarios named by their target year.
+        ["Variante 2030", "Option 2035"],
+    ],
+)
+def test_labels_that_only_contain_such_a_word_pass(labels: list[str]) -> None:
+    card = AskUserInput.model_validate(
+        {"questions": [_question(options=[{"label": label} for label in labels])]}
+    )
+    assert [option.label for option in card.questions[0].options] == labels
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"header": "Test"},
+        {"header": "test?"},
+        {"question": "Test?"},
+        {"question": " TEST ?"},
+    ],
+)
+def test_a_test_card_is_refused(changes: dict[str, Any]) -> None:
+    assert "no test cards" in _rejected({"questions": [_question(**changes)]})
+
+
+def test_the_probe_card_that_reached_the_user_is_refused() -> None:
+    probe = {
+        "questions": [
+            {
+                "question": "Welche Variante?",
+                "header": "Test",
+                "options": [
+                    {"label": "Erste Option", "description": "d"},
+                    {"label": "Zweite Option", "description": "d"},
+                ],
+            }
+        ]
+    }
+    assert "no test cards" in _rejected(probe)
+    probe["questions"][0]["header"] = "Variante"
+    assert "no placeholders" in _rejected(probe)
+
+
+def test_a_header_or_question_that_only_contains_test_passes() -> None:
+    card = AskUserInput.model_validate(
+        {
+            "questions": [
+                _question(header="Testgebiet", question="Test der Messstellen?")
+            ]
+        }
+    )
+    assert card.questions[0].header == "Testgebiet"
+
+
 #: A card shown before the label rule: one character, and twice the same label.
 _OLD_CARD: dict[str, Any] = {
     "questions": [
@@ -232,6 +331,20 @@ def test_a_stored_card_is_read_back_under_the_rules_it_was_shown_with() -> None:
     assert answer_lines(card, CardAnswer.model_validate(answer)) == (
         "Minutes: 5 (value run:w1)"
     )
+
+
+def test_a_stored_test_card_is_read_back() -> None:
+    probe = {
+        "questions": [
+            {
+                "question": "Test?",
+                "header": "Test",
+                "options": [{"label": "Erste Option"}, {"label": "Zweite Option"}],
+            }
+        ]
+    }
+    card = AskUserInput.model_validate(probe, context={"stored_card": True})
+    assert card.questions[0].header == "Test"
 
 
 async def test_a_new_card_with_such_labels_is_refused() -> None:
@@ -862,7 +975,7 @@ async def test_an_expired_sign_in_lets_the_card_through() -> None:
 
 async def test_a_card_adding_more_than_50_datasets_is_refused_unchecked() -> None:
     options = [
-        {"label": f"Option {name}", "adds": [f"{name}-{n}" for n in range(25)]}
+        {"label": f"Bundle {name}", "adds": [f"{name}-{n}" for n in range(25)]}
         for name in ("one", "two", "three")
     ]
     card = {"questions": [_question(options=options)]}
@@ -875,6 +988,373 @@ async def test_a_card_adding_more_than_50_datasets_is_refused_unchecked() -> Non
         "put fewer ids in it."
     )
     assert catalog.requests == [] and shown == []
+
+
+# -- a card that offers again what the user picked --------------------------------
+
+DISTRICTS_QUESTION = "Which district boundaries should the analysis use?"
+OFFICIAL = "d2000000-0000-0000-0000-000000000001"
+STATISTICAL = "d2000000-0000-0000-0000-000000000002"
+DISTRICTS_CARD = AskUserInput.model_validate(
+    {
+        "questions": [
+            {
+                "question": DISTRICTS_QUESTION,
+                "header": "Districts",
+                "options": [
+                    {"label": "Official districts", "value": "a", "adds": [OFFICIAL]},
+                    {"label": "Statistical areas", "value": "s", "adds": [STATISTICAL]},
+                ],
+            },
+            {
+                "question": "Which time window?",
+                "header": "Time",
+                "options": [{"label": "Morning peak"}, {"label": "Afternoon peak"}],
+            },
+        ]
+    }
+)
+RUN_QUESTION = "Should I run the workflow now?"
+#: A card asking to run workflow wf-a, and when.
+RUN_CARD = AskUserInput.model_validate(
+    {
+        "questions": [
+            {
+                "question": RUN_QUESTION,
+                "header": "Run",
+                "options": [
+                    {"label": "Run now", "value": "run:wf-a"},
+                    {"label": "Later", "value": "later"},
+                ],
+            },
+            {
+                "question": "Which day?",
+                "header": "Day",
+                "options": [{"label": "Weekday"}, {"label": "Sunday"}],
+            },
+        ]
+    }
+)
+PICK_REFUSED = (
+    'The user already chose "Official districts" for "{question}". Use it; if it '
+    "did not work, say why in your text and offer only other options."
+)
+
+
+def _districts_answered(
+    options: list[int], other: str | None = None, *, time: list[int] | None = None
+) -> AskHistory:
+    """The districts card, answered: ``options`` and ``other`` for the
+    districts, ``time`` for the time window (left unanswered without)."""
+    answers: list[dict[str, Any]] = [
+        {"question": 0, "options": options, "other": other},
+        {"question": 1, "options": time or []},
+    ]
+    answer = CardAnswer.model_validate({"card_id": "ask-d1", "answers": answers})
+    return AskHistory(cards={"ask-d1": DISTRICTS_CARD}, answers={"ask-d1": answer})
+
+
+#: The run card answered: run now, on a weekday.
+RUN_ANSWERED = AskHistory(
+    cards={"ask-r1": RUN_CARD},
+    answers={
+        "ask-r1": CardAnswer.model_validate(
+            {
+                "card_id": "ask-r1",
+                "answers": [
+                    {"question": 0, "options": [0]},
+                    {"question": 1, "options": [0]},
+                ],
+            }
+        )
+    },
+)
+
+
+def _asking(
+    question: str, *options: dict[str, Any], header: str = "Areas"
+) -> dict[str, Any]:
+    return {
+        "questions": [
+            {
+                "question": question,
+                "header": header,
+                "options": list(options)
+                or [{"label": "Whole city"}, {"label": "Inner city"}],
+            }
+        ]
+    }
+
+
+def _picks_env(history: AskHistory, used: Sequence[str] = ()) -> tuple[Any, list[str]]:
+    """A tool environment with the conversation's cards and answers in
+    ``history``, the cards whose run pick was used in ``used``, and a
+    catalog that knows both district datasets."""
+    catalog = Recorder(
+        {
+            ("GET", f"/stac/resolve/{OFFICIAL}"): {"kind": "item", "item": {}},
+            ("GET", f"/stac/resolve/{STATISTICAL}"): {"kind": "item", "item": {}},
+        }
+    )
+    env, shown = _adds_env(catalog)
+    env.asks = history
+    env.runs.used_cards.update(used)
+    return env, shown
+
+
+async def _refusal(
+    history: AskHistory, card: dict[str, Any], used: Sequence[str] = ()
+) -> str:
+    env, shown = _picks_env(history, used)
+    with pytest.raises(InputInvalid) as refused:
+        await execute(ASK_USER, env, card, tool_call_id="c1")
+    assert shown == []
+    return refused.value.message
+
+
+async def _shown(
+    history: AskHistory, card: dict[str, Any], used: Sequence[str] = ()
+) -> None:
+    env, shown = _picks_env(history, used)
+    result = await execute(ASK_USER, env, card, tool_call_id="c1")
+    assert result["status"] == "asked" and shown == ["ask"]
+
+
+async def test_a_card_offering_the_earlier_pick_again_is_refused_with_the_pick() -> (
+    None
+):
+    """A card reworded an answered question under the same header and offered
+    the user's pick again, with its value but without the datasets it adds:
+    it is refused, naming the pick, and the model may say why it did not
+    work."""
+    again = _asking(
+        "Which districts should the results be grouped by?",
+        {"label": "Official districts", "value": "a"},
+        {"label": "Postcode areas", "value": "postcodes"},
+        header="Districts",
+    )
+    assert await _refusal(_districts_answered([0]), again) == PICK_REFUSED.format(
+        question=DISTRICTS_QUESTION
+    )
+
+
+@pytest.mark.parametrize(
+    "card",
+    [
+        # The same label, under the same header.
+        _asking(
+            "Which areas?",
+            {"label": " official   DISTRICTS "},
+            {"label": "Postcode areas"},
+            header="districts",
+        ),
+        # The same value.
+        _asking(
+            "Which areas?",
+            {"label": "Boundaries from the register", "value": "a"},
+            {"label": "Postcode areas"},
+            header="Districts",
+        ),
+        # The same datasets, under the same question.
+        _asking(
+            DISTRICTS_QUESTION,
+            {"label": "Boundaries from the register", "adds": [OFFICIAL]},
+            {"label": "Postcode areas"},
+        ),
+    ],
+)
+async def test_the_pick_is_found_by_label_value_or_datasets(
+    card: dict[str, Any],
+) -> None:
+    assert await _refusal(_districts_answered([0]), card) == PICK_REFUSED.format(
+        question=DISTRICTS_QUESTION
+    )
+
+
+@pytest.mark.parametrize(
+    ("history", "card"),
+    [
+        # The same question with new options only: a follow-up.
+        (
+            _districts_answered([0]),
+            _asking(
+                DISTRICTS_QUESTION,
+                {"label": "Grid cells"},
+                {"label": "Postcode areas"},
+                header="Districts",
+            ),
+        ),
+        # The pick did not work, and the card leaves it out.
+        (
+            _districts_answered([0]),
+            _asking(
+                "The official districts hold no data here. Which areas instead?",
+                {"label": "Statistical areas", "value": "s", "adds": [STATISTICAL]},
+                {"label": "Postcode areas"},
+                header="Districts",
+            ),
+        ),
+        # A new question with new options.
+        (_districts_answered([0], time=[0]), _asking("Which part of the city?")),
+        # The pick offered again under another header and question.
+        (
+            _districts_answered([0]),
+            _asking(
+                "Which layer should the map show?",
+                {"label": "Official districts"},
+                {"label": "Postcode areas"},
+                header="Map",
+            ),
+        ),
+        # Answered in text only: there is no option to offer again.
+        (
+            _districts_answered([], "Only the seven boroughs"),
+            _asking(
+                DISTRICTS_QUESTION,
+                {"label": "Official districts"},
+                {"label": "Postcode areas"},
+                header="Districts",
+            ),
+        ),
+        # Shown, but the user wrote a message instead of answering it.
+        (
+            AskHistory(cards={"ask-d1": DISTRICTS_CARD}),
+            _asking(
+                DISTRICTS_QUESTION,
+                {"label": "Official districts"},
+                {"label": "Postcode areas"},
+                header="Districts",
+            ),
+        ),
+        # A question of the answered card the user left without a pick.
+        (
+            _districts_answered([0]),
+            _asking(
+                "Which time window?",
+                {"label": "Morning peak"},
+                {"label": "Evening"},
+                header="Time",
+            ),
+        ),
+    ],
+)
+async def test_a_card_that_offers_no_earlier_pick_again_is_shown(
+    history: AskHistory, card: dict[str, Any]
+) -> None:
+    await _shown(history, card)
+
+
+async def test_a_permission_card_for_another_workflow_is_shown() -> None:
+    """A run pick stands for one workflow: the same card for another one
+    asks for something new."""
+    card = _asking(
+        RUN_QUESTION,
+        {"label": "Run now", "value": "run:wf-b"},
+        {"label": "Later", "value": "later"},
+        header="Run",
+    )
+    await _shown(RUN_ANSWERED, card)
+
+
+async def test_a_card_to_run_the_same_workflow_again_is_shown() -> None:
+    """A run pick allows one run: once used, the workflow runs again only
+    after a new pick."""
+    card = _asking(
+        RUN_QUESTION,
+        {"label": "Run now", "value": "run:wf-a"},
+        {"label": "Later", "value": "later"},
+        header="Run",
+    )
+    await _shown(RUN_ANSWERED, card, used=["ask-r1"])
+
+
+#: The run card answered: not now, on a weekday.
+RUN_DECLINED = AskHistory(
+    cards={"ask-r1": RUN_CARD},
+    answers={
+        "ask-r1": CardAnswer.model_validate(
+            {
+                "card_id": "ask-r1",
+                "answers": [
+                    {"question": 0, "options": [1]},
+                    {"question": 1, "options": [0]},
+                ],
+            }
+        )
+    },
+)
+
+
+@pytest.mark.parametrize("workflow", ["wf-b", "wf-a"])
+async def test_a_run_card_after_a_declined_one_is_shown(workflow: str) -> None:
+    """Declining a run is the other half of the run decision: the user
+    may want another workflow run, or the same one after all, and a Run card
+    offers "Later" again."""
+    card = _asking(
+        RUN_QUESTION,
+        {"label": "Run now", "value": f"run:{workflow}"},
+        {"label": "Later", "value": "later"},
+        header="Run",
+    )
+    await _shown(RUN_DECLINED, card)
+
+
+async def test_the_picks_of_a_card_whose_run_pick_was_used_count_no_more() -> None:
+    card = _asking(
+        "Which day?", {"label": "Weekday"}, {"label": "Saturday"}, header="Day"
+    )
+    assert await _refusal(RUN_ANSWERED, card) == (
+        'The user already chose "Weekday" for "Which day?". Use it; if it did not '
+        "work, say why in your text and offer only other options."
+    )
+    await _shown(RUN_ANSWERED, card, used=["ask-r1"])
+
+
+STOPS_QUESTION = "Which stops should the workflow use?"
+
+
+def _stops_left_open(open_option: dict[str, Any]) -> AskHistory:
+    """A dataset card, answered with ``open_option``: the user left the
+    step open."""
+    card = AskUserInput.model_validate(
+        _asking(
+            STOPS_QUESTION,
+            {"label": "Timetable stops", "adds": [OFFICIAL]},
+            open_option,
+            header="Stops",
+        )
+    )
+    answer = CardAnswer.model_validate(
+        {"card_id": "ask-s1", "answers": [{"question": 0, "options": [1]}]}
+    )
+    return AskHistory(cards={"ask-s1": card}, answers={"ask-s1": answer})
+
+
+async def test_a_dataset_card_after_leave_it_open_is_shown() -> None:
+    """A dataset card offers "Leave it open" beside the datasets it adds.
+    That pick adds nothing, so a later dataset card under the same header
+    may offer it again."""
+    card = _asking(
+        STOPS_QUESTION,
+        {"label": "Mapped stops", "adds": [STATISTICAL]},
+        {"label": "Leave it open"},
+        header="Stops",
+    )
+    await _shown(_stops_left_open({"label": "Leave it open"}), card)
+
+
+async def test_an_open_pick_with_a_value_still_counts() -> None:
+    card = _asking(
+        STOPS_QUESTION,
+        {"label": "Mapped stops", "adds": [STATISTICAL]},
+        {"label": "Leave it open", "value": "open"},
+        header="Stops",
+    )
+    history = _stops_left_open({"label": "Leave it open", "value": "open"})
+    assert await _refusal(history, card) == (
+        f'The user already chose "Leave it open" for "{STOPS_QUESTION}". Use it; '
+        "if it did not work, say why in your text and offer only other options."
+    )
 
 
 def test_card_data_and_public_args_hide_adds() -> None:
@@ -992,32 +1472,52 @@ class _Metered(FunctionModel):
             yield response
 
 
+def _finished_run(saved: int) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """``FINISHED_RUN`` with ``saved`` export steps that each saved a layer,
+    and the workflow's nodes."""
+    exports = [f"save-{n}" for n in range(saved)]
+    nodes: list[dict[str, Any]] = [
+        {
+            "id": "tool-walk",
+            "type": "tool",
+            "data": {"type": "tool", "processId": "buffer"},
+        },
+        *(
+            {"id": node, "type": "export", "data": {"type": "export", "label": node}}
+            for node in exports
+        ),
+    ]
+    results = {
+        **FINISHED_RUN["result"]["node_results"],
+        **{
+            node: {"status": "success", "feature_count": 3, "layer_project_id": 100 + n}
+            for n, node in enumerate(exports)
+        },
+    }
+    job = {**FINISHED_RUN, "result": {"status": "success", "node_results": results}}
+    return job, nodes
+
+
 async def _answer_run(
     *responses: Response,
     budget: RunBudget | None = None,
     usages: Sequence[Usage] = (),
+    saved: int = 0,
+    layers: list[dict[str, Any]] | None = None,
 ) -> Answered:
     """One answer on a workflow page whose model gives ``responses`` in order,
     then a closing text, under the run's limits as the run manager sets them
-    from ``budget``. The open project's workflow has a finished run, and its
-    layers can be listed."""
+    from ``budget``. The open project's workflow has a finished run that
+    saved ``saved`` layers, and the project's ``layers`` can be listed."""
+    job, nodes = _finished_run(saved)
     core = Recorder(
         {
             ("GET", f"/api/v2/project/{RUN_PROJECT}/workflow/{RUN_WORKFLOW}"): {
                 "id": RUN_WORKFLOW,
-                "config": {
-                    "nodes": [
-                        {
-                            "id": "tool-walk",
-                            "type": "tool",
-                            "data": {"type": "tool", "processId": "buffer"},
-                        }
-                    ],
-                    "edges": [],
-                },
+                "config": {"nodes": nodes, "edges": []},
             },
             ("GET", f"/api/v2/project/{RUN_PROJECT}"): {"name": "Run project"},
-            ("GET", f"/api/v2/project/{RUN_PROJECT}/layer"): [],
+            ("GET", f"/api/v2/project/{RUN_PROJECT}/layer"): layers or [],
             ("GET", f"/api/v2/project/{RUN_PROJECT}/group"): [],
         }
     )
@@ -1025,8 +1525,8 @@ async def _answer_run(
     # starting one, and its status is the finished run.
     processes = Recorder(
         {
-            ("GET", "/jobs"): {"jobs": [{**FINISHED_RUN, "status": "running"}]},
-            ("GET", "/jobs/j1"): FINISHED_RUN,
+            ("GET", "/jobs"): {"jobs": [{**job, "status": "running"}]},
+            ("GET", "/jobs/j1"): job,
             ("GET", "/processes"): {"processes": []},
         }
     )
@@ -1294,6 +1794,9 @@ async def test_refused_cards_take_none_of_the_answers_look_ups() -> None:
 # -- reading a finished run's result past the look-up budget ----------------------
 
 READ_CALL: tuple[str, dict[str, Any]] = ("project_get_layers", {})
+#: The instruction of a step that reads the result of a run without saved
+#: layers.
+READ_THE_RESULT = read_the_result(RESULT_READS)
 LOOK_UP: Response = [("core_page_context", {})]
 
 
@@ -1310,6 +1813,7 @@ def test_the_result_is_read_with_the_project_reads_and_tool_descriptions() -> No
     assert RESULT_READS == 3
     # The count is per result, also at the second and third read.
     assert "at most 3 calls in all" in READ_THE_RESULT
+    assert "at most 5 calls in all" in read_the_result(5)
     assert "card" not in READ_THE_RESULT
     assert CARD_AFTER_TEXT == (
         "Write the text first and the card after it, in the same response."
@@ -1425,12 +1929,12 @@ async def test_without_a_result_to_report_the_budget_ends_the_reads() -> None:
 RUN_ON_TOKENS: tuple[Usage, Usage] = ((50_000, 0, 1_000), (20_000, 0, 500))
 #: After the run's call (51,000 spent, a context of about 51,200 with its
 #: result), a look-up and the two calls after it would need about 229,600:
-#: the look-ups are spent. Three calls of that context fit (about 212,600:
-#: the read step, the answer step and a retry of it), so its result is read.
+#: the look-ups are spent. Two calls of that context fit (about 161,400: the
+#: read step and the answer step), so its result is read.
 READ_ON_TOKENS = RunBudget(max_tokens=220_000, max_tool_calls=30)
 
 
-async def test_when_tokens_end_the_look_ups_the_result_is_read_while_three_calls_fit() -> (
+async def test_when_tokens_end_the_look_ups_the_result_is_read_while_two_calls_fit() -> (
     None
 ):
     answered = await _answer_run(
@@ -1466,20 +1970,83 @@ async def test_a_run_that_read_past_its_budget_looks_nothing_else_up() -> None:
     assert _offered(answered.infos[2]) == {"ask_user"}
 
 
-async def test_a_read_step_needs_room_for_a_retry_of_the_answer() -> None:
+async def test_a_read_step_needs_room_for_the_answer_step_and_a_spare() -> None:
     """At 200,000, the answer step and a spare fit after the run's call
-    (about 161,400), but not a read step, the answer and a retry (about
-    212,600): a read would leave the answer no room to be asked again after
-    a response with only reasoning. The answer comes at once, with its
-    card."""
+    (about 161,400): the read step takes the room a look-up keeps for the
+    answer step and a spare."""
     answered = await _answer_run(
         [LAST_RUN_CALL],
+        [READ_CALL],
         budget=RunBudget(max_tokens=200_000, max_tool_calls=30),
         usages=RUN_ON_TOKENS,
     )
-    assert _offered(answered.infos[1]) == {"ask_user"}
-    assert READ_THE_RESULT not in _instructions(answered.infos[1])
+    assert _offered(answered.infos[1]) == (
+        _offered(answered.infos[0]) & RESULT_READ_TOOLS
+    ) | {"ask_user"}
+    assert READ_THE_RESULT in _instructions(answered.infos[1])
     assert answered.turn.output == "The run buffered 3 features."
+
+
+#: Look-ups whose context grows by 4,000 tokens a call from 20,000 to 48,000,
+#: each reading the call before it from the cache, then the run's call at
+#: 50,000: an answer that built and ran a workflow, as the live evaluations
+#: measure it. About 67,800 weighted tokens after the run's call.
+LOOK_UPS_THEN_RUN: list[Usage] = [
+    *((size, size - 4_000, 500) for size in range(20_000, 52_000, 4_000)),
+    (50_000, 48_000, 1_000),
+]
+
+
+async def test_at_the_default_budget_a_finished_result_is_read_after_the_look_ups() -> (
+    None
+):
+    """After the run's call, one more look-up and the two calls after it no
+    longer fit (about 205,600 of 200,000), but the read step and the answer
+    step do (about 180,000): the answer reads its result, and its text
+    comes before any card."""
+    defaults = AssistantSettings.model_fields
+    budget = RunBudget(
+        max_tokens=defaults["run_max_tokens"].default,
+        max_tool_calls=defaults["run_max_tool_calls"].default,
+    )
+    answered = await _answer_run(
+        *[LOOK_UP] * 8,
+        [LAST_RUN_CALL],
+        budget=budget,
+        usages=LOOK_UPS_THEN_RUN,
+    )
+    everything, after_run = _offered(answered.infos[0]), answered.infos[9]
+    # Every look-up step, the run's call among them, has every tool.
+    assert all(_offered(info) == everything for info in answered.infos[:9])
+    assert _offered(after_run) == (everything & RESULT_READ_TOOLS) | {"ask_user"}
+    assert READ_THE_RESULT in _instructions(after_run)
+    assert CARD_AFTER_TEXT in _instructions(after_run)
+
+
+async def test_with_its_reads_used_the_card_still_comes_after_the_text() -> None:
+    """Offered only the card while the run's result is not yet in its text,
+    the step is told to write the text first, in the same response."""
+    answered = await _answer_run(
+        # Five tool calls kept in reserve of 30: the run is the 25th.
+        *[LOOK_UP] * 24,
+        [LAST_RUN_CALL],
+        [READ_CALL] * RESULT_READS,
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=30),
+    )
+    answering = answered.infos[26]
+    assert _offered(answering) == {"ask_user"}
+    assert READ_THE_RESULT not in _instructions(answering)
+    assert CARD_AFTER_TEXT in _instructions(answering)
+
+
+async def test_without_a_result_to_report_the_card_needs_no_text_first() -> None:
+    answered = await _answer_run(
+        *[LOOK_UP] * 25,
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=30),
+    )
+    answering = answered.infos[25]
+    assert _offered(answering) == {"ask_user"}
+    assert CARD_AFTER_TEXT not in _instructions(answering)
 
 
 async def test_two_cards_in_one_response_take_one_refusal() -> None:
@@ -1511,3 +2078,99 @@ async def test_a_read_that_reaches_the_limit_leaves_the_card_of_its_response() -
     [card] = _card_results(answered.turn)
     assert card.outcome != "failed" and isinstance(card.content, dict)
     assert len(answered.shown) == 1
+
+
+def test_a_result_may_be_read_once_per_saved_layer_and_once_more() -> None:
+    """Three reads were too few for a run that saved four layers: the
+    allowance is one read per saved layer and one more, at least three and at
+    most six."""
+    assert [read_allowance(saved) for saved in range(8)] == [3, 3, 3, 4, 5, 6, 6, 6]
+    assert MAX_RESULT_READS == 6
+
+
+async def test_a_run_with_four_saved_layers_may_read_five_times() -> None:
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        [READ_CALL] * 6,
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
+        saved=4,
+    )
+    assert read_the_result(5) in _instructions(answered.infos[1])
+    reads = _results(answered.turn, "project_get_layers")
+    assert [read.outcome != "failed" for read in reads] == [True] * 5 + [False]
+    assert reads[-1].content == LOOK_UPS_USED_UP
+    assert list(answered.deps.admitted_calls.values()) == [1 + 5]
+
+
+async def test_the_allowance_is_not_exceeded() -> None:
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        [READ_CALL] * 4,
+        [READ_CALL] * 4,
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
+        saved=9,
+    )
+    reads = _results(answered.turn, "project_get_layers")
+    assert [read.outcome != "failed" for read in reads] == [True] * 6 + [False] * 2
+    assert list(answered.deps.admitted_calls.values()) == [1 + MAX_RESULT_READS]
+
+
+async def test_reads_past_the_cap_in_a_batch_after_a_run_count_against_the_allowance() -> (
+    None
+):
+    """A batch of reads in a step that may still look things up reached the
+    run's tool-call limit halfway: the reads past it ran while the run's
+    result was unreported, up to the result's allowance, which the read
+    steps after it share."""
+    answered = await _answer_run(
+        # Five tool calls kept in reserve of 30: the run is the 24th, and the
+        # next step may still look up.
+        *[LOOK_UP] * 23,
+        [LAST_RUN_CALL],
+        [READ_CALL] * 10,
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=30),
+    )
+    assert len(_offered(answered.infos[24])) > len(RESULT_READ_TOOLS)
+    reads = _results(answered.turn, "project_get_layers")
+    # Six within the limit, three past it, and the batch's last is refused.
+    assert sum(read.outcome != "failed" for read in reads) == 6 + RESULT_READS
+    assert [read.content for read in reads].count(LOOK_UPS_USED_UP) == 1
+    assert list(answered.deps.admitted_calls.values()) == [30 + RESULT_READS]
+    # The allowance is spent: no read step follows, and the answer writes.
+    assert _offered(answered.infos[25]) == set()
+    assert answered.turn.output == "The run buffered 3 features."
+
+
+async def test_a_read_past_the_cap_is_held_to_the_answers_room() -> None:
+    """Admitted past the tool-call limit, a read's result still has to
+    leave the answer step its room."""
+    answered = await _answer_run(
+        [LAST_RUN_CALL],
+        [LOOK_UP[0], READ_CALL],
+        budget=RunBudget(max_tokens=60_000, max_tool_calls=2),
+        usages=[(2_000, 0, 100), (3_000, 0, 100)],
+        layers=[{"id": 7, "name": "x" * 120_000, "type": "feature"}],
+    )
+    assert len(_offered(answered.infos[1])) > len(RESULT_READ_TOOLS)
+    [read] = _results(answered.turn, "project_get_layers")
+    assert read.outcome == "failed" and read.content == RESULT_TOO_LARGE
+    assert _offered(answered.infos[2]) == set()
+
+
+async def test_a_read_in_the_response_that_ran_the_workflow_takes_none_of_its_reads() -> (
+    None
+):
+    """A read that runs after workflow_run in the same response was written
+    before the model saw the result: past the limit it does not run, and
+    the result keeps all of its reads."""
+    answered = await _answer_run(
+        [("workflow_run", {"workflow_id": RUN_WORKFLOW}), READ_CALL],
+        [READ_CALL] * 4,
+        budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
+    )
+    assert _run_finished(answered.turn, "workflow_run")
+    reads = _results(answered.turn, "project_get_layers")
+    assert [read.outcome != "failed" for read in reads] == [False] + [True] * 3 + [
+        False
+    ]
+    assert reads[0].content == LOOK_UPS_USED_UP

@@ -18,7 +18,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, overload
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -48,6 +48,7 @@ from assistant.tools.proposals import (
     show,
 )
 from assistant.tools.runtime import InputInvalid, ToolEnv, ToolSpec
+from assistant.workflows.tool_info import JOINED_PREFIX
 
 #: Every project mode, and pages without a project (Home, content, settings),
 #: where the tools need an explicit project_id (Decision T16).
@@ -185,6 +186,66 @@ async def _fields(env: ToolEnv, layer: _Layer) -> dict[str, str]:
     }
 
 
+class _Names:
+    """The field names the model gives for one layer, resolved against its
+    fields. A name the layer does not have reads ``join_<name>`` when the
+    layer has that field: the model often names a joined field without its
+    prefix. Everything after the resolution (the field's kind, the
+    Restricted guards, the request) sees the name that is read, so a read of
+    ``x`` is checked exactly as a read of ``join_x``."""
+
+    def __init__(self, layer: _Layer, fields: Mapping[str, str]) -> None:
+        self.layer = layer
+        self.fields = fields
+        #: ``{given: read}`` for each name read with the prefix.
+        self.read: dict[str, str] = {}
+
+    @overload
+    def name(self, given: str) -> str: ...
+    @overload
+    def name(self, given: None) -> None: ...
+    def name(self, given: str | None) -> str | None:
+        """The field ``given`` reads; a name the layer has neither way stays
+        as given, for the caller's check to name."""
+        if given is None or given in self.fields:
+            return given
+        joined = JOINED_PREFIX + given
+        if joined not in self.fields:
+            return given
+        self.read[given] = joined
+        return joined
+
+    def filter(self, feature_filter: FeatureFilter | None) -> FeatureFilter | None:
+        if feature_filter is None:
+            return None
+        return feature_filter.model_copy(
+            update={
+                "conditions": [
+                    condition.model_copy(update={"field": self.name(condition.field)})
+                    for condition in feature_filter.conditions
+                ]
+            }
+        )
+
+    def notes(self) -> list[str]:
+        """One per name read with the prefix. They name fields, never values,
+        so they are sent under Restricted too."""
+        return [
+            f"{self.layer.name!r} has no field {given!r}; read {joined!r} in its place."
+            for given, joined in self.read.items()
+        ]
+
+
+async def _names(env: ToolEnv, layer: _Layer, *, needed: bool = True) -> _Names:
+    """The layer's field names to resolve against; without ``needed`` (a call
+    that names no field), its fields are not read."""
+    return _Names(layer, await _fields(env, layer) if needed else {})
+
+
+def _note(*parts: str | None) -> str | None:
+    return " ".join(part for part in parts if part) or None
+
+
 def _compile(
     feature_filter: FeatureFilter | None, fields: Mapping[str, str]
 ) -> str | None:
@@ -268,12 +329,21 @@ async def _guard_restricted_filter(
 
 
 async def _cql(
-    env: ToolEnv, layer: _Layer, feature_filter: FeatureFilter | None
+    env: ToolEnv,
+    layer: _Layer,
+    feature_filter: FeatureFilter | None,
+    fields: Mapping[str, str] | None = None,
 ) -> str | None:
+    """``fields``: the layer's fields when the caller has read them. The
+    filter is checked against them first, so an unknown field gets its
+    fixable message before the Restricted guard asks processes."""
     if feature_filter is None:
         return None
+    cql = _compile(
+        feature_filter, fields if fields is not None else await _fields(env, layer)
+    )
     await _guard_restricted_filter(env, layer, feature_filter)
-    return _compile(feature_filter, await _fields(env, layer))
+    return cql
 
 
 def _with_value(
@@ -523,10 +593,14 @@ class FeatureCount(BaseModel):
     layer: str
     filter: str
     count: int | None
-    #: Set when the count is withheld (Restricted, a filter, a small group).
+    #: Set when the count is withheld (Restricted, a filter, a small group),
+    #: or a field was read with the join prefix.
     note: str | None = None
     #: Whether a filter was applied; not shown to the model.
     filtered: bool = Field(default=False, exclude=True)
+    #: The notes on names read with the join prefix (``_Names.notes``), for
+    #: the Restricted form to keep; never serialized.
+    read_as: list[str] = Field(default_factory=list, exclude=True)
 
     def restricted(self) -> "FeatureCount":
         # Counts are allowed under Restricted (spec §4.7), except a filtered one
@@ -542,9 +616,10 @@ class FeatureCount(BaseModel):
             return self.model_copy(
                 update={
                     "count": None,
-                    "note": (
+                    "note": _note(
+                        *self.read_as,
                         f"The filter matches fewer than {MIN_RESTRICTED_GROUP} "
-                        "features; the data policy (Restricted) withholds the exact number."
+                        "features; the data policy (Restricted) withholds the exact number.",
                     ),
                 }
             )
@@ -553,15 +628,20 @@ class FeatureCount(BaseModel):
 
 async def _count(env: ToolEnv, args: FilteredLayerInput) -> FeatureCount:
     layer = await _readable_layer(env, args)
-    cql = await _cql(env, layer, args.filter)
+    names = await _names(env, layer, needed=args.filter is not None)
+    feature_filter = names.filter(args.filter)
+    cql = await _cql(env, layer, feature_filter, names.fields)
+    read_as = names.notes()
     result = await _analytics(
         env, "feature-count", {"collection": layer.layer_id, "filter": cql}
     )
     return FeatureCount(
         layer=layer.name,
-        filter=describe_filter(args.filter),
+        filter=describe_filter(feature_filter),
         count=int(result["count"]),
+        note=_note(*read_as),
         filtered=args.filter is not None,
+        read_as=read_as,
     )
 
 
@@ -632,11 +712,15 @@ class FieldStatistics(BaseModel):
     #: serialized. Fewer than two (the fewest the service computes) means no
     #: breaks may be shown.
     points: int | None = Field(default=None, exclude=True)
+    #: The notes on names read with the join prefix (``_Names.notes``), for
+    #: the Restricted form to keep; never serialized.
+    read_as: list[str] = Field(default_factory=list, exclude=True)
 
     def restricted(self) -> "FieldStatistics":
         if self.kind == "numeric":
             notes = [
-                "Mean and standard deviation are withheld by the data policy (Restricted)."
+                *self.read_as,
+                "Mean and standard deviation are withheld by the data policy (Restricted).",
             ]
             update: dict[str, Any] = {"mean": None, "std_dev": None}
             if self.method not in _RESTRICTED_METHODS:
@@ -672,9 +756,10 @@ class FieldStatistics(BaseModel):
         return self.model_copy(
             update={
                 "values": None,
-                "note": (
+                "note": _note(
+                    *self.read_as,
                     "Values are withheld by the data policy (Restricted): the field has "
-                    f"more than {LOW_CARDINALITY_LIMIT} distinct values."
+                    f"more than {LOW_CARDINALITY_LIMIT} distinct values.",
                 ),
             }
         )
@@ -682,14 +767,18 @@ class FieldStatistics(BaseModel):
 
 async def _field_statistics(env: ToolEnv, args: StatisticsInput) -> FieldStatistics:
     layer = await _readable_layer(env, args)
-    fields = await _fields(env, layer)
-    if args.field not in fields:
-        raise InputInvalid(unknown_field(args.field, fields))
-    await _guard_restricted_filter(env, layer, args.filter)
-    cql = _compile(args.filter, fields)
-    described = describe_filter(args.filter)
+    names = await _names(env, layer)
+    fields = names.fields
+    field = names.name(args.field)
+    if field not in fields:
+        raise InputInvalid(unknown_field(field, fields))
+    feature_filter = names.filter(args.filter)
+    cql = _compile(feature_filter, fields)
+    await _guard_restricted_filter(env, layer, feature_filter)
+    described = describe_filter(feature_filter)
+    read_as = names.notes()
     restricted = env.data_policy == "restricted"
-    if fields[args.field] in _NUMERIC:
+    if fields[field] in _NUMERIC:
         method = args.method
         if restricted and method not in _RESTRICTED_METHODS:
             # Mean-based breaks sit at the mean and multiples of the standard
@@ -705,7 +794,7 @@ async def _field_statistics(env: ToolEnv, args: StatisticsInput) -> FieldStatist
                     "feature-count",
                     {
                         "collection": layer.layer_id,
-                        "filter": _with_value(args.filter, fields, args.field),
+                        "filter": _with_value(feature_filter, fields, field),
                     },
                 )
             )
@@ -715,7 +804,7 @@ async def _field_statistics(env: ToolEnv, args: StatisticsInput) -> FieldStatist
             "class-breaks",
             {
                 "collection": layer.layer_id,
-                "attribute": args.field,
+                "attribute": field,
                 "method": method,
                 # Internal break points: ``points + 1`` classes. Fewer than two:
                 # still asked for two, for the minimum and maximum; the breaks
@@ -726,7 +815,7 @@ async def _field_statistics(env: ToolEnv, args: StatisticsInput) -> FieldStatist
         )
         return FieldStatistics(
             layer=layer.name,
-            field=args.field,
+            field=field,
             kind="numeric",
             filter=described,
             min=result.get("min"),
@@ -737,13 +826,15 @@ async def _field_statistics(env: ToolEnv, args: StatisticsInput) -> FieldStatist
             breaks=result.get("breaks"),
             feature_count=valued if cql is not None else None,
             points=points if restricted else None,
+            note=_note(*read_as),
+            read_as=read_as,
         )
     values_call = _analytics(
         env,
         "unique-values",
         {
             "collection": layer.layer_id,
-            "attribute": args.field,
+            "attribute": field,
             "order": "descendent",
             "limit": UNIQUE_VALUES,
             "filter": cql,
@@ -761,7 +852,7 @@ async def _field_statistics(env: ToolEnv, args: StatisticsInput) -> FieldStatist
                 "unique-values",
                 {
                     "collection": layer.layer_id,
-                    "attribute": args.field,
+                    "attribute": field,
                     "order": "descendent",
                     "limit": 1,
                 },
@@ -772,7 +863,7 @@ async def _field_statistics(env: ToolEnv, args: StatisticsInput) -> FieldStatist
         result = await values_call
     return FieldStatistics(
         layer=layer.name,
-        field=args.field,
+        field=field,
         kind="categorical",
         filter=described,
         distinct_count=_distinct_total(result),
@@ -783,7 +874,9 @@ async def _field_statistics(env: ToolEnv, args: StatisticsInput) -> FieldStatist
             )
             for v in result.get("values", [])
         ],
+        note=_note(*read_as),
         low_cardinality=low_cardinality,
+        read_as=read_as,
     )
 
 
@@ -837,6 +930,9 @@ class AreaStatistics(BaseModel):
     note: str | None = None
     #: Whether a filter was applied; never serialized.
     filtered: bool = Field(default=False, exclude=True)
+    #: The notes on names read with the join prefix (``_Names.notes``), for
+    #: the Restricted form to keep; never serialized.
+    read_as: list[str] = Field(default_factory=list, exclude=True)
 
     def restricted(self) -> "AreaStatistics":
         update: dict[str, Any] = {
@@ -855,7 +951,7 @@ class AreaStatistics(BaseModel):
                 f" The filter matches fewer than {MIN_RESTRICTED_GROUP} features, so "
                 "smallest and largest area are withheld too."
             )
-        return self.model_copy(update={**update, "note": note})
+        return self.model_copy(update={**update, "note": _note(*self.read_as, note)})
 
 
 def _area_group(item: Mapping[str, Any]) -> AreaGroup:
@@ -875,14 +971,17 @@ async def _area_statistics(env: ToolEnv, args: AreaStatisticsInput) -> AreaStati
         raise ToolFailed(
             f"Area statistics need a polygon layer; {layer.name!r} has {layer.geometry_type} features."
         )
-    if args.group_by is not None:
-        fields = await _fields(env, layer)
-        if args.group_by not in fields:
-            raise InputInvalid(unknown_field(args.group_by, fields))
+    names = await _names(
+        env, layer, needed=args.group_by is not None or args.filter is not None
+    )
+    group_by = names.name(args.group_by)
+    if group_by is not None and group_by not in names.fields:
+        raise InputInvalid(unknown_field(group_by, names.fields))
+    feature_filter = names.filter(args.filter)
     # The filter cannot name the geometry (it is not a filterable field), so it
     # cannot be padded with rows that have none: the count the group-size guard
     # reads is the number of features the filter matches.
-    cql = await _cql(env, layer, args.filter)
+    cql = await _cql(env, layer, feature_filter, names.fields)
     total, smallest, largest = await asyncio.gather(
         *(
             _analytics(
@@ -894,7 +993,7 @@ async def _area_statistics(env: ToolEnv, args: AreaStatisticsInput) -> AreaStati
                     "filter": cql,
                     # The sum call answers the groups as well; the smallest and
                     # largest stay over the whole (filtered) layer.
-                    "group_by_column": args.group_by if operation == "sum" else None,
+                    "group_by_column": group_by if operation == "sum" else None,
                 },
             )
             for operation in ("sum", "min", "max")
@@ -905,7 +1004,7 @@ async def _area_statistics(env: ToolEnv, args: AreaStatisticsInput) -> AreaStati
     groups: list[AreaGroup] | None = None
     groups_total: int | None = None
     note: str | None = None
-    if args.group_by is not None:
+    if group_by is not None:
         groups = [
             _area_group(item)
             for item in total.get("groups") or []
@@ -915,10 +1014,13 @@ async def _area_statistics(env: ToolEnv, args: AreaStatisticsInput) -> AreaStati
         groups_total = listed if isinstance(listed, int) else len(groups)
         if any(group.group is None for group in groups):
             # Sent without its group key, the row could pass for a total.
-            note = f"A row without group holds the features with no value in {args.group_by!r}."
+            note = (
+                f"A row without group holds the features with no value in {group_by!r}."
+            )
+    read_as = names.notes()
     return AreaStatistics(
         layer=layer.name,
-        filter=describe_filter(args.filter),
+        filter=describe_filter(feature_filter),
         feature_count=count,
         total_area=area,
         mean_area=area / count if area is not None and count else None,
@@ -927,8 +1029,9 @@ async def _area_statistics(env: ToolEnv, args: AreaStatisticsInput) -> AreaStati
         unit=total.get("unit") or "m²",
         groups=groups,
         groups_total=groups_total,
-        note=note,
+        note=_note(*read_as, note),
         filtered=args.filter is not None,
+        read_as=read_as,
     )
 
 
@@ -960,7 +1063,9 @@ class SampleInput(FilteredLayerInput):
 
 
 class SampleFeature(BaseModel):
-    id: Any
+    #: GOAT's id of the row (geoapi's feature id). Named apart from the
+    #: properties: data often has a field ``id`` of its own, with other values.
+    feature_id: Any
     properties: dict[str, Any]
 
 
@@ -1007,7 +1112,7 @@ async def _sample(env: ToolEnv, args: SampleInput) -> FeatureSample:
     )
     features = [
         SampleFeature(
-            id=feature.get("id"),
+            feature_id=feature.get("id"),
             properties={
                 key: _short(value)
                 for key, value in (feature.get("properties") or {}).items()
@@ -1028,7 +1133,8 @@ SAMPLE_FEATURES: ToolSpec[SampleInput, FeatureSample] = ToolSpec(
     description=(
         f"A few features of a layer (at most {SAMPLE_MAX}), attributes only, no "
         "geometry, to see what the data looks like. Not for counting: use "
-        "project_count_features."
+        "project_count_features. A feature's feature_id is GOAT's row id, not a "
+        "field: filters take the fields under properties."
     ),
     input_model=SampleInput,
     output_model=FeatureSample,
@@ -1071,8 +1177,9 @@ class ProposeViewInput(BaseModel):
         default=None,
         ge=1,
         description=(
-            "Fit the view to this layer's features (GOAT computes the extent). "
-            "Give the layer_project_id of a layer of the open project."
+            "Fit the view to this layer's features (GOAT computes the extent); "
+            "a layer with geometry, not a table. Give the layer_project_id of a "
+            "layer of the open project."
         ),
     )
     filter: FeatureFilter | None = Field(
@@ -1170,6 +1277,12 @@ async def _propose_view(env: ToolEnv, args: ProposeViewInput) -> ProposalShown:
                 project_id=project_id, layer_project_id=args.fit_layer_project_id
             ),
         )
+        if layer.geometry_type is None:
+            # A table: the services have no extent to compute for it.
+            raise ToolFailed(
+                f"{layer.name!r} has no geometry to show on the map. Fit the view "
+                "to a layer with geometry, or pass bbox or center with zoom."
+            )
         cql = await _cql(env, layer, args.filter)
         extent = await _analytics(
             env, "extent", {"collection": layer.layer_id, "filter": cql}
@@ -1479,6 +1592,9 @@ class GroupStatistics(BaseModel):
     #: layer, not only over the filtered features. Set under Restricted with a
     #: filter; never serialized.
     low_cardinality: bool | None = Field(default=None, exclude=True)
+    #: The notes on names read with the join prefix (``_Names.notes``), for
+    #: the Restricted form to keep; never serialized.
+    read_as: list[str] = Field(default_factory=list, exclude=True)
 
     def restricted(self) -> BaseModel:
         # Restricted sends counts, never sums or means (spec §4.7): only counts
@@ -1514,7 +1630,7 @@ class GroupStatistics(BaseModel):
         )
         # The note is built here, not taken from the full result: only these
         # parts of it may leave under Restricted.
-        notes = _null_notes(self.rows, self.group_by, self.then_by)
+        notes = [*self.read_as, *_null_notes(self.rows, self.group_by, self.then_by)]
         if hidden:
             notes.append(
                 f"{hidden} group(s) have fewer than {MIN_RESTRICTED_GROUP} features; "
@@ -1624,15 +1740,21 @@ async def _group_statistics(
     env: ToolEnv, args: GroupStatisticsInput
 ) -> GroupStatistics:
     layer = await _readable_layer(env, args)
-    fields = await _fields(env, layer)
-    _need_fields(fields, layer, args.operation, args.field, args.group_by, args.then_by)
-    cql = await _cql(env, layer, args.filter)
+    names = await _names(env, layer)
+    # A count reads no field: a stray one is neither resolved nor noted.
+    field = names.name(args.field) if args.operation != "count" else args.field
+    group_by = names.name(args.group_by)
+    then_by = names.name(args.then_by)
+    feature_filter = names.filter(args.filter)
+    _need_fields(names.fields, layer, args.operation, field, group_by, then_by)
+    cql = await _cql(env, layer, feature_filter, names.fields)
+    read_as = names.notes()
     low_cardinality: bool | None = None
     if env.data_policy == "restricted" and cql is not None:
         # The filtered groups say little about the fields: a filter on one
         # district leaves few names of a field that holds one per feature.
         # Cardinality is judged on the whole layer, as in field statistics.
-        grouping = [name for name in (args.group_by, args.then_by) if name is not None]
+        grouping = [name for name in (group_by, then_by) if name is not None]
         wholes = await asyncio.gather(
             *(
                 _analytics(
@@ -1654,9 +1776,7 @@ async def _group_statistics(
     answer = await _analytics(
         env,
         "aggregation-stats",
-        _aggregation(
-            layer, args.operation, args.field, args.group_by, args.then_by, cql
-        ),
+        _aggregation(layer, args.operation, field, group_by, then_by, cql),
     )
     rows = [
         GroupRow(
@@ -1676,13 +1796,17 @@ async def _group_statistics(
                 project_id=args.project_id, layer_project_id=share.layer_project_id
             ),
         )
-        _need_fields(
-            await _fields(env, other),
-            other,
-            share.operation,
-            share.field,
-            share.group_by,
+        other_names = await _names(env, other)
+        share_field = (
+            other_names.name(share.field) if share.operation != "count" else share.field
         )
+        share_group_by = other_names.name(share.group_by)
+        share_filter = other_names.filter(share.filter)
+        _need_fields(
+            other_names.fields, other, share.operation, share_field, share_group_by
+        )
+        # Once each: the same layer may be divided by its own fields.
+        read_as = list(dict.fromkeys([*read_as, *other_names.notes()]))
         if share.layer_project_id != args.layer_project_id:
             notes.append(
                 f"Numerator and denominator are read from two layers "
@@ -1692,21 +1816,21 @@ async def _group_statistics(
             )
         # The first layer's filter never reaches the denominator: share_of
         # names its own, so the same layer can be divided by its whole.
-        share_cql = await _cql(env, other, share.filter)
+        share_cql = await _cql(env, other, share_filter, other_names.fields)
         totals = await _analytics(
             env,
             "aggregation-stats",
             _aggregation(
                 other,
                 share.operation,
-                share.field,
-                share.group_by,
+                share_field,
+                share_group_by,
                 None,
                 share_cql,
                 limit=DENOMINATOR_GROUPS,
             ),
         )
-        if share.group_by is None:
+        if share_group_by is None:
             # One total for every row, the row without a group included: its
             # features are part of the whole as much as any group's.
             whole = next(
@@ -1752,12 +1876,12 @@ async def _group_statistics(
             if missing and complete:
                 notes.append(
                     f"{len(missing)} group(s) have no matching value of "
-                    f"{share.group_by!r} in {other.name!r}, so they have no share."
+                    f"{share_group_by!r} in {other.name!r}, so they have no share."
                 )
             elif missing:
                 notes.append(
                     f"{len(missing)} group(s) have no share: {other.name!r} has more "
-                    f"than {DENOMINATOR_GROUPS} values of {share.group_by!r}, and only "
+                    f"than {DENOMINATOR_GROUPS} values of {share_group_by!r}, and only "
                     f"its first {DENOMINATOR_GROUPS} (largest first) are matched."
                 )
             if undivided:
@@ -1765,24 +1889,25 @@ async def _group_statistics(
                     f"{len(undivided)} group(s) have no value or a denominator of 0, "
                     "so they have no share."
                 )
-    notes += _null_notes(rows, args.group_by, args.then_by)
+    notes += _null_notes(rows, group_by, then_by)
     total_items = answer.get("total_items") if isinstance(answer, dict) else None
     total_count = answer.get("total_count") if isinstance(answer, dict) else None
     return GroupStatistics(
         layer=layer.name,
         operation=args.operation,
-        field=args.field,
-        group_by=args.group_by,
-        then_by=args.then_by,
-        filter=describe_filter(args.filter),
+        field=field,
+        group_by=group_by,
+        then_by=then_by,
+        filter=describe_filter(feature_filter),
         rows=rows,
         groups=int(total_items) if isinstance(total_items, int) else len(rows),
         features=int(total_count) if isinstance(total_count, int) else 0,
         unmatched=unmatched,
-        note=" ".join(notes) or None,
+        note=_note(*read_as, *notes),
         with_share=args.share_of is not None,
         filtered=cql is not None,
         low_cardinality=low_cardinality,
+        read_as=read_as,
     )
 
 

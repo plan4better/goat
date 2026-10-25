@@ -427,6 +427,6 @@ async def test_sample_properties_keep_their_nulls_and_typed_fields_drop_them() -
     )
     sample = await execute(SAMPLE_FEATURES, env, {"layer_project_id": 11})
     assert sample["features"] == [
-        {"id": 1, "properties": {"art": "Radweg", "notiz": None}}
+        {"feature_id": 1, "properties": {"art": "Radweg", "notiz": None}}
     ]
     assert "number_matched" not in sample

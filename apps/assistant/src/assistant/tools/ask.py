@@ -10,7 +10,10 @@ answer: a second ``ask_user`` call in the same response runs after the first
 ``ONE_CARD`` without showing anything (``assistant.tools.toolset``). A card
 after a finished workflow run's result, with no text written since, is
 refused with ``REPORT_FIRST`` the same way (``ToolSpec.report_first``), in
-at most two responses per result. Not on MCP: its clients cannot show it.
+at most two responses per result. A card that offers again what the user
+picked in an earlier card, under the same header or question, is refused
+with that pick named (``assistant.asks.repeated_question``). Not on MCP: its
+clients cannot show it.
 """
 
 import asyncio
@@ -21,7 +24,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel
 from pydantic_ai.exceptions import ToolFailed
 
-from assistant.asks import CARD_PREFIX, AskUserInput, card_data
+from assistant.asks import CARD_PREFIX, AskUserInput, card_data, repeated_question
 from assistant.surfaces import SURFACES
 from assistant.tools.http import ServiceError, sign_in_expired
 from assistant.tools.runtime import InputInvalid, ToolEnv, ToolSpec
@@ -173,6 +176,9 @@ async def _ask(env: ToolEnv, args: AskUserInput) -> AskShown:
         raise ToolFailed(
             "Questions with a card can only be asked in the GOAT assistant."
         )
+    repeat = repeated_question(env.asks, args, env.runs.used_cards)
+    if repeat is not None:
+        raise InputInvalid(repeat)
     await _check_adds(env, args)
     card_id = CARD_PREFIX + uuid4().hex
     await env.emit_data("ask", card_data(card_id, args), part_id=card_id)

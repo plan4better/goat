@@ -12,7 +12,7 @@ such as a workflow run's.
 """
 
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -61,6 +61,40 @@ _OTHER_LABELS = frozenset(
         "etwas anderes",
     }
 )
+#: Generic option labels in English or German, matched whole on the label
+#: in lower case: a noun such as "Option" with a number of one or two digits
+#: (a year names a scenario), a letter or a numeral, an ordinal with such a
+#: noun, or a placeholder word. A label that only contains one of the words
+#: ("Variante mit Fahrrad") names a choice.
+_PLACEHOLDER_NOUN = r"(?:option|variante|auswahl|choice|alternative|möglichkeit|test)"
+_PLACEHOLDER_NUMBER = (
+    r"(?:\d{1,2}|[a-z]|ii|iii|iv|eins|zwei|drei|vier|one|two|three|four)"
+)
+_PLACEHOLDER_LABEL = re.compile(
+    rf"{_PLACEHOLDER_NOUN} ?#?\(?{_PLACEHOLDER_NUMBER}\)?"
+    r"|(?:erste|zweite|dritte|vierte|first|second|third|fourth|[1-4]\.)[rsn]?"
+    rf" {_PLACEHOLDER_NOUN}"
+    r"|placeholder|platzhalter|test|dummy"
+)
+#: Kept off the end of a label, header or question before the rules above.
+_TRAILING_MARKS = " .…:!?"
+LABEL_RULE = (
+    "options need distinct labels of at least two letters that name the choice, "
+    "no placeholders such as 'Option 1' or 'Test'"
+)
+TEST_CARD_RULE = "no test cards: the header and the question say what the user chooses"
+
+
+def _plain(text: str) -> str:
+    """``text`` in lower case, with single spaces and no closing marks."""
+    return " ".join(text.split()).rstrip(_TRAILING_MARKS).casefold()
+
+
+def _placeholder(label: str) -> bool:
+    return (
+        sum(ch.isalnum() for ch in label) < 2
+        or _PLACEHOLDER_LABEL.fullmatch(_plain(label)) is not None
+    )
 
 
 class AskOption(BaseModel):
@@ -149,16 +183,14 @@ class AskQuestion(BaseModel):
 
     @model_validator(mode="after")
     def _recommended_first(self, info: ValidationInfo) -> "AskQuestion":
-        labels = [option.label.strip().casefold() for option in self.options]
-        if not (info.context or {}).get(_STORED_CARD) and (
-            len(set(labels)) != len(labels)
-            or any(
-                sum(ch.isalnum() for ch in option.label) < 2 for option in self.options
-            )
-        ):
-            raise ValueError(
-                "options need distinct labels of at least two letters, no placeholders"
-            )
+        if not (info.context or {}).get(_STORED_CARD):
+            if "test" in (_plain(self.header), _plain(self.question)):
+                raise ValueError(TEST_CARD_RULE)
+            labels = [option.label.strip().casefold() for option in self.options]
+            if len(set(labels)) != len(labels) or any(
+                _placeholder(option.label) for option in self.options
+            ):
+                raise ValueError(LABEL_RULE)
         recommended = [option for option in self.options if option.recommended]
         if len(recommended) > 1:
             raise ValueError("at most one option of a question is recommended")
@@ -400,6 +432,75 @@ def _picked_options(history: AskHistory) -> Iterator[tuple[str, AskOption]]:
             for index in reply.options:
                 if index < len(options):
                     yield card_id, options[index]
+
+
+def _picks(
+    history: AskHistory, used_cards: Collection[str]
+) -> Iterator[tuple[AskQuestion, AskOption]]:
+    """The options the user picked in this conversation, each with its
+    question. The picks of a question that offers a workflow run
+    (``RUN_PREFIX``) are left out, the decline as well as the run, and so are
+    the picks of a card whose run pick was used (``used_cards``): a run needs
+    a new pick each time, another workflow one of its own, and a user who
+    declined may want it run after all. A pick with neither ``value`` nor
+    ``adds`` beside options that add datasets ("Leave it open") is left out
+    too: it chose no data, and the next dataset card offers it again."""
+    for card_id, answer in history.answers.items():
+        card = history.cards.get(card_id)
+        if card is None or card_id in used_cards:
+            continue
+        for reply in answer.answers:
+            if reply.question >= len(card.questions):
+                continue
+            question = card.questions[reply.question]
+            if any(
+                (option.value or "").startswith(RUN_PREFIX)
+                for option in question.options
+            ):
+                continue
+            adds_data = any(option.adds for option in question.options)
+            for index in reply.options:
+                if index >= len(question.options):
+                    continue
+                option = question.options[index]
+                if adds_data and option.value is None and not option.adds:
+                    continue
+                yield question, option
+
+
+def _offers_again(option: AskOption, picked: AskOption) -> bool:
+    """Whether ``option`` is the option ``picked``: the same label (case and
+    spaces aside), the same value, or the same datasets added."""
+    return (
+        _plain(option.label) == _plain(picked.label)
+        or (option.value is not None and option.value == picked.value)
+        or (bool(option.adds) and set(option.adds) == set(picked.adds))
+    )
+
+
+def repeated_question(
+    history: AskHistory, card: AskUserInput, used_cards: Collection[str] = ()
+) -> str | None:
+    """Why ``card`` asks again for what the user picked in this conversation,
+    naming the pick, or None when it does not: a question of it under the
+    same header or question as an answered one (case and spaces aside)
+    offers the option picked there again. A question asked again with other
+    options is a new choice, and so is one after the pick did not work that
+    leaves the pick out. ``used_cards``: as ``_picks``."""
+    picks = list(_picks(history, used_cards))
+    for question in card.questions:
+        for earlier, picked in picks:
+            if _plain(question.header) != _plain(earlier.header) and _plain(
+                question.question
+            ) != _plain(earlier.question):
+                continue
+            if any(_offers_again(option, picked) for option in question.options):
+                return (
+                    f'The user already chose "{picked.label}" for '
+                    f'"{earlier.question}". Use it; if it did not work, say why in '
+                    "your text and offer only other options."
+                )
+    return None
 
 
 def chosen_cards(history: AskHistory, value: str) -> list[str]:

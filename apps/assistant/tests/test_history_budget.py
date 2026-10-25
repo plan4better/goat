@@ -36,7 +36,7 @@ from pydantic_ai.usage import RequestUsage, RunUsage
 
 from assistant.agent import RunDeps, build_agent
 from assistant.budget import (
-    RESULT_READS,
+    MAX_RESULT_READS,
     NextCall,
     RunBudget,
     next_call,
@@ -294,22 +294,21 @@ def test_the_card_is_offered_only_when_both_calls_fit(
 @pytest.mark.parametrize(
     ("usage", "fits"),
     [
-        # The read step, the answer step and a retry of it at 43,000 each,
-        # and 8,000 for answering: 200,000 at 63,000 spent.
-        (_spent_so_far(63_000), True),
-        # 201,000: the answer step and a spare fit, but a retry after a read
-        # would not.
-        (_spent_so_far(64_000), False),
+        # The read step and the answer step at 43,000 each, and 8,000 for
+        # answering: 200,000 at 106,000 spent.
+        (_spent_so_far(106_000), True),
+        # 201,000.
+        (_spent_so_far(107_000), False),
     ],
 )
-def test_a_read_past_the_look_ups_needs_room_for_three_calls(
+def test_a_read_past_the_look_ups_needs_room_for_two_calls(
     usage: RunUsage, fits: bool
 ) -> None:
-    """A response with only reasoning is asked again, so a read step that
-    took the spare would leave the answer no retry."""
+    """The read step is sized as the answer step and its spare are: a silent
+    answer after a run gets the fixed ending (runs/turn.py), not a retry."""
     budget = RunBudget(max_tokens=200_000, max_tool_calls=30)
     assert budget.read_fits(usage, LONG) is fits
-    assert budget.answer_fits(usage, LONG)
+    assert budget.answer_fits(usage, LONG) is fits
 
 
 def test_cache_reads_count_at_a_tenth_and_the_rest_fully() -> None:
@@ -328,8 +327,9 @@ def test_the_hard_limit_counts_tokens_as_the_budget_does() -> None:
     limits = RunBudget(max_tokens=1000, max_tool_calls=30).usage_limits()
     # The run's own limit is kept call by call (StepGuard); this one only
     # stops a single step of more calls than the run's whole limit, with
-    # room for the reads of a run's result past it and a refused fourth.
-    assert limits.tool_calls_limit == 2 * 30 + RESULT_READS + 1
+    # room for the most reads of a run's result past it and one more call
+    # of their step.
+    assert limits.tool_calls_limit == 2 * 30 + MAX_RESULT_READS + 1
     # Without tool calls there is no run's result to read.
     assert (
         RunBudget(max_tokens=1000, max_tool_calls=0).usage_limits().tool_calls_limit

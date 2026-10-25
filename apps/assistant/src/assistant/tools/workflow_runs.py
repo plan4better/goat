@@ -9,7 +9,7 @@ stream silent."""
 import asyncio
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Any
 from uuid import UUID
 
@@ -28,11 +28,11 @@ from assistant.tools.workflow_tools import WORKFLOW_SURFACES, description
 from assistant.tools.workflows import open_project
 from assistant.workflows.draft import TOOL_ID_PATTERN
 from assistant.workflows.runs import (
-    MAX_SAVED_FIELDS,
     RUN_PART,
     RUN_VALUE,
     RunSummary,
     SavedField,
+    first_added,
     is_active,
     latest_job,
     overwrites,
@@ -181,7 +181,11 @@ async def _descriptions(
     return {tool: doc for tool, doc in zip(tool_ids, found, strict=True) if doc}
 
 
-async def _fields(env: ToolEnv, layer_id: str | None) -> list[SavedField] | None:
+async def _fields(
+    env: ToolEnv, layer_id: str | None, added: Collection[str]
+) -> list[SavedField] | None:
+    """A saved layer's fields, the ones the run added first (``first_added``:
+    ``added`` holds the result names its steps write)."""
     if layer_id is None:
         return None
     try:
@@ -192,12 +196,15 @@ async def _fields(env: ToolEnv, layer_id: str | None) -> list[SavedField] | None
         # would start the workflow again.
         return None
     properties = doc.get("properties") if isinstance(doc, dict) else None
-    fields = [
-        SavedField(name=name, type=field_kind(schema))
+    kinds = {
+        name: field_kind(schema)
         for name, schema in (properties if isinstance(properties, dict) else {}).items()
         if isinstance(schema, dict) and "$ref" not in schema
+    }
+    return [
+        SavedField(name=name, type=kinds[name])
+        for name in first_added(list(kinds), added)
     ]
-    return fields[:MAX_SAVED_FIELDS]
 
 
 async def _with_fields(
@@ -207,7 +214,7 @@ async def _with_fields(
         return summary
     found = await asyncio.gather(
         *(
-            _fields(env, layer_ids.get(saved.layer_project_id))
+            _fields(env, layer_ids.get(saved.layer_project_id), summary.added)
             for saved in summary.saved
         )
     )

@@ -1924,8 +1924,10 @@ class _StepCheck:
         dataset it reads does not have. ``field_renamed_by_join``: one that
         the join step right before writes only as ``join_<field>``, its
         columns predicted by goatlib's join runner from two datasets. Nothing
-        else is judged: an open step has no fields yet, and processes only
-        warns about a field read from any other tool's result."""
+        else is judged: an open step has no fields yet, processes only warns
+        about most fields read from another tool's result, and its error for
+        a join key that result lacks (``field_not_produced``) is not judged
+        here."""
         inputs: dict[str, Any] = described["inputs"]
         layer_inputs = [
             name

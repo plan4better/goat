@@ -6,9 +6,9 @@ gets nothing of what it found; calls past its tool-call limit
 reached, the model's next call is told to answer with what it has. Its only
 tool is ``ask_user`` while a card still fits: a choice the user has to make is
 still asked with a card. A finished workflow run's result the answer has not
-written about yet may still be read first, with ``RESULT_READS`` reads
-(``assistant.tools.toolset.answer_step``): offered only the card, an answer
-cannot read more of its result.
+written about yet may still be read first, with as many reads as
+``read_allowance`` gives it (``assistant.tools.toolset.answer_step``):
+offered only the card, an answer cannot read more of its result.
 
 Tokens count at what they cost (``weighted_tokens``): every model call of an
 answer resends the instructions, the skills it loaded and the answer so far,
@@ -19,10 +19,10 @@ more look-up is allowed only while two such calls still fit after it, the
 answer step and one spare (a card ends the answer, ``runs/turn.py``)
 (``RunBudget.spent``); the card only while both fit, and otherwise the step
 answers in text (``RunBudget.can_ask``). A step that reads a run's result
-past the look-ups is offered only while three such calls fit before it
-(``RunBudget.read_fits``): the read step, the answer step and a retry of it.
-Within a step, each call is held to the tool-call limit and each result to
-the room the answer step needs, as they run (``StepGuard``).
+past the look-ups is offered only while two such calls fit before it
+(``RunBudget.read_fits``): the read step and the answer step. Within a
+step, each call is held to the tool-call limit and each result to the room
+the answer step needs, as they run (``StepGuard``).
 """
 
 import math
@@ -62,23 +62,36 @@ CACHE_READ_WEIGHT = 0.1
 #: Reads an answer may still make once its look-ups are spent, while a
 #: finished workflow run's result it has to report is not yet in its text
 #: (``ToolSpec.report_first``): reading that result is what the answer needs.
-#: They are offered while ``READ_CALLS`` fit before each read step
-#: (``RunBudget.read_fits``); ``StepGuard.admit_result`` keeps the answer
-#: step's room. They run also past the tool-call limit
-#: (``StepGuard.admit_call``).
+#: The fewest a result gets; a run that saved more layers gets more
+#: (``read_allowance``). They are offered while ``READ_CALLS`` fit before each
+#: read step (``RunBudget.read_fits``); ``StepGuard.admit_result`` keeps the
+#: answer step's room. They run also past the tool-call limit
+#: (``StepGuard.admit_call``): in a read step, and in any other step of the
+#: answer while the result is not yet in its text. Both count toward the
+#: result's one allowance.
 RESULT_READS = 3
+#: The most reads past the look-up budget a result gets.
+MAX_RESULT_READS = 6
 #: Model calls that must fit before a step that reads a run's result past the
-#: look-ups: the read step, the answer step and a retry of it. A response
-#: with only reasoning or whitespace is asked again (by Pydantic AI, or by
-#: ``assistant.agent.ends_with_text``), and after a read that took the spare
-#: that retry would hit the hard limit and lose the answer.
-READ_CALLS = ANSWER_CALLS + 1
+#: look-ups: the read step and the answer step, the room ``ANSWER_CALLS``
+#: keeps after a look-up. No room is kept for asking a response without text
+#: again: after a read near the token limit, that call can end the run at the
+#: limit (``run_limit``), before the fixed text ``runs/turn.py`` gives an
+#: answer without text once its retries are used up.
+READ_CALLS = ANSWER_CALLS
 #: Characters per token for the results a call sends that no model has seen
 #: yet. Tool results are JSON full of ids, numbers and German words, which
 #: tokenizers split into short pieces, and each result also brings the framing
 #: of its message: counted at this few characters per token, they come out
 #: high rather than low.
 CHARS_PER_TOKEN = 1.75
+
+
+def read_allowance(saved_layers: int) -> int:
+    """The reads past the look-up budget a finished run's result gets: one
+    per layer the run saved and one more, at least ``RESULT_READS`` and at
+    most ``MAX_RESULT_READS``."""
+    return min(MAX_RESULT_READS, max(RESULT_READS, saved_layers + 1))
 
 
 def weighted_tokens(usage: RunUsage) -> float:
@@ -222,9 +235,9 @@ class RunBudget:
         return weighted_tokens(usage) + self._answering(call.raw) <= self.max_tokens
 
     def read_fits(self, usage: RunUsage, call: NextCall) -> bool:
-        """Whether a step that reads a run's result past the look-ups still
-        fits with the calls that answer after it (``READ_CALLS``), from the
-        call being prepared (``next_call``)."""
+        """Whether a step that reads a run's result past the look-ups and the
+        answer step after it still fit (``READ_CALLS``), from the call being
+        prepared (``next_call``)."""
         reading = self._answering(call.raw, READ_CALLS)
         return weighted_tokens(usage) + reading <= self.max_tokens
 
@@ -248,11 +261,11 @@ class RunBudget:
         at its own limit a step of several calls would end the run with
         everything it found. The run's tool-call limit is kept call by call
         instead (``StepGuard``); Pydantic AI's sits at twice it, plus the
-        reads of a run's result past it (``RESULT_READS``) and one more call
-        of their step (a read refused past them, or the card), which only a
-        single step of more calls than the run's whole limit reaches. A run
-        without tool calls has no run's result to read."""
-        reads = RESULT_READS + 1 if self.max_tool_calls > 0 else 0
+        most reads of a run's result past it (``MAX_RESULT_READS``) and one
+        more call of their step (a read refused past them, or the card),
+        which only a single step of more calls than the run's whole limit
+        reaches. A run without tool calls has no run's result to read."""
+        reads = MAX_RESULT_READS + 1 if self.max_tool_calls > 0 else 0
         return RunLimits(
             tool_calls_limit=2 * self.max_tool_calls + reads,
             weighted_tokens_limit=self.max_tokens,
@@ -292,15 +305,19 @@ class StepGuard:
     #: Tokens of the step's results sent so far.
     results: int = 0
 
+    def at_limit(self) -> bool:
+        """Whether the run's tool-call limit is reached: a call runs only
+        past it (``admit_call``)."""
+        return self.calls.get(self.step[0], 0) >= self.budget.max_tool_calls
+
     def admit_call(self, *, past_limit: bool = False) -> bool:
         """``past_limit``: a read of a finished run's result
-        (``RESULT_READS``), or the card offered with the reads, let run
+        (``read_allowance``), or the card offered with the reads, let run
         although the limit is reached; it counts all the same."""
-        run_id = self.step[0]
-        count = self.calls.get(run_id, 0)
-        if count >= self.budget.max_tool_calls and not past_limit:
+        if self.at_limit() and not past_limit:
             return False
-        self.calls[run_id] = count + 1
+        run_id = self.step[0]
+        self.calls[run_id] = self.calls.get(run_id, 0) + 1
         return True
 
     def admit_result(self, usage: RunUsage, result_bytes: int) -> bool:

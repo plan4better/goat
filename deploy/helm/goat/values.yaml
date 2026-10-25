@@ -851,7 +851,7 @@ assistant:
     ASSISTANT_ALLOW_PRIVATE_ENDPOINTS: "false"
     # Limits per answer and per user. Tokens read from the model provider's
     # cache count at a tenth toward ASSISTANT_RUN_MAX_TOKENS. Reading a
-    # finished workflow run's result may take up to 4 tool calls beyond
+    # finished workflow run's result may take up to 7 tool calls beyond
     # ASSISTANT_RUN_MAX_TOOL_CALLS.
     ASSISTANT_RUN_MAX_TOOL_CALLS: "30"
     ASSISTANT_RUN_MAX_TOKENS: "200000"

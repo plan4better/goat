@@ -33,7 +33,7 @@ from assistant.prompt import (
     CARD_AFTER_TEXT,
     INSTRUCTIONS,
     NO_ANSWER_TEXT,
-    READ_THE_RESULT,
+    read_the_result,
     static_instructions,
 )
 from assistant.tools.runtime import ToolEnv
@@ -42,6 +42,8 @@ from assistant.tools.toolset import (
     TOOL_RETRIES,
     answer_step,
     goat_toolset,
+    read_allowance_of,
+    result_unreported,
     silent_responses,
 )
 
@@ -126,9 +128,13 @@ class RunDeps:
     #: missing (``assistant.tools.ask.REPEATED_CARD``).
     refused_cards: dict[str | None, list[tuple[int, str]]] = field(default_factory=dict)
     #: By run id: the reads of the result in ``unreported`` made past the
-    #: look-up budget (``assistant.budget.RESULT_READS``); there from the
-    #: first step prepared for them on.
+    #: look-up budget (``assistant.budget.read_allowance``): in a step prepared
+    #: for them, and past the tool-call limit in any other step. There from
+    #: the first such read or step on.
     result_reads: dict[str | None, int] = field(default_factory=dict)
+    #: By run id: the reads past the look-up budget the result in
+    #: ``unreported`` gets (``assistant.budget.read_allowance``).
+    read_allowances: dict[str | None, int] = field(default_factory=dict)
     #: The step (run id, step number) prepared for reading a finished run's
     #: result past the look-up budget: its reads count as such
     #: (``assistant.tools.toolset.RESULT_READ_TOOLS``). Matched by the step
@@ -204,16 +210,17 @@ def answer_now(ctx: RunContext[RunDeps]) -> str:
     if stage is None or stage == "look up":
         return ""
     if stage in ("read or ask", "read"):
-        lead = READ_THE_RESULT
+        lead = read_the_result(read_allowance_of(ctx))
     elif silent_responses(ctx.messages, ctx.run_id) >= SILENT_RESPONSES:
         lead = ANSWER_IN_TEXT
     else:
         lead = ANSWER_NOW
-    # Named only while the card is offered (assistant.tools.toolset).
-    if stage == "read or ask" and not ctx.deps.asked:
-        return f"{lead} {ANSWER_NOW_CARD} {CARD_AFTER_TEXT}"
-    if stage == "answer or ask" and not ctx.deps.asked:
-        return f"{lead} {ANSWER_NOW_CARD}"
+    # Named only while the card is offered (assistant.tools.toolset). While a
+    # run's result is not yet in the text, which a read step always has, a
+    # card without text before it is refused.
+    if stage in ("read or ask", "answer or ask") and not ctx.deps.asked:
+        card = f"{lead} {ANSWER_NOW_CARD}"
+        return f"{card} {CARD_AFTER_TEXT}" if result_unreported(ctx) else card
     return lead
 
 

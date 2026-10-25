@@ -885,12 +885,44 @@ async def test_sample_features_are_bounded_and_carry_no_geometry() -> None:
         {"layer_project_id": 11, "fields": ["art", "notiz"], "limit": 50},
     )
     [feature] = result["features"]
-    assert set(feature) == {"id", "properties"}
+    assert set(feature) == {"feature_id", "properties"}
     assert len(feature["properties"]["notiz"]) == 201
     items_request = geoapi.requests[-1]
     assert items_request.url.path == f"/collections/{LINES}/items"
     assert dict(items_request.url.params) == {"limit": "10", "properties": "art,notiz"}
     assert result["number_matched"] == 240
+
+
+async def test_a_sample_names_the_row_id_apart_from_an_id_field() -> None:
+    """The row id GOAT gives a feature and a field of the data named ``id``
+    are different numbers: a filter on the field must not get the row id."""
+    stops = {
+        "type": "FeatureCollection",
+        "numberMatched": 1,
+        "features": [
+            {
+                "type": "Feature",
+                "id": "128989",
+                "geometry": None,
+                "properties": {"id": 251821, "feature_id": "x7", "art": "Bahnhof"},
+            }
+        ],
+    }
+    geoapi = Recorder(
+        {
+            ("GET", f"/collections/{LINES}/queryables"): QUERYABLES,
+            ("GET", f"/collections/{LINES}/items"): stops,
+        }
+    )
+    result = await execute(
+        SAMPLE_FEATURES, _env(_core(), geoapi, _processes()), {"layer_project_id": 11}
+    )
+    [feature] = result["features"]
+    assert feature == {
+        "feature_id": "128989",
+        "properties": {"id": 251821, "feature_id": "x7", "art": "Bahnhof"},
+    }
+    assert "feature_id" in SAMPLE_FEATURES.description
 
 
 async def test_restricted_sample_is_withheld_without_reading_rows() -> None:
@@ -1281,6 +1313,47 @@ async def test_propose_view_only_targets_the_open_project() -> None:
     assert processes.requests == []
     assert "other project" not in PROPOSE_VIEW.description
     assert "project_id" not in PROPOSE_VIEW.json_schema()["properties"]
+
+
+async def test_propose_view_refuses_a_layer_without_geometry_before_any_service() -> (
+    None
+):
+    """A table has no extent: the view is refused before any service is asked."""
+    table = {
+        **LAYERS[1],
+        "id": 14,
+        "layer_id": "44444444-4444-4444-4444-444444444444",
+        "name": "Reisezeiten",
+        "type": "table",
+        "feature_layer_geometry_type": None,
+    }
+    core = Recorder(
+        {
+            **_core().routes,
+            ("GET", f"/api/v2/project/{PROJECT}/layer"): [*LAYERS, table],
+        }
+    )
+    geoapi, processes = _geoapi(), _processes()
+    emitted: list[dict[str, Any]] = []
+
+    async def emit(name: str, data: dict[str, Any]) -> str:
+        emitted.append(data)
+        return "m1:1"
+
+    env = _env(core, geoapi, processes, emit_data=emit)
+    for args in [
+        {"title": "x", "fit_layer_project_id": 14},
+        {
+            "title": "x",
+            "fit_layer_project_id": 14,
+            "filter": _where("art", "=", "Radweg"),
+        },
+    ]:
+        with pytest.raises(ToolFailed, match="'Reisezeiten' has no geometry to show"):
+            await execute(PROPOSE_VIEW, env, args)
+    assert geoapi.requests == [] and processes.requests == [] and emitted == []
+    fit = PROPOSE_VIEW.json_schema()["properties"]["fit_layer_project_id"]
+    assert "a layer with geometry, not a table" in fit["description"]
 
 
 async def test_propose_view_widens_a_degenerate_extent() -> None:

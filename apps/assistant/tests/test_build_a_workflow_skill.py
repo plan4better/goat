@@ -16,6 +16,8 @@ from assistant.prompt import (
     static_instructions,
 )
 from assistant.skills import BUILT_IN
+from assistant.tools.core import FoundLayer
+from assistant.tools.project import ProjectInput, SampleInput
 from assistant.tools.registry import BY_WIRE_NAME
 from assistant.tools.workflows import CHECK_DRAFT
 from assistant.workflows import issues, tool_info
@@ -327,6 +329,16 @@ def test_the_skill_holds_the_rule_of_the_third_pass(phrase: str) -> None:
     population sources, boundary areas counted twice and method statements
     that did not match the run."""
     assert phrase in f"{SKILL_TEXT} {RECIPES_TEXT}"
+
+
+def test_a_join_key_the_step_before_does_not_produce_names_the_fields_to_use() -> None:
+    """Sixth pass (Q12, Q15): joins ran on a field the step before does not
+    produce. processes refuses such a join and lists the fields that step
+    gives; tools write their ids under their own names."""
+    issue = SKILL_TEXT.split("- field_not_produced:")[1].split("- ")[0]
+    assert "one of the fields the message lists" in issue
+    assert "origin and destination" in issue
+    assert "reference field as origin" in issue
 
 
 def test_too_many_starting_points_splits_rather_than_narrows() -> None:
@@ -643,3 +655,68 @@ def test_the_default_hint_is_what_the_form_fills_in() -> None:
         "out is unbounded"
     ) in bullet
     assert "set that number (or the user's) explicitly" in bullet
+
+
+def test_a_mean_over_pieces_is_never_called_area_weighted() -> None:
+    """Fifth pass (Q8, Q24): a plain mean of pieces, and aggregate_polygon's
+    weighted mean, were both called area-weighted. aggregate_polygon weights
+    each source polygon by its share inside the area (the intersection's
+    area over the polygon's own), so a piece wholly inside counts 1 whatever
+    its size; project_group_statistics weights nothing. Q14 called a share
+    of pieces a share of the area. The rule sits where results are read."""
+    weighted = DESCRIPTIONS["aggregate_polygon"]["inputs"][
+        "weighted_by_intersecting_area"
+    ]["description"]
+    assert "weighted by its share inside the area" in weighted
+    succeeded = SKILL_TEXT.split("- succeeded:")[1].split("- A share's numerator")[0]
+    for phrase in (
+        "A mean over pieces is the mean of the pieces",
+        "project_group_statistics counts each piece once",
+        "aggregate_polygon's weighted_by_intersecting_area each by its share "
+        "inside the area, never by its size, so never call it area-weighted",
+        "A share of pieces is of the pieces, never of the area",
+    ):
+        assert phrase in succeeded, phrase
+    for said_once in ("a piece wholly inside counts 1", "No tool weights a mean"):
+        assert said_once not in succeeded, said_once
+
+
+def test_a_dataset_of_the_users_own_is_read_before_it_is_recommended() -> None:
+    """Fifth pass (Q17, Q23): the user's own datasets were recommended
+    unread, one holding another city's data, one with points outside the
+    study area. core_find gives no extent; a project that holds the dataset
+    does, read with its project_id. A dataset that does not answer the
+    question is never recommended (Q21 recommended one knowingly)."""
+    find = _plain(
+        SKILL.instructions.split("3. **Find the data.**")[1].split("4. **")[0]
+    )
+    for phrase in (
+        "For one of the user's own datasets, read its extent and a sample of "
+        "its features (its fields and counts when the data policy withholds the "
+        "sample)",
+        "core_find_layers finds a project that holds it",
+        "held by no project, it cannot be checked",
+        "An option you have not checked, or that does not answer the question, "
+        "is never the recommended option",
+    ):
+        assert phrase in find, phrase
+    assert "An option you have not checked is not recommended" not in find
+    # The path the rule names: a layer found in another project, read there.
+    assert {"project_id", "layer_project_id"} <= set(FoundLayer.model_fields)
+    assert "project_id" in ProjectInput.model_fields
+    assert "project_id" in SampleInput.model_fields
+
+
+def test_a_card_never_asks_again_what_the_user_picked() -> None:
+    """Fifth pass (Q12, Q13, Q20): cards asked again, also in other words,
+    what the user had picked in an earlier card. The rule extends the card
+    paragraph."""
+    card = SKILL_TEXT.split("Ask about all unclear datasets in one ask_user card")[1]
+    card = card.split("4. **After the answer.**")[0]
+    for phrase in (
+        "Before a card, read the user's picks earlier in this conversation",
+        "never ask again what they chose, also not in other words (a Run card "
+        "asks anew for each run)",
+        "continue with the pick, or say why it no longer fits",
+    ):
+        assert phrase in card, phrase

@@ -631,7 +631,6 @@ def test_one_rule_says_what_to_do_when_the_data_policy_withholds_data() -> None:
         ),
         # 3 A third read as "most", a share read as a larger fraction.
         ("Never invent", "Give a share as its number"),
-        ("Never invent", "only when they match it"),
     ],
 )
 def test_the_prompt_holds_the_rule_of_the_fourth_pass(words: str, phrase: str) -> None:
@@ -641,3 +640,20 @@ def test_the_prompt_holds_the_rule_of_the_fourth_pass(words: str, phrase: str) -
     bullets = [" ".join(bullet.split()) for bullet in INSTRUCTIONS.split("\n- ")]
     [rule] = [bullet for bullet in bullets if words in bullet]
     assert phrase in rule
+
+
+def test_a_share_is_written_as_its_number_and_names_its_base() -> None:
+    """Fifth pass (Q13, Q23, Q14): shares paraphrased in words that did not
+    match them ("almost half" for 37.6 %, "two fifths" for 55 %), and shares
+    of pieces called shares of the area. The rule replaces the one that let
+    words through when they matched."""
+    bullets = [" ".join(bullet.split()) for bullet in INSTRUCTIONS.split("\n- ")]
+    [rule] = [bullet for bullet in bullets if "Never invent" in bullet]
+    assert 'Give a share as its number, never in words ("most", "almost half")' in rule
+    assert (
+        "say what it is a share of: area, residents or features (pieces, cells, "
+        "stops)" in rule
+    )
+    flat = " ".join(INSTRUCTIONS.split())
+    assert "only when they match it" not in flat
+    assert "two fifths" not in flat

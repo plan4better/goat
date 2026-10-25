@@ -72,20 +72,29 @@ two reasons: at the step that answers, which offered only `ask_user`, a model th
 `ask_user`, and a model that knew text alone ends its answer kept its card and sent it again without text. So cards are
 refused in at most two responses per result (`REPORT_REFUSALS`), a repeat of the card refused before it with a shorter
 note, and the gate lets the next one through. A card that fails validation (a placeholder label, say) gets that error
-instead, which leaves the count alone. A stopped answer keeps the cards and workflows it showed in the history too, so a
-later answer to the card finds it. The user's answer is the next run's message (`RunMessage.answer`): it is checked
-against the stored card before anything is stored (a card is answered once), kept with the user message and returned as
-that message's `metadata.answer`, and given to the model with the values the card attached (`asks.answer_lines`, in a
-block of its own after the user's text, `prompt.with_note`). The card never carries its option values, such as a layer
-or a catalog id, to the web: the card part leaves them out (`asks.card_data`), so do the stream and the transcript of
-the `ask_user` call (`asks.public_args`), and the stored rows keep them. An option that adds datasets names their ids in
-`adds`, hidden the same way, and its `value` can then be a short key: models gave such an option a slug as its value,
-the add tool found no pick of the dataset, and the card was asked again. Each id in `adds` is looked up before the card
-is shown, in the catalog and, for a UUID, in core as a dataset or a bundle the user can read, as the add tools check
-them: an id neither knows refuses the card, so a cut-off id is fixed before the user picks it, and a lookup the service
-fails for lets the card through, since the add tools check again. A card names at most `MAX_CHECKED_ADDS` (50) distinct
-ids in `adds`; one with more is refused unchecked. An id the model then passes to another tool is streamed with that
-call, as any argument is. The card is not on `/mcp`: its clients cannot show one.
+instead, which leaves the count alone. Validation refuses test cards and generic option labels ("Test", "Option 1",
+"Erste Option", `asks.LABEL_RULE`): a probe card with such options reached a user. A card that offers again the option
+the user picked in an earlier card (the same label, value or datasets), under the same header or question, is refused
+with that pick named (`asks.repeated_question`): models asked again what had been picked, mostly when an answer's
+look-ups ran out and a card was the way to go on. The refusal lets the model say why a pick did not work and offer
+other options. The same question with other options is a new choice. The picks of a Run card are left out, the
+decline too, since each run and each workflow needs a pick of its own and a user who declined may want the run after
+all; and a card whose Run pick was used counts no more with any of its picks. A pick without a value or datasets beside
+options that add datasets (the skill's "Leave it open") is left out as well: it chose no data, and every dataset card
+offers it. A stopped answer keeps the cards and workflows it showed in the history too, so a later answer to the card
+finds it. The user's answer is the next run's message (`RunMessage.answer`): it is checked against the stored card
+before anything is stored (a card is answered once), kept with the user message and returned as that message's
+`metadata.answer`, and given to the model with the values the card attached (`asks.answer_lines`, in a block of its own
+after the user's text, `prompt.with_note`). The card never carries its option values, such as a layer or a catalog id,
+to the web: the card part leaves them out (`asks.card_data`), so do the stream and the transcript of the `ask_user` call
+(`asks.public_args`), and the stored rows keep them. An option that adds datasets names their ids in `adds`, hidden the
+same way, and its `value` can then be a short key: models gave such an option a slug as its value, the add tool found no
+pick of the dataset, and the card was asked again. Each id in `adds` is looked up before the card is shown, in the
+catalog and, for a UUID, in core as a dataset or a bundle the user can read, as the add tools check them: an id neither
+knows refuses the card, so a cut-off id is fixed before the user picks it, and a lookup the service fails for lets the
+card through, since the add tools check again. A card names at most `MAX_CHECKED_ADDS` (50) distinct ids in `adds`; one
+with more is refused unchecked. An id the model then passes to another tool is streamed with that call, as any argument
+is. The card is not on `/mcp`: its clients cannot show one.
 
 **Write tools.** Next to read tools and proposals there is a third risk class, `write` (`ToolSpec.risk` in
 `tools/runtime.py`): tools that create a workflow in the open project, run one or add a dataset to it. They create, and
@@ -136,37 +145,40 @@ is ended here for it, ends the answer, not the run (`ToolEnv.stopping`): the job
 it in the next answer. Once the run has started, a read does not fail the call, since a failed call may be tried
 again and that would start the workflow again: a status read that fails because processes is briefly unavailable is read
 again while the answer has time, any other failed read ends the wait with the run as still going, and a saved layer's
-fields are read best effort. The permission and the wait for a run already going read processes' job list, which holds
-the user's jobs of the last three days, at most 100 of them: the permission does not see a run of the user's older than
-that, and an active run whose workflow the list does not name (processes leaves out the inputs of a job it could not
-read) stops a start, since it may be this workflow's. The summary of a failed or cancelled run names the failing step
-and its error and marks each step the run reports nothing for as `unknown`, which may have finished: processes attaches
-the steps' results to a successful run only and their statuses while it runs. Each tool step lists the settings the
-run was sent, its variables resolved (`step_settings` in `workflows/runs.py`), so the answer states the method as it
-ran (time window, mode, limits): the nodes and variables processes keeps with the job, since the toolbox runs with
-other variable values than the stored ones and the editor with its unsaved nodes, and the stored config for what the
-job lacks. Plain values are listed as they are, statistics as `sum(field)` and opportunities by name and `max_cost`;
-ids, filters, geometries, SQL text (its literals can hold data values) and the names of result layers are left out,
-before the cap counts. Besides the settings it was sent, each tool step lists the settings it left out at the tool's
-default (`step_defaults`): the assistant's drafts hold only what the model wrote, so a run at the defaults would
-otherwise state no time window. They come from the tool's process description, read once per tool and cached, and a
-description that cannot be read leaves them out. A default is listed only when the editor shows its setting for the
-step's values (`goatlib.workflows.visibility`, advanced settings counted as shown, since they apply all the same)
-and the tool applies that very value: a setting whose form value follows other settings (`default_from`,
-`default_by_field`, ...) is left out, since tools resolve those themselves and the static default is not always what
-runs: a catchment's limit follows its mode, and a travel cost matrix's street limit (`max_cost`) left out is
-unbounded, not the form's value. `project_group_statistics` reads results per group, or one row for the whole
-filtered layer without `group_by`, through processes' `aggregation-stats`, the statistics behind the dashboard
-charts; with `share_of` it reads the other layer's statistic too, with a filter of its own (residents in a catchment
-over all residents: the denominator needs another filter than the numerator), and divides each row's value by the
-other layer's for the same group, or by its total, in this service, so shares and totals in an answer never come
-from the model's arithmetic, and its note says how many groups have no share and why.
-The rows stop at 100 groups, but the denominator is read with up to `DENOMINATOR_GROUPS`, since a row's group may come
-anywhere in the other layer's list. A denominator from another layer gets a note: if the layers come from different
-sources, check that both count the same population (source and year).
-Under Restricted it sends counts only, for few groups (judged over the whole layer, also with a filter), no count of a
-group under `MIN_RESTRICTED_GROUP` features, nothing for a filter that matches fewer features than that, and nothing at
-all with `share_of`.
+fields are read best effort. They list the fields the run added first (joined fields and the steps' result names), since
+a join adds its fields last and the list stops at `MAX_SAVED_FIELDS`. The permission and the wait for a run already
+going read processes' job list, which holds the user's jobs of the last three days, at most 100 of them: the permission
+does not see a run of the user's older than that, and an active run whose workflow the list does not name (processes
+leaves out the inputs of a job it could not read) stops a start, since it may be this workflow's. The summary of a
+failed or cancelled run names the failing step and its error and marks each step the run reports nothing for as
+`unknown`, which may have finished: processes attaches the steps' results to a successful run only and their statuses
+while it runs. Each tool step lists the settings the run was sent, its variables resolved (`step_settings` in
+`workflows/runs.py`), so the answer states the method as it ran (time window, mode, limits): the nodes and variables
+processes keeps with the job, since the toolbox runs with other variable values than the stored ones and the editor with
+its unsaved nodes, and the stored config for what the job lacks. Plain values are listed as they are, statistics as
+`sum(field)` and opportunities by name and `max_cost`; ids, filters, geometries, SQL text (its literals can hold data
+values) and the names of result layers are left out, before the cap counts. Besides the settings it was sent, each tool
+step lists the settings it left out at the tool's default (`step_defaults`): the assistant's drafts hold only what the
+model wrote, so a run at the defaults would otherwise state no time window. They come from the tool's process
+description, read once per tool and cached, and a description that cannot be read leaves them out. A default is listed
+only when the editor shows its setting for the step's values (`goatlib.workflows.visibility`, advanced settings counted
+as shown, since they apply all the same) and the tool applies that very value: a setting whose form value follows other
+settings (`default_from`, `default_by_field`, ...) is left out, since tools resolve those themselves and the static
+default is not always what runs: a catchment's limit follows its mode, and a travel cost matrix's street limit
+(`max_cost`) left out is unbounded, not the form's value. `project_group_statistics` reads results per group, or one row
+for the whole filtered layer without `group_by`, through processes' `aggregation-stats`, the statistics behind the
+dashboard charts; with `share_of` it reads the other layer's statistic too, with a filter of its own (residents in a
+catchment over all residents: the denominator needs another filter than the numerator), and divides each row's value by
+the other layer's for the same group, or by its total, in this service, so shares and totals in an answer never come
+from the model's arithmetic, and its note says how many groups have no share and why. The rows stop at 100 groups, but
+the denominator is read with up to `DENOMINATOR_GROUPS`, since a row's group may come anywhere in the other layer's
+list. A denominator from another layer gets a note: if the layers come from different sources, check that both count the
+same population (source and year). Under Restricted it sends counts only, for few groups (judged over the whole layer,
+also with a filter), no count of a group under `MIN_RESTRICTED_GROUP` features, nothing for a filter that matches fewer
+features than that, and nothing at all with `share_of`. A join names the fields it adds `join_<name>`, and models often
+leave the prefix out, so the statistics tools and the count's filter read `join_x` for a field `x` the layer lacks and
+say so in the result's note. The name is resolved before anything else, so the Restricted checks judge `join_x` exactly
+as when the model names it.
 
 **Building a workflow.** The model is shown only the tools of the user's toolbox (`offered` in
 `tools/workflow_tools.py`: `GET /processes` for the user, without the tools hidden from the toolbox, such as custom
@@ -288,24 +300,33 @@ And before either run limit, the model's next call is told to answer with what i
 (`assistant/budget.py`), so a long search ends in an answer, or in a card when the user has to choose, not only in the
 limit error. A finished workflow run's result the answer has not written about yet is the exception: the answer may
 still read it with the project's read tools and `workflow_describe_tool` (what the result's fields and scales mean),
-`RESULT_READS` (3) calls in all, also past the tool-call limit, while three answer-sized calls fit before each read
-step: the read step, the answer step and a retry of it, since a response with only reasoning is asked again. The answer
-step keeps its room (`StepGuard`); after reading, the run looks nothing else up. Offered only the card, answers could
-not read more of their results, and their attempts to read came out as cards. `ASSISTANT_RUN_MAX_TOKENS` counts tokens
-read from the provider's cache at a tenth, roughly what they cost: every call rereads the cached prefix, and counting it
-fully stopped answers on cheap rereads. The budget and the hard limit count the same way. The step that answers offers
-other tools and instructions than the calls before it, so the provider reads none of it from its cache. So the answer
-step and one spare call are sized at their whole context, read from the run's messages: the newest call's input and
-output plus the tool results the next call sends. One more look-up is allowed only while, after it, both still fit with
-the run's largest step added; the card only while both fit, and otherwise the step answers in text. Within a step, calls
-past the run's tool-call limit are refused as they run, and every call let run counts toward that limit, failed ones
-too. A call a service failed twice for (a 429 or 5xx answer, no answer in time, or none: `http.service_failed`) is
-refused on its next repeat without asking the service again (`SERVICE_FAILED_TWICE` in `assistant/tools/toolset.py`);
-the first retry still runs, since a service can fail for a moment. A 4xx answer does not count: it is the service's
-verdict on the call. A result that would leave the answer step too little room is refused (`StepGuard`), which ends the
-run's look-ups (`answer_step` in `assistant/tools/toolset.py`). The step's other calls go on, and where the answer step
-still fits after the run's first call (which is not checked), the run answers with what it found instead of failing at a
-limit.
+one call per layer the run saved and one more, at least `RESULT_READS` and at most `MAX_RESULT_READS` in all
+(`budget.read_allowance`), also past the tool-call limit, while two answer-sized calls fit before each read step: the
+read step and the answer step, the same room a look-up leaves. Room for a third call, to ask a response without text
+again, kept the read step out of reach: once the look-ups were spent, it no longer fitted an answer that had built and
+run a workflow, and the answer step, offered only the card, sent cards without the result. So after a read near the
+token limit, asking a response without text again can end the run at the limit (`run_limit`), before the fixed text
+that `runs/turn.py` gives an answer without text once its retries are used up; a model that writes its text always
+gets its answer in. While a result is not yet in the text, the instruction that offers the card asks for the text
+first, in the same response. Reads of the result that reach the
+tool-call limit in a step that may still look things up run past it too, from the same allowance: models read a
+result's layers in one batch, and the limit cut such a batch halfway. The answer step keeps its room (`StepGuard`);
+after reading, the run looks nothing else up. Offered only the card, answers could not read more of their results,
+and their attempts to read came out as cards; with three reads, a run that saved four layers left one unread.
+`ASSISTANT_RUN_MAX_TOKENS` counts tokens read from the provider's cache at a tenth, roughly what they cost: every call
+rereads the cached prefix, and counting it fully stopped answers on cheap rereads. The budget and the
+hard limit count the same way. The step that answers offers other tools and instructions than the calls before it, so
+the provider reads none of it from its cache. So the answer step and one spare call are sized at their whole context,
+read from the run's messages: the newest call's input and output plus the tool results the next call sends. One more
+look-up is allowed only while, after it, both still fit with the run's largest step added; the card only while both fit,
+and otherwise the step answers in text. Within a step, calls past the run's tool-call limit are refused as they run, and
+every call let run counts toward that limit, failed ones too. A call a service failed twice for (a 429 or 5xx answer, no
+answer in time, or none: `http.service_failed`) is refused on its next repeat without asking the service again
+(`SERVICE_FAILED_TWICE` in `assistant/tools/toolset.py`); the first retry still runs, since a service can fail for a
+moment. A 4xx answer does not count: it is the service's verdict on the call. A result that would leave the answer step
+too little room is refused (`StepGuard`), which ends the run's look-ups (`answer_step` in `assistant/tools/toolset.py`).
+The step's other calls go on, and where the answer step still fits after the run's first call (which is not checked),
+the run answers with what it found instead of failing at a limit.
 
 An answer also has to end in text. Pydantic AI asks again after a response without text or a tool call (only
 reasoning, or nothing), with the same tools, and a model that gave one often gave the next alike until the run failed
@@ -314,7 +335,12 @@ an answer could end after its cards with a single space. Such an answer is asked
 (`agent.ends_with_text`); only the last retry's answer is taken as it is, since failing the run then would lose what
 the user has already seen. And the second response of a run without a tool call or text beyond whitespace ends its
 look-ups (`SILENT_RESPONSES` in `assistant/tools/toolset.py`): the next call is the answer step, told why
-(`prompt.ANSWER_IN_TEXT`).
+(`prompt.ANSWER_IN_TEXT`). A model can still give no text until Pydantic AI gives up. After a `workflow_run` that
+succeeded and saved layers, with nothing written since, that would end the answer as a failure while the run card and
+the layers are there: such an answer ends with a fixed text instead (`runs/turn.py`, `NO_ANSWER_CAVEAT`), a caveat the
+dock shows in the user's language by its kind, the run completes, and a warning is logged. The next answer finds the
+text in the history after everything the run found, so the user can ask for the numbers. Otherwise the answer still
+fails: after a failed run or one without layers there are no numbers, and `workflow_last_run` shows no run card.
 
 Behind a connection pooler in transaction mode, set `POSTGRES_TRANSACTION_POOLER`: the pool then prepares no
 statements on the server. The assistant holds no session state in Postgres (its locks are per transaction, its
