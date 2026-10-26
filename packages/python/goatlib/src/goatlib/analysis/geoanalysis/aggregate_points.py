@@ -191,14 +191,17 @@ class AggregatePointsTool(AnalysisTool):
         """)
 
         # A dissolved area is one multipolygon whose bounding box covers every
-        # point; its parts have their own, smaller boxes for the spatial join.
-        # A point on an edge two parts share matches both, so the pairs are
-        # made distinct before anything is aggregated.
+        # point; its parts have their own, smaller boxes for the spatial join,
+        # and big parts are cut into small pieces, since the join copies the
+        # polygon it tests for every point. A point on an edge two parts or
+        # pieces share matches both, so the pairs are made distinct before
+        # anything is aggregated.
         self.con.execute(f"""
             CREATE OR REPLACE TEMP TABLE area_parts AS
             SELECT area_id, UNNEST(ST_Dump({area_g})).geom AS part
             FROM area_with_id
         """)
+        self.subdivide_polygons("area_parts", "part")
         self.con.execute(f"""
             CREATE OR REPLACE TEMP TABLE source_numbered AS
             SELECT ROW_NUMBER() OVER () AS __aggregate_point_id, * FROM {source_view}

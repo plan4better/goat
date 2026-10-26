@@ -225,6 +225,38 @@ enlarges areas more the farther they lie from the equator. A geometry in
 another CRS is brought to lon/lat first, with `always_xy` so its axes are not
 swapped.
 
+## Overlays on large polygons
+
+DuckDB spatial takes a copy of a geometry for every row it tests against it
+(ST_Intersects, ST_Intersection, ST_Difference) and frees the copies only after
+the whole vector of rows; that memory cannot spill. A dissolved city-wide
+catchment tested row by row against a few thousand points or parcels runs out
+of memory whatever the threads or memory limit. So clip, erase, union and
+aggregate_points cut polygons above `SUBDIVIDE_MAX_VERTICES` vertices into
+pieces first (`subdivide_polygons` in `analysis/core/base.py`, a quad split,
+since the extension has no ST_Subdivide) and find the pieces each row touches
+with a spatial join. Clip, erase and union then intersect or erase each row
+once with the union of only those pieces (`local_union_cte`), which gives the
+dissolved overlay's result. aggregate_points counts a point on a cut line once
+per area. A big row on the other side (a polygon, a line such as a route, or a
+multipoint), such as the input of an erase, is cut too, but only to find its
+pieces; the intersection or difference uses the row itself.
+
+The cut lines add vertices to the output where they cross the overlay's
+boundary. Where that boundary is slanted, such a vertex is computed in
+floating point and lies a rounding error off the edge, so the union of the
+pieces bends the edge by that much. A polygon row with an edge along it can
+then come back as a hair-thin sliver where the dissolved overlay leaves it
+nothing, or only a line. A row whose result has such a part is recomputed
+against the whole overlay, as before the pieces, in batches that bound the
+copies (`recompute_slivers`, `NEAR_EMPTY_WIDTH_RATIO`). A known edge case
+remains: a line lying exactly on the overlay's boundary along such a bent edge
+has no width to detect, so it is not recomputed and can lose or keep that edge
+where the dissolved overlay would give the other result.
+Not covered yet: union's overlapping parts pair each input row with each
+overlay row it touches, so one big input row touching many overlay rows is
+still copied once per pair, as in the intersection and spatial join tools.
+
 ## DuckLake catalog connections
 
 Every DuckLake read runs a few catalog queries inside a Postgres transaction,

@@ -4,6 +4,7 @@ from typing import List, Self, Tuple
 
 from goatlib.analysis.core.base import AnalysisTool
 from goatlib.analysis.schemas.geoprocessing import DifferenceParams
+from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.io.parquet import write_optimized_parquet
 from goatlib.models.io import DatasetMetadata
 
@@ -13,15 +14,16 @@ logger = logging.getLogger(__name__)
 class DifferenceTool(AnalysisTool):
     """Tool for computing the difference between input and overlay geometries.
 
-    This tool implements the QGIS 'Difference' operation using DuckDB views with bbox optimization.
-    Automatically handles bbox columns for spatial indexing - creates them if needed or uses
-    existing ones. Follows GeoParquet spatial indexing specification.
+    This tool implements the QGIS 'Difference' operation: each input row minus
+    the dissolved overlay. The overlay is cut into small pieces first and each
+    row is tested against those, so a large overlay polygon is not copied for
+    every row (see AnalysisTool.subdivide_polygons).
     """
 
     def _run_implementation(
         self: Self, params: DifferenceParams
     ) -> List[Tuple[Path, DatasetMetadata]]:
-        """Perform difference operation using views with bbox spatial optimization.
+        """Erase the dissolved overlay from every input row.
 
         Args:
             params: DifferenceParams object with input_path, overlay_path, and other options.
@@ -77,79 +79,68 @@ class DifferenceTool(AnalysisTool):
             )
         output_path = Path(params.output_path)
 
-        # Perform difference operation using views with bbox optimization
-        # Both views now have bbox columns (either pre-existing or created by import_input)
-        logger.info("Performing view-based difference with bbox spatial filtering")
-
         # Keep the input's geometry family (degenerate pieces are dropped)
         allowed_types = self.get_allowed_output_geometry_types(input_view, input_geom)
         logger.info(f"Filtering output to geometry types: {allowed_types or 'all'}")
-
-        # First, create a unified overlay geometry from all overlay features
-        logger.info("Creating unified overlay geometry from all overlay features")
-        self.con.execute(f"""
-            CREATE OR REPLACE TABLE unified_overlay AS
-            WITH unified AS (
-                SELECT ST_Union_Agg({overlay_geom}) as geom
-                FROM {overlay_view}
-                WHERE ST_IsValid({overlay_geom})
-            )
-            SELECT
-                geom as unified_geom,
-                {{
-                    'xmin': ST_XMin(geom),
-                    'xmax': ST_XMax(geom),
-                    'ymin': ST_YMin(geom),
-                    'ymax': ST_YMax(geom)
-                }} AS bbox
-            FROM unified
-        """)
-
-        # Then compute difference for each input feature against the unified overlay
-        logger.info(
-            "Computing difference against unified overlay geometry with bbox optimization"
+        g = quote_identifier(input_geom)
+        geom_type_filter = (
+            f"AND ST_GeometryType({g}) IN {allowed_types}" if allowed_types else ""
         )
 
-        # Build geometry type filter clause
-        geom_type_filter = ""
-        if allowed_types:
-            geom_type_filter = f"""
-                AND (
-                    u.unified_geom IS NULL
-                    OR ST_GeometryType(ST_Difference(i.{input_geom}, u.unified_geom)) IN {allowed_types}
-                )
-            """
-
+        # The overlay, dissolved, in small pieces. Each input row loses the
+        # union of the pieces it touches, which is its share of the dissolved
+        # overlay; a row touching none stays as it is.
+        logger.info("Erasing the pieces of the dissolved overlay")
+        cut = self.create_overlay_pieces("overlay_pieces", overlay_view, overlay_geom)
+        self.con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE input_numbered AS
+            SELECT row_number() OVER () AS __overlay_row, * EXCLUDE (bbox)
+            FROM {input_view}
+            WHERE ST_IsValid({g})
+        """)
+        self.create_touched_pieces(
+            "difference_pairs",
+            "input_numbered",
+            "__overlay_row",
+            input_geom,
+            "overlay_pieces",
+        )
+        local_union = self.local_union_cte(
+            "difference_pairs", "overlay_pieces", "__overlay_row"
+        )
+        # Materialised, so the difference runs once per row; nothing is left
+        # of a point that touches a piece.
+        self.con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE difference_rows AS
+            WITH {local_union}
+            SELECT
+                i.* EXCLUDE ({g}),
+                CASE
+                    WHEN l.__overlay_row IS NULL THEN i.{g}
+                    WHEN l.local_overlay IS NULL THEN NULL
+                    ELSE ST_Difference(i.{g}, l.local_overlay)
+                END AS {g}
+            FROM input_numbered i
+            LEFT JOIN local_overlays l ON l.__overlay_row = i.__overlay_row
+        """)
+        # A sliver along an edge the cut lines bend is recomputed against the
+        # whole dissolved overlay, as before the pieces.
+        if cut:
+            self.recompute_slivers(
+                "difference_rows",
+                input_geom,
+                ["__overlay_row"],
+                "input_numbered",
+                input_geom,
+                "CASE WHEN ST_Intersects({row}, {whole})"
+                " THEN ST_Difference({row}, {whole}) ELSE {row} END",
+                "overlay_pieces_whole",
+                "geom",
+            )
         self.con.execute(f"""
             CREATE OR REPLACE VIEW difference_result AS
-            SELECT
-                i.* EXCLUDE ({input_geom}, bbox),
-                CASE
-                    WHEN u.unified_geom IS NOT NULL
-                        AND ST_Intersects(i.{input_geom}, u.unified_geom)
-                        -- Bbox-based spatial filter for performance (GeoParquet spatial indexing)
-                        AND i.bbox.xmin <= u.bbox.xmax
-                        AND i.bbox.xmax >= u.bbox.xmin
-                        AND i.bbox.ymin <= u.bbox.ymax
-                        AND i.bbox.ymax >= u.bbox.ymin
-                    THEN
-                        ST_Difference(i.{input_geom}, u.unified_geom)
-                    ELSE
-                        i.{input_geom}
-                END AS {input_geom}
-            FROM {input_view} i
-            LEFT JOIN unified_overlay u ON TRUE
-            WHERE ST_IsValid(i.{input_geom})
-                AND (
-                    u.unified_geom IS NULL
-                    OR NOT ST_IsEmpty(
-                        CASE
-                            WHEN ST_Intersects(i.{input_geom}, u.unified_geom)
-                            THEN ST_Difference(i.{input_geom}, u.unified_geom)
-                            ELSE i.{input_geom}
-                        END
-                    )
-                )
+            SELECT * EXCLUDE (__overlay_row) FROM difference_rows
+            WHERE NOT ST_IsEmpty({g})
                 -- Filter out degenerate geometries - keep only same type as input (ArcGIS/QGIS behavior)
                 {geom_type_filter}
         """)
