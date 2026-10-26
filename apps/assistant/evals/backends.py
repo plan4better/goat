@@ -16,7 +16,10 @@ check, the tools' own parameter models included. Core keeps the workflows it
 saves for the graders. A fourth project holds a workflow whose run processes
 refuses before it starts, and processes' runs are a stand-in too
 (``_run_routes``): after the same check, a run of a saved workflow saves
-``RESULT_LAYER``, which ``aggregation-stats`` groups.
+``RESULT_LAYER``, which ``aggregation-stats`` groups. A fifth holds a workflow
+the assistant changes (``EDIT_WORKFLOW``): core saves it on its revision only,
+as core checks ``base_revision``, and keeps each version it saved in the
+saved workflows too.
 """
 
 import contextlib
@@ -565,6 +568,9 @@ EMPTY_PROJECT_NAME = "Neues Projekt München"
 RUN_PROJECT_ID = "00000000-0000-0000-0000-0000000005e7"
 RUN_PROJECT_NAME = "Schulwege Leipzig"
 RUN_WORKFLOW_ID = "0b6f0000-0000-0000-0000-0000000000e1"
+EDIT_PROJECT_ID = "00000000-0000-0000-0000-0000000005e8"
+EDIT_PROJECT_NAME = "Nahversorgung zu Fuß"
+EDIT_WORKFLOW_ID = "0b6f0000-0000-0000-0000-0000000000e2"
 #: Every fixture project's folder: a run is submitted with it.
 FOLDER_ID = "0f000000-0000-0000-0000-000000000001"
 
@@ -713,6 +719,78 @@ RUN_WORKFLOW: dict[str, Any] = {
             },
             {"id": "e2", "source": "tool-walk", "target": "export-walk"},
         ],
+        "variables": [],
+    },
+}
+#: The edit project's workflow, at revision 3: walking catchments around the
+#: supermarkets, saved, with the user's own note. The assistant changes it.
+EDIT_WORKFLOW: dict[str, Any] = {
+    "id": EDIT_WORKFLOW_ID,
+    "project_id": EDIT_PROJECT_ID,
+    "name": "Supermärkte zu Fuß",
+    "description": None,
+    "is_default": False,
+    "revision": 3,
+    "config": {
+        "nodes": [
+            {
+                "id": "note-user",
+                "type": "textAnnotation",
+                "position": {"x": 0, "y": -180},
+                "zIndex": -1000,
+                "data": {
+                    "type": "textAnnotation",
+                    "text": "<p>Supermärkte, die man zu Fuß erreicht.</p>",
+                    "backgroundColor": "#FFF9C4",
+                    "width": 300,
+                    "height": 120,
+                },
+            },
+            {
+                "id": "dataset-shops",
+                "type": "dataset",
+                "position": {"x": 0, "y": 0},
+                "data": {
+                    "type": "dataset",
+                    "label": "Supermärkte",
+                    "layerId": WORKFLOW_LAYERS[3].layer_id,
+                    "projectLayerId": WORKFLOW_LAYERS[3].layer_project_id,
+                    "layerName": WORKFLOW_LAYERS[3].name,
+                    "filterInitialized": True,
+                },
+            },
+            {
+                "id": "tool-walk",
+                "type": "tool",
+                "position": {"x": 320, "y": 0},
+                "data": {
+                    "type": "tool",
+                    "processId": "catchment_area_v2",
+                    "label": "Zu Fuß",
+                    "config": {"routing_mode": "walking", "max_cost": 15, "steps": 3},
+                },
+            },
+            {
+                "id": "export-walk",
+                "type": "export",
+                "position": {"x": 640, "y": 0},
+                "data": {
+                    "type": "export",
+                    "label": "Supermärkte zu Fuß",
+                    "datasetName": "Supermärkte zu Fuß",
+                },
+            },
+        ],
+        "edges": [
+            {
+                "id": "e1",
+                "source": "dataset-shops",
+                "target": "tool-walk",
+                "targetHandle": "starting_points",
+            },
+            {"id": "e2", "source": "tool-walk", "target": "export-walk"},
+        ],
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
         "variables": [],
     },
 }
@@ -2162,13 +2240,17 @@ def _workflow_core_routes(
         VIEWER_PROJECT_ID: list(WORKFLOW_LAYERS),
         EMPTY_PROJECT_ID: [],
         RUN_PROJECT_ID: list(WORKFLOW_LAYERS),
+        EDIT_PROJECT_ID: list(WORKFLOW_LAYERS),
     }
     names = {
         WF_PROJECT_ID: WF_PROJECT_NAME,
         VIEWER_PROJECT_ID: WF_PROJECT_NAME,
         EMPTY_PROJECT_ID: EMPTY_PROJECT_NAME,
         RUN_PROJECT_ID: RUN_PROJECT_NAME,
+        EDIT_PROJECT_ID: EDIT_PROJECT_NAME,
     }
+    #: The edit project's workflow as core holds it in this task.
+    editable = json.loads(json.dumps(EDIT_WORKFLOW))
     #: Catalog item id -> the layer adding it gave in this task.
     added: dict[str, FixtureLayer] = {}
 
@@ -2344,6 +2426,25 @@ def _workflow_core_routes(
 
         return respond
 
+    def edit_save(request: httpx.Request) -> httpx.Response:
+        """Core's workflow save with its revision check: a save on another
+        revision answers 409 changed_elsewhere and writes nothing."""
+        body = json.loads(request.content)
+        if body.get("base_revision") != editable["revision"]:
+            return httpx.Response(
+                409,
+                json={
+                    "detail": "changed_elsewhere",
+                    "revision": editable["revision"],
+                    "updated_at": "2026-10-25T09:00:00+00:00",
+                    "updated_by": None,
+                },
+            )
+        editable["config"] = body["config"]
+        editable["revision"] += 1
+        saved.append(json.loads(json.dumps(editable)))
+        return httpx.Response(200, json=editable)
+
     routes: dict[tuple[str, str], Any] = {
         ("GET", "/api/v2/template"): templates,
         # workflow_create_from_template reads the template before it uses it.
@@ -2368,6 +2469,12 @@ def _workflow_core_routes(
     run_base = f"/api/v2/project/{RUN_PROJECT_ID}"
     routes[("GET", f"{run_base}/workflow")] = [RUN_WORKFLOW]
     routes[("GET", f"{run_base}/workflow/{RUN_WORKFLOW_ID}")] = RUN_WORKFLOW
+    edit_base = f"/api/v2/project/{EDIT_PROJECT_ID}/workflow"
+    routes[("GET", edit_base)] = lambda request: httpx.Response(200, json=[editable])
+    routes[("GET", f"{edit_base}/{EDIT_WORKFLOW_ID}")] = lambda request: httpx.Response(
+        200, json=editable
+    )
+    routes[("PUT", f"{edit_base}/{EDIT_WORKFLOW_ID}")] = edit_save
     return routes
 
 

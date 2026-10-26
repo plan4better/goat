@@ -195,6 +195,12 @@ def earlier_writes(messages: Sequence[Mapping[str, Any]]) -> dict[str, dict[str,
     return found
 
 
+def _forget_reads(results: dict[str, dict[str, Any]], tools: frozenset[str]) -> None:
+    """Drops the earlier results of ``tools`` (wire names) from an answer's."""
+    for key in [key for key in results if key.split(" ", 1)[0] in tools]:
+        del results[key]
+
+
 def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
     # ``ctx`` is positional-only: a model-chosen argument named "ctx" must reach
     # ``execute`` as an argument, not collide with the context parameter.
@@ -317,6 +323,10 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                     if failures >= SERVICE_FAILURES:
                         ctx.deps.refused_results[key] = (0, SERVICE_FAILED_TWICE)
                 raise
+            finally:
+                # Whatever it answered, the write may have changed what these
+                # read: their next call runs again.
+                _forget_reads(ctx.deps.earlier_results, spec.invalidates)
             if spec.wire_name == ASK_TOOL:
                 ctx.deps.asked = True
             if key:

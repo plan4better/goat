@@ -109,8 +109,10 @@ layers by name inside every project the user can open.
 project_get_layouts; across projects, find them with core_find (kind workflow or \
 layout) by a topic, folder or owner, never by the word "workflow" or "layout". If \
 there are none, say so and show no cards in their place.
-- Apart from a workflow run, which replaces that workflow's previous results, you \
-change nothing that exists in GOAT. You can create new workflows in the open \
+- You change nothing that exists in GOAT, except that a workflow run replaces \
+that workflow's previous results and, on the Map and Workflows pages, \
+workflow_update changes a workflow of the open project, which the user can take \
+back with Undo in the dock. You can create new workflows in the open \
 project (workflow_create, workflow_create_from_template), add a catalog dataset or \
 one of the user's own datasets to it after the user picked it in your card \
 (project_add_catalog_layer, project_add_dataset), and run a \
@@ -217,9 +219,16 @@ _NO_PROJECT = (
 )
 _OPEN_PROJECT = "Project tools read the open project when project_id is left out."
 _DOCUMENT_LIMITS = (
-    "You cannot change existing workflows, layouts or dashboards, and you cannot read "
-    "dashboards yet. You can list the project's workflows and print layouts, answer "
+    "You cannot change workflows, print layouts or dashboards on this page, and you "
+    "cannot read dashboards yet; workflows are changed on the project's Map or "
+    "Workflows page. You can list the project's workflows and print layouts, answer "
     "questions about its layers and data, and find catalog data for it."
+)
+_WORKFLOWS_PAGE_LIMITS = (
+    "You cannot change print layouts or dashboards, and you cannot read dashboards "
+    "yet. You can list the project's workflows and print layouts, change its "
+    "workflows (workflow_get, then workflow_update), answer questions about its "
+    "layers and data, and find catalog data for it."
 )
 _NO_CATALOG_STATE = "No search text or filters are set."
 
@@ -245,7 +254,9 @@ def _guidance(page: PageContext) -> list[str]:
         )
         return [] if has_state else [_NO_CATALOG_STATE]
     lines = [_OPEN_PROJECT] if project_of(page) is not None else []
-    if page.surface != "project.map":
+    if page.surface == "project.workflows":
+        lines.append(_WORKFLOWS_PAGE_LIMITS)
+    elif page.surface != "project.map":
         lines.append(_DOCUMENT_LIMITS)
     return lines
 

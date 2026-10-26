@@ -15,6 +15,10 @@ ACTIVE = ("queued", "running")
 #: mark_running would otherwise block its conversation and a user slot forever.
 QUEUED_GRACE = timedelta(seconds=60)
 
+#: How long an Undo's mark that it is under way holds: a request that never
+#: finished (a crash) frees the edits after it.
+UNDO_CLAIM_TTL = timedelta(minutes=5)
+
 #: The first message as the history shows it when a conversation has no title.
 FIRST_MESSAGE_CHARS = 200
 
@@ -508,7 +512,7 @@ class Repository:
         # An answer's row is written when its run starts, together with the
         # question: its time is when the run ended.
         records = await self.db.pool.fetch(
-            "SELECT m.id, m.role, m.parts, m.seq, "
+            "SELECT m.id, m.role, m.parts, m.seq, m.run_id, "
             "coalesce(r.finished_at, m.created_at) AS created_at "
             f"FROM {self.db.t('message')} m "
             f"LEFT JOIN {self.db.t('run')} r ON r.id = m.run_id "
@@ -643,11 +647,14 @@ class Repository:
         status: str,
         error: str | None,
         created: dict[str, Any] | None = None,
+        undo: dict[str, Any] | None = None,
     ) -> None:
+        """``undo``: what takes a write's change of an existing document back
+        (``runtime.Undoes``)."""
         await self.db.pool.execute(
             f"INSERT INTO {self.db.t('tool_call')} (run_id, user_id, tool, tool_call_id, "
-            "args_summary, result_bytes, duration_ms, status, error, created) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+            "args_summary, result_bytes, duration_ms, status, error, created, undo) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
             run_id,
             user_id,
             tool,
@@ -658,7 +665,76 @@ class Repository:
             status,
             error,
             created,
+            undo,
         )
+
+    # -- undo of an answer's edits ---------------------------------------------
+
+    async def undo_records(self, run_id: UUID) -> list[tuple[UUID, dict[str, Any]]]:
+        """The undo records of a run's calls with their row ids, in the order
+        the calls were made. Read by ``undo IS NOT NULL``, never by status: a
+        call whose save landed keeps its record also when its result was then
+        refused."""
+        records = await self.db.pool.fetch(
+            f"SELECT id, undo FROM {self.db.t('tool_call')} "
+            "WHERE run_id = $1 AND undo IS NOT NULL ORDER BY created_at, id",
+            run_id,
+        )
+        return [(r["id"], dict(r["undo"])) for r in records]
+
+    async def claim_undo(self, ids: list[UUID]) -> list[UUID]:
+        """Marks the records under way (``undoing_at`` in the record) that are
+        neither undone nor under way, and returns those this call marked: of
+        two Undo requests at once, only one writes the content back. A mark
+        older than ``UNDO_CLAIM_TTL`` is left by a request that never
+        finished and counts as none."""
+        records = await self.db.pool.fetch(
+            f"UPDATE {self.db.t('tool_call')} "
+            "SET undo = undo || jsonb_build_object('undoing_at', now()) "
+            "WHERE id = ANY($1::uuid[]) AND undo IS NOT NULL "
+            "AND NOT undo ? 'undone_at' AND (NOT undo ? 'undoing_at' "
+            "OR (undo ->> 'undoing_at')::timestamptz < now() - $2::interval) "
+            "RETURNING id",
+            ids,
+            UNDO_CLAIM_TTL,
+        )
+        return [r["id"] for r in records]
+
+    async def finish_undo(self, ids: list[UUID]) -> None:
+        """Marks the records undone: their content went back."""
+        await self.db.pool.execute(
+            f"UPDATE {self.db.t('tool_call')} "
+            "SET undo = (undo - 'undoing_at') || jsonb_build_object('undone_at', now()) "
+            "WHERE id = ANY($1::uuid[]) AND undo IS NOT NULL",
+            ids,
+        )
+
+    async def release_undo(self, ids: list[UUID]) -> None:
+        """Takes the mark off again: the content did not go back."""
+        await self.db.pool.execute(
+            f"UPDATE {self.db.t('tool_call')} SET undo = undo - 'undoing_at' "
+            "WHERE id = ANY($1::uuid[]) AND undo IS NOT NULL",
+            ids,
+        )
+
+    async def undo_records_by_answer(
+        self, conversation_id: UUID
+    ) -> dict[UUID, list[tuple[UUID, dict[str, Any]]]]:
+        """The undo records of a conversation's runs, by answer, in the order
+        the calls were made."""
+        records = await self.db.pool.fetch(
+            f"SELECT r.assistant_message_id, c.id, c.undo FROM {self.db.t('run')} r "
+            f"JOIN {self.db.t('tool_call')} c ON c.run_id = r.id "
+            "WHERE r.conversation_id = $1 AND c.undo IS NOT NULL "
+            "ORDER BY c.created_at, c.id",
+            conversation_id,
+        )
+        found: dict[UUID, list[tuple[UUID, dict[str, Any]]]] = {}
+        for r in records:
+            found.setdefault(r["assistant_message_id"], []).append(
+                (r["id"], dict(r["undo"]))
+            )
+        return found
 
     async def delete_mcp_tool_calls_before(
         self, cutoff: datetime, *, limit: int = 1000

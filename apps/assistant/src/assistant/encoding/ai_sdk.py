@@ -56,7 +56,10 @@ class AiSdkEncoder:
 
     def encode(self, event: RunEvent) -> list[dict[str, Any]]:
         if isinstance(event, RunStarted):
-            return [{"type": "start", "messageId": event.message_id}]
+            start: dict[str, Any] = {"type": "start", "messageId": event.message_id}
+            if event.run_id is not None:
+                start["messageMetadata"] = {"run_id": event.run_id}
+            return [start]
         if isinstance(event, StepStarted):
             chunks = self._close_step()
             self._step_open = True

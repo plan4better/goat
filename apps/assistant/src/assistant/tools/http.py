@@ -74,10 +74,14 @@ class ServiceError(ToolFailed):
         issues: list[dict[str, Any]] | None = None,
         *,
         token_expired: bool = False,
+        body: Any = None,
     ) -> None:
         self.service = service
         self.status = status
         self.detail = detail
+        #: The answer's JSON body, None when it had none: core's conflict
+        #: answer names the stored revision and who saved it.
+        self.body = body
         #: A workflow check's issues when the service refused with them
         #: (processes' 422 for a run with blocking issues); None otherwise.
         self.issues = issues
@@ -141,6 +145,13 @@ def _detail(response: httpx.Response) -> str:
             if value:
                 return str(value)[:_DETAIL_CHARS]
     return json.dumps(body)[:_DETAIL_CHARS]
+
+
+def _body(response: httpx.Response) -> Any:
+    try:
+        return response.json()
+    except ValueError:
+        return None
 
 
 def _issues(response: httpx.Response) -> list[dict[str, Any]] | None:
@@ -299,6 +310,7 @@ async def call_service(
             _detail(response),
             _issues(response),
             token_expired=response.status_code == 401 and _token_expired(bearer),
+            body=_body(response),
         )
     if not response.content:
         return None

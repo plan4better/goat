@@ -97,13 +97,14 @@ with more is refused unchecked. An id the model then passes to another tool is s
 is. The card is not on `/mcp`: its clients cannot show one.
 
 **Write tools.** Next to read tools and proposals there is a third risk class, `write` (`ToolSpec.risk` in
-`tools/runtime.py`): tools that create a workflow in the open project, run one or add a dataset to it. They create, and
-a run replaces its workflow's previous results; nothing else changes or deletes what exists (changing workflows waits
-for their version history). They belong to the workflows pack (`tools/workflows.py`, the runs in
-`tools/workflow_runs.py`), which is offered on the Map and Workflows pages only and never on `/mcp`. Every write goes
+`tools/runtime.py`): tools that create a workflow in the open project, run one, change one or add a dataset to it.
+They create, a run replaces its workflow's previous results, and `workflow_update` changes a workflow (Changing
+workflows, below); nothing else changes or deletes what exists. They belong to the workflows pack
+(`tools/workflows.py`, the runs in `tools/workflow_runs.py`, the edits in `tools/workflow_edits.py`), which is offered
+on the Map and Workflows pages only and never on `/mcp`. Every write goes
 into the project of the page: no write tool takes a project id, so text inside a dataset, a template or a tool
 description cannot make the assistant write into another project. The user's rights apply, since every call carries
-their token: a viewer is told they can view the project but not create workflows or add datasets in it, and the
+their token: a viewer is told they can view the project but not create or change workflows or add datasets in it, and the
 instructions tell the model not to try again (core answers 401 for missing rights as well as 403). So a tool says the
 sign-in expired only when the request's token is missing or past its `exp` (`http.sign_in_expired`); any other 401 from
 core means no access. A write called again with the same arguments anywhere in the conversation returns its first
@@ -114,7 +115,8 @@ which also keep the calls of an answer cancelled afterwards), and writes run one
 same response finds the first one's result. A retry or a "try again" with the same arguments thus never creates a second
 workflow (a changed draft is a new call); only a write that returned counts, so one that failed can be tried again. The
 audit row of a write keeps what it created (the `created` column of `assistant.tool_call`, from the result's
-`created()`); if reading that fails, it is logged and the call still answers, since what was created exists. A dataset
+`created()`), and that of an edit what takes it back (`undo`); if reading either fails, it is logged and the call still
+answers, since what was written exists. A dataset
 the model chooses, a catalog dataset (`project_add_catalog_layer`) or one of the user's own (`project_add_dataset`, with
 the id `core_find` gives), is added only when the user picked it in a card: `dataset_picked` in `tools/workflows.py`
 reads the stored cards and answers (`asks.recent_picked_ids`), never the model's words, and a typed reply is no pick. A
@@ -234,6 +236,22 @@ whatever its cause, since the check does not name one. Everything else blocks, a
 layer among them (`split_issues`, fed by `layer_settings`). The create also answers with the assistant's own warnings
 (bands, notes), apart from the issues left open, since a model may create a draft without checking it first and would
 not hear them otherwise. Creating starts no run: `workflow_run` does (Running workflows, above), or the user with Run.
+
+**Changing workflows.** `workflow_get` shows the model a stored workflow by its node ids, and `workflow_update` changes
+it with step-level operations (`workflows/edits.py`, applied by `goatlib.workflows.ops`), not with a whole new config, so
+the model cannot drop or garble what it did not mean to touch; an added step is built by the draft converter, so an edit
+writes what a create writes. A create's rules hold for an edit, and the stored config is checked together with the
+edited one: only a blocking issue the edit adds refuses it (issues are compared by code, steps and field, never the
+message), so a workflow with an unrelated error stays editable. The save goes through core's PUT on the revision the
+edit read (`base_revision`), so no edit silently overwrites another; a damaged stored config is refused, never repaired
+by a guess. Edits are direct, with no card, because the dock's Undo takes them back (`undo.py`): the call's audit row
+keeps the config before the edit and both revisions, outside what the model reads, and Undo writes that config back
+under the user's own sign-in, so core decides whether they may still change the workflow. It saves once per workflow,
+the oldest content on the newest revision, since saving edit by edit would conflict with itself, and it asks before it
+writes over a save made between or after the answer's edits. Its mark (under way, undone) lives in those audit rows
+rather than a column of its own. Filters and If conditions hold literals picked from the data, so `workflow_get`
+withholds them under Restricted, as `project_get_layers` does a layer's filter. An edit makes the answer's earlier reads
+of workflows stale, so a later read runs again (`ToolSpec.invalidates`).
 
 **Templates.** `workflow_find_templates` searches the whole query and also its longer words (`MAX_SEARCH_WORDS` and
 `MIN_SEARCH_WORD_CHARS` in `tools/workflows.py`), because core matches the whole query as one piece of a template's

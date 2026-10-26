@@ -69,7 +69,7 @@ def draft_issues(
     return found
 
 
-def _field_list(fields: Sequence[str]) -> str:
+def field_list(fields: Sequence[str]) -> str:
     """The layer's fields for a message: at most ``_LISTED_FIELDS``, then the
     number of fields left out."""
     if not fields:
@@ -96,7 +96,7 @@ def filter_field_issues(
         known = fields.get(step.id)
         if known is None:
             continue
-        field_list = _field_list(known)
+        listed = field_list(known)
         for condition in step.filter.where:
             if condition.field in known:
                 continue
@@ -108,7 +108,7 @@ def filter_field_issues(
                     field=condition.field,
                     message=(
                         f"{labels[step.id]}: the filter's field {condition.field!r} "
-                        f"is not in the layer. {field_list}"
+                        f"is not in the layer. {listed}"
                     ),
                 )
             )

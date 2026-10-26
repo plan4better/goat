@@ -117,6 +117,13 @@ def test_usage_stays_message_metadata() -> None:
     ]
 
 
+def test_the_start_names_the_run_as_message_metadata() -> None:
+    # The dock's Undo of a live answer names its run.
+    assert AiSdkEncoder().encode(RunStarted(message_id="m1", run_id="r1")) == [
+        {"type": "start", "messageId": "m1", "messageMetadata": {"run_id": "r1"}}
+    ]
+
+
 def test_sse_framing() -> None:
     assert sse({"type": "finish"}) == 'data: {"type":"finish"}\n\n'
     assert SSE_DONE == "data: [DONE]\n\n"

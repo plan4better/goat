@@ -187,11 +187,14 @@ def test_the_skill_has_no_dashes_inside_sentences() -> None:
 def test_the_prompt_says_what_the_assistant_creates_and_how_it_asks() -> None:
     assert "You cannot change anything in GOAT" not in INSTRUCTIONS
     assert (
-        "Apart from a workflow run, which replaces that workflow's previous "
-        "results, you change nothing that exists in GOAT." in INSTRUCTIONS
+        "You change nothing that exists in GOAT, except that a workflow run "
+        "replaces that workflow's previous results and, on the Map and "
+        "Workflows pages, workflow_update changes a workflow of the open "
+        "project, which the user can take back with Undo in the dock." in INSTRUCTIONS
     )
     for name in (
         "workflow_create",
+        "workflow_update",
         "project_add_catalog_layer",
         "ask_user",
         "skills_load",
@@ -720,3 +723,39 @@ def test_a_card_never_asks_again_what_the_user_picked() -> None:
         "continue with the pick, or say why it no longer fits",
     ):
         assert phrase in card, phrase
+
+
+def test_the_skill_is_loaded_for_a_change_of_a_workflow_too() -> None:
+    """The skills index lists the description: a request to change a workflow
+    must match it as a request to build one does."""
+    assert "change a workflow that exists" in SKILL.description
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "## Changing a workflow",
+        "Read it first with workflow_get",
+        "Change the fewest steps",
+        "Keep the user's step names, notes and layout",
+        "workflow_update checks the changed workflow",
+        "say what changed",
+        "Undo in the dock",
+        "only on If steps",
+    ],
+)
+def test_the_skill_says_how_to_change_a_workflow(phrase: str) -> None:
+    """Changing a workflow (Task 6): read first, change the fewest steps,
+    keep the user's names and notes, check, and say what changed and that
+    Undo in the dock takes it back."""
+    assert phrase in " ".join(SKILL_TEXT.split())
+
+
+def test_no_text_says_a_workflow_cannot_be_changed() -> None:
+    from assistant.workflows.runs import FAILED
+
+    for text in (SKILL_TEXT, FAILED, INSTRUCTIONS):
+        flat_text = " ".join(text.split())
+        assert "You cannot change the workflow" not in flat_text
+        assert "You never change or delete a workflow" not in flat_text
+    assert "workflow_update" in FAILED

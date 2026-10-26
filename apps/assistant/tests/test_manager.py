@@ -23,7 +23,14 @@ from pydantic_ai.models.test import TestModel
 from assistant.agent import INSTRUCTIONS, RunDeps
 from assistant.bus import EventBus, InMemoryEventBus
 from assistant.config import AssistantSettings
-from assistant.events import RunEnded, RunEvent, TextDelta, ToolCalled, ToolReturned
+from assistant.events import (
+    RunEnded,
+    RunEvent,
+    RunStarted,
+    TextDelta,
+    ToolCalled,
+    ToolReturned,
+)
 from assistant.llm.providers import default_target
 from assistant.llm.resolution import Resolution
 from assistant.repo import (
@@ -82,6 +89,10 @@ async def test_run_succeeds_folds_and_records_usage(
     run = await repo.get_run(run_id)
     assert run is not None and run["status"] == "succeeded"
     events = [e for _, e in await repo.list_events(run_id)]
+    # The start names the run, for the dock's Undo of the live answer.
+    start = events[0]
+    assert isinstance(start, RunStarted)
+    assert (start.message_id, start.run_id) == (str(message_id), str(run_id))
     assert events[-1] == RunEnded(status="succeeded")
     messages = await repo.list_messages(conversation_id, exclude_message_id=None)
     assert messages[-1]["id"] == message_id

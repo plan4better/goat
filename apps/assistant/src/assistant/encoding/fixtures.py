@@ -32,10 +32,11 @@ FIXTURE_DIR = (
 )
 
 _M = "0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c"
+_R = "5d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a"
 
 SCENARIOS: dict[str, list[RunEvent]] = {
     "text_only": [
-        RunStarted(message_id=_M),
+        RunStarted(message_id=_M, run_id=_R),
         StepStarted(),
         TextStarted(part_id=f"{_M}:1"),
         TextDelta(part_id=f"{_M}:1", delta="Three datasets "),

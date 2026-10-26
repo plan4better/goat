@@ -265,9 +265,19 @@ def test_the_note_describes_the_map_view_and_the_project_modes() -> None:
         None,
         "en",
     )
-    assert "cannot change existing workflows" in workflows
+    # The Workflows page changes workflows (workflow_get, workflow_update).
+    assert "cannot change existing workflows" not in workflows
+    assert "change its workflows (workflow_get, then workflow_update)" in workflows
+    assert "You cannot change print layouts or dashboards" in workflows
     assert "can list the project's workflows and print layouts" in workflows
-    assert "cannot read or change workflows" not in workflows
+
+    layouts = render_note(
+        parse_context({"surface": "project.layouts", "project_id": str(PROJECT)}),
+        None,
+        "en",
+    )
+    assert "workflows are changed on the project's Map or Workflows page" in layouts
+    assert "workflow_update" not in layouts
 
 
 def test_the_note_on_a_page_without_a_project() -> None:

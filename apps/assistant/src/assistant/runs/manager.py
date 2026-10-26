@@ -537,7 +537,7 @@ class RunManager:
                 logger.info("Run %s is no longer queued; not starting it", run_id)
                 return
             heartbeat = asyncio.create_task(self._heartbeat(run_id))
-            await emit(RunStarted(message_id=str(message_id)))
+            await emit(RunStarted(message_id=str(message_id), run_id=str(run_id)))
             history = ModelMessagesTypeAdapter.validate_python(
                 await self.repo.history(conversation_id)
             )

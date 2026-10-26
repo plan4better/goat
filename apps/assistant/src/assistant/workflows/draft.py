@@ -317,14 +317,20 @@ class DraftNote(_Model):
 
     @model_validator(mode="after")
     def _says_something(self) -> "DraftNote":
-        if not self.text.strip():
-            raise ValueError(f"note {self.id!r}: the text is empty")
-        if len(self.text) > MAX_NOTE_CHARS:
-            raise ValueError(
-                f"note {self.id!r}: the text has {len(self.text):,} characters, "
-                f"more than the {MAX_NOTE_CHARS:,} a note takes. " + NOTE_TOO_LONG
-            )
+        check_note_text(self.id, self.text)
         return self
+
+
+def check_note_text(note: str, text: str) -> None:
+    """Raises ``ValueError`` for a note text that is blank or longer than
+    ``MAX_NOTE_CHARS``; ``note`` names the note in the message."""
+    if not text.strip():
+        raise ValueError(f"note {note!r}: the text is empty")
+    if len(text) > MAX_NOTE_CHARS:
+        raise ValueError(
+            f"note {note!r}: the text has {len(text):,} characters, "
+            f"more than the {MAX_NOTE_CHARS:,} a note takes. " + NOTE_TOO_LONG
+        )
 
 
 class Draft(_Model):
@@ -608,7 +614,7 @@ def note_html(text: str) -> str:
     return "".join(parts)
 
 
-def _note_height(text: str) -> int:
+def note_height(text: str) -> int:
     """The height that shows the whole text: ``NOTE_HEIGHT``, or more for a
     longer text, in steps of 20."""
     lines = 0
@@ -636,7 +642,7 @@ def note_layout(draft: Draft, positions: Mapping[str, Mapping[str, int]]) -> lis
     top = min(step.y for step in taken)
     placed: list[Box] = []
     for note in draft.notes:
-        height = _note_height(note.text)
+        height = note_height(note.text)
         named = [steps[step_id] for step_id in note.near]
         upward = bool(named)
         if upward:
@@ -795,6 +801,20 @@ def _data(
         "addToProject": True,
         "overwritePrevious": False,
     }
+
+
+def step_data(
+    step: Step,
+    *,
+    layers: Mapping[int, ProjectLayer],
+    regions: Mapping[str, Region],
+    titles: Mapping[str, str],
+    salt: str = "",
+) -> dict[str, Any]:
+    """The ``data`` of the step's node, as ``to_config`` writes it: for a
+    step added to a stored workflow (``assistant.workflows.edits``). Raises
+    ``DraftError`` for a layer or a region that is not given."""
+    return _data(step, layers, regions, titles, salt)
 
 
 def _edge(

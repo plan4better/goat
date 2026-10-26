@@ -53,6 +53,7 @@ from assistant.runs.manager import (
 )
 from assistant.services import AppServices
 from assistant.surfaces import Locale
+from assistant.undo import NothingToUndo, UndoRefused, UndoUnderWay, undo_run, undone
 
 router = APIRouter(prefix="/conversations")
 
@@ -445,13 +446,30 @@ async def get_conversation(
     messages = await repo.list_messages(conversation_id, exclude_message_id=exclude)
     if access == "lost":
         messages = _without_answers(messages)
+    # One rule with the Undo itself: every edit it takes went back.
+    records = (
+        await repo.undo_records_by_answer(conversation_id) if access == "ok" else {}
+    )
+    undone_answers = {answer for answer, rows in records.items() if undone(rows)}
     return {
         "conversation": conversation,
         "active_run_id": str(active["id"]) if active and access == "ok" else None,
         "access": access,
         "project_name": project_name,
         "messages": [
-            to_ui_message(str(m["id"]), m["role"], m["parts"], m["created_at"])
+            to_ui_message(
+                str(m["id"]),
+                m["role"],
+                m["parts"],
+                m["created_at"],
+                # The run of an answer, for the dock's Undo of its edits.
+                run_id=(
+                    str(m["run_id"])
+                    if m["role"] == "assistant" and m["run_id"] is not None
+                    else None
+                ),
+                undone=m["id"] in undone_answers,
+            )
             for m in messages
         ],
         # The user's own ratings, by answer id, so the buttons show their state.
@@ -666,3 +684,85 @@ async def cancel_run(
         return Response(status_code=204)
     await services.runs.cancel(active["id"])
     return Response(status_code=202)
+
+
+class UndoIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: Saves on top of what the workflows hold now, after the user was asked
+    #: about the changes made since the answer's edits.
+    force: bool = False
+
+
+CHANGED_SINCE = "The workflow was changed after this answer edited it."
+
+
+@router.post("/{conversation_id}/runs/{run_id}/undo")
+async def undo_answer(
+    conversation_id: UUID,
+    run_id: UUID,
+    request: Request,
+    body: UndoIn | None = None,
+    principal: Principal = Depends(get_principal),
+) -> dict[str, Any]:
+    """Writes back what an answer's workflow edits replaced (``assistant.undo``),
+    with the user's own sign-in. A workflow saved since the answer's edits is
+    not written: the answer (409 ``changed_since``) names it, and ``force``
+    saves on top of it."""
+    conversation = await _owned(request, conversation_id, principal)
+    services = _services(request)
+    await _require_access(services.repo, conversation, principal.user_id)
+    run = await services.repo.get_run(run_id)
+    if run is None or run["conversation_id"] != conversation_id:
+        raise _refusal(404, "run_not_found", "Run not found")
+    if run["status"] in ACTIVE:
+        raise _refusal(409, "run_active", "The answer is still running.")
+    if services.tools is None:
+        raise _refusal(503, "undo_unavailable", "Undo is not available here.")
+    try:
+        outcome = await undo_run(
+            services.repo,
+            services.tools,
+            principal.token,
+            run_id,
+            force=body.force if body is not None else False,
+        )
+    except NothingToUndo as exc:
+        if exc.undone:
+            raise _refusal(
+                409, "already_undone", "This answer's changes were undone already."
+            ) from exc
+        raise _refusal(404, "nothing_to_undo", "This answer changed nothing.") from exc
+    except UndoUnderWay as exc:
+        raise _refusal(
+            409, "undo_in_progress", "This answer's changes are being undone right now."
+        ) from exc
+    except UndoRefused as exc:
+        raise _refusal(exc.status, exc.code, exc.message) from exc
+    restored = [
+        {
+            "workflow_id": item.workflow_id,
+            "project_id": item.project_id,
+            "revision": item.revision,
+        }
+        for item in outcome.restored
+    ]
+    if outcome.changed:
+        raise _refusal(
+            409,
+            "changed_since",
+            CHANGED_SINCE,
+            workflows=[
+                {
+                    "workflow_id": item.workflow_id,
+                    "project_id": item.project_id,
+                    "revision": item.revision,
+                    "updated_at": item.updated_at,
+                    "updated_by": item.updated_by,
+                    "between": item.between,
+                }
+                for item in outcome.changed
+            ],
+            undone=restored,
+        )
+    return {"workflows": restored}

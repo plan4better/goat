@@ -11,7 +11,9 @@ those as cards and not list them again.
 The workflow suite (`workflow_tasks.jsonl`, `wf-NN`) builds workflows in three more fixture projects: one to build in
 ("Erreichbarkeit Leipzig"), the same layers for a user who may only view them, and an empty one in Munich, where
 adding a catalog dataset adds its layers. A fourth project ("Schulwege Leipzig") holds one workflow whose run is
-refused before it starts. Processes answers with descriptions captured from processes
+refused before it starts, and a fifth ("Nahversorgung zu Fuß") one workflow the assistant changes, which core saves
+on its revision only (`base_revision`, 409 `changed_elsewhere` otherwise), keeping each version for the graders.
+Processes answers with descriptions captured from processes
 (`tests/fixtures/process_descriptions.json`: what processes' `tool_registry.get_process_list` and
 `get_process_description` give for the eight tools the tasks use) and a stand-in for its workflow check
 (`backends.fixture_check`) that follows processes' check step by step, each tool step validated with the tool's own
@@ -23,7 +25,10 @@ its issues and nothing starts; any other run of a workflow core saved finishes a
 (residents per district and band) for each export step, and `aggregation-stats` groups the fixture layers' features,
 so the answer's numbers can be checked. The graders read the workflows core saved. A task with `answer_card` runs a
 second turn when the first one showed a card: the eval user answers every question with its first option, the
-recommended one when there is one, and the turn gets the answer as the app renders it.
+recommended one when there is one, and the turn gets the answer as the app renders it. A task with `undo` has the eval
+user press Undo under the last answer, as the dock does (`assistant.undo` over the audit rows the answer's calls left,
+kept in memory by the harness), and the `workflow_updated` check grades the version the edit saved and, with `undone`,
+that the workflow is as it was afterwards.
 
 `run` spends provider tokens, so it runs by hand, never in CI: it refuses when `CI` is set. The other commands spend
 none.

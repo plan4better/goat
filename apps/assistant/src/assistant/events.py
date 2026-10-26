@@ -17,6 +17,9 @@ from assistant.asks import public_args
 class RunStarted(BaseModel):
     type: Literal["run_started"] = "run_started"
     message_id: str
+    #: The run, for the dock's Undo of the answer's edits; runs stored before
+    #: it was recorded have none.
+    run_id: str | None = None
 
 
 class StepStarted(BaseModel):
@@ -234,6 +237,9 @@ def to_ui_message(
     role: str,
     parts: list[dict[str, Any]],
     created_at: datetime | None = None,
+    *,
+    run_id: str | None = None,
+    undone: bool = False,
 ) -> dict[str, Any]:
     """Render stored neutral parts as an AI SDK ``UIMessage`` for ``useChat``.
 
@@ -241,9 +247,13 @@ def to_ui_message(
     types statically, so every GOAT tool is dynamic from its point of view.
     ``created_at`` (the message's time) goes into the metadata as ISO 8601 in
     UTC to the millisecond, for the time the dock shows under the message.
+    An answer's ``run_id`` and whether its edits were undone go there too,
+    for the dock's Undo.
     """
     ui_parts: list[dict[str, Any]] = []
     metadata: dict[str, Any] | None = None
+    if run_id is not None:
+        metadata = {"run_id": run_id, **({"undone": True} if undone else {})}
     for part in parts:
         if part["type"] == "text":
             ui_parts.append({"type": "text", "text": part["text"], "state": "done"})

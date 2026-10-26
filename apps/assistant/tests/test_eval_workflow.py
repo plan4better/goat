@@ -33,6 +33,9 @@ from assistant.tools.workflow_tools import clear_description_cache
 from assistant.workflows.draft import Draft, ProjectLayer, to_config
 from evals.backends import (
     CATALOG_LAYERS,
+    EDIT_PROJECT_ID,
+    EDIT_WORKFLOW,
+    EDIT_WORKFLOW_ID,
     EMPTY_PROJECT_ID,
     ORG_DATASET,
     RESULT_LAYER,
@@ -182,9 +185,11 @@ def _codes(issues: list[dict[str, Any]]) -> list[str]:
     return [issue["code"] for issue in issues if issue["level"] != "warning"]
 
 
-def test_the_suite_has_eleven_tasks_on_the_two_workflow_pages() -> None:
+def test_the_suite_has_twelve_tasks_on_the_two_workflow_pages() -> None:
     tasks = load_tasks("workflow")
-    assert [task.id for task in tasks] == [f"wf-{n:02d}" for n in range(1, 12)]
+    assert [task.id for task in tasks] == [f"wf-{n:02d}" for n in range(1, 13)]
+    # The existing-workflow task: the eval user presses Undo after the answer.
+    assert [task.id for task in tasks if task.undo] == ["wf-12"]
     assert {task.context["surface"] for task in tasks} == {
         "project.map",
         "project.workflows",
@@ -1982,3 +1987,112 @@ async def test_the_run_task_runs_after_the_card_and_can_pass(
     assert "band edges" in issue
     grades = await grade(_task("wf-11"), transcript, backends)
     assert [g.passed for g in grades] == [True] * 4, grades
+
+
+def _edit(max_cost: int) -> dict[str, Any]:
+    return {
+        "workflow_id": EDIT_WORKFLOW_ID,
+        "operations": [
+            {
+                "op": "set_settings",
+                "id": "tool-walk",
+                "settings": {"max_cost": max_cost},
+            },
+            {
+                "op": "add_note",
+                "id": "note-time",
+                "text": "The walking time was shortened from 15 to 10 minutes.",
+            },
+        ],
+    }
+
+
+async def test_an_edit_of_the_open_workflow_is_saved_graded_and_undone(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    model = ScriptedModel(
+        calls=[
+            ("workflow_get", {"workflow_id": EDIT_WORKFLOW_ID}),
+            ("workflow_update", _edit(10)),
+        ],
+        answer=(
+            "I set the walking time to 10 minutes and added a note. Undo in the "
+            "dock below this answer takes the change back."
+        ),
+    )
+    transcript = await run_task(_task("wf-12"), model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    assert not any(call.failed for call in transcript.tool_calls), transcript.tool_calls
+    # The eval user pressed Undo: the workflow is as it was.
+    assert transcript.undo == "undone"
+    edited, undone = [row for row in transcript.saved if row["id"] == EDIT_WORKFLOW_ID]
+    assert edited["revision"] == 4 and undone["revision"] == 5
+    assert undone["config"] == EDIT_WORKFLOW["config"]
+    grades = await grade(_task("wf-12"), transcript, backends)
+    assert [(g.check, g.passed) for g in grades] == [
+        ("tools", True),
+        ("workflow_updated", True),
+        ("answer", True),
+        ("language", True),
+    ], grades
+
+
+async def test_an_edit_with_another_walking_time_does_not_pass(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    model = ScriptedModel(
+        calls=[
+            ("workflow_get", {"workflow_id": EDIT_WORKFLOW_ID}),
+            ("workflow_update", _edit(20)),
+        ],
+        answer="I changed it; Undo in the dock takes it back.",
+    )
+    transcript = await run_task(_task("wf-12"), model.model, backends, settings)
+    [updated] = [
+        g
+        for g in await grade(_task("wf-12"), transcript, backends)
+        if g.check == "workflow_updated"
+    ]
+    assert updated.passed is False
+    assert "max_cost" in updated.detail
+
+
+async def test_a_new_workflow_in_place_of_the_edit_does_not_pass(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    model = ScriptedModel(
+        calls=[("workflow_create", {"draft": SHOPS_DRAFT})],
+        answer="I built a new workflow with 10 minutes; Undo is not needed.",
+    )
+    transcript = await run_task(_task("wf-12"), model.model, backends, settings)
+    grades = {g.check: g for g in await grade(_task("wf-12"), transcript, backends)}
+    assert grades["tools"].passed is False
+    assert grades["workflow_updated"].passed is False
+    assert transcript.undo == "nothing_to_undo"
+
+
+async def test_the_fixture_core_saves_the_open_workflow_on_its_revision_only(
+    backends: Backends,
+) -> None:
+    services, _, saved = backends.clients()
+    path = f"/api/v2/project/{EDIT_PROJECT_ID}/workflow/{EDIT_WORKFLOW_ID}"
+    try:
+        listed = (
+            await services.core.get(f"/api/v2/project/{EDIT_PROJECT_ID}/workflow")
+        ).json()
+        assert [row["id"] for row in listed] == [EDIT_WORKFLOW_ID]
+        config = EDIT_WORKFLOW["config"]
+        stale = await services.core.put(
+            path, json={"config": config, "base_revision": 2}
+        )
+        assert stale.status_code == 409
+        assert stale.json()["detail"] == "changed_elsewhere"
+        assert stale.json()["revision"] == 3
+        fresh = await services.core.put(
+            path, json={"config": config, "base_revision": 3}
+        )
+        assert fresh.status_code == 200 and fresh.json()["revision"] == 4
+        assert (await services.core.get(path)).json()["revision"] == 4
+        assert [row["revision"] for row in saved] == [4]
+    finally:
+        await services.aclose()

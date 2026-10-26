@@ -43,6 +43,7 @@ from assistant.llm.types import PROVIDER_TYPES  # noqa: E402
 from assistant.org_repo import OrgSettingsRepository  # noqa: E402
 from assistant.repo import Repository  # noqa: E402
 from assistant.runs.manager import RunManager  # noqa: E402
+from assistant.tools.http import ServiceClients  # noqa: E402
 from assistant.tools.testing import RecordingTransport  # noqa: E402
 
 TEST_SCHEMA = f"test_assistant_{os.getpid()}"
@@ -268,12 +269,16 @@ ProjectFactory = Callable[..., Awaitable[UUID]]
 
 @pytest.fixture
 def api(db: Database, repo: Repository, settings: AssistantSettings) -> ApiFactory:
-    """``async with api(user=..., app_settings=...) as client``: the app on the
-    test database with a real run manager (no tools), signed in as ``user``."""
+    """``async with api(user=..., app_settings=..., tools=...) as client``: the
+    app on the test database with a real run manager (no tools), signed in as
+    ``user``. ``tools`` are the service clients the routes call (the dock's
+    Undo calls core)."""
 
     @asynccontextmanager
     async def open_(
-        user: UUID = UUID(int=1), app_settings: AssistantSettings | None = None
+        user: UUID = UUID(int=1),
+        app_settings: AssistantSettings | None = None,
+        tools: ServiceClients | None = None,
     ) -> AsyncIterator[AsyncClient]:
         used = app_settings or settings
         bus = InMemoryEventBus()
@@ -281,7 +286,8 @@ def api(db: Database, repo: Repository, settings: AssistantSettings) -> ApiFacto
         await runs.start()
         try:
             app = create_app(
-                used, services=AppServices(db=db, repo=repo, bus=bus, runs=runs)
+                used,
+                services=AppServices(db=db, repo=repo, bus=bus, runs=runs, tools=tools),
             )
             app.dependency_overrides[get_principal] = lambda: Principal(
                 user_id=user, token=None

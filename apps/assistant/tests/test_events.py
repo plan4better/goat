@@ -101,6 +101,16 @@ def test_fold_parts_keeps_one_usage_part_with_summed_tokens() -> None:
     ]
 
 
+def test_to_ui_message_names_the_answers_run_and_whether_it_was_undone() -> None:
+    parts = [{"type": "text", "id": "m1:1", "text": "Changed."}]
+    assert to_ui_message("m1", "assistant", parts, run_id="r1")["metadata"] == {
+        "run_id": "r1"
+    }
+    undone = to_ui_message("m1", "assistant", parts, run_id="r1", undone=True)
+    assert undone["metadata"] == {"run_id": "r1", "undone": True}
+    assert "metadata" not in to_ui_message("m1", "assistant", parts)
+
+
 def test_to_ui_message_puts_usage_into_metadata_and_keeps_the_code() -> None:
     parts = [
         {"type": "text", "id": "m1:1", "text": "Hi"},

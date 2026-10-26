@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from assistant.surfaces import Locale
 
-EVAL_SET_VERSION = 17
+EVAL_SET_VERSION = 18
 
 HERE = Path(__file__).resolve().parent
 Suite = Literal["catalog", "project", "workflow"]
@@ -196,6 +196,22 @@ class WorkflowCreatedCheck(_Check):
     area_layers: list[int] = Field(default_factory=list)
 
 
+class WorkflowUpdatedCheck(_Check):
+    """The run changed the workflow ``workflow_id`` with workflow_update, and
+    the change core saved meets every condition: each step of a tool in
+    ``settings`` has those settings, the workflow has ``notes_added`` more
+    notes than before, and the steps named in ``kept`` keep their names.
+    With ``undone``, the Undo the eval user pressed (the task's ``undo``)
+    wrote back the workflow as it was."""
+
+    kind: Literal["workflow_updated"]
+    workflow_id: str
+    settings: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    notes_added: int = 0
+    kept: list[str] = Field(default_factory=list)
+    undone: bool = False
+
+
 class JudgeCheck(_Check):
     """Free text, graded by the LLM judge against the rubric (evals.judge)."""
 
@@ -219,6 +235,7 @@ Check = Annotated[
     | LanguageCheck
     | AskedCheck
     | WorkflowCreatedCheck
+    | WorkflowUpdatedCheck
     | JudgeCheck,
     Field(discriminator="kind"),
 ]
@@ -254,6 +271,9 @@ class EvalTask(BaseModel):
     #: first option, the recommended one when there is one; then the next
     #: turn runs with that answer, as the dock sends it.
     answer_card: bool = False
+    #: The eval user presses Undo under the last answer once it ended, as
+    #: the dock does (``assistant.undo``); the transcript says how it went.
+    undo: bool = False
 
     @model_validator(mode="after")
     def _surface_fits_suite(self) -> "EvalTask":

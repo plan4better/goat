@@ -42,13 +42,13 @@ def backends(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Backends]:
     backends.close()
 
 
-def test_the_set_has_36_catalog_24_project_and_11_workflow_tasks_with_valid_contexts() -> (
+def test_the_set_has_36_catalog_24_project_and_12_workflow_tasks_with_valid_contexts() -> (
     None
 ):
     tasks = load_tasks()
     assert sum(t.suite == "catalog" for t in tasks) == 36
     assert sum(t.suite == "project" for t in tasks) == 24
-    assert sum(t.suite == "workflow" for t in tasks) == 11
+    assert sum(t.suite == "workflow" for t in tasks) == 12
     for task in tasks:
         parse_context(task.context)  # raises on a context the dock could not send
     assert sum(any(c.kind == "judge" for c in t.checks) for t in tasks) == 6

@@ -7,7 +7,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
-from evals.backends import Backends, layer_project_id
+from evals.backends import EDIT_WORKFLOW, Backends, layer_project_id
 from evals.harness import ToolCall, Transcript
 from evals.tasks import (
     AnswerCheck,
@@ -29,7 +29,11 @@ from evals.tasks import (
     ViewCheck,
     WithheldCheck,
     WorkflowCreatedCheck,
+    WorkflowUpdatedCheck,
 )
+
+#: The workflows a task may change, as core held them before the task.
+EDITABLE: dict[str, dict[str, Any]] = {str(EDIT_WORKFLOW["id"]): EDIT_WORKFLOW}
 
 
 @dataclass
@@ -327,6 +331,8 @@ async def _grade_one(
         )
     if isinstance(check, AskedCheck):
         return _asked(check, transcript)
+    if isinstance(check, WorkflowUpdatedCheck):
+        return _workflow_updated(check, transcript)
     if isinstance(check, WorkflowCreatedCheck):
         return _workflow_created(check, transcript)
     if isinstance(check, ViewCheck):
@@ -498,6 +504,70 @@ def _workflow_created(
     if not verdicts:
         return False, f"no workflow created with {sorted(names)}"
     return False, " | ".join(verdicts)
+
+
+def _nodes(config: Any) -> list[dict[str, Any]]:
+    nodes = config.get("nodes") if isinstance(config, dict) else None
+    return [node for node in nodes or [] if isinstance(node, dict)]
+
+
+def _workflow_updated(
+    check: WorkflowUpdatedCheck, transcript: Transcript
+) -> tuple[bool, str]:
+    """Grades the version workflow_update saved (the revision its result
+    names) against the workflow before the task, and, with ``undone``, the
+    version core holds after the eval user's Undo."""
+    before = EDITABLE.get(check.workflow_id)
+    if before is None:
+        return False, f"{check.workflow_id} is no workflow a task changes"
+    revisions = [
+        call.result.get("revision_after")
+        for call in transcript.tool_calls
+        if call.name == "workflow_update"
+        and not call.failed
+        and isinstance(call.result, dict)
+        and call.result.get("workflow_id") == check.workflow_id
+        and call.result.get("revision_after") != call.result.get("revision_before")
+    ]
+    versions = [row for row in transcript.saved if row.get("id") == check.workflow_id]
+    edited = next(
+        (row for row in versions if revisions and row.get("revision") == revisions[-1]),
+        None,
+    )
+    if edited is None:
+        return False, "workflow_update saved no change of it"
+    problems: list[str] = []
+    nodes = _nodes(edited.get("config"))
+    datas = [node.get("data") or {} for node in nodes]
+    for tool, expected in check.settings.items():
+        steps = [
+            d for d in datas if d.get("type") == "tool" and d.get("processId") == tool
+        ]
+        if not steps:
+            problems.append(f"no {tool} step")
+        for data in steps:
+            config = data.get("config") or {}
+            wrong = {
+                k: config.get(k) for k, v in expected.items() if config.get(k) != v
+            }
+            if wrong:
+                problems.append(f"{tool} has {wrong}, expected {expected}")
+    notes = sum(node.get("type") == "textAnnotation" for node in nodes)
+    notes_before = sum(
+        node.get("type") == "textAnnotation" for node in _nodes(before["config"])
+    )
+    if notes - notes_before < check.notes_added:
+        problems.append(f"{notes - notes_before} note(s) added")
+    labels = {str(d.get("label")) for d in datas}
+    if missing := [label for label in check.kept if label not in labels]:
+        problems.append(f"names not kept {missing}")
+    if check.undone and (
+        transcript.undo != "undone" or versions[-1].get("config") != before["config"]
+    ):
+        problems.append(f"not undone (Undo: {transcript.undo})")
+    if problems:
+        return False, "; ".join(problems)
+    return True, f"revision {edited.get('revision')} meets the check"
 
 
 async def grade(

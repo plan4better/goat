@@ -58,6 +58,15 @@ class Creates(Protocol):
     def created(self) -> dict[str, Any]: ...
 
 
+@runtime_checkable
+class Undoes(Protocol):
+    """The result of a write tool that changed a document that exists: what
+    takes the change back, for its audit row (the ``undo`` column), or None
+    when it changed nothing."""
+
+    def undo(self) -> dict[str, Any] | None: ...
+
+
 class EmitData(Protocol):
     """Emits a data part into the run and returns its part id. ``part_id``
     names the part (an ask card is named by its card id); without it the part
@@ -180,8 +189,9 @@ class ToolSpec(Generic[In, Out]):
     #: it returns data values, so none is exempt by omission.
     returns_data: bool
     #: Spec §8.1: read, propose (a card the user applies) or write (creates
-    #: something new, or, a workflow run, replaces a workflow's previous
-    #: results; nothing else changes or deletes).
+    #: something new; a workflow run replaces a workflow's previous results,
+    #: and a workflow edit changes a workflow; nothing else changes or
+    #: deletes).
     risk: Risk = "read"
     #: Published over MCP (spec §9.1).
     mcp: bool = False
@@ -203,6 +213,11 @@ class ToolSpec(Generic[In, Out]):
     #: result, and a repeated call within one answer gets the first result
     #: with this note (``assistant.tools.toolset``).
     repeatable: str | None = None
+    #: Set on a write tool: the read tools (wire names) whose results in the
+    #: answer it can make stale (a workflow it edits). A call of it, however
+    #: it ends, lets a later call of these run again instead of getting its
+    #: earlier result (``assistant.tools.toolset``).
+    invalidates: frozenset[str] = frozenset()
     #: Set on a tool whose result the answer reports before it asks: whether
     #: its result (as ``execute`` returns it) is one to report (a finished
     #: workflow run). After such a result, ``ask_user`` is refused in that
@@ -320,6 +335,7 @@ async def execute(
     error: str | None = "internal error"
     size = 0
     created: dict[str, Any] | None = None
+    undo: dict[str, Any] | None = None
     try:
         try:
             args = spec.input_model.model_validate(dict(raw_args))
@@ -336,6 +352,13 @@ async def execute(
                 # What was created exists either way and the model must see
                 # it: only the audit row goes without it.
                 logger.exception("Reading what %s created failed", spec.wire_name)
+        if isinstance(result, Undoes):
+            try:
+                undo = result.undo()
+            except Exception:
+                # The change is saved either way and the model must see it:
+                # only its undo is lost.
+                logger.exception("Reading the undo of %s failed", spec.wire_name)
         if spec.returns_data:
             result = apply_policy(env.data_policy, result)
         # exclude_none leaves out the typed models' fields that are None; null
@@ -385,7 +408,16 @@ async def execute(
         ) from exc
     finally:
         await _audit(
-            env, spec, raw_args, tool_call_id, size, started, status, error, created
+            env,
+            spec,
+            raw_args,
+            tool_call_id,
+            size,
+            started,
+            status,
+            error,
+            created,
+            undo,
         )
 
 
@@ -412,6 +444,7 @@ async def refuse(
         "error",
         reason,
         None,
+        None,
     )
     raise ToolFailed(reason)
 
@@ -426,6 +459,7 @@ async def _audit(
     status: str,
     error: str | None,
     created: dict[str, Any] | None,
+    undo: dict[str, Any] | None,
 ) -> None:
     if env.repo is None:
         return
@@ -433,7 +467,16 @@ async def _audit(
         # Shielded: a cancelled run still gets its audit row.
         await asyncio.shield(
             _insert(
-                env, spec, raw_args, tool_call_id, size, started, status, error, created
+                env,
+                spec,
+                raw_args,
+                tool_call_id,
+                size,
+                started,
+                status,
+                error,
+                created,
+                undo,
             )
         )
     except asyncio.CancelledError:
@@ -458,6 +501,7 @@ async def _insert(
     status: str,
     error: str | None,
     created: dict[str, Any] | None,
+    undo: dict[str, Any] | None,
 ) -> None:
     assert env.repo is not None
     # Masked before the cut, so no prefix of a token is left at the end.
@@ -473,4 +517,5 @@ async def _insert(
         status=status,
         error=text[:_ERROR_CHARS] if text else None,
         created=created,
+        undo=undo,
     )

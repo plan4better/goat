@@ -56,6 +56,7 @@ from assistant.workflows.draft import (
     region_from_feature,
     to_config,
 )
+from assistant.workflows.edits import step_name
 from assistant.workflows.issues import (
     DraftIssue,
     band_issues,
@@ -229,7 +230,7 @@ def _dataset_steps(draft: Draft) -> list[DatasetStep]:
     return [step for step in draft.steps if isinstance(step, DatasetStep)]
 
 
-async def _region(env: ToolEnv, nuts_id: str) -> Region:
+async def read_region(env: ToolEnv, nuts_id: str) -> Region:
     try:
         feature = await env.call("catalog", "GET", f"/stac/nuts/{nuts_id}/geometry")
     except ServiceError as exc:
@@ -248,23 +249,30 @@ async def _region(env: ToolEnv, nuts_id: str) -> Region:
         ) from exc
 
 
+async def read_regions(env: ToolEnv, nuts_ids: Iterable[str]) -> dict[str, Region]:
+    """The regions' boundaries by nuts_id, read side by side."""
+    regions = await asyncio.gather(
+        *(read_region(env, nuts_id) for nuts_id in sorted(set(nuts_ids)))
+    )
+    return {region.nuts_id: region for region in regions}
+
+
 async def _regions(env: ToolEnv, draft: Draft) -> dict[str, Region]:
-    ids = sorted(
-        {
+    return await read_regions(
+        env,
+        (
             step.filter.area
             for step in _dataset_steps(draft)
             if step.filter is not None and step.filter.area is not None
-        }
+        ),
     )
-    regions = await asyncio.gather(*(_region(env, nuts_id) for nuts_id in ids))
-    return {region.nuts_id: region for region in regions}
 
 
 #: Tool id -> its process description; None for a tool processes does not know.
 Descriptions = Mapping[str, dict[str, Any] | None]
 
 
-async def _descriptions(env: ToolEnv, tool_ids: Iterable[str]) -> Descriptions | None:
+async def describe_tools(env: ToolEnv, tool_ids: Iterable[str]) -> Descriptions | None:
     """The description of each tool, in the user's language; None when they
     cannot be read now. They name the steps without a label, and say which
     settings are layer inputs or field settings."""
@@ -276,7 +284,7 @@ async def _descriptions(env: ToolEnv, tool_ids: Iterable[str]) -> Descriptions |
     return dict(zip(tools, found, strict=True))
 
 
-async def _toolbox(env: ToolEnv) -> frozenset[str] | None:
+async def read_toolbox(env: ToolEnv) -> frozenset[str] | None:
     """The ids of the tools in the user's toolbox; None when the list cannot
     be read now."""
     try:
@@ -302,7 +310,7 @@ def _refuse_tools_outside(draft: Draft, toolbox: frozenset[str]) -> None:
         )
 
 
-def _titles(descriptions: Descriptions | None) -> dict[str, str]:
+def tool_titles(descriptions: Descriptions | None) -> dict[str, str]:
     return {
         tool: str(described["title"])
         for tool, described in (descriptions or {}).items()
@@ -353,10 +361,10 @@ async def prepare(env: ToolEnv, project_id: UUID, draft: Draft) -> Prepared:
     (layers, locked), regions, descriptions, toolbox = await asyncio.gather(
         project_layers(env, project_id),
         _regions(env, draft),
-        _descriptions(
+        describe_tools(
             env, (step.tool for step in draft.steps if isinstance(step, ToolStep))
         ),
-        _toolbox(env),
+        read_toolbox(env),
     )
     if toolbox is not None:
         _refuse_tools_outside(draft, toolbox)
@@ -377,7 +385,7 @@ async def prepare(env: ToolEnv, project_id: UUID, draft: Draft) -> Prepared:
             draft,
             layers=layers,
             regions=regions,
-            titles=_titles(descriptions),
+            titles=tool_titles(descriptions),
             salt=uuid4().hex,
         )
     except DraftError as exc:
@@ -385,7 +393,7 @@ async def prepare(env: ToolEnv, project_id: UUID, draft: Draft) -> Prepared:
     return Prepared(draft, converted, layers, regions, descriptions, toolbox)
 
 
-async def _layer_fields(env: ToolEnv, layer: ProjectLayer) -> dict[str, str] | None:
+async def layer_fields(env: ToolEnv, layer: ProjectLayer) -> dict[str, str] | None:
     """The layer's field names and their kinds (``field_kind``); None while
     geoapi cannot read them (a catalog dataset whose data is still being
     copied). A layer with no field besides its geometry counts as not read:
@@ -408,7 +416,7 @@ async def _layer_fields(env: ToolEnv, layer: ProjectLayer) -> dict[str, str] | N
     return fields or None
 
 
-#: Dataset step id -> its layer's fields and their kinds (``_layer_fields``).
+#: Dataset step id -> its layer's fields and their kinds (``layer_fields``).
 Fields = Mapping[str, Mapping[str, str] | None]
 
 
@@ -421,7 +429,7 @@ async def _filter_fields(
         for step in _dataset_steps(prepared.draft)
         if step.layer is not None and step.filter is not None and step.filter.where
     ]
-    found = await asyncio.gather(*(_layer_fields(env, layer) for _, layer in filtered))
+    found = await asyncio.gather(*(layer_fields(env, layer) for _, layer in filtered))
     return {
         step_id: fields for (step_id, _), fields in zip(filtered, found, strict=True)
     }
@@ -520,7 +528,7 @@ async def _dataset_counts(
     }
 
 
-async def _checked(
+async def checked_issues(
     env: ToolEnv, project_id: UUID, converted: Converted
 ) -> list[DraftIssue] | None:
     """The issues of the converted config as the editor's check sees them,
@@ -567,7 +575,7 @@ async def check(
     now. A draft processes refuses goes back to the model."""
     if prepared.descriptions is None or prepared.toolbox is None:
         return None
-    issues = await _checked(env, project_id, prepared.converted)
+    issues = await checked_issues(env, project_id, prepared.converted)
     if issues is None:
         return None
     # One read of each filtered layer's fields serves both checks.
@@ -691,7 +699,7 @@ def layer_settings(graph: Graph, descriptions: Descriptions | None) -> LayerSett
     return LayerSettings(fields, invalid)
 
 
-def _split(
+def split_blocking(
     graph: Graph, descriptions: Descriptions | None, issues: list[DraftIssue]
 ) -> tuple[list[DraftIssue], list[DraftIssue]]:
     """``(blocking, open)`` as ``workflow_create`` judges them (spec §4.4)."""
@@ -756,7 +764,7 @@ async def _check_draft(env: ToolEnv, args: DraftInput) -> DraftCheck:
     if issues is None:
         return DraftCheck(checked=False, notes=notes, note=NOT_CHECKED)
     issues = [*issues, *_advice(prepared.draft)]
-    blocking, still_open = _split(
+    blocking, still_open = split_blocking(
         draft_graph(prepared.draft), prepared.descriptions, issues
     )
     return DraftCheck(
@@ -849,7 +857,7 @@ async def _create(env: ToolEnv, args: DraftInput) -> WorkflowCreated:
     issues = await check(env, project_id, prepared)
     if issues is None:
         raise ToolFailed(CHECK_UNAVAILABLE)
-    blocking, still_open = _split(
+    blocking, still_open = split_blocking(
         draft_graph(prepared.draft), prepared.descriptions, issues
     )
     if blocking:
@@ -1276,21 +1284,7 @@ def config_graph(config: Mapping[str, Any], waiting: Iterable[str] = ()) -> Grap
     )
 
 
-def _step_name(node: Mapping[str, Any], titles: Mapping[str, str]) -> str:
-    """The step's name as processes names it in its messages: its label; for
-    a tool step whose label is empty or the tool's id (the editor's label of
-    a new step), the tool's title; else its type. Clipped: the template's
-    author wrote it."""
-    data, kind = _node_data(node), _node_kind(node)
-    label = data.get("label")
-    name = label if isinstance(label, str) and label.strip() else None
-    tool = data.get("processId")
-    if kind == "tool" and isinstance(tool, str) and name in (None, tool):
-        name = titles.get(tool, name)
-    return _clip(name or kind, _TEMPLATE_LABEL_CHARS) or "step"
-
-
-def _named(
+def named_steps(
     config: Mapping[str, Any], titles: Mapping[str, str]
 ) -> tuple[dict[str, Any], dict[str, str]]:
     """The config with each step's name as its label, and the names by step
@@ -1299,7 +1293,7 @@ def _named(
     names: dict[str, str] = {}
     for node in config.get("nodes") or []:
         if isinstance(node, dict) and node.get("id") is not None:
-            name = _step_name(node, titles)
+            name = step_name(node, titles)
             names[str(node["id"])] = name
             node = {**node, "data": {**_node_data(node), "label": name}}
         nodes.append(node)
@@ -1353,13 +1347,13 @@ async def _check_template(
     tools = sorted(
         {tool for tool in graph.tools.values() if re.fullmatch(TOOL_ID_PATTERN, tool)}
     )[:MAX_STEPS]
-    descriptions = await _descriptions(env, tools)
+    descriptions = await describe_tools(env, tools)
     if descriptions is None:
         raise ToolFailed(TEMPLATE_NOT_CHECKED)
-    checked, names = _named(config, _titles(descriptions))
+    checked, names = named_steps(config, tool_titles(descriptions))
     ids = {step_id: step_id for step_id in names}
     try:
-        issues = await _checked(
+        issues = await checked_issues(
             env,
             project_id,
             Converted(config=checked, node_ids=ids, step_of=ids, labels=names),
@@ -1388,7 +1382,7 @@ async def _check_template(
             and set(issue.steps) <= waiting
         )
     ]
-    blocking, still_open = _split(graph, descriptions, clipped)
+    blocking, still_open = split_blocking(graph, descriptions, clipped)
     return blocking, still_open, names
 
 

@@ -1,14 +1,15 @@
 ---
 name: build-a-workflow
-description: Build a new workflow, a chain of analysis steps in the project's Workflows mode, from what the user describes. For example "build a workflow that finds the areas within 15 minutes on foot of the schools and counts the residents there", a 15-minute city check, a heatmap of access, joining attributes from one layer to another, or counting things near places.
+description: Build a new workflow, a chain of analysis steps in the project's Workflows mode, from what the user describes, or change a workflow that exists. For example "build a workflow that finds the areas within 15 minutes on foot of the schools and counts the residents there", a 15-minute city check, a heatmap of access, joining attributes from one layer to another, counting things near places, or "make the walking time 10 minutes and add a note".
 ---
 
 # Build a workflow
 
 You build one new workflow in the open project, and run it when the user wants its
-result (Running and explaining). You never change or delete a workflow that exists.
-On a page without the workflow tools (the catalog, home, layouts, dashboards), tell
-the user to open the project's Map or Workflows page to build it there.
+result (Running and explaining). You change a workflow that exists only as Changing
+a workflow says, and you never delete one. On a page without the workflow tools (the
+catalog, home, layouts, dashboards), tell the user to open the project's Map or
+Workflows page to build or change it there.
 
 ## Steps
 
@@ -159,6 +160,26 @@ the user to open the project's Map or Workflows page to build it there.
    (an area stored as a box, layers a template added), and, unless you run it (Running and
    explaining), that the user starts it with Run. The workflow card opens it.
 
+## Changing a workflow
+
+When the user asks to change a workflow that exists (a setting such as the walking
+time, a step, a dataset, a note), change it with workflow_update; never build a new
+workflow for it.
+
+1. Read it first with workflow_get, in the same answer: its steps, settings, notes
+   and the ids workflow_update names them by.
+2. Change the fewest steps that do what the user asked: set_settings for a setting,
+   set_layer for a dataset, add_note or set_note_text for a note. Keep the user's
+   step names, notes and layout; rename a step only when asked.
+3. workflow_update checks the changed workflow as workflow_create checks a draft. An
+   edit that adds an issue that stops a run is not saved: fix the operations and
+   send them again. When the workflow was changed elsewhere, read it again and send
+   the operations for what it holds now.
+4. Then say what changed (each step and setting, before and after) and any issue
+   left, and that Undo in the dock below your answer takes the change back. A
+   rename shows on the canvas only on If steps; other steps show it in their
+   settings.
+
 ## Running and explaining
 
 - Run when the user asked for a result ("berechne", "how many", "how well"): build,
@@ -219,8 +240,8 @@ the user to open the project's Map or Workflows page to build it there.
   workflow that makes the result, then use its saved layer as a dataset step with
   a filter in the next workflow.
 - `failed`: name the failing step and its error in plain words and what to change in
-  the editor. You cannot change the workflow; build a corrected new one only when the
-  user asks. `refused`: the same, from its issues; nothing ran.
+  the editor. Change the workflow only when the user asks (Changing a workflow).
+  `refused`: the same, from its issues; nothing ran.
 - A travel-time matrix (travel_cost_matrix) by public transport fails as a whole
   when one origin lies off the network (start points disconnected from the
   street network), and the error does not say which; by walking, bicycle or car

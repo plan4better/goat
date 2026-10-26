@@ -239,6 +239,25 @@ async def test_errors_become_tool_failures(
     assert "secrets" not in caught.value.message
 
 
+async def test_a_service_error_keeps_the_answers_body() -> None:
+    # Core's conflict answer carries the revision and who saved it, which
+    # the dock's Undo reports.
+    answer = {
+        "detail": "changed_elsewhere",
+        "revision": 6,
+        "updated_at": "2026-10-25T09:12:03+00:00",
+        "updated_by": None,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(409, json=answer)
+
+    with pytest.raises(ServiceError) as caught:
+        await call_service(_clients(handler), "core", "PUT", "/x", bearer=None)
+    assert caught.value.detail == "changed_elsewhere"
+    assert caught.value.body == answer
+
+
 SIGN_IN_TEXT = (
     "The GOAT core service did not accept the user's sign-in. "
     "The user may need to sign in again."

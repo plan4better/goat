@@ -96,9 +96,11 @@ def test_packs_per_surface_follow_the_spec() -> None:
         "workflow_create_from_template",
         "workflow_describe_tool",
         "workflow_find_templates",
+        "workflow_get",
         "workflow_last_run",
         "workflow_run",
         "workflow_tools",
+        "workflow_update",
     }
     # Decision T16: Home reads other projects (with an explicit project_id).
     # Only the map can apply a view proposal.
@@ -115,9 +117,10 @@ def test_packs_per_surface_follow_the_spec() -> None:
         assert names(surface) == wire_names, surface
     for surface in SURFACES:
         # The spec's target is 10-20 per page (§7.3); the map and Workflows pages
-        # carry the workflows pack (with runs and both add tools), the card and
-        # the skills, 34 on the map. Raising this again is a decision, not a fix.
-        assert len(tools_for(surface)) <= 34
+        # carry the workflows pack (with runs, edits and both add tools), the
+        # card and the skills, 36 on the map. Raising this again is a decision,
+        # not a fix.
+        assert len(tools_for(surface)) <= 36
         assert [s.wire_name for s in tools_for(surface)] == sorted(
             s.wire_name for s in tools_for(surface)
         )
@@ -134,13 +137,15 @@ def test_mcp_publishes_the_five_read_only_catalog_tools() -> None:
     assert all(spec.risk == "read" and not spec.returns_data for spec in MCP_TOOLS)
 
 
-#: The write tools (spec 2026-10-17 §3): they create, never change or delete.
+#: The write tools (spec 2026-10-17 §3): they create, run a workflow or change
+#: one; none deletes what exists, beyond a step removed in a workflow edit.
 WRITE_TOOLS = {
     "project_add_catalog_layer",
     "project_add_dataset",
     "workflow_create",
     "workflow_create_from_template",
     "workflow_run",
+    "workflow_update",
 }
 
 
@@ -160,6 +165,15 @@ def test_write_tools_take_no_project_id() -> None:
     for spec in writes:
         names = {name for name, _ in _walk(spec.json_schema())}
         assert "project_id" not in names, spec.wire_name
+
+
+def test_what_a_write_makes_stale_are_read_tools() -> None:
+    """A name in ``ToolSpec.invalidates`` that names no read tool would
+    silently keep a stale result."""
+    named = {name for spec in ALL_TOOLS for name in spec.invalidates}
+    assert named == {"workflow_get", "project_get_workflows"}
+    for name in named:
+        assert BY_WIRE_NAME[name].risk == "read", name
 
 
 def test_every_data_tool_has_a_restricted_form() -> None:
@@ -227,9 +241,22 @@ async def test_the_model_sees_fixed_instructions_the_tools_in_order_and_the_note
 def test_the_instructions_and_page_notes_name_only_tools_that_exist() -> None:
     """A renamed or removed tool must not linger in the prompt: a model told to
     call a tool it doesn't have improvises with the others."""
-    from assistant.prompt import _DOCUMENT_LIMITS, _NO_PROJECT, _OPEN_PROJECT
+    from assistant.prompt import (
+        _DOCUMENT_LIMITS,
+        _NO_PROJECT,
+        _OPEN_PROJECT,
+        _WORKFLOWS_PAGE_LIMITS,
+    )
 
-    text = " ".join((INSTRUCTIONS, _DOCUMENT_LIMITS, _NO_PROJECT, _OPEN_PROJECT))
+    text = " ".join(
+        (
+            INSTRUCTIONS,
+            _DOCUMENT_LIMITS,
+            _WORKFLOWS_PAGE_LIMITS,
+            _NO_PROJECT,
+            _OPEN_PROJECT,
+        )
+    )
     # project_id is an argument, not a tool.
     named = set(
         re.findall(r"\b(?:catalog|core|project|workflow|ask|skills)_[a-z_]+\b", text)

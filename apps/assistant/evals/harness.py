@@ -3,14 +3,16 @@ and limits, against the fixed backends, and records what happened.
 
 A task with ``answer_card`` runs a second turn when the first showed a card:
 the eval user answers it (``auto_answer``) and the turn gets the answer the
-way the app renders it (``assistant.asks.answer_lines``)."""
+way the app renders it (``assistant.asks.answer_lines``). A task with
+``undo`` has the eval user press Undo under the last answer, as the dock does
+(``assistant.undo``), over the audit rows the answer's calls left."""
 
 import asyncio
 import json
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import httpx
@@ -49,9 +51,11 @@ from assistant.context import PageContext, parse_context
 from assistant.events import DataPart, RunEvent
 from assistant.login import StaticLogin
 from assistant.prompt import render_note, with_note
+from assistant.repo import Repository
 from assistant.runs.turn import run_turn
 from assistant.tools.runtime import ToolEnv, client_secrets
 from assistant.tools.toolset import earlier_writes
+from assistant.undo import NothingToUndo, UndoRefused, UndoUnderWay, undo_run
 from assistant.workflows.runs import ConversationRuns
 from evals.backends import Backends
 from evals.tasks import EvalTask
@@ -93,6 +97,72 @@ class Transcript:
     #: without failing the task.
     reasoning_only: int = 0
     retries: int = 0
+    #: How the eval user's Undo went (a task with ``undo``): "undone",
+    #: "changed_since", "nothing_to_undo" or the code of a refusal.
+    undo: str | None = None
+
+
+class AuditRows:
+    """The audit rows of one task's calls, in memory: what the tool runtime
+    writes (``insert_tool_call``) and what the dock's Undo reads and marks
+    (``assistant.undo``), as the assistant's tables hold them."""
+
+    def __init__(self) -> None:
+        self.rows: list[dict[str, Any]] = []
+
+    async def insert_tool_call(self, **row: Any) -> None:
+        self.rows.append({**row, "id": uuid4()})
+
+    async def undo_records(self, run_id: UUID) -> list[tuple[UUID, dict[str, Any]]]:
+        return [
+            (row["id"], dict(row["undo"]))
+            for row in self.rows
+            if row["run_id"] == run_id and row.get("undo") is not None
+        ]
+
+    async def claim_undo(self, ids: list[UUID]) -> list[UUID]:
+        claimed = []
+        for row in self.rows:
+            undo = row.get("undo")
+            if (
+                row["id"] in ids
+                and undo is not None
+                and "undone_at" not in undo
+                and "undoing_at" not in undo
+            ):
+                row["undo"] = {**undo, "undoing_at": time.time()}
+                claimed.append(row["id"])
+        return claimed
+
+    async def finish_undo(self, ids: list[UUID]) -> None:
+        for row in self.rows:
+            if row["id"] in ids and row.get("undo") is not None:
+                kept = {k: v for k, v in row["undo"].items() if k != "undoing_at"}
+                row["undo"] = {**kept, "undone_at": time.time()}
+
+    async def release_undo(self, ids: list[UUID]) -> None:
+        for row in self.rows:
+            if row["id"] in ids and row.get("undo") is not None:
+                row["undo"] = {
+                    key: value
+                    for key, value in row["undo"].items()
+                    if key != "undoing_at"
+                }
+
+
+async def press_undo(audit: AuditRows, services: Any, run_id: UUID) -> str:
+    """The eval user's Undo under an answer: how it went, in one word."""
+    try:
+        outcome = await undo_run(
+            cast(Repository, audit), services, "eval-token", run_id, force=False
+        )
+    except NothingToUndo as exc:
+        return "already_undone" if exc.undone else "nothing_to_undo"
+    except UndoUnderWay:
+        return "undo_in_progress"
+    except UndoRefused as exc:
+        return exc.code
+    return "changed_since" if outcome.changed else "undone"
 
 
 def _text(messages: Iterable[ModelMessage]) -> str:
@@ -289,6 +359,10 @@ async def run_task(
     #: What the conversation created and ran, shared by its turns as the
     #: stored conversation is in the app (ConversationRuns.from_stored).
     runs = ConversationRuns()
+    #: The audit rows of the task's calls, and the run of the last answer.
+    audit = AuditRows()
+    last_run: UUID | None = None
+    undo: str | None = None
 
     async def turn(
         prompt: str,
@@ -300,8 +374,9 @@ async def run_task(
     ) -> list[ModelMessage]:
         """One run of the conversation, as RunManager runs it: its own limits
         and time, the conversation's earlier write results (``written``)."""
-        nonlocal first_text, output
+        nonlocal first_text, output, last_run
         clock = AnswerClock(settings.run_wait_max_seconds)
+        last_run = uuid4()
         env = ToolEnv(
             services=services,
             login=StaticLogin("eval-token"),
@@ -309,6 +384,8 @@ async def run_task(
             data_policy=task.data_policy,
             page=page,
             locale=task.locale,
+            run_id=last_run,
+            repo=cast(Repository, audit),
             extra_secrets=client_secrets(settings),
             asks=asks,
             clock=clock,
@@ -374,6 +451,8 @@ async def run_task(
                 answer_lines(card, answer),
                 _written(first),
             )
+        if task.undo and last_run is not None:
+            undo = await press_undo(audit, services, last_run)
     except Exception as exc:  # a failed run is a failed task, not a failed eval
         error = f"{type(exc).__name__}: {exc}"
     finally:
@@ -399,4 +478,5 @@ async def run_task(
         cost=cost,
         reasoning_only=reasoning_only,
         retries=retries,
+        undo=undo,
     )

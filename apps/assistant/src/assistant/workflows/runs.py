@@ -75,8 +75,8 @@ SUCCEEDED_UNSAVED = (
 FAILED = (
     "The run failed. Name the failing step and its error in plain words and say "
     "what to change in the Workflows editor. Steps marked unknown may have "
-    "finished: a failed run reports its failing step only. You cannot change the "
-    "workflow; on request, build a corrected new one."
+    "finished: a failed run reports its failing step only. On request, change "
+    "the workflow: read it with workflow_get, then change it with workflow_update."
 )
 RUNNING = (
     "The run is still going. Tell the user, end your answer, and read it later "
