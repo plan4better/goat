@@ -128,6 +128,21 @@ class Project(ContentBaseAttributes, DateTimeBase, table=True):
         ),
         description="Builder config",
     )
+    builder_revision: int = Field(
+        default=1,
+        sa_column=Column(Integer, nullable=False, server_default=text("1")),
+        description="Raised by one on every save that changes builder_config "
+        "(core.core.revision)",
+    )
+    updated_by: UUID | None = Field(
+        default=None,
+        sa_column=Column(
+            UUID_PG(as_uuid=True),
+            ForeignKey(f"{settings.SCHEMA}.user.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        description="Who last saved the project through its update route",
+    )
     tags: List[str] | None = Field(
         default=None,
         sa_column=Column(ARRAY(Text), nullable=True),

@@ -5,7 +5,7 @@ Workflow Model
 from typing import TYPE_CHECKING, Any, Dict
 from uuid import UUID
 
-from sqlalchemy import Text
+from sqlalchemy import Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as UUID_PG
 from sqlalchemy.sql import text
@@ -33,6 +33,8 @@ class Workflow(DateTimeBase, table=True):
         is_default: Whether this is the default workflow for the project
         config: JSONB configuration containing nodes, edges, and viewport
         thumbnail_url: Preview image of the workflow
+        revision: Counter of the saves that changed it, for the conflict check
+        updated_by: Who made the last change
     """
 
     __tablename__ = "workflow"
@@ -85,6 +87,23 @@ class Workflow(DateTimeBase, table=True):
     thumbnail_url: str | None = Field(
         sa_column=Column(Text, nullable=True),
         description="Workflow preview thumbnail URL",
+    )
+
+    revision: int = Field(
+        default=1,
+        sa_column=Column(Integer, nullable=False, server_default=text("1")),
+        description="Raised by one on every save that changes the workflow "
+        "(core.core.revision)",
+    )
+
+    updated_by: UUID | None = Field(
+        default=None,
+        sa_column=Column(
+            UUID_PG(as_uuid=True),
+            ForeignKey(f"{settings.SCHEMA}.user.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        description="Who made the last change",
     )
 
     # Relationships

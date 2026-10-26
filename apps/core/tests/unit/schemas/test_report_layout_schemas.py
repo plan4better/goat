@@ -17,6 +17,7 @@ def test_layout_read_carries_the_row_timestamps():
         config={},
         is_predefined=False,
         thumbnail_url=None,
+        revision=1,
         created_at=datetime(2026, 6, 5, 14, 37, tzinfo=timezone.utc),
         updated_at=updated,
     )

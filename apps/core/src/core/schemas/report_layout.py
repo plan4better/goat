@@ -39,6 +39,14 @@ class ReportLayoutUpdate(BaseModel):
         None,
         description="Layout configuration (page setup, elements, theme, etc.)",
     )
+    base_revision: int | None = Field(
+        None,
+        description=(
+            "The revision the change was made on. A save that changes the "
+            "layout on another revision answers 409 changed_elsewhere; without "
+            "it the save lands anyway."
+        ),
+    )
 
 
 class ReportLayoutRead(ReportLayoutBase):
@@ -48,6 +56,7 @@ class ReportLayoutRead(ReportLayoutBase):
     project_id: UUID = Field(..., description="Parent project ID")
     is_predefined: bool = Field(False, description="System-provided predefined layout")
     thumbnail_url: str | None = Field(None, description="Layout preview thumbnail URL")
+    revision: int = Field(..., description="Revision to send as base_revision")
     created_at: datetime | None = Field(None, description="Creation timestamp")
     updated_at: datetime | None = Field(None, description="Last update timestamp")
 
@@ -75,6 +84,7 @@ request_examples = {
     },
     "update": {
         "name": "Updated Report Name",
+        "base_revision": 1,
         "config": {
             "page": {
                 "size": "A3",

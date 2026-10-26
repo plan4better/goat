@@ -22,7 +22,6 @@ from core.db.models.folder import Folder
 
 if TYPE_CHECKING:
     from core.crud.crud_layer import CRUDLayer
-    from core.crud.crud_project import CRUDProject
 
 
 async def read_content_by_id(
@@ -46,23 +45,6 @@ async def read_content_by_id(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"{model.__name__} not found"
         )
 
-    return content
-
-
-async def update_content_by_id(
-    async_session: AsyncSession,
-    id: UUID4,
-    model: Type[SQLModel],
-    crud_content: "CRUDProject",
-    content_in: SQLModel,
-) -> SQLModel | None:
-    """Update a content by its ID."""
-    db_obj = await crud_content.get(async_session, id=id)
-    if db_obj is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"{model.__name__} not found"
-        )
-    content = await crud_content.update(async_session, db_obj=db_obj, obj_in=content_in)
     return content
 
 

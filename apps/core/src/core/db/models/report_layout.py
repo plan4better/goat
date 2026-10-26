@@ -5,7 +5,7 @@ Print Template Model
 from typing import TYPE_CHECKING, Any, Dict
 from uuid import UUID
 
-from sqlalchemy import Text
+from sqlalchemy import Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as UUID_PG
 from sqlalchemy.sql import text
@@ -35,6 +35,8 @@ class ReportLayout(DateTimeBase, table=True):
         is_predefined: System-provided layout (not user-created)
         config: JSONB configuration containing page setup, elements, theme, etc.
         thumbnail_url: Preview image of the layout
+        revision: Counter of the saves that changed it, for the conflict check
+        updated_by: Who made the last change
     """
 
     __tablename__ = "report_layout"
@@ -92,6 +94,23 @@ class ReportLayout(DateTimeBase, table=True):
     thumbnail_url: str | None = Field(
         sa_column=Column(Text, nullable=True),
         description="Layout preview thumbnail URL",
+    )
+
+    revision: int = Field(
+        default=1,
+        sa_column=Column(Integer, nullable=False, server_default=text("1")),
+        description="Raised by one on every save that changes the layout "
+        "(core.core.revision)",
+    )
+
+    updated_by: UUID | None = Field(
+        default=None,
+        sa_column=Column(
+            UUID_PG(as_uuid=True),
+            ForeignKey(f"{settings.SCHEMA}.user.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        description="Who made the last change",
     )
 
     # Relationships

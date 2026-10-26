@@ -268,6 +268,12 @@ class AssistantToolCall(SQLModel, table=True):
     created: dict[str, Any] | None = Field(
         default=None, sa_column=Column(JSONB, nullable=True)
     )
+    #: What a write tool changed in an existing document, for undoing it: the
+    #: content before the edit and the revisions before and after it; NULL
+    #: for every other call.
+    undo: dict[str, Any] | None = Field(
+        default=None, sa_column=Column(JSONB, nullable=True)
+    )
     created_at: datetime | None = _created_at()
 
 

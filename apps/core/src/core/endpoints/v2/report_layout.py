@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from pydantic import UUID4
 
+from core.core.revision import CHANGED_ELSEWHERE_RESPONSE
 from core.crud.crud_project import project as crud_project
 from core.crud.crud_report_layout import report_layout as crud_report_layout
 from core.db.session import AsyncSession
@@ -114,7 +115,7 @@ async def create_report_layout(
     await crud_project.get_live_or_404(async_session, project_id)
 
     layout = await crud_report_layout.create_for_project(
-        async_session, project_id=project_id, obj_in=layout_in
+        async_session, project_id=project_id, obj_in=layout_in, user_id=user_id
     )
     return ReportLayoutRead.model_validate(layout)
 
@@ -125,6 +126,7 @@ async def create_report_layout(
     response_model=ReportLayoutRead,
     status_code=200,
     dependencies=[Depends(auth_z)],
+    responses=CHANGED_ELSEWHERE_RESPONSE,
 )
 async def update_report_layout(
     *,
@@ -144,12 +146,22 @@ async def update_report_layout(
         ..., examples=[report_layout_request_examples["update"]]
     ),
 ) -> ReportLayoutRead:
-    """Update an existing report layout."""
+    """Update an existing report layout.
+
+    A save that changes the layout raises its `revision` and is refused with
+    409 `changed_elsewhere` when `base_revision` is not the stored revision.
+    One that changes only the editor's view toggles is saved without either
+    (`core.core.revision`).
+    """
     # 404 if the project itself is trashed.
     await crud_project.get_live_or_404(async_session, project_id)
 
     layout = await crud_report_layout.update_for_project(
-        async_session, project_id=project_id, layout_id=layout_id, obj_in=layout_in
+        async_session,
+        project_id=project_id,
+        layout_id=layout_id,
+        obj_in=layout_in,
+        user_id=user_id,
     )
     if not layout:
         raise HTTPException(

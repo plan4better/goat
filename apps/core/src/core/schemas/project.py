@@ -146,6 +146,9 @@ class IProjectRead(ContentBaseAttributes, DateTimeBase):
         description="Closed by a restricted ancestor folder rather than its own flag",
     )
     builder_config: dict[str, Any] | None = Field(None, description="Builder config")
+    builder_revision: int | None = Field(
+        None, description="Revision of builder_config to send as builder_base_revision"
+    )
     max_extent: list[float] | None = Field(
         None, description="Max extent of the project"
     )
@@ -209,6 +212,14 @@ class IProjectBaseUpdate(SQLModel):
         None, description="Max extent of the project"
     )
     builder_config: dict[str, Any] | None = Field(None, description="Builder config")
+    builder_base_revision: int | None = Field(
+        None,
+        description=(
+            "The builder_revision a builder_config change was made on. A "
+            "change on another revision answers 409 changed_elsewhere; without "
+            "it the change lands anyway."
+        ),
+    )
     tags: List[str] | None = Field(
         default=None,
         sa_column=Column(ARRAY(Text), nullable=True),
