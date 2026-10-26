@@ -562,3 +562,29 @@ describe("step group summaries", () => {
     );
   });
 });
+
+describe("workflow edit steps", () => {
+  const summary = (steps: DynamicToolUIPart[], t: Translate = enTranslate) =>
+    groupSummary(stepRows(steps), t, false);
+  const read = (workflow: string, name?: string) =>
+    call("workflow_get", { workflow_id: workflow }, name ? { workflow_id: workflow, name, revision: 4 } : {});
+  const edit = call(
+    "workflow_update",
+    { workflow_id: "w1", operations: [] },
+    { workflow_id: "w1", revision_before: 4, revision_after: 5, changed_steps: [] }
+  );
+
+  it("name the workflow read, and say a change of it", () => {
+    expect(label(read("w1", "Schools: walk"))).toBe("Read the workflow “Schools: walk”");
+    expect(label(call("workflow_get", { workflow_id: "w1" }))).toBe("Read a workflow");
+    expect(label(edit)).toBe("Changed the workflow");
+    expect(stepLabel(edit, layerNames([edit]), deTranslate)).toBe("Workflow geändert");
+  });
+
+  it("keep a change visible as a line of its own, and count reads by workflow", () => {
+    const rows = stepRows([read("w1", "A"), edit, read("w1", "A"), read("w2", "B")]);
+    expect(rows.filter((row) => staysVisible(row, false)).map((row) => row.step)).toEqual([edit]);
+    expect(summary([read("w1", "A"), read("w1", "A"), read("w2", "B")])).toBe("Read 2 workflows");
+    expect(summary([read("w1", "A")], deTranslate)).toBe("Einen Workflow gelesen");
+  });
+});

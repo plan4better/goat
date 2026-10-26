@@ -308,6 +308,9 @@ export const projectSchema = contentMetadataSchema.extend({
   }),
   basemap: z.string().nullable().default("streets"),
   custom_basemaps: z.array(customBasemapSchema).default([]),
+  /** Counts the stored dashboard's changes; a dashboard save sends it back as
+   * `builder_base_revision`. */
+  builder_revision: z.number().int().nullish(),
   updated_at: z.string().optional(),
   created_at: z.string().optional(),
   shared_with: shareProjectSchema.optional(),

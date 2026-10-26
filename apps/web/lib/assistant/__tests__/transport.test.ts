@@ -6,6 +6,7 @@ import {
   createAssistantTransport,
   fetchConversation,
   lastUserMessage,
+  undoAnswer,
 } from "@/lib/assistant/transport";
 import type { AssistantMessage } from "@/lib/assistant/types";
 
@@ -173,5 +174,81 @@ describe("assistant transport answers", () => {
       context: null,
       locale: "en",
     });
+  });
+});
+
+describe("the Undo of an answer's edits", () => {
+  const json = (status: number, body: unknown) =>
+    new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  const restored = { workflow_id: "wf-1", project_id: "p1", revision: 6 };
+  const ada = { id: "u7", firstname: "Ada", lastname: "Lovelace", avatar: null };
+
+  it("posts to the answer's run and tells the workflows it wrote back", async () => {
+    fetchMock.mockResolvedValueOnce(json(200, { workflows: [restored] }));
+    const outcome = await undoAnswer("c1", "r1");
+    expect(sent().url).toBe("http://assistant.test/conversations/c1/runs/r1/undo");
+    expect(sent().init.method).toBe("POST");
+    expect(sent().body).toEqual({ force: false });
+    expect(outcome).toEqual({
+      kind: "undone",
+      restored: [{ workflowId: "wf-1", projectId: "p1", revision: 6 }],
+    });
+  });
+
+  it("tells the workflows changed since, and those it wrote back already", async () => {
+    fetchMock.mockResolvedValueOnce(
+      json(409, {
+        detail: {
+          code: "changed_since",
+          message: "The workflow was changed after this answer edited it.",
+          workflows: [
+            {
+              workflow_id: "wf-2",
+              project_id: "p1",
+              revision: 3,
+              updated_at: "2026-10-25T09:12:03+00:00",
+              updated_by: ada,
+              between: false,
+            },
+            {
+              workflow_id: "wf-3",
+              project_id: "p1",
+              revision: null,
+              updated_at: null,
+              updated_by: null,
+              between: true,
+            },
+          ],
+          undone: [restored],
+        },
+      })
+    );
+    const outcome = await undoAnswer("c1", "r1", true);
+    expect(sent().body).toEqual({ force: true });
+    expect(outcome).toEqual({
+      kind: "changed",
+      restored: [{ workflowId: "wf-1", projectId: "p1", revision: 6 }],
+      changed: [
+        { id: "wf-2", revision: 3, updatedAt: "2026-10-25T09:12:03+00:00", updatedBy: ada, between: false },
+        { id: "wf-3", revision: null, updatedAt: null, updatedBy: null, between: true },
+      ],
+    });
+  });
+
+  it("keeps a workflow written back whose revision core did not name", async () => {
+    fetchMock.mockResolvedValueOnce(json(200, { workflows: [{ ...restored, revision: null }] }));
+    expect(await undoAnswer("c1", "r1")).toEqual({
+      kind: "undone",
+      restored: [{ workflowId: "wf-1", projectId: "p1", revision: null }],
+    });
+  });
+
+  it("throws any other refusal with its code", async () => {
+    fetchMock.mockResolvedValueOnce(
+      json(409, { detail: { code: "already_undone", message: "undone already" } })
+    );
+    const error = await undoAnswer("c1", "r1").catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(AssistantRequestError);
+    expect((error as AssistantRequestError).code).toBe("already_undone");
   });
 });

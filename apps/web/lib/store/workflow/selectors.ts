@@ -48,3 +48,15 @@ export const selectActiveDataPanelView = (state: RootState) => state.workflow.ac
 
 // Select workflow variables
 export const selectVariables = (state: RootState) => state.workflow.variables;
+
+// Counts the times the open canvas's steps were replaced as a whole
+export const selectCanvasVersion = (state: RootState) => state.workflow.canvasVersion;
+
+// The revision of a change made elsewhere that the open workflow takes over, if one is waiting
+export const selectOpenReloadRequest = (state: RootState) => {
+  const open = state.workflow.selectedWorkflowId;
+  return open === null ? undefined : state.workflow.reloadRequests[open];
+};
+
+// Unsaved changes beyond the view (pan, zoom)
+export const selectContentDirty = (state: RootState) => state.workflow.contentDirty;

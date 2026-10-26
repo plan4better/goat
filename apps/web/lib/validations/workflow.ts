@@ -353,6 +353,8 @@ export const workflowSchema = z.object({
   is_default: z.boolean(),
   config: workflowConfigSchema,
   thumbnail_url: z.string().nullable(),
+  /** Counts the stored workflow's changes; a save sends it back as `base_revision`. */
+  revision: z.number().int(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -383,6 +385,9 @@ export const workflowUpdateSchema = z.object({
   description: z.string().nullable().optional(),
   is_default: z.boolean().optional(),
   config: workflowConfigSchema.optional(),
+  /** The revision the change was made on: core refuses the save (409) when
+   * the stored workflow has moved on since. */
+  base_revision: z.number().int().nullable().optional(),
 });
 
 export type WorkflowUpdate = z.infer<typeof workflowUpdateSchema>;

@@ -3,12 +3,13 @@
  * template" (4 items total), and "Add workflow"'s split arrow menu opens the
  * template browser locked to the "workflow" kind.
  */
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { createWorkflow, updateWorkflow } from "@/lib/api/workflows";
+import { ChangedElsewhereError } from "@/lib/api/changedElsewhere";
+import { createWorkflow } from "@/lib/api/workflows";
 import type { Project } from "@/lib/validations/project";
 import type { Workflow } from "@/lib/validations/workflow";
 
@@ -30,10 +31,17 @@ const mockWorkflow: Workflow = {
   config: { nodes: [], edges: [] },
 } as unknown as Workflow;
 
-const { workflowsMock } = vi.hoisted(() => ({ workflowsMock: { list: [] as unknown[] } }));
+const { workflowsMock, renameMock, listMutateMock, toastErrorMock } = vi.hoisted(() => ({
+  workflowsMock: { list: [] as unknown[] },
+  renameMock: vi.fn(),
+  listMutateMock: vi.fn(),
+  toastErrorMock: vi.fn(),
+}));
+
+vi.mock("react-toastify", () => ({ toast: { error: toastErrorMock, success: vi.fn() } }));
 
 vi.mock("@/lib/api/workflows", () => ({
-  useWorkflows: () => ({ workflows: workflowsMock.list, isLoading: false, mutate: vi.fn() }),
+  useWorkflows: () => ({ workflows: workflowsMock.list, isLoading: false, mutate: listMutateMock }),
   createWorkflow: vi.fn(),
   deleteWorkflow: vi.fn(),
   duplicateWorkflow: vi.fn(),
@@ -92,6 +100,7 @@ function Harness({
         project={project}
         selectedWorkflow={selectedWorkflow}
         onSelectWorkflow={onSelectWorkflow}
+        onRenameWorkflow={renameMock}
         creation={creation}
       />
       {creation.dialogs}
@@ -168,9 +177,12 @@ describe("WorkflowsConfigPanel template entry points", () => {
     expect(onSelectWorkflow).toHaveBeenCalledWith(expect.objectContaining({ id: mockWorkflow.id }));
   });
 
-  it("renames with the new name only, so core keeps the stored config", async () => {
+  it("renames with the new name only, through the editor's saves", async () => {
     // Sending the list's copy of the config could revert newer canvas edits,
     // and core refuses a damaged config: such a workflow could not be renamed.
+    // A rename moves the workflow to a new revision, so it goes in turn with
+    // the autosave (`useWorkflowAutosave().rename`).
+    renameMock.mockResolvedValue(undefined);
     const user = userEvent.setup();
     renderPanel();
 
@@ -178,7 +190,21 @@ describe("WorkflowsConfigPanel template entry points", () => {
     await user.click(await screen.findByText("rename"));
     await user.click(screen.getByRole("button", { name: "confirm-rename" }));
 
-    expect(updateWorkflow).toHaveBeenCalledWith("p1", "w1", { name: "Renamed workflow" });
+    expect(renameMock).toHaveBeenCalledWith("w1", "Renamed workflow");
+  });
+
+  it("says when a workflow it renames changed elsewhere, and reads the list again", async () => {
+    renameMock.mockRejectedValueOnce(new ChangedElsewhereError(8, null, null));
+    listMutateMock.mockClear();
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole("button", { name: "more_options" }));
+    await user.click(await screen.findByText("rename"));
+    await user.click(screen.getByRole("button", { name: "confirm-rename" }));
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("workflow_changed_elsewhere"));
+    expect(listMutateMock).toHaveBeenCalledWith();
   });
 
   it("creates from scratch through the same flow the empty-project card uses", async () => {

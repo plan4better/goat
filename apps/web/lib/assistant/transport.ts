@@ -1,7 +1,9 @@
 import { DefaultChatTransport, type TextUIPart } from "ai";
 import { getSession } from "next-auth/react";
 
-import { assistantFetch, authHeaders } from "@/lib/assistant/http";
+import type { ChangedBy } from "@/lib/api/changedElsewhere";
+import { readAssistantError } from "@/lib/assistant/errors";
+import { assistantFetch, assistantUrl, authHeaders } from "@/lib/assistant/http";
 import type {
   AnswerFeedback,
   AskAnswer,
@@ -136,3 +138,92 @@ export const saveFeedback = (
 /** Server-side stop. `useChat().stop()` only drops the connection when resume is on. */
 export const cancelAssistantRun = (conversationId: string) =>
   assistantFetch<void>(`/conversations/${conversationId}/cancel`, { method: "POST" });
+
+/** A workflow the dock's Undo wrote back, and the revision that gave it (null when core named none). */
+export interface UndoneWorkflow {
+  workflowId: string;
+  projectId: string;
+  revision: number | null;
+}
+
+/** A workflow saved since the answer's edits: who and when, when core named them. */
+export interface ChangedSince {
+  id: string;
+  revision: number | null;
+  updatedAt: string | null;
+  updatedBy: ChangedBy | null;
+  /** Saved between two of the answer's edits rather than after them. */
+  between: boolean;
+}
+
+/**
+ * How an Undo went: the workflows went back, or some were changed since the
+ * answer's edits and the dock asks before it writes over them (`force`).
+ * Those that went back are listed either way.
+ */
+export type UndoOutcome =
+  | { kind: "undone"; restored: UndoneWorkflow[] }
+  | { kind: "changed"; restored: UndoneWorkflow[]; changed: ChangedSince[] };
+
+type Row = Record<string, unknown>;
+const rows = (value: unknown): Row[] =>
+  Array.isArray(value) ? value.filter((row): row is Row => typeof row === "object" && row !== null) : [];
+const textOf = (value: unknown): string | null => (typeof value === "string" ? value : null);
+const numberOf = (value: unknown): number | null => (typeof value === "number" ? value : null);
+
+const restoredOf = (value: unknown): UndoneWorkflow[] =>
+  rows(value).flatMap((row) => {
+    const workflowId = textOf(row.workflow_id);
+    const projectId = textOf(row.project_id);
+    return workflowId && projectId ? [{ workflowId, projectId, revision: numberOf(row.revision) }] : [];
+  });
+
+const changedOf = (value: unknown): ChangedSince[] =>
+  rows(value).flatMap((row) => {
+    const id = textOf(row.workflow_id);
+    const by = row.updated_by;
+    return id
+      ? [
+          {
+            id,
+            revision: numberOf(row.revision),
+            updatedAt: textOf(row.updated_at),
+            updatedBy: typeof by === "object" && by !== null ? (by as ChangedBy) : null,
+            between: row.between === true,
+          },
+        ]
+      : [];
+  });
+
+/**
+ * Writes back what an answer's workflow edits replaced (the dock's Undo).
+ * With `force`, also over changes made since. Throws the service's refusal
+ * (`already_undone`, `undo_not_allowed`, ...) as an AssistantRequestError.
+ */
+export async function undoAnswer(conversationId: string, runId: string, force = false): Promise<UndoOutcome> {
+  const response = await fetch(
+    assistantUrl(`/conversations/${conversationId}/runs/${encodeURIComponent(runId)}/undo`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      body: JSON.stringify({ force }),
+    }
+  );
+  if (response.ok) {
+    const body = (await response.json()) as { workflows?: unknown };
+    return { kind: "undone", restored: restoredOf(body.workflows) };
+  }
+  if (response.status === 409) {
+    const text = await response.text();
+    try {
+      const detail = (JSON.parse(text) as { detail?: Row }).detail;
+      if (detail?.code === "changed_since") {
+        return { kind: "changed", restored: restoredOf(detail.undone), changed: changedOf(detail.workflows) };
+      }
+    } catch {
+      // Not JSON: a refusal like any other.
+    }
+    throw await readAssistantError(new Response(text, { status: 409 }));
+  }
+  throw await readAssistantError(response);
+}

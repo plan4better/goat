@@ -1,5 +1,6 @@
 import useSWR, { mutate } from "swr";
 
+import { SAVE_TIMEOUT_MS, changedElsewhere } from "@/lib/api/changedElsewhere";
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import type { ReportLayout, ReportLayoutCreate, ReportLayoutUpdate } from "@/lib/validations/reportLayout";
 
@@ -92,7 +93,15 @@ export const createReportLayout = async (
 };
 
 /**
- * Update an existing report layout
+ * Read one report layout as core stores it now, with its revision.
+ */
+export const getReportLayout = async (projectId: string, layoutId: string): Promise<ReportLayout> =>
+  (await fetcher(reportLayoutKey(projectId, layoutId))) as ReportLayout;
+
+/**
+ * Update an existing report layout. With `base_revision`, core saves only
+ * while the stored layout is still at that revision and throws a
+ * `ChangedElsewhereError` otherwise. Gives up after `SAVE_TIMEOUT_MS`.
  */
 export const updateReportLayout = async (
   projectId: string,
@@ -105,9 +114,10 @@ export const updateReportLayout = async (
       "Content-Type": "application/json",
     },
     body: JSON.stringify(layout),
+    signal: AbortSignal.timeout(SAVE_TIMEOUT_MS),
   });
   if (!response.ok) {
-    throw new Error("Failed to update report layout");
+    throw (await changedElsewhere(response)) ?? new Error("Failed to update report layout");
   }
   const updated = await response.json();
   refreshReportLayout(projectId, layoutId);

@@ -10,6 +10,7 @@ import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ChangedElsewhereError } from "@/lib/api/changedElsewhere";
 import type { Project } from "@/lib/validations/project";
 import type { ReportLayout } from "@/lib/validations/reportLayout";
 import type { TemplateRead, TemplateUseResult } from "@/lib/validations/template";
@@ -24,6 +25,7 @@ const {
   templateFlowPropsSpy,
   saveTemplateDialogPropsSpy,
   toastSuccessMock,
+  toastErrorMock,
   updateReportLayoutMock,
 } = vi.hoisted(() => ({
   useReportLayoutsMock: vi.fn(),
@@ -33,6 +35,7 @@ const {
   templateFlowPropsSpy: vi.fn(),
   saveTemplateDialogPropsSpy: vi.fn(),
   toastSuccessMock: vi.fn(),
+  toastErrorMock: vi.fn(),
   updateReportLayoutMock: vi.fn(),
 }));
 
@@ -43,7 +46,14 @@ vi.mock("react-i18next", () => ({
   Trans: ({ i18nKey }: { i18nKey: string }) => <span>{i18nKey}</span>,
 }));
 
-vi.mock("react-toastify", () => ({ toast: { success: toastSuccessMock, error: vi.fn(), info: vi.fn() } }));
+vi.mock("react-toastify", () => ({
+  toast: { success: toastSuccessMock, error: toastErrorMock, info: vi.fn() },
+}));
+
+vi.mock("@/components/modals/ReportLayoutRename", () => ({
+  default: ({ open, onRename }: { open: boolean; onRename: (name: string) => Promise<void> }) =>
+    open ? <button onClick={() => void onRename("Atlas")}>confirm-rename</button> : null,
+}));
 
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
@@ -143,6 +153,11 @@ const fakeUseResult: TemplateUseResult = {
 
 const project: Project = { id: "project-1" } as Project;
 
+/** The editor's save of a layout (ReportsLayout's queue), straight to the API mock here. */
+const saveLayout = vi.fn((layoutId: string, update: unknown, _listRevision?: number) =>
+  updateReportLayoutMock(project.id, layoutId, update)
+);
+
 const layoutA: ReportLayout = {
   id: "layout-a",
   name: "Layout A",
@@ -163,6 +178,8 @@ beforeEach(() => {
   saveTemplateDialogPropsSpy.mockReset();
   toastSuccessMock.mockReset();
   updateReportLayoutMock.mockReset().mockResolvedValue(undefined);
+  saveLayout.mockClear();
+  toastErrorMock.mockReset();
   useReportLayoutsMock.mockReturnValue({
     reportLayouts: [layoutA],
     isLoading: false,
@@ -175,7 +192,14 @@ beforeEach(() => {
 describe("ReportsConfigPanel — template browser integration", () => {
   it("opens the template browser locked to layout, with no source filter, from the New menu", async () => {
     const user = userEvent.setup();
-    render(<ReportsConfigPanel project={project} selectedReport={null} onSelectReport={vi.fn()} />);
+    render(
+      <ReportsConfigPanel
+        project={project}
+        onSaveLayout={saveLayout}
+        selectedReport={null}
+        onSelectReport={vi.fn()}
+      />
+    );
 
     // Nothing is mounted while the browser is closed — it would otherwise
     // run its own template/space/pin requests on every panel mount.
@@ -194,7 +218,14 @@ describe("ReportsConfigPanel — template browser integration", () => {
   it("creates a layout from scratch from the New menu", async () => {
     const user = userEvent.setup();
     createReportLayoutMock.mockResolvedValueOnce({ id: "new-layout" });
-    render(<ReportsConfigPanel project={project} selectedReport={null} onSelectReport={vi.fn()} />);
+    render(
+      <ReportsConfigPanel
+        project={project}
+        onSaveLayout={saveLayout}
+        selectedReport={null}
+        onSelectReport={vi.fn()}
+      />
+    );
 
     await user.click(screen.getByRole("button", { name: "new" }));
     await user.click(await screen.findByRole("menuitem", { name: "from_scratch" }));
@@ -214,14 +245,28 @@ describe("ReportsConfigPanel — template browser integration", () => {
       isValidating: false,
     });
 
-    render(<ReportsConfigPanel project={project} selectedReport={null} onSelectReport={vi.fn()} />);
+    render(
+      <ReportsConfigPanel
+        project={project}
+        onSaveLayout={saveLayout}
+        selectedReport={null}
+        onSelectReport={vi.fn()}
+      />
+    );
 
     expect(templateBrowserPropsSpy).toHaveBeenLastCalledWith(expect.objectContaining({ open: true }));
   });
 
   it("picking a template from the browser opens UseTemplateFlow in the current project", async () => {
     const user = userEvent.setup();
-    render(<ReportsConfigPanel project={project} selectedReport={null} onSelectReport={vi.fn()} />);
+    render(
+      <ReportsConfigPanel
+        project={project}
+        onSaveLayout={saveLayout}
+        selectedReport={null}
+        onSelectReport={vi.fn()}
+      />
+    );
 
     await user.click(screen.getByRole("button", { name: "new" }));
     await user.click(await screen.findByRole("menuitem", { name: "from_template" }));
@@ -240,7 +285,14 @@ describe("ReportsConfigPanel — template browser integration", () => {
   it("onDone from UseTemplateFlow refreshes the layout list and closes the flow", async () => {
     const onSelectReport = vi.fn();
     const user = userEvent.setup();
-    render(<ReportsConfigPanel project={project} selectedReport={null} onSelectReport={onSelectReport} />);
+    render(
+      <ReportsConfigPanel
+        project={project}
+        onSaveLayout={saveLayout}
+        selectedReport={null}
+        onSelectReport={onSelectReport}
+      />
+    );
 
     await user.click(screen.getByRole("button", { name: "new" }));
     await user.click(await screen.findByRole("menuitem", { name: "from_template" }));
@@ -254,7 +306,14 @@ describe("ReportsConfigPanel — template browser integration", () => {
 
   it("shows 4 items in the layout kebab menu, including Save as template", async () => {
     const user = userEvent.setup();
-    render(<ReportsConfigPanel project={project} selectedReport={null} onSelectReport={vi.fn()} />);
+    render(
+      <ReportsConfigPanel
+        project={project}
+        onSaveLayout={saveLayout}
+        selectedReport={null}
+        onSelectReport={vi.fn()}
+      />
+    );
 
     await user.click(screen.getByRole("button", { name: "more_options" }));
 
@@ -267,7 +326,14 @@ describe("ReportsConfigPanel — template browser integration", () => {
 
   it("kebab Save as template opens SaveTemplateDialog with the layout source and toasts on save", async () => {
     const user = userEvent.setup();
-    render(<ReportsConfigPanel project={project} selectedReport={null} onSelectReport={vi.fn()} />);
+    render(
+      <ReportsConfigPanel
+        project={project}
+        onSaveLayout={saveLayout}
+        selectedReport={null}
+        onSelectReport={vi.fn()}
+      />
+    );
 
     await user.click(screen.getByRole("button", { name: "more_options" }));
     await user.click(screen.getByText("save_as_template"));
@@ -297,6 +363,7 @@ describe("ReportsConfigPanel — template browser integration", () => {
     render(
       <ReportsConfigPanel
         project={project}
+        onSaveLayout={saveLayout}
         selectedReport={null}
         onSelectReport={onSelectReport}
         layoutRequest={{ id: "layout-b" }}
@@ -321,6 +388,7 @@ describe("ReportsConfigPanel — template browser integration", () => {
       <StrictMode>
         <ReportsConfigPanel
           project={project}
+          onSaveLayout={saveLayout}
           selectedReport={null}
           onSelectReport={onSelectReport}
           layoutRequest={{ id: "layout-b" }}
@@ -344,6 +412,7 @@ describe("ReportsConfigPanel — template browser integration", () => {
     const panel = (layoutRequest: { id: string } | null) => (
       <ReportsConfigPanel
         project={project}
+        onSaveLayout={saveLayout}
         selectedReport={null}
         onSelectReport={onSelectReport}
         layoutRequest={layoutRequest}
@@ -368,6 +437,7 @@ describe("ReportsConfigPanel — template browser integration", () => {
     render(
       <ReportsConfigPanel
         project={project}
+        onSaveLayout={saveLayout}
         selectedReport={null}
         onSelectReport={onSelectReport}
         layoutRequest={{ id: "missing-id" }}
@@ -417,7 +487,14 @@ const renderWith = (layout: ReportLayout) => {
     mutate: mutateMock,
     isValidating: false,
   });
-  return render(<ReportsConfigPanel project={project} selectedReport={layout} onSelectReport={vi.fn()} />);
+  return render(
+    <ReportsConfigPanel
+      project={project}
+      onSaveLayout={saveLayout}
+      selectedReport={layout}
+      onSelectReport={vi.fn()}
+    />
+  );
 };
 
 const savedPage = () => {
@@ -562,5 +639,106 @@ describe("ReportsConfigPanel — page sizes", () => {
 
     await waitFor(() => expect(savedPage().page.size).toBe("A3"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("ReportsConfigPanel — a layout loaded again from core", () => {
+  it("puts the stored page settings back in the fields on Reload, and only then", async () => {
+    const a4 = withPage({ size: "A4" });
+    const a3 = withPage({ size: "A3" });
+    useReportLayoutsMock.mockReturnValue({
+      reportLayouts: [a4],
+      isLoading: false,
+      isError: undefined,
+      mutate: mutateMock,
+      isValidating: false,
+    });
+    const panel = (selectedReport: ReportLayout, reloads: number) => (
+      <ReportsConfigPanel
+        project={project}
+        onSaveLayout={saveLayout}
+        selectedReport={selectedReport}
+        onSelectReport={vi.fn()}
+        reloads={reloads}
+      />
+    );
+    const { rerender } = render(panel(a4, 0));
+    expect(screen.getByText("A4")).toBeInTheDocument();
+
+    // A save's own update of the open layout leaves the fields as they are.
+    rerender(panel(a3, 0));
+    expect(screen.getByText("A4")).toBeInTheDocument();
+
+    rerender(panel(a3, 1));
+    await waitFor(() => expect(screen.getByText("A3")).toBeInTheDocument());
+  });
+});
+
+describe("ReportsConfigPanel — saves on the editor's revisions", () => {
+  const layoutB = { ...layoutA, id: "layout-b", name: "Layout B", revision: 7 } as unknown as ReportLayout;
+  const listOf = (...layouts: ReportLayout[]) =>
+    useReportLayoutsMock.mockReturnValue({
+      reportLayouts: layouts,
+      isLoading: false,
+      isError: undefined,
+      mutate: mutateMock,
+      isValidating: false,
+    });
+
+  const renameSecond = async () => {
+    const user = userEvent.setup();
+    render(
+      <ReportsConfigPanel
+        project={project}
+        onSaveLayout={saveLayout}
+        selectedReport={layoutA}
+        onSelectReport={vi.fn()}
+      />
+    );
+    await user.click(screen.getAllByRole("button", { name: "more_options" })[1]);
+    await user.click(await screen.findByText("rename"));
+    await user.click(screen.getByRole("button", { name: "confirm-rename" }));
+  };
+
+  it("renames a layout with the revision the list read for it", async () => {
+    listOf(layoutA, layoutB);
+    await renameSecond();
+
+    await waitFor(() => expect(saveLayout).toHaveBeenCalledWith("layout-b", { name: "Atlas" }, 7));
+  });
+
+  it("says when a layout it renames changed elsewhere, and reads the list again", async () => {
+    listOf(layoutA, layoutB);
+    updateReportLayoutMock.mockRejectedValue(new ChangedElsewhereError(8, null, null));
+    await renameSecond();
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("report_layout_changed_elsewhere"));
+    expect(mutateMock).toHaveBeenCalledWith();
+  });
+
+  it("shows a settings change on the open layout before its save is in", async () => {
+    // A canvas edit made while the settings save waits in the queue then
+    // builds on the new settings, so neither change overwrites the other.
+    const onSelectReport = vi.fn();
+    listOf(layoutA);
+    updateReportLayoutMock.mockReturnValue(new Promise(() => undefined));
+    const user = userEvent.setup();
+    render(
+      <ReportsConfigPanel
+        project={project}
+        onSaveLayout={saveLayout}
+        selectedReport={layoutA}
+        onSelectReport={onSelectReport}
+      />
+    );
+    const list = await openSelect("A4");
+    await user.click(within(list).getByRole("option", { name: "A3" }));
+
+    await waitFor(() => expect(saveLayout).toHaveBeenCalled());
+    expect(onSelectReport).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({ page: expect.objectContaining({ size: "A3" }) }),
+      })
+    );
   });
 });

@@ -41,7 +41,12 @@ export const CREATE_WORKFLOW_TOOLS = ["workflow_create", "workflow_create_from_t
 export const ADD_LAYER_TOOLS = ["project_add_catalog_layer", "project_add_dataset"] as const;
 
 /** The tools that change the user's content (risk "write" in the assistant's tool registry). */
-export const WRITE_TOOLS = [...CREATE_WORKFLOW_TOOLS, ...ADD_LAYER_TOOLS, "workflow_run"] as const;
+export const WRITE_TOOLS = [
+  ...CREATE_WORKFLOW_TOOLS,
+  ...ADD_LAYER_TOOLS,
+  "workflow_run",
+  "workflow_update",
+] as const;
 
 /**
  * The tools whose result the dock shows as cards: an answer shows the last list

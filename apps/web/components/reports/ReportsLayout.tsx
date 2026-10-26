@@ -5,12 +5,13 @@ import { DndContext, DragOverlay, pointerWithin } from "@dnd-kit/core";
 import { Box, Card, CardHeader, Stack, Typography, useTheme } from "@mui/material";
 import React, { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "react-toastify";
 import { v4 as uuidv4 } from "uuid";
 
 import { Icon } from "@p4b/ui/components/Icon";
 
 import { useProjectInitialViewState } from "@/lib/api/projects";
-import { updateReportLayout, useReportLayouts } from "@/lib/api/reportLayouts";
+import { getReportLayout, updateReportLayout, useReportLayouts } from "@/lib/api/reportLayouts";
 import { materializeMapElements } from "@/lib/print/mapElements";
 import { snapScalebarWidths } from "@/lib/print/scalebar";
 import type { Project, ProjectLayer } from "@/lib/validations/project";
@@ -19,10 +20,14 @@ import type {
   ReportElementType,
   ReportLayout,
   ReportLayoutConfig,
+  ReportLayoutUpdate,
 } from "@/lib/validations/reportLayout";
 
 import { useBasemap } from "@/hooks/map/MapHooks";
 import type { LayoutRequest } from "@/hooks/map/useMapUrlIntent";
+import { useRevisionedSaver } from "@/hooks/useRevisionedSaver";
+
+import ConflictBanner from "@/components/common/ConflictBanner";
 
 import ReportsCanvas from "./canvas/ReportsCanvas";
 import { reportElementIconMap } from "./elements/ReportElementIconMap";
@@ -116,17 +121,74 @@ const ReportsLayout: React.FC<ReportsLayoutProps> = ({
   const selectedReportRef = useRef(selectedReport);
   selectedReportRef.current = selectedReport;
 
+  // Every save of a layout, here and in the settings panel, goes out in turn
+  // on the revision the layout was opened at or last saved as. When core
+  // refuses one because the open layout changed elsewhere, the banner shows
+  // and its later changes wait for Reload or Keep mine.
+  const openLayoutId = useRef<string | null>(null);
+  const [reloads, setReloads] = useState(0);
+  const projectId = project?.id;
+  const { saver: layoutSaver, conflict } = useRevisionedSaver<ReportLayoutUpdate>({
+    send: async (id, update, baseRevision) => {
+      if (!projectId) throw new Error("No project to save the layout in");
+      const updated = await updateReportLayout(projectId, id, { ...update, base_revision: baseRevision });
+      const revision = updated?.revision;
+      if (typeof revision === "number") {
+        // The layout list is what the next opening of the layout reads, also
+        // after leaving the layouts and coming back. An entry tagged newer
+        // is a read of the stored layout itself and stays as it is.
+        mutateLayouts(
+          (cached) =>
+            cached?.map((r) =>
+              r.id === id && !(typeof r.revision === "number" && r.revision > revision)
+                ? { ...r, revision }
+                : r
+            ),
+          { revalidate: false }
+        );
+        setSelectedReport((prev) => (prev?.id === id ? { ...prev, revision } : prev));
+      }
+      return revision;
+    },
+    isOpen: (id) => openLayoutId.current === id,
+  });
+
+  /** Saves a layout in turn. `listRevision` is the list's tag of a layout
+   * that is not open (a rename): the open one keeps the revision its own
+   * content is based on, whatever a newer list read says. */
+  const saveLayout = useCallback(
+    (layoutId: string, update: ReportLayoutUpdate, listRevision?: number) => {
+      if (layoutId !== openLayoutId.current) layoutSaver.seed(layoutId, listRevision);
+      return layoutSaver.save(layoutId, update);
+    },
+    [layoutSaver]
+  );
+
+  // The open layout's config as it is here, written into the layout list
+  // (its name and the rest stay the list's: the settings panel renames there).
+  // It is tagged with the revision this config is based on, never with the
+  // list's: a list read may carry another person's newer version, and the
+  // next opening must not take that revision for this config.
+  const rememberLayout = useCallback(
+    (report: ReportLayout) => {
+      const revision = layoutSaver.revisionOf(report.id) ?? report.revision;
+      mutateLayouts(
+        (cached) => cached?.map((r) => (r.id === report.id ? { ...r, config: report.config, revision } : r)),
+        { revalidate: false }
+      );
+    },
+    [layoutSaver, mutateLayouts]
+  );
+
   // Persist report changes: sync SWR cache and save to API
   const persistReport = useCallback(
     (report: ReportLayout) => {
-      mutateLayouts((cached) => cached?.map((r) => (r.id === report.id ? report : r)), { revalidate: false });
-      updateReportLayout(report.project_id, report.id, {
-        config: report.config,
-      }).catch((error) => {
+      rememberLayout(report);
+      saveLayout(report.id, { config: report.config }).catch((error) => {
         console.error("Failed to update report layout:", error);
       });
     },
-    [mutateLayouts]
+    [rememberLayout, saveLayout]
   );
 
   // What a map element is filled in from when a layout is opened. Read through
@@ -139,10 +201,17 @@ const ReportsLayout: React.FC<ReportsLayoutProps> = ({
   const handleSelectReport = useCallback(
     (report: ReportLayout | null) => {
       setSelectedElementId(null);
+      const opened = (report?.id ?? null) !== openLayoutId.current;
+      // Another layout opened: a conflict on the last one no longer applies.
+      if (opened) layoutSaver.dismiss();
+      openLayoutId.current = report?.id ?? null;
       if (!report) {
         setSelectedReport(null);
         return;
       }
+      layoutSaver.seed(report.id, report.revision);
+      // A change the settings panel made to the open layout.
+      if (!opened) rememberLayout(report);
       const saved = report.config.elements ?? [];
       // A layout that came from a template, or from a project with other
       // layer ids, has map elements without a view or with a lock snapshot
@@ -160,8 +229,42 @@ const ReportsLayout: React.FC<ReportsLayoutProps> = ({
       setSelectedReport(updatedReport);
       if (materialized !== saved) persistReport(updatedReport);
     },
-    [persistReport]
+    [persistReport, rememberLayout, layoutSaver]
   );
+
+  // Reload: the stored layout over the open one, and the settings panel reads
+  // its page and atlas settings again.
+  const reloadLayout = useCallback(async () => {
+    const open = layoutSaver.conflict;
+    if (!open || !projectId) return;
+    try {
+      const stored = await getReportLayout(projectId, open.id);
+      layoutSaver.dismiss();
+      if (typeof stored.revision === "number") layoutSaver.setRevision(stored.id, stored.revision);
+      mutateLayouts((cached) => cached?.map((r) => (r.id === stored.id ? stored : r)), { revalidate: false });
+      handleSelectReport(stored);
+      setReloads((count) => count + 1);
+    } catch (error) {
+      console.error("Failed to reload report layout:", error);
+    }
+  }, [layoutSaver, projectId, mutateLayouts, handleSelectReport]);
+
+  // Keep mine: the open layout as it is now, on top of the stored one. When
+  // that fails, the layout stays as it is here and its next change saves it,
+  // on the revision the conflict reported.
+  const keepLayout = useCallback(async () => {
+    const report = selectedReportRef.current;
+    // A list read may have brought the other version into the list since the
+    // conflict: the list gets this layout back first, so the answer's
+    // revision tags the version that is kept.
+    if (report) rememberLayout(report);
+    try {
+      await layoutSaver.keepMine(report ? { config: report.config } : undefined);
+    } catch (error) {
+      console.error("Failed to save report layout:", error);
+      toast.error(t("error_saving_changes"));
+    }
+  }, [layoutSaver, rememberLayout, t]);
 
   // Handle drag start
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -388,6 +491,8 @@ const ReportsLayout: React.FC<ReportsLayoutProps> = ({
           projectLayers={projectLayers}
           selectedReport={selectedReport}
           onSelectReport={handleSelectReport}
+          onSaveLayout={saveLayout}
+          reloads={reloads}
           layoutRequest={layoutRequest}
         />
 
@@ -412,6 +517,15 @@ const ReportsLayout: React.FC<ReportsLayoutProps> = ({
           onElementUpdate={handleElementUpdate}
           onElementDelete={handleElementDelete}
         />
+
+        {conflict && (
+          <ConflictBanner
+            document="report_layout"
+            conflict={conflict}
+            onReload={reloadLayout}
+            onKeepMine={keepLayout}
+          />
+        )}
       </Box>
 
       {/* Drag Overlay */}

@@ -98,6 +98,11 @@ const CODE_KEYS: Record<string, string> = {
   conversation_bound: "assistant_error_conversation_bound",
   // Plan 2's handler for every request FastAPI refuses (D21).
   invalid_request: "assistant_error_invalid_request",
+  // The dock's Undo of an answer's workflow edits.
+  undo_not_allowed: "assistant_error_undo_not_allowed",
+  undo_unavailable: "assistant_error_undo_unavailable",
+  run_active: "assistant_error_undo_running",
+  nothing_to_undo: "assistant_error_nothing_to_undo",
 };
 
 const UNAVAILABLE_KEYS: Record<string, string> = {

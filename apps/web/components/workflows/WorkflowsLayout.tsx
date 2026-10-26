@@ -32,6 +32,7 @@ import { useWorkflowCreation } from "@/hooks/workflows/useWorkflowCreation";
 import { useWorkflowExecution } from "@/hooks/workflows/useWorkflowExecution";
 import { useWorkflowIssues } from "@/hooks/workflows/useWorkflowIssues";
 
+import ConflictBanner from "@/components/common/ConflictBanner";
 import WorkflowsEmptyState from "@/components/workflows/WorkflowsEmptyState";
 import WorkflowCanvas from "@/components/workflows/canvas/WorkflowCanvas";
 import CanvasErrorBoundary from "@/components/workflows/issues/CanvasErrorBoundary";
@@ -391,6 +392,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
               projectLayerGroups={projectLayerGroups}
               selectedWorkflow={selectedWorkflow ?? null}
               onSelectWorkflow={handleSelectWorkflow}
+              onRenameWorkflow={autosave.rename}
               onLayerDragStart={handleLayerDragStart}
               creation={creation}
             />
@@ -424,7 +426,17 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
                     />
                   </CanvasErrorBoundary>
                 )}
-                <SaveStatusNotice status={autosave.status} issues={autosave.issues} onRetry={autosave.retry} />
+                {autosave.conflict ? (
+                  <ConflictBanner
+                    document="workflow"
+                    conflict={autosave.conflict}
+                    byAssistant={autosave.conflictByAssistant}
+                    onReload={autosave.reload}
+                    onKeepMine={autosave.keepMine}
+                  />
+                ) : (
+                  <SaveStatusNotice status={autosave.status} issues={autosave.issues} onRetry={autosave.retry} />
+                )}
               </Box>
 
               {/* Bottom Data Panel - Table/Map view */}

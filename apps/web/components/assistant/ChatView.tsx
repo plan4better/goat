@@ -47,6 +47,7 @@ import {
   pillButtonSx,
 } from "@/components/assistant/styles";
 import { useComposerContext } from "@/components/assistant/useComposerContext";
+import { useFollowWorkflowEdits } from "@/components/assistant/useFollowWorkflowEdits";
 import { useLayerAddRefresh } from "@/components/assistant/useLayerAddRefresh";
 import { useWorkflowRunRefresh } from "@/components/assistant/useWorkflowRunRefresh";
 
@@ -367,6 +368,8 @@ export default function ChatView(props: ChatViewProps) {
   const openId = openCard?.card_id ?? null;
   // A workflow the running answer creates opens in the editor when the page allows.
   useOpenCreatedWorkflows(messages, props.initialMessages);
+  // A workflow the running answer edits loads in the open editor.
+  useFollowWorkflowEdits(messages, props.initialMessages);
   // The page reads the job lists (the Workflows canvas) and layers that a run changes.
   useWorkflowRunRefresh(messages, props.initialMessages);
   // The page reads the project's layers again when an answer adds a dataset to it.

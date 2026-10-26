@@ -29,12 +29,12 @@ import { toast } from "react-toastify";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { ChangedElsewhereError } from "@/lib/api/changedElsewhere";
 import { useLayerQueryables } from "@/lib/api/layers";
 import {
   createReportLayout,
   deleteReportLayout,
   duplicateReportLayout,
-  updateReportLayout,
   useReportLayouts,
 } from "@/lib/api/reportLayouts";
 import { scaleElementsToPage } from "@/lib/print/pageResize";
@@ -49,6 +49,7 @@ import {
   outputPixels,
   resolvePageMm,
 } from "@/lib/print/units";
+import type { SaveOutcome } from "@/lib/utils/revisionedSaver";
 import type { Project, ProjectLayer } from "@/lib/validations/project";
 import type {
   AtlasConfig,
@@ -56,6 +57,7 @@ import type {
   PageConfig,
   ReportLayout,
   ReportLayoutConfig,
+  ReportLayoutUpdate,
 } from "@/lib/validations/reportLayout";
 import { createEmptyReportLayoutConfig } from "@/lib/validations/reportLayout";
 import type { TemplateRead, TemplateUseResult } from "@/lib/validations/template";
@@ -108,6 +110,14 @@ interface ReportsConfigPanelProps {
   projectLayers?: ProjectLayer[];
   selectedReport: ReportLayout | null;
   onSelectReport: (report: ReportLayout | null) => void;
+  /** Saves a layout in turn with the editor's other saves, on its revision
+   * (ReportsLayout); `listRevision` is the list's tag of a layout that is
+   * not open. "held" while core's conflict on the open layout waits for
+   * Reload or Keep mine. */
+  onSaveLayout: (layoutId: string, update: ReportLayoutUpdate, listRevision?: number) => Promise<SaveOutcome>;
+  /** Counts the times the open layout was loaded again from core (Reload):
+   * each one puts its page and atlas settings back in the fields. */
+  reloads?: number;
   /** A `?layout=<id>` to select (a template result or the assistant), kept by
    * the map page's useMapUrlIntent and threaded down via ReportsLayout. Each
    * request is applied once when it matches a loaded layout, also over the
@@ -120,6 +130,8 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
   projectLayers = [],
   selectedReport,
   onSelectReport,
+  onSaveLayout,
+  reloads = 0,
   layoutRequest = null,
 }) => {
   const { t } = useTranslation("common");
@@ -274,6 +286,49 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
   // Track previous report ID to avoid re-notifying parent on SWR cache updates
   const prevSelectedReportIdRef = useRef<string | null>(null);
 
+  // Puts a layout's page and atlas settings in the fields.
+  const loadSettings = useCallback((report: ReportLayout) => {
+    // Page settings
+    setPageSize(report.config.page.size);
+    setOrientation(report.config.page.orientation);
+    setCustomWidth(report.config.page.width != null ? String(report.config.page.width) : "");
+    setCustomHeight(report.config.page.height != null ? String(report.config.page.height) : "");
+    setSnapToGuides(report.config.page.snapToGuides ?? false);
+    setShowRulers(report.config.page.showRulers ?? false);
+    setDpi(report.config.page.dpi ?? 300);
+    setExportFormat(report.config.page.export_format ?? "pdf");
+    // Atlas settings loading
+    const atlas = report.config.atlas;
+    setAtlasEnabled(atlas?.enabled ?? false);
+    if (atlas?.coverage?.type === "feature") {
+      setAtlasLayerId(atlas.coverage.layer_project_id);
+      setAtlasSortBy(atlas.coverage.sort_by ?? "");
+      setAtlasSortOrder(atlas.coverage.sort_order ?? "asc");
+      setAtlasFilterToCurrentFeature(atlas.coverage.filter_to_current_feature ?? false);
+      setAtlasHiddenCoverageLayer(atlas.coverage.hidden_coverage_layer ?? false);
+    } else {
+      setAtlasLayerId(null);
+      setAtlasSortBy("");
+      setAtlasSortOrder("asc");
+      setAtlasFilterToCurrentFeature(false);
+      setAtlasHiddenCoverageLayer(false);
+    }
+    // Page label
+    const pageLabel = atlas?.page_label;
+    if (pageLabel?.template) {
+      // Extract attribute name from template like "{{@feature.NAME}}"
+      const match = pageLabel.template.match(/\{\{@feature\.([^}]+)\}\}/);
+      setAtlasPageName(match ? match[1] : "");
+    } else {
+      setAtlasPageName("");
+    }
+    // File name template - detect if saved value matches a preset or is custom
+    const savedTemplate = atlas?.file_name_template ?? "";
+    setAtlasFileNameTemplate(savedTemplate);
+    // customTemplateInput will be set after fileNameTemplateItems recalculates
+    setCustomTemplateInput(savedTemplate);
+  }, []);
+
   // Notify parent and load settings only when the selected report ID changes
   useEffect(() => {
     // Skip if the ID hasn't actually changed (e.g. SWR cache mutation)
@@ -284,50 +339,20 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
       const report = reportLayouts.find((r) => r.id === selectedReportId);
       if (report) {
         onSelectReport(report);
-        // Page settings
-        setPageSize(report.config.page.size);
-        setOrientation(report.config.page.orientation);
-        setCustomWidth(report.config.page.width != null ? String(report.config.page.width) : "");
-        setCustomHeight(report.config.page.height != null ? String(report.config.page.height) : "");
-        setSnapToGuides(report.config.page.snapToGuides ?? false);
-        setShowRulers(report.config.page.showRulers ?? false);
-        setDpi(report.config.page.dpi ?? 300);
-        setExportFormat(report.config.page.export_format ?? "pdf");
-        // Atlas settings loading
-        const atlas = report.config.atlas;
-        setAtlasEnabled(atlas?.enabled ?? false);
-        if (atlas?.coverage?.type === "feature") {
-          setAtlasLayerId(atlas.coverage.layer_project_id);
-          setAtlasSortBy(atlas.coverage.sort_by ?? "");
-          setAtlasSortOrder(atlas.coverage.sort_order ?? "asc");
-          setAtlasFilterToCurrentFeature(atlas.coverage.filter_to_current_feature ?? false);
-          setAtlasHiddenCoverageLayer(atlas.coverage.hidden_coverage_layer ?? false);
-        } else {
-          setAtlasLayerId(null);
-          setAtlasSortBy("");
-          setAtlasSortOrder("asc");
-          setAtlasFilterToCurrentFeature(false);
-          setAtlasHiddenCoverageLayer(false);
-        }
-        // Page label
-        const pageLabel = atlas?.page_label;
-        if (pageLabel?.template) {
-          // Extract attribute name from template like "{{@feature.NAME}}"
-          const match = pageLabel.template.match(/\{\{@feature\.([^}]+)\}\}/);
-          setAtlasPageName(match ? match[1] : "");
-        } else {
-          setAtlasPageName("");
-        }
-        // File name template - detect if saved value matches a preset or is custom
-        const savedTemplate = atlas?.file_name_template ?? "";
-        setAtlasFileNameTemplate(savedTemplate);
-        // customTemplateInput will be set after fileNameTemplateItems recalculates
-        setCustomTemplateInput(savedTemplate);
+        loadSettings(report);
       }
     } else {
       onSelectReport(null);
     }
-  }, [selectedReportId, reportLayouts, onSelectReport]);
+  }, [selectedReportId, reportLayouts, onSelectReport, loadSettings]);
+
+  // The open layout was loaded again from core (Reload): its settings, not
+  // the ones typed here, go back in the fields.
+  const selectedReportForReload = useRef(selectedReport);
+  selectedReportForReload.current = selectedReport;
+  useEffect(() => {
+    if (reloads > 0 && selectedReportForReload.current) loadSettings(selectedReportForReload.current);
+  }, [reloads, loadSettings]);
 
   // Select a requested layout once, also over the one that is open; a request
   // that matches no loaded layout is dropped, and later list changes (a save, a
@@ -431,30 +456,25 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
       if (!project?.id || !actionLayoutId) return;
 
       try {
-        // Only send name — don't send config to avoid overwriting with stale SWR cache data
-        await updateReportLayout(project.id, actionLayoutId, {
-          name: newName,
+        // Only send name — don't send config to avoid overwriting with stale SWR cache data.
+        // A layout that is not open is renamed on the revision the list read for it.
+        const listRevision = reportLayouts?.find((r) => r.id === actionLayoutId)?.revision;
+        await onSaveLayout(actionLayoutId, { name: newName }, listRevision);
+        // Optimistic cache update of the name only: the list keeps each
+        // layout's config with the revision it goes with (the open layout's
+        // is kept current by ReportsLayout).
+        mutate((cached) => cached?.map((r) => (r.id === actionLayoutId ? { ...r, name: newName } : r)), {
+          revalidate: false,
         });
-        // Optimistic cache update: preserve selectedReport.config for the active report
-        // to avoid the useEffect replacing parent state with stale data
-        mutate(
-          reportLayouts?.map((r) =>
-            r.id === actionLayoutId
-              ? {
-                  ...r,
-                  name: newName,
-                  // Use selectedReport.config if this is the active report (has unsaved local changes)
-                  ...(actionLayoutId === selectedReport?.id && { config: selectedReport.config }),
-                }
-              : r
-          ),
-          { revalidate: false }
-        );
       } catch (error) {
         console.error("Failed to rename report layout:", error);
+        if (error instanceof ChangedElsewhereError) {
+          toast.error(t("report_layout_changed_elsewhere"));
+          void mutate();
+        }
       }
     },
-    [project?.id, actionLayoutId, reportLayouts, mutate, selectedReport]
+    [project?.id, actionLayoutId, onSaveLayout, reportLayouts, mutate, t]
   );
 
   // Save settings to database when they change
@@ -465,23 +485,18 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
       setIsSaving(true);
       try {
         const updatedReport = { ...selectedReport, config: updatedConfig };
-        await updateReportLayout(project.id, selectedReport.id, {
-          config: updatedConfig,
-        });
-        // Optimistic cache update to avoid re-fetch replacing parent's local state
-        mutate(
-          reportLayouts?.map((r) => (r.id === selectedReport.id ? updatedReport : r)),
-          { revalidate: false }
-        );
-        // Notify parent so selectedReport stays in sync
+        // Shown at once, as a canvas change is (ReportsLayout also writes it
+        // into the layout list): a canvas change made while this save waits
+        // in the queue builds on it, so neither overwrites the other.
         onSelectReport(updatedReport);
+        await onSaveLayout(selectedReport.id, { config: updatedConfig });
       } catch (error) {
         console.error("Failed to update report layout:", error);
       } finally {
         setIsSaving(false);
       }
     },
-    [project?.id, selectedReport, reportLayouts, mutate, onSelectReport]
+    [project?.id, selectedReport, onSaveLayout, onSelectReport]
   );
 
   /**
@@ -628,23 +643,16 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
           },
         };
         const updatedReport = { ...selectedReport, config: updatedConfig };
-        await updateReportLayout(project.id, selectedReport.id, {
-          config: updatedConfig,
-        });
-        // Optimistic cache update to avoid re-fetch replacing parent's local state
-        mutate(
-          reportLayouts?.map((r) => (r.id === selectedReport.id ? updatedReport : r)),
-          { revalidate: false }
-        );
-        // Notify parent so selectedReport stays in sync
+        // Shown at once, as in saveConfig.
         onSelectReport(updatedReport);
+        await onSaveLayout(selectedReport.id, { config: updatedConfig });
       } catch (error) {
         console.error("Failed to update atlas settings:", error);
       } finally {
         setIsSaving(false);
       }
     },
-    [project?.id, selectedReport, reportLayouts, mutate, onSelectReport]
+    [project?.id, selectedReport, onSaveLayout, onSelectReport]
   );
 
   const handleAtlasEnabledChange = (enabled: boolean) => {

@@ -39,6 +39,8 @@ const TOOLS = [
   "workflow_check_draft",
   "workflow_create",
   "workflow_create_from_template",
+  "workflow_get",
+  "workflow_update",
   "project_add_catalog_layer",
   "project_add_dataset",
 ];
@@ -122,6 +124,13 @@ describe("assistant texts", () => {
       expect(DE[key], key).toMatch(/\bdiese Fragen\b/i);
       expect(DE[key], key).not.toMatch(/\bdiese Frage\b/i);
     }
+  });
+
+  it("never say the assistant leaves what exists alone, now that it changes workflows", () => {
+    expect(EN.assistant_empty_sub_project).not.toMatch(/never changes/);
+    expect(DE.assistant_empty_sub_project).not.toMatch(/ändert er nie/);
+    expect(EN.assistant_empty_sub_project).toMatch(/Undo/);
+    expect(DE.assistant_empty_sub_project).toMatch(/Rückgängig/);
   });
 
   it("use no dashes inside sentences", () => {

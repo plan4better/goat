@@ -186,6 +186,10 @@ export interface AssistantMetadata {
   answer?: AskAnswer;
   /** When the message was stored (ISO 8601, UTC); only a reloaded message has it. */
   created_at?: string;
+  /** On an answer: its run, which the Undo of its workflow edits names. */
+  run_id?: string;
+  /** On a reloaded answer: its workflow edits were undone. */
+  undone?: boolean;
 }
 /** A workflow run the assistant started or waited for (`data-workflow-run`): one part per run, replaced as it goes. */
 export interface WorkflowRunData {

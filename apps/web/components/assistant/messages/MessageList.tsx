@@ -13,6 +13,7 @@ import { CREATE_WORKFLOW_TOOLS, SHOW_TOOLS, shownGroups, uniqueGroups } from "@/
 import { messageTime } from "@/lib/assistant/messageTimes";
 import { stepRunning } from "@/lib/assistant/stepLabels";
 import type { AnswerFeedback, AssistantMessage, PageContext } from "@/lib/assistant/types";
+import { answerEdits } from "@/lib/assistant/workflowEdits";
 
 import AnswerDetails from "@/components/assistant/messages/AnswerDetails";
 import AskCard from "@/components/assistant/messages/AskCard";
@@ -26,6 +27,7 @@ import ResultCards from "@/components/assistant/messages/ResultCards";
 import RunStatusNote from "@/components/assistant/messages/RunStatusNote";
 import SafeMarkdown from "@/components/assistant/messages/SafeMarkdown";
 import StepGroup from "@/components/assistant/messages/StepGroup";
+import UndoAnswer from "@/components/assistant/messages/UndoAnswer";
 import WorkflowRunNote from "@/components/assistant/messages/WorkflowRunNote";
 import { accentSoft, accentText, shimmerSx } from "@/components/assistant/styles";
 
@@ -291,7 +293,11 @@ function Answer({
   // A step under way shimmers in its line or its group's summary: one shimmer at a time.
   const stepUnderWay =
     running && message.parts.some((part) => part.type === "dynamic-tool" && stepRunning(part));
-  const actions = !running && (text.trim() || !ended);
+  // An answer that saved workflow edits offers Undo, also when it then failed without a word.
+  const runId = message.metadata?.run_id;
+  const edits = answerEdits(message);
+  const undoable = !running && !readOnly && !!runId && edits.length > 0;
+  const actions = !running && (text.trim() || !ended || undoable);
   return (
     <Stack
       gap="14px"
@@ -314,6 +320,14 @@ function Answer({
           gap="4px"
           alignItems="center"
           sx={{ mt: "-8px", ml: "-6px" }}>
+          {undoable && runId && (
+            <UndoAnswer
+              conversationId={conversationId}
+              runId={runId}
+              workflowIds={[...new Set(edits.map((edit) => edit.workflowId))]}
+              undone={message.metadata?.undone}
+            />
+          )}
           <CopyAnswer text={text} />
           {!ended && <AnswerDetails usage={message.metadata?.usage} />}
           {!ended && (

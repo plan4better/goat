@@ -205,6 +205,11 @@ function labelKey(step: DynamicToolUIPart, names: LayerNames, t: Translate): Lab
       }
       break;
     }
+    case "workflow_get": {
+      const name = text(output.name);
+      if (name) return { key: "assistant_tool_workflow_get_name", values: { name: quoted(name) } };
+      break;
+    }
     // The workflow the step made, by name; its card follows the step list.
     case "workflow_create":
     case "workflow_create_from_template": {
@@ -398,6 +403,7 @@ const STEP_KINDS: Record<string, string> = {
   workflow_find_templates: "templates",
   workflow_check_draft: "draft_check",
   workflow_last_run: "workflow_last_run",
+  workflow_get: "workflow_read",
 };
 
 /** Every kind a summary may name, with the one for tools the dock does not know. */
@@ -468,6 +474,7 @@ const COUNTED_BY: Record<
   },
   instructions: (step) => text(fields(step.input).name),
   workflow_last_run: (step) => text(fields(step.input).workflow_id),
+  workflow_read: (step) => text(fields(step.input).workflow_id),
 };
 
 /**

@@ -22,7 +22,8 @@ import { toast } from "react-toastify";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { deleteWorkflow, duplicateWorkflow, updateWorkflow, useWorkflows } from "@/lib/api/workflows";
+import { ChangedElsewhereError } from "@/lib/api/changedElsewhere";
+import { deleteWorkflow, duplicateWorkflow, useWorkflows } from "@/lib/api/workflows";
 import type { Project, ProjectLayer, ProjectLayerGroup } from "@/lib/validations/project";
 import type { Workflow } from "@/lib/validations/workflow";
 
@@ -58,6 +59,9 @@ interface WorkflowsConfigPanelProps {
   projectLayerGroups?: ProjectLayerGroup[];
   selectedWorkflow: Workflow | null;
   onSelectWorkflow: (workflow: Workflow | null) => void;
+  /** Renames a workflow in turn with the editor's saves
+   * (`useWorkflowAutosave().rename`): a rename moves it to a new revision. */
+  onRenameWorkflow: (workflowId: string, name: string) => Promise<void>;
   /** Callback for when a layer is dragged (for workflow canvas integration) */
   onLayerDragStart?: (event: React.DragEvent, layer: ProjectLayer) => void;
   /** New workflow from scratch or from a template, shared with the card a
@@ -71,6 +75,7 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
   projectLayerGroups = [],
   selectedWorkflow,
   onSelectWorkflow,
+  onRenameWorkflow,
   onLayerDragStart,
   creation,
 }) => {
@@ -156,13 +161,19 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
       if (!project?.id || !actionWorkflowId) return;
 
       try {
-        await updateWorkflow(project.id, actionWorkflowId, { name: newName });
+        await onRenameWorkflow(actionWorkflowId, newName);
         await mutate();
       } catch (error) {
         console.error("Failed to rename workflow:", error);
+        // Refused on the revision the list read: the list is read again, so
+        // the next rename names the stored workflow's revision.
+        if (error instanceof ChangedElsewhereError) {
+          toast.error(t("workflow_changed_elsewhere"));
+          void mutate();
+        }
       }
     },
-    [project?.id, actionWorkflowId, mutate]
+    [project?.id, actionWorkflowId, onRenameWorkflow, mutate, t]
   );
 
   // Context menu items for workflow

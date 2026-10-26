@@ -1,5 +1,6 @@
 import useSWR, { mutate } from "swr";
 
+import { SAVE_TIMEOUT_MS, changedElsewhere } from "@/lib/api/changedElsewhere";
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import { PROCESSES_BASE_URL } from "@/lib/constants";
 // ============================================================================
@@ -141,7 +142,15 @@ export const createWorkflow = async (projectId: string, workflow: WorkflowCreate
 };
 
 /**
- * Update an existing workflow
+ * Read one workflow as core stores it now, with its revision.
+ */
+export const getWorkflow = async (projectId: string, workflowId: string): Promise<Workflow> =>
+  (await fetcher(workflowKey(projectId, workflowId))) as Workflow;
+
+/**
+ * Update an existing workflow. With `base_revision`, core saves only while the
+ * stored workflow is still at that revision and throws a
+ * `ChangedElsewhereError` otherwise. Gives up after `SAVE_TIMEOUT_MS`.
  */
 export const updateWorkflow = async (
   projectId: string,
@@ -154,11 +163,15 @@ export const updateWorkflow = async (
       "Content-Type": "application/json",
     },
     body: JSON.stringify(workflow),
+    signal: AbortSignal.timeout(SAVE_TIMEOUT_MS),
   });
   if (!response.ok) {
     // Core refuses a damaged config (422) with the issues it found, in the
     // shape of a refused run; the editor's "Not saved" notice lists them.
-    const refused = response.status === 422 ? issuesRefusal(response.status, await response.text()) : undefined;
+    const refused =
+      response.status === 422
+        ? issuesRefusal(response.status, await response.text())
+        : await changedElsewhere(response);
     throw refused ?? new Error("Failed to update workflow");
   }
   const updated = await response.json();

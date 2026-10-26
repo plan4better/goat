@@ -57,6 +57,15 @@ describe("assistant stream contract (spec §6.2)", () => {
     expect(text).toMatchObject({ type: "text", text: "Three datasets match." });
   });
 
+  it("keeps the run the start names next to the usage in the message metadata", async () => {
+    // The dock's Undo of a live answer names its run.
+    const message = await finalMessage(chunksOf("text_only"));
+    expect(message.metadata).toMatchObject({
+      run_id: "5d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a",
+      usage: { model: "test", input_tokens: 10 },
+    });
+  });
+
   it("renders tool calls as dynamic tools and data parts by name", async () => {
     const message = await finalMessage(chunksOf("tool_and_proposal"));
     const tool = message.parts.find((part) => part.type === "dynamic-tool");

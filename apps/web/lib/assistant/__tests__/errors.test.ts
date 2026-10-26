@@ -49,6 +49,19 @@ describe("assistant error texts", () => {
     expect(assistantErrorKey(new Error("boom"))).toBe("assistant_error_generic");
   });
 
+  it("maps the refusals of an Undo to texts", () => {
+    expect(assistantErrorKey(refused(403, { code: "undo_not_allowed" }))).toBe(
+      "assistant_error_undo_not_allowed"
+    );
+    expect(assistantErrorKey(refused(503, { code: "undo_unavailable" }))).toBe(
+      "assistant_error_undo_unavailable"
+    );
+    expect(assistantErrorKey(refused(409, { code: "run_active" }))).toBe("assistant_error_undo_running");
+    expect(assistantErrorKey(refused(404, { code: "nothing_to_undo" }))).toBe(
+      "assistant_error_nothing_to_undo"
+    );
+  });
+
   it("keeps the field a refusal blames through the shared path", () => {
     const body = { code: "invalid_request", field: "message.text", message: "x" };
     expect(toRequestError(refused(422, body))?.field).toBe("message.text");

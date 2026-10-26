@@ -1,5 +1,6 @@
 import useSWR from "swr";
 
+import { SAVE_TIMEOUT_MS, changedElsewhere } from "@/lib/api/changedElsewhere";
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import { PROCESSES_API_BASE_URL } from "@/lib/api/processes";
 import { useAuthedSWR } from "@/lib/api/useAuthedSWR";
@@ -49,6 +50,10 @@ export const useProject = (projectId?: string) => {
     isValidating,
   };
 };
+
+/** Read one project as core stores it now, with its dashboard's revision. */
+export const getProject = async (projectId: string): Promise<Project> =>
+  (await fetcher([`${PROJECTS_API_BASE_URL}/${projectId}`])) as Project;
 
 export const useProjectLayers = (projectId?: string) => {
   const { data, isLoading, error, mutate, isValidating } = useAuthedSWR<ProjectLayer[]>(
@@ -342,16 +347,30 @@ export const addBundleToProject = async (projectId: string, bundleId: string) =>
   return await response.json();
 };
 
-export const updateProject = async (projectId: string, payload: PostProject) => {
+/** A project update. The dashboard (`builder_config`) is saved on a
+ * revision of its own: with `builder_base_revision`, core saves it only while
+ * the stored dashboard is still at that revision. */
+export type ProjectUpdate = PostProject & {
+  builder_config?: unknown;
+  builder_base_revision?: number | null;
+};
+
+/**
+ * Update a project. Throws a `ChangedElsewhereError` when core refuses a
+ * dashboard save because the dashboard changed since `builder_base_revision`.
+ * Gives up after `SAVE_TIMEOUT_MS`.
+ */
+export const updateProject = async (projectId: string, payload: ProjectUpdate): Promise<Project> => {
   const response = await apiRequestAuth(`${PROJECTS_API_BASE_URL}/${projectId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(SAVE_TIMEOUT_MS),
   });
   if (!response.ok) {
-    throw new Error("Failed to update project");
+    throw (await changedElsewhere(response)) ?? new Error("Failed to update project");
   }
   return await response.json();
 };

@@ -4,6 +4,7 @@ import { createContext, useContext } from "react";
 
 import type { AddedToProject } from "@/lib/assistant/addToProject";
 import type { ResultItem } from "@/lib/assistant/items";
+import type { WorkflowChange } from "@/lib/assistant/workflowEdits";
 
 /** What message parts can ask the dock to do; the dock provides it. */
 export interface DockActions {
@@ -19,6 +20,13 @@ export interface DockActions {
    * after the project's workflow list was read again. Resolves whether it opened.
    */
   openCreatedWorkflow: (projectId: string, workflowId: string) => Promise<boolean>;
+  /**
+   * Workflows an answer changed, or the dock's Undo wrote back: the open one
+   * loads the stored version, the project's workflow list is read again.
+   */
+  followWorkflowChanges: (changes: WorkflowChange[]) => void;
+  /** Whether the Workflows editor holds changes of one of these workflows that are not saved yet. */
+  unsavedWorkflowChanges: (workflowIds: string[]) => boolean;
   /** The existing dataset window (summary, data, map): a dataset's "All details". */
   previewDataset: (layerId: string) => void;
   /** The existing bundle window: a bundle's "All details". */

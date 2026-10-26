@@ -1401,3 +1401,67 @@ describe("workflow runs", () => {
     expect(status?.contains(screen.getByRole("button", { name: "assistant_workflow_run_open" }))).toBe(false);
   });
 });
+
+describe("the Undo of an answer's workflow edits", () => {
+  const update = (before: number, after: number, state: DynamicToolUIPart["state"] = "output-available") =>
+    ({
+      type: "dynamic-tool",
+      toolName: "workflow_update",
+      toolCallId: `u-${after}`,
+      state,
+      input: { workflow_id: "wf-1", operations: [] },
+      output: { workflow_id: "wf-1", revision_before: before, revision_after: after, changed_steps: [] },
+    }) as DynamicToolUIPart;
+  const answer = (
+    parts: AssistantMessage["parts"],
+    metadata: AssistantMessage["metadata"] = { run_id: "run-1" }
+  ): AssistantMessage => ({ id: "a1", role: "assistant", metadata, parts });
+  const show = (message: AssistantMessage, { readOnly = false, busy = false } = {}) =>
+    render(
+      <DockActionsContext.Provider value={actions}>
+        <MessageList
+          messages={[message]}
+          busy={busy}
+          conversationId="c1"
+          conversationProjectId="p1"
+          projectName="Walk"
+          readOnly={readOnly}
+        />
+      </DockActionsContext.Provider>
+    );
+  const text = { type: "text", text: "I set the walking time to 10 minutes." } as const;
+
+  it("shows on an answer that saved a workflow edit", () => {
+    show(answer([update(4, 5), text]));
+    expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+  });
+
+  it("shows on an answer that edited and then failed without a word", () => {
+    show(
+      answer([
+        update(4, 5),
+        { type: "data-run-status", data: { status: "failed", error: "slow", code: "run_timeout" } },
+      ] as AssistantMessage["parts"])
+    );
+    expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+  });
+
+  it("does not show without an edit, for an edit that changed nothing, or without the answer's run", () => {
+    show(answer([text]));
+    show(answer([update(4, 4), text]));
+    show(answer([update(4, 5), text], {}));
+    expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+  });
+
+  it("does not show in a read-only conversation, nor while the answer runs", () => {
+    show(answer([update(4, 5), text]), { readOnly: true });
+    show(answer([update(4, 5), text]), { busy: true });
+    expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+  });
+
+  it("reads Undone for an answer whose edits were undone", () => {
+    show(answer([update(4, 5), text], { run_id: "run-2", undone: true }));
+    expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+    expect(screen.getByText("assistant_undone")).toBeTruthy();
+  });
+});

@@ -10,6 +10,8 @@ export function dockActions() {
     openProject: vi.fn(),
     openInProjectMode: vi.fn(),
     openCreatedWorkflow: vi.fn(async (_projectId: string, _workflowId: string) => true),
+    followWorkflowChanges: vi.fn(),
+    unsavedWorkflowChanges: vi.fn((_workflowIds: string[]) => false),
     previewDataset: vi.fn(),
     previewBundle: vi.fn(),
     zoomToLayer: vi.fn(),

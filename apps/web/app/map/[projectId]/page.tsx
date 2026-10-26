@@ -42,6 +42,7 @@ import { widgetSchemaMap } from "@/lib/validations/widget";
 import { useProjectAssistantSurface } from "@/hooks/assistant/useProjectAssistantSurface";
 import { useAuthZ } from "@/hooks/auth/AuthZ";
 import { useBrandedTheme } from "@/hooks/dashboard/useBrandedTheme";
+import { useDashboardSaves } from "@/hooks/dashboard/useDashboardSaves";
 import { JobStatusWatcher } from "@/hooks/jobs/JobStatus";
 import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
 import { useBasemap } from "@/hooks/map/MapHooks";
@@ -49,6 +50,7 @@ import { useMapUrlIntent } from "@/hooks/map/useMapUrlIntent";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { DraggableItem } from "@/components/builder/widgets/common/DraggableItem";
+import ConflictBanner from "@/components/common/ConflictBanner";
 import { LoadingPage } from "@/components/common/LoadingPage";
 import Header from "@/components/header/Header";
 import EditModeHalo from "@/components/map/EditModeHalo";
@@ -282,6 +284,14 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
     mutateProject();
   }, [mutateProjectLayers, mutateProjectLayerGroups, mutateProject]);
 
+  // The dashboard is saved on its revision: a save made on an older one than
+  // core holds is refused and shown, not written over the newer one.
+  const dashboardSaves = useDashboardSaves({
+    projectId,
+    builderRevision: project?.builder_revision,
+    mutateProject,
+  });
+
   // Widget Drag and Drop
   const [activeWidget, setActiveWidget] = useState<BuilderWidgetSchema | null>(null);
 
@@ -304,6 +314,13 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
     try {
       const projectToUpdate = JSON.parse(JSON.stringify(project));
       Object.assign(projectToUpdate, partial);
+      if ("builder_config" in partial) {
+        // Shown at once; read again only once the save is in, so the read
+        // never brings back the dashboard from before it.
+        mutateProject(projectToUpdate, false);
+        await dashboardSaves.save(partial, refreshFlag);
+        return;
+      }
       mutateProject(projectToUpdate, refreshFlag);
       await updateProject(projectId, partial);
     } catch (error) {
@@ -605,6 +622,14 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                           />
                           <EditModeHalo />
                         </Box>
+                        {mapMode === "builder" && dashboardSaves.conflict && (
+                          <ConflictBanner
+                            document="dashboard"
+                            conflict={dashboardSaves.conflict}
+                            onReload={dashboardSaves.reload}
+                            onKeepMine={dashboardSaves.keepMine}
+                          />
+                        )}
                         {mapMode === "builder" && (
                           <Box
                             sx={{

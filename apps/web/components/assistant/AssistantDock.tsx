@@ -43,8 +43,10 @@ import {
   useDockState,
 } from "@/lib/assistant/store";
 import type { AssistantMessage } from "@/lib/assistant/types";
+import { followWorkflowChanges } from "@/lib/assistant/workflowEdits";
 import appStore from "@/lib/store";
 import { setMapMode } from "@/lib/store/map/slice";
+import { requestWorkflowReload } from "@/lib/store/workflow/slice";
 import { DROP_FILE_EXTENSIONS, NEEDS_SETUP, carriesFiles, extensionOf } from "@/lib/utils/dataFiles";
 
 import { useAppDispatch } from "@/hooks/store/ContextHooks";
@@ -177,6 +179,20 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
             navigate: (href) => router.push(href),
           }
         ),
+      followWorkflowChanges: (changes) =>
+        followWorkflowChanges(changes, {
+          // The app's one store, as above: the Workflows editor takes the change over
+          // when it shows that workflow, also once it opens again.
+          openWorkflowId: () => appStore.getState().workflow.selectedWorkflowId,
+          openProjectId: () => getActiveSurface()?.project?.id ?? null,
+          requestReload: (id, revision) => appStore.dispatch(requestWorkflowReload({ id, revision })),
+          refreshList: refreshWorkflowList,
+        }),
+      unsavedWorkflowChanges: (workflowIds) => {
+        // A pan alone does not count: it is saved after the change is loaded.
+        const { selectedWorkflowId, contentDirty } = appStore.getState().workflow;
+        return !!selectedWorkflowId && contentDirty && workflowIds.includes(selectedWorkflowId);
+      },
       previewDataset: (layerId) => setPreview(layerId),
       previewBundle: (bundleId) => setBundlePreview(bundleId),
       zoomToLayer: (layerProjectId) => void getActiveSurface()?.zoomToLayer?.(layerProjectId),
