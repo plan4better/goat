@@ -22,6 +22,7 @@ from goatlib.analysis.schemas.ui import (
 )
 from goatlib.models.io import DatasetMetadata
 from goatlib.tools.base import BaseToolRunner
+from goatlib.tools.schema_prediction import carried_fields, layer_geometry
 from goatlib.tools.schemas import (
     LayerInputMixin,
     ToolInputBase,
@@ -109,25 +110,38 @@ class UnionToolRunner(BaseToolRunner[UnionToolParams]):
         input_schemas: dict[str, dict[str, str]],
         params: dict[str, Any],
     ) -> dict[str, str]:
-        """Predict union output schema.
+        """Predict union output schema: the columns a run writes, in order
+        (``UnionTool``).
 
-        Union combines columns from both input and overlay layers.
-        If no overlay, performs self-union (just input columns).
+        Without an overlay layer the input is unioned with itself, and the
+        result holds a feature id ``fid`` and the input's geometry. With one,
+        the input layer's fields under their own names, then the overlay's
+        under ``overlay_fields_prefix`` (no prefix when unset), then the
+        input's geometry under its name; a name taken already gets ``_1``,
+        ``_2``, ... as DuckDB renames it. Types are the layers' own, while
+        the run fills the fields of the side a piece lacks with untyped
+        NULLs, which widens a narrow type (``DECIMAL(4,1)`` to
+        ``DECIMAL(11,1)``, ``BOOLEAN`` to ``INTEGER``). Nothing is predicted
+        while the input layer's columns are unknown.
         """
         input_layer = input_schemas.get("input_layer_id", {})
-        overlay_layer = input_schemas.get("overlay_layer_id", {})
+        if not input_layer:
+            return {}
+        geometry = layer_geometry(input_layer)
+        if "overlay_layer_id" not in input_schemas:
+            return {"fid": "BIGINT", geometry[0]: geometry[1]}
+        prefix = params.get("overlay_fields_prefix") or ""
 
-        columns = dict(input_layer)
-
-        # Add overlay columns with prefix if overlay exists
-        overlay_prefix = params.get("overlay_fields_prefix", "overlay_")
-        for col, dtype in overlay_layer.items():
-            if col == "geometry":
-                continue  # Skip overlay geometry
-            base = f"{overlay_prefix}{col}" if col in columns else col
-            out_col = cls.unique_column_name(columns, base)
-            columns[out_col] = dtype
-
+        columns: dict[str, str] = {}
+        for name, dtype in [
+            *carried_fields(input_layer),
+            *(
+                (f"{prefix}{name}", dtype)
+                for name, dtype in carried_fields(input_schemas["overlay_layer_id"])
+            ),
+            geometry,
+        ]:
+            columns[cls.unique_column_name(columns, name)] = dtype
         return columns
 
     def process(

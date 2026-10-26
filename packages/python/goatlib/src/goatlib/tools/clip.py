@@ -21,6 +21,7 @@ from goatlib.analysis.schemas.ui import (
 )
 from goatlib.models.io import DatasetMetadata
 from goatlib.tools.base import BaseToolRunner
+from goatlib.tools.schema_prediction import carried_fields, layer_geometry
 from goatlib.tools.schemas import (
     ToolInputBase,
     TwoLayerInputMixin,
@@ -92,13 +93,15 @@ class ClipToolRunner(BaseToolRunner[ClipToolParams]):
         input_schemas: dict[str, dict[str, str]],
         params: dict[str, Any],
     ) -> dict[str, str]:
-        """Predict clip output schema.
-
-        Clip preserves all columns from the input layer.
-        Geometry type is preserved from input.
+        """Predict clip output schema: the columns a run writes, in order
+        (``ClipTool``): the input layer's fields, then its geometry. Nothing
+        is predicted while the input layer's columns are unknown.
         """
-        primary_input = input_schemas.get("input_layer_id", {})
-        return dict(primary_input)
+        input_layer = input_schemas.get("input_layer_id", {})
+        if not input_layer:
+            return {}
+        name, dtype = layer_geometry(input_layer)
+        return {**dict(carried_fields(input_layer)), name: dtype}
 
     def process(
         self: Self, params: ClipToolParams, temp_dir: Path

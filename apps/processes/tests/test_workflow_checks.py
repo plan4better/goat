@@ -890,6 +890,40 @@ def buffered_by(field: str) -> dict[str, Any]:
     )
 
 
+def intersected_then_buffered(
+    field: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Roads cut by zones, the pieces then buffered by `field`; the
+    intersection writes the zones' fields as intersection_<field>."""
+    pieces = tool("pieces", "intersection", {}, label="Pieces")
+    nodes = [dataset("roads"), dataset("zones", OTHER), pieces, buffered_by(field)]
+    edges = [
+        edge("roads", "pieces", "input_layer_id"),
+        edge("zones", "pieces", "overlay_layer_id"),
+        edge("pieces", "by_field", "input_layer_id"),
+    ]
+    return nodes, edges
+
+
+OVERLAY_FIELDS = FakeFields({LAYER: ["name"], OTHER: ["width"]})
+
+
+async def test_an_overlay_field_by_its_intersection_name_is_no_issue() -> None:
+    nodes, edges = intersected_then_buffered("intersection_width")
+    assert await check(nodes, edges, fields=OVERLAY_FIELDS) == []
+
+
+async def test_an_intersected_overlay_field_by_its_own_name_is_a_warning() -> None:
+    nodes, edges = intersected_then_buffered("width")
+
+    issue = only(
+        await check(nodes, edges, fields=OVERLAY_FIELDS), "field_maybe_missing"
+    )
+
+    assert issue.node_ids == ("by_field",)
+    assert issue.params["field_name"] == "width"
+
+
 async def test_a_field_a_join_further_up_renamed_is_an_error() -> None:
     """A buffer between keeps the join's fields, join_<field> among them."""
     nodes, edges = joined_then_grouped([])

@@ -514,6 +514,37 @@ def predict_huff_schema(input_schemas: dict[str, dict[str, str]]) -> dict[str, s
     return columns
 
 
+def layer_geometry(schema: dict[str, str]) -> tuple[str, str]:
+    """The name and type of a layer's geometry column, the first column of a
+    geometry type; ``geometry`` of type ``GEOMETRY`` when it has none. The
+    overlay tools write their result's geometry under the input's name,
+    after its fields."""
+    for name, dtype in schema.items():
+        if "GEOMETRY" in dtype.upper():
+            return name, dtype
+    return "geometry", "GEOMETRY"
+
+
+def carried_fields(
+    schema: dict[str, str], fields: list[str] | None = None
+) -> list[tuple[str, str]]:
+    """The fields an overlay tool carries from a layer into its result, with
+    their types: the ones listed, in the list's order, or every field in the
+    layer's order when the list is missing or empty. Never the geometry, nor a
+    bounding box (``bbox`` or any bbox struct), which the result's writer
+    replaces with its own. A listed name the layer lacks is left out."""
+    from goatlib.io.bbox_columns import is_bbox_struct
+
+    geometry, _ = layer_geometry(schema)
+    return [
+        (name, schema[name])
+        for name in (fields or list(schema))
+        if name in schema
+        and name not in (geometry, "bbox")
+        and not is_bbox_struct(schema[name])
+    ]
+
+
 def _extract_geometry_type(schema: dict[str, str]) -> str | None:
     """Extract geometry type from a schema's geometry column."""
     for col_name, col_type in schema.items():
