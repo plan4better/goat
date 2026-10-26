@@ -13,7 +13,7 @@ analysis algorithms, geospatial I/O, and shared models used by the `core`,
 | `io/` | Dataset import/export, format conversion, and remote sources (WFS, …) |
 | `models/` | Pydantic models shared across services |
 | `services/`, `storage/`, `tasks/` | Service clients, object storage, background task helpers |
-| `workflows/` | Checks for project workflows that need no analytics dependencies: the shape check core runs on save, and the graph helpers and settings-visibility rules the full check in processes builds on |
+| `workflows/` | Workflow code that needs no analytics dependencies: the shape check core runs on save, the graph helpers and settings-visibility rules the full check in processes builds on, and the operations the assistant edits a stored workflow with |
 | `computed_columns/`, `i18n/`, `config/`, `utils/` | Supporting modules |
 
 ## Adding an analytics tool
@@ -270,9 +270,11 @@ asyncpg's statement cache and the keepalive settings; every tool and task
 connection goes through it (`ToolSettings.postgres_connect_args`). DuckLake's
 catalog connections go to the database itself (`DUCKLAKE_POSTGRES_SERVER`).
 
-## Workflow checks
+## Workflows
 
-`workflows/` holds the parts of the workflow checks that core and processes share. Core refuses a damaged config on save with `checks.shape_issues`; processes runs the same function first in its full check and builds on `find_loops`, `dangling_edges` and `visibility.is_shown`. The package imports the standard library only: core installs goatlib without its extras, so a pydantic model or a tool import here would stop core from starting on its own image (`apps/core/tests/unit/test_runs_without_the_geospatial_stack.py` loads it the way the image does).
+`workflows/` holds the workflow code core, processes and the assistant share without the analytics stack: the shape check, the graph helpers and settings-visibility rules of the full check, and the assistant's edit operations. Core refuses a damaged config on save with `checks.shape_issues`; processes runs the same function first in its full check and builds on `find_loops`, `dangling_edges` and `visibility.is_shown`. The package imports the standard library only: core installs goatlib without its extras, so a pydantic model or a tool import here would stop core from starting on its own image (`apps/core/tests/unit/test_runs_without_the_geospatial_stack.py` loads it the way the image does).
+
+`ops.py` applies the assistant's edits (add or remove a step, change its settings, connect, rename, a note's text) to a stored config as pure functions, refusing what a run would get wrong: a loop, or a second connection into an input unless the two come from steps on different branches of one If step (a run passes an If's input on along every connection leaving the If itself, whichever branch it took). An edit is then a plain new config, which processes checks and core saves with `base_revision` like any other save, and the config before it is what the assistant's Undo writes back. Each operation writes the keys the editor writes for the same change and leaves every other step as stored, so an edit never rewrites what a person laid out.
 
 `visibility.py` is a port of the editor's `visible_when` / `hidden_when` evaluator (`apps/web/lib/utils/ogc-utils.ts`), with JavaScript's equality and truthiness, because a required setting counts as missing only while the editor shows it. `visibility_cases.json` is read by the Python and the web tests alike, so a change to one evaluator that the other does not share fails a test.
 
