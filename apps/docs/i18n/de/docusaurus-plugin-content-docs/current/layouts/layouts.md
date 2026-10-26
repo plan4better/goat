@@ -41,6 +41,10 @@ Der Einstellungsbereich ermöglicht es Ihnen, ein neues Layout zu erstellen, die
   <div class="content">Jetzt sind Sie bereit, an Ihrem Layout zu arbeiten. Wenn es fertig ist, klicken Sie unten auf <code>Layout drucken</code>, um Ihr <b>Layout als PDF, PNG oder JPEG zu exportieren</b>.</div>
 </div>
 
+:::info Speichern
+GOAT speichert Ihre Änderungen an einem Layout, während Sie arbeiten. Wurde das Layout inzwischen an anderer Stelle gespeichert, etwa von einer anderen Person oder in einem anderen Tab, ersetzen Ihre Änderungen diese Fassung nicht. Ein Hinweis oben zeigt <code>Dieses Layout wurde an anderer Stelle geändert</code> mit der Angabe, wer es wann geändert hat, und bis Sie wählen, wird nichts gespeichert: Klicken Sie auf <code>Neu laden</code>, um die gespeicherte Fassung zu laden, oder auf <code>Meine behalten</code>, um Ihre Fassung darüber zu speichern. Das Ein- oder Ausschalten von <code>An Hilfslinien ausrichten</code> oder <code>Lineale anzeigen</code> löst diesen Hinweis nie aus.
+:::
+
 ### Als Vorlage speichern
 
 Ein von Ihnen gestaltetes Layout kann als **Vorlage** gespeichert und für andere Berichte wiederverwendet werden.

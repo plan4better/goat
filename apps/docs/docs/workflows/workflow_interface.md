@@ -85,7 +85,8 @@ On macOS, use `⌘` instead of `Ctrl`.
 With the mouse, drag on an empty part of the canvas to pan, and scroll to zoom.
 
 - Undo and redo don't apply while you type in a field, such as a text card or a tool setting.
-- Moving nodes and text cards can't be undone yet.
+- Moving a node or text card, by dragging it or with the arrow keys, is a change you can undo like any other.
+- A version loaded over the canvas, such as a change by the AI assistant or the saved version after <code>Reload</code>, is one step too: `Ctrl+Z` takes it back (see <a href="#change-a-workflow-with-the-ai-assistant">Change a workflow with the AI assistant</a>). After <code>Reload</code>, `Ctrl+Z` brings back your version, and it is then saved over the other change without asking again.
 - While the canvas is locked with <code>Lock</code>, `Delete` doesn't remove anything.
 
 ### Tools and Configuration panel
@@ -220,6 +221,8 @@ Begin with simple 2-3 node workflows to understand the interface, then gradually
 
 :::info Auto-Save Feature
 Workflows automatically save changes as you build them. The system preserves all configurations, connections, and execution states. If a save fails, a <code>Not saved</code> notice appears at the top of the canvas; click <code>Retry</code> to save again.
+
+If the workflow was saved somewhere else since you opened it, for example by someone else or in another tab, your changes don't replace that version. A notice at the top of the canvas says <code>This workflow was changed elsewhere</code>, with who changed it and when, and nothing is saved until you choose: click <code>Reload</code> to load the saved version, or <code>Keep mine</code> to save your version over it. If the AI assistant changed the workflow while you were editing it, the notice reads <code>The assistant changed this workflow while you were editing.</code> Panning and zooming never cause this notice.
 :::
 
 ### Checking and running a workflow
@@ -272,8 +275,24 @@ You can also describe an analysis to the AI assistant and have it build the work
 - When you have to choose, for example which dataset to use, the assistant asks you in a card with one or more questions, at the bottom of the assistant in place of the message field. Several questions appear one at a time: choose an option (or several, where the question allows it), or pick <code>Type your own answer</code> and enter it; then click <code>Next</code>. <code>Review</code> then lists your answers, and <code>Send answer</code> sends them. A single question has <code>Send answer</code> right below it. The option the assistant suggests is marked <code>Recommended</code> and comes first. To answer in the message field instead, click <code>Reply in text instead</code>.
 - The assistant adds a dataset from the catalog to your project only when you choose it as an option in such a card, not when you name it in an answer you type. A template is the exception: the datasets it ships come into your project with it (see <a href="../getting_started/start_from_a_template#datasets-in-a-template">Datasets in a template</a>).
 - If you choose to leave a dataset open, or no fitting data exists, the assistant leaves the dataset node empty and names the step for what is missing. The node then shows <code>No dataset</code> and <code>Pick a layer</code>, and the issue list shows <code>No dataset is chosen for this step.</code> under the step's name. <code>Run</code> stays greyed out until you have picked a layer and filled in what the issue list then asks for in the steps that use it.
-- The assistant creates a new workflow and never changes or deletes an existing one. If you are still in the project and the workflow you have open has no unsaved changes, the new workflow opens in the editor at once; otherwise click <code>Open</code> on the workflow card in the answer.
-- The assistant never runs a workflow: review it and click <code>Run</code> yourself.
+- If you are still in the project and the workflow you have open has no unsaved changes, the new workflow opens in the editor at once; otherwise click <code>Open</code> on the workflow card in the answer.
+
+### Change a workflow with the AI assistant
+
+You can also ask the assistant to change a workflow of the open project, for example <em>Set the walking time to 10 minutes and add a note that explains it</em>.
+
+- The assistant reads the workflow first and changes only what you asked for: steps, settings, connections and text cards. It never deletes a workflow.
+- It checks the changed workflow with the same check as the editor and doesn't save a change that adds an error. Its answer says what it changed.
+- If the workflow is open in the editor, the canvas shows the change at once. `Ctrl+Z` (`⌘+Z` on macOS) in the canvas takes the change back as one step.
+- An answer that changed a workflow shows <code>Undo</code> below it; on older answers, point at the answer to see it. Click it to take back all the changes of that answer, also when the workflow isn't open. The button then reads <code>Undone</code>.
+- If the workflow was saved again after the answer, <code>Undo</code> asks first and says who changed it and when. <code>Undo anyway</code> takes back those later changes too. If the editor has changes that aren't saved yet, <code>Undo</code> asks as well; after <code>Undo anyway</code>, the notice at the top of the canvas lets you choose which version to keep.
+
+### Run a workflow with the AI assistant
+
+- When you ask for a result, for example <em>How many residents live within a 15-minute walk of a school?</em>, the assistant builds the workflow and runs it. A workflow it created in this conversation runs without asking. Any other workflow, such as one you built yourself, runs only after you agree: the assistant asks in a card whether to run it, and nothing runs until you choose to.
+- While the workflow runs, the answer shows a line such as <code>Workflow running: step 2 of 4, Catchment Area</code> with the time since it started. <code>Open in Workflows</code> opens the workflow, where the canvas shows the run.
+- The assistant waits for the run and reports the result in its answer, with the layers the run saved. If the run failed (<code>Workflow run failed</code>), it names the step that failed and what to change.
+- If the run takes longer than the answer can wait, the line reads <code>Workflow was running when this answer ended</code>. The run goes on; ask the assistant again later for the result. If you stop the answer, a run it started stops too.
 
 ### Save a workflow as a template
 

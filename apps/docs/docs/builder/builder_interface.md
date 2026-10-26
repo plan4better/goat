@@ -12,6 +12,10 @@ Switching to Dashboard mode opens the Dashboard Interface, where **you can desig
   <img src={require('/img/builder/builder_interface.webp').default} alt="Dashboard Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
+:::info Saving
+GOAT saves your changes to the dashboard as you make them. If the dashboard was saved somewhere else in the meantime, for example by someone else or in another tab, your changes don't replace that version. A notice at the top says <code>This dashboard was changed elsewhere</code>, with who changed it and when, and nothing is saved until you choose: click <code>Reload</code> to load the saved version, or <code>Keep mine</code> to save your version over it.
+:::
+
 ## Map controls
 
 The following controls are available on the dashboard map. Their position can be configured in [Settings](./settings).

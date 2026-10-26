@@ -12,6 +12,10 @@ Der Wechsel in den Builder-Modus öffnet die Builder-Kartenoberfläche, **in der
   <img src={require('/img/builder/builder_interface_de.webp').default} alt="Builder Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
+:::info Speichern
+GOAT speichert Ihre Änderungen am Dashboard, während Sie arbeiten. Wurde das Dashboard inzwischen an anderer Stelle gespeichert, etwa von einer anderen Person oder in einem anderen Tab, ersetzen Ihre Änderungen diese Fassung nicht. Ein Hinweis oben zeigt <code>Dieses Dashboard wurde an anderer Stelle geändert</code> mit der Angabe, wer es wann geändert hat, und bis Sie wählen, wird nichts gespeichert: Klicken Sie auf <code>Neu laden</code>, um die gespeicherte Fassung zu laden, oder auf <code>Meine behalten</code>, um Ihre Fassung darüber zu speichern.
+:::
+
 --- 
 
 ## Kartensteuerung

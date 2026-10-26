@@ -85,7 +85,8 @@ Unter macOS verwenden Sie `⌘` statt `Strg`.
 Mit der Maus ziehen Sie auf einer leeren Stelle der Leinwand, um sie zu verschieben, und scrollen, um zu zoomen.
 
 - Rückgängig und Wiederholen wirken nicht, während Sie in einem Feld tippen, etwa in einer Textkarte oder einer Werkzeugeinstellung.
-- Das Verschieben von Knoten und Textkarten lässt sich noch nicht rückgängig machen.
+- Das Verschieben eines Knotens oder einer Textkarte, per Ziehen oder mit den Pfeiltasten, lässt sich wie jede andere Änderung rückgängig machen.
+- Eine Fassung, die über die Leinwand geladen wird, etwa eine Änderung des KI-Assistenten oder die gespeicherte Fassung nach <code>Neu laden</code>, ist ebenfalls ein Schritt: `Strg+Z` nimmt sie zurück (siehe <a href="#einen-workflow-mit-dem-ki-assistenten-ändern">Einen Workflow mit dem KI-Assistenten ändern</a>). Nach <code>Neu laden</code> holt `Strg+Z` Ihre Fassung zurück, und sie wird dann ohne erneute Nachfrage über die andere Änderung gespeichert.
 - Solange die Leinwand mit <code>Sperren</code> gesperrt ist, löscht `Entf` nichts.
 
 ### Werkzeuge und Konfigurations-Panel
@@ -218,6 +219,8 @@ Beginnen Sie mit einfachen 2-3 Knoten-Workflows, um die Benutzeroberfläche zu v
 
 :::info Auto-Speicher-Feature
 Workflows speichern Änderungen automatisch, während Sie sie erstellen. Das System bewahrt alle Konfigurationen, Verbindungen und Ausführungszustände auf. Schlägt das Speichern fehl, erscheint oben auf der Leinwand der Hinweis <code>Nicht gespeichert</code>; klicken Sie auf <code>Erneut versuchen</code>, um noch einmal zu speichern.
+
+Wurde der Workflow seit dem Öffnen an anderer Stelle gespeichert, etwa von einer anderen Person oder in einem anderen Tab, ersetzen Ihre Änderungen diese Fassung nicht. Ein Hinweis oben auf der Leinwand zeigt <code>Dieser Workflow wurde an anderer Stelle geändert</code> mit der Angabe, wer ihn wann geändert hat, und bis Sie wählen, wird nichts gespeichert: Klicken Sie auf <code>Neu laden</code>, um die gespeicherte Fassung zu laden, oder auf <code>Meine behalten</code>, um Ihre Fassung darüber zu speichern. Hat der KI-Assistent den Workflow geändert, während Sie ihn bearbeitet haben, lautet der Hinweis <code>Der Assistent hat diesen Workflow geändert, während Sie ihn bearbeitet haben.</code> Schwenken und Zoomen lösen diesen Hinweis nie aus.
 :::
 
 ### Workflows prüfen und ausführen
@@ -270,8 +273,24 @@ Sie können eine Analyse auch dem KI-Assistenten beschreiben und ihn den Workflo
 - Müssen Sie wählen, zum Beispiel welcher Datensatz verwendet werden soll, stellt Ihnen der Assistent eine oder mehrere Fragen unten im Assistenten, an der Stelle des Nachrichtenfelds. Mehrere Fragen erscheinen nacheinander: Wählen Sie eine Option (oder mehrere, wo die Frage es zulässt) oder wählen Sie <code>Eigene Antwort eingeben</code> und geben Sie Ihre Antwort ein; klicken Sie dann auf <code>Weiter</code>. <code>Überprüfen</code> zeigt danach Ihre Antworten, und <code>Antwort senden</code> sendet sie. Bei einer einzelnen Frage steht <code>Antwort senden</code> direkt darunter. Die Option, die der Assistent vorschlägt, ist mit <code>Empfohlen</code> markiert und steht an erster Stelle. Um stattdessen im Nachrichtenfeld zu antworten, klicken Sie auf <code>Stattdessen als Text antworten</code>.
 - Der Assistent fügt Ihrem Projekt einen Datensatz aus dem Katalog nur dann hinzu, wenn Sie ihn bei einer solchen Frage als Option wählen, nicht aber, wenn Sie ihn in einer getippten Antwort nennen. Eine Ausnahme ist eine Vorlage: Die Datensätze, die sie mitliefert, kommen mit ihr in Ihr Projekt (siehe <a href="../getting_started/start_from_a_template#datensätze-in-einer-vorlage">Datensätze in einer Vorlage</a>).
 - Wenn Sie einen Datensatz offen lassen oder es keine passenden Daten gibt, lässt der Assistent den Datensatz-Knoten leer und benennt den Schritt nach dem, was fehlt. Der Knoten zeigt dann <code>Kein Datensatz</code> und <code>Layer auswählen</code>, und die Problemliste zeigt unter dem Namen des Schritts <code>Für diesen Schritt ist kein Datensatz gewählt.</code> an. <code>Ausführen</code> bleibt ausgegraut, bis Sie einen Layer gewählt und ausgefüllt haben, was die Problemliste danach in den Schritten verlangt, die ihn verwenden.
-- Der Assistent erstellt einen neuen Workflow und ändert oder löscht nie einen vorhandenen. Sind Sie noch in diesem Projekt und hat der geöffnete Workflow keine ungespeicherten Änderungen, öffnet sich der neue Workflow sofort im Editor; andernfalls klicken Sie in der Antwort beim Workflow auf <code>Öffnen</code>.
-- Der Assistent führt nie einen Workflow aus: Prüfen Sie ihn und klicken Sie selbst auf <code>Ausführen</code>.
+- Sind Sie noch in diesem Projekt und hat der geöffnete Workflow keine ungespeicherten Änderungen, öffnet sich der neue Workflow sofort im Editor; andernfalls klicken Sie in der Antwort beim Workflow auf <code>Öffnen</code>.
+
+### Einen Workflow mit dem KI-Assistenten ändern
+
+Sie können den Assistenten auch bitten, einen Workflow des geöffneten Projekts zu ändern, zum Beispiel <em>Setze die Gehzeit auf 10 Minuten und füge eine Notiz hinzu, die das erklärt</em>.
+
+- Der Assistent liest den Workflow zuerst und ändert nur, worum Sie bitten: Schritte, Einstellungen, Verbindungen und Textkarten. Einen Workflow löscht er nie.
+- Er prüft den geänderten Workflow mit derselben Prüfung wie der Editor und speichert keine Änderung, die einen Fehler hinzufügt. In seiner Antwort nennt er, was er geändert hat.
+- Ist der Workflow im Editor geöffnet, zeigt die Leinwand die Änderung sofort. `Strg+Z` (unter macOS `⌘+Z`) auf der Leinwand nimmt die Änderung in einem Schritt zurück.
+- Unter einer Antwort, die einen Workflow geändert hat, steht <code>Rückgängig</code>; bei älteren Antworten zeigen Sie auf die Antwort, um es zu sehen. Ein Klick nimmt alle Änderungen dieser Antwort zurück, auch wenn der Workflow nicht geöffnet ist. Die Schaltfläche lautet danach <code>Rückgängig gemacht</code>.
+- Wurde der Workflow nach der Antwort erneut gespeichert, fragt <code>Rückgängig</code> zuerst nach und nennt, wer ihn wann geändert hat. <code>Trotzdem rückgängig machen</code> nimmt auch diese späteren Änderungen zurück. Hat der Editor Änderungen, die noch nicht gespeichert sind, fragt <code>Rückgängig</code> ebenfalls; nach <code>Trotzdem rückgängig machen</code> wählen Sie im Hinweis oben auf der Leinwand, welche Fassung bleibt.
+
+### Einen Workflow mit dem KI-Assistenten ausführen
+
+- Fragen Sie nach einem Ergebnis, zum Beispiel <em>Wie viele Einwohner wohnen höchstens 15 Minuten Fußweg von einer Schule entfernt?</em>, erstellt der Assistent den Workflow und führt ihn aus. Einen Workflow, den er in dieser Unterhaltung erstellt hat, führt er ohne Rückfrage aus. Jeden anderen, etwa einen, den Sie selbst erstellt haben, führt er erst aus, wenn Sie zustimmen: Der Assistent fragt Sie in einer Karte, ob er ihn ausführen soll, und nichts läuft, bevor Sie sich dafür entscheiden.
+- Während der Workflow läuft, zeigt die Antwort eine Zeile wie <code>Workflow läuft: Schritt 2 von 4, Einzugsgebiet</code> mit der Zeit seit dem Start. <code>In Workflows öffnen</code> öffnet den Workflow, wo die Leinwand den Lauf zeigt.
+- Der Assistent wartet auf den Lauf und berichtet das Ergebnis in seiner Antwort, mit den Layern, die der Lauf gespeichert hat. Ist der Lauf fehlgeschlagen (<code>Workflow-Lauf fehlgeschlagen</code>), nennt er den Schritt, der fehlgeschlagen ist, und was zu ändern ist.
+- Dauert der Lauf länger, als die Antwort warten kann, lautet die Zeile <code>Der Workflow lief noch, als diese Antwort endete</code>. Der Lauf geht weiter; fragen Sie den Assistenten später nach dem Ergebnis. Stoppen Sie die Antwort, stoppt auch ein Lauf, den sie gestartet hat.
 
 ### Einen Workflow als Vorlage speichern
 

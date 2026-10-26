@@ -209,6 +209,8 @@ This glossary lists the English and German labels of the main tools, features an
 | Fit View | Ansicht anpassen | Fit all nodes into view |
 | Lock | Sperren | Lock the canvas |
 | Unlock | Entsperren | Unlock the canvas |
+| Undo | Rückgängig | Take back the last change on the canvas |
+| Redo | Wiederholen | Restore the last undone change |
 | Minimap | Minimap | Canvas overview navigator |
 | New | Neu | Create a new workflow |
 | From scratch | Neu erstellen | Start an empty workflow |
@@ -565,6 +567,8 @@ This glossary lists the English and German labels of the main tools, features an
 | **Export** | **Exportieren** | Export data |
 | **New** | **Neu** | Create a new item |
 | Select all | Alle auswählen | Select all items in a list |
+| Reload | Neu laden | Load the saved version after it was changed elsewhere |
+| Keep mine | Meine behalten | Save your version over a change made elsewhere |
 
 ## User Preferences
 
@@ -678,6 +682,10 @@ This glossary lists the English and German labels of the main tools, features an
 | Recommended | Empfohlen | The option the assistant suggests in a card with questions |
 | Type your own answer | Eigene Antwort eingeben | Your own answer to a question of the assistant, in a field that opens when you pick it |
 | Send answer | Antwort senden | Sends your choices in the assistant's card with questions |
+| Undo | Rückgängig | Takes back the changes an answer made to workflows |
+| Undone | Rückgängig gemacht | The changes of an answer were taken back |
+| Undo anyway | Trotzdem rückgängig machen | Takes back an answer's changes and the changes made since |
+| Open in Workflows | In Workflows öffnen | Opens the workflow an answer runs |
 
 ## Data Formats
 
