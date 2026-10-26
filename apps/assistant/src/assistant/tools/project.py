@@ -1889,6 +1889,27 @@ async def _group_statistics(
                     f"{len(undivided)} group(s) have no value or a denominator of 0, "
                     "so they have no share."
                 )
+        # A sum or count over the same statistic of its whole never passes
+        # 100 %: a share above it comes from a numerator and a denominator
+        # assigned in different ways. The note counts those rows and names
+        # none of them, nor any value. A ratio of means may pass 1.
+        if share.operation == args.operation and args.operation in ("sum", "count"):
+            above = sum(1 for row in rows if row.share is not None and row.share > 1)
+            if above and group_by is None:
+                notes.append(
+                    "The share is above 100 %: numerator and denominator were "
+                    "counted from different features. Rebuild the share from one "
+                    "assignment before you answer; never present a share above "
+                    "100 %."
+                )
+            elif above:
+                notes.append(
+                    f"{above} group(s) have a share above 100 %: numerator and "
+                    "denominator were assigned to the groups differently. Rebuild "
+                    "the share from one assignment, both counted per group the "
+                    "same way, before you answer; never present a share above "
+                    "100 %."
+                )
     notes += _null_notes(rows, group_by, then_by)
     total_items = answer.get("total_items") if isinstance(answer, dict) else None
     total_count = answer.get("total_count") if isinstance(answer, dict) else None
@@ -1924,7 +1945,8 @@ GROUP_STATISTICS: ToolSpec[GroupStatisticsInput, GroupStatistics] = ToolSpec(
         "residents per district, or its total without. share_of takes its own "
         "filter for the denominator, e.g. residents in a catchment over all "
         "residents. Use those shares, never compute them yourself. Groups "
-        "without a share are counted in the note. Under the Restricted data "
+        "without a share, and shares above 100 %, are counted in the note. "
+        "Under the Restricted data "
         "policy only counts are sent."
     ),
     input_model=GroupStatisticsInput,

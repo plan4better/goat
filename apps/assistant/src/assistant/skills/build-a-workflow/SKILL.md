@@ -1,6 +1,6 @@
 ---
 name: build-a-workflow
-description: Build a new workflow, a chain of analysis steps in the project's Workflows mode, from what the user describes, or change a workflow that exists. For example "build a workflow that finds the areas within 15 minutes on foot of the schools and counts the residents there", a 15-minute city check, a heatmap of access, joining attributes from one layer to another, counting things near places, or "make the walking time 10 minutes and add a note".
+description: Build a new workflow, a chain of analysis steps in the project's Workflows mode, from what the user describes, or change a workflow that exists. For example "build a workflow that finds the areas within 15 minutes on foot of the schools and counts the residents there", a 15-minute city check, how well a place is served by public transport, a heatmap of access, joining attributes from one layer to another, counting things near places, or "make the walking time 10 minutes and add a note".
 ---
 
 # Build a workflow
@@ -17,6 +17,18 @@ Workflows page to build or change it there.
    pedelec, car, public transport), how far (minutes or meters), in which place, and
    what the result should show. Ask, as your instructions say, only when the goal
    itself is unclear.
+   For the share or number of residents (or homes, jobs and the like) within N
+   minutes of the nearest of many places across the area (stops, schools,
+   shops), both methods fit: the heatmap (recommended) and catchment areas
+   (recipes.md). Offer both in the card the answer shows anyway (step 3, the one
+   that picks the data or the measure), never in a card of their own; without
+   one, build the heatmap and say in one sentence that catchment areas are the
+   other way. Catchment areas stay the method, with no card about it, when the
+   answer is an area: the area reached, its km², land use or parcels inside or
+   outside it, shapes per start point; and for one or a few start points (one
+   station), or public transport with a departure window from given stops.
+   How well a place is served by public transport: read recipes.md (Public
+   transport service of a place) before the card that asks for the measure.
 2. **Look for a template.** Call workflow_find_templates once, with the analysis in
    a few words. German and English words in one query are fine: it searches the
    whole query, then up to four of its words of three or more characters on their
@@ -115,15 +127,21 @@ Workflows page to build or change it there.
    or will use, or when the fields decide which candidate fits. The card's
    options, at most four: the fitting project layers (value: the
    layer_project_id as text), fitting catalog datasets and the user's own
-   fitting datasets from core_find (description: "Adds it to the project"), and
-   "Leave it open" (no value). Every option that uses data not yet in the open
+   fitting datasets from core_find (description: what it leaves out or how exact
+   it is, then "Adds it to the project"), and "Leave it open" (no value). Every option that uses data not yet in the open
    project lists it in `adds`, a layer of another project too (its dataset's id
    from core_find); `value` is a short key then. The data a step needs rides on
    the `adds` of the card that decides that step, never on a second card that
    only asks to add it: an option that names data without `adds` makes one
-   necessary. In any card, recommend the option that answers the whole question:
-   both time windows, all the modes, the whole area (and service level, not only
-   distance, when the question asks how well a place is served). Departures "on
+   necessary. When both methods fit (step 1), the card asks for the method too,
+   with two options: the heatmap, recommended, with a polygon of the place from
+   the catalog in `adds` when the project has none (recipes.md), described "Fast,
+   and one run answers several time limits; it counts a whole block (about
+   1.3 ha on foot) as reached when one street in it is, so shares come out a
+   little high.", and catchment areas, described "Exact shapes, but slower, and
+   they currently end a little short of the time limit, so shares come out a
+   little low." In any card, recommend the option that answers the whole question:
+   both time windows, all the modes, the whole area. Departures "on
    a day" count the whole day, "which areas" needs named areas, and every kind
    the question names is in (both kinds of shops it asks about, not one). A
    narrower option (one time window, some of the modes, part of the area or of
@@ -155,7 +173,8 @@ Workflows page to build or change it there.
    every issue you can (Reading issues) and check again, at most three times. Then
    create it with workflow_create. The same draft created again returns the first
    result; a changed draft would be a second workflow.
-7. **Answer** in a few sentences: what the workflow does, each step left open and
+7. **Answer** in a few sentences: what the workflow does (with a heatmap or
+   catchment areas, its method and how exact it is), each step left open and
    what the user chooses there (the open issues), what the result's notes say
    (an area stored as a box, layers a template added), and, unless you run it (Running and
    explaining), that the user starts it with Run. The workflow card opens it.
@@ -210,7 +229,12 @@ workflow for it.
   check their sources, not an error. A sum of census points in reach over all
   census points is right; a census numerator over a registry denominator is
   not: take the denominator from the numerator's source, or say that the bases
-  differ.
+  differ. Per area, both come from one assignment: residents per district are
+  the census points counted by the district they lie in, all of them and those
+  in the reached cells or areas (recipes.md, Shares per district), never cells
+  or areas split over the districts by area share. A share above 100 % is
+  never presented: the tool notes it, and you rebuild the share from one
+  assignment first.
 - A question that asks which areas or places gets them named (districts or
   statistical areas, with their values): grid cells alone do not answer it,
   so aggregate the cells to named areas. Areas (cells, statistical areas,
@@ -226,7 +250,10 @@ workflow for it.
   the tool's default (`defaults`); a setting neither lists is not used by that
   step or not known (workflow_describe_tool gives it). A catchment is a
   walking, cycling or travel time (or a distance) along the network, never a
-  straight-line distance; only a buffer is a straight line.
+  straight-line distance; only a buffer is a straight line. Name the method and
+  how exact it is, as the note does: counted per hexagon of about 1.3 ha on
+  foot (recipes.md gives the other modes), or areas that end slightly short of
+  N minutes.
 - Report the numbers first: after a run, its numbers (or what failed and why)
   come before anything else, and ask_user refuses a card while a finished run
   has no text after it. Then at most one follow-up card, only for a real
@@ -264,7 +291,7 @@ workflow for it.
   "name": "Schools: residents within 15 minutes on foot",
   "steps": [
     {"id": "schools", "kind": "dataset", "label": "Schools", "layer": 12,
-     "filter": {"area": "DE212", "where": [{"field": "schulart", "op": "=", "value": "Grundschule"}]}},
+     "filter": {"area": "DE21", "where": [{"field": "schulart", "op": "=", "value": "Grundschule"}]}},
     {"id": "residents", "kind": "dataset", "label": "Census points", "layer": 13,
      "filter": {"area": "DE212"}},
     {"id": "walk", "kind": "tool", "tool": "catchment_area_v2", "label": "15 minutes on foot",
@@ -283,7 +310,7 @@ workflow for it.
   "variables": [],
   "notes": [
     {"id": "about", "near": ["count", "save"],
-     "text": "How many residents live within 15 minutes on foot of a primary school.\n\n- Residents within 15 minutes of schools: one row per separate area of the walk; their sum is the residents within 15 minutes on foot of any primary school"}
+     "text": "How many residents live within 15 minutes on foot of a primary school, from catchment areas that end slightly short of 15 minutes.\n\n- Residents within 15 minutes of schools: one row per separate area of the walk; their sum is the residents within 15 minutes on foot of any primary school"}
   ]
 }
 ```
@@ -299,6 +326,19 @@ workflow for it.
   `filter.area`. A layer of a whole country (census points, stops) always
   does, or gets a `where` on an official area code field: unfiltered, the
   run reads the whole country and can fail on distance or memory.
+  The people or places the question is about (residents) get the place
+  itself. The places they walk or travel to (destinations: a heatmap's
+  opportunities, a catchment's start points) are not cut at its border, since
+  those just beyond it serve them too: give them the region one level up (the
+  nuts_id without its last character, `DE21` for `DE212`), or no area when the
+  layer covers little more than that. A place on that region's border (a
+  city-state, a city on a state border) gets a second dataset step on the same
+  layer for the region beyond it (catalog_find_region), merged into one
+  (merge). When the margin brings more destinations or start points than a run
+  takes, keep the place and say that places just beyond its border are left
+  out. A heatmap with a polygon of the place as its reference area (recipes.md)
+  needs no such fallback: it computes only the place's hexagons, and only the
+  destinations within its reach count toward what the run takes.
   `filter.where` keeps the features matching every condition, each
   `{field, op, value}` with op one of `=`, `!=`, `<`, `<=`, `>`, `>=`, `in`
   (a list) or `contains` (text), on fields from project_get_fields, which
@@ -314,14 +354,16 @@ workflow for it.
   input into an export; one connection per input.
 - notes: give every workflow you create one short note of at most three short
   lines: what it answers and how to read its results, e.g. which result holds
-  the answer or what the bands mean. State only what the steps fix: one row
-  only after a dissolve (one per band when it dissolves by the band field),
-  while a catchment alone can hold several rows per band, one per separate
-  area; a field a join added as `join_<field>`; classes and scales only as
-  the tool's description defines them. Never put data values or personal
-  data in a note, nor counts that come from the data (rows, classes or
-  features). Shorten an over-long note yourself; never ask the user about a
-  note.
+  the answer or what the bands mean, and with a heatmap or catchment areas the
+  method and how exact it is, in one short clause ("counted per hexagon of
+  about 1.3 ha", "the areas end slightly short of 15 minutes"). State only
+  what the steps fix: one row only after a dissolve (one per band when it
+  dissolves by the band field), while a catchment alone can hold several rows
+  per band, one per separate area; a field a join added as `join_<field>`;
+  classes and scales only as the tool's description defines them. Never put
+  data values or personal data in a note, nor counts that come from the data
+  (rows, classes or features). Shorten an over-long note yourself; never ask
+  the user about a note.
   `text` is plain text in the language of the user's message, no HTML: a blank
   line starts a new paragraph, lines starting with `- ` form a list. `near` lists
   the ids of the steps it explains, and the note is placed above them; empty, it
@@ -385,9 +427,12 @@ with the step's name.
   tools write their ids under their own names (a travel-time matrix as `origin`
   and `destination`, separated catchments the reference field as `origin`).
 - `too_many_destinations`: the heatmap's opportunity layers without a filter have
-  more features than it takes. Give their dataset steps `filter.area` for the
-  place asked about, or a `where`, and check again. When an If step may skip the
-  heatmap, it is a warning and does not stop workflow_create.
+  more features than it takes. Give their dataset steps `filter.area`, the
+  region one level up (The draft, dataset), or a `where`, or connect a polygon
+  of the place to the heatmap's `reference_area_layer_id` (recipes.md), and
+  check again.
+  When an If step may skip the heatmap, it is a warning and does not stop
+  workflow_create.
 - `too_many_starting_points`: a catchment gets more start points than one run
   takes (at most 1,000; 100 for public transport). When the question is only
   about part of them (a district, a stop type the user named), narrow the

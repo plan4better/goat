@@ -667,3 +667,37 @@ def test_a_share_is_written_as_its_number_and_names_its_base() -> None:
     flat = " ".join(INSTRUCTIONS.split())
     assert "only when they match it" not in flat
     assert "two fifths" not in flat
+
+
+def test_an_evaluative_question_loads_the_skill_before_the_measure_card() -> None:
+    """Live pass (2026-10-26): asked whether a city is well served by public
+    transport, the model asked its measure card without loading
+    build-a-workflow. It recommended the distance to stops (area and
+    residents mixed), offered the reach from one station for the travel time
+    to the centre and left out the quality classes weighted by residents.
+    The rule that asks for the measure first now loads the skill before that
+    card, so its options follow the skill's recipes."""
+    bullets = [" ".join(bullet.split()) for bullet in INSTRUCTIONS.split("\n- ")]
+    [rule] = [bullet for bullet in bullets if "ask which measure first" in bullet]
+    for phrase in (
+        "An evaluative question with no measure (is the city well served by "
+        "public transport, how good is it, where is it bad)",
+        "give no verdict from general knowledge before it",
+        "When the answer needs an analysis, load build-a-workflow before that "
+        "card, so its options follow the skill's recipes",
+    ):
+        assert phrase in rule, phrase
+
+
+def test_every_card_option_says_what_it_leaves_out() -> None:
+    """The same card described its options without their trade-offs (stop
+    density "per area", departures with no link to residents), so the user
+    could not see what each measure leaves out. The asking rule says it for
+    every card."""
+    bullets = [" ".join(bullet.split()) for bullet in INSTRUCTIONS.split("\n- ")]
+    [rule] = [bullet for bullet in bullets if "ask_user" in bullet]
+    assert (
+        "a narrower one may be offered, never recommended. Each option's "
+        "description says in one clause what it leaves out or how exact it is"
+        in rule
+    )

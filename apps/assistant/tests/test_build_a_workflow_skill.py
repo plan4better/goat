@@ -492,13 +492,16 @@ def test_the_example_note_reads_a_combined_walk_as_one_row_per_separate_area() -
 
 def test_the_example_filters_its_census_points_to_the_place() -> None:
     """Census points cover the whole country: the example's residents step
-    gets the same area filter as its schools step."""
+    gets the place's area. The schools are where the residents walk to, so
+    they get the region one level up, whose nuts_id is the place's without
+    its last character."""
     [(_, example)] = [
         (source, draft) for source, draft in _drafts() if source == "SKILL.md"
     ]
     steps = {step["id"]: step for step in example["steps"]}
-    area = steps["schools"]["filter"]["area"]
-    assert steps["residents"]["filter"] == {"area": area}
+    place = steps["residents"]["filter"]["area"]
+    assert steps["residents"]["filter"] == {"area": place}
+    assert steps["schools"]["filter"]["area"] == place[:-1]
 
 
 def test_only_a_dissolve_gives_one_row() -> None:
@@ -759,3 +762,563 @@ def test_no_text_says_a_workflow_cannot_be_changed() -> None:
         assert "You cannot change the workflow" not in flat_text
         assert "You never change or delete a workflow" not in flat_text
     assert "workflow_update" in FAILED
+
+
+STEP_1 = _plain(
+    SKILL.instructions.split("1. **Understand the goal.**")[1].split("2. **")[0]
+)
+CARD = SKILL_TEXT.split("Ask about all unclear datasets in one ask_user card")[1]
+CARD = CARD.split("4. **After the answer.**")[0]
+RECIPES = SKILL.files["recipes.md"]
+WHO_LIVES = RECIPES.split("## Who lives within N minutes of places")[1]
+WHO_LIVES = WHO_LIVES.split("\n## ")[0]
+
+
+def test_both_methods_fit_residents_near_the_nearest_of_many_places() -> None:
+    """Heatmap against catchment (2026-10-26): for the share of residents
+    within 5 minutes' walk of a stop, catchments gave 77 % (their edge ends
+    about half a minute short, and the start-point cap split the run in
+    four), the heatmap 90 % in seconds (a cell of about 1.3 ha counts once
+    one street in it is reached), the truth lies between 84 and 91 %. Both
+    fit: the card the answer shows anyway offers both, the heatmap
+    recommended, and no card is added just for the method."""
+    for phrase in (
+        "For the share or number of residents (or homes, jobs and the like) "
+        "within N minutes of the nearest of many places",
+        "(stops, schools, shops), both methods fit",
+        "the heatmap (recommended) and catchment areas",
+        "the card the answer shows anyway (step 3, the one that picks the data "
+        "or the measure), never in a card of their own",
+        "without one, build the heatmap and say in one sentence that catchment "
+        "areas are the other way",
+    ):
+        assert phrase in STEP_1, phrase
+    for phrase in (
+        "When both methods fit (step 1), the card asks for the method too",
+        "the heatmap, recommended",
+        "Fast, and one run answers several time limits",
+        "counts a whole block (about 1.3 ha on foot) as reached when one street "
+        "in it is, so shares come out a little high",
+        "Exact shapes, but slower, and they currently end a little short of the "
+        "time limit, so shares come out a little low",
+    ):
+        assert phrase in CARD, phrase
+
+
+def test_catchment_areas_stay_the_method_when_the_answer_is_an_area() -> None:
+    """An area, shapes per start point, a few start points or a departure
+    window by public transport need catchments: no method card then."""
+    rule = STEP_1.split("Catchment areas stay the method")[1]
+    for phrase in (
+        "with no card about it, when the answer is an area",
+        "the area reached, its km²",
+        "land use or parcels inside or outside it",
+        "shapes per start point",
+        "one or a few start points (one station)",
+        "public transport with a departure window from given stops",
+    ):
+        assert phrase in rule, phrase
+
+
+def test_the_answer_and_the_note_name_the_method_and_how_exact_it_is() -> None:
+    notes = SKILL_TEXT.split("- notes:")[1].split("- The workflow's name")[0]
+    method = next(
+        line
+        for line in SKILL_TEXT.split("- ")
+        if line.startswith("State the method as it ran")
+    )
+    for text in (notes, method):
+        assert "counted per hexagon of about 1.3 ha" in text
+        assert "end slightly short of" in text
+    assert "how exact it is, in one short clause" in notes
+    assert "Name the method and how exact it is" in method
+    # An answer that only builds the workflow says it too.
+    answer = _plain(SKILL.instructions.split("7. **Answer**")[1].split("\n## ")[0])
+    assert "with a heatmap or catchment areas, its method and how exact" in answer
+    [(_, example)] = [
+        (source, draft) for source, draft in _drafts() if source == "SKILL.md"
+    ]
+    [note] = Draft.model_validate(example).notes
+    assert "catchment areas that end slightly short of 15 minutes" in note.text
+
+
+def test_the_recipes_count_residents_per_heatmap_cell_first() -> None:
+    """The recipe no longer sends every "within N minutes" question to
+    catchments: the heatmap draft comes first, the catchment draft stays."""
+    text = _plain(WHO_LIVES)
+    assert not text.startswith("Catchment areas around the places")
+    heat_draft, catchment_draft = (
+        json.loads(block)
+        for block in re.findall(r"```json\n(.*?)\n```", WHO_LIVES, re.S)
+    )
+    heat, count = (step for step in heat_draft["steps"] if step["kind"] == "tool")
+    assert heat["tool"] == "heatmap_closest_average"
+    assert heat["settings"]["opportunity_1_n_destinations"] == 1
+    assert count["tool"] == "aggregate_points"
+    assert count["settings"]["area_type"] == "polygon"
+    assert {
+        "from": heat["id"],
+        "to": count["id"],
+        "input": "area_layer_id",
+    } in heat_draft["connections"]
+    tools = {step.get("tool") for step in catchment_draft["steps"]}
+    assert "catchment_area_v2" in tools
+    for phrase in (
+        "SKILL.md, step 1",
+        "about 1.3 ha on foot, 9 ha by bicycle, pedelec or public transport and "
+        "63 ha by car",
+        "total_accessibility, the minutes to the nearest place",
+        "area_type polygon and the heatmap as area_layer_id",
+        "area_type h3_grid does not",
+        "share_of the census points of the place",
+        "opportunity_1_max_cost set to the largest limit",
+        "under it plus half a minute",
+        "merge them into one layer (merge) first",
+        "the heatmap averages their times",
+    ):
+        assert phrase in text, phrase
+    start = _plain(RECIPES.split("## Start points over the limit")[1])
+    assert start.startswith("When catchment areas are the method")
+
+
+def test_the_heatmap_recipe_keeps_the_minutes_beside_the_residents() -> None:
+    """goatlib predicts what the recipe's chain writes: the heatmap's cells
+    carry total_accessibility, and aggregate_points into those cells as
+    polygons keeps it beside the residents' sum; its own H3 grid does not."""
+    from goatlib.tools.schema_prediction import predict_node_output_schema
+
+    heat_draft = json.loads(re.findall(r"```json\n(.*?)\n```", WHO_LIVES, re.S)[0])
+    heat, count = (step for step in heat_draft["steps"] if step["kind"] == "tool")
+    cells = predict_node_output_schema(heat["tool"], {}, heat["settings"])
+    assert cells is not None and "total_accessibility" in cells.columns
+    census = {"einwohner": "DOUBLE", "geometry": "GEOMETRY"}
+    summed = predict_node_output_schema(
+        count["tool"],
+        {"area_layer_id": cells.columns, "source_layer_id": census},
+        count["settings"],
+    )
+    assert summed is not None
+    assert {"total_accessibility", "einwohner_sum"} <= set(summed.columns)
+    assert "einwohner_sum" in _plain(WHO_LIVES)
+    grid = predict_node_output_schema(
+        count["tool"],
+        {"source_layer_id": census},
+        {**count["settings"], "area_type": "h3_grid", "h3_resolution": 10},
+    )
+    assert grid is not None and "total_accessibility" not in grid.columns
+    assert grid.columns.get("h3_10") == "VARCHAR"
+
+
+DATASET_STEP = _plain(
+    SKILL.instructions.split("- dataset: `layer` is")[1].split("- tool: `tool` is")[0]
+)
+SHARE_BULLET = SKILL.instructions.split("- A share's numerator and denominator")[1]
+SHARE_BULLET = _plain(SHARE_BULLET.split("\n- ")[0])
+SHARES_PER_DISTRICT = RECIPES.partition("## Shares per district")[2]
+SHARES_PER_DISTRICT = SHARES_PER_DISTRICT.split("\n## ")[0]
+
+
+def test_destinations_get_a_margin_beyond_the_place() -> None:
+    """Shops filtered to a city's boundary left out the shops just outside
+    it, so its outer districts looked worse served than they are. The people
+    the question is about get the place; the places they walk or travel to
+    get the region one level up. A filter takes one region, so a region
+    beyond the border of that one is a second dataset step, merged."""
+    for phrase in (
+        "The people or places the question is about (residents) get the place "
+        "itself",
+        "The places they walk or travel to (destinations: a heatmap's "
+        "opportunities, a catchment's start points) are not cut at its border",
+        "give them the region one level up (the nuts_id without its last "
+        "character, DE21 for DE212)",
+        "or no area when the layer covers little more than that",
+        "gets a second dataset step on the same layer for the region beyond it "
+        "(catalog_find_region), merged into one (merge)",
+        "keep the place and say that places just beyond its border are left out",
+    ):
+        assert phrase in DATASET_STEP, phrase
+    too_many = _plain(
+        SKILL.instructions.split("- `too_many_destinations`:")[1].split("\n- `")[0]
+    )
+    assert (
+        "Give their dataset steps filter.area, the region one level up (The "
+        "draft, dataset), or a where" in too_many
+    )
+    assert "for the place asked about" not in too_many
+
+
+def test_a_share_comes_from_one_assignment_and_never_passes_100_percent() -> None:
+    """Reached residents split over districts by area share, divided by
+    census points counted per district, gave shares above 100 % that the
+    answer explained away. Per area both sides come from one assignment, and
+    a share above 100 % is never presented."""
+    for phrase in (
+        "Per area, both come from one assignment",
+        "residents per district are the census points counted by the district "
+        "they lie in, all of them and those in the reached cells or areas "
+        "(recipes.md, Shares per district)",
+        "never cells or areas split over the districts by area share",
+        "A share above 100 % is never presented: the tool notes it, and you "
+        "rebuild the share from one assignment first",
+    ):
+        assert phrase in SHARE_BULLET, phrase
+
+
+def test_the_recipe_counts_census_points_per_district_for_both() -> None:
+    """The per-district recipe cuts the heatmap's cells by the districts and
+    sums the census points per piece, and sums all census points per
+    district: both by the district each point lies in."""
+    [draft] = [
+        json.loads(block)
+        for block in re.findall(r"```json\n(.*?)\n```", SHARES_PER_DISTRICT, re.S)
+    ]
+    steps = {step["id"]: step for step in draft["steps"]}
+    links = {
+        (link["from"], link["to"], link.get("input")) for link in draft["connections"]
+    }
+    tools = {key: step["tool"] for key, step in steps.items() if step["kind"] == "tool"}
+    assert sorted(tools.values()) == [
+        "aggregate_points",
+        "aggregate_points",
+        "heatmap_closest_average",
+        "intersection",
+    ]
+    [heat] = [key for key, tool in tools.items() if tool == "heatmap_closest_average"]
+    [cut] = [key for key, tool in tools.items() if tool == "intersection"]
+    [districts] = [
+        key for key, step in steps.items() if (key, cut, "overlay_layer_id") in links
+    ]
+    reached, every = sorted(
+        (key for key, tool in tools.items() if tool == "aggregate_points"),
+        key=lambda key: (cut, key, "area_layer_id") not in links,
+    )
+    assert (heat, cut, "input_layer_id") in links
+    assert (cut, reached, "area_layer_id") in links
+    assert (districts, every, "area_layer_id") in links
+    [people] = [
+        key for key, step in steps.items() if (key, reached, "source_layer_id") in links
+    ]
+    assert (people, every, "source_layer_id") in links
+    assert (
+        steps[reached]["settings"]["column_statistics"]
+        == steps[every]["settings"]["column_statistics"]
+    )
+    # The destinations get the region one level up, the residents the place.
+    [shops] = [
+        key
+        for key, step in steps.items()
+        if (key, heat, "opportunity_layer_1_id") in links
+    ]
+    place = steps[people]["filter"]["area"]
+    assert steps[shops]["filter"]["area"] == place[:-1]
+    text = _plain(SHARES_PER_DISTRICT)
+    for phrase in (
+        "counts the census points by the district they lie in, for both: all of "
+        "them, and those in the reached cells or areas",
+        "group_by the district's name field as the intersection writes it, "
+        "intersection_<field>",
+        "share_of the second saved layer",
+        "group_by the name field itself",
+        "filter total_accessibility <= each limit on the first",
+        "the catchment in place of the heatmap",
+        "Never take the reached residents from cells or areas spread over the "
+        "districts by area share",
+    ):
+        assert phrase in text, phrase
+
+
+def test_the_recipe_keeps_the_minutes_beside_the_residents() -> None:
+    """goatlib predicts what the chain writes: the intersection keeps the
+    cells' minutes, and aggregate_points into its pieces keeps them beside
+    the residents' sum. The district's field is not asserted: the prediction
+    keeps its name, while the run writes it as intersection_<field>."""
+    from goatlib.tools.schema_prediction import predict_node_output_schema
+
+    [draft] = [
+        json.loads(block)
+        for block in re.findall(r"```json\n(.*?)\n```", SHARES_PER_DISTRICT, re.S)
+    ]
+    by_tool = {step["tool"]: step for step in draft["steps"] if step["kind"] == "tool"}
+    heat = by_tool["heatmap_closest_average"]
+    cells = predict_node_output_schema(heat["tool"], {}, heat["settings"])
+    assert cells is not None
+    districts = {"name": "VARCHAR", "geometry": "GEOMETRY"}
+    pieces = predict_node_output_schema(
+        "intersection",
+        {"input_layer_id": cells.columns, "overlay_layer_id": districts},
+        by_tool["intersection"].get("settings", {}),
+    )
+    assert pieces is not None and "total_accessibility" in pieces.columns
+    census = {"einwohner": "DOUBLE", "geometry": "GEOMETRY"}
+    summed = predict_node_output_schema(
+        "aggregate_points",
+        {"area_layer_id": pieces.columns, "source_layer_id": census},
+        by_tool["aggregate_points"]["settings"],
+    )
+    assert summed is not None
+    assert {"total_accessibility", "einwohner_sum"} <= set(summed.columns)
+
+
+def test_residents_per_district_never_go_through_cells() -> None:
+    bands = RECIPES_TEXT.split("- Bands per district:")[1].split("- Areas counted")[0]
+    assert "intersection_<field>" in bands
+    assert "share_of the residents per district (Shares per district)" in bands
+    areas = RECIPES_TEXT.split("- Areas counted or summed per district")[1]
+    areas = areas.split("## ")[0]
+    assert (
+        "Residents per district never go through cells: count the census points "
+        "themselves (Shares per district)" in areas
+    )
+    heat = _plain(WHO_LIVES)
+    assert (
+        "share_of the census points of the place, filtered as the residents step "
+        "is (share_of takes no region: filter both with a where on an area code "
+        "field when the census layer has one)" in heat
+    )
+
+
+def _heat_drafts() -> list[dict[str, Any]]:
+    """The first draft of the heatmap recipe and the per-district draft."""
+    return [
+        json.loads(re.findall(r"```json\n(.*?)\n```", text, re.S)[0])
+        for text in (WHO_LIVES, SHARES_PER_DISTRICT)
+    ]
+
+
+def test_the_heatmap_drafts_compute_only_the_places_hexagons() -> None:
+    """With the destinations of the region one level up, a heatmap computed
+    hexagons around every one of them. A polygon of the place connected to
+    reference_area_layer_id keeps the hexagons to the place, gives each its
+    real minutes on a street mode (no budget: goatlib's
+    budget_replaced_by_reference_area) and keeps only the destinations
+    within reach (heatmap_v2 _within_area_reach). The destinations keep
+    their margin, the residents the place."""
+    for draft in _heat_drafts():
+        steps = {step["id"]: step for step in draft["steps"]}
+        links = {
+            (link["from"], link["to"], link.get("input"))
+            for link in draft["connections"]
+        }
+        [heat] = [
+            key
+            for key, step in steps.items()
+            if step.get("tool") == "heatmap_closest_average"
+        ]
+        [area] = [
+            key for key in steps if (key, heat, "reference_area_layer_id") in links
+        ]
+        assert steps[area]["kind"] == "dataset"
+        # filter.area keeps every neighbour that touches the place's border.
+        assert "area" not in (steps[area].get("filter") or {})
+        settings = steps[heat]["settings"]
+        assert settings["routing_mode"] != "pt"
+        assert settings["show_advanced"] is True
+        assert "opportunity_1_max_cost" not in settings
+        assert settings["opportunity_1_n_destinations"] == 1
+        [shops] = [
+            key for key in steps if (key, heat, "opportunity_layer_1_id") in links
+        ]
+        [people] = {key for key, _, into in links if into == "source_layer_id"}
+        place = steps[people]["filter"]["area"]
+        assert steps[shops]["filter"]["area"] == place[:-1]
+
+
+def test_the_recipe_says_where_the_reference_area_comes_from() -> None:
+    text = _plain(WHO_LIVES)
+    for phrase in (
+        "The reference area (reference_area_layer_id, with show_advanced true) "
+        "is a polygon of the place",
+        "a project layer of its boundary or its districts",
+        "else the country's municipalities or districts from the catalog "
+        "search (SKILL.md, step 3)",
+        "Filter such a layer to the place with a where on its official code "
+        "field, never with filter.area, which keeps every neighbour touching "
+        "its border too",
+        "the run then has no budget (leave opportunity_1_max_cost out)",
+        "computes only the place's hexagons, each with its real minutes",
+        "keeps only the destinations within its reach: 45 minutes at the mode's "
+        "speed in a straight line around it (by car 90 minutes at 50 km/h)",
+        "the check leaves that count to the run",
+        "The residents keep the place (filter.area): the hexagons on its "
+        "border reach past it",
+        "By public transport the reference area only cuts the result",
+        "share_of the same saved layer without a filter",
+        "Without a polygon of the place",
+    ):
+        assert phrase in text, phrase
+    per_district = _plain(SHARES_PER_DISTRICT)
+    assert "The districts are the heatmap's reference area" in per_district
+    assert "One run answers every limit" in per_district
+    # catchment_area_v2 has no reference_area_layer_id input.
+    assert "the catchment in place of the heatmap, without the reference area" in (
+        per_district
+    )
+
+
+def test_the_skill_points_a_heatmap_to_its_reference_area() -> None:
+    """The margin's fallback to the place is for catchments and heatmaps
+    without a polygon of the place; with one, the destination check is left
+    to the run (processes' _trimmed_to_reference_area); a polygon from the
+    catalog rides on the heatmap option's adds."""
+    assert (
+        "A heatmap with a polygon of the place as its reference area (recipes.md) "
+        "needs no such fallback: it computes only the place's hexagons, and only "
+        "the destinations within its reach count toward what the run takes"
+        in DATASET_STEP
+    )
+    too_many = _plain(
+        SKILL.instructions.split("- `too_many_destinations`:")[1].split("\n- `")[0]
+    )
+    assert (
+        "or connect a polygon of the place to the heatmap's "
+        "reference_area_layer_id (recipes.md)" in too_many
+    )
+    assert (
+        "the heatmap, recommended, with a polygon of the place from the catalog "
+        "in adds when the project has none (recipes.md)" in CARD
+    )
+    assert "two options and no adds" not in CARD
+
+
+PT_SERVICE = RECIPES.partition("## Public transport service of a place")[2]
+PT_SERVICE = PT_SERVICE.split("\n## ")[0]
+
+
+def _pt_draft() -> dict[str, Any]:
+    [draft] = [
+        json.loads(block)
+        for block in re.findall(r"```json\n(.*?)\n```", PT_SERVICE, re.S)
+    ]
+    return draft
+
+
+def test_service_quality_counts_residents_per_class_and_district() -> None:
+    """Live pass (2026-10-26): asked whether a city is well served by public
+    transport, the card recommended the distance to stops and left out the
+    quality classes; pass 6 gave km² per class. The recipe rates the place
+    with oev_gueteklassen and counts the census points per class and
+    district in one aggregate_points: union cuts the classes by the
+    districts, and a district's area in no class becomes pieces of their
+    own. The window the answer states is set in the step, at the tool's
+    defaults."""
+    draft = _pt_draft()
+    steps = {step["id"]: step for step in draft["steps"]}
+    links = {
+        (link["from"], link["to"], link.get("input")) for link in draft["connections"]
+    }
+    tools = {key: step["tool"] for key, step in steps.items() if step["kind"] == "tool"}
+    assert sorted(tools.values()) == ["aggregate_points", "oev_gueteklassen", "union"]
+    [classes] = [key for key, tool in tools.items() if tool == "oev_gueteklassen"]
+    [split] = [key for key, tool in tools.items() if tool == "union"]
+    [count] = [key for key, tool in tools.items() if tool == "aggregate_points"]
+    [districts] = [
+        key for key in steps if (key, classes, "reference_area_layer_id") in links
+    ]
+    assert (classes, split, "input_layer_id") in links
+    assert (districts, split, "overlay_layer_id") in links
+    assert (split, count, "area_layer_id") in links
+    [people] = [key for key in steps if (key, count, "source_layer_id") in links]
+    assert steps[people]["filter"] == {"area": "DE212"}
+    assert steps[count]["settings"] == {
+        "area_type": "polygon",
+        "column_statistics": [{"operation": "sum", "field": "einwohner"}],
+    }
+    window = {"weekday": "weekday", "from_time": 25200, "to_time": 32400}
+    assert steps[classes]["settings"] == window
+    defaults = {
+        setting.name: setting.default
+        for setting in tool_info.settings(DESCRIPTIONS["oev_gueteklassen"])
+    }
+    assert {name: defaults[name] for name in window} == window
+
+
+def test_the_quality_class_pieces_keep_class_and_district_beside_residents() -> None:
+    """goatlib predicts what the chain writes: the classes' label, then the
+    district's fields under their own names after union, and both beside
+    the residents' sum after aggregate_points."""
+    from goatlib.tools.schema_prediction import predict_node_output_schema
+
+    by_tool = {
+        step["tool"]: step for step in _pt_draft()["steps"] if step["kind"] == "tool"
+    }
+    classes = predict_node_output_schema(
+        "oev_gueteklassen", {}, by_tool["oev_gueteklassen"]["settings"]
+    )
+    assert classes is not None
+    assert {"pt_class", "pt_class_label"} <= set(classes.columns)
+    districts = {"name": "VARCHAR", "geometry": "GEOMETRY"}
+    pieces = predict_node_output_schema(
+        "union",
+        {"input_layer_id": classes.columns, "overlay_layer_id": districts},
+        by_tool["union"].get("settings", {}),
+    )
+    assert pieces is not None and {"pt_class_label", "name"} <= set(pieces.columns)
+    census = {"einwohner": "DOUBLE", "geometry": "GEOMETRY"}
+    summed = predict_node_output_schema(
+        "aggregate_points",
+        {"area_layer_id": pieces.columns, "source_layer_id": census},
+        by_tool["aggregate_points"]["settings"],
+    )
+    assert summed is not None
+    assert {"pt_class_label", "name", "einwohner_sum"} <= set(summed.columns)
+
+
+def test_the_quality_class_recipe_reads_residents_and_names_the_trade_offs() -> None:
+    text = _plain(PT_SERVICE)
+    for phrase in (
+        # the measure and what the answer gives
+        "recommend the ÖV-Güteklassen (oev_gueteklassen)",
+        "the share of residents in each class, A (best) to F, and in none",
+        "the districts with the largest shares in F and in none",
+        # how the classes come out, and that each resident counts once
+        "pt_class (1 for A) and pt_class_label",
+        "a worse class has the better ones cut out, so each census point lies "
+        "in one piece and counts once",
+        "a district's area in no class becomes pieces with an empty "
+        "pt_class_label",
+        "Residents, never km² per class",
+        # reading the shares, none included
+        "group_by pt_class_label, share_of the same saved layer without a filter",
+        "the row without group is the residents in no class",
+        "then_by pt_class_label, share_of the same layer group_by the name field",
+        "the rows without then are no class",
+        # the window and the border
+        "Weekdays 7 to 9 are the tool's defaults",
+        "state the window",
+        "Only stops inside the reference area are rated",
+        # the other measures, each with what it leaves out
+        "proximity only, no frequency",
+        "frequency only, not linked to residents",
+        "the reversed matrix (SKILL.md, Running and explaining), not the reach "
+        "from one station",
+        # a verdict needs a benchmark
+        "A yes or no only against a benchmark the user names: another place, "
+        "another time window with the same classes",
+        "or a stated target",
+        "Without one, the numbers are the answer",
+        "offer the evening or Sunday comparison as a follow-up option",
+    ):
+        assert phrase in text, phrase
+
+
+def test_the_skill_sends_a_service_question_to_the_recipe_before_its_card() -> None:
+    """The measure card follows the recipe, so the skill reads it before
+    that card; the description names the question, so the skill is found."""
+    assert "how well a place is served by public transport" in SKILL.description
+    for phrase in (
+        "How well a place is served by public transport: read recipes.md "
+        "(Public transport service of a place) before the card that asks for "
+        "the measure",
+    ):
+        assert phrase in STEP_1, phrase
+    # The recipe's measures replace the card rule's own example.
+    assert "service level, not only distance" not in CARD
+
+
+def test_a_dataset_option_says_what_it_leaves_out_too() -> None:
+    """Every card option says what it leaves out or how exact it is (the
+    prompt's asking rule), the options that add data included."""
+    assert (
+        'description: what it leaves out or how exact it is, then "Adds it to '
+        'the project"' in CARD
+    )

@@ -820,3 +820,108 @@ async def test_a_total_of_0_gives_no_share_and_says_so() -> None:
     )
     assert not any("share" in r for r in out["rows"])
     assert "3 row(s) have no value or a denominator of 0" in out["note"]
+
+
+ABOVE_WHOLE = (
+    "2 group(s) have a share above 100 %: numerator and denominator were "
+    "assigned to the groups differently. Rebuild the share from one "
+    "assignment, both counted per group the same way, before you answer; "
+    "never present a share above 100 %."
+)
+ABOVE_WHOLE_ROWS = {
+    BANDS: [_district("Mitte", 1212), _district("Nord", 303), _district("Ost", 3)],
+    DISTRICTS: [
+        _district("Mitte", 1200),
+        _district("Nord", 300),
+        _district("Ost", 30),
+    ],
+}
+ABOVE_WHOLE_REQUEST = {
+    "layer_project_id": 90,
+    "operation": "sum",
+    "field": "einwohner",
+    "group_by": "name",
+    "share_of": SHARE_OF,
+}
+
+
+async def test_a_share_above_100_percent_says_to_rebuild_it() -> None:
+    """A part never exceeds its whole: a share above 100 % comes from a
+    numerator and a denominator assigned to the groups in different ways,
+    such as reached residents split over districts by area share against
+    census points counted per district. The note counts those groups and
+    names none of them, nor any value."""
+    out = await execute(
+        GROUP_STATISTICS,
+        _env(_services(rows=ABOVE_WHOLE_ROWS)),
+        ABOVE_WHOLE_REQUEST,
+    )
+    assert [r["share"] for r in out["rows"]] == [1.01, 1.01, 0.1]
+    assert ABOVE_WHOLE in out["note"]
+    for named in ("Mitte", "Nord", "Ost", "1.01", "1212", "1200", "303", "101"):
+        assert named not in out["note"], named
+
+
+async def test_restricted_withholds_a_share_above_100_percent_too() -> None:
+    out = await execute(
+        GROUP_STATISTICS,
+        _env(_services(rows=ABOVE_WHOLE_ROWS), "restricted"),
+        ABOVE_WHOLE_REQUEST,
+    )
+    assert set(out) == {"withheld", "reason"}
+
+
+async def test_a_whole_share_and_a_ratio_of_means_carry_no_such_note() -> None:
+    """100 % is a whole, not above it; a ratio of means is no part of a
+    whole and may pass 1."""
+    whole = await execute(
+        GROUP_STATISTICS,
+        _env(
+            _services(
+                rows={
+                    BANDS: [_district("Mitte", 1200)],
+                    DISTRICTS: [_district("Mitte", 1200)],
+                }
+            )
+        ),
+        ABOVE_WHOLE_REQUEST,
+    )
+    assert whole["rows"][0]["share"] == 1.0
+    assert "above 100 %" not in whole["note"]
+    means = await execute(
+        GROUP_STATISTICS,
+        _env(
+            _services(
+                rows={
+                    BANDS: [_district("Mitte", 12)],
+                    DISTRICTS: [_district("Mitte", 6)],
+                }
+            )
+        ),
+        {
+            **ABOVE_WHOLE_REQUEST,
+            "operation": "mean",
+            "share_of": {**SHARE_OF, "operation": "mean"},
+        },
+    )
+    assert means["rows"][0]["share"] == 2.0
+    assert "above 100 %" not in means["note"]
+
+
+async def test_a_total_above_its_whole_says_so_too() -> None:
+    out = await execute(
+        GROUP_STATISTICS,
+        _env(_whole_services({BANDS: 1100, DISTRICTS: 1000})),
+        {
+            "layer_project_id": 90,
+            "operation": "sum",
+            "field": "einwohner",
+            "share_of": SHARE_OF_TOTAL,
+        },
+    )
+    assert out["rows"][0]["share"] == 1.1
+    assert (
+        "The share is above 100 %: numerator and denominator were counted from "
+        "different features. Rebuild the share from one assignment before you "
+        "answer; never present a share above 100 %."
+    ) in out["note"]

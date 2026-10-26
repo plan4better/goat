@@ -262,6 +262,68 @@
     "x-ui-toolbox-hidden": false,
     "x-ui-category": "accessibility_indicators",
     "x-ui-beta": false
+   },
+   {
+    "id": "oev_gueteklassen",
+    "title": "ÖV-Güteklassen",
+    "description": "The Public Transport Quality Classes (German: ÖV-Güteklassen) show the attractiveness of public transport services for a selected area.",
+    "version": "1.0.0",
+    "keywords": [
+     "accessibility",
+     "public transport",
+     "quality",
+     "GTFS",
+     "stations",
+     "ÖV"
+    ],
+    "jobControlOptions": [
+     "async-execute"
+    ],
+    "outputTransmission": [
+     "value",
+     "reference"
+    ],
+    "links": [
+     {
+      "href": "http://processes/processes/oev_gueteklassen",
+      "rel": "self",
+      "type": "application/json",
+      "title": "Process description"
+     }
+    ],
+    "x-ui-toolbox-hidden": false,
+    "x-ui-category": "accessibility_indicators",
+    "x-ui-beta": false
+   },
+   {
+    "id": "union",
+    "title": "Union",
+    "description": "Computes the geometric union of two layers. All features and their attributes from both input layers are written to the output.",
+    "version": "1.0.0",
+    "keywords": [
+     "geoprocessing",
+     "union",
+     "overlay",
+     "merge"
+    ],
+    "jobControlOptions": [
+     "async-execute"
+    ],
+    "outputTransmission": [
+     "value",
+     "reference"
+    ],
+    "links": [
+     {
+      "href": "http://processes/processes/union",
+      "rel": "self",
+      "type": "application/json",
+      "title": "Process description"
+     }
+    ],
+    "x-ui-toolbox-hidden": false,
+    "x-ui-category": "geoprocessing",
+    "x-ui-beta": false
    }
   ],
   "de": [
@@ -525,6 +587,68 @@
     ],
     "x-ui-toolbox-hidden": false,
     "x-ui-category": "accessibility_indicators",
+    "x-ui-beta": false
+   },
+   {
+    "id": "oev_gueteklassen",
+    "title": "ÖV-Güteklassen",
+    "description": "ÖV-Güteklassen zeigen die Attraktivität des öffentlichen Verkehrs in einem bestimmten Gebiet an.",
+    "version": "1.0.0",
+    "keywords": [
+     "accessibility",
+     "public transport",
+     "quality",
+     "GTFS",
+     "stations",
+     "ÖV"
+    ],
+    "jobControlOptions": [
+     "async-execute"
+    ],
+    "outputTransmission": [
+     "value",
+     "reference"
+    ],
+    "links": [
+     {
+      "href": "http://processes/processes/oev_gueteklassen",
+      "rel": "self",
+      "type": "application/json",
+      "title": "Process description"
+     }
+    ],
+    "x-ui-toolbox-hidden": false,
+    "x-ui-category": "accessibility_indicators",
+    "x-ui-beta": false
+   },
+   {
+    "id": "union",
+    "title": "Vereinigen",
+    "description": "Berechnet die geometrische Vereinigung von Eingabe- und Überlagerungs-Layer. Alle Objekte und deren Attribute aus beiden Layern werden ausgegeben.",
+    "version": "1.0.0",
+    "keywords": [
+     "geoprocessing",
+     "union",
+     "overlay",
+     "merge"
+    ],
+    "jobControlOptions": [
+     "async-execute"
+    ],
+    "outputTransmission": [
+     "value",
+     "reference"
+    ],
+    "links": [
+     {
+      "href": "http://processes/processes/union",
+      "rel": "self",
+      "type": "application/json",
+      "title": "Process description"
+     }
+    ],
+    "x-ui-toolbox-hidden": false,
+    "x-ui-category": "geoprocessing",
     "x-ui-beta": false
    }
   ]
@@ -10351,6 +10475,1192 @@
      "type": "string"
     }
    }
+  },
+  "oev_gueteklassen": {
+   "id": "oev_gueteklassen",
+   "title": "ÖV-Güteklassen",
+   "description": "The Public Transport Quality Classes (German: ÖV-Güteklassen) show the attractiveness of public transport services for a selected area.",
+   "version": "1.0.0",
+   "keywords": [
+    "accessibility",
+    "public transport",
+    "quality",
+    "GTFS",
+    "stations",
+    "ÖV"
+   ],
+   "jobControlOptions": [
+    "async-execute"
+   ],
+   "outputTransmission": [
+    "value",
+    "reference"
+   ],
+   "links": [
+    {
+     "href": "http://processes/processes/oev_gueteklassen",
+     "rel": "self",
+     "type": "application/json",
+     "title": "Process description"
+    },
+    {
+     "href": "http://processes/processes/oev_gueteklassen/execution",
+     "rel": "http://www.opengis.net/def/rel/ogc/1.0/execute",
+     "type": "application/json",
+     "title": "Execute process"
+    },
+    {
+     "href": "http://processes/processes",
+     "rel": "up",
+     "type": "application/json",
+     "title": "Process list"
+    },
+    {
+     "href": "/toolbox/accessibility_indicators/oev_gueteklassen",
+     "rel": "describedby",
+     "type": "text/html",
+     "title": "Documentation"
+    }
+   ],
+   "x-ui-toolbox-hidden": false,
+   "x-ui-category": "geoprocessing",
+   "x-ui-beta": false,
+   "inputs": {
+    "user_id": {
+     "title": "User Id",
+     "description": "User UUID (injected by GeoAPI)",
+     "schema": {
+      "description": "User UUID (injected by GeoAPI)",
+      "title": "User Id",
+      "type": "string",
+      "x-ui": {
+       "field_order": 99,
+       "hidden": true,
+       "section": "output"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 1,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "triggered_by_email": {
+     "title": "Triggered By Email",
+     "description": "User email (injected by GeoAPI for job tracking/Windmill labels)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "User email (injected by GeoAPI for job tracking/Windmill labels)",
+      "title": "Triggered By Email",
+      "x-ui": {
+       "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "folder_id": {
+     "title": "Folder Id",
+     "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
+      "title": "Folder Id",
+      "x-ui": {
+       "field_order": 98,
+       "hidden": true,
+       "section": "output"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "project_id": {
+     "title": "Project Id",
+     "description": "If provided, add result layer to this project",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "If provided, add result layer to this project",
+      "title": "Project Id",
+      "x-ui": {
+       "field_order": 97,
+       "hidden": true,
+       "section": "output"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "result_layer_name": {
+     "title": "Result layer name",
+     "description": "Custom name for the result layer",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "ÖV-Güteklassen",
+      "description": "Custom name for the result layer",
+      "title": "Result layer name",
+      "x-ui": {
+       "field_order": 1,
+       "section": "result",
+       "widget_options": {},
+       "label": "Result layer name",
+       "description": "Custom name for the result layer"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "temp_mode": {
+     "title": "Temp Mode",
+     "description": "If True, write to temp storage instead of DuckLake (for workflow preview)",
+     "schema": {
+      "default": false,
+      "description": "If True, write to temp storage instead of DuckLake (for workflow preview)",
+      "title": "Temp Mode",
+      "type": "boolean",
+      "x-ui": {
+       "field_order": 90,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "workflow_id": {
+     "title": "Workflow Id",
+     "description": "Workflow UUID (required when temp_mode=True)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Workflow UUID (required when temp_mode=True)",
+      "title": "Workflow Id",
+      "x-ui": {
+       "field_order": 91,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "node_id": {
+     "title": "Node Id",
+     "description": "Node ID in workflow (required when temp_mode=True)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Node ID in workflow (required when temp_mode=True)",
+      "title": "Node Id",
+      "x-ui": {
+       "field_order": 92,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "pt_network_bundle_id": {
+     "title": "Public Transport Network bundle",
+     "description": "The public transport network used for routing: the default network, or one added to this project",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "The public transport network used for routing: the default network, or one added to this project",
+      "title": "Public Transport Network bundle",
+      "x-ui": {
+       "field_order": 1,
+       "section": "pt_network",
+       "visible_when": {
+        "_project_has_pt_network_bundle": true
+       },
+       "widget": "bundle-selector",
+       "widget_options": {
+        "bundle_type": "pt_network_gtfs"
+       },
+       "label": "Public Transport Network bundle",
+       "description": "The public transport network used for routing: the default network, or one added to this project"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "weekday": {
+     "title": "Day",
+     "description": "Type of day for public transport schedule",
+     "schema": {
+      "$ref": "#/$defs/Weekday",
+      "default": "weekday",
+      "description": "Type of day for public transport schedule",
+      "x-ui": {
+       "enum_labels": {
+        "saturday": "Saturday",
+        "sunday": "Sunday",
+        "weekday": "Weekday"
+       },
+       "field_order": 1,
+       "section": "calculation_time",
+       "visible_when": {
+        "_pt_network_bundle_id_is_custom": false
+       },
+       "label": "Day",
+       "description": "Type of day for public transport schedule"
+      },
+      "title": "Day"
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "pt_date": {
+     "title": "Date",
+     "description": "Day to route on, within the timetable the selected bundle covers",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Day to route on, within the timetable the selected bundle covers",
+      "title": "Date",
+      "x-ui": {
+       "field_order": 1,
+       "section": "calculation_time",
+       "visible_when": {
+        "_pt_network_bundle_id_is_custom": true
+       },
+       "widget": "date-picker",
+       "widget_options": {
+        "bounds_artifact": "pt_network_graph",
+        "bounds_from": "pt_network_bundle_id"
+       },
+       "label": "Date",
+       "description": "Day to route on, within the timetable the selected bundle covers"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "from_time": {
+     "title": "Start Time",
+     "description": "Start time of the analysis window",
+     "schema": {
+      "default": 25200,
+      "description": "Start time of the analysis window",
+      "title": "Start Time",
+      "type": "integer",
+      "x-ui": {
+       "field_order": 2,
+       "section": "calculation_time",
+       "widget": "time-picker",
+       "label": "Start Time",
+       "description": "Start time of the analysis window"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "to_time": {
+     "title": "End Time",
+     "description": "End time of the analysis window",
+     "schema": {
+      "default": 32400,
+      "description": "End time of the analysis window",
+      "title": "End Time",
+      "type": "integer",
+      "x-ui": {
+       "field_order": 3,
+       "section": "calculation_time",
+       "widget": "time-picker",
+       "label": "End Time",
+       "description": "End time of the analysis window"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "catchment_type": {
+     "title": "Catchment Area Type",
+     "description": "Method for calculating catchment areas",
+     "schema": {
+      "$ref": "#/$defs/CatchmentType",
+      "default": "buffer",
+      "description": "Method for calculating catchment areas",
+      "x-ui": {
+       "enum_labels": {
+        "buffer": "Buffer"
+       },
+       "field_order": 1,
+       "section": "configuration",
+       "label": "Catchment Area Type",
+       "description": "Method for calculating catchment areas"
+      },
+      "title": "Catchment Area Type"
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "reference_area_layer_id": {
+     "title": "Reference area",
+     "description": "Layer defining the reference area where the analysis would be conducted.",
+     "schema": {
+      "description": "Layer ID for the reference area polygon",
+      "title": "Reference area",
+      "type": "string",
+      "x-ui": {
+       "field_order": 2,
+       "section": "configuration",
+       "widget": "layer-selector",
+       "widget_options": {
+        "geometry_types": [
+         "Polygon",
+         "MultiPolygon"
+        ]
+       },
+       "label": "Reference area",
+       "description": "Layer defining the reference area where the analysis would be conducted."
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 1,
+     "maxOccurs": 1,
+     "keywords": [
+      "layer"
+     ],
+     "metadata": [
+      {
+       "title": "data_type",
+       "role": "constraint",
+       "href": null,
+       "value": "vector"
+      },
+      {
+       "title": "geometry_types",
+       "role": "constraint",
+       "href": null,
+       "value": "Polygon,MultiPolygon"
+      }
+     ]
+    },
+    "reference_area_layer_filter": {
+     "title": "Reference Area Layer Filter",
+     "description": "CQL2-JSON filter to apply to the reference area layer",
+     "schema": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "CQL2-JSON filter to apply to the reference area layer",
+      "title": "Reference Area Layer Filter",
+      "x-ui": {
+       "field_order": 3,
+       "hidden": true,
+       "section": "configuration"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "stations_layer_name": {
+     "title": "Stations Layer Name",
+     "description": "Custom name for the stations layer",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "PT Stations",
+      "description": "Custom name for the stations layer",
+      "title": "Stations Layer Name",
+      "x-ui": {
+       "field_order": 2,
+       "section": "result",
+       "widget_options": {},
+       "label": "Stations Layer Name",
+       "description": "Custom name for the stations layer"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "stops_path": {
+     "title": "Stops Path",
+     "description": "Path to GTFS stops parquet file.",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Path to GTFS stops parquet file.",
+      "title": "Stops Path",
+      "x-ui": {
+       "field_order": 0,
+       "hidden": true,
+       "section": "configuration"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "stop_times_path": {
+     "title": "Stop Times Path",
+     "description": "Path to GTFS stop_times parquet file.",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Path to GTFS stop_times parquet file.",
+      "title": "Stop Times Path",
+      "x-ui": {
+       "field_order": 0,
+       "hidden": true,
+       "section": "configuration"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "station_config": {
+     "title": "Station Config",
+     "description": "Optional custom station configuration for ÖV-Güteklassen.",
+     "schema": {
+      "anyOf": [
+       {
+        "$ref": "#/$defs/OevGueteklasseStationConfig"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Optional custom station configuration for ÖV-Güteklassen.",
+      "x-ui": {
+       "field_order": 0,
+       "hidden": true,
+       "section": "configuration"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    }
+   },
+   "outputs": {
+    "result": {
+     "title": "Result",
+     "description": "Processing result with layer metadata",
+     "schema": {
+      "type": "object",
+      "properties": {
+       "layer_id": {
+        "type": "string",
+        "format": "uuid"
+       },
+       "name": {
+        "type": "string"
+       },
+       "feature_count": {
+        "type": "integer"
+       }
+      }
+     },
+     "metadata": [
+      {
+       "title": "data_type",
+       "role": "constraint",
+       "href": null,
+       "value": "vector"
+      },
+      {
+       "title": "geometry_type",
+       "role": "constraint",
+       "href": null,
+       "value": "polygon"
+      }
+     ]
+    }
+   },
+   "x-ui-sections": [
+    {
+     "icon": "route",
+     "id": "pt_network",
+     "order": 0,
+     "label": "Public Transport Network"
+    },
+    {
+     "icon": "clock",
+     "id": "calculation_time",
+     "order": 1,
+     "label": "Calculation Time"
+    },
+    {
+     "icon": "settings",
+     "id": "configuration",
+     "order": 2,
+     "label": "Configuration"
+    },
+    {
+     "depends_on": {
+      "reference_area_layer_id": {
+       "$ne": null
+      }
+     },
+     "icon": "save",
+     "id": "result",
+     "order": 7,
+     "label": "Result layer"
+    }
+   ],
+   "$defs": {
+    "CatchmentType": {
+     "description": "Catchment area type for ÖV-Güteklassen.",
+     "enum": [
+      "buffer"
+     ],
+     "title": "CatchmentType",
+     "type": "string"
+    },
+    "OevGueteklasseStationConfig": {
+     "description": "Station configuration for ÖV-Güteklassen classification.\n\nThis defines how different transport modes are grouped and how\nservice frequency translates to station categories.\n\nAttributes:\n    groups: Mapping of GTFS route_type to transport group (A, B, C).\n        Group A: Rail, S-Bahn, Metro (highest priority)\n        Group B: Tram, Light Rail\n        Group C: Bus (lowest priority)\n    time_frequency: Frequency thresholds in minutes [5, 10, 20, 40, 60, 120].\n        If average service interval is < 5min -> time_interval=1\n        If average service interval is 5-10min -> time_interval=2, etc.\n    categories: List of dicts mapping group+time_interval to station category.\n        E.g., categories[0] = {\"A\": 1, \"B\": 1, \"C\": 2} means:\n        - Group A with time_interval 1 -> Station Category I\n        - Group B with time_interval 1 -> Station Category I\n        - Group C with time_interval 1 -> Station Category II\n    classification: Maps station category to buffer distances and quality classes.\n        E.g., classification[\"1\"] = {300: \"1\", 500: \"1\", 750: \"2\", 1000: \"3\"}\n        means Station Category I gets:\n        - 300m buffer -> Quality Class 1 (A)\n        - 500m buffer -> Quality Class 1 (A)\n        - 750m buffer -> Quality Class 2 (B)\n        - 1000m buffer -> Quality Class 3 (C)",
+     "properties": {
+      "groups": {
+       "additionalProperties": {
+        "type": "string"
+       },
+       "description": "Mapping of GTFS route_type to transport group (A, B, or C).",
+       "title": "Groups",
+       "type": "object"
+      },
+      "time_frequency": {
+       "description": "Frequency thresholds in minutes.",
+       "items": {
+        "type": "integer"
+       },
+       "title": "Time Frequency",
+       "type": "array"
+      },
+      "categories": {
+       "description": "Mapping of group+frequency index to station category.",
+       "items": {
+        "additionalProperties": {
+         "type": "integer"
+        },
+        "type": "object"
+       },
+       "title": "Categories",
+       "type": "array"
+      },
+      "classification": {
+       "additionalProperties": {
+        "additionalProperties": {
+         "type": "string"
+        },
+        "type": "object"
+       },
+       "description": "Maps station category to buffer distances and quality classes.",
+       "title": "Classification",
+       "type": "object"
+      }
+     },
+     "required": [
+      "groups",
+      "time_frequency",
+      "categories",
+      "classification"
+     ],
+     "title": "OevGueteklasseStationConfig",
+     "type": "object"
+    },
+    "Weekday": {
+     "description": "Day of week type for public transport schedules.",
+     "enum": [
+      "weekday",
+      "saturday",
+      "sunday"
+     ],
+     "title": "Weekday",
+     "type": "string"
+    }
+   }
+  },
+  "union": {
+   "id": "union",
+   "title": "Union",
+   "description": "Computes the geometric union of two layers. All features and their attributes from both input layers are written to the output.",
+   "version": "1.0.0",
+   "keywords": [
+    "geoprocessing",
+    "union",
+    "overlay",
+    "merge"
+   ],
+   "jobControlOptions": [
+    "async-execute"
+   ],
+   "outputTransmission": [
+    "value",
+    "reference"
+   ],
+   "links": [
+    {
+     "href": "http://processes/processes/union",
+     "rel": "self",
+     "type": "application/json",
+     "title": "Process description"
+    },
+    {
+     "href": "http://processes/processes/union/execution",
+     "rel": "http://www.opengis.net/def/rel/ogc/1.0/execute",
+     "type": "application/json",
+     "title": "Execute process"
+    },
+    {
+     "href": "http://processes/processes",
+     "rel": "up",
+     "type": "application/json",
+     "title": "Process list"
+    },
+    {
+     "href": "/toolbox/geoprocessing/union",
+     "rel": "describedby",
+     "type": "text/html",
+     "title": "Documentation"
+    }
+   ],
+   "x-ui-toolbox-hidden": false,
+   "x-ui-category": "geoprocessing",
+   "x-ui-beta": false,
+   "inputs": {
+    "overlay_fields_prefix": {
+     "title": "Overlay Fields Prefix",
+     "description": "Prefix for overlay field names",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Prefix for overlay field names",
+      "title": "Overlay Fields Prefix",
+      "x-ui": {
+       "field_order": 3,
+       "section": "overlay",
+       "visible_when": {
+        "overlay_layer_id": {
+         "$ne": null
+        }
+       },
+       "label": "Overlay Fields Prefix",
+       "description": "Prefix for overlay field names"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "input_layer_id": {
+     "title": "Input layer",
+     "description": "Select the input layer for analysis",
+     "schema": {
+      "description": "Select the input layer for analysis",
+      "title": "Input layer",
+      "type": "string",
+      "x-ui": {
+       "field_order": 1,
+       "section": "input",
+       "widget": "layer-selector",
+       "label": "Input layer",
+       "description": "Select the input layer for analysis"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 1,
+     "maxOccurs": 1,
+     "keywords": [
+      "layer"
+     ],
+     "metadata": [
+      {
+       "title": "data_type",
+       "role": "constraint",
+       "href": null,
+       "value": "vector"
+      }
+     ]
+    },
+    "input_layer_filter": {
+     "title": "Input Layer Filter",
+     "description": "CQL2-JSON filter to apply to the input layer",
+     "schema": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "CQL2-JSON filter to apply to the input layer",
+      "title": "Input Layer Filter",
+      "x-ui": {
+       "field_order": 2,
+       "hidden": true,
+       "section": "input"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "user_id": {
+     "title": "User Id",
+     "description": "User UUID (injected by GeoAPI)",
+     "schema": {
+      "description": "User UUID (injected by GeoAPI)",
+      "title": "User Id",
+      "type": "string",
+      "x-ui": {
+       "field_order": 99,
+       "hidden": true,
+       "section": "output"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 1,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "triggered_by_email": {
+     "title": "Triggered By Email",
+     "description": "User email (injected by GeoAPI for job tracking/Windmill labels)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "User email (injected by GeoAPI for job tracking/Windmill labels)",
+      "title": "Triggered By Email",
+      "x-ui": {
+       "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "folder_id": {
+     "title": "Folder Id",
+     "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
+      "title": "Folder Id",
+      "x-ui": {
+       "field_order": 98,
+       "hidden": true,
+       "section": "output"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "project_id": {
+     "title": "Project Id",
+     "description": "If provided, add result layer to this project",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "If provided, add result layer to this project",
+      "title": "Project Id",
+      "x-ui": {
+       "field_order": 97,
+       "hidden": true,
+       "section": "output"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "result_layer_name": {
+     "title": "Result layer name",
+     "description": "Custom name for the result layer",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": "Union",
+      "description": "Custom name for the result layer",
+      "title": "Result layer name",
+      "x-ui": {
+       "field_order": 1,
+       "section": "result",
+       "widget_options": {},
+       "label": "Result layer name",
+       "description": "Custom name for the result layer"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "temp_mode": {
+     "title": "Temp Mode",
+     "description": "If True, write to temp storage instead of DuckLake (for workflow preview)",
+     "schema": {
+      "default": false,
+      "description": "If True, write to temp storage instead of DuckLake (for workflow preview)",
+      "title": "Temp Mode",
+      "type": "boolean",
+      "x-ui": {
+       "field_order": 90,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "workflow_id": {
+     "title": "Workflow Id",
+     "description": "Workflow UUID (required when temp_mode=True)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Workflow UUID (required when temp_mode=True)",
+      "title": "Workflow Id",
+      "x-ui": {
+       "field_order": 91,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "node_id": {
+     "title": "Node Id",
+     "description": "Node ID in workflow (required when temp_mode=True)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Node ID in workflow (required when temp_mode=True)",
+      "title": "Node Id",
+      "x-ui": {
+       "field_order": 92,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "overlay_layer_id": {
+     "title": "Overlay Layer",
+     "description": "Select the overlay layer",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Select the overlay layer",
+      "title": "Overlay Layer",
+      "x-ui": {
+       "field_order": 1,
+       "section": "overlay",
+       "widget": "layer-selector",
+       "label": "Overlay Layer",
+       "description": "Select the overlay layer"
+      },
+      "format": "uuid"
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [
+      "layer"
+     ],
+     "metadata": [
+      {
+       "title": "data_type",
+       "role": "constraint",
+       "href": null,
+       "value": "vector"
+      }
+     ]
+    },
+    "overlay_layer_filter": {
+     "title": "Overlay Layer Filter",
+     "description": "CQL2-JSON filter to apply to the overlay layer",
+     "schema": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "CQL2-JSON filter to apply to the overlay layer",
+      "title": "Overlay Layer Filter",
+      "x-ui": {
+       "field_order": 2,
+       "hidden": true,
+       "section": "overlay"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    }
+   },
+   "outputs": {
+    "result": {
+     "title": "Result",
+     "description": "Processing result with layer metadata",
+     "schema": {
+      "type": "object",
+      "properties": {
+       "layer_id": {
+        "type": "string",
+        "format": "uuid"
+       },
+       "name": {
+        "type": "string"
+       },
+       "feature_count": {
+        "type": "integer"
+       }
+      }
+     },
+     "metadata": [
+      {
+       "title": "data_type",
+       "role": "constraint",
+       "href": null,
+       "value": "vector"
+      }
+     ]
+    }
+   },
+   "x-ui-sections": [
+    {
+     "icon": "layers",
+     "id": "input",
+     "order": 1,
+     "label": "Input"
+    },
+    {
+     "icon": "layers",
+     "id": "overlay",
+     "order": 2,
+     "label": "Overlay"
+    },
+    {
+     "depends_on": {
+      "input_layer_id": {
+       "$ne": null
+      }
+     },
+     "icon": "save",
+     "id": "result",
+     "order": 7,
+     "label": "Results"
+    },
+    {
+     "icon": "table",
+     "id": "output",
+     "order": 10,
+     "label": "Output"
+    }
+   ],
+   "$defs": {}
   }
  }
 }
