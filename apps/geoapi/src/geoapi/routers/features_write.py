@@ -17,6 +17,7 @@ from goatlib.computed_columns import (
     is_computed_kind,
     validate_display_config,
 )
+from goatlib.utils.column_types import type_class
 from goatlib.utils.field_config import coerce_allowed_values
 from goatlib.utils.generated_fields import (
     GENERATED_STORAGE_TYPES,
@@ -233,14 +234,12 @@ async def _load_field_config(layer_info: LayerInfo) -> dict[str, Any]:
 
 def _duckdb_type_to_kind(duckdb_type: str) -> str:
     """Map a formula's inferred DuckDB result type to a public field kind."""
-    t = duckdb_type.lower()
-    if "bool" in t:
-        return "boolean"
-    if "timestamp" in t or "date" in t:
+    cls = type_class(duckdb_type)
+    if cls in ("date", "datetime"):
         return "datetime"
-    if any(x in t for x in ("int", "double", "float", "decimal", "numeric", "real")):
+    if cls in ("integer", "number"):
         return "number"
-    return "string"
+    return "boolean" if cls == "boolean" else "string"
 
 
 async def _validate_and_infer_formula(

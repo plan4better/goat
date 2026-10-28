@@ -24,9 +24,10 @@ RUN apt-get update && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 # ===== STAGE 2: Python environment ====
-# processes needs no GDAL/routing and no build toolchain — it imports the
+# processes needs no system GDAL/routing and no build toolchain — it imports the
 # analytics stack (all manylinux wheels) for OGC schema generation but never
-# GDAL/routing (those run only on the Windmill worker image).
+# GDAL/routing (those run only on the Windmill worker image); raster files are
+# read through goatlib's `raster` extra (rasterio's wheel bundles its own GDAL).
 FROM linux-base AS python-base
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv

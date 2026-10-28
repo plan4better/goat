@@ -12,7 +12,7 @@ dependencies = [
     "asyncpg>=0.29.0",
     "pygeofilter>=0.2.0",
     "sqlglot>=26.0.0",
-    "goatlib",
+    "goatlib[raster]",
     "goatobs",
     "cachetools",
     "python-jose[cryptography]>=3.3.0",

@@ -17,6 +17,7 @@ from fastapi import (
     Request,
     Response,
 )
+from goatlib.utils.column_types import type_class
 
 from geoapi.dependencies import (
     BBoxDep,
@@ -74,6 +75,7 @@ def build_tile_etag_seed(
     bbox: list[float] | None = None,
     decoration: str | None = None,
     pinned_snapshot_id: int | None = None,
+    h3: str | None = None,
 ) -> str:
     """Build the seed string hashed into a dynamic tile's ETag.
 
@@ -94,12 +96,99 @@ def build_tile_etag_seed(
         etag_seed += f":b={bbox}"
     if decoration:
         etag_seed += f":d={decoration}"
+    if h3:
+        etag_seed += f":h={h3}"
     if pinned_snapshot_id is not None:
         etag_seed += f":s={pinned_snapshot_id}"
     return etag_seed
 
 
 router = APIRouter(tags=["Tiles"])
+
+
+def check_h3_request(
+    op: str,
+    field: str | None,
+    columns: list[dict],
+    geometry_type: str | None,
+) -> None:
+    """H3 hexagons group points; a sum or mean needs a numeric field."""
+    if not geometry_type or "point" not in geometry_type.lower():
+        raise HTTPException(
+            status_code=400, detail="H3 hexagons are drawn for point layers only."
+        )
+    if op == "count":
+        return
+    types = {c["name"]: c.get("type", "") for c in columns}
+    if not field or field not in types:
+        raise HTTPException(
+            status_code=400, detail=f"h3_value {op} needs a field of the layer."
+        )
+    if type_class(types[field]) not in ("integer", "number"):
+        raise HTTPException(
+            status_code=400, detail=f"h3_field {field!r} is not a number."
+        )
+
+
+def tile_feature_ids(ids: str | None, h3: str | None) -> list[str] | None:
+    """The features an H3 tile counts (an atlas page's); vector tiles draw
+    every feature and filter in the browser."""
+    if ids is None:
+        return None
+    if h3 is None:
+        raise HTTPException(status_code=400, detail="ids applies to H3 tiles only.")
+    return ids.split(",")
+
+
+async def _h3_tile_response(
+    *,
+    layer_info: Any,
+    z: int,
+    x: int,
+    y: int,
+    resolution: str,
+    op: str,
+    field: str | None,
+    columns: list[dict],
+    geometry_column: str,
+    geometry_type: str | None,
+    cql_filter: dict[str, Any] | None,
+    bbox: list[float] | None,
+    ids: list[str] | None,
+    headers: dict[str, str],
+    start_time: float,
+) -> Response:
+    check_h3_request(op, field, columns, geometry_type)
+    try:
+        tile = await tile_service.get_h3_tile(
+            layer_info=layer_info,
+            z=z,
+            x=x,
+            y=y,
+            resolution=resolution,
+            op=op,
+            field=field if op != "count" else None,
+            column_names=[c["name"] for c in columns],
+            geometry_column=geometry_column,
+            cql_filter=cql_filter,
+            bbox=bbox,
+            ids=ids,
+        )
+    except TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"H3 tile query timeout for z={z}, x={x}, y={y}.",
+        )
+    headers = {
+        **headers,
+        "X-Tile-Source": "h3",
+        "X-Response-Time": f"{(time.monotonic() - start_time) * 1000:.1f}ms",
+    }
+    if not tile:
+        return Response(status_code=204, headers=headers)
+    return Response(
+        content=tile, media_type="application/vnd.mapbox-vector-tile", headers=headers
+    )
 
 
 async def _reject_unknown_tile_properties(
@@ -178,11 +267,30 @@ async def get_tile(
     dynamic: bool = Query(
         default=False, description="Force dynamic tile generation, bypassing PMTiles"
     ),
+    h3: str | None = Query(
+        default=None,
+        pattern=r"^(auto|[5-9]|10)$",
+        description="Draw a point layer as H3 hexagons of this resolution (5 to 10, "
+        'or "auto" from the zoom) in an MVT layer `h3`, instead of its features.',
+    ),
+    h3_value: Literal["count", "sum", "mean"] = Query(
+        default="count",
+        description="A hexagon's value: its points, or the sum or mean of h3_field.",
+    ),
+    h3_field: str | None = Query(
+        default=None, description="The numeric field h3_value sums or averages."
+    ),
+    ids: str | None = Query(
+        default=None,
+        pattern=r"^\d+(,\d+)*$",
+        description="H3 tiles only: count only these features (comma-separated ids).",
+    ),
     if_none_match: str | None = Header(default=None, alias="if-none-match"),
 ) -> Response:
     """Get a vector tile for the specified collection and tile coordinates."""
     request_id = str(uuid.uuid4())[:8]
     start_time = time.monotonic()
+    feature_ids = tile_feature_ids(ids, h3)
 
     # Ultra-fast path: Try PMTiles by layer_id without ANY database lookup
     # This completely bypasses DuckDB schema lookup for cached tile serving
@@ -200,6 +308,7 @@ async def get_tile(
         if (
             not dynamic
             and decoration is None
+            and h3 is None
             and tile_service.can_serve_from_pmtiles_by_layer_id(
                 layer_id, cql_filter, bbox
             )
@@ -249,6 +358,7 @@ async def get_tile(
     if (
         not dynamic
         and decoration is None
+        and h3 is None
         and tile_service.can_serve_from_pmtiles(layer_info, cql_filter, bbox)
     ):
         result = await tile_service.get_tile_from_pmtiles_only(
@@ -306,6 +416,9 @@ async def get_tile(
         bbox=bbox,
         decoration=decoration,
         pinned_snapshot_id=ducklake_pool.pinned_snapshot_id,
+        h3=f"{h3}:{h3_value}:{h3_field or ''}{f':i={ids}' if ids else ''}"
+        if h3
+        else None,
     )
     etag = f'W/"{hashlib.md5(etag_seed.encode()).hexdigest()[:16]}"'
 
@@ -323,6 +436,29 @@ async def get_tile(
 
     columns = metadata.columns
     geometry_column = metadata.geometry_column or "geometry"
+
+    if h3 is not None:
+        return await _h3_tile_response(
+            layer_info=layer_info,
+            z=z,
+            x=x,
+            y=y,
+            resolution=h3,
+            op=h3_value,
+            field=h3_field,
+            columns=columns,
+            geometry_column=geometry_column,
+            geometry_type=metadata.geometry_type,
+            cql_filter=cql_filter,
+            bbox=bbox,
+            ids=feature_ids,
+            headers={
+                "ETag": etag,
+                "Cache-Control": "no-cache",
+                "X-Request-ID": request_id,
+            },
+            start_time=start_time,
+        )
 
     try:
         # Get tile - the service handles threading internally for sync operations

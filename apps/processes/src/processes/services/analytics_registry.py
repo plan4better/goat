@@ -6,7 +6,7 @@ Includes support for i18n translation resolution based on Accept-Language header
 
 import logging
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from goatlib.analysis.statistics import (
     AggregationStatsInput,
@@ -25,7 +25,7 @@ from goatlib.analysis.statistics import (
     UniqueValuesInput,
     UniqueValuesResult,
 )
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from processes.models.processes import (
     InputDescription,
@@ -99,6 +99,38 @@ class LayerSearchLayerSpecInput(BaseModel):
         default=None, description="Column shown as result label"
     )
     limit: int = Field(default=5, ge=1, le=10, description="Max results for this layer")
+
+
+class StyleCheckProcessInput(BaseModel):
+    """A GOAT Style document to check against its layer (core's save path).
+    Nothing else: a raster file's address is read from the layer row."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    collection: str = Field(description="Layer ID (UUID)")
+    document: dict[str, Any] = Field(description="The GOAT Style document")
+    geometry: Literal["point", "line", "polygon"] | None = Field(
+        default=None, description="The layer's geometry type"
+    )
+    compute: bool = Field(
+        default=True, description="Write the computed values (classes, domains)"
+    )
+    stored: bool = Field(
+        default=False,
+        description="A stored style: data errors are reported as damaged",
+    )
+    fingerprint: str | None = Field(
+        default=None, description="The layer's data fingerprint for `computed.data`"
+    )
+
+
+class StyleCheckResult(BaseModel):
+    """The document with its computed values, and what validation found."""
+
+    document: dict[str, Any]
+    issues: list[dict[str, Any]]
+    feature_count: int | None
+    fields: list[dict[str, str]] = Field(description="Each field's name and type")
 
 
 class LayerSearchProcessInput(BaseModel):
@@ -192,6 +224,15 @@ ANALYTICS_DEFINITIONS: dict[str, dict[str, Any]] = {
         "output_model": HistogramResult,
         "keywords": ["analytics", "statistics", "histogram", "distribution"],
         "tool_key": "histogram",
+        "hidden": True,
+    },
+    "style-check": {
+        "title": "Style Check",
+        "description": "Validate a layer style against its data and compute its classes",
+        "input_model": StyleCheckProcessInput,
+        "output_model": StyleCheckResult,
+        "keywords": ["analytics", "style"],
+        "tool_key": "style_check",
         "hidden": True,
     },
     "layer-search": {

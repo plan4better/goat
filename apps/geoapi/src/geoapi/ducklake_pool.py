@@ -25,6 +25,9 @@ __all__ = [
 class GeoAPIDuckLakePool(DuckLakePool):
     """DuckLake pool with geoapi-specific initialization from settings."""
 
+    # The H3 hexagon tiles (style render "h3").
+    COMMUNITY_EXTENSIONS = ("h3",)
+
     def init(self) -> None:
         """Initialize the pool from geoapi settings."""
 

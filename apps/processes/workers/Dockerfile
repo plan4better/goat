@@ -166,13 +166,15 @@ RUN uv python install ${WINDMILL_EXTRA_PYTHON_VERSIONS}
 
 # Third-party dependencies first, from the lockfile and goatlib's manifest
 # alone, so a goatlib source change reuses this layer. routing comes from
-# routing-build.
+# routing-build. Not the `raster` extra: its rasterio wheel bundles a GDAL of
+# its own next to the system GDAL the tools use, and only geoapi and processes
+# read raster files.
 COPY pyproject.toml uv.lock /app/
 COPY packages/python/goatlib/pyproject.toml /app/packages/python/goatlib/
-RUN uv sync --all-extras --frozen --no-dev --no-editable --no-install-workspace --no-install-package routing --package=goatlib
+RUN uv sync --extra full --extra api --frozen --no-dev --no-editable --no-install-workspace --no-install-package routing --package=goatlib
 
 COPY packages/python/goatlib /app/packages/python/goatlib
-RUN uv sync --all-extras --frozen --no-dev --no-editable --no-install-package routing --package=goatlib
+RUN uv sync --extra full --extra api --frozen --no-dev --no-editable --no-install-package routing --package=goatlib
 
 # After the last sync, which would remove a package it was told not to install.
 COPY --from=routing-build /wheels /wheels

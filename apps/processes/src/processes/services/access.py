@@ -80,9 +80,12 @@ LAYER_WRITE_TOOLS = frozenset({"layer_delete", "layer_delete_multi", "layer_upda
 # Project-layer links (layer_project ids), checked as reads of their layer.
 # `layer_copy` names the entries of its (write-checked) project it points at
 # the copy; the job itself refuses an entry of another project.
+# `layer_create_filtered` reads the active style of the entry it names; the job
+# itself refuses an entry of a project the caller may not read.
 LAYER_PROJECT_FIELDS: tuple[str, ...] = (
     "opportunities[].layer_project_id",
     "layer_project_ids[]",
+    "source_layer_project_id",
 )
 BUNDLE_READ_FIELDS: tuple[str, ...] = (
     "street_network_bundle_id",
@@ -489,6 +492,21 @@ async def denied_references(
         json.dumps(entries),
     )
     return [dict(row) for row in rows]
+
+
+async def raster_file_url(layer_id: str) -> str | None:
+    """The stored address of a raster file layer (a COG), else None. The style
+    check reads raster files from here only, never from a request."""
+    try:
+        uuid = str(UUID(layer_id))
+    except ValueError:
+        return None
+    pool = await _get_pool()
+    return await pool.fetchval(
+        f"SELECT url FROM {settings.CUSTOMER_SCHEMA}.layer "
+        "WHERE id = $1::uuid AND type = 'raster' AND data_type = 'cog'",
+        uuid,
+    )
 
 
 async def ensure_empty_copy_of_template(template_id: str, layer_id: str) -> None:

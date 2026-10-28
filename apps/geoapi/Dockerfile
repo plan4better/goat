@@ -41,8 +41,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /tmp/tippecanoe*
 
 # ===== STAGE 3: Python environment ====
-# geoapi only uses goatlib's light "serving" surface (storage/query/models), so
-# no GDAL, routing or build toolchain is needed — all deps ship manylinux wheels.
+# geoapi only uses goatlib's light "serving" surface (storage/query/models) and
+# its `raster` extra, so no system GDAL, routing or build toolchain is needed —
+# all deps ship manylinux wheels (rasterio's bundles its own GDAL).
 FROM linux-base AS python-base
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv

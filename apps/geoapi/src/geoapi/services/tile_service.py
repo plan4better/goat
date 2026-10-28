@@ -32,6 +32,7 @@ from typing import Any, Optional
 
 from cachetools import LRUCache, TTLCache
 from goatlib.storage import build_filters
+from goatlib.style.h3 import auto_resolution, cell_values_sql, tile_margin_degrees
 from pmtiles.reader import MmapSource
 from pmtiles.tile import (
     deserialize_directory,
@@ -343,6 +344,121 @@ def tile_to_bbox_3857(z: int, x: int, y: int) -> tuple[float, float, float, floa
     y_max = WEB_MERCATOR_EXTENT - y * tile_size
     y_min = WEB_MERCATOR_EXTENT - (y + 1) * tile_size
     return (x_min, y_min, x_max, y_max)
+
+
+def _bbox_prune_sql(
+    bbox_columns: str | None, xmin: float, ymin: float, xmax: float, ymax: float
+) -> str:
+    """Row-group pruning on a table's bounding box columns (scalar or GeoParquet
+    1.1 struct), or nothing without them."""
+    if bbox_columns == "scalar":
+        return (
+            f'"$minx" <= {xmax} AND "$maxx" >= {xmin} '
+            f'AND "$miny" <= {ymax} AND "$maxy" >= {ymin} AND '
+        )
+    if bbox_columns == "struct":
+        return (
+            f"bbox.xmin <= {xmax} AND bbox.xmax >= {xmin} "
+            f"AND bbox.ymin <= {ymax} AND bbox.ymax >= {ymin} AND "
+        )
+    return ""
+
+
+def h3_tile_cells_sql(
+    table: str,
+    geom_col: str,
+    z: int,
+    x: int,
+    y: int,
+    resolution: str | int,
+    op: str,
+    field: str | None,
+    extra_where_sql: str,
+    params: list,
+    bbox_columns: str | None = None,
+) -> tuple[str, list]:
+    """`(cell, value, n, resolution)` of the H3 cells a tile draws (spec 8.3).
+
+    The points are read from the tile grown by two cell edges, so a cell on the
+    tile's border gets all its points and both tiles draw it with the same
+    value; only cells whose hexagon meets the tile are kept. `resolution` is a
+    number or "auto" (from the zoom). `extra_where_sql` (filters, starting with
+    " AND ") binds `params`.
+    """
+    res = auto_resolution(z) if resolution == "auto" else int(resolution)
+    xmin, ymin, xmax, ymax = tile_to_bbox_4326(z, x, y)
+    dlat, dlng = tile_margin_degrees(res, max(abs(ymin), abs(ymax)))
+    gxmin, gymin = max(xmin - dlng, -180.0), max(ymin - dlat, -90.0)
+    gxmax, gymax = min(xmax + dlng, 180.0), min(ymax + dlat, 90.0)
+    where = (
+        _bbox_prune_sql(bbox_columns, gxmin, gymin, gxmax, gymax)
+        + f'ST_Intersects("{geom_col}", ST_MakeEnvelope({gxmin}, {gymin}, {gxmax}, {gymax}))'
+        + extra_where_sql
+    )
+    cells = cell_values_sql(table, geom_col, op, field, res, where)
+    sql = f"""
+        SELECT h3_h3_to_string(cell) AS cell, value, n, {res} AS resolution
+        FROM ({cells})
+        WHERE ST_Intersects(
+            ST_GeomFromText(h3_cell_to_boundary_wkt(cell)),
+            ST_MakeEnvelope({xmin}, {ymin}, {xmax}, {ymax})
+        )
+    """
+    return sql, list(params)
+
+
+def h3_tile_query(
+    table: str,
+    geom_col: str,
+    z: int,
+    x: int,
+    y: int,
+    resolution: str | int,
+    op: str,
+    field: str | None,
+    extra_where_sql: str,
+    params: list,
+    bbox_columns: str | None = None,
+) -> tuple[str, list]:
+    """The H3 tile: an MVT layer `h3` of hexagons with `value`, `count`,
+    `resolution` and `cell` (the index as text: as a number it would not fit a
+    JavaScript number, so the hexagons have no feature id). No row for a tile
+    without cells."""
+    cells, params = h3_tile_cells_sql(
+        table,
+        geom_col,
+        z,
+        x,
+        y,
+        resolution,
+        op,
+        field,
+        extra_where_sql,
+        params,
+        bbox_columns,
+    )
+    bx0, by0, bx1, by1 = tile_to_bbox_3857(z, x, y)
+    sql = f"""
+        SELECT ST_AsMVT(
+            struct_pack(
+                geometry := ST_AsMVTGeom(
+                    ST_Transform(
+                        ST_GeomFromText(h3_cell_to_boundary_wkt(h3_string_to_h3(cells.cell))),
+                        'EPSG:4326', 'EPSG:3857', always_xy := true
+                    ),
+                    ST_Extent(ST_MakeEnvelope({bx0}, {by0}, {bx1}, {by1}))
+                ),
+                "value" := cells.value,
+                "count" := cells.n,
+                "resolution" := cells.resolution,
+                "cell" := cells.cell
+            ),
+            'h3', 4096, 'geometry'
+        )
+        FROM ({cells}) AS cells
+        HAVING count(*) > 0
+    """
+    return sql, params
 
 
 class TileService:
@@ -1275,6 +1391,62 @@ class TileService:
 
         # Tile not in PMTiles (outside zoom bounds)
         return None
+
+    async def get_h3_tile(
+        self,
+        layer_info: LayerInfo,
+        z: int,
+        x: int,
+        y: int,
+        resolution: str,
+        op: str,
+        field: Optional[str],
+        column_names: list[str],
+        geometry_column: str = "geometry",
+        cql_filter: Optional[dict] = None,
+        bbox: Optional[list[float]] = None,
+        ids: Optional[list[str]] = None,
+    ) -> Optional[bytes]:
+        """An H3 hexagon tile of a point layer (`h3_tile_query`), or None
+        without cells. Filters and feature ids apply; there is no feature limit."""
+        filters = build_filters(
+            bbox=bbox,
+            cql_filter=cql_filter,
+            ids=ids,
+            geometry_column=geometry_column,
+            column_names=column_names,
+            has_geometry=True,
+        )
+        if all(c in column_names for c in ("$minx", "$miny", "$maxx", "$maxy")):
+            bbox_columns: str | None = "scalar"
+        else:
+            bbox_columns = "struct" if "bbox" in column_names else None
+        sql, params = h3_tile_query(
+            layer_info.full_table_name,
+            geometry_column,
+            z,
+            x,
+            y,
+            resolution,
+            op,
+            field,
+            filters.to_where_sql(),
+            filters.params,
+            bbox_columns,
+        )
+
+        def run() -> Optional[bytes]:
+            result = ducklake_pool.execute_with_retry(
+                sql,
+                params=params or None,
+                max_retries=3,
+                fetch_all=False,
+                timeout=settings.QUERY_TIMEOUT,
+            )
+            return bytes(result[0]) if result and result[0] else None
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_dynamic_tile_executor, run)
 
     def _generate_dynamic_tile(
         self,

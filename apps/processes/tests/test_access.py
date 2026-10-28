@@ -99,6 +99,18 @@ class TestToolReferences:
             ("project", PROJECT, "write"),
         }
 
+    def test_a_filtered_copy_reads_the_entry_whose_style_it_takes(self) -> None:
+        refs = tool_references(
+            "layer_create_filtered",
+            {
+                "source_layer_id": LAYER,
+                "source_layer_project_id": 11,
+                "cql_filter": {"op": "=", "args": [{"property": "a"}, 1]},
+            },
+        )
+        assert ("layer_project", "11", "read") in _entries(refs)
+        assert ("layer", LAYER, "read") in _entries(refs)
+
     def test_an_empty_layer_copy_reads_the_template_not_the_dataset(self) -> None:
         """ "Copy, empty" copies only the structure: reading the template is
         enough, so the author's rows need not be readable by its users."""

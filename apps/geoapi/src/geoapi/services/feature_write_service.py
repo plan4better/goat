@@ -21,6 +21,7 @@ import logging
 import re
 from typing import Any, Optional
 
+from goatlib.utils.column_types import column_types
 from goatlib.utils.generated_fields import (
     MAX_SERIAL_VALUE,
     GeneratedField,
@@ -606,24 +607,14 @@ class FeatureWriteService:
     # --- Column Management ---
 
     def get_column_names(self, layer_info: LayerInfo) -> list[str]:
-        """Get current column names for a layer.
-
-        DESCRIBE loads only this table's metadata; information_schema.columns
-        would lazily load every table in the catalog to answer.
-        """
+        """Get current column names for a layer."""
         with ducklake_write_manager.connection() as con:
-            result = con.execute(f"DESCRIBE {layer_info.sql_relation}").fetchall()
-            return [row[0] for row in result]
+            return list(column_types(con, layer_info.sql_relation))
 
     def get_column_types(self, layer_info: LayerInfo) -> dict[str, str]:
-        """Get column name -> data_type mapping for a layer.
-
-        DESCRIBE loads only this table's metadata; information_schema.columns
-        would lazily load every table in the catalog to answer.
-        """
+        """Get column name -> data_type mapping for a layer."""
         with ducklake_write_manager.connection() as con:
-            result = con.execute(f"DESCRIBE {layer_info.sql_relation}").fetchall()
-            return {row[0]: row[1] for row in result}
+            return column_types(con, layer_info.sql_relation)
 
     def add_column(
         self,

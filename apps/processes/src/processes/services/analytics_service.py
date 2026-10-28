@@ -4,13 +4,14 @@ Uses goatlib statistics functions to compute analytics on DuckLake layers.
 These are synchronous operations that return immediate results.
 """
 
+import dataclasses
 import json
 import logging
 import re
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import duckdb
@@ -30,7 +31,14 @@ from goatlib.analysis.statistics import (
     calculate_unique_values,
     search_layer_features,
 )
+from goatlib.io.remote_source.url_guard import UnsafeUrlError
+from goatlib.raster.source import RasterSource, RasterUnavailableError
+from goatlib.raster.stats import compute_raster_into, raster_context
 from goatlib.storage import build_cql_filter, load_extensions
+from goatlib.style.context import DataContext
+from goatlib.style.data import compute_into, describe
+from goatlib.style.data_check import referenced_fields
+from goatlib.style.validate import validate
 from goatlib.utils.layer import (
     catalog_layer_parquet,
     catalog_layer_relation,
@@ -41,6 +49,7 @@ from goatlib.utils.layer import (
 )
 from goatlib.utils.sql_validation import validate_sql_query
 
+from processes.config import settings
 from processes.dependencies import (
     _layer_id_to_table_name,
     get_schema_for_layer,
@@ -54,6 +63,14 @@ from processes.ducklake import (
 from processes.services.public_search_config import get_public_search_layers
 
 logger = logging.getLogger(__name__)
+
+#: What this deployment draws of the style specification's "later" constructs
+#: (section 19: H3, band formulas, the raster service, map service popups): H3
+#: hexagons (geoapi's H3 tiles) and the raster service with band formulas;
+#: styles that need map service popups answer `not_supported_yet`.
+STYLE_CAPABILITIES: frozenset[str] = frozenset(
+    {"h3", "raster_service", "band_formulas"}
+)
 
 
 class AnalyticsService:
@@ -565,6 +582,102 @@ class AnalyticsService:
                 limit=spec.get("limit", 5),
             )
         return group.model_dump()
+
+    def style_check(
+        self,
+        collection: str,
+        document: dict[str, Any],
+        geometry: Literal["point", "line", "polygon"] | None = None,
+        compute: bool = True,
+        stored: bool = False,
+        fingerprint: str | None = None,
+        raster_url: str | None = None,
+    ) -> dict[str, Any]:
+        """A GOAT Style document checked against its layer, with its computed
+        values (classes, domains) written in when `compute` is set.
+
+        Statistics are over the whole layer, never filtered (style spec 12).
+        A raster file (`raster_url`, read by the route from the layer row) is
+        read through goatlib.raster; a map service is validated only.
+        """
+        notes: list[Any] = []
+        if document.get("kind") == "raster":
+            ctx = DataContext(kind="raster")
+            if raster_url:
+                ctx, document, notes = self._raster_check(
+                    raster_url, document, compute=compute, fingerprint=fingerprint
+                )
+        else:
+            table_name = self._get_table_name(collection)
+            with self._connection(table_name) as con:
+                ctx = describe(
+                    con,
+                    table_name,
+                    geometry=geometry,
+                    fields_used=referenced_fields(document),
+                )
+                if compute:
+                    document, notes = compute_into(
+                        con,
+                        table_name,
+                        document,
+                        geometry=geometry,
+                        fingerprint=fingerprint or "unknown",
+                    )
+            if is_catalog_relation(table_name) and ctx.fields is not None:
+                # A catalog view's rowid is the feature id, not a field.
+                ctx = dataclasses.replace(
+                    ctx, fields={k: v for k, v in ctx.fields.items() if k != "rowid"}
+                )
+        ctx = dataclasses.replace(ctx, capabilities=STYLE_CAPABILITIES)
+        issues = sorted(
+            [*notes, *validate(document, ctx, stored=stored)],
+            key=lambda i: (i.path, i.code),
+        )
+        return {
+            "document": document,
+            "issues": [i.model_dump(mode="json", exclude_none=True) for i in issues],
+            "feature_count": ctx.feature_count,
+            "fields": [
+                {"name": f.name, "type": f.type} for f in (ctx.fields or {}).values()
+            ],
+        }
+
+    def _raster_check(
+        self,
+        url: str,
+        document: dict[str, Any],
+        *,
+        compute: bool,
+        fingerprint: str | None,
+    ) -> tuple[DataContext, dict[str, Any], list[Any]]:
+        """The raster file's context and, with `compute`, the style's computed
+        values. A file that cannot be read now answers 503, so core keeps the
+        style stale and asks again; an address the URL guard refuses is
+        validated without the file."""
+        try:
+            with RasterSource(url, settings.raster_private_hosts) as source:
+                ctx = raster_context(source)
+                notes: list[Any] = []
+                if compute:
+                    document, notes = compute_raster_into(
+                        source, document, fingerprint=fingerprint or "unknown"
+                    )
+                return ctx, document, notes
+        except UnsafeUrlError as error:
+            logger.warning("style-check: raster address refused: %s", error)
+            return DataContext(kind="raster"), document, []
+        except RasterUnavailableError as error:
+            logger.warning("style-check: raster file unavailable: %s", error)
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "type": "http://www.opengis.net/def/exceptions/ogcapi-processes-1/1.0/job-execution-failed",
+                    "title": "Raster file unavailable",
+                    "status": 503,
+                    "detail": "The raster file could not be read; try again later.",
+                },
+            ) from None
 
     def layer_search(
         self,

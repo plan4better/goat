@@ -12,6 +12,7 @@ from uuid import UUID
 import asyncpg
 from cachetools import TTLCache
 from goatlib.config.postgres import asyncpg_connect_args
+from goatlib.utils.column_types import column_types, type_class
 
 from geoapi.config import settings
 from geoapi.dependencies import LayerInfo, normalize_layer_id
@@ -417,13 +418,9 @@ class LayerService:
         columns = []
         try:
             with ducklake_manager.connection() as con:
-                # DESCRIBE loads only this table's metadata;
-                # information_schema.columns would lazily load every table
-                # in the catalog to answer.
-                result = con.execute(f"DESCRIBE {layer_info.sql_relation}").fetchall()
-
-                for row in result:
-                    col_name, col_type = row[0], row[1]
+                for col_name, col_type in column_types(
+                    con, layer_info.sql_relation
+                ).items():
                     # A catalog view's first column IS rowid (it names
                     # file_row_number); it is the feature id, not a field.
                     if layer_info.kind == "catalog" and col_name == "rowid":
@@ -447,25 +444,13 @@ class LayerService:
 
     @staticmethod
     def _duckdb_to_json_type(duckdb_type: str) -> str:
-        """Map DuckDB data type to JSON schema type."""
-        type_lower = duckdb_type.lower()
-
-        if any(t in type_lower for t in ["int", "bigint", "smallint", "tinyint"]):
-            return "integer"
-        elif any(
-            t in type_lower for t in ["float", "double", "decimal", "numeric", "real"]
-        ):
-            return "number"
-        elif "bool" in type_lower:
-            return "boolean"
-        elif any(t in type_lower for t in ["geometry", "geography"]):
-            return "geometry"
-        elif "json" in type_lower:
-            return "object"
-        elif any(t in type_lower for t in ["timestamp", "date", "time"]):
-            return "string"  # ISO format
-        else:
-            return "string"
+        """Map DuckDB data type to JSON schema type; dates and times are ISO strings."""
+        cls = type_class(duckdb_type)
+        return (
+            cls
+            if cls in ("integer", "number", "boolean", "geometry", "object")
+            else "string"
+        )
 
     @staticmethod
     def _duckdb_to_json_format(duckdb_type: str) -> str | None:
@@ -473,12 +458,7 @@ class LayerService:
 
         DATE deliberately collapses into the single datetime field kind.
         """
-        type_lower = duckdb_type.lower()
-        if "timestamp" in type_lower:
-            return "date-time"
-        if "date" in type_lower:
-            return "date-time"
-        return None
+        return "date-time" if type_class(duckdb_type) in ("date", "datetime") else None
 
     async def is_layer_in_public_project(self, layer_id: UUID) -> bool:
         """Check if a layer belongs to any published (public) project.

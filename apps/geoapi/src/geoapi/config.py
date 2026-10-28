@@ -173,6 +173,22 @@ class Settings(BaseSettings):
     # from its bundle page.
     PROCESSES_URL: str = os.getenv("GOAT_PROCESSES_URL", "")
 
+    # Hosts raster files may be read from although they resolve to a private
+    # address (an object store inside the cluster), comma-separated. Every other
+    # host must resolve to public addresses. Bare name, shared with processes.
+    RASTER_PRIVATE_HOSTS: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "RASTER_PRIVATE_HOSTS", "GEOAPI_RASTER_PRIVATE_HOSTS"
+        ),
+    )
+
+    @property
+    def raster_private_hosts(self) -> tuple[str, ...]:
+        return tuple(
+            h.strip() for h in self.RASTER_PRIVATE_HOSTS.split(",") if h.strip()
+        )
+
     # Redis settings for distributed tile caching
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
     # Tile cache TTL in seconds (default 1 hour)

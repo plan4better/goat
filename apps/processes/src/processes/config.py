@@ -163,6 +163,17 @@ class Settings(BaseSettings):
         os.getenv("PROCESSES_ANALYTICS_QUERY_TIMEOUT", "60")
     )
 
+    # Hosts raster files may be read from although they resolve to a private
+    # address (an object store inside the cluster), comma-separated. Every
+    # other host must resolve to public addresses. Shared with geoapi.
+    RASTER_PRIVATE_HOSTS: str = os.getenv("RASTER_PRIVATE_HOSTS", "")
+
+    @property
+    def raster_private_hosts(self) -> tuple[str, ...]:
+        return tuple(
+            h.strip() for h in self.RASTER_PRIVATE_HOSTS.split(",") if h.strip()
+        )
+
     # Traveltime matrices directory for heatmap tools
     TRAVELTIME_MATRICES_DIR: str = os.getenv(
         "TRAVELTIME_MATRICES_DIR", "/app/data/traveltime_matrices"

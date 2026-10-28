@@ -14,9 +14,11 @@ Why the URL names the item and the kind rather than the object:
 * It survives the storage moving, because the object layout is not in the URL.
 """
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Response
+from goatlib.catalog.item import item_style
 
 from catalog.auth import optional_auth
 from catalog.deps import check_not_modified, get_asset_reader, get_store
@@ -46,7 +48,9 @@ def get_asset(
     """The dataset's thumbnail image, or the style its map is drawn with.
 
     `kind` is `thumbnail` or `style`. The response carries the asset's own media
-    type, so a client reads that rather than assuming one from the URL.
+    type, so a client reads that rather than assuming one from the URL. A style
+    is a GOAT Style document: one written before GOAT Style (no `version`) is
+    upgraded for the dataset's geometry as it is served.
 
     Answers 404 when the dataset has no such asset, or where a deployment does
     not serve assets.
@@ -62,11 +66,26 @@ def get_asset(
         raise ApiError(404, f"Item not found: {item_id}")
 
     content, media_type, key = reader.read(asset_kind, res["row"])
+    if asset_kind.name == "style":
+        content = _current_style(content, res["row"])
     return Response(
         content=content,
         media_type=media_type,
         headers=_headers(store, key),
     )
+
+
+def _current_style(content: bytes, row: dict[str, Any]) -> bytes:
+    """The style object as promotion stores it (`item_style`: at the current GOAT
+    Style version, the default where it does not validate), so a preview shows
+    what the layer will look like; bytes that are no style object are served as
+    they are."""
+    try:
+        document = json.loads(content)
+    except ValueError:
+        return content
+    upgraded = item_style(document, row)
+    return content if upgraded is None else json.dumps(upgraded).encode()
 
 
 def _headers(store: CatalogStore, key: str) -> dict[str, Any]:

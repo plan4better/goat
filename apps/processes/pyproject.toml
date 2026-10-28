@@ -24,7 +24,7 @@ dependencies = [
     "pyarrow>=20.0.0",
     "pyproj>=3.6.0",
     "shapely>=2.0.0",
-    "goatlib",
+    "goatlib[raster]",
     "goatobs",
     "cachetools",
     "wmill>=1.0.0",

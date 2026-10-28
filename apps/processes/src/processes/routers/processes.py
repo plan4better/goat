@@ -56,10 +56,12 @@ from processes.services.access import (
     empty_copy_of_template,
     ensure_allowed,
     ensure_empty_copy_of_template,
+    raster_file_url,
     tool_references,
 )
 from processes.services.analytics_registry import (
     LayerSearchProcessInput,
+    StyleCheckProcessInput,
     analytics_registry,
 )
 from processes.services.analytics_service import AnalyticsService
@@ -135,10 +137,15 @@ PUBLIC_ALLOWED_PROCESSES = frozenset(
 )
 
 # Every sync-analytics process handled inline below (the public subset above
-# plus the two authenticated-only SQL helpers). Membership here routes a
-# request into `_execute_analytics_sync`; `PUBLIC_ALLOWED_PROCESSES` then
-# decides whether it may run without a caller.
-SYNC_ANALYTICS_PROCESSES = PUBLIC_ALLOWED_PROCESSES | {"preview-sql", "validate-sql"}
+# plus the two authenticated-only SQL helpers and style-check, which core calls
+# with the user's token when a style is saved or read; public maps never
+# compute). Membership here routes a request into `_execute_analytics_sync`;
+# `PUBLIC_ALLOWED_PROCESSES` then decides whether it may run without a caller.
+SYNC_ANALYTICS_PROCESSES = PUBLIC_ALLOWED_PROCESSES | {
+    "preview-sql",
+    "validate-sql",
+    "style-check",
+}
 
 
 # Cheap overload guard for layer-search fan-outs: reject instead of queueing
@@ -228,13 +235,17 @@ def is_public_allowed_process(process_id: str) -> bool:
 
 
 def _execute_analytics_sync(
-    process_id: str, inputs: dict[str, Any], user_id: UUID | None = None
+    process_id: str,
+    inputs: dict[str, Any],
+    user_id: UUID | None = None,
+    raster_url: str | None = None,
 ) -> dict[str, Any]:
     """Execute an analytics process synchronously.
 
     Args:
         process_id: Analytics process ID
         inputs: Process inputs
+        raster_url: style-check of a raster file: its address from the layer row
 
     Returns:
         Process result as dict
@@ -311,6 +322,17 @@ def _execute_analytics_sync(
                 limit=inputs.get("limit", 10),
                 offset=inputs.get("offset", 0),
                 filter_expr=inputs.get("filter_expr"),
+            )
+        elif process_id == "style-check":
+            style_input = StyleCheckProcessInput.model_validate(inputs)
+            return analytics_service.style_check(
+                collection=style_input.collection,
+                document=style_input.document,
+                geometry=style_input.geometry,
+                compute=style_input.compute,
+                stored=style_input.stored,
+                fingerprint=style_input.fingerprint,
+                raster_url=raster_url,
             )
         elif process_id == "layer-search":
             return analytics_service.layer_search(
@@ -698,6 +720,16 @@ async def execute_process(
         await ensure_allowed(
             user_id, analytics_references(process_id, execute_request.inputs)
         )
+        raster_url = None
+        document = execute_request.inputs.get("document")
+        if (
+            process_id == "style-check"
+            and isinstance(document, dict)
+            and document.get("kind") == "raster"
+        ):
+            raster_url = await raster_file_url(
+                str(execute_request.inputs.get("collection", ""))
+            )
         global _layer_search_inflight
         is_search = process_id == "layer-search"
         if is_search and _layer_search_inflight >= _LAYER_SEARCH_MAX_INFLIGHT:
@@ -729,6 +761,7 @@ async def execute_process(
                         process_id,
                         execute_request.inputs,
                         user_id,
+                        raster_url,
                     ),
                     timeout=settings.ANALYTICS_QUERY_TIMEOUT,
                 )

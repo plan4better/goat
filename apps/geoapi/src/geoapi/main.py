@@ -32,6 +32,7 @@ from geoapi.routers import (
     features_router,
     features_write_router,
     metadata_router,
+    rasters_router,
     tiles_router,
 )
 from geoapi.services.layer_service import layer_service
@@ -169,6 +170,7 @@ app.include_router(features_router)
 app.include_router(features_write_router)
 app.include_router(bundle_edits_router)
 app.include_router(tiles_router)
+app.include_router(rasters_router)
 app.include_router(expressions_router)
 app.include_router(download_router)
 
