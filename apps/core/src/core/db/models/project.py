@@ -100,6 +100,11 @@ class Project(ContentBaseAttributes, DateTimeBase, table=True):
         sa_column=Column(Text, nullable=True),
         description="Project basemap",
     )
+    locale: str | None = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="The language map labels and formatted numbers use (spec 10); none follows the viewer",
+    )
     thumbnail_url: str | None = Field(
         sa_column=Column(Text, nullable=True),
         description="Project thumbnail URL",

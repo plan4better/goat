@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     # Schemas
     # ------------------------------------------------------------------
     SCHEMA: str = "customer"
+    # The Postgres schema of DuckLake's catalog (geoapi and processes read the
+    # same variable). core reads its change log when a map loads, to mark styles
+    # whose data changed (GOAT Style spec 12).
+    DUCKLAKE_CATALOG_SCHEMA: str = "ducklake"
 
     # ------------------------------------------------------------------
     # Auth / Keycloak
@@ -364,6 +368,13 @@ class Settings(BaseSettings):
     @property
     def processes_url(self) -> str | None:
         return self.GOAT_PROCESSES_URL or self.GOAT_GEOAPI_HOST
+
+    # ------------------------------------------------------------------
+    # GeoAPI service, in-cluster address. Core asks it for a COG's bounds when
+    # it creates a raster layer (core has no raster reader). Unset, such a
+    # layer is stored without an extent and the web asks geoapi instead.
+    # ------------------------------------------------------------------
+    GOAT_GEOAPI_URL: str | None = None
 
     # ------------------------------------------------------------------
     # Custom domains (white label)

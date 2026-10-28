@@ -20,6 +20,7 @@ from . import (
     report_layout,
     share,
     space,
+    style,
     support,
     system,
     teams,
@@ -50,6 +51,7 @@ router.include_router(bundle.router, prefix="/bundle", tags=["Bundle"])
 router.include_router(layer.router, prefix="/layer", tags=["Layer"])
 router.include_router(project.router, prefix="/project", tags=["Project"])
 router.include_router(project_layer.router, prefix="/project", tags=["Project Layers"])
+router.include_router(style.router, tags=["Styles"])
 router.include_router(project_public.router, prefix="/project", tags=["Project Public"])
 router.include_router(
     project_group.router, prefix="/project", tags=["Project Layer Groups"]

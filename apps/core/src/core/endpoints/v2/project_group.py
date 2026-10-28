@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import Any, List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, status
 from pydantic import UUID4
@@ -143,7 +143,8 @@ async def update_project_layer_tree(
     """
     Batch updates the structure of the sidebar.
     This handles reordering items and reparenting (moving layers into/out of folders).
-    Also updates visibility, collapsed states, and expanded states for both groups and layers.
+    Also writes the map state the tree shows: `visible` (groups, layers), `expanded`
+    (groups), `legend_expanded` (layers). None of it touches `updated_at`.
     """
     # 404 if the project itself is trashed.
     await crud_project.get_live_or_404(async_session, project_id)
@@ -176,35 +177,23 @@ async def update_project_layer_tree(
         ).all()
     }
 
-    # 1. Separate updates by type for efficient batch processing
+    # 1. Separate updates by type: the place in the tree, and the map state the
+    # tree shows (spec 10) where an item sends it.
     for item in tree_in.items:
         if item.type == "group":
-            update_data = {
+            update_data: dict[str, Any] = {
                 "id": item.id,
                 "parent_id": item.parent_id,
                 "order": item.order,
             }
-            # Handle properties for groups (visibility, expanded, etc.)
-            if item.properties:
-                # Get current group to preserve existing properties
-                current_group = await async_session.get(LayerProjectGroup, item.id)
-                if current_group and current_group.project_id == project_id:
-                    current_properties = current_group.properties or {}
-
-                    # Update visibility if provided
-                    if "visibility" in item.properties:
-                        current_properties["visibility"] = item.properties["visibility"]
-
-                    # Update expanded state if provided
-                    if "expanded" in item.properties:
-                        current_properties["expanded"] = item.properties["expanded"]
-
-                    update_data["properties"] = current_properties
+            for key in ("visible", "expanded"):
+                if getattr(item, key) is not None:
+                    update_data[key] = getattr(item, key)
             updates_groups.append(update_data)
 
         elif item.type == "layer":
             # Enforce bundle-group membership lock: never move a layer into or
-            # out of a bundle-backed group. Order/properties still apply.
+            # out of a bundle-backed group. Order and map state still apply.
             target_group_id = item.parent_id
             current_group_id = layer_group_map.get(item.id)
             if (
@@ -218,38 +207,16 @@ async def update_project_layer_tree(
                 "layer_project_group_id": target_group_id,
                 "order": item.order,
             }
-            # Handle properties for layers (visibility, legend.collapsed, etc.)
-            if item.properties:
-                # Get current layer to preserve existing properties
-                current_layer = await async_session.get(LayerProjectLink, item.id)
-                if current_layer and current_layer.project_id == project_id:
-                    current_properties = current_layer.properties or {}
-
-                    # Update visibility if provided
-                    if "visibility" in item.properties:
-                        current_properties["visibility"] = item.properties["visibility"]
-
-                    # Update legend collapsed state if provided
-                    if "legend" in item.properties:
-                        if "legend" not in current_properties:
-                            current_properties["legend"] = {}
-
-                        # Merge legend properties
-                        for key, value in item.properties["legend"].items():
-                            current_properties["legend"][key] = value
-
-                    update_data["properties"] = current_properties
+            for key in ("visible", "legend_expanded"):
+                if getattr(item, key) is not None:
+                    update_data[key] = getattr(item, key)
             updates_layers.append(update_data)
 
     try:
         # 2. Update Groups (Iterative update is safer than bulk for complex constraints)
         if updates_groups:
             for g in updates_groups:
-                update_values = {"parent_id": g["parent_id"], "order": g["order"]}
-                # Include properties if updated
-                if "properties" in g:
-                    update_values["properties"] = g["properties"]
-
+                update_values = {k: v for k, v in g.items() if k != "id"}
                 await async_session.execute(
                     update(LayerProjectGroup)
                     .where(LayerProjectGroup.id == g["id"])
@@ -260,19 +227,14 @@ async def update_project_layer_tree(
         # 3. Update Layers
         if updates_layers:
             for layer_update in updates_layers:
-                update_values = {
-                    "layer_project_group_id": layer_update["layer_project_group_id"],
-                    "order": layer_update["order"],
-                }
-                # Include properties if provided
-                if "properties" in layer_update:
-                    update_values["properties"] = layer_update["properties"]
-
+                update_values = {k: v for k, v in layer_update.items() if k != "id"}
                 await async_session.execute(
                     update(LayerProjectLink)
                     .where(LayerProjectLink.id == layer_update["id"])
                     .where(LayerProjectLink.project_id == project_id)  # Security check
-                    .values(**update_values)
+                    # Kept as it is: the web keys tile sources on it, and moving
+                    # or hiding a layer changes no data.
+                    .values(**update_values, updated_at=LayerProjectLink.updated_at)
                 )
 
         await async_session.commit()

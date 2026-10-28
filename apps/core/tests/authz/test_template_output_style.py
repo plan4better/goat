@@ -28,7 +28,11 @@ from tests.authz.test_template_api import (
 
 S = settings.SCHEMA
 EXPORT_NODE = "export-0640d526-f9ad-4d6d-9645-6a7a1c990162"
-STYLE = {"color": [255, 0, 0], "opacity": 0.6, "stroke_width": 2}
+STYLE = {
+    "version": 1,
+    "kind": "vector",
+    "symbol": {"fill": {"color": "#ff0000", "opacity": 0.6}, "outline": {"width": 2}},
+}
 
 
 def _with_export(config: dict[str, Any]) -> dict[str, Any]:
@@ -128,8 +132,21 @@ async def _ran_and_styled(db: AsyncSession, source: dict[str, Any]) -> None:
     }
     await db.execute(
         text(
-            f'INSERT INTO {S}.layer_project (layer_id, project_id, name, "order", properties, other_properties, updated_at) '
-            "VALUES (:l, :p, 'Buffers', 0, CAST(:style AS jsonb), CAST(:stamp AS jsonb), now())"
+            f"""
+            WITH lp AS (
+                INSERT INTO {S}.layer_project
+                    (layer_id, project_id, name, "order", other_properties, updated_at)
+                VALUES (:l, :p, 'Buffers', 0, CAST(:stamp AS jsonb), now())
+                RETURNING id
+            ),
+            s AS (
+                INSERT INTO {S}.layer_style (layer_project_id, name, document)
+                SELECT id, 'Default', CAST(:style AS jsonb) FROM lp
+                RETURNING id, layer_project_id
+            )
+            UPDATE {S}.layer_project SET active_style_id = s.id
+            FROM s WHERE layer_project.id = s.layer_project_id
+            """
         ),
         {
             "l": source["result"].id,

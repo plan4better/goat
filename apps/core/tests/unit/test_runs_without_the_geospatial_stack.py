@@ -92,3 +92,44 @@ def test_the_bundle_endpoints_import(without_geospatial_stack: None) -> None:
     # the stack this test hides — and a refusal raised here reaches nobody,
     # while a failed job is reported to whoever uploaded the file.
     assert not hasattr(module, "get_importer")
+
+
+def test_the_style_migration_imports(without_geospatial_stack: None) -> None:
+    """Alembic runs the GOAT Style data migration in core's image."""
+    for name in list(sys.modules):
+        if name.startswith("goatlib.style"):
+            del sys.modules[name]
+    migrate = importlib.import_module("goatlib.style.migrate")
+    ctx = migrate.context_for("feature", "polygon", None)
+    result = migrate.migrate_style(
+        {"color": [1, 2, 3], "filled": True}, ctx, fingerprint="ducklake:1", at="t"
+    )
+    assert result.document["kind"] == "vector" and not result.fell_back
+
+
+def test_a_raster_style_with_a_band_formula_validates_without_the_raster_stack(
+    without_geospatial_stack: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """core validates raster styles; the formula parser it shares with the raster
+    service must not need numpy or rio-tiler (goatlib's `raster` extra)."""
+    guarded = builtins.__import__
+
+    def without_raster(name: str, *args: object, **kwargs: object) -> object:
+        if name.split(".")[0] in ("numpy", "rasterio", "rio_tiler"):
+            raise ModuleNotFoundError(f"No module named {name.split('.')[0]!r}")
+        return guarded(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    for name in list(sys.modules):
+        if name.startswith(("goatlib.style", "goatlib.raster", "numpy")):
+            monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.setattr(builtins, "__import__", without_raster)
+    validate = importlib.import_module("goatlib.style.validate")
+    context = importlib.import_module("goatlib.style.context")
+    band = {"name": "NDVI", "expression": "(b4 - b1) / (b4 +"}
+    doc = {
+        "version": 1,
+        "kind": "raster",
+        "render": {"type": "continuous", "band": band, "domain": [-1, 1]},
+    }
+    codes = {i.code for i in validate.validate(doc, context.DataContext(kind="raster"))}
+    assert "invalid_band_expression" in codes

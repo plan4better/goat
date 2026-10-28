@@ -341,6 +341,59 @@ RESOURCES_PERMISSIONS = [
         "method": ["POST"],
         "permissions": ["read-layer", "update-project"],
     },
+    # GOAT Style routes: exact rows, because check_resource's `LIKE pattern || '/%'`
+    # fallback picks any matching row (`project` POST would ask for create-project).
+    {
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/style",
+        "method": ["POST"],
+        "permissions": ["update-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/style/{style_id}",
+        "method": ["GET"],
+        "permissions": ["read-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/style/{style_id}",
+        "method": ["PUT", "PATCH", "DELETE"],
+        "permissions": ["update-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/style/{style_id}/check",
+        "method": ["POST"],
+        "permissions": ["read-project"],
+    },
+    {
+        # The dataset's edit rights are checked in code: the path names no layer id.
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/style/{style_id}/set-as-default",
+        "method": ["POST"],
+        "permissions": ["update-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/map-state",
+        "method": ["PATCH"],
+        "permissions": ["update-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/group/{group_id}/map-state",
+        "method": ["PATCH"],
+        "permissions": ["update-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/map",
+        "method": ["GET"],
+        "permissions": ["read-project"],
+    },
+    {
+        "url_pattern": "layer/{layer_id}/style",
+        "method": ["GET"],
+        "permissions": ["read-layer"],
+    },
+    {
+        "url_pattern": "layer/{layer_id}/style",
+        "method": ["PUT"],
+        "permissions": ["update-layer"],
+    },
     {
         "url_pattern": "project/{project_id}/bundle/{bundle_id}",
         "method": ["POST"],

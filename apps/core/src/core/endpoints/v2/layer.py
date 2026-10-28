@@ -1,4 +1,5 @@
 # Standard Libraries
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict
 from uuid import UUID
@@ -16,11 +17,12 @@ from fastapi import (
 from fastapi_pagination import Page
 from fastapi_pagination import Params as PaginationParams
 from pydantic import UUID4, BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlmodel import SQLModel
 
 # Local application imports
 from core.core import authz
+from core.core.config import settings
 from core.core.content import (
     read_content_by_id,
 )
@@ -29,10 +31,10 @@ from core.crud.crud_layer import layer as crud_layer
 from core.crud.crud_space import space as crud_space
 from core.db.models._link_model import BundleLayerLink
 from core.db.models.folder import Folder
-from core.db.models.layer import Layer
+from core.db.models.layer import Layer, RasterDataType
 from core.db.models.user import User
 from core.db.session import AsyncSession
-from core.deps.auth import auth_z
+from core.deps.auth import auth, auth_z
 from core.endpoints.deps import get_db, get_user_id
 from core.schemas.common import OrderEnum
 from core.schemas.error import FolderNotFoundError, HTTPErrorHandler
@@ -45,8 +47,43 @@ from core.schemas.layer import (
 from core.schemas.layer import (
     request_examples as layer_request_examples,
 )
+from core.services import geoapi
+from core.services.style import insert_dataset_default
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _store_cog_extent(
+    session: AsyncSession, layer_id: UUID, access_token: str
+) -> str | None:
+    """The new COG layer's extent: its file's bounds, as geoapi reads them from
+    the header (core has no raster reader). Returns the stored extent as WKT,
+    or None; a failure is logged and leaves the layer without one, which the
+    web then asks geoapi for."""
+    try:
+        bounds = await geoapi.raster_bounds(layer_id, access_token=access_token)
+        if bounds is None:
+            logger.info("Raster layer %s: its file has no bounds on earth", layer_id)
+            return None
+        west, south, east, north = bounds
+        extent = (
+            await session.execute(
+                text(
+                    f"UPDATE {settings.SCHEMA}.layer "
+                    "SET extent = ST_Multi(ST_MakeEnvelope(:w, :s, :e, :n, 4326)) "
+                    "WHERE id = :id AND extent IS NULL "
+                    "RETURNING ST_AsText(extent)"
+                ),
+                {"id": layer_id, "w": west, "s": south, "e": east, "n": north},
+            )
+        ).scalar_one_or_none()
+        await session.commit()
+        return extent
+    except Exception as error:
+        logger.warning("Raster layer %s stored without an extent: %s", layer_id, error)
+        return None
 
 
 @router.post(
@@ -60,6 +97,7 @@ router = APIRouter()
 async def create_layer_raster(
     async_session: AsyncSession = Depends(get_db),
     user_id: UUID4 = Depends(get_user_id),
+    access_token: str = Depends(auth),
     layer_in: IRasterCreate = Body(
         ...,
         examples=[layer_request_examples["create"]],
@@ -102,6 +140,14 @@ async def create_layer_raster(
                 )
             ).model_dump()
         )
+        # A map service's extent comes with the request (its capabilities); a
+        # COG's from its file.
+        if layer.data_type == RasterDataType.cog and layer.extent is None:
+            extent = await _store_cog_extent(async_session, layer.id, access_token)
+            if extent is not None:
+                layer = layer.model_copy(update={"extent": extent})
+        # Its default style (spec 9.8 for map services): goatlib's, written by core.
+        await insert_dataset_default(async_session, layer.id)
     return layer
 
 

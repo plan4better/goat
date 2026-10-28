@@ -115,6 +115,13 @@ async def _run_copy_job(
             runner.dropped = drop.call_args_list  # type: ignore[attr-defined]
 
 
+RED_POINTS = {
+    "version": 1,
+    "kind": "vector",
+    "symbol": {"marker": {"color": "#c80000"}},
+}
+
+
 async def _rich_layer(
     db: AsyncSession, make_layer: MakeLayer, owner: User, folder: Folder, name: str
 ) -> Layer:
@@ -126,10 +133,9 @@ async def _rich_layer(
             UPDATE {S}.layer SET
                 name = :name,
                 description = 'Planned projects, one row each',
-                tags = ARRAY['bonn', 'planning'],
+                tags = ARRAY['berlin', 'planning'],
                 feature_layer_geometry_type = 'point',
                 size = 2048,
-                properties = CAST(:props AS jsonb),
                 field_config = CAST(:fields AS jsonb),
                 other_properties = CAST(:other AS jsonb),
                 extent = ST_Multi(ST_GeomFromText(:extent, 4326))
@@ -139,13 +145,19 @@ async def _rich_layer(
         {
             "id": layer.id,
             "name": name,
-            "props": json.dumps({"color": [200, 0, 0], "filled": True}),
             "fields": json.dumps(
                 {"status": {"type": "dropdown", "options": ["geplant", "im Bau"]}}
             ),
             "other": json.dumps({"workflow_export": {"workflow_id": "w-1"}}),
             "extent": EXTENT,
         },
+    )
+    await db.execute(
+        text(
+            f"INSERT INTO {S}.layer_style (layer_id, name, document) "
+            "VALUES (:id, 'Default', CAST(:doc AS jsonb))"
+        ),
+        {"id": layer.id, "doc": json.dumps(RED_POINTS)},
     )
     return layer
 
@@ -201,7 +213,7 @@ async def _workflow_nodes(db: AsyncSession, project_id: str | UUID) -> dict[str,
 
 def _legacy_node(node_id: str, layer_id: UUID) -> dict[str, Any]:
     """A dataset node saved with `layerId` only, the shape of most nodes in
-    the Bonn projects (e.g. "Vorhaben (Eingabe)" in "Prüfroutine (mehrere
+    many saved workflows (e.g. "Vorhaben (Eingabe)" in "Prüfroutine (mehrere
     Vorhaben)"): no `projectLayerId`, `layerType: "layer"`."""
     return {
         "id": node_id,
@@ -248,7 +260,7 @@ async def _project_template(
     home: str,
     project_id: str,
     inputs: list[dict[str, Any]],
-    name: str = "Bonn training",
+    name: str = "Berlin training",
 ) -> Any:
     return await client.post(
         f"{API}/template",
@@ -310,7 +322,7 @@ async def test_a_project_template_stores_each_datasets_ship_or_copy_choice(
     )
     districts = await make_layer(owner, folder)
     await db_session.commit()
-    project_id = await _create_project(client, home, name="bonn")
+    project_id = await _create_project(client, home, name="berlin")
     await _add_layers(client, project_id, planned.id, housing.id, districts.id)
 
     resp = await _project_template(
@@ -1137,7 +1149,7 @@ async def test_after_the_copy_the_user_edits_their_own_layer_and_not_the_authors
     roles: dict[str, UUID],
     processes: AsyncMock,
 ) -> None:
-    """The Bonn case: the author's project template ships a planning layer
+    """The participant case: the author's project template ships a planning layer
     to copy empty; a participant uses it, the copy job runs, and the
     participant now enters data into their own layer, which every
     reference in the project follows."""
@@ -1152,7 +1164,7 @@ async def test_after_the_copy_the_user_edits_their_own_layer_and_not_the_authors
     participant_folder = await make_folder(participant)
     await db_session.commit()
 
-    source_project = await _create_project(client, home, name="bonn")
+    source_project = await _create_project(client, home, name="berlin")
     await _add_layers(client, source_project, planned.id, districts.id)
     source_links = await _links(db_session, source_project)
     (planned_link,) = source_links[planned.id]
@@ -1278,7 +1290,9 @@ async def test_after_the_copy_the_user_edits_their_own_layer_and_not_the_authors
                 f"""
                 SELECT l.user_id, l.folder_id, l.space_id, l.name, l.description,
                        l.tags, l.type, l.feature_layer_type,
-                       l.feature_layer_geometry_type, l.properties, l.field_config,
+                       l.feature_layer_geometry_type, l.field_config,
+                       (SELECT d.document FROM {S}.layer_style d
+                        WHERE d.layer_id = l.id) AS default_style,
                        l.other_properties, l.size, l.extent IS NULL AS no_extent,
                        l.public_read, p.folder_id AS project_folder,
                        p.space_id AS project_space
@@ -1294,10 +1308,10 @@ async def test_after_the_copy_the_user_edits_their_own_layer_and_not_the_authors
     assert copy_row.space_id == copy_row.project_space
     assert copy_row.name == "Vorhaben (Eingabe)"
     assert copy_row.description == "Planned projects, one row each"
-    assert copy_row.tags == ["bonn", "planning"]
+    assert copy_row.tags == ["berlin", "planning"]
     assert (copy_row.type, copy_row.feature_layer_type) == ("feature", "standard")
     assert copy_row.feature_layer_geometry_type == "point"
-    assert copy_row.properties == {"color": [200, 0, 0], "filled": True}
+    assert copy_row.default_style == RED_POINTS
     assert copy_row.field_config == {
         "status": {"type": "dropdown", "options": ["geplant", "im Bau"]}
     }
@@ -1365,7 +1379,7 @@ async def test_after_the_copy_the_user_edits_their_own_layer_and_not_the_authors
     ).one()
     assert after_edit.description == "Planned projects, one row each"
     assert after_edit.field_config["status"]["type"] == "dropdown"
-    assert after_edit.tags == ["bonn", "planning"]
+    assert after_edit.tags == ["berlin", "planning"]
     # And the author's own project is untouched.
     assert (await _links(db_session, source_project)) == source_links
 
@@ -1588,7 +1602,7 @@ async def test_the_job_refuses_entries_of_another_project(
 
 
 # ----------------------------------------------------------------------------
-# Workflow nodes that name their layer without an entry (the Bonn projects)
+# Workflow nodes that name their layer without an entry (many saved workflows)
 # ----------------------------------------------------------------------------
 
 

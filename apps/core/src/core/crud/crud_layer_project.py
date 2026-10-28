@@ -1,5 +1,5 @@
 # Standard library imports
-from typing import Any, List, Tuple, Union
+from typing import List, Tuple, Union
 from uuid import UUID
 
 # Third party imports
@@ -22,6 +22,7 @@ from core.schemas.project import (
     layer_type_mapping_read,
     layer_type_mapping_update,
 )
+from core.services.style import add_first_styles
 
 # Local application imports
 from .base import CRUDBase
@@ -46,34 +47,11 @@ async def make_room_at_top(
     await async_session.commit()
 
 
-def initial_link_properties(
-    existing_link: Any | None, layer: Any
-) -> dict[str, Any] | None:
-    """What a new project-layer link starts out looking like.
-
-    When the layer is already in this project the style comes off the link
-    already there, so a duplicate matches what the user made rather than
-    snapping back to the dataset's default.
-
-    `visibility` rides in that same blob and is deliberately NOT copied: it is
-    view state, not style. Adding a dataset you had hidden would otherwise give
-    you a second copy you also cannot see, which reads as the add having failed
-    — and the one thing you certainly meant by adding a layer is to look at it.
-    """
-    if existing_link is None:
-        return layer.properties
-    properties = existing_link.properties
-    if not isinstance(properties, dict):
-        return properties
-    # Copied, not mutated: the link already in the project keeps its own state.
-    return {**properties, "visibility": True}
-
-
 #: Everything a LOCKED project-layer row may disclose (D7): enough to draw a
 #: placeholder in the layer tree, and nothing else. `type` and
 #: `feature_layer_type` are in because the read models require them (and the
-#: model class is already chosen by them); `locked`, `properties`, `created_at`
-#: and `updated_at` are set explicitly next to the filter. Everything the layer
+#: model class is already chosen by them); `locked`, `created_at` and
+#: `updated_at` are set explicitly next to the filter. Everything the layer
 #: or the link otherwise carries — thumbnail_url, extent, description, size,
 #: tags, url, data_type, user_id, folder_id, attribute_mapping, query, charts,
 #: other_properties, … — is dropped.
@@ -217,16 +195,15 @@ class CRUDLayerProject(CRUDBase):
             if locked_by_layer_id and locked_by_layer_id.get(layer.id):
                 # A locked row is rebuilt from LOCKED_ROW_KEYS only, so a field
                 # added to the layer or the link later cannot leak through it.
-                # `properties` and the timestamps are set explicitly because the
-                # read models would otherwise fill them from their own defaults
-                # (`updated_at` would report "now").
+                # The timestamps are set explicitly because the read models
+                # would otherwise fill them from their own defaults (`updated_at`
+                # would report "now").
                 layer_dict = {
                     key: value
                     for key, value in layer_dict.items()
                     if key in LOCKED_ROW_KEYS
                 }
                 layer_dict["locked"] = True
-                layer_dict["properties"] = {}
                 layer_dict["updated_at"] = None
                 layer_dict["created_at"] = None
             layer_project: Union[
@@ -502,7 +479,6 @@ class CRUDLayerProject(CRUDBase):
                 ]:
                     layer_name = "Copy from " + layer.name
 
-            properties = initial_link_properties(existing_link, layer)
             other_properties = (
                 existing_link.other_properties
                 if existing_link
@@ -514,7 +490,6 @@ class CRUDLayerProject(CRUDBase):
                 project_id=project_id,
                 layer_id=layer.id,
                 name=layer_name,
-                properties=properties,
                 other_properties=other_properties,
                 layer_project_group_id=group_id,
                 order=start_order + position,
@@ -527,6 +502,11 @@ class CRUDLayerProject(CRUDBase):
                 obj_in=layer_project.model_dump(),
             )
             layer_project_ids.append(layer_project.id)
+
+        # Their styles (spec 10): copies of a link of the same dataset already in
+        # the project, so a duplicate matches what the user made, else the
+        # dataset's default; shown, whatever the copied link's visibility.
+        await add_first_styles(async_session, layer_project_ids)
 
         # Get project to update layer order
         project = await CRUDBase(Project).get(async_session, id=project_id)

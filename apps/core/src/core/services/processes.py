@@ -1,4 +1,6 @@
 import logging
+from typing import Any
+from uuid import UUID
 
 import aiohttp
 from core.core.config import settings
@@ -119,3 +121,73 @@ async def delete_layers_via_processes(layer_ids: list[str], access_token: str) -
         logger.warning(
             "DuckLake cleanup for %d layers did not start: %s", len(layer_ids), e
         )
+
+
+class StyleCheckUnavailable(Exception):  # noqa: N818
+    """processes could not check a style (down, timed out, or answered an error)."""
+
+
+class StyleCheckRefused(StyleCheckUnavailable):
+    """processes refused the check (4xx other than 408 and 429): a retry would get
+    the same answer, so a save says so instead of being retried."""
+
+    def __init__(self, status: int, message: str = "") -> None:
+        super().__init__(message or f"style-check answered {status}")
+        self.status = status
+
+
+#: Refusals that are worth retrying all the same: a timeout, too many requests.
+_RETRYABLE_4XX = {408, 429}
+
+
+#: A style check reads statistics of one layer; it answers in well under this.
+STYLE_CHECK_TIMEOUT_S = 30
+
+
+async def style_check(
+    *,
+    layer_id: UUID,
+    document: dict[str, Any],
+    geometry: str | None,
+    fingerprint: str | None,
+    access_token: str,
+    compute: bool = True,
+    stored: bool = False,
+) -> dict[str, Any]:
+    """processes' `style-check`: the document checked against the layer's
+    data, with its computed values filled when `compute` (spec 12). Returns
+    `{document, issues, feature_count, fields}`; any failure raises
+    StyleCheckUnavailable, so a save stores nothing and the browser retries, or
+    StyleCheckRefused when a retry would get the same answer."""
+    if not settings.processes_url:
+        raise StyleCheckUnavailable("GOAT_PROCESSES_URL is not configured")
+    url = f"{settings.processes_url}/processes/style-check/execution"
+    inputs = {
+        "collection": str(layer_id),
+        "document": document,
+        "geometry": geometry,
+        "compute": compute,
+        "stored": stored,
+        "fingerprint": fingerprint,
+    }
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=STYLE_CHECK_TIMEOUT_S)
+        ) as session:
+            async with session.post(
+                url,
+                json={"inputs": inputs},
+                headers={"Authorization": f"Bearer {access_token}"},
+            ) as response:
+                if (
+                    400 <= response.status < 500
+                    and response.status not in _RETRYABLE_4XX
+                ):
+                    raise StyleCheckRefused(response.status)
+                if response.status != 200:
+                    raise StyleCheckUnavailable(
+                        f"style-check answered {response.status}"
+                    )
+                return await response.json()
+    except (aiohttp.ClientError, TimeoutError) as error:
+        raise StyleCheckUnavailable(str(error)) from error

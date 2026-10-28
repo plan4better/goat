@@ -88,6 +88,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # The web app runs on another origin: it reads the map request's ETag to ask with If-None-Match.
+    expose_headers=["ETag"],
 )
 
 from goatlib.auth import JOSEError  # noqa: E402

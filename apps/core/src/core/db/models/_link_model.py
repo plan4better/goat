@@ -67,8 +67,11 @@ class LayerProjectLink(DateTimeBase, table=True):
         description="Layer name within the project",
         max_length=255,
     )
+    #: Today's style, kept one release for going back; GOAT Style rows hold the style.
     properties: Dict[str, Any] | None = Field(
-        sa_column=Column(JSONB, nullable=True), description="Layer properties"
+        default=None,
+        sa_column=Column(JSONB, nullable=True),
+        description="Layer properties",
     )
     other_properties: Dict[str, Any] | None = Field(
         sa_column=Column(JSONB, nullable=True), description="Layer other properties"
@@ -87,6 +90,44 @@ class LayerProjectLink(DateTimeBase, table=True):
         default=True,
         sa_column=Column(sa.Boolean, nullable=False, server_default=sa.text("true")),
         description="Whether this layer travels with the project when the project is shared.",
+    )
+    # The layer's place in the map document (spec 10): its active named style and
+    # the map state that is not style.
+    active_style_id: UUID | None = Field(
+        default=None,
+        sa_column=Column(
+            UUID_PG(as_uuid=True),
+            ForeignKey(
+                f"{settings.SCHEMA}.layer_style.id",
+                ondelete="SET NULL",
+                use_alter=True,
+                name="layer_project_active_style_id_fkey",
+            ),
+            nullable=True,
+            # Deleting a style looks up the links that name it active.
+            index=True,
+        ),
+    )
+    visible: bool = Field(
+        default=True,
+        sa_column=Column(sa.Boolean, nullable=False, server_default=sa.text("true")),
+    )
+    position: str = Field(
+        default="top",
+        sa_column=Column(
+            Text,
+            sa.CheckConstraint(
+                "position IN ('top', 'below_labels', 'below_roads')",
+                name="layer_project_position_check",
+            ),
+            nullable=False,
+            server_default=sa.text("'top'"),
+        ),
+    )
+    time_value: Any | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    legend_expanded: bool = Field(
+        default=True,
+        sa_column=Column(sa.Boolean, nullable=False, server_default=sa.text("true")),
     )
 
     # Relationships
@@ -137,6 +178,15 @@ class LayerProjectGroup(DateTimeBase, table=True):
             nullable=True,
             index=True,
         ),
+    )
+    visible: bool = Field(
+        default=True,
+        sa_column=Column(sa.Boolean, nullable=False, server_default=sa.text("true")),
+    )
+    #: Whether the layer tree shows the group open (map document group `expanded`).
+    expanded: bool = Field(
+        default=True,
+        sa_column=Column(sa.Boolean, nullable=False, server_default=sa.text("true")),
     )
 
     # Relationships

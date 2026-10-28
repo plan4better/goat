@@ -41,6 +41,10 @@ ANONYMOUS = {
     ): "uploaded images, public as an assets bucket is (ASSETS_SERVED_BY_CORE)",
     (
         "GET",
+        "asset/{asset_id}/file",
+    ): "uploaded icons and images by id, which styles name (`asset:<id>`), public as their files are",
+    (
+        "GET",
         "custom-domain-config",
     ): "the web app's middleware resolves a host before any login",
     (

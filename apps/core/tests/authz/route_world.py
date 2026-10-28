@@ -22,6 +22,7 @@ from core.db.models._link_model import (
 from core.db.models.asset import AssetType, UploadedAsset
 from core.db.models.bundle import Bundle
 from core.db.models.invitation import Invitation, InvitationStatusEnum, InvitationType
+from core.db.models.layer_style import LayerStyle
 from core.db.models.organization import Organization
 from core.db.models.organization_analytics import OrganizationAnalytics
 from core.db.models.organization_domain import OrganizationDomain
@@ -40,6 +41,7 @@ from tests.authz.conftest import _personal_space
 S = settings.SCHEMA
 API = settings.API_V2_STR
 PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
+STYLE = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#111111"}}}
 
 
 async def give_org_role(db_session: AsyncSession, user_id: UUID, role_id: UUID) -> None:
@@ -87,6 +89,21 @@ def body(method: str, pattern: str, ids: dict[str, Any], grantee_org: UUID) -> A
             "role": "folder-editor",
         },
         ("PATCH", "space/{space_id}"): {"default_role": "editor"},
+        ("POST", "project/{project_id}/layer/{layer_project_id}/style"): {"name": "B"},
+        ("PUT", "project/{project_id}/layer/{layer_project_id}/style/{style_id}"): {
+            "base_rev": 1,
+            "document": STYLE,
+        },
+        ("PATCH", "project/{project_id}/layer/{layer_project_id}/style/{style_id}"): {
+            "name": "B"
+        },
+        ("PUT", "layer/{layer_id}/style"): {"document": STYLE},
+        ("PATCH", "project/{project_id}/layer/{layer_project_id}/map-state"): {
+            "visible": False
+        },
+        ("PATCH", "project/{project_id}/group/{group_id}/map-state"): {
+            "visible": False
+        },
         ("POST", "template/{template_id}/grant"): {
             "grantee_type": "organization",
             "grantee_id": org,
@@ -205,6 +222,9 @@ async def build_org_world(
     ):
         db_session.add(row)
     await db_session.flush()
+    style = LayerStyle(layer_project_id=link.id, name="A style", document=STYLE)
+    db_session.add(style)
+    await db_session.flush()
     grant = ResourceGrant(
         resource_type="template",
         resource_id=template.id,
@@ -249,6 +269,7 @@ async def build_org_world(
         "item_id": project.id,
         "group_id": group.id,
         "layer_project_id": link.id,
+        "style_id": style.id,
         "space_id": org_space_id,
         "dependency_kind": "street_network",
         "resource_type": "project",

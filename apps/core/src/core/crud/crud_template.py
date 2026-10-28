@@ -826,24 +826,31 @@ class CRUDTemplate:
         self, db: AsyncSession, project_id: UUID, workflow_id: UUID
     ) -> dict[str, dict[str, Any]]:
         """The style each of the workflow's export nodes' results has in the
-        project: the entry stamped with the workflow and node (see goatlib's
-        ``workflow_export_target``), the most recently changed one first."""
+        project: the active style (else the first) of the entry stamped with the
+        workflow and node (see goatlib's ``workflow_export_target``), the most
+        recently changed entry first."""
+        schema = settings.SCHEMA
         rows = await db.execute(
             text(
-                "SELECT other_properties->'workflow_export'->>'export_node_id' AS node, "
-                "properties "
-                f"FROM {settings.SCHEMA}.layer_project "
-                "WHERE project_id = :p "
-                "AND other_properties->'workflow_export'->>'workflow_id' = :w "
-                "AND properties IS NOT NULL "
-                "ORDER BY updated_at DESC"
+                "SELECT lp.other_properties->'workflow_export'->>'export_node_id' AS node, "
+                "s.document "
+                f"FROM {schema}.layer_project lp "
+                "JOIN LATERAL ("
+                f"  SELECT st.document FROM {schema}.layer_style st "
+                "  WHERE st.layer_project_id = lp.id "
+                "  ORDER BY st.id = lp.active_style_id DESC NULLS LAST, st.position, st.created_at "
+                "  LIMIT 1"
+                ") s ON true "
+                "WHERE lp.project_id = :p "
+                "AND lp.other_properties->'workflow_export'->>'workflow_id' = :w "
+                "ORDER BY lp.updated_at DESC"
             ),
             {"p": project_id, "w": str(workflow_id)},
         )
         styles: dict[str, dict[str, Any]] = {}
         for row in rows:
-            if row.node and isinstance(row.properties, dict):
-                styles.setdefault(row.node, row.properties)
+            if row.node and isinstance(row.document, dict):
+                styles.setdefault(row.node, row.document)
         return styles
 
     async def create(
