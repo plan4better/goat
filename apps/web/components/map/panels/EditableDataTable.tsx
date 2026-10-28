@@ -557,22 +557,12 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
     if (!isEditing) {
       const feature = collectionData?.features.find((f, i) => `${f.id}-${page}-${i}` === rowId);
       if (feature) {
-        // Determine the MapLibre layer type from the geometry type
-        const geomType = projectLayer.feature_layer_geometry_type;
-        const isCustomMarker = !!projectLayer.properties?.["custom_marker"];
-        const layerType =
-          geomType === "polygon"
-            ? "fill"
-            : geomType === "line"
-              ? "line"
-              : isCustomMarker
-                ? "symbol"
-                : "circle";
+        // The renderer marks the feature on every map layer of the project layer it names.
         dispatch(
           setHighlightedFeature({
             id: feature.id != null ? Number(feature.id) : undefined,
             properties: feature.properties || {},
-            layer: { id: projectLayer.id.toString(), type: layerType },
+            layer: { id: projectLayer.id.toString() },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } as any)
         );
@@ -781,11 +771,11 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
       // Refresh data and schema
       mutate();
       mutateQueryables();
-      // Optimistically update project layers for tile cache busting
+      // Optimistically move the dataset's data change time: the tile URLs' cache-buster follows it
       if (projectLayers) {
         const now = new Date().toISOString();
         mutateProjectLayers(
-          projectLayers.map((l) => (l.layer_id === layerId ? { ...l, updated_at: now } : l)),
+          projectLayers.map((l) => (l.layer_id === layerId ? { ...l, dataset_updated_at: now } : l)),
           { revalidate: false }
         );
       }
@@ -828,7 +818,9 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
       await mutateProjectLayers(layers, false);
       if (isEditor) {
         try {
-          await updateProjectLayer(projectId as string, projectLayer.id, layers[index]);
+          await updateProjectLayer(projectId as string, projectLayer.id, {
+            other_properties: layers[index].other_properties,
+          });
         } catch (error) {
           console.error("Failed to persist table config:", error);
           await mutateProjectLayers();
@@ -1140,11 +1132,11 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
           setEditFieldsOpen(false);
           setEditFieldsInitialField(null);
           mutate();
-          // Optimistically update updated_at so tile URLs get a new cache-buster
+          // Optimistically move the dataset's data change time so tile URLs get a new cache-buster
           if (projectLayers) {
             const now = new Date().toISOString();
             mutateProjectLayers(
-              projectLayers.map((l) => (l.layer_id === layerId ? { ...l, updated_at: now } : l)),
+              projectLayers.map((l) => (l.layer_id === layerId ? { ...l, dataset_updated_at: now } : l)),
               { revalidate: false }
             );
           }

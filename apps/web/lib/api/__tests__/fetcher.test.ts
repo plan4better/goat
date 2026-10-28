@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearTokenCache, fetcher } from "@/lib/api/fetcher";
+import { clearTokenCache, fetcher, renewAccessToken } from "@/lib/api/fetcher";
 
 const { getSessionMock, signInMock } = vi.hoisted(() => ({
   getSessionMock: vi.fn(),
@@ -18,6 +18,18 @@ describe("fetcher auth handling", () => {
     getSessionMock.mockReset();
     signInMock.mockReset();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) }));
+  });
+
+  it("renewAccessToken asks for a new session even while the cached token lives", async () => {
+    getSessionMock.mockResolvedValue({ access_token: "old-token" });
+    await fetcher("http://api.test/thing");
+    getSessionMock.mockResolvedValue({ access_token: "new-token" });
+    expect(await renewAccessToken()).toBe(true);
+    await fetcher("http://api.test/thing");
+    const headers = vi.mocked(fetch).mock.calls[1][1]?.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer new-token");
+    getSessionMock.mockResolvedValue(null);
+    expect(await renewAccessToken()).toBe(false);
   });
 
   it("sends the session access token as bearer", async () => {

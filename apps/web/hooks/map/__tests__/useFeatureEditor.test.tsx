@@ -56,6 +56,7 @@ vi.mock("@/lib/api/layers", () => ({
 vi.mock("@/lib/api/projects", () => ({
   useProjectLayers: () => ({ layers: [], mutate: vi.fn() }),
 }));
+vi.mock("@/lib/api/map", () => ({ useProjectMap: () => ({ map: undefined }) }));
 vi.mock("@/hooks/map/useBundleEditSave", () => ({
   useBundleEditSave: () => ({ bundleForLayer: undefined, saveBundleEdits: vi.fn() }),
 }));

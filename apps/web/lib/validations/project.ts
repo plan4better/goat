@@ -2,6 +2,7 @@ import * as z from "zod";
 
 import { DEFAULT_WKT_EXTENT } from "@/lib/constants";
 import { basicLayout } from "@/lib/constants/dashboard-builder-template-layouts";
+import type { LayerStyle, MapDocument } from "@/lib/style/generated/types";
 import {
   contentMetadataSchema,
   getContentQueryParamsSchema,
@@ -263,6 +264,8 @@ export const projectSchema = contentMetadataSchema.extend({
     interface: basicLayout.interface as any,
   }),
   basemap: z.string().nullable().default("streets"),
+  // Number and date locale of public maps, dashboards and print; null = the viewer's language.
+  locale: z.string().nullish(),
   custom_basemaps: z.array(customBasemapSchema).default([]),
   updated_at: z.string().optional(),
   created_at: z.string().optional(),
@@ -322,6 +325,9 @@ export const projectLayerGroupSchema = z.object({
   id: z.number(),
   name: z.string(),
   properties: z.record(z.any()).nullable().optional(),
+  /** Map state (spec 10): shown on the map, and open in the layer tree. */
+  visible: z.boolean().optional(),
+  expanded: z.boolean().optional(),
   order: z.number().optional(),
   project_id: z.string().uuid(),
   parent_id: z.number().nullable().optional(),
@@ -336,6 +342,24 @@ export const projectPublicSchemaConfig = z.object({
   project: projectSchema,
   layers: z.array(layerSchema),
   layer_groups: z.array(projectLayerGroupSchema).optional().default([]),
+  /** The published map document (GOAT Style spec 10); absent in snapshots published before it. */
+  map: z.custom<MapDocument>().nullish(),
+  /** Every named style of every published layer, by project layer id (`StyleRead`); absent before GOAT Style. */
+  styles: z
+    .record(
+      z.array(
+        z.custom<{
+          id: string;
+          name: string;
+          position: number;
+          revision: number;
+          document: LayerStyle;
+          issues: unknown[];
+          stale: boolean;
+        }>()
+      )
+    )
+    .nullish(),
 });
 
 export const projectPublicAnalyticsSchema = z.object({
@@ -376,6 +400,12 @@ export const projectLayerTreeNodeSchema = z.object({
   is_catalog: z.boolean().optional(),
   // See projectLayerSchema: a locked node carries no style/data to draw.
   locked: z.boolean().optional(),
+  // Map state (spec 10): a node's own visibility, a group open in the tree, a layer's legend open.
+  visible: z.boolean().optional(),
+  expanded: z.boolean().optional(),
+  legend_expanded: z.boolean().optional(),
+  // A layer's active style (GOAT Style document); none for groups and locked layers.
+  style: z.custom<LayerStyle>().nullish(),
 });
 
 export const projectLayerTreeUpdateItemSchema = z.object({
@@ -383,7 +413,10 @@ export const projectLayerTreeUpdateItemSchema = z.object({
   type: z.enum(["group", "layer"]),
   order: z.number(),
   parent_id: z.number().nullable().optional(),
-  properties: z.record(z.any()).nullable().optional(),
+  // Map state the tree PUT may write; left out, it stays as it is.
+  visible: z.boolean().optional(),
+  expanded: z.boolean().optional(),
+  legend_expanded: z.boolean().optional(),
 });
 
 export const projectLayerTreeUpdateSchema = z.object({

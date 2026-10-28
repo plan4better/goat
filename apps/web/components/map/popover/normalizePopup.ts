@@ -1,3 +1,6 @@
+import type { LayerStyle } from "@/lib/style/generated/types";
+import { popupConfigOf } from "@/lib/style/popup";
+import { type PopupRaster, rasterPopupConfig } from "@/lib/style/raster/popup";
 import type { PopupProperties } from "@/lib/validations/layer";
 
 /**
@@ -26,4 +29,15 @@ export function normalizePopup(popup: PopupProperties): PopupProperties {
   delete next.position;
   delete next.show_layer_header;
   return next;
+}
+
+/** A map layer's popup: its style's (spec 7.4) in today's configuration, normalized; undefined when it shows none. A
+ * raster file's popup lists the cell values it was opened with (`values`, spec 9.7). */
+export function layerPopup(
+  layer: (PopupRaster & { style?: { document: LayerStyle } | null }) | null | undefined,
+  values?: Record<string, unknown>
+): PopupProperties | undefined {
+  if (layer?.style?.document.kind === "raster") return values ? rasterPopupConfig(layer, values) : undefined;
+  const config = popupConfigOf(layer?.style?.document);
+  return config ? normalizePopup(config) : undefined;
 }

@@ -48,7 +48,8 @@ type Position = [number, number];
 export function useEdgeSnapping(
   mapRef: React.RefObject<MapRef | null> | null,
   enabled: boolean,
-  targetMapLayerIds: string[],
+  /** The MapLibre layers drawing the edited layer's geometry, read when candidates are needed. */
+  targetMapLayerIds: () => string[],
   // Separate from `enabled` on purpose: the marker answers "where will this
   // endpoint land", which is only a question mid-gesture. Consulted per mouse
   // move rather than passed as a flag, because MapboxDraw's mode changes without
@@ -78,7 +79,7 @@ export function useEdgeSnapping(
     (position: Position): GeoJSON.Feature[] => {
       const map = mapRef?.current?.getMap();
       if (!map) return [];
-      const layers = layerIdsRef.current.filter((id) => map.getLayer(id));
+      const layers = layerIdsRef.current().filter((id) => map.getLayer(id));
       if (!layers.length) return [];
       const screen = map.project(position);
       const box: [[number, number], [number, number]] = [

@@ -25,20 +25,6 @@ import type {
 export const LAYERS_API_BASE_URL = new URL("api/v2/layer", process.env.NEXT_PUBLIC_API_URL).href;
 export const COLLECTIONS_API_BASE_URL = `${GEOAPI_BASE_URL}/collections`;
 
-export const updateBaseLayerProperties = async (
-  layerId: string,
-  properties: Record<string, unknown>
-): Promise<void> => {
-  const response = await apiRequestAuth(`${LAYERS_API_BASE_URL}/${layerId}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ properties }),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to update layer properties for ${layerId}`);
-  }
-};
-
 /**
  * Fetcher for OGC API Processes execution endpoints (POST requests)
  */

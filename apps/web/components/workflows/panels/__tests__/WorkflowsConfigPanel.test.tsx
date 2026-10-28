@@ -37,6 +37,8 @@ vi.mock("@/lib/api/workflows", () => ({
   updateWorkflow: vi.fn(),
 }));
 
+// The layer tree is not under test: no map request.
+vi.mock("@/hooks/map/useMapLayers", () => ({ useMapLayers: () => ({ layers: [] }) }));
 vi.mock("@/components/map/panels/layer/ProjectLayerTree", () => ({
   AddLayerButton: () => null,
   ProjectLayerTree: () => null,

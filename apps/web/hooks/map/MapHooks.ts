@@ -1,12 +1,12 @@
-import type { StyleSpecification } from "maplibre-gl";
-import type maplibregl from "maplibre-gl";
+import type { Map as MaplibreMap, StyleSpecification } from "maplibre-gl";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
-import { DEFAULT_BASEMAP } from "@/lib/constants/basemaps";
+import { DEFAULT_BASEMAP, GLYPHS_URL } from "@/lib/constants/basemaps";
 import { setActiveBasemap as setActiveBasemapAction } from "@/lib/store/map/slice";
 import type { Basemap, BuiltInBasemap } from "@/types/map/common";
+import { projectLayerOf } from "@/lib/style/render/mapLayers";
 import type { CustomBasemap } from "@/lib/validations/project";
 
 /** Adapts a custom basemap to the Basemap shape used by the selector. */
@@ -63,6 +63,7 @@ export function synthesizeMapStyle(
   if (basemap.type === "raster") {
     return {
       version: 8,
+      glyphs: GLYPHS_URL,
       sources: {
         "raster-source": {
           type: "raster",
@@ -79,6 +80,7 @@ export function synthesizeMapStyle(
   // solid
   return {
     version: 8,
+    glyphs: GLYPHS_URL,
     sources: {},
     layers: [
       {
@@ -121,15 +123,16 @@ function isZoomDependentTextField(tf: unknown): boolean {
  *   4. name           — raw native name
  *
  * Zoom-dependent text-fields are preserved (see isZoomDependentTextField) so the
- * style's per-zoom label gating keeps working.
+ * style's per-zoom label gating keeps working. Project layers are left alone: their
+ * labels are the style's own templates, whatever field names they read.
  */
-export function applyMapLanguage(map: maplibregl.Map, locale: string) {
+export function applyMapLanguage(map: MaplibreMap, locale: string) {
   if (!map.isStyleLoaded()) return;
   const style = map.getStyle();
   if (!style?.layers) return;
 
   for (const layer of style.layers) {
-    if (layer.type !== "symbol") continue;
+    if (layer.type !== "symbol" || projectLayerOf(map, layer.id) !== undefined) continue;
     const textField = map.getLayoutProperty(layer.id, "text-field");
     if (!textField) continue;
 

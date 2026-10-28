@@ -20,9 +20,10 @@ import type { AtlasPage } from "@/lib/print/atlas-utils";
 import { resolveElementFrame } from "@/lib/print/elementFrame";
 import { mmToPx, pxToMm, resolvePageMm } from "@/lib/print/units";
 import { setReportCanvasZoom } from "@/lib/store/map/slice";
-import type { Project, ProjectLayer } from "@/lib/validations/project";
+import type { Project } from "@/lib/validations/project";
 import type { ReportElement, ReportLayoutConfig } from "@/lib/validations/reportLayout";
 
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useBasemap } from "@/hooks/map/MapHooks";
 import { useAtlasFeatures } from "@/hooks/reports/useAtlasFeatures";
 import { usePrintConfig } from "@/hooks/reports/usePrintConfig";
@@ -274,7 +275,9 @@ interface ReportElementRendererProps {
   zoom: number;
   isSelected: boolean;
   basemapUrl?: string | StyleSpecification;
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
+  /** The project's number locale. */
+  locale?: string;
   allElements: ReportElement[];
   paperWidthPx: number;
   paperHeightPx: number;
@@ -296,6 +299,7 @@ const ReportElementRenderer: React.FC<ReportElementRendererProps> = ({
   isSelected,
   basemapUrl,
   projectLayers,
+  locale,
   allElements,
   paperWidthPx,
   paperHeightPx,
@@ -742,6 +746,7 @@ const ReportElementRenderer: React.FC<ReportElementRendererProps> = ({
             zoom={zoom}
             basemapUrl={basemapUrl}
             projectLayers={projectLayers}
+            locale={locale}
             atlasPage={atlasPage}
             featureAttributes={featureAttributes}
             viewOnly={!isSelected}
@@ -759,7 +764,7 @@ const ReportElementRenderer: React.FC<ReportElementRendererProps> = ({
 
 interface ReportsCanvasProps {
   project?: Project;
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
   reportConfig?: ReportLayoutConfig;
   selectedElementId?: string | null;
   onElementSelect?: (elementId: string | null) => void;
@@ -1225,6 +1230,7 @@ const ReportsCanvas: React.FC<ReportsCanvasProps> = ({
                         zoom={zoom}
                         isSelected={selectedElementId === element.id}
                         basemapUrl={basemapUrl}
+                        locale={project?.locale ?? undefined}
                         projectLayers={projectLayers}
                         allElements={elements}
                         paperWidthPx={paperDimensions.widthPx}

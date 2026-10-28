@@ -1,19 +1,17 @@
 import { Box, InputAdornment, TextField } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { useParams } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "react-toastify";
 
-import { updateProjectLayerTree, useProjectLayerGroups, useProjectLayers } from "@/lib/api/projects";
+import { useProjectLayerGroups } from "@/lib/api/projects";
 import { SYSTEM_LAYERS_IDS } from "@/lib/constants";
-import { updateProjectLayer as updateLocalProjectLayer } from "@/lib/store/layer/slice";
-import { updateProjectLayerGroup as updateLocalProjectLayerGroup } from "@/lib/store/layer/slice";
-import type { ProjectLayer, ProjectLayerGroup, ProjectLayerTreeUpdate } from "@/lib/validations/project";
+import type { ProjectLayer, ProjectLayerGroup } from "@/lib/validations/project";
 import type { LayerInformationSchema } from "@/lib/validations/widget";
 
-import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
-import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
+import { useLayerTreeState } from "@/hooks/map/useLayerTreeState";
+import { type MapLayer, useMapLayers, withMapGroups } from "@/hooks/map/useMapLayers";
+import { useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { ProjectLayerTree } from "@/components/map/panels/layer/ProjectLayerTree";
 import TabsLayerLayout from "@/components/builder/widgets/information/TabsLayerLayout";
@@ -34,9 +32,7 @@ export const LayerInformationWidget = ({
   viewOnly,
 }: LayerInformationProps) => {
   const { t } = useTranslation("common");
-  const dispatch = useAppDispatch();
   const { projectId } = useParams() as { projectId: string };
-  const { mutate: mutateProjectLayers } = useFilteredProjectLayers(projectId);
   const [searchText, setSearchText] = useState("");
 
   // In edit mode, read the latest config from Redux for instant updates — but ONLY for THIS widget
@@ -50,13 +46,18 @@ export const LayerInformationWidget = ({
       ? (selectedBuilderItem.config as LayerInformationSchema)
       : configProp;
 
-  const reduxProjectLayers = useAppSelector((state) => state.layers.projectLayers);
+  // A published dashboard keeps its map layers (view state included) in the store; the builder reads the project's.
+  const reduxProjectLayers = useAppSelector((state) => state.layers.projectLayers) as MapLayer[];
   const reduxProjectLayerGroups = useAppSelector((state) => state.layers.projectLayerGroups);
 
-  const { layers: editProjectLayers } = useProjectLayers(viewOnly ? undefined : projectId);
-  const { layerGroups: editProjectLayerGroups, mutate: mutateProjectLayerGroups } = useProjectLayerGroups(
-    viewOnly ? undefined : projectId
+  const { layers: editProjectLayers, map: projectMap } = useMapLayers(viewOnly ? undefined : projectId);
+  const { layerGroups: editLayerGroups } = useProjectLayerGroups(viewOnly ? undefined : projectId);
+  const editProjectLayerGroups = useMemo(
+    () => withMapGroups(editLayerGroups ?? [], projectMap?.map),
+    [editLayerGroups, projectMap?.map]
   );
+  // An editor in the builder writes map state; a dashboard visitor's changes are view state.
+  const treeState = useLayerTreeState(projectId, viewOnly ? "public" : "edit");
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const opts = config.options as Record<string, any> | undefined;
@@ -80,12 +81,12 @@ export const LayerInformationWidget = ({
       // Hidden from legend by "Show in legend" toggle
       if (legendHiddenLayers.includes(layer.id)) return false;
       // Hide layers outside zoom range (only when behavior is "hide")
-      if (outOfZoomBehavior === "hide" && currentZoom !== undefined) {
-        const minZoom = layer.properties?.min_zoom;
-        const maxZoom = layer.properties?.max_zoom;
-        if (minZoom !== undefined && maxZoom !== undefined) {
-          if (currentZoom < minZoom || currentZoom > maxZoom) return false;
-        }
+      if (outOfZoomBehavior === "hide" && currentZoom !== undefined && layer.style) {
+        const { min_zoom: minZoom, max_zoom: maxZoom } = layer.style.document as {
+          min_zoom?: number;
+          max_zoom?: number;
+        };
+        if (currentZoom < (minZoom ?? 0) || currentZoom > (maxZoom ?? 24)) return false;
       }
       if (searchText) {
         return layer.name?.toLowerCase().includes(searchText.toLowerCase());
@@ -102,115 +103,6 @@ export const LayerInformationWidget = ({
     );
     return allGroups.filter((g) => visibleLayerGroupIds.has(g.id));
   }, [allGroups, filteredLayers]);
-
-  const handleTreeUpdate = useCallback(async (updatePayload: ProjectLayerTreeUpdate) => {
-    try {
-      if (viewOnly) {
-        updatePayload.items.forEach((item) => {
-          if (item.type === "layer" && item.properties) {
-            const existingLayer = reduxProjectLayers.find((l) => l.id === item.id);
-            if (existingLayer) {
-              dispatch(
-                updateLocalProjectLayer({
-                  id: item.id,
-                  changes: {
-                    properties: {
-                      ...existingLayer.properties,
-                      ...item.properties,
-                      legend: item.properties.legend
-                        ? { ...existingLayer.properties?.legend, ...item.properties.legend }
-                        : existingLayer.properties?.legend,
-                    },
-                  },
-                })
-              );
-            }
-          } else if (item.type === "group" && item.properties) {
-            const existingGroup = reduxProjectLayerGroups.find((g) => g.id === item.id);
-            if (existingGroup) {
-              dispatch(
-                updateLocalProjectLayerGroup({
-                  id: item.id,
-                  changes: {
-                    properties: {
-                      ...existingGroup.properties,
-                      ...item.properties,
-                    },
-                  },
-                })
-              );
-            }
-          }
-        });
-      } else {
-        // The dashboard widget only edits visibility / legend / expanded state.
-        // Pin `order` and `parent_id` to whatever is currently persisted so
-        // toggling visibility here cannot reorder or reparent layers on the map.
-        const sanitizedItems = updatePayload.items.map((item) => {
-          if (item.type === "layer") {
-            const existing = editProjectLayers?.find((l) => l.id === item.id);
-            return {
-              ...item,
-              order: existing?.order ?? item.order,
-              parent_id: existing?.layer_project_group_id ?? null,
-            };
-          }
-          const existing = editProjectLayerGroups?.find((g) => g.id === item.id);
-          return {
-            ...item,
-            order: existing?.order ?? item.order,
-            parent_id: existing?.parent_id ?? null,
-          };
-        });
-        const sanitizedPayload: ProjectLayerTreeUpdate = { items: sanitizedItems };
-
-        if (editProjectLayers) {
-          const updatedLayers = editProjectLayers.map((layer) => {
-            const updateItem = sanitizedItems.find(
-              (item) => item.id === layer.id && item.type === "layer"
-            );
-            if (updateItem) {
-              return {
-                ...layer,
-                properties: updateItem.properties
-                  ? { ...layer.properties, ...updateItem.properties }
-                  : layer.properties,
-              };
-            }
-            return layer;
-          });
-          mutateProjectLayers(updatedLayers, false);
-        }
-
-        if (editProjectLayerGroups) {
-          const updatedGroups = editProjectLayerGroups.map((group) => {
-            const updateItem = sanitizedItems.find(
-              (item) => item.id === group.id && item.type === "group"
-            );
-            if (updateItem) {
-              return {
-                ...group,
-                properties: updateItem.properties
-                  ? { ...group.properties, ...updateItem.properties }
-                  : group.properties,
-              };
-            }
-            return group;
-          });
-          mutateProjectLayerGroups(updatedGroups, false);
-        }
-
-        await updateProjectLayerTree(projectId, sanitizedPayload);
-      }
-    } catch (error) {
-      console.error("LayerInformationWidget - Error updating tree:", error);
-      toast.error(t("error_updating_layer_tree"));
-      if (!viewOnly) {
-        mutateProjectLayers();
-        mutateProjectLayerGroups();
-      }
-    }
-  }, [viewOnly, reduxProjectLayers, reduxProjectLayerGroups, editProjectLayers, editProjectLayerGroups, dispatch, projectId, mutateProjectLayers, mutateProjectLayerGroups, t]);
 
   const options = config.options;
   const layoutStyle = options?.layout_style || "tree";
@@ -247,7 +139,9 @@ export const LayerInformationWidget = ({
           projectLayers={filteredLayers}
           projectLayerGroups={filteredGroups}
           config={config}
-          onTreeUpdate={handleTreeUpdate}
+          onLayerStateChange={treeState.onLayerStateChange}
+          onGroupStateChange={treeState.onGroupStateChange}
+          onLayerTimeChange={treeState.onLayerTimeChange}
           viewOnly={viewOnly}
           downloadableLayers={downloadableLayers}
           simpleLegendLayerIds={legendSimpleLayers}
@@ -262,7 +156,9 @@ export const LayerInformationWidget = ({
           projectLayerGroups={filteredGroups}
           viewMode="view"
           isLoading={false}
-          onTreeUpdate={handleTreeUpdate}
+          onLayerStateChange={treeState.onLayerStateChange}
+          onGroupStateChange={treeState.onGroupStateChange}
+          onLayerTimeChange={treeState.onLayerTimeChange}
           toggleStyle={options?.toggle_style}
           togglePosition={options?.toggle_position}
           moreOptionsStyle={options?.more_options_style}

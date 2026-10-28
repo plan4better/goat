@@ -6,9 +6,11 @@ import { toast } from "react-toastify";
 import { Icon, ICON_NAME } from "@p4b/ui/components/Icon";
 
 import { emitInteractionEvent } from "@/lib/store/interaction/slice";
-import type { ProjectLayer, ProjectLayerGroup, ProjectLayerTreeUpdate } from "@/lib/validations/project";
+import type { ProjectLayerGroup } from "@/lib/validations/project";
 import type { LayerInformationSchema } from "@/lib/validations/widget";
 
+import type { GroupStateChange, LayerStateChange, LayerTimeChange } from "@/hooks/map/useLayerTreeState";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useAppDispatch } from "@/hooks/store/ContextHooks";
 
 import { MaskedImageIcon } from "@/components/map/panels/style/other/MaskedImageIcon";
@@ -20,10 +22,12 @@ const SWIPE_MIN_DISTANCE = 40;
 
 interface TabsLayerLayoutProps {
   projectId: string;
-  projectLayers: ProjectLayer[];
+  projectLayers: MapLayer[];
   projectLayerGroups: ProjectLayerGroup[];
   config: LayerInformationSchema;
-  onTreeUpdate: (payload: ProjectLayerTreeUpdate) => Promise<void>;
+  onLayerStateChange: LayerStateChange;
+  onGroupStateChange?: GroupStateChange;
+  onLayerTimeChange?: LayerTimeChange;
   viewOnly?: boolean;
   downloadableLayers?: number[];
   simpleLegendLayerIds?: number[];
@@ -37,7 +41,8 @@ const TabsLayerLayout = ({
   projectLayers,
   projectLayerGroups,
   config,
-  onTreeUpdate,
+  onLayerStateChange,
+  onLayerTimeChange,
   downloadableLayers,
   simpleLegendLayerIds,
   hideLegendHeading,
@@ -110,29 +115,13 @@ const TabsLayerLayout = ({
     return layers.map((l) => ({ ...l, layer_project_group_id: null }));
   }, [activeGroup, projectLayers]);
 
-  // Wrap onTreeUpdate to restore the original group ID before sending updates
-  const handleTreeUpdate = useCallback(
-    async (payload: ProjectLayerTreeUpdate) => {
-      const fixedPayload: ProjectLayerTreeUpdate = {
-        items: payload.items.map((item) => {
-          if (item.type === "layer" && activeGroup) {
-            return { ...item, parent_id: activeGroup.id };
-          }
-          return item;
-        }),
-      };
-      await onTreeUpdate(fixedPayload);
-    },
-    [onTreeUpdate, activeGroup]
-  );
-
   const togglableLayers = useMemo(
     () => activeGroupLayers.filter((l) => l.type !== "table"),
     [activeGroupLayers]
   );
 
   const allVisible = useMemo(
-    () => togglableLayers.every((l) => l.properties?.visibility !== false),
+    () => togglableLayers.every((l) => l.entry.visible !== false),
     [togglableLayers]
   );
 
@@ -141,7 +130,7 @@ const TabsLayerLayout = ({
     const map: Record<number, boolean> = {};
     for (const group of topLevelGroups) {
       map[group.id] = projectLayers.some(
-        (l) => l.layer_project_group_id === group.id && l.properties?.visibility !== false
+        (l) => l.layer_project_group_id === group.id && l.entry.visible !== false
       );
     }
     return map;
@@ -150,27 +139,17 @@ const TabsLayerLayout = ({
   const handleToggleAll = useCallback(async () => {
     if (togglableLayers.length === 0) return;
     const newVisibility = !allVisible;
-    const payload: ProjectLayerTreeUpdate = {
-      items: togglableLayers.map((layer, index) => ({
-        id: layer.id,
-        type: "layer" as const,
-        order: index,
-        parent_id: null,
-        properties: {
-          ...(layer.properties ?? {}),
-          visibility: newVisibility,
-        },
-      })),
-    };
     togglableLayers.forEach((layer) => {
       dispatch(emitInteractionEvent({ type: "visibility_changed", sourceId: layer.id, value: newVisibility }));
     });
     try {
-      await handleTreeUpdate(payload);
+      await Promise.all(
+        togglableLayers.map((layer) => onLayerStateChange(layer.id, { visible: newVisibility }))
+      );
     } catch {
       toast.error(t("error_updating_visibility"));
     }
-  }, [togglableLayers, allVisible, dispatch, handleTreeUpdate, t]);
+  }, [togglableLayers, allVisible, dispatch, onLayerStateChange, t]);
 
   if (topLevelGroups.length === 0) {
     return (
@@ -248,7 +227,8 @@ const TabsLayerLayout = ({
           projectLayerGroups={[]}
           viewMode="view"
           isLoading={false}
-          onTreeUpdate={handleTreeUpdate}
+          onLayerStateChange={onLayerStateChange}
+          onLayerTimeChange={onLayerTimeChange}
           toggleStyle={options?.toggle_style}
           togglePosition={options?.toggle_position}
           moreOptionsStyle={options?.more_options_style}

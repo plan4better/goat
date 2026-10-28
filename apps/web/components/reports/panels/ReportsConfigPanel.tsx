@@ -49,7 +49,7 @@ import {
   outputPixels,
   resolvePageMm,
 } from "@/lib/print/units";
-import type { Project, ProjectLayer } from "@/lib/validations/project";
+import type { Project } from "@/lib/validations/project";
 import type {
   AtlasConfig,
   AtlasFeatureCoverage,
@@ -62,6 +62,7 @@ import type { TemplateRead, TemplateUseResult } from "@/lib/validations/template
 
 import type { SelectorItem } from "@/types/map/common";
 
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useAtlasFeatures } from "@/hooks/reports/useAtlasFeatures";
 import { usePrintConfig } from "@/hooks/reports/usePrintConfig";
 import { type ExportFormat, useExportReport } from "@/hooks/useExportReport";
@@ -104,7 +105,7 @@ const DPI_LABEL_KEYS: Record<(typeof EXPORT_DPI_OPTIONS)[number], string> = {
 
 interface ReportsConfigPanelProps {
   project?: Project;
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
   selectedReport: ReportLayout | null;
   onSelectReport: (report: ReportLayout | null) => void;
   /** A template result's `?layout=<id>` (T7), threaded down from the map

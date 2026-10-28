@@ -29,6 +29,7 @@ import {
   formatBuffer,
   spatialFeatures,
 } from "@/lib/catalog/spatial";
+import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 import type { CatalogNutsRegion } from "@/lib/validations/catalog";
 
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
@@ -390,6 +391,7 @@ const CatalogSpatialDialog = ({
             cursor: mode === "region" ? "grab" : "crosshair",
           }}>
           <MapLibre
+            {...MAPLIBRE_MAP_OPTIONS}
             // A distinct id, because this map can share a `MapProvider` with the
             // project map (the Add Layer modal opens over it) and react-map-gl
             // registers every id-less map as "default" — two of those is a crash.

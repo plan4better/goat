@@ -4,9 +4,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next";
 import { v4 } from "uuid";
 
-import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
 import { DEFAULT_BASEMAP } from "@/lib/constants/basemaps";
-import { setSelectedLayers, updateProjectLayer } from "@/lib/store/layer/slice";
+import { setSelectedLayers } from "@/lib/store/layer/slice";
 import { useInteractionDispatcher } from "@/hooks/map/useInteractionDispatcher";
 import type { InteractionRule } from "@/lib/validations/interaction";
 import {
@@ -33,6 +32,8 @@ import { useDashboardLanguageOverride } from "@/hooks/dashboard/useDashboardLang
 import { useLayerStyleChange } from "@/hooks/map/LayerStyleHooks";
 import { useBasemap } from "@/hooks/map/MapHooks";
 import { useCustomBasemapMutations } from "@/hooks/map/useCustomBasemapMutations";
+import { useLayerTreeState } from "@/hooks/map/useLayerTreeState";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useMeasureTool } from "@/hooks/map/useMeasureTool";
 import { MapFixedPopupSlot } from "@/components/map/popover/MapFixedPopupSlot";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
@@ -60,6 +61,8 @@ import SimpleLayerStyle from "@/components/map/panels/style/SimpleLayerStyle";
 export interface PublicProjectLayoutProps {
   project?: Project;
   projectLayers?: ProjectLayer[];
+  /** The map's layers with their styles (popups, legends, search). */
+  mapLayers?: MapLayer[];
   projectLayerGroups?: ProjectLayerGroup[];
   // Accepts (key, value, refresh?) or (partial, refresh?) — see handleProjectUpdate in app/map/[projectId]/page.tsx.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,6 +73,7 @@ export interface PublicProjectLayoutProps {
 
 const PublicProjectLayout = ({
   projectLayers = [],
+  mapLayers,
   projectLayerGroups = [],
   project,
   onProjectUpdate,
@@ -83,7 +87,7 @@ const PublicProjectLayout = ({
   const dashboardFont = useDashboardFont(project);
 
   // Layer style change hook
-  const { handleStyleChange } = useLayerStyleChange(projectLayers, viewOnly);
+  const { onOpacityChange, onStyleChange } = useLayerStyleChange(project?.id, viewOnly);
 
   // Measure tool - using the reusable hook
   const measureTool = useMeasureTool();
@@ -92,10 +96,7 @@ const PublicProjectLayout = ({
     source: searchSource,
     layersById: searchLayersById,
     placeholder: searchPlaceholder,
-  } = usePublicSearchSource(
-    project,
-    projectLayers
-  );
+  } = usePublicSearchSource(project, mapLayers ?? []);
 
   const { translatedBaseMaps, activeBasemap, setActiveBasemap } = useBasemap(project);
   // Ephemeral preview of a non-active basemap while its edit dialog is open;
@@ -119,40 +120,17 @@ const PublicProjectLayout = ({
     [builderConfig]
   );
 
-  // SWR cache for editor mode (skipped in viewOnly to avoid an unnecessary fetch)
-  const { mutate: mutateProjectLayers } = useFilteredProjectLayers(
-    viewOnly ? "" : (project?.id ?? "")
-  );
+  // Interaction rules show and hide layers as view state: on the published map's rows in the store, in the builder's
+  // preview on the page's map only (nothing is written).
+  const { onLayerStateChange } = useLayerTreeState(project?.id, viewOnly ? "public" : "view");
 
   const handleVisibilitySync = useCallback(
     (layerId: number, visible: boolean) => {
-      const layer = projectLayers.find((l) => l.id === layerId);
-      if (!layer) return;
-      const currentVisibility = layer.properties?.visibility ?? true;
-      if (currentVisibility === visible) return;
-      // Update Redux (used by public view + map renderer)
-      dispatch(
-        updateProjectLayer({
-          id: layerId,
-          changes: {
-            properties: { ...layer.properties, visibility: visible },
-          },
-        })
-      );
-      // Update SWR cache (used by editor preview's layer tree)
-      if (!viewOnly) {
-        mutateProjectLayers(
-          (current) =>
-            current?.map((l) =>
-              l.id === layerId
-                ? { ...l, properties: { ...l.properties, visibility: visible } }
-                : l
-            ),
-          false
-        );
-      }
+      const layer = mapLayers?.find((l) => Number(l.id) === layerId);
+      if (!layer || (layer.entry?.visible !== false) === visible) return;
+      void onLayerStateChange(layerId, { visible });
     },
-    [projectLayers, dispatch, mutateProjectLayers, viewOnly]
+    [mapLayers, onLayerStateChange]
   );
 
   useInteractionDispatcher({
@@ -202,13 +180,17 @@ const PublicProjectLayout = ({
         content = <PropertiesPanel activeLayer={activeLayer} />;
       } else if (activeRight === MapSidebarItemID.STYLE) {
         title = `${t("style")}: ${activeLayer.name || t("layer")}`;
-        content = <SimpleLayerStyle activeLayer={activeLayer} onStyleChange={handleStyleChange} />;
+        // The map's layer, with its style (the builder's rows have none).
+        const styled = mapLayers?.find((l) => l.id === activeLayer.id) ?? (activeLayer as MapLayer);
+        content = (
+          <SimpleLayerStyle layer={styled} onOpacityChange={onOpacityChange} onStyleChange={onStyleChange} />
+        );
       }
 
       return { title, content };
     }
     return null;
-  }, [activeRight, activeLayer, handleStyleChange, t]);
+  }, [activeRight, activeLayer, mapLayers, onOpacityChange, onStyleChange, t]);
 
   const handleClose = () => {
     dispatch(setSelectedLayers([]));
@@ -853,7 +835,7 @@ const PublicProjectLayout = ({
               pointerEvents: "none",
               zIndex: (theme) => theme.zIndex.drawer + 2,
             }}>
-            <MapFixedPopupSlot layers={projectLayers} />
+            <MapFixedPopupSlot layers={mapLayers} />
           </Box>
         </Box>
       </Box>

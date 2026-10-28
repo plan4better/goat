@@ -2,21 +2,21 @@
 
 import { Box, Chip, CircularProgress, useTheme } from "@mui/material";
 import type { StyleSpecification } from "maplibre-gl";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Map, MapProvider, type MapRef, type ViewStateChangeEvent } from "react-map-gl/maplibre";
 
 import { getBasemapUrl } from "@/lib/constants/basemaps";
-import { PATTERN_IMAGES } from "@/lib/constants/pattern-images";
 import type { AtlasPage } from "@/lib/print/atlas-utils";
 import { calculateMapViewport, zoomToScale } from "@/lib/print/atlas-utils";
 import { mmToPx, SCREEN_DPI } from "@/lib/print/units";
-import { addOrUpdateMarkerImages, addPatternImages } from "@/lib/transformers/map-image";
-import type { FeatureLayerPointProperties } from "@/lib/validations/layer";
-import type { ProjectLayer } from "@/lib/validations/project";
+import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 import type { MapAtlasControl, ReportElement } from "@/lib/validations/reportLayout";
 
-import Layers from "@/components/map/Layers";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
+import { useMapElementRenderLayers } from "@/hooks/reports/useMapElementRenderLayers";
+
+import { StyledLayers } from "@/components/map/StyledLayers";
 
 // Fallback for a map element whose project has not synced a basemap yet: the
 // app's own Light basemap, rather than a second provider's copy of the same
@@ -35,7 +35,9 @@ const DEFAULT_VIEW_STATE = {
 interface MapElementRendererProps {
   element: ReportElement;
   basemapUrl?: string | StyleSpecification; // Live from project (synced) — string URL for vector basemaps, synthesized StyleSpecification for raster/solid customs
-  layers?: ProjectLayer[]; // Live from project (synced)
+  layers?: MapLayer[]; // Live from project (synced): the map's layers with their styles
+  /** The map's number locale; the viewer's language without one. */
+  locale?: string;
   zoom?: number; // Page zoom level for scaling
   atlasPage?: AtlasPage | null; // Current atlas page (if atlas enabled)
   viewOnly?: boolean;
@@ -62,6 +64,7 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
   element,
   basemapUrl,
   layers = [],
+  locale,
   zoom = 1,
   atlasPage,
   viewOnly = false,
@@ -70,7 +73,7 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
   onMapLoaded,
 }) => {
   const theme = useTheme();
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const mapRef = useRef<MapRef>(null);
   const [isNavigationMode, setIsNavigationMode] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -82,11 +85,7 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
   // Create a stable key for detecting config changes
   const configKey = JSON.stringify(configViewState);
 
-  // Layer lock settings from config
   const lockLayers = element.config?.lock_layers === true;
-  const lockStyles = element.config?.lock_styles === true;
-  const lockedLayerIds = element.config?.locked_layer_ids as number[] | undefined;
-  const lockedLayerStyles = element.config?.locked_layer_styles as Record<string, Record<string, unknown>> | undefined;
   const lockedBasemapUrl = element.config?.locked_basemap_url as string | StyleSpecification | undefined;
 
   // Use locked basemap when layers are locked, otherwise live from props
@@ -95,71 +94,12 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
 
   // Check if this map element is controlled by atlas
   const isAtlasControlled = element.config?.atlas?.enabled === true;
-
-  // Filter and transform layers based on lock state
-  const visibleLayers = useMemo(() => {
-    let filtered: ProjectLayer[];
-
-    if (lockLayers && lockedLayerIds) {
-      // Locked: only show the locked layer IDs with forced visibility
-      // (layer visibility from the project should NOT affect locked maps)
-      filtered = layers
-        .filter((layer) => lockedLayerIds.includes(layer.id))
-        .map((layer) => ({
-          ...layer,
-          properties: { ...layer.properties, visibility: true },
-        }));
-    } else {
-      // Normal: filter by visibility
-      filtered = layers.filter((layer) => {
-        const props = layer.properties as Record<string, unknown>;
-        return props.visibility !== false;
-      });
-    }
-
-    // If styles are also locked, overlay frozen properties onto matching layers
-    if (lockLayers && lockStyles && lockedLayerStyles) {
-      filtered = filtered.map((layer) => {
-        const frozenProps = lockedLayerStyles[String(layer.id)];
-        if (frozenProps) {
-          return { ...layer, properties: frozenProps };
-        }
-        return layer;
-      });
-    }
-
-    // Atlas coverage layer hiding (filter-to-current-feature is applied
-    // client-side via the atlasFilter prop on <Layers> below, so the
-    // tile URL stays stable across page changes and tiles aren't refetched).
-    if (
-      atlasPage &&
-      isAtlasControlled &&
-      atlasPage.coverageLayerProjectId &&
-      atlasPage.hiddenCoverageLayer
-    ) {
-      filtered = filtered.filter((layer) => layer.id !== atlasPage.coverageLayerProjectId);
-    }
-
-    return filtered;
-  }, [layers, lockLayers, lockStyles, lockedLayerIds, lockedLayerStyles, atlasPage, isAtlasControlled]);
-
-  // Atlas filter: applied client-side to the coverage layer's MapLibre filter
-  // so changing pages doesn't change the tile URL (no setTiles refetch).
-  const atlasFilter = useMemo(() => {
-    if (
-      !atlasPage ||
-      !isAtlasControlled ||
-      !atlasPage.coverageLayerProjectId ||
-      !atlasPage.filterToCurrentFeature ||
-      !atlasPage.feature
-    ) {
-      return undefined;
-    }
-    return {
-      layerId: atlasPage.coverageLayerProjectId,
-      featureId: atlasPage.feature.id,
-    };
-  }, [atlasPage, isAtlasControlled]);
+  // The locked or drawn layers, the atlas page's coverage layer hidden or filtered to its feature.
+  const renderLayers = useMapElementRenderLayers(
+    layers,
+    (element.config ?? {}) as Record<string, unknown>,
+    atlasPage
+  );
 
   // Use controlled viewState to prevent map from changing when container resizes (page zoom)
   const [viewState, setViewState] = useState({
@@ -316,22 +256,8 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
     onNavigationModeChange?.(isNavigationMode);
   }, [isNavigationMode, onNavigationModeChange]);
 
-  // Handle map load - load marker and pattern images for layers
-  const handleMapLoad = useCallback(() => {
-    if (mapRef.current) {
-      // Load marker images for point layers with custom markers
-      visibleLayers.forEach((layer) => {
-        if (layer.type === "feature" && layer.feature_layer_geometry_type === "point") {
-          const pointFeatureProperties = layer.properties as FeatureLayerPointProperties;
-          addOrUpdateMarkerImages(layer.id, pointFeatureProperties, mapRef.current);
-        }
-      });
-
-      // Load pattern images
-      addPatternImages(PATTERN_IMAGES ?? [], mapRef.current);
-    }
-    setMapLoaded(true);
-  }, [visibleLayers]);
+  // Icons and patterns load on demand through the renderer's image resolver.
+  const handleMapLoad = useCallback(() => setMapLoaded(true), []);
 
   // Track if we've already notified parent that map is ready
   const hasNotifiedReady = useRef(false);
@@ -417,6 +343,7 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
           )}
 
           <Map
+            {...MAPLIBRE_MAP_OPTIONS}
             ref={mapRef}
             style={{ width: "100%", height: "100%" }}
             {...viewState}
@@ -433,7 +360,7 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
             onIdle={handleMapIdle}
             interactive={isNavigationMode}
             canvasContextAttributes={{ preserveDrawingBuffer: true }}>
-            {visibleLayers.length > 0 && <Layers layers={visibleLayers} atlasFilter={atlasFilter} />}
+            {renderLayers.length > 0 && <StyledLayers layers={renderLayers} locale={locale || i18n.language} />}
           </Map>
         </Box>
 

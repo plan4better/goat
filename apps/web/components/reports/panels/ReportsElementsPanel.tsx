@@ -23,19 +23,20 @@ import { toast } from "react-toastify";
 import { Icon } from "@p4b/ui/components/Icon";
 
 import { dismissJob, useJobs } from "@/lib/api/processes";
-import type { Project, ProjectLayer } from "@/lib/validations/project";
+import type { Project } from "@/lib/validations/project";
 import type { ReportElement, ReportElementType, ReportLayout } from "@/lib/validations/reportLayout";
 
 import SettingsGroupHeader from "@/components/builder/widgets/common/SettingsGroupHeader";
 import SidePanel, { SidePanelTabPanel, SidePanelTabs } from "@/components/common/SidePanel";
 import JobProgressItem from "@/components/jobs/JobProgressItem";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useBasemap } from "@/hooks/map/MapHooks";
 import { reportElementIconMap } from "@/components/reports/elements/ReportElementIconMap";
 import ElementConfiguration from "@/components/reports/elements/config/ElementConfiguration";
 
 interface ReportsElementsPanelProps {
   project?: Project;
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
   selectedReport?: ReportLayout | null;
   selectedElementId?: string | null;
   onElementSelect?: (elementId: string | null) => void;

@@ -10,6 +10,7 @@ import { Layer as MapLayer, Map as MapLibre, Source } from "react-map-gl/maplibr
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { type CatalogSpatialFilter, formatBuffer, spatialFeatures } from "@/lib/catalog/spatial";
+import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
 import { useCatalogNutsGeometries } from "@/hooks/catalog/useCatalogNutsGeometries";
@@ -101,6 +102,7 @@ const CatalogSpatialSection = ({
             <Box sx={{ height: 96, position: "relative" }}>
               {bounds ? (
                 <MapLibre
+                  {...MAPLIBRE_MAP_OPTIONS}
                   // See the dialog: an id of its own, so this and the project map
                   // never both register as "default".
                   id="catalog-spatial-preview"

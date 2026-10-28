@@ -43,4 +43,6 @@ export type SelectorItem = {
   iconNode?: ReactNode;
   /** Shown but not choosable. */
   disabled?: boolean;
+  /** A line under the label in the menu saying what the choice does. */
+  sub?: string;
 };

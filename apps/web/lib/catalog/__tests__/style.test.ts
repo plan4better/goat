@@ -1,97 +1,40 @@
 import { describe, expect, it } from "vitest";
 
-import { type CatalogStyle, catalogPaint } from "@/lib/catalog/style";
+import { catalogSampleLayer } from "@/lib/catalog/style";
 
 /**
- * The catalog's published styles, turned into what the preview map draws with.
- *
- * The translation itself is the app's own (`transformToMapboxLayerStyleSpec`) —
- * deliberately, so a preview cannot diverge from the map that renders the same
- * dataset once it is added. What is worth pinning here is the boundary: which
- * published objects reach that transformer, what shape comes back for each
- * geometry, and that a malformed style degrades to "no style" rather than
- * throwing inside a map render.
+ * The catalog preview draws its sample with the dataset's own style through the same compiler as every map, so a
+ * preview cannot diverge from the layer it becomes once added. What is pinned here is the boundary: only a GOAT Style
+ * document reaches the compiler, and anything else falls back to the plain footprint rendering.
  */
 
-const style = (extra: Record<string, unknown> = {}): CatalogStyle =>
-  ({
-    color: [102, 194, 165],
-    filled: true,
-    stroked: false,
-    opacity: 0.8,
-    visibility: true,
-    ...extra,
-  }) as CatalogStyle;
+const sample: GeoJSON.FeatureCollection = {
+  type: "FeatureCollection",
+  features: [
+    { type: "Feature", geometry: { type: "Point", coordinates: [7, 50] }, properties: { measure: 3 } },
+    { type: "Feature", geometry: { type: "Point", coordinates: [8, 51] }, properties: { measure: 9 } },
+  ],
+};
 
-describe("catalogPaint", () => {
-  it("draws points as circles in the dataset's colour", () => {
-    const paint = catalogPaint(style(), "point");
-    expect(paint?.type).toBe("circle");
-    expect(paint?.paint["circle-color"]).toBe("#66C2A5");
-    expect(paint?.paint["circle-opacity"]).toBe(0.8);
+const STYLE = { version: 1, kind: "vector", symbol: { marker: { color: "#66c2a5" } } };
+
+describe("catalogSampleLayer", () => {
+  it("draws the sample with the dataset's style, features numbered for the highlight", () => {
+    const layer = catalogSampleLayer(STYLE, "point", sample);
+    expect(layer?.style).toEqual(STYLE);
+    expect(layer?.geometry).toBe("point");
+    expect(layer?.source.type).toBe("points");
+    const data = (layer?.source as { data: GeoJSON.FeatureCollection }).data;
+    expect(data.features.map((f) => f.id)).toEqual([1, 2]);
+    expect(catalogSampleLayer(STYLE, "point", sample, 2)?.highlight).toBe(2);
   });
 
-  it("draws areas as a fill", () => {
-    const paint = catalogPaint(style(), "polygon");
-    expect(paint?.type).toBe("fill");
-    expect(paint?.paint["fill-color"]).toBe("#66C2A5");
-  });
-
-  it("draws linework as a line", () => {
-    const paint = catalogPaint(style({ stroke_color: [217, 25, 85], stroke_width: 3 }), "line");
-    expect(paint?.type).toBe("line");
-    expect(paint?.paint["line-color"]).toBe("#D91955");
-  });
-
-  it("carries a data-driven colour ramp through as an expression", () => {
-    // The published styles really do this — `color_field` + `color_range` is a
-    // choropleth — and the preview sample carries the attributes it needs, so
-    // the ramp works on the sample rather than being flattened to one colour.
-    const paint = catalogPaint(
-      style({
-        color_field: { name: "measure", type: "number" },
-        color_scale: "quantile",
-        color_range: {
-          name: "YlGnBu",
-          type: "sequential",
-          colors: ["#ffffcc", "#c7e9b4", "#7fcdbb"],
-        },
-        color_scale_breaks: { breaks: [10, 20], min: 0, max: 30 },
-      }),
-      "polygon"
-    );
-    expect(Array.isArray(paint?.paint["fill-color"])).toBe(true);
-    expect(JSON.stringify(paint?.paint["fill-color"])).toContain("measure");
-  });
-
-  it("draws a dataset that was published while switched off", () => {
-    // `visibility` is a project's own layer toggle, captured into the published
-    // style by whoever happened to have the layer hidden. The preview has no
-    // toggle of its own, so honouring it leaves a blank map under a legend.
-    const paint = catalogPaint(style({ visibility: false }), "polygon");
-    expect(paint?.layout?.visibility).toBe("visible");
-  });
-
-  it("has nothing to draw without a style or a geometry type", () => {
-    expect(catalogPaint(undefined, "point")).toBeUndefined();
-    expect(catalogPaint(style(), undefined)).toBeUndefined();
-  });
-
-  it("declines a geometry the map has no shape for", () => {
-    // A raster's style is not a vector paint spec, and 108 of 10,793 layers
-    // state no geometry type at all.
-    expect(catalogPaint(style(), "raster")).toBeUndefined();
-    expect(catalogPaint(style(), "")).toBeUndefined();
-  });
-
-  it("degrades a malformed style to no style instead of throwing", () => {
-    // The object is published upstream, so a field of the wrong type must not be
-    // able to take a map render down with it.
-    expect(
-      catalogPaint({ color: "not-a-colour" } as unknown as CatalogStyle, "point")
-    ).toBeDefined();
-    expect(
-      catalogPaint({ color_range: { colors: null } } as unknown as CatalogStyle, "polygon")
-    ).toBeDefined();
+  it("a catalog style without version 1 falls back to the footprint", () => {
+    // Today's layer properties, which the catalog served before it upgraded styles on read.
+    expect(catalogSampleLayer({ color: [102, 194, 165], filled: true }, "point", sample)).toBeUndefined();
+    expect(catalogSampleLayer(undefined, "point", sample)).toBeUndefined();
+    expect(catalogSampleLayer(STYLE, undefined, sample)).toBeUndefined();
+    expect(catalogSampleLayer(STYLE, "raster", sample)).toBeUndefined();
+    expect(catalogSampleLayer(STYLE, "point", null)).toBeUndefined();
   });
 });

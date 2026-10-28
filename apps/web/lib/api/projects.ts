@@ -245,13 +245,19 @@ export const updateProjectInitialViewState = async (projectId: string, payload: 
   return await response.json();
 };
 
-export const updateProjectLayer = async (projectId: string, layerId: number, payload: ProjectLayer) => {
+/** What a project layer's PUT writes: the link's own fields (styles and map state have their own routes). */
+const LAYER_CHANGE_KEYS = ["name", "query", "other_properties", "charts"] as const;
+export type ProjectLayerChanges = Partial<Pick<ProjectLayer, (typeof LAYER_CHANGE_KEYS)[number]>>;
+
+/** Writes the fields of a project layer given in `changes`; the others stay as they are. */
+export const updateProjectLayer = async (projectId: string, layerId: number, changes: ProjectLayerChanges) => {
+  const body = Object.fromEntries(LAYER_CHANGE_KEYS.filter((key) => key in changes).map((key) => [key, changes[key]]));
   const response = await apiRequestAuth(`${PROJECTS_API_BASE_URL}/${projectId}/layer/${layerId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     throw Error(`Failed to update project layer ${layerId}`);

@@ -26,6 +26,8 @@ import { MapSidebarItemID } from "@/types/map/common";
 import { useAuthZ } from "@/hooks/auth/AuthZ";
 import { useBasemap } from "@/hooks/map/MapHooks";
 import { useCustomBasemapMutations } from "@/hooks/map/useCustomBasemapMutations";
+import { useLayerTreeState } from "@/hooks/map/useLayerTreeState";
+import { useMapLayers, withMapGroups } from "@/hooks/map/useMapLayers";
 import { useMeasureTool } from "@/hooks/map/useMeasureTool";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
@@ -50,6 +52,7 @@ import { MapFixedPopupSlot } from "@/components/map/popover/MapFixedPopupSlot";
 
 const toolbarHeight = 52;
 const panelWidth = 300;
+const LAYER_SETTINGS_IDS = [MapSidebarItemID.PROPERTIES, MapSidebarItemID.FILTER, MapSidebarItemID.STYLE];
 const GAP_SIZE = 16;
 
 interface DataProjectLayoutProps {
@@ -72,16 +75,26 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
   const { layers: allProjectLayers, mutate: mutateProjectLayers } = useProjectLayers(projectId);
   const { layerGroups: projectLayerGroups, mutate: mutateProjectLayerGroups } =
     useProjectLayerGroups(projectId);
+  // The same rows joined with the map request (styles and map state): the layer tree and popups read them.
+  const { layers: mapLayers, map: projectMap, mutate: mutateMap } = useMapLayers(projectId);
 
   // Filter out system layers
   const projectLayers = useMemo(() => {
     return allProjectLayers?.filter((layer) => !SYSTEM_LAYERS_IDS.includes(layer.layer_id)) || [];
   }, [allProjectLayers]);
+  const treeLayers = useMemo(
+    () => mapLayers.filter((layer) => !SYSTEM_LAYERS_IDS.includes(layer.layer_id)),
+    [mapLayers]
+  );
+  const treeGroups = useMemo(
+    () => withMapGroups(projectLayerGroups ?? [], projectMap?.map),
+    [projectLayerGroups, projectMap?.map]
+  );
 
   // Queryables for the search scope are only fetched once the control is opened.
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
-  const { searchLayers, layersById: searchLayersById } = useEditorSearchLayers(projectLayers, searchExpanded);
+  const { searchLayers, layersById: searchLayersById } = useEditorSearchLayers(treeLayers, searchExpanded);
   const searchSource = useMemo(
     () => ({ mode: "editor" as const, placesEnabled: true as const, layers: searchLayers }),
     [searchLayers]
@@ -110,10 +123,6 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
   // drawn, and again after Done returns to draw mode for the next one. Draw
   // mode has its own indicator.
   const showFeatureEditPanel = !!featureEditorActive && !!featureEditorActiveFeature;
-  // Panel height is read via CSS variable --data-panel-height for real-time updates
-  const isDataPanelOpen = useAppSelector((state) => state.map.isDataPanelOpen);
-  const mapMode = useAppSelector((state) => state.map.mapMode);
-  const dataPanelVisible = mapMode === "data" && isDataPanelOpen;
   const { isOrgEditor } = useAuthZ();
   const { folders } = useFolders({});
   const projectFolder = useMemo(
@@ -173,56 +182,44 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
     }
   };
 
-  // Unified tree update handler - handles all tree changes
+  // Shown or hidden layers and groups, legends opened or closed: map state, written by editors.
+  const treeState = useLayerTreeState(projectId, isProjectEditor ? "edit" : "view");
+
+  // Order, parents and groups opened or closed: the tree PUT, shown at once in both caches.
   const handleTreeUpdate = async (updatePayload: ProjectLayerTreeUpdate) => {
     try {
-      // First, do optimistic updates to both caches to prevent visual flicker
       if (allProjectLayers) {
-        // Update layers with new order, parent relationships, and properties
         const updatedLayers = allProjectLayers.map((layer) => {
           const updateItem = updatePayload.items.find(
             (item) => item.id === layer.id && item.type === "layer"
           );
-          if (updateItem) {
-            return {
-              ...layer,
-              order: updateItem.order,
-              layer_project_group_id: updateItem.parent_id || null,
-              // Update properties if provided (includes legend.collapsed, visibility, etc.)
-              properties: updateItem.properties
-                ? { ...layer.properties, ...updateItem.properties }
-                : layer.properties,
-            };
-          }
-          return layer;
+          return updateItem
+            ? { ...layer, order: updateItem.order, layer_project_group_id: updateItem.parent_id || null }
+            : layer;
         });
         mutateProjectLayers(updatedLayers, false);
       }
 
       if (projectLayerGroups) {
-        // Update groups with new order, parent relationships, and properties
         const updatedGroups = projectLayerGroups.map((group) => {
           const updateItem = updatePayload.items.find(
             (item) => item.id === group.id && item.type === "group"
           );
-          if (updateItem) {
-            return {
-              ...group,
-              order: updateItem.order,
-              parent_id: updateItem.parent_id || null,
-              // Update properties if provided (includes expanded, visibility, etc.)
-              properties: updateItem.properties
-                ? { ...group.properties, ...updateItem.properties }
-                : group.properties,
-            };
-          }
-          return group;
+          return updateItem
+            ? {
+                ...group,
+                order: updateItem.order,
+                parent_id: updateItem.parent_id || null,
+                ...(updateItem.expanded !== undefined ? { expanded: updateItem.expanded } : {}),
+              }
+            : group;
         });
         mutateProjectLayerGroups(updatedGroups, false);
       }
 
-      // Then sync with server using the batch update endpoint
       await updateProjectLayerTree(projectId, updatePayload);
+      // The map's order follows the tree.
+      await mutateMap();
     } catch (error) {
       console.error("Failed to update tree", error);
       toast.error(t("error_updating_tree"));
@@ -246,21 +243,17 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
 
   // --- DYNAMIC CONTENT ---
   const activeRightComponent = useMemo(() => {
-    // Check for ANY layer configuration panel ID
-    const layerSettingsIds = [MapSidebarItemID.PROPERTIES, MapSidebarItemID.FILTER, MapSidebarItemID.STYLE];
-
     // A bundle is selected instead of a layer: same panel slot, its own panel.
-    if (activeRight && layerSettingsIds.includes(activeRight) && selectedBundleId) {
+    if (activeRight && LAYER_SETTINGS_IDS.includes(activeRight) && selectedBundleId) {
       return <BundleSettingsPanel projectId={projectId} />;
     }
-    if (activeRight && layerSettingsIds.includes(activeRight)) {
-      // Return the new panel component
-      return <LayerSettingsPanel projectId={projectId} projectLayers={projectLayers || []} />;
+    if (activeRight && LAYER_SETTINGS_IDS.includes(activeRight)) {
+      return <LayerSettingsPanel projectId={projectId} projectLayers={treeLayers} />;
     }
 
     // B. STANDARD TOOLS
     return rightSidebar.topItems?.find((item) => item.id === activeRight)?.component;
-  }, [activeRight, rightSidebar.topItems, projectId, projectLayers, selectedBundleId]);
+  }, [activeRight, rightSidebar.topItems, projectId, treeLayers, selectedBundleId]);
 
   // --- INTERACTION LOGIC ---
 
@@ -335,10 +328,13 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           <FloatingPanel width={panelWidth} maxHeight="100%">
             <ProjectLayerTree
               projectId={projectId}
-              projectLayers={projectLayers || []}
-              projectLayerGroups={projectLayerGroups || []}
+              projectLayers={treeLayers}
+              projectLayerGroups={treeGroups}
               isLoading={false}
               onTreeUpdate={handleTreeUpdate}
+              onLayerStateChange={treeState.onLayerStateChange}
+              onGroupStateChange={treeState.onGroupStateChange}
+              onLayerTimeChange={treeState.onLayerTimeChange}
               onLayerDuplicate={handleLayerDuplicate}
               onCreateGroup={handleCreateGroup}
               onUpdateGroup={handleUpdateGroup}
@@ -385,39 +381,17 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           position: "absolute",
           top: toolbarHeight + 10,
           height: `calc(100% - ${toolbarHeight + 20}px - var(${DATA_PANEL_HEIGHT_VAR}, 0px))`,
-          right: dataPanelVisible && activeRightComponent ? `${panelWidth + GAP_SIZE + 10}px` : 10,
+          // The map controls sit left of the right panels, which run the whole height (prototype `.style`).
+          right: rightStackWidth ? `${rightStackWidth + GAP_SIZE + 10}px` : 10,
           zIndex: (theme) => theme.zIndex.drawer + 1,
           pointerEvents: "none",
           alignItems: "flex-end",
         }}>
-        {!dataPanelVisible && (
-          <Stack
-            direction="row"
-            spacing={2}
-            sx={{
-              alignItems: "flex-start",
-              flex: 1,
-              minHeight: 0,
-              overflow: "hidden",
-            }}>
-            <MeasureResultsPanel {...measureTool} />
-            {showFeatureEditPanel && (
-              <FloatingPanel width={320} maxHeight="100%" fillHeight>
-                <FeatureEditPanel />
-              </FloatingPanel>
-            )}
-            {activeRightComponent && (
-              <FloatingPanel width={panelWidth} maxHeight="100%" fillHeight>
-                {activeRightComponent}
-              </FloatingPanel>
-            )}
-          </Stack>
-        )}
         <Stack
           direction="column"
           alignItems="flex-end"
           sx={{
-            mt: dataPanelVisible ? "auto" : 2,
+            mt: "auto",
             flexShrink: 0,
             pointerEvents: "none",
           }}>
@@ -456,8 +430,8 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           </Box>
         </Stack>
       </Stack>
-      {/* Right panel + measure results — rendered separately when data panel is open so controls can be to the left */}
-      {dataPanelVisible && (
+      {/* Right panels and measure results, the whole height, the map controls to their left */}
+      {rightStackWidth > 0 && (
         <Box
           {...{ [DATA_PANEL_HEIGHT_CONSUMER_ATTR]: "" }}
           sx={{
@@ -508,7 +482,7 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           // button column.
           zIndex: (theme) => theme.zIndex.drawer + 2,
         }}>
-        <MapFixedPopupSlot layers={projectLayers} />
+        <MapFixedPopupSlot layers={mapLayers} />
       </Box>
       <CustomBasemapDialog
         open={dialogOpen}

@@ -12,7 +12,7 @@ import {
 const projectLayer = (over: Partial<Record<string, unknown>> = {}) => ({
   id: 42,
   layer_id: "dataset-abc",
-  properties: { visibility: true },
+  visible: true,
   ...over,
 });
 
@@ -23,7 +23,7 @@ describe("findPopupLayer", () => {
   });
 
   it("matches on stringified id (plain Layer)", () => {
-    const layers = [{ id: 7, properties: { visibility: true } }];
+    const layers = [{ id: 7, visible: true }];
     expect(findPopupLayer("7", layers)).toBe(layers[0]);
   });
 
@@ -54,8 +54,8 @@ describe("findPopupLayer", () => {
 });
 
 describe("shouldClosePopupForHiddenLayer", () => {
-  it("closes when the owning layer's visibility is toggled off", () => {
-    const layers = [projectLayer({ properties: { visibility: false } })];
+  it("closes when the owning layer is hidden", () => {
+    const layers = [projectLayer({ visible: false })];
     expect(shouldClosePopupForHiddenLayer("dataset-abc", layers)).toBe(true);
   });
 
@@ -63,8 +63,8 @@ describe("shouldClosePopupForHiddenLayer", () => {
     expect(shouldClosePopupForHiddenLayer("dataset-abc", [projectLayer()])).toBe(false);
   });
 
-  it("treats a missing visibility flag as visible (default true)", () => {
-    const layers = [projectLayer({ properties: {} })];
+  it("treats a missing visible flag as drawn", () => {
+    const layers = [projectLayer({ visible: undefined })];
     expect(shouldClosePopupForHiddenLayer("dataset-abc", layers)).toBe(false);
   });
 
@@ -81,13 +81,22 @@ describe("shouldClosePopupForHiddenLayer", () => {
   });
 
   it("tracks the clicked twin's visibility when the dataset backs multiple project layers", () => {
-    const hiddenTwin = projectLayer({ id: 9, properties: { visibility: false } });
+    const hiddenTwin = projectLayer({ id: 9, visible: false });
     const visibleTwin = projectLayer({ id: 23 });
     const layers = [hiddenTwin, visibleTwin];
     // Popup opened on the visible twin: the hidden sibling must not close it.
     expect(shouldClosePopupForHiddenLayer("dataset-abc", layers, "23")).toBe(false);
     // Popup opened on the hidden twin: close even though a visible sibling exists.
     expect(shouldClosePopupForHiddenLayer("dataset-abc", layers, "9")).toBe(true);
+  });
+});
+
+describe("shouldClosePopupForHiddenLayer on map layers", () => {
+  it("closes when the map layer is not drawn (its own or a group's visibility)", () => {
+    const hidden = { id: 42, layer_id: "dataset-abc", visible: false };
+    expect(shouldClosePopupForHiddenLayer("dataset-abc", [hidden], "42")).toBe(true);
+    expect(shouldClosePopupForHiddenLayer("dataset-abc", [{ ...hidden, visible: true }], "42")).toBe(false);
+    expect(findPopupLayer("dataset-abc", [{ ...hidden, layer_id: null }], "42")?.id).toBe(42);
   });
 });
 

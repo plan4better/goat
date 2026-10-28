@@ -1,16 +1,14 @@
-import { cogProtocol } from "@geomatico/maplibre-cog-protocol";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import type { Theme } from "@mui/material";
 import { Box, useMediaQuery, useTheme } from "@mui/material";
 import centroid from "@turf/centroid";
-import maplibregl from "maplibre-gl";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { MapGeoJSONFeature, StyleSpecification } from "maplibre-gl";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Map, type MapGeoJSONFeature, type MapLayerMouseEvent, type MapLayerTouchEvent, type MapRef, type ViewState } from "react-map-gl/maplibre";
+import { Map, type MapLayerMouseEvent, type MapLayerTouchEvent, type MapRef, type ViewState } from "react-map-gl/maplibre";
 import type { ViewStateChangeEvent } from "react-map-gl/maplibre";
 import { v4 } from "uuid";
 
-import { PATTERN_IMAGES } from "@/lib/constants/pattern-images";
 import {
   setClickedFeatureForFilter,
   setCurrentZoom,
@@ -18,28 +16,27 @@ import {
   setPopupInfo,
   setPopupPreview,
 } from "@/lib/store/map/slice";
-import { addOrUpdateMarkerImages, addPatternImages } from "@/lib/transformers/map-image";
+import { HEXAGON_PART, hexagonPopup, hexagonValues, isHexagon } from "@/lib/style/h3Popup";
+import { rasterPopupLayer, rasterValuesAt } from "@/lib/style/raster/popup";
+import { carryProjectLayers, mapLayerIdsOf, projectLayerOf } from "@/lib/style/render/mapLayers";
+import {
+  INTERACTIVE_PARTS,
+  type ViewLayer,
+  clusterFeatureOf,
+  topFeature,
+  zoomToCluster,
+} from "@/lib/style/render/viewLayers";
 import { applyMapLanguage } from "@/hooks/map/MapHooks";
+import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 import createPulsingDot from "@/lib/utils/map/pulsing-dot-image";
-import {
-  buildPopupFieldConfig,
-  getEffectivePopupTrigger,
-  popupFieldInfo,
-  selectPopupProperties,
-  splitPopupProperties,
-} from "@/lib/utils/map/popupProperties";
-import {
-  type FeatureLayerPointProperties,
-  type Layer,
-  type PopupProperties,
-} from "@/lib/validations/layer";
-import type { ProjectLayer } from "@/lib/validations/project";
+import { type PopupTrigger, splitPopupProperties } from "@/lib/utils/map/popupProperties";
 
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { useFeatureEditor } from "@/hooks/map/useFeatureEditor";
+import { useRenderLayers } from "@/hooks/map/useRenderLayers";
 import GeocoderLayer from "@/components/map/GeocoderLayer";
-import Layers from "@/components/map/Layers";
+import { type EditedLayer, StyledLayers, useLiveLayer } from "@/components/map/StyledLayers";
 import ToolboxLayers from "@/components/map/ToolboxLayers";
 import UserLocationLayer from "@/components/map/UserLocationLayer";
 import DrawControl from "@/components/map/controls/Draw";
@@ -47,19 +44,16 @@ import FeatureEditToolbar from "@/components/map/controls/FeatureEditToolbar";
 import ConfirmModal from "@/components/modals/Confirm";
 import MapPopoverEditor from "@/components/map/controls/PopoverEditor";
 import { MeasureLabels } from "@/components/map/controls/measure";
-import { buildLayerIcon } from "@/components/map/panels/layer/legend/LayerIcon";
-import { seedPopupFromInteraction } from "@/components/map/panels/style/popup/seedFromLegacy";
+import { featureSwatchIcon } from "@/components/map/legend/StyleLegend";
 import { ActiveFeaturePulseLayer } from "@/components/map/popover/ActiveFeaturePulseLayer";
 import { MapFeaturePopover } from "@/components/map/popover/MapFeaturePopover";
-import { normalizePopup } from "@/components/map/popover/normalizePopup";
+import { layerPopup } from "@/components/map/popover/normalizePopup";
 import {
   findPopupLayer,
   layerHighlightsActiveFeature,
   shouldClosePopupForHiddenLayer,
   shouldHighlightActivePopupFeature,
 } from "@/components/map/popover/popupVisibility";
-
-maplibregl.addProtocol("cog", cogProtocol);
 
 interface MapProps {
   mapRef: React.RefObject<MapRef | null> | null;
@@ -75,8 +69,13 @@ interface MapProps {
   maxExtent?: [number, number, number, number];
   minZoom?: number;
   maxZoom?: number;
-  mapStyle: string | maplibregl.StyleSpecification;
-  layers: ProjectLayer[] | Layer[];
+  mapStyle: string | StyleSpecification;
+  /** Top first, each with its active style. */
+  layers: ViewLayer[];
+  /** Layers whose style panel is open: drawn from their editor store. */
+  editing?: EditedLayer[];
+  /** The map's number locale (the map document's); the viewer's language when unset. */
+  locale?: string | null;
   onMove?: ((e: ViewStateChangeEvent) => void | undefined) | undefined;
   onMoveEnd?: ((e: ViewStateChangeEvent) => void | undefined) | undefined;
   onClick?: (e: MapLayerMouseEvent) => void;
@@ -99,11 +98,24 @@ interface MapProps {
  */
 const ACTIVE_FEATURE_PULSE_COLOR = "#2BB381";
 
+const triggerOf = (layer: ViewLayer): PopupTrigger | undefined => {
+  const config = layerPopup(layer);
+  return config && config.enabled !== false ? config.trigger : undefined;
+};
+
+/** The dataset a popup reads its fields from: a project layer's `layer_id`, a dataset's own id. */
+const datasetOf = (layer: ViewLayer): string => String(layer.layer_id ?? layer.id);
+
+/** The least time between two cell value reads while hovering a raster file, in ms. */
+const RASTER_HOVER_INTERVAL = 100;
+
 const MapViewer: React.FC<MapProps> = ({
   mapRef,
   initialViewState,
   mapStyle,
   layers,
+  editing,
+  locale,
   onMove,
   onMoveEnd,
   onClick,
@@ -132,7 +144,7 @@ const MapViewer: React.FC<MapProps> = ({
   // --- Basemap swap without tearing down project layers ---------------------
   // react-map-gl is given the basemap once (frozen prop). Changing the basemap
   // then goes through an imperative setStyle with transformStyle that carries
-  // the project sources/layers (stable "src-*" ids from Layers.tsx) across the
+  // the project sources/layers (stable "src-*" ids from the renderer) across the
   // style change, so MapLibre's diff leaves them mounted and their tiles are
   // NOT refetched. Feeding the changed style through the prop instead would make
   // react-map-gl replace the whole style, dropping and re-adding every source.
@@ -155,21 +167,9 @@ const MapViewer: React.FC<MapProps> = ({
       if (appliedMapStyleRef.current === target) return;
       map.setStyle(target, {
         diff: true,
-        transformStyle: (previous, next) => {
-          if (!previous) return next;
-          // Carry every project source (and the layers bound to it) from the
-          // old style into the new basemap style, unchanged.
-          const sources = { ...next.sources };
-          for (const [id, src] of Object.entries(previous.sources ?? {})) {
-            if (id.startsWith("src-")) sources[id] = src;
-          }
-          const carriedLayers = (previous.layers ?? []).filter(
-            (l) => "source" in l && typeof l.source === "string" && l.source.startsWith("src-")
-          );
-          // Append on top of the basemap layers; the basemapLayerConfig effect
-          // in <Layers> re-applies any promote/restack afterwards on styledata.
-          return { ...next, sources, layers: [...next.layers, ...carriedLayers] };
-        },
+        // The project layers stay on top of the new basemap; the renderer places them again on style.load and
+        // the custom basemap's layer settings restack them on styledata.
+        transformStyle: carryProjectLayers,
       });
       appliedMapStyleRef.current = target;
     };
@@ -184,33 +184,25 @@ const MapViewer: React.FC<MapProps> = ({
   // ProjectLayer's own id (`projectLayerId`) wins — the same dataset can back
   // several project layers with different popup configs — with a fallback to
   // the dataset-id match for popups dispatched without one.
-  const clickedPopupLayer = useMemo(
-    // Explicit type argument: `layers` is a union of arrays
-    // (ProjectLayer[] | Layer[]), which generic inference can't unify.
-    () =>
-      findPopupLayer<ProjectLayer | Layer>(popupInfo?.layerId, layers, popupInfo?.projectLayerId),
-    [popupInfo?.layerId, popupInfo?.projectLayerId, layers],
+  // While its style panel is open, a layer's popup is the edited one (the map draws the same document).
+  const clickedPopupLayer = useLiveLayer(
+    useMemo(
+      () => findPopupLayer(popupInfo?.layerId, layers, popupInfo?.projectLayerId),
+      [popupInfo?.layerId, popupInfo?.projectLayerId, layers],
+    ),
+    editing,
   );
 
-  // `popup` only exists on feature-layer property variants; non-feature layers
-  // (raster/table/etc) carry differently-shaped properties. Narrow once here so
-  // the JSX stays readable. Layers without an explicit `popup` block fall
-  // through to `seedPopupFromInteraction`, which synthesizes a new-style popup
-  // from the legacy `interaction` config — so every clickable layer renders the
-  // new popup without a migration step. The popup editor seeds the same way.
-  const activePopupConfig = useMemo<PopupProperties | undefined>(() => {
-    if (!clickedPopupLayer) return undefined;
-    const props = clickedPopupLayer.properties as
-      | { popup?: PopupProperties; interaction?: { type?: string; content?: never[] } }
-      | undefined;
-    if (props?.popup) return normalizePopup(props.popup);
-    return normalizePopup(seedPopupFromInteraction(props?.interaction));
-  }, [clickedPopupLayer]);
+  // The popup is the style's (spec 7.4) in today's popup configuration.
+  const activePopupConfig = useMemo(
+    () => popupInfo?.popup ?? layerPopup(clickedPopupLayer, popupInfo?.featureProperties),
+    [clickedPopupLayer, popupInfo?.popup, popupInfo?.featureProperties],
+  );
 
   // Same lookup pattern as `clickedPopupLayer` above, but for the live-preview
   // controller (Popup section "Show preview" toggle). `popupPreview.layerId`
   // is the dataset id; we match against ProjectLayer.layer_id or Layer.id.
-  const previewLayer = useMemo(() => {
+  const storedPreviewLayer = useMemo(() => {
     if (!popupPreview?.layerId || !layers) return undefined;
     const target = popupPreview.layerId;
     return layers.find(
@@ -220,14 +212,8 @@ const MapViewer: React.FC<MapProps> = ({
     );
   }, [popupPreview?.layerId, layers]);
 
-  const previewPopupConfig = useMemo<PopupProperties | undefined>(() => {
-    if (!previewLayer) return undefined;
-    const props = previewLayer.properties as
-      | { popup?: PopupProperties; interaction?: { type?: string; content?: never[] } }
-      | undefined;
-    if (props?.popup) return normalizePopup(props.popup);
-    return normalizePopup(seedPopupFromInteraction(props?.interaction));
-  }, [previewLayer]);
+  const previewLayer = useLiveLayer(storedPreviewLayer, editing);
+  const previewPopupConfig = useMemo(() => layerPopup(previewLayer), [previewLayer]);
 
   // Small layer-style icon shown in the popup header. Mirrors the preview
   // icon the Layers panel renders (see ProjectLayerTree.tsx ~L1134) so
@@ -237,11 +223,11 @@ const MapViewer: React.FC<MapProps> = ({
     highlightedFeature?.properties ??
     popupInfo?.properties) as Record<string, unknown> | undefined;
   const clickedPopupLayerIcon = useMemo(
-    () => buildLayerIcon(clickedPopupLayer, clickedFeatureProperties),
+    () => featureSwatchIcon(clickedPopupLayer, clickedFeatureProperties),
     [clickedPopupLayer, clickedFeatureProperties],
   );
   const previewLayerIcon = useMemo(
-    () => buildLayerIcon(previewLayer, popupPreview?.feature?.properties ?? undefined),
+    () => featureSwatchIcon(previewLayer, popupPreview?.feature?.properties ?? undefined),
     [previewLayer, popupPreview?.feature?.properties],
   );
 
@@ -265,40 +251,81 @@ const MapViewer: React.FC<MapProps> = ({
 
   const featureEditorHandlers = useFeatureEditor(mapRef);
 
-  const pendingFeaturesExist = useAppSelector(
-    (state) => Object.keys(state.featureEditor.pendingFeatures).length > 0
-  );
+  // The renderer's layers that clicks and hovers find features on (pending edits included), read from its registry
+  // after every change.
+  const [drawnLayerIds, setDrawnLayerIds] = useState<string[]>([]);
   const interactiveLayerIds = useMemo(() => {
-    const ids = layers?.map((layer) => layer.id.toString()) || [];
-    // For point layers with clustering enabled, include the cluster
-    // sub-layer ids so MapLibre returns them in click events (needed for
-    // cluster expand-on-click; layer-id convention from Layers.tsx).
-    // Non-existent ids are silently ignored by MapLibre, so adding all
-    // four covers both circle-cluster and marker-cluster modes.
-    layers?.forEach((l) => {
-      if (
-        l.type === "feature" &&
-        l.feature_layer_geometry_type === "point" &&
-        (l.properties as { cluster?: { enabled?: boolean } } | undefined)?.cluster?.enabled
-      ) {
-        ids.push(
-          `${l.id}-cluster-bubble`,
-          `${l.id}-cluster-count`,
-          `${l.id}-cluster-icon`,
-          `${l.id}-cluster-badge`,
-        );
+    const map = mapRef?.current?.getMap();
+    if (!map) return [];
+    const keys = new Set(drawnLayerIds.map((id) => projectLayerOf(map, id)));
+    return [...keys].flatMap((key) =>
+      key === undefined ? [] : mapLayerIdsOf(map, key, { kinds: [...INTERACTIVE_PARTS, HEXAGON_PART] }),
+    );
+  }, [drawnLayerIds, mapRef]);
+
+  // A raster file's popup (spec 9.7): the cell values under the pointer, from the raster service; the latest pointer
+  // position wins over answers still on their way.
+  const rasterRequestRef = useRef(0);
+  const lastRasterHoverRef = useRef(0);
+  const openRasterPopup = (lngLat: { lng: number; lat: number }, trigger: "click" | "hover"): boolean => {
+    const map = mapRef?.current?.getMap();
+    const layer = map ? rasterPopupLayer(layers ?? [], trigger) : undefined;
+    if (!map || !layer) return false;
+    const activeLayerId = popupInfo?.layerId;
+    if (activeLayerId && activeLayerId !== datasetOf(layer)) return false;
+    const request = ++rasterRequestRef.current;
+    void rasterValuesAt(layer, lngLat).then((values) => {
+      if (request !== rasterRequestRef.current) return;
+      if (!values) {
+        if (trigger === "hover" && hoverPopupKeyRef.current !== undefined) {
+          hoverPopupKeyRef.current = undefined;
+          dispatch(setPopupInfo(undefined));
+        }
+        return;
       }
+      if (trigger === "hover") hoverPopupKeyRef.current = `raster:${layer.id}`;
+      dispatch(
+        setPopupInfo({
+          lngLat: [lngLat.lng, lngLat.lat],
+          properties: values as unknown as Record<string, string>,
+          featureProperties: values,
+          triggeredBy: trigger,
+          title: layer.name ?? "",
+          layerId: datasetOf(layer),
+          projectLayerId: layer.id.toString(),
+          onClose: handlePopoverClose,
+        }),
+      );
     });
-    if (pendingFeaturesExist) {
-      ids.push("pending-features-fill", "pending-features-line", "pending-features-circle", "pending-features-symbol");
-    }
-    return ids;
-  }, [layers, pendingFeaturesExist]);
+    return true;
+  };
 
   const handlePopoverClose = () => {
     dispatch(setPopupInfo(undefined));
     dispatch(setHighlightedFeature(undefined));
     hoverPopupKeyRef.current = undefined;
+  };
+
+  // A hexagon groups many points: its popup shows its own values, and there is no single feature to highlight.
+  const openHexagonPopup = (
+    layer: ViewLayer,
+    feature: MapGeoJSONFeature,
+    lngLat: { lng: number; lat: number },
+    trigger: "click" | "hover",
+  ) => {
+    dispatch(setHighlightedFeature(undefined));
+    dispatch(
+      setPopupInfo({
+        lngLat: [lngLat.lng, lngLat.lat],
+        title: layer.name ?? "",
+        layerId: datasetOf(layer),
+        projectLayerId: layer.id.toString(),
+        featureProperties: hexagonValues(feature.properties),
+        popup: hexagonPopup(layerPopup(layer), layer.style?.document, t),
+        triggeredBy: trigger,
+        onClose: handlePopoverClose,
+      }),
+    );
   };
 
   // Close a feature popup when its owning layer is hidden or removed. popupInfo
@@ -368,95 +395,45 @@ const MapViewer: React.FC<MapProps> = ({
       }) as typeof features;
     }
 
-    // Cluster click: zoom to the cluster's expansion zoom.
-    // Layer-id convention from Layers.tsx: cluster layers contain `-cluster-`
-    // (bubble / count / icon / badge).
-    const clusterFeature = features?.find(
-      (f) =>
-        typeof f.layer.id === "string" &&
-        f.layer.id.includes("-cluster-") &&
-        f.properties?.cluster_id != null,
-    );
-    if (clusterFeature && mapRef?.current) {
-      const map = mapRef.current.getMap();
-      const sourceId = clusterFeature.layer.source;
-      const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
-      const clusterId = clusterFeature.properties?.cluster_id;
-      if (source && clusterId != null && "getClusterExpansionZoom" in source) {
-        source
-          .getClusterExpansionZoom(clusterId)
-          .then((zoom: number) => {
-            const geom = clusterFeature.geometry;
-            if (geom?.type === "Point") {
-              map.easeTo({
-                center: geom.coordinates as [number, number],
-                zoom,
-                duration: 500,
-              });
-            }
-          })
-          .catch(() => {
-            // Cluster source may have been torn down between click and resolve; ignore.
-          });
-      }
+    const map = mapRef?.current?.getMap();
+
+    // Cluster click: zoom to where the cluster breaks apart.
+    const clusterFeature = map ? clusterFeatureOf(map, features) : undefined;
+    if (map && clusterFeature) {
+      void zoomToCluster(map, clusterFeature);
       return;
     }
 
     // Track whether the popup block already highlighted a feature
     let didHighlight = false;
 
-    if (features && features.length > 0 && isGetInfoActive) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let interactiveFeature = null as any;
-      let interactiveLayer: Layer | ProjectLayer | undefined = undefined;
-
-      // Find the first feature whose layer should fire a popup on click.
-      // Accepts `click` or `click_and_hover` in the new schema, plus the
-      // legacy `interaction.type === "click"`. Hover-only layers are
-      // skipped here and handled in `handleMapOverImmediate`.
-      const isClickable = (
-        layer: Layer | ProjectLayer | undefined,
-      ): boolean => {
-        const t = getEffectivePopupTrigger(layer);
-        return t === "click" || t === "click_and_hover";
-      };
-      // Once a popup is open for one layer, clicking on another layer's
-      // feature should NOT replace it — the user must close the current
-      // popup first. We still allow the same-layer case to update (e.g.
-      // clicking a different feature in the same layer).
+    if (map && features && features.length > 0 && isGetInfoActive) {
+      // The topmost feature whose layer opens its popup on click. Once a popup is open for one layer, a click on
+      // another layer's feature does not replace it (the user closes it first); the same layer may update.
       const activeLayerId = popupInfo?.layerId;
-      for (const feature of features) {
-        const layer = layers?.find(
-          (l) => l.id.toString() === feature.layer.id && isClickable(l),
-        );
-        if (!layer) continue;
-        const layerDatasetId = (
-          (layer as { layer_id?: string }).layer_id ?? layer.id
-        )?.toString();
-        if (activeLayerId && layerDatasetId !== activeLayerId) continue;
-        interactiveFeature = feature;
-        interactiveLayer = layer;
-        break;
-      }
+      const hit = topFeature(map, features, layers, (layer) => {
+        const trigger = triggerOf(layer);
+        if (trigger !== "click" && trigger !== "click_and_hover") return false;
+        return !activeLayerId || datasetOf(layer) === activeLayerId;
+      });
       // A click always supersedes any hover-driven popup state.
       hoverPopupKeyRef.current = undefined;
 
-      if (interactiveFeature && interactiveLayer) {
+      if (hit && isHexagon(hit.feature)) {
+        openHexagonPopup(hit.layer, hit.feature, e.lngLat, "click");
+      } else if (hit) {
+        const { feature: interactiveFeature, layer: interactiveLayer } = hit;
         dispatch(setHighlightedFeature(interactiveFeature));
         didHighlight = true;
 
-        const layerName = interactiveLayer.name;
         let lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
         if (interactiveFeature.geometry.type === "Point" && interactiveFeature.geometry.coordinates) {
           lngLat = [interactiveFeature.geometry.coordinates[0], interactiveFeature.geometry.coordinates[1]];
         }
 
-        // When a field list is configured, filter to the listed columns (raw values).
-        // Otherwise, pass all feature properties.
-        const fieldConfig = buildPopupFieldConfig(interactiveLayer);
-        const rawProperties = selectPopupProperties(fieldConfig, interactiveFeature.properties);
-
-        const { properties: primitiveProperties, jsonProperties } = splitPopupProperties(rawProperties);
+        const { properties: primitiveProperties, jsonProperties } = splitPopupProperties(
+          interactiveFeature.properties
+        );
         dispatch(
           setPopupInfo({
             lngLat,
@@ -468,63 +445,52 @@ const MapViewer: React.FC<MapProps> = ({
             // selected layer in the Layers panel).
             featureProperties: interactiveFeature.properties as Record<string, unknown>,
             triggeredBy: "click",
-            title: layerName ?? "",
-            // ProjectLayer.id is the project-layer-link id, not the
-            // underlying dataset id. queryables expects the dataset id,
-            // which lives on `.layer_id` for ProjectLayers and on `.id`
-            // for plain Layers. Prefer `layer_id` when present.
-            layerId: (
-              (interactiveLayer as { layer_id?: string }).layer_id ??
-              interactiveLayer.id
-            )?.toString(),
-            projectLayerId: interactiveLayer.id?.toString(),
-            ...popupFieldInfo(fieldConfig),
+            title: interactiveLayer.name ?? "",
+            // queryables expects the dataset id, not the project layer id.
+            layerId: datasetOf(interactiveLayer),
+            projectLayerId: interactiveLayer.id.toString(),
             onClose: handlePopoverClose,
           })
         );
       } else {
         // No interactive features were found in the click stack.
         dispatch(setHighlightedFeature(undefined));
-        dispatch(setPopupInfo(undefined));
+        if (!openRasterPopup(e.lngLat, "click")) dispatch(setPopupInfo(undefined));
       }
     } else {
       // No features clicked or get info tool is not active.
       dispatch(setHighlightedFeature(undefined));
-      dispatch(setPopupInfo(undefined));
+      if (!(map && isGetInfoActive && openRasterPopup(e.lngLat, "click"))) dispatch(setPopupInfo(undefined));
     }
 
     // Click-to-filter: dispatch clicked feature independently of popup interaction settings.
     // This finds the topmost feature from ANY layer (regardless of interaction type).
-    if (features && features.length > 0 && (mapMode === "builder" || mapMode === "public")) {
-      for (const feature of features) {
-        const matchedLayer = layers?.find((l) => l.id.toString() === feature.layer.id);
-        if (matchedLayer) {
-          // Only highlight if the popup block didn't already handle it — and
-          // only when this layer's popup enables the active-feature highlight.
-          // Otherwise click-to-filter would recolor the feature even for layers
-          // whose popup (and thus "Highlight active feature") is off, leaving a
-          // highlight with no popup. Filtering below still runs regardless.
-          if (!didHighlight) {
-            const props = matchedLayer.properties as
-              | { popup?: PopupProperties; interaction?: { type?: string; content?: never[] } }
-              | undefined;
-            const cfg = props?.popup
-              ? normalizePopup(props.popup)
-              : normalizePopup(seedPopupFromInteraction(props?.interaction));
-            if (layerHighlightsActiveFeature(cfg.enabled, cfg.highlight_active_feature)) {
-              dispatch(setHighlightedFeature(feature));
-            }
-          }
-          dispatch(
-            setClickedFeatureForFilter({
-              layerProjectId: matchedLayer.id as number,
-              properties: feature.properties,
-              timestamp: Date.now(),
-            })
-          );
-          break;
-        }
+    const filterHit =
+      map && (mapMode === "builder" || mapMode === "public")
+        ? topFeature(
+            map,
+            features?.filter((f) => !isHexagon(f)),
+            layers,
+            () => true,
+          )
+        : undefined;
+    if (filterHit) {
+      // Only highlight if the popup block didn't already handle it — and
+      // only when this layer's popup enables the active-feature highlight.
+      // Otherwise click-to-filter would recolor the feature even for layers
+      // whose popup (and thus "Highlight active feature") is off, leaving a
+      // highlight with no popup. Filtering below still runs regardless.
+      const cfg = layerPopup(filterHit.layer);
+      if (!didHighlight && cfg && layerHighlightsActiveFeature(cfg.enabled, cfg.highlight_active_feature)) {
+        dispatch(setHighlightedFeature(filterHit.feature));
       }
+      dispatch(
+        setClickedFeatureForFilter({
+          layerProjectId: filterHit.layer.id as number,
+          properties: filterHit.feature.properties,
+          timestamp: Date.now(),
+        })
+      );
     }
 
     if (onClick) {
@@ -586,43 +552,42 @@ const MapViewer: React.FC<MapProps> = ({
     // navigate to a different feature.
     if (popupInfo?.triggeredBy === "click") return;
 
-    // Find the topmost feature whose layer is configured to show the
-    // popup on hover. Accepts `hover` or `click_and_hover`. Once a popup
-    // is open for one layer, hover triggers on OTHER layers are ignored
-    // until that popup closes.
+    // The topmost feature whose layer shows its popup on hover. Once a popup is open for one layer, hovers on OTHER
+    // layers are ignored until that popup closes.
     const activeLayerId = popupInfo?.layerId;
-    const isHoverable = (
-      layer: Layer | ProjectLayer | undefined,
-    ): boolean => {
-      const t = getEffectivePopupTrigger(layer);
-      return t === "hover" || t === "click_and_hover";
-    };
-    let hoverFeature: MapGeoJSONFeature | undefined;
-    let hoverLayer: Layer | ProjectLayer | undefined;
-    for (const feature of features ?? []) {
-      const layer = layers?.find(
-        (l) => l.id.toString() === feature.layer.id && isHoverable(l),
-      );
-      if (!layer) continue;
-      const layerDatasetId = (
-        (layer as { layer_id?: string }).layer_id ?? layer.id
-      )?.toString();
-      // Block cross-layer hover when another popup is active.
-      if (activeLayerId && layerDatasetId !== activeLayerId) continue;
-      hoverFeature = feature;
-      hoverLayer = layer;
-      break;
-    }
+    const map = mapRef?.current?.getMap();
+    const hit = map
+      ? topFeature(map, features, layers, (layer) => {
+          const trigger = triggerOf(layer);
+          if (trigger !== "hover" && trigger !== "click_and_hover") return false;
+          return !activeLayerId || datasetOf(layer) === activeLayerId;
+        })
+      : undefined;
+    const hoverFeature = hit?.feature;
+    const hoverLayer = hit?.layer;
 
     // Stable key so we only dispatch when the hovered feature changes.
     const hoverKey =
       hoverFeature && hoverLayer
-        ? `${hoverLayer.id}:${hoverFeature.id ?? hoverFeature.properties?.id ?? ""}`
+        ? isHexagon(hoverFeature)
+          ? `${hoverLayer.id}:h3:${hoverFeature.properties?.cell ?? ""}`
+          : `${hoverLayer.id}:${hoverFeature.id ?? hoverFeature.properties?.id ?? ""}`
         : undefined;
+
+    // Without a feature under the pointer, a file's cell values while hovering, at a limited rate.
+    if (!hoverKey && map && rasterPopupLayer(layers ?? [], "hover")) {
+      const now = Date.now();
+      if (now - lastRasterHoverRef.current < RASTER_HOVER_INTERVAL) return;
+      lastRasterHoverRef.current = now;
+      if (openRasterPopup(e.lngLat, "hover")) return;
+    }
 
     if (hoverKey === hoverPopupKeyRef.current) return;
 
-    if (hoverFeature && hoverLayer && hoverKey) {
+    if (hoverFeature && hoverLayer && hoverKey && isHexagon(hoverFeature)) {
+      hoverPopupKeyRef.current = hoverKey;
+      openHexagonPopup(hoverLayer, hoverFeature, e.lngLat, "hover");
+    } else if (hoverFeature && hoverLayer && hoverKey) {
       hoverPopupKeyRef.current = hoverKey;
 
       const featureLngLat: [number, number] =
@@ -636,10 +601,8 @@ const MapViewer: React.FC<MapProps> = ({
         setPopupInfo({
           lngLat: featureLngLat,
           title: hoverLayer.name ?? "",
-          layerId: (
-            (hoverLayer as { layer_id?: string }).layer_id ?? hoverLayer.id
-          )?.toString(),
-          projectLayerId: hoverLayer.id?.toString(),
+          layerId: datasetOf(hoverLayer),
+          projectLayerId: hoverLayer.id.toString(),
           // The new MapFeaturePopover uses featureProperties for token
           // substitution. `properties` is kept (same payload) so the
           // legacy renderer still works if it ever picks up a hover.
@@ -666,18 +629,7 @@ const MapViewer: React.FC<MapProps> = ({
 
   const handleMapLoad = useCallback(() => {
     if (mapRef?.current) {
-      // get all icon layers and add icons to map using addOrUpdateMarkerImages method
-
-      layers?.forEach((layer) => {
-        if (layer.type === "feature" && layer.feature_layer_geometry_type === "point") {
-          const pointFeatureProperties = layer.properties as FeatureLayerPointProperties;
-          addOrUpdateMarkerImages(layer.id, pointFeatureProperties, mapRef.current);
-        }
-      });
-
-      // load pattern images
-      addPatternImages(PATTERN_IMAGES ?? [], mapRef.current);
-
+      // Style images (icons, patterns) load on demand through the renderer's resolver.
       // load geolocation images
       const geolocationPulsingDot = createPulsingDot(mapRef.current);
       mapRef.current.addImage("geolocation-pulsing-dot", geolocationPulsingDot, { pixelRatio: 2 });
@@ -728,7 +680,7 @@ const MapViewer: React.FC<MapProps> = ({
       applyPendingMapStyle();
     }
     onLoad && onLoad();
-  }, [layers, mapRef, onLoad, dispatch, i18n.language, applyPendingMapStyle]);
+  }, [mapRef, onLoad, dispatch, i18n.language, applyPendingMapStyle]);
 
   // Re-apply label language when locale changes or basemap style reloads
   useEffect(() => {
@@ -777,6 +729,26 @@ const MapViewer: React.FC<MapProps> = ({
   );
 
   const isMobile = useMediaQuery((theme: Theme) => theme.breakpoints.down("md"));
+
+  // "Highlight active feature" (popup.highlight_active_feature) governs ALL active-object highlighting: with a popup
+  // open but its highlight off, the feature is not marked either. Highlights without a popup (click to filter, the
+  // data table, the geocoder) are unaffected.
+  const highlighted = shouldHighlightActivePopupFeature(
+    Boolean(popupInfo && activePopupConfig),
+    activePopupConfig?.highlight_active_feature,
+  )
+    ? highlightedFeature
+    : undefined;
+  const highlightLayerId = highlighted?.layer?.id;
+  const highlightId = highlighted?.id;
+  const highlight = useMemo(() => {
+    if (highlightLayerId === undefined || highlightId === undefined || highlightId === null) return undefined;
+    const map = mapRef?.current?.getMap();
+    // A rendered feature names its MapLibre layer; the data table's names the project layer itself.
+    const key = (map && projectLayerOf(map, String(highlightLayerId))) ?? String(highlightLayerId);
+    return { key, id: highlightId as number | string };
+  }, [highlightLayerId, highlightId, mapRef]);
+  const renderLayers = useRenderLayers(layers, { highlight });
 
   return (
     <>
@@ -834,6 +806,7 @@ const MapViewer: React.FC<MapProps> = ({
           ...containerSx,
         }}>
         <Map
+          {...MAPLIBRE_MAP_OPTIONS}
           id="map"
           ref={mapRef}
           style={{ width: "100%", height: "100%" }}
@@ -860,22 +833,11 @@ const MapViewer: React.FC<MapProps> = ({
             displayControlsDefault={false}
             defaultMode={MapboxDraw.constants.modes.SIMPLE_SELECT}
           />
-          <Layers
-            layers={layers}
-            // "Highlight active feature" (popup.highlight_active_feature) must
-            // govern ALL active-object highlighting, not just the pulsing dot:
-            // when a popup is active but its highlight toggle is off, the
-            // feature-recolor highlight is suppressed too. Non-popup highlights
-            // (click-to-filter, hover-to-highlight, data table, geocoder) run
-            // without an active popupInfo, so they are unaffected.
-            highlightFeature={
-              shouldHighlightActivePopupFeature(
-                Boolean(popupInfo && activePopupConfig),
-                activePopupConfig?.highlight_active_feature,
-              )
-                ? highlightedFeature
-                : undefined
-            }
+          <StyledLayers
+            layers={renderLayers}
+            editing={editing}
+            locale={locale || i18n.language}
+            onLayersChange={setDrawnLayerIds}
           />
           <GeocoderLayer />
           <UserLocationLayer />

@@ -7,16 +7,22 @@ import type { MapGeoJSONFeature, MapLayerMouseEvent } from "react-map-gl/maplibr
 import { Layer as MapLayer, Map as MapLibre, Source } from "react-map-gl/maplibre";
 
 import { useCatalogPreview, useCatalogStyle } from "@/lib/api/catalog";
-import { catalogPaint } from "@/lib/catalog/style";
-import { getHightlightStyleSpec } from "@/lib/transformers/layer";
+import { CATALOG_SAMPLE_KEY, catalogSampleLayer } from "@/lib/catalog/style";
+import { HIGHLIGHT } from "@/lib/style/compile/constants";
+import type { Geometry } from "@/lib/style/compile/types";
+import { buildLegend } from "@/lib/style/legend";
+import { mapLayerIdsOf } from "@/lib/style/render/mapLayers";
+import { INTERACTIVE_PARTS } from "@/lib/style/render/viewLayers";
 import { detailPopupConfig } from "@/lib/utils/map/detailPopup";
+import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 import type { CatalogItem } from "@/lib/validations/catalog";
 import type { PopupProperties } from "@/lib/validations/layer";
 
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
 
 import DetailMapAttribution from "@/components/dashboard/common/DetailMapAttribution";
-import { LayerLegendPanel } from "@/components/map/panels/layer/legend/LayerLegend";
+import { StyledLayers } from "@/components/map/StyledLayers";
+import { StyleLegend } from "@/components/map/legend/StyleLegend";
 import { MapFeaturePopover } from "@/components/map/popover/MapFeaturePopover";
 import type { LayerField } from "@/components/map/popover/formatFeatureProperties";
 
@@ -30,11 +36,10 @@ const ATTRIBUTION_ROOM = 24;
 type PickedFeature = {
   lngLat: { lng: number; lat: number };
   properties: Record<string, unknown>;
-  /** The queried feature, which the shared highlight spec reads id + paint off. */
+  /** The queried feature; its id marks it as the active one. */
   feature: MapGeoJSONFeature;
 };
 
-const STYLED_LAYER = "catalog-geometry-styled";
 const PLAIN_LAYERS = ["catalog-geometry-fill", "catalog-geometry-line", "catalog-geometry-point"];
 
 const CatalogFootprintMap = ({
@@ -45,7 +50,7 @@ const CatalogFootprintMap = ({
   item: CatalogItem;
   fill?: boolean;
 }) => {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const theme = useTheme();
   const basemapStyle = useCatalogBasemapStyle();
   const { preview, isLoading } = useCatalogPreview(item.id);
@@ -73,9 +78,8 @@ const CatalogFootprintMap = ({
   const styleHref = item.assets?.style?.href;
   const { style, isLoading: styleLoading } = useCatalogStyle(styleHref, !!sample);
   const geometryType = item.properties["goat:geometryType"] ?? undefined;
-  const styled = catalogPaint(style, geometryType);
   /** The dataset's own rendering, and some of its data to draw with it. */
-  const styledSample = !!sample && !!styled && !!geometryType;
+  const styledSample = !!catalogSampleLayer(style, geometryType, sample);
   /** The style is still on its way, so nothing is drawn with the right paint yet.
    *
    * Without this the sample renders twice: once in the plain footprint colour
@@ -133,9 +137,25 @@ const CatalogFootprintMap = ({
   /** Whether the cursor is over a feature, so the pointer means something. */
   const [hovering, setHovering] = useState(false);
 
+  /** The sample drawn with the dataset's style, its active feature marked by the renderer. */
+  const activeId = typeof active?.feature.id === "number" ? active.feature.id : undefined;
+  const sampleLayer = useMemo(
+    () => catalogSampleLayer(style, geometryType, sample, activeId),
+    [style, geometryType, sample, activeId]
+  );
+  const legend = useMemo(
+    () =>
+      sampleLayer
+        ? buildLegend(sampleLayer.style as never, { geometry: sampleLayer.geometry as Geometry, zoom: 12 })
+        : null,
+    [sampleLayer]
+  );
+
   /** The sample feature under a pointer position. */
   const featureAt = (event: MapLayerMouseEvent) => {
-    const wanted = styledSample ? [STYLED_LAYER] : PLAIN_LAYERS;
+    const wanted = styledSample
+      ? mapLayerIdsOf(event.target, CATALOG_SAMPLE_KEY, { kinds: INTERACTIVE_PARTS })
+      : PLAIN_LAYERS;
     // Read from `getStyle()`: `getLayer()` returns nothing through react-map-gl's
     // wrapper, and querying a layer the style has yet to add logs an error.
     const present = new Set((event.target.getStyle()?.layers ?? []).map((layer) => layer.id));
@@ -251,6 +271,7 @@ const CatalogFootprintMap = ({
             : { height: 420, borderRadius: 1, overflow: "hidden" }),
         }}>
         <MapLibre
+          {...MAPLIBRE_MAP_OPTIONS}
           // Named for the same reason as the catalog's other maps: it must not
           // collide with a host page's own map inside a shared `MapProvider`.
           id="catalog-footprint"
@@ -303,56 +324,57 @@ const CatalogFootprintMap = ({
             </Source>
           )}
 
-          {/* `generateId`: the highlight spec targets a feature by id, and preview
-              GeoJSON carries none. */}
-          <Source id="catalog-geometry" type="geojson" data={shown} generateId>
-            {/* Layers stay direct children — `Source` injects its id only into
-                children it can see, and a wrapping fragment hides them. */}
-            {!awaitingStyle && styledSample && (
-              <MapLayer
-                {...({
-                  id: STYLED_LAYER,
-                  ...styled,
-                  // No geometry-type filter, unlike the plain layers: this layer's
-                  // type already comes from the dataset's declared geometry, and a
-                  // filter repeating it would blank the layer if the two disagreed.
-                } as React.ComponentProps<typeof MapLayer>)}
-              />
-            )}
-            {!awaitingStyle && !styledSample && (
-              <MapLayer
-                id="catalog-geometry-fill"
-                type="fill"
-                paint={{ "fill-color": FOOTPRINT_COLOR, "fill-opacity": sample ? 0.35 : 0.12 }}
-                filter={["==", ["geometry-type"], "Polygon"]}
-              />
-            )}
-            {!awaitingStyle && !styledSample && (
-              <MapLayer
-                id="catalog-geometry-line"
-                type="line"
-                paint={{ "line-color": FOOTPRINT_COLOR, "line-width": 1.5 }}
-              />
-            )}
-            {!awaitingStyle && !styledSample && (
-              <MapLayer
-                id="catalog-geometry-point"
-                type="circle"
-                paint={{ "circle-color": FOOTPRINT_COLOR, "circle-radius": 3 }}
-                filter={["==", ["geometry-type"], "Point"]}
-              />
-            )}
+          {/* The dataset's own rendering through the map compiler; the active feature is marked by feature state. */}
+          {!awaitingStyle && sampleLayer && <StyledLayers layers={[sampleLayer]} locale={i18n.language} />}
 
-            {/* The app's own highlight for an active feature. */}
-            {active && !!getHightlightStyleSpec(active.feature) && (
-              <MapLayer
-                {...({
-                  id: "catalog-geometry-highlight",
-                  ...getHightlightStyleSpec(active.feature),
-                } as React.ComponentProps<typeof MapLayer>)}
-              />
-            )}
-          </Source>
+          {/* `generateId`: the active feature is matched by id, and preview GeoJSON carries none. */}
+          {!styledSample && (
+            <Source id="catalog-geometry" type="geojson" data={shown} generateId>
+              {/* Layers stay direct children — `Source` injects its id only into
+                  children it can see, and a wrapping fragment hides them. */}
+              {!awaitingStyle && (
+                <MapLayer
+                  id="catalog-geometry-fill"
+                  type="fill"
+                  paint={{ "fill-color": FOOTPRINT_COLOR, "fill-opacity": sample ? 0.35 : 0.12 }}
+                  filter={["==", ["geometry-type"], "Polygon"]}
+                />
+              )}
+              {!awaitingStyle && (
+                <MapLayer
+                  id="catalog-geometry-line"
+                  type="line"
+                  paint={{ "line-color": FOOTPRINT_COLOR, "line-width": 1.5 }}
+                />
+              )}
+              {!awaitingStyle && (
+                <MapLayer
+                  id="catalog-geometry-point"
+                  type="circle"
+                  paint={{ "circle-color": FOOTPRINT_COLOR, "circle-radius": 3 }}
+                  filter={["==", ["geometry-type"], "Point"]}
+                />
+              )}
+
+              {/* The app's highlight of the active feature. */}
+              {active?.feature.id !== undefined && (
+                <MapLayer
+                  id="catalog-geometry-highlight-line"
+                  type="line"
+                  paint={{ "line-color": HIGHLIGHT.color, "line-width": HIGHLIGHT.width }}
+                  filter={["all", ["==", ["id"], active.feature.id], ["!=", ["geometry-type"], "Point"]]}
+                />
+              )}
+              {active?.feature.id !== undefined && (
+                <MapLayer
+                  id="catalog-geometry-highlight-point"
+                  type="circle"
+                  paint={{ "circle-color": HIGHLIGHT.color, "circle-opacity": 0.8, "circle-radius": 8 }}
+                  filter={["all", ["==", ["id"], active.feature.id], ["==", ["geometry-type"], "Point"]]}
+                />
+              )}
+            </Source>
+          )}
 
           {active && (
             <Box
@@ -430,8 +452,8 @@ const CatalogFootprintMap = ({
               // otherwise cover the legend where the two meet on a narrow map.
               zIndex: 2,
             }}>
-            {/* Headings kept: they read "Fill color based on: measure", which is what turns a column of swatches into an explanation. */}
-            <LayerLegendPanel properties={style as Record<string, unknown>} geometryType={geometryType} />
+            {/* Headings kept: the field a classification reads turns a column of swatches into an explanation. */}
+            {legend && <StyleLegend legend={legend} variant="tree" />}
           </Paper>
         )}
       </Box>

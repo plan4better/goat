@@ -22,15 +22,12 @@ import {
   useProjectInitialViewState,
   useProjectLayerGroups,
 } from "@/lib/api/projects";
-import { PATTERN_IMAGES } from "@/lib/constants/pattern-images";
 import { DrawProvider } from "@/lib/providers/DrawProvider";
 import { MeasureProvider } from "@/lib/providers/MeasureProvider";
 import { setSelectedBuilderItem } from "@/lib/store/map/slice";
-import { addOrUpdateMarkerImages, addPatternImages } from "@/lib/transformers/map-image";
+import { StyleStoresProvider, useEditedLayers } from "@/lib/style/editor/StyleStores";
 import { createSnapToCursorModifier } from "@/lib/utils/dnd-modifier";
-import { orderLayersByTree } from "@/lib/utils/map/layerTreeOrder";
 import { getLocFromUrl, writeLocToUrl, writeMapLocToUrl } from "@/lib/utils/map/loc-url";
-import type { FeatureLayerPointProperties } from "@/lib/validations/layer";
 import {
   type BuilderWidgetSchema,
   type CustomBasemap,
@@ -44,6 +41,7 @@ import { useBrandedTheme } from "@/hooks/dashboard/useBrandedTheme";
 import { JobStatusWatcher } from "@/hooks/jobs/JobStatus";
 import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
 import { useBasemap } from "@/hooks/map/MapHooks";
+import { useMapLayers } from "@/hooks/map/useMapLayers";
 import { useMapUrlIntent } from "@/hooks/map/useMapUrlIntent";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
@@ -65,6 +63,18 @@ const ReportsLayout = dynamic(() => import("@/components/reports").then((m) => m
 const WorkflowsLayout = dynamic(() => import("@/components/workflows/WorkflowsLayout"), { ssr: false });
 
 const UPDATE_VIEW_STATE_DEBOUNCE_TIME = 200;
+
+/** The project's map, drawing each layer whose style is open from its editor store (inside StyleStoresProvider). */
+function EditingMapViewer({
+  projectId,
+  ...props
+}: React.ComponentProps<typeof MapViewer> & { projectId: string }) {
+  const editing = useEditedLayers(
+    projectId,
+    props.layers as Array<{ id: number; style?: { id?: string } | null }>
+  );
+  return <MapViewer {...props} editing={editing} />;
+}
 
 export default function MapPage(props: { params: Promise<{ projectId: string }> }) {
   const params = use(props.params);
@@ -101,12 +111,19 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
   const {
     isLoading: areProjectLayersLoading,
     isError: projectLayersError,
-    layers: allProjectLayers,
     mutate: mutateProjectLayers,
   } = useFilteredProjectLayers(projectId, ["table"], []);
 
   // Fetch all layers including tables for widgets/workflows
   const { layers: allProjectLayersIncludingTables } = useFilteredProjectLayers(projectId, [], []);
+
+  // The map's layers: the layer rows joined with the map request (styles and map state), in the tree's order.
+  const {
+    layers: mapLayers,
+    map: projectMap,
+    isLoading: isMapLoading,
+    mutate: mutateMap,
+  } = useMapLayers(projectId, { revalidateOnMount: true });
 
   const {
     layerGroups: projectLayerGroups,
@@ -133,20 +150,19 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
   // visitors see, not the author's own editor light/dark preference.
   const brandedTheme = useBrandedTheme(primaryColor, iconColor, fontColor, "light");
 
-  // Order layers using tree-aware DFS traversal so the map rendering order
-  // matches the visual tree order (layers inside a group inherit the group's position).
-  const projectLayers = useMemo(
-    () => orderLayersByTree(allProjectLayers || [], projectLayerGroups),
-    [allProjectLayers, projectLayerGroups]
+  // Reports draw the map's layers (map document order, visibility and styles); tables draw nothing.
+  const reportLayers = useMemo(
+    () => (mapLayers ?? []).filter((layer) => layer.type !== "table"),
+    [mapLayers]
   );
 
   const widgetProjectLayers = useMemo(() => {
     return allProjectLayersIncludingTables || [];
   }, [allProjectLayersIncludingTables]);
 
-  const { activeBasemap, mapStyle, setActiveBasemap } = useBasemap(project);
+  const { mapStyle, setActiveBasemap } = useBasemap(project);
 
-  // Keep the Redux active basemap (read by Layers for basemap layer_config) in
+  // Keep the Redux active basemap (read by the renderer for basemap layer_config) in
   // sync with the persisted basemap, re-resolving only when the active basemap
   // value or its own layer_config actually changes. Keyed on a stable string so
   // unrelated SWR revalidations (which hand back new array refs) don't re-dispatch
@@ -187,6 +203,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
       isProjectLoading ||
       isInitialViewLoading ||
       areProjectLayersLoading ||
+      isMapLoading ||
       areProjectLayerGroupsLoading ||
       isAuthZLoading ||
       isFoldersLoading,
@@ -194,6 +211,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
       isProjectLoading,
       isInitialViewLoading,
       areProjectLayersLoading,
+      isMapLoading,
       areProjectLayerGroupsLoading,
       isAuthZLoading,
       isFoldersLoading,
@@ -237,38 +255,12 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
     writeMapLocToUrl(map);
   }, []);
 
-  const handleMapLoad = useCallback(() => {
-    if (mapRef.current) {
-      // get all icon layers and add icons to map using addOrUpdateMarkerImages method
-      projectLayers?.forEach((layer) => {
-        if (layer.type === "feature" && layer.feature_layer_geometry_type === "point") {
-          const pointFeatureProperties = layer.properties as FeatureLayerPointProperties;
-          addOrUpdateMarkerImages(layer.id, pointFeatureProperties, mapRef.current);
-        }
-      });
-
-      // load pattern images
-      addPatternImages(PATTERN_IMAGES ?? [], mapRef.current);
-    }
-  }, [projectLayers]);
-
-  useEffect(() => {
-    // Skip map image loading when in reports mode (no map is rendered)
-    if (mapMode === "reports") {
-      return;
-    }
-    // icons are added to the style, so if the basestyle changes we have to reload icons to the style
-    // it takes forever for certain styles to load so we have to wait a bit.
-    // Couldn't find an event that catches the basemap change
-    const debouncedHandleMapLoad = debounce(handleMapLoad, 200);
-    debouncedHandleMapLoad();
-  }, [activeBasemap, handleMapLoad, mapMode]);
-
   const handleJobSuccess = useCallback(() => {
     mutateProjectLayers();
     mutateProjectLayerGroups();
     mutateProject();
-  }, [mutateProjectLayers, mutateProjectLayerGroups, mutateProject]);
+    mutateMap();
+  }, [mutateProjectLayers, mutateProjectLayerGroups, mutateProject, mutateMap]);
 
   // Widget Drag and Drop
   const [activeWidget, setActiveWidget] = useState<BuilderWidgetSchema | null>(null);
@@ -294,6 +286,8 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
       Object.assign(projectToUpdate, partial);
       mutateProject(projectToUpdate, refreshFlag);
       await updateProject(projectId, partial);
+      // The map document carries the project's number locale.
+      if ("locale" in partial) void mutateMap();
     } catch (error) {
       toast.error(t("error_updating_project"));
       mutateProject();
@@ -502,152 +496,159 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
       {isLoading && <LoadingPage />}
       {!isLoading && !hasError && project && (
         <MapProvider>
-          <DrawProvider>
-            <MeasureProvider>
-              <Stack component="div" width="100%" height="100%" overflow="hidden">
-                {isProjectEditor && (
-                  <>
-                    <MapDropTarget projectId={projectId} />
-                    <TransferToasts />
-                  </>
-                )}
-                <Header
-                  showHambugerMenu={false}
-                  mapHeader={true}
-                  project={project}
-                  onProjectUpdate={handleProjectUpdate}
-                  viewOnly={!isProjectEditor}
-                />
-                <Box
-                  sx={{
-                    display: "flex",
-                    flex: 1,
-                    minHeight: 0,
-                    width: "100%",
-                    [theme.breakpoints.down("sm")]: {
-                      marginLeft: "0",
-                      width: `100%`,
-                    },
-                  }}>
-                  <DndContext
-                    onDragOver={handleDragOver}
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                    autoScroll>
-                    {mapMode === "data" && (
-                      <DataProjectLayout project={project} onProjectUpdate={handleProjectUpdate} />
-                    )}
-                    {mapMode === "reports" && (
-                      <ReportsLayout
-                        project={project}
-                        projectLayers={projectLayers}
-                        onProjectUpdate={handleProjectUpdate}
-                        initialLayoutId={layoutId}
-                      />
-                    )}
-                    {mapMode === "workflows" && (
-                      <WorkflowsLayout
-                        project={project}
-                        projectLayers={allProjectLayersIncludingTables}
-                        projectLayerGroups={projectLayerGroups}
-                        onProjectUpdate={handleProjectUpdate}
-                      />
-                    )}
-                    {mapMode !== "reports" && mapMode !== "workflows" && (
-                      <Box
-                        sx={{
-                          display: "flex",
-                          flexDirection: "column",
-                          padding: mapMode === "builder" ? "20px" : "0",
-                          width: "100%",
-                          height: "100%",
-                          position: "relative",
-                        }}>
-                        <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
-                          <ThemeProvider theme={mapMode === "builder" ? brandedTheme : theme}>
-                            <MapViewer
-                              containerSx={{ zIndex: 0 }}
-                              layers={projectLayers}
-                              mapRef={mapRef}
-                              maxExtent={project?.max_extent || undefined}
-                              initialViewState={{
-                                zoom: urlLoc?.zoom ?? initialView?.zoom ?? 3,
-                                latitude: urlLoc?.latitude ?? initialView?.latitude ?? 48.13,
-                                longitude: urlLoc?.longitude ?? initialView?.longitude ?? 11.57,
-                                pitch: urlLoc?.pitch ?? initialView?.pitch ?? 0,
-                                bearing: urlLoc?.bearing ?? initialView?.bearing ?? 0,
-                                fitBoundsOptions: {
-                                  minZoom: initialView?.min_zoom ?? 0,
-                                  maxZoom: initialView?.max_zoom ?? 24,
-                                },
-                              }}
-                              mapStyle={mapStyle}
-                              onMoveEnd={handleMoveEnd}
-                              onLoad={handleMapLoaded}
-                              isEditor={isProjectEditor}
-                            />
-                          </ThemeProvider>
-                          <DataPanel
-                            projectLayers={allProjectLayersIncludingTables}
-                            isEditor={isProjectEditor}
-                          />
-                          <EditModeHalo />
-                        </Box>
-                        {mapMode === "builder" && (
-                          <Box
-                            sx={{
-                              position: "absolute",
-                              inset: "20px",
-                              zIndex: 1,
-                              pointerEvents: "none",
-                            }}>
-                            <ThemeProvider theme={brandedTheme}>
-                              <GlobalStyles
-                                styles={{
-                                  "html body .goat-dashboard-preview ::-webkit-scrollbar-thumb": {
-                                    backgroundColor: brandedTheme.palette.grey[400],
-                                  },
-                                  "html body .goat-dashboard-preview ::-webkit-scrollbar-track": {
-                                    background: "transparent",
+          <StyleStoresProvider>
+            <DrawProvider>
+              <MeasureProvider>
+                <Stack component="div" width="100%" height="100%" overflow="hidden">
+                  {isProjectEditor && (
+                    <>
+                      <MapDropTarget projectId={projectId} />
+                      <TransferToasts />
+                    </>
+                  )}
+                  <Header
+                    showHambugerMenu={false}
+                    mapHeader={true}
+                    project={project}
+                    onProjectUpdate={handleProjectUpdate}
+                    viewOnly={!isProjectEditor}
+                  />
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flex: 1,
+                      minHeight: 0,
+                      width: "100%",
+                      [theme.breakpoints.down("sm")]: {
+                        marginLeft: "0",
+                        width: `100%`,
+                      },
+                    }}>
+                    <DndContext
+                      onDragOver={handleDragOver}
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      autoScroll>
+                      {mapMode === "data" && (
+                        <DataProjectLayout project={project} onProjectUpdate={handleProjectUpdate} />
+                      )}
+                      {mapMode === "reports" && (
+                        <ReportsLayout
+                          project={project}
+                          projectLayers={reportLayers}
+                          onProjectUpdate={handleProjectUpdate}
+                          initialLayoutId={layoutId}
+                        />
+                      )}
+                      {mapMode === "workflows" && (
+                        <WorkflowsLayout
+                          project={project}
+                          projectLayers={allProjectLayersIncludingTables}
+                          projectLayerGroups={projectLayerGroups}
+                          onProjectUpdate={handleProjectUpdate}
+                        />
+                      )}
+                      {mapMode !== "reports" && mapMode !== "workflows" && (
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            padding: mapMode === "builder" ? "20px" : "0",
+                            width: "100%",
+                            height: "100%",
+                            position: "relative",
+                          }}>
+                          <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+                            <ThemeProvider theme={mapMode === "builder" ? brandedTheme : theme}>
+                              <EditingMapViewer
+                                projectId={projectId}
+                                containerSx={{ zIndex: 0 }}
+                                layers={mapLayers}
+                                locale={projectMap?.map.locale}
+                                mapRef={mapRef}
+                                maxExtent={project?.max_extent || undefined}
+                                initialViewState={{
+                                  zoom: urlLoc?.zoom ?? initialView?.zoom ?? 3,
+                                  latitude: urlLoc?.latitude ?? initialView?.latitude ?? 48.13,
+                                  longitude: urlLoc?.longitude ?? initialView?.longitude ?? 11.57,
+                                  pitch: urlLoc?.pitch ?? initialView?.pitch ?? 0,
+                                  bearing: urlLoc?.bearing ?? initialView?.bearing ?? 0,
+                                  fitBoundsOptions: {
+                                    minZoom: initialView?.min_zoom ?? 0,
+                                    maxZoom: initialView?.max_zoom ?? 24,
                                   },
                                 }}
+                                mapStyle={mapStyle}
+                                onMoveEnd={handleMoveEnd}
+                                onLoad={handleMapLoaded}
+                                isEditor={isProjectEditor}
                               />
-                              <Box
-                                className="goat-dashboard-preview"
-                                sx={{ color: "text.primary", height: "100%", width: "100%" }}>
-                                <PublicProjectLayout
-                                  projectLayers={widgetProjectLayers}
-                                  projectLayerGroups={projectLayerGroups}
-                                  project={project}
-                                  onProjectUpdate={handleProjectUpdate}
-                                />
-                              </Box>
                             </ThemeProvider>
+                            <DataPanel
+                              projectLayers={allProjectLayersIncludingTables}
+                              isEditor={isProjectEditor}
+                            />
+                            <EditModeHalo />
                           </Box>
-                        )}
-                      </Box>
-                    )}
-                    {mapMode === "builder" && (
-                      <BuilderConfigPanel
-                        project={project}
-                        onProjectUpdate={handleProjectUpdate}
-                        projectLayers={allProjectLayersIncludingTables}
-                        projectLayerGroups={projectLayerGroups}
-                      />
-                    )}
+                          {mapMode === "builder" && (
+                            <Box
+                              sx={{
+                                position: "absolute",
+                                inset: "20px",
+                                zIndex: 1,
+                                pointerEvents: "none",
+                              }}>
+                              <ThemeProvider theme={brandedTheme}>
+                                <GlobalStyles
+                                  styles={{
+                                    "html body .goat-dashboard-preview ::-webkit-scrollbar-thumb": {
+                                      backgroundColor: brandedTheme.palette.grey[400],
+                                    },
+                                    "html body .goat-dashboard-preview ::-webkit-scrollbar-track": {
+                                      background: "transparent",
+                                    },
+                                  }}
+                                />
+                                <Box
+                                  className="goat-dashboard-preview"
+                                  sx={{ color: "text.primary", height: "100%", width: "100%" }}>
+                                  <PublicProjectLayout
+                                    projectLayers={widgetProjectLayers}
+                                    mapLayers={mapLayers}
+                                    projectLayerGroups={projectLayerGroups}
+                                    project={project}
+                                    onProjectUpdate={handleProjectUpdate}
+                                  />
+                                </Box>
+                              </ThemeProvider>
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                      {mapMode === "builder" && (
+                        <BuilderConfigPanel
+                          project={project}
+                          onProjectUpdate={handleProjectUpdate}
+                          projectLayers={allProjectLayersIncludingTables}
+                          projectLayerGroups={projectLayerGroups}
+                        />
+                      )}
 
-                    {mapMode === "builder" && (
-                      <DragOverlay dropAnimation={null} modifiers={[createSnapToCursorModifier("topCenter")]}>
-                        {activeWidget?.config?.type ? (
-                          <DraggableItem widgetType={activeWidget?.config?.type} isDragging={true} />
-                        ) : null}
-                      </DragOverlay>
-                    )}
-                  </DndContext>
-                </Box>
-              </Stack>
-            </MeasureProvider>
-          </DrawProvider>
+                      {mapMode === "builder" && (
+                        <DragOverlay
+                          dropAnimation={null}
+                          modifiers={[createSnapToCursorModifier("topCenter")]}>
+                          {activeWidget?.config?.type ? (
+                            <DraggableItem widgetType={activeWidget?.config?.type} isDragging={true} />
+                          ) : null}
+                        </DragOverlay>
+                      )}
+                    </DndContext>
+                  </Box>
+                </Stack>
+              </MeasureProvider>
+            </DrawProvider>
+          </StyleStoresProvider>
         </MapProvider>
       )}
     </>

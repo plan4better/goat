@@ -16,10 +16,13 @@ interface PseudoField {
   display_config?: Record<string, unknown>;
 }
 
+/** One array for every call, so the fields memo below holds across renders. */
+const HIDDEN_FIELDS = ["layer_id", "id", "h3_3", "h3_6", "geom", "geometry"];
+
 const useLayerFields = (
   dataset_id: string,
   filterType?: "string" | "number" | "date" | undefined,
-  hiddenFields: string[] = ["layer_id", "id", "h3_3", "h3_6", "geom", "geometry"],
+  hiddenFields: string[] = HIDDEN_FIELDS,
   includePseudoFields: boolean = false
 ) => {
   const { queryables, isLoading, isError } = useLayerQueryables(dataset_id || "");

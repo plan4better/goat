@@ -166,7 +166,7 @@ const FilterPanel = ({ activeLayer, projectId }: { activeLayer: ProjectLayer; pr
       };
     }
     await mutateProjectLayers(layers, false);
-    await updateProjectLayer(projectId, activeLayer.id, layerToUpdate);
+    await updateProjectLayer(projectId, activeLayer.id, { query: layerToUpdate.query });
   };
 
   const updateLayerQuery = async (expressions, logicalOperator) => {
@@ -197,7 +197,8 @@ const FilterPanel = ({ activeLayer, projectId }: { activeLayer: ProjectLayer; pr
         cql_filter: activeLayer.query.cql,
         project_id: projectId,
         result_layer_name: `${activeLayer.name} (${t("filtered")})`,
-        source_properties: activeLayer.properties ?? undefined,
+        // The new layer takes this project layer's active style.
+        source_layer_project_id: activeLayer.id,
       });
       if (result?.jobID) {
         toast.info(`${t("save_as_new_layer")} - ${t("job_started")}`);

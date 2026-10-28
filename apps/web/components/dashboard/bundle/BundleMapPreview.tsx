@@ -6,8 +6,10 @@ import { useTranslation } from "react-i18next";
 import type { MapRef } from "react-map-gl/maplibre";
 import { MapProvider } from "react-map-gl/maplibre";
 
+import { useDatasetStyles } from "@/lib/api/map";
 import { getBasemapUrl } from "@/lib/constants/basemaps";
 import { DrawProvider } from "@/lib/providers/DrawProvider";
+import type { ViewLayer } from "@/lib/style/render/viewLayers";
 import { globalExtent, wktToGeoJSON } from "@/lib/utils/map/wkt";
 import type { Layer } from "@/lib/validations/layer";
 
@@ -21,17 +23,17 @@ import MapViewer from "@/components/map/MapViewer";
  *
  * A dataset's map draws one layer; a bundle is several that only mean anything
  * beside each other — a street network is its edges and its nodes, a GTFS feed
- * its stops and its shapes. Each keeps its own styling, so the map reads the
- * way the project map does.
+ * its stops and its shapes. Each keeps its own default style, so the map reads
+ * the way the project map does.
  *
- * Ordered lines-under-points, because a node drawn beneath the edge it joins is
+ * Ordered points-over-lines, because a node drawn beneath the edge it joins is
  * invisible. Members without an extent are left out rather than collapsing the
  * bounds: a bundle mid-import has rows whose layers hold nothing yet.
  */
 
-/** Drawn last sits on top. Points are the smallest marks on the map, so they go
- * above the lines and areas they belong to. */
-const DRAW_ORDER: Record<string, number> = { polygon: 0, line: 1, point: 2 };
+/** Top first. Points are the smallest marks on the map, so they go above the
+ * lines and areas they belong to. */
+const DRAW_ORDER: Record<string, number> = { point: 0, line: 1, polygon: 2 };
 
 const BundleMapPreview: React.FC<{ layers: Layer[] }> = ({ layers }) => {
   const theme = useTheme();
@@ -50,12 +52,15 @@ const BundleMapPreview: React.FC<{ layers: Layer[] }> = ({ layers }) => {
           (a, b) =>
             (DRAW_ORDER[a.feature_layer_geometry_type ?? ""] ?? 1) -
             (DRAW_ORDER[b.feature_layer_geometry_type ?? ""] ?? 1)
-        )
-        .map((layer) => ({
-          ...layer,
-          properties: { ...layer.properties, visibility: true },
-        })),
+        ),
     [layers]
+  );
+  const ids = useMemo(() => drawable.map((layer) => layer.id), [drawable]);
+  const { styles } = useDatasetStyles(ids);
+  const viewLayers = useMemo<ViewLayer[]>(
+    () =>
+      drawable.map((layer) => ({ ...layer, visible: true, entry: {}, style: styles?.[layer.id] ?? null })),
+    [drawable, styles]
   );
 
   /** One box around every member that has one. Falls back to the whole world,
@@ -93,7 +98,7 @@ const BundleMapPreview: React.FC<{ layers: Layer[] }> = ({ layers }) => {
         <Box sx={{ position: "relative", height: "100%" }}>
           <MapViewer
             mapRef={mapRef}
-            layers={drawable}
+            layers={viewLayers}
             initialViewState={{
               bounds: boundingBox,
               fitBoundsOptions: { padding: 40 },

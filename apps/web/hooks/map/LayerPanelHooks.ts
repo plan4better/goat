@@ -7,13 +7,7 @@ import { useProjectLayers } from "@/lib/api/projects";
 import { SYSTEM_LAYERS_IDS } from "@/lib/constants";
 import { filterSelectableProjectLayers } from "@/lib/utils/map/layer";
 import type { LayerType } from "@/lib/validations/layer";
-import {
-  featureLayerLinePropertiesSchema,
-  featureLayerPointPropertiesSchema,
-  featureLayerPolygonPropertiesSchema,
-  rasterLayerPropertiesSchema,
-} from "@/lib/validations/layer";
-import { type ProjectLayer, projectLayerSchema } from "@/lib/validations/project";
+import type { ProjectLayer } from "@/lib/validations/project";
 
 import { ContentActions, MapLayerActions } from "@/types/common";
 
@@ -249,56 +243,6 @@ export const useLayerSettingsMoreMenu = () => {
     closeMoreMenu,
     openMoreMenu,
   };
-};
-
-export const useLayerActions = (projectLayers: ProjectLayer[]) => {
-  function toggleLayerVisibility(layer: ProjectLayer) {
-    const layers = JSON.parse(JSON.stringify(projectLayers));
-    const index = layers.findIndex((l) => l.id === layer.id);
-    const layerToUpdate = layers[index];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let properties = layerToUpdate.properties as any;
-    if (!properties) {
-      properties = {};
-    }
-
-    properties.visibility = !properties.visibility;
-
-    layerToUpdate.properties = properties;
-    return { layers, layerToUpdate };
-  }
-
-  return {
-    toggleLayerVisibility,
-  };
-};
-
-export const useActiveLayer = (projectId: string) => {
-  const { layers: projectLayers, mutate } = useProjectLayers(projectId);
-  const activeLayerId = useAppSelector((state) => state.layers.activeLayerId);
-  const activeLayer = useMemo(() => {
-    const activeLayer = projectLayers?.find((layer) => layer.id === activeLayerId);
-    if (!activeLayer) return undefined;
-    const properties = activeLayer.properties;
-    const parsedActiveLayer = projectLayerSchema.parse(activeLayer);
-    if (parsedActiveLayer.feature_layer_geometry_type === "point") {
-      parsedActiveLayer.properties = featureLayerPointPropertiesSchema.parse(properties);
-    }
-    if (parsedActiveLayer.feature_layer_geometry_type === "line") {
-      parsedActiveLayer.properties = featureLayerLinePropertiesSchema.parse(properties);
-    }
-
-    if (parsedActiveLayer.feature_layer_geometry_type === "polygon") {
-      parsedActiveLayer.properties = featureLayerPolygonPropertiesSchema.parse(properties);
-    }
-
-    if (parsedActiveLayer.type === "raster") {
-      parsedActiveLayer.properties = rasterLayerPropertiesSchema.parse(properties);
-    }
-
-    return parsedActiveLayer;
-  }, [activeLayerId, projectLayers]);
-  return { activeLayer, mutate };
 };
 
 export const useFilterQueries = (projectId: string) => {

@@ -16,6 +16,7 @@ import {
 import type { AppDispatch } from "@/lib/store";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
 import { selectEdges, selectNodes, selectVariables } from "@/lib/store/workflow/selectors";
+import type { LayerStyle } from "@/lib/style/generated/types";
 import { claimJobAnnouncement } from "@/lib/utils/jobAnnouncement";
 
 import { useAppSelector } from "@/hooks/store/ContextHooks";
@@ -43,8 +44,8 @@ interface WorkflowExecutionState {
   tempLayerIds: Record<string, string>;
   /** Exported (permanent) layer IDs by export node ID */
   exportedLayerIds: Record<string, string>;
-  /** Layer style properties by node ID (from tool results) */
-  tempLayerProperties: Record<string, Record<string, unknown>>;
+  /** The GOAT Style document of each node's result (from tool results), by node ID */
+  tempLayerStyles: Record<string, LayerStyle>;
 }
 
 /**
@@ -57,7 +58,7 @@ interface NodeResult {
   status?: string;
   error?: string;
   duration_ms?: number; // Execution duration in milliseconds
-  properties?: Record<string, unknown>; // Layer style properties from tool
+  style?: LayerStyle; // The result's GOAT Style document, written by the tool
 }
 
 /**
@@ -163,7 +164,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
     nodeExecutionInfo: {},
     tempLayerIds: {},
     exportedLayerIds: {},
-    tempLayerProperties: {},
+    tempLayerStyles: {},
   });
 
   // Reset local execution state when the active workflow changes.
@@ -182,7 +183,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       nodeExecutionInfo: {},
       tempLayerIds: {},
       exportedLayerIds: {},
-      tempLayerProperties: {},
+      tempLayerStyles: {},
     });
   }, [workflowId]);
 
@@ -272,7 +273,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       nodeExecutionInfo: initialExecutionInfo,
       tempLayerIds: initialTempLayerIds,
       exportedLayerIds: {},
-      tempLayerProperties: {},
+      tempLayerStyles: {},
     });
 
     // Ensure the job is in the Redux running jobs list for polling
@@ -339,7 +340,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       nodeExecutionInfo: initialExecutionInfo,
       tempLayerIds: {},
       exportedLayerIds: {},
-      tempLayerProperties: {},
+      tempLayerStyles: {},
     }));
 
     try {
@@ -556,7 +557,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       const results = job.result?.node_results as Record<string, NodeResult> | undefined;
       const tempLayerIds: Record<string, string> = {};
       const exportedLayerIds: Record<string, string> = {};
-      const tempLayerProperties: Record<string, Record<string, unknown>> = {};
+      const tempLayerStyles: Record<string, LayerStyle> = {};
 
       const resolveStatus = (nodeId: string): NodeExecutionStatus =>
         results?.[nodeId]?.status === "skipped" ? "skipped" : "completed";
@@ -573,9 +574,9 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
           if (result.layer_id) {
             exportedLayerIds[nodeId] = result.layer_id;
           }
-          // Extract layer style properties from tool results
-          if (result.properties) {
-            tempLayerProperties[nodeId] = result.properties;
+          // The result's style, as the tool wrote it
+          if (result.style) {
+            tempLayerStyles[nodeId] = result.style;
           }
           // Extract timing info from each node result
           finalExecutionInfo[nodeId] = {
@@ -591,7 +592,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
         jobId: null, // Clear jobId to prevent re-triggering on subsequent job list updates
         tempLayerIds,
         exportedLayerIds,
-        tempLayerProperties,
+        tempLayerStyles,
         nodeStatuses: Object.fromEntries(
           Object.entries(s.nodeStatuses).map(([id]) => [id, resolveStatus(id)])
         ),
@@ -753,7 +754,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       nodeExecutionInfo: {},
       tempLayerIds: {},
       exportedLayerIds: {},
-      tempLayerProperties: {},
+      tempLayerStyles: {},
     });
   }, []);
 
@@ -766,7 +767,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
     nodeExecutionInfo: state.nodeExecutionInfo,
     tempLayerIds: state.tempLayerIds,
     exportedLayerIds: state.exportedLayerIds,
-    tempLayerProperties: state.tempLayerProperties,
+    tempLayerStyles: state.tempLayerStyles,
 
     // Actions
     execute,

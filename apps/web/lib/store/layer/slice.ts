@@ -1,12 +1,16 @@
 import { createSlice } from "@reduxjs/toolkit";
 import type { PayloadAction } from "@reduxjs/toolkit";
 
-import type { FeatureLayerProperties } from "@/lib/validations/layer";
+import type { Geometry } from "@/lib/style/compile/types";
+import type { LayerStyle } from "@/lib/style/generated/types";
 import type { ProjectLayer, ProjectLayerGroup } from "@/lib/validations/project";
 
+/** A copied style: pasted only onto a layer of the same kind and geometry. */
 export interface StyleClipboard {
   sourceLayerName: string;
-  properties: FeatureLayerProperties;
+  document: LayerStyle;
+  kind: "vector" | "raster" | "service";
+  geometry?: Geometry;
 }
 
 export interface LayerState {

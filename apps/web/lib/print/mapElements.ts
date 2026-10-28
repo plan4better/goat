@@ -12,32 +12,36 @@
  */
 import type { StyleSpecification } from "maplibre-gl";
 
-import type { ProjectLayer, ProjectViewState } from "@/lib/validations/project";
+import { isObject } from "@/lib/style/json";
+import type { ProjectViewState } from "@/lib/validations/project";
 import type { ReportElement } from "@/lib/validations/reportLayout";
+
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 
 export interface MapElementContext {
   /** The project's initial view; undefined while it is still loading. */
   initialView?: ProjectViewState;
-  /** The project's layers; empty while they are still loading. */
-  projectLayers: ProjectLayer[];
+  /** The project's map layers; empty while they are still loading. */
+  projectLayers: MapLayer[];
   /** The project's basemap as the map element would render it. */
   basemapUrl?: string | StyleSpecification;
 }
 
 type MapConfig = Record<string, unknown>;
 
-export const visibleProjectLayers = (layers: ProjectLayer[]): ProjectLayer[] =>
-  layers.filter((layer) => (layer.properties as Record<string, unknown> | undefined)?.visibility !== false);
+/** The layers the project's map draws (their own and their groups' visibility). */
+export const visibleProjectLayers = (layers: MapLayer[]): MapLayer[] =>
+  layers.filter((layer) => layer.visible);
 
 /**
  * The lock snapshot for `config` taken from `layers` (the project's visible
  * layers): which layers, the basemap, and, with `lock_styles`, each layer's
- * properties frozen as they are now. Clears the snapshot when layers are not
- * locked.
+ * active style document frozen as it is now. Clears the snapshot when layers
+ * are not locked.
  */
 export const lockSnapshot = (
   config: MapConfig,
-  layers: ProjectLayer[],
+  layers: MapLayer[],
   basemapUrl: string | StyleSpecification | undefined
 ): MapConfig => {
   if (config.lock_layers !== true) {
@@ -48,9 +52,9 @@ export const lockSnapshot = (
       locked_basemap_url: undefined,
     };
   }
-  const styles: Record<number, Record<string, unknown>> = {};
+  const styles: Record<number, unknown> = {};
   if (config.lock_styles === true) {
-    for (const layer of layers) styles[layer.id] = JSON.parse(JSON.stringify(layer.properties ?? {}));
+    for (const layer of layers) if (layer.style) styles[layer.id] = structuredClone(layer.style.document);
   }
   return {
     ...config,
@@ -69,8 +73,47 @@ const hasView = (config: MapConfig): boolean => {
   );
 };
 
+/** A frozen style the renderer can draw: a GOAT Style document. A snapshot taken before GOAT Style holds layer
+ * properties instead, and the live style is drawn. */
+const frozenDocument = (value: unknown) => (isObject(value) && value.version === 1 ? value : undefined);
+
+/**
+ * The layers a map element draws: the locked ones (shown whatever the project's
+ * visibility is now, with their frozen documents when styles are locked), else
+ * the project's drawn layers with their live styles; `hide` leaves out an atlas
+ * page's coverage layer.
+ */
+export const mapElementLayers = (
+  layers: MapLayer[],
+  config: MapConfig,
+  opts: { hide?: number } = {}
+): MapLayer[] => {
+  const lockedIds =
+    config.lock_layers === true ? (config.locked_layer_ids as number[] | undefined) : undefined;
+  const frozen =
+    lockedIds && config.lock_styles === true
+      ? ((config.locked_layer_styles as Record<string, unknown> | undefined) ?? {})
+      : {};
+  const drawn = lockedIds
+    ? layers
+        .filter((layer) => lockedIds.includes(layer.id))
+        .map((layer) => {
+          const document = frozenDocument(frozen[String(layer.id)]);
+          return {
+            ...layer,
+            visible: true,
+            style:
+              document && layer.style
+                ? { ...layer.style, id: `locked:${layer.style.id}`, revision: 0, document: document as never }
+                : layer.style,
+          };
+        })
+    : visibleProjectLayers(layers);
+  return opts.hide === undefined ? drawn : drawn.filter((layer) => layer.id !== opts.hide);
+};
+
 /** A locked map whose snapshot names none of this project's layers. */
-const snapshotIsForeign = (config: MapConfig, projectLayers: ProjectLayer[]): boolean => {
+const snapshotIsForeign = (config: MapConfig, projectLayers: MapLayer[]): boolean => {
   if (config.lock_layers !== true) return false;
   const ids = config.locked_layer_ids as number[] | undefined;
   if (!ids) return true;

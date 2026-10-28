@@ -5,18 +5,39 @@ import { Provider } from "react-redux";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mapReducer } from "@/lib/store/map/slice";
+import type { LayerStyle } from "@/lib/style/generated/types";
+import { fromPopupConfig, popupConfigOf } from "@/lib/style/popup";
+import type { ViewLayer } from "@/lib/style/render/viewLayers";
 import type { Layer, PopupProperties } from "@/lib/validations/layer";
-import type { ProjectLayer } from "@/lib/validations/project";
 
 import DatasetMapPreview from "@/components/dashboard/dataset/DatasetMapPreview";
 
 const { recorded, dispatchMock } = vi.hoisted(() => ({
   recorded: {
-    layers: [] as { properties?: Record<string, unknown> }[],
-    slotLayers: [] as { properties?: Record<string, unknown> }[],
+    layers: [] as ViewLayer[],
+    slotLayers: [] as ViewLayer[],
     activeFeatureMarker: undefined as boolean | undefined,
   },
   dispatchMock: vi.fn(),
+}));
+
+/** The dataset's default style: a marker for features, an image for rasters. */
+vi.mock("@/lib/api/map", () => ({
+  useDatasetStyle: (layerId?: string | null) => ({
+    style: layerId
+      ? {
+          id: "s1",
+          name: "Default",
+          position: 0,
+          revision: 1,
+          document: layerId.startsWith("raster")
+            ? { version: 1, kind: "raster", render: { type: "image" } }
+            : { version: 1, kind: "vector", symbol: { marker: {} } },
+          issues: [],
+          stale: false,
+        }
+      : undefined,
+  }),
 }));
 
 vi.mock("@/components/map/MapViewer", () => ({
@@ -25,7 +46,7 @@ vi.mock("@/components/map/MapViewer", () => ({
     children,
     activeFeatureMarker,
   }: {
-    layers: { properties?: Record<string, unknown> }[];
+    layers: ViewLayer[];
     children?: React.ReactNode;
     activeFeatureMarker?: boolean;
   }) => {
@@ -36,7 +57,7 @@ vi.mock("@/components/map/MapViewer", () => ({
 }));
 
 vi.mock("@/components/map/popover/MapFixedPopupSlot", () => ({
-  MapFixedPopupSlot: ({ layers }: { layers: { properties?: Record<string, unknown> }[] }) => {
+  MapFixedPopupSlot: ({ layers }: { layers: ViewLayer[] }) => {
     recorded.slotLayers = layers;
     return <div data-testid="fixed-popup-slot" />;
   },
@@ -63,7 +84,7 @@ vi.mock("@/hooks/map/CommonHooks", () => ({
 
 const datasetOf = (type: Layer["type"]): Layer =>
   ({
-    id: "layer-1",
+    id: type === "raster" ? "raster-1" : "layer-1",
     name: "Bus stops",
     type,
     feature_layer_geometry_type: "point",
@@ -71,8 +92,9 @@ const datasetOf = (type: Layer["type"]): Layer =>
     properties: {},
   }) as unknown as Layer;
 
+/** The popup the map shows for the layer: its style's, in today's configuration. */
 const popupOf = (): Record<string, unknown> | undefined =>
-  recorded.layers[0]?.properties?.popup as Record<string, unknown> | undefined;
+  popupConfigOf(recorded.layers[0]?.style?.document) as Record<string, unknown> | undefined;
 
 beforeAll(() => {
   vi.stubGlobal(
@@ -102,11 +124,9 @@ describe("DatasetMapPreview", () => {
     expect(popup.highlight_active_feature).toBe(true);
     // The highlight alone marks the feature; no pulse or dot on top of it.
     expect(recorded.activeFeatureMarker).toBe(false);
-    const blocks = popup.blocks as { attributes: { name: string; type: string }[] }[];
-    expect(blocks[0].attributes).toEqual([
-      { name: "name", type: "string" },
-      { name: "capacity", type: "number" },
-    ]);
+    // The fields in order; their types come from the dataset when the popover draws them (spec 7.4).
+    const blocks = popup.blocks as { attributes: { name: string }[] }[];
+    expect(blocks[0].attributes.map((a) => a.name)).toEqual(["name", "capacity"]);
   });
 
   it("mounts the host that draws a pinned panel, on the same layer the map gets", () => {
@@ -119,8 +139,9 @@ describe("DatasetMapPreview", () => {
   it("keeps the map visible and leaves a raster without a feature panel", () => {
     render(<DatasetMapPreview dataset={datasetOf("raster")} />);
 
-    expect(recorded.layers[0]?.properties?.visibility).toBe(true);
-    expect(popupOf()).toBeUndefined();
+    expect(recorded.layers[0]?.visible).toBe(true);
+    // No detail panel goes into a raster's style.
+    expect((recorded.layers[0]?.style?.document as { popup?: unknown }).popup).toBeUndefined();
   });
 
   it("clears the shared popup state when it goes away", () => {
@@ -141,34 +162,35 @@ describe("MapFixedPopupSlot on a dataset layer", () => {
       typeof import("@/components/map/popover/MapFixedPopupSlot")
     >("@/components/map/popover/MapFixedPopupSlot");
 
-    const layerWithPopup = {
+    const config = {
+      enabled: true,
+      trigger: "click_and_hover",
+      mode: "simple",
+      blocks: [
+        {
+          id: "6f0c2b1e-4d3a-4a8e-9c1b-2e7d5f8a9b10",
+          type: "fieldList",
+          layout: "table",
+          attributes: [{ name: "name", type: "string" }],
+          collapse_after: null,
+        },
+      ],
+      html: "",
+      layout: "pinned",
+      anchor: "top_right",
+      header: "none",
+      highlight_active_feature: true,
+      width: 300,
+      max_height: 400,
+    } as PopupProperties;
+    const layerWithPopup: ViewLayer = {
       id: "layer-1",
       name: "Bus stops",
-      properties: {
-        visibility: true,
-        popup: {
-          enabled: true,
-          trigger: "click_and_hover",
-          mode: "simple",
-          blocks: [
-            {
-              id: "6f0c2b1e-4d3a-4a8e-9c1b-2e7d5f8a9b10",
-              type: "fieldList",
-              layout: "table",
-              attributes: [{ name: "name", type: "string" }],
-              collapse_after: null,
-            },
-          ],
-          html: "",
-          layout: "pinned",
-          anchor: "top_right",
-          header: "none",
-          highlight_active_feature: true,
-          width: 300,
-          max_height: 400,
-        } as PopupProperties,
+      visible: true,
+      style: {
+        document: { version: 1, kind: "vector", popup: fromPopupConfig(config, undefined) } as LayerStyle,
       },
-    } as unknown as ProjectLayer;
+    };
 
     const store = configureStore({
       reducer: { map: mapReducer },

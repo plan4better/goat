@@ -95,22 +95,16 @@ describe("ASSETS_URL", () => {
     expect(GEOFENCE_LAYERS_PATH).toBe("https://cdn.client.test/other/geofence");
   });
 
-  it("builds the marker, pattern and basemap urls from the same base", async () => {
+  it("builds the marker and basemap urls from the same base", async () => {
     vi.stubEnv("NEXT_PUBLIC_ASSETS_URL", "");
     vi.resetModules();
     const { MAKI_ICONS_BASE_URL } = await import("@/lib/constants/icons");
-    const { PATTERN_IMAGES } = await import("@/lib/constants/pattern-images");
     const { BASEMAPS } = await import("@/lib/constants/basemaps");
     expect(MAKI_ICONS_BASE_URL).toBe("/assets/icons/maki");
-    expect(PATTERN_IMAGES.every((p) => p.url.startsWith("/assets/patterns/"))).toBe(true);
     expect(BASEMAPS.find((b) => b.value === "basemap_de_landuse")?.url).toBe(
       "/assets/goat/basemaps/bm_web_col_landuse_plan4better.json"
     );
-    const everyUrl = [
-      MAKI_ICONS_BASE_URL,
-      ...PATTERN_IMAGES.map((p) => p.url),
-      ...BASEMAPS.map((b) => b.url),
-    ];
+    const everyUrl = [MAKI_ICONS_BASE_URL, ...BASEMAPS.map((b) => b.url)];
     expect(everyUrl.some((u) => u?.includes("plan4better.de"))).toBe(false);
   });
 });

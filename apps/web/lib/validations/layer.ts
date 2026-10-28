@@ -2,7 +2,6 @@ import { v4 } from "uuid";
 import * as z from "zod";
 
 import { DEFAULT_WKT_EXTENT } from "@/lib/constants";
-import { DEFAULT_COLOR, DEFAULT_COLOR_RANGE } from "@/lib/constants/color";
 import { formatNumberTypes } from "@/lib/validations/common";
 import {
   contentMetadataSchema,
@@ -42,8 +41,6 @@ export const shareLayerSchema = z.object({
 const HexColor = z.string();
 const ColorMap = z.array(z.tuple([z.union([z.array(z.string()), z.null()]), HexColor]));
 
-export const sizeOrdinalMap = z.array(z.tuple([z.string(), z.number()]));
-
 export const classBreaks = z.enum([
   "quantile",
   "standard_deviation",
@@ -53,7 +50,6 @@ export const classBreaks = z.enum([
   "custom_breaks",
 ]);
 
-export const sizeScale = z.enum(["linear", "logarithmic", "exponential"]);
 const layerFieldType = z.object({
   $ref: z.string().optional(),
   name: z.string(),
@@ -118,105 +114,6 @@ const colorRangeSchema = z.object({
 
 export const colorRange = z.preprocess(sanitizeColorRangeInput, colorRangeSchema);
 
-export const SymbolPlacementAnchor = z.enum([
-  "center",
-  "left",
-  "right",
-  "top",
-  "bottom",
-  "top-left",
-  "top-right",
-  "bottom-left",
-  "bottom-right",
-]);
-export const TextLabelSchema = z.object({
-  size: z.number().min(1).max(100).default(14),
-  color: z.array(z.number().min(0).max(255)).optional().default([0, 0, 0]),
-  field: z.string().optional(),
-  offset: z.array(z.number().min(-5).max(5)).optional().default([0, 0]),
-  anchor: SymbolPlacementAnchor.default("bottom"),
-  alignment: z.enum(["center", "left", "right"]).optional().default("center"),
-  background: z.boolean().optional().default(false),
-  allow_overlap: z.boolean().optional().default(false),
-  font_family: z.array(z.string()).optional().default(["Open Sans Regular", "Arial Unicode MS Regular"]),
-  background_color: z.array(z.number().min(0).max(255)).optional().default([0, 0, 0, 0]),
-  outline_color: z.array(z.number().min(0).max(255)).optional().default([255, 255, 255]),
-  outline_width: z.number().min(0).max(10).optional().default(0),
-});
-
-export const layerPropertiesBaseSchema = z.object({
-  opacity: z.number().min(0).max(1).default(0.8),
-  visibility: z.boolean(),
-  min_zoom: z.number().min(0).max(23).default(0),
-  max_zoom: z.number().min(0).max(23).default(21),
-});
-
-export const colorSchema = z.object({
-  color: z.array(z.number().min(0).max(255)).optional().default(DEFAULT_COLOR),
-  color_range: colorRange.optional().default(DEFAULT_COLOR_RANGE),
-  color_field: layerFieldType.optional(),
-  color_scale: classBreaks.optional().default("quantile"),
-  color_scale_breaks: layerClassBreaks.optional(),
-  color_no_data: z.string().optional(),
-});
-
-export const strokeColorSchema = z.object({
-  stroke_color: z.array(z.number().min(0).max(255)).optional().default(DEFAULT_COLOR),
-  stroke_color_range: colorRange.optional().default(DEFAULT_COLOR_RANGE),
-  stroke_color_field: layerFieldType.optional(),
-  stroke_color_scale: classBreaks.optional().default("quantile"),
-  stroke_color_scale_breaks: layerClassBreaks.optional(),
-  stroke_color_no_data: z.string().optional(),
-});
-
-export const strokeWidthSchema = z.object({
-  stroke_width: z.number().min(0).max(200).default(2),
-  stroke_width_range: z.array(z.number().min(0).max(200)).default([0, 10]),
-  stroke_width_field: layerFieldType.optional(),
-  stroke_width_scale: classBreaks.catch("quantile").optional().default("quantile"),
-  stroke_width_num_steps: z.number().min(2).max(10).default(5),
-  stroke_width_scale_breaks: layerClassBreaks.optional(),
-  stroke_width_ordinal_map: sizeOrdinalMap.optional(),
-});
-
-export const lineStyleSchema = z.object({
-  stroke_pattern: z.enum(["solid", "dashed", "dotted", "dash_dot"]).default("solid"),
-  stroke_dash_density: z.enum(["tight", "normal", "loose"]).default("normal"),
-  stroke_cap: z.enum(["butt", "round", "square"]).default("butt"),
-  stroke_join: z.enum(["bevel", "round", "miter"]).default("miter"),
-  // Perpendicular pixel offset from the line geometry; positive shifts to
-  // the right of the line direction, negative to the left. Purely visual —
-  // hit-testing/snapping still uses the unshifted geometry.
-  stroke_offset: z.number().min(-50).max(50).catch(0).default(0),
-  // "decoration" is the cartography term for repeating symbols along a line.
-  // Generic so v2 can add "chevron" / "dot" / "tick" without a migration.
-  decoration_type: z.enum(["none", "arrow"]).default("none"),
-  decoration_direction: z.enum(["forward", "backward", "both"]).default("forward"),
-  decoration_placement: z.enum(["repeat", "start", "end", "start_and_end", "center"]).default("repeat"),
-  decoration_spacing: z.number().min(50).max(800).default(200),
-  // Target arrow size in screen pixels (matches the visible arrow extent
-  // because the source SVG fills its 32x32 viewBox). `.catch(32)` ensures
-  // out-of-range legacy values (e.g. the pre-pixel-scale fractional sizes)
-  // silently fall back to the default instead of throwing at parse time.
-  decoration_size: z.number().min(8).max(64).catch(32).default(32),
-  // When true, arrows render even where they'd collide with other symbols
-  // (and don't block other symbols from rendering near them). When false,
-  // MapLibre's collision detector culls overlapping arrows — arrows can
-  // disappear at low zoom or in dense areas.
-  decoration_allow_overlap: z.boolean().default(true),
-});
-
-export const radiusSchema = z.object({
-  radius: z.number().min(0).max(100).default(10),
-  radius_range: z.array(z.number().min(0).max(500)).default([0, 10]),
-  fixed_radius: z.boolean().default(false),
-  radius_field: layerFieldType.optional(),
-  radius_scale: classBreaks.catch("quantile").optional().default("quantile"),
-  radius_num_steps: z.number().min(2).max(10).default(5),
-  radius_scale_breaks: layerClassBreaks.optional(),
-  radius_ordinal_map: sizeOrdinalMap.optional(),
-});
-
 export const marker = z.object({
   id: z.string().optional(),
   name: z.string(),
@@ -224,39 +121,6 @@ export const marker = z.object({
   category: z.string().optional(),
   source: z.enum(["library", "custom"]).optional().default("library"),
 });
-
-const MarkerMap = z.array(z.tuple([z.union([z.array(z.string()), z.null()]), marker]));
-
-export const markerBackgroundType = z.enum(["circle", "marker"]);
-
-export const markerSchema = z.object({
-  custom_marker: z.boolean().default(false),
-  marker: marker.optional(),
-  marker_field: layerFieldType.optional(),
-  marker_mapping: MarkerMap.optional(),
-  marker_size: z.number().min(0).max(100).default(10),
-  marker_size_range: z.array(z.number().min(0).max(500)).default([0, 10]),
-  marker_size_field: layerFieldType.optional(),
-  marker_size_scale: classBreaks.catch("quantile").optional().default("quantile"),
-  marker_size_num_steps: z.number().min(2).max(10).default(5),
-  marker_size_scale_breaks: layerClassBreaks.optional(),
-  marker_size_ordinal_map: sizeOrdinalMap.optional(),
-  marker_background_type: markerBackgroundType.optional().default("marker"),
-  marker_allow_overlap: z.boolean().optional().default(false),
-  marker_anchor: SymbolPlacementAnchor.optional().default("center"),
-  marker_offset: z.array(z.number().min(-5).max(5)).optional().default([0, 0]),
-});
-
-export const clusterSchema = z.object({
-  enabled: z.boolean().default(false),
-  radius: z.number().min(1).max(100).default(50),
-  min_points: z.number().min(2).max(20).default(3),
-  max_zoom: z.number().min(0).max(20).default(14),
-  color: z.array(z.number().min(0).max(255)).length(3).default([40, 56, 178]),
-  text_color: z.array(z.number().min(0).max(255)).length(3).default([255, 255, 255]),
-});
-
-export const layerInteractionContentType = z.enum(["field_list", "image"]);
 
 // Composable number formatting — mirrors the `display_config` shape used by
 // FieldEditor for layer schema fields, so the popup editor can speak the
@@ -278,41 +142,6 @@ export const attributeSchema = z.object({
   format_config: attributeFormatConfig.optional(),
   prefix: z.string().optional(),
   suffix: z.string().optional(),
-});
-
-export const interactionFieldListContent = z.object({
-  id: z
-    .string()
-    .uuid()
-    .default(() => v4()),
-  type: z.literal(layerInteractionContentType.Enum.field_list).default("field_list"),
-  title: z.string().optional(),
-  attributes: z.array(attributeSchema).optional().default([]),
-});
-
-export const interactionImageContent = z.object({
-  id: z
-    .string()
-    .uuid()
-    .default(() => v4()),
-  type: z.literal(layerInteractionContentType.Enum.image).default("image"),
-  title: z.string().optional(),
-  url: z.string().optional().default(""),
-});
-
-export const layerInteractionContent = z.union([interactionFieldListContent, interactionImageContent]);
-
-export const layerInteractionType = z.enum(["click", "hover", "none"]);
-
-export const interactionProperties = z.object({
-  type: layerInteractionType.optional().default("click"),
-  content: z.array(interactionFieldListContent.or(interactionImageContent)).default([]),
-});
-
-export const layerLegend = z.object({
-  show: z.boolean().default(true),
-  caption: z.string().optional(),
-  collapsed: z.boolean().optional().default(false),
 });
 
 // Popup v2 — new customizable popup schema. Lives alongside `interaction`
@@ -440,38 +269,6 @@ export type PopupLayout = z.infer<typeof popupLayout>;
 export type PopupHeader = z.infer<typeof popupHeader>;
 export type PopupAnchor = z.infer<typeof popupAnchor>;
 
-export const featureLayerBasePropertiesSchema = z
-  .object({
-    filled: z.boolean().default(true),
-    stroked: z.boolean().default(true),
-    text_label: TextLabelSchema.optional(),
-    interaction: interactionProperties.optional().default({}),
-    popup: popupProperties.optional(), // NEW: undefined = legacy renderer
-    legend: layerLegend.optional().default({}),
-  })
-  .merge(layerPropertiesBaseSchema)
-  .merge(colorSchema)
-  .merge(strokeColorSchema)
-  .merge(strokeWidthSchema);
-
-export const featureLayerPointPropertiesSchema = featureLayerBasePropertiesSchema
-  .merge(strokeColorSchema)
-  .merge(radiusSchema)
-  .merge(markerSchema)
-  .extend({
-    cluster: clusterSchema.optional(),
-  });
-
-export const featureLayerLinePropertiesSchema = featureLayerBasePropertiesSchema.merge(lineStyleSchema);
-
-export const featureLayerPolygonPropertiesSchema = featureLayerBasePropertiesSchema.merge(strokeColorSchema);
-
-export const featureLayerProperties = featureLayerPointPropertiesSchema
-  .or(featureLayerLinePropertiesSchema)
-  .or(featureLayerPolygonPropertiesSchema);
-
-export const featureLabelProperties = z.object({});
-
 /**
  * What the metadata FORM edits — flat, because a form is a flat set of inputs.
  * It is packed into `dataset_metadata` on submit and unpacked on seed, the
@@ -516,78 +313,8 @@ export const otherPropertiesSchmea = z
    */
   .passthrough();
 
-// Raster styling schemas
-export const rasterStyleType = z.enum(["image", "color_range", "categories", "hillshade"]);
-
-export const rasterResampling = z.enum(["linear", "nearest"]);
-
-export const rasterStyleImageProperties = z.object({
-  style_type: z.literal("image").default("image"),
-  opacity: z.number().min(0).max(1).default(1.0),
-  brightness_min: z.number().min(0).max(1).optional().default(0.0),
-  brightness_max: z.number().min(0).max(1).optional().default(1.0),
-  contrast: z.number().min(-1).max(1).optional().default(0.0),
-  saturation: z.number().min(-1).max(1).optional().default(0.0),
-  gamma: z.number().min(0.1).max(3).optional().default(1.0),
-});
-
-export const rasterStyleColorRangeProperties = z.object({
-  style_type: z.literal("color_range").default("color_range"),
-  band: z.number().min(1).default(1),
-  min_value: z.number().optional(),
-  max_value: z.number().optional(),
-  min_label: z.string().optional(),
-  max_label: z.string().optional(),
-  color_map: z.array(z.tuple([z.number(), z.string()])).default([]),
-  no_data_color: z.string().optional().default("transparent"),
-  interpolate: z.boolean().default(true),
-});
-
-export const rasterStyleCategoriesProperties = z.object({
-  style_type: z.literal("categories").default("categories"),
-  band: z.number().min(1).default(1),
-  categories: z
-    .array(
-      z.object({
-        value: z.number(),
-        color: z.string(),
-        label: z.string().optional(),
-      })
-    )
-    .default([]),
-  default_color: z.string().default("#cccccc"),
-  no_data_color: z.string().optional().default("transparent"),
-});
-
-export const rasterStyleHillshadeProperties = z.object({
-  style_type: z.literal("hillshade").default("hillshade"),
-  band: z.number().min(1).default(1),
-  azimuth: z.number().min(0).max(360).default(315.0),
-  altitude: z.number().min(0).max(90).default(45.0),
-  z_factor: z.number().min(0.01).default(1.0),
-  opacity: z.number().min(0).max(1).default(1.0),
-});
-
-export const rasterStyleProperties = z.discriminatedUnion("style_type", [
-  rasterStyleImageProperties,
-  rasterStyleColorRangeProperties,
-  rasterStyleCategoriesProperties,
-  rasterStyleHillshadeProperties,
-]);
-
-export const rasterLayerPropertiesSchema = layerPropertiesBaseSchema.extend({
-  text_label: TextLabelSchema.optional(),
-  interaction: interactionProperties.optional().default({}),
-  legend: layerLegend.optional().default({}),
-  resampling: rasterResampling.optional().default("nearest"),
-  style: rasterStyleProperties
-    .optional()
-    .default({ style_type: "image", opacity: 1.0 } as z.infer<typeof rasterStyleImageProperties>),
-});
-
 export const layerSchema = layerStoredMetadataSchema.extend({
   id: z.string(),
-  properties: featureLayerProperties.or(rasterLayerPropertiesSchema).or(z.record(z.any())).default({}),
   extent: z.string().default(DEFAULT_WKT_EXTENT),
   // Both absent for a catalog layer: it belongs to the provider that published
   // it, so it has no owner and lives in no one's folder. The API omits them
@@ -639,7 +366,6 @@ export const createRasterLayerSchema = createLayerBaseSchema.extend({
   url: z.string().url(),
   data_type: dataType,
   extent: z.string().optional(),
-  properties: rasterLayerPropertiesSchema.optional(),
   other_properties: otherPropertiesSchmea,
 });
 
@@ -734,15 +460,10 @@ export type ColorRange = z.infer<typeof colorRange>;
 export type ColorMap = z.infer<typeof ColorMap>;
 export type Layer = z.infer<typeof layerSchema>;
 export type PostDataset = z.infer<typeof postDatasetSchema>;
-export type FeatureLayerProperties = z.infer<typeof featureLayerProperties>;
-export type FeatureLayerPointProperties = z.infer<typeof featureLayerPointPropertiesSchema>;
-export type FeatureLayerLineProperties = z.infer<typeof featureLayerLinePropertiesSchema>;
-export type FeatureLayerPolygonProperties = z.infer<typeof featureLayerPolygonPropertiesSchema>;
 export type LayerPaginated = z.infer<typeof layerResponseSchema>;
 export type LayerUniqueValues = z.infer<typeof uniqueValuesSchema>;
 export type LayerUniqueValuesPaginated = z.infer<typeof uniqueValuesResponseSchema>;
 export type Marker = z.infer<typeof marker>;
-export type MarkerMap = z.infer<typeof MarkerMap>;
 export type LayerType = z.infer<typeof layerType>;
 export type LayerQueryables = z.infer<typeof layerQueryables>;
 export type ClassBreaks = z.infer<typeof classBreaks>;
@@ -755,24 +476,6 @@ export type ExternalDatasetFeatureUrl = z.infer<typeof externalDatasetFeatureUrl
 export type CreateLayerFromDataset = z.infer<typeof createLayerFromDatasetSchema>;
 export type CreateRasterLayer = z.infer<typeof createRasterLayerSchema>;
 export type LayerSharedWith = z.infer<typeof shareLayerSchema>;
-export type TextLabelSchemaData = z.infer<typeof TextLabelSchema>;
-export type LayerInteractionContentType = z.infer<typeof layerInteractionContentType>;
-export type LayerInteractionContent = z.infer<typeof layerInteractionContent>;
-export type LayerInteractionFieldListContent = z.infer<typeof interactionFieldListContent>;
-export type SizeOrdinalMap = z.infer<typeof sizeOrdinalMap>;
-
-// Raster styling types
-export type RasterStyleType = z.infer<typeof rasterStyleType>;
-export type RasterResampling = z.infer<typeof rasterResampling>;
-export type RasterStyleImageProperties = z.infer<typeof rasterStyleImageProperties>;
-export type RasterStyleColorRangeProperties = z.infer<typeof rasterStyleColorRangeProperties>;
-export type RasterStyleCategoriesProperties = z.infer<typeof rasterStyleCategoriesProperties>;
-export type RasterStyleHillshadeProperties = z.infer<typeof rasterStyleHillshadeProperties>;
-export type RasterStyleProperties = z.infer<typeof rasterStyleProperties>;
-export type RasterLayerProperties = z.infer<typeof rasterLayerPropertiesSchema>;
-
-// Union type for all layer properties
-export type LayerProperties = FeatureLayerProperties | RasterLayerProperties;
 
 // --- Field definitions ---
 

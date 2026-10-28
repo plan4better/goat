@@ -13,7 +13,7 @@ import { useProjectInitialViewState } from "@/lib/api/projects";
 import { updateReportLayout, useReportLayouts } from "@/lib/api/reportLayouts";
 import { materializeMapElements } from "@/lib/print/mapElements";
 import { snapScalebarWidths } from "@/lib/print/scalebar";
-import type { Project, ProjectLayer } from "@/lib/validations/project";
+import type { Project } from "@/lib/validations/project";
 import type {
   ReportElement,
   ReportElementType,
@@ -22,6 +22,7 @@ import type {
 } from "@/lib/validations/reportLayout";
 
 import { useBasemap } from "@/hooks/map/MapHooks";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 
 import ReportsCanvas from "./canvas/ReportsCanvas";
 import { reportElementIconMap } from "./elements/ReportElementIconMap";
@@ -30,7 +31,7 @@ import ReportsElementsPanel from "./panels/ReportsElementsPanel";
 
 export interface ReportsLayoutProps {
   project?: Project;
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onProjectUpdate?: (key: string, value: any, refresh?: boolean) => void;
   /** A template result's `?layout=<id>` (T7), parsed by the map page's

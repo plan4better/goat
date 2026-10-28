@@ -67,7 +67,10 @@ export function formatFeatureProperties(
 
   for (const k of keys) {
     if (!(k in properties)) continue;
-    const v = properties[k];
+    // GeoJSON sources hand nested values over as objects, vector tiles as
+    // JSON strings; both render as the JSON text.
+    const raw = properties[k];
+    const v = typeof raw === "object" && raw !== null ? JSON.stringify(raw) : raw;
     const f = byName.get(k);
     const displayKey = fieldLabels?.[k] ?? k;
     if (!f || v === null || v === undefined || v === "") {

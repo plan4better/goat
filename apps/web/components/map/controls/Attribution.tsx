@@ -1,5 +1,6 @@
 import { Box, Link, Typography, debounce } from "@mui/material";
 import { styled } from "@mui/material/styles";
+import DOMPurify from "dompurify";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -23,6 +24,14 @@ export const goatAttribution = (label: string): string =>
   `<a href="${GOAT_HREF}" target="_blank">${label}</a>`;
 
 export const DEFAULT_ATTRIBUTIONS = [goatAttribution("Made with GOAT")];
+
+// Attribution HTML comes from tile sources, TileJSON and user-entered basemap
+// settings, so only links and inline formatting are kept.
+export const sanitizeAttributionHtml = (dirty: string): string =>
+  DOMPurify.sanitize(dirty, {
+    ALLOWED_TAGS: ["a", "b", "strong", "i", "em", "span", "small", "sub", "sup", "br"],
+    ALLOWED_ATTR: ["href", "target", "rel", "title"],
+  });
 
 export interface AttributionParts {
   madeWith: string[];
@@ -170,7 +179,7 @@ const AttributionControl: React.FC<AttributionControlProps> = ({ customAttributi
             "& a": linkSx,
           }}
           dangerouslySetInnerHTML={{
-            __html: hasContent ? inlineHtml : t("no_attribution_available"),
+            __html: sanitizeAttributionHtml(hasContent ? inlineHtml : t("no_attribution_available")),
           }}
         />
         {overflowing && (
@@ -199,7 +208,7 @@ const AttributionControl: React.FC<AttributionControlProps> = ({ customAttributi
             <Typography
               variant="body2"
               sx={{ "& a": { color: "primary.main" } }}
-              dangerouslySetInnerHTML={{ __html: parts.dataSources.join("<br/>") }}
+              dangerouslySetInnerHTML={{ __html: sanitizeAttributionHtml(parts.dataSources.join("<br/>")) }}
             />
           </>
         )}

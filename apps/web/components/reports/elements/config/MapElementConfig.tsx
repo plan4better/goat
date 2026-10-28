@@ -8,9 +8,10 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
-import type { ProjectLayer } from "@/lib/validations/project";
 import { lockSnapshot, visibleProjectLayers } from "@/lib/print/mapElements";
 import type { ReportElement } from "@/lib/validations/reportLayout";
+
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 
 import type { SelectorItem } from "@/types/map/common";
 
@@ -78,7 +79,7 @@ const PREDEFINED_SCALES = [
 
 interface MapElementConfigProps {
   element: ReportElement;
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
   basemapUrl?: string | StyleSpecification;
   onChange: (updates: Partial<ReportElement>) => void;
   onSyncLayers?: () => void;

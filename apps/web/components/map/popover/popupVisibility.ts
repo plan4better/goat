@@ -2,7 +2,7 @@
  * Popup ↔ layer-visibility reconciliation.
  *
  * A feature popup is bound to a specific layer, but its state (`popupInfo`)
- * lives in Redux independently of that layer's `properties.visibility`. When
+ * lives in Redux independently of whether that layer is drawn. When
  * the user toggles the owning layer off in the Layers panel (or deletes it),
  * nothing clears `popupInfo` — so the popup and its active-feature pulse would
  * otherwise stay stranded on a layer the map no longer draws. These pure
@@ -13,8 +13,9 @@
 export interface PopupLayerLike {
   id: string | number;
   /** ProjectLayer carries the dataset id here; plain Layer leaves it unset. */
-  layer_id?: string;
-  properties?: { visibility?: boolean } | null;
+  layer_id?: string | null;
+  /** A map layer: drawn when it and every group around it are visible. */
+  visible?: boolean;
 }
 
 /**
@@ -48,7 +49,7 @@ export function findPopupLayer<T extends PopupLayerLike>(
  * Returns false when `layers` is undefined (still loading / mid-refetch) so a
  * transient fetch never closes a valid popup, and false when there is no
  * `layerId` so non-layer-bound popups are left untouched. A missing
- * `visibility` flag counts as visible, matching how the map renders layers.
+ * `visible` flag counts as drawn.
  */
 export function shouldClosePopupForHiddenLayer(
   layerId: string | undefined,
@@ -58,7 +59,7 @@ export function shouldClosePopupForHiddenLayer(
   if (!layerId || !layers) return false;
   const layer = findPopupLayer(layerId, layers, projectLayerId);
   if (!layer) return true; // owning layer was removed from the project
-  return (layer.properties?.visibility ?? true) === false;
+  return layer.visible === false;
 }
 
 /**

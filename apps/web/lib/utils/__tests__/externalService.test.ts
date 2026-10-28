@@ -328,3 +328,41 @@ describe("direct services", () => {
     expect(defaultLayerName(service, [])).toBe("dgm1");
   });
 });
+
+describe("service styles", () => {
+  const TWO_STYLES = `<?xml version="1.0"?>
+<WMS_Capabilities version="1.3.0" xmlns="http://www.opengis.net/wms" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <Service><Name>WMS</Name><Title>Aerial</Title></Service>
+  <Capability>
+    <Request><GetMap><Format>image/png</Format><DCPType><HTTP><Get><OnlineResource xlink:href="https://wms.example/service?"/></Get></HTTP></DCPType></GetMap></Request>
+    <Layer>
+      <Title>Root</Title><CRS>EPSG:3857</CRS>
+      <Layer>
+        <Name>aerial</Name><Title>Aerial photo</Title>
+        <Style><Name>default</Name><Title>Colors</Title><LegendURL><Format>image/png</Format><OnlineResource xlink:href="https://wms.example/legend-default.png"/></LegendURL></Style>
+        <Style><Name>grey</Name><Title>Grey</Title><LegendURL><Format>image/png</Format><OnlineResource xlink:href="https://wms.example/legend-grey.png"/></LegendURL></Style>
+      </Layer>
+    </Layer>
+  </Capability>
+</WMS_Capabilities>`;
+  const service = parseCapabilities(
+    "https://wms.example/service?SERVICE=WMS&REQUEST=GetCapabilities",
+    TWO_STYLES
+  );
+
+  it("a layer lists every style the service offers, with its legend", () => {
+    expect(service.groups[0].layers[0].styles).toEqual([
+      { name: "default", title: "Colors", legendUrl: "https://wms.example/legend-default.png" },
+      { name: "grey", title: "Grey", legendUrl: "https://wms.example/legend-grey.png" },
+    ]);
+  });
+
+  it("adding one service layer stores its styles", () => {
+    const request = buildLayerRequest(service, ["aerial"], { name: "Aerial", folderId: FOLDER });
+    if (request.kind !== "raster") throw new Error("raster expected");
+    expect(request.payload.other_properties.service_styles).toEqual([
+      { name: "default", title: "Colors", legendUrl: "https://wms.example/legend-default.png" },
+      { name: "grey", title: "Grey", legendUrl: "https://wms.example/legend-grey.png" },
+    ]);
+  });
+});

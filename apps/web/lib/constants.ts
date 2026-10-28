@@ -112,6 +112,9 @@ export const SYSTEM_LAYERS_IDS = [STREET_NETWORK_LAYER_ID];
 export const GEOFENCE_LAYERS_PATH = `${ASSETS_URL}/other/geofence`;
 export const DEFAULT_WKT_EXTENT = "POLYGON((-180 -90, -180 90, 180 90, 180 -90, -180 -90))";
 
+/** Marks a panel that floats over the map (`FloatingPanel`): zoom to layer keeps the layer clear of it. */
+export const MAP_PANEL_ATTR = "data-map-panel";
+
 export const MAX_EDITABLE_LAYER_SIZE = 100 * 1024 * 1024; // 100MB
 
 export const THEME_COOKIE_NAME = "client_theme";

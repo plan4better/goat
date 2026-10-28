@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { materializeMapElements } from "@/lib/print/mapElements";
-import type { ProjectLayer } from "@/lib/validations/project";
+import {
+  lockSnapshot,
+  mapElementLayers,
+  materializeMapElements,
+  visibleProjectLayers,
+} from "@/lib/print/mapElements";
+import type { LayerStyle } from "@/lib/style/generated/types";
 import type { ReportElement } from "@/lib/validations/reportLayout";
+
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 
 const initialView = {
   latitude: 52.5,
@@ -14,11 +21,24 @@ const initialView = {
   max_zoom: 20,
 };
 
-const layer = (id: number, visible = true, properties: Record<string, unknown> = {}): ProjectLayer =>
+const doc = (color: string) => ({ version: 1, kind: "vector", symbol: { fill: { color } } }) as LayerStyle;
+
+const layer = (id: number, visible = true): MapLayer =>
   ({
     id,
-    properties: { visibility: visible, color: `#${id}${id}${id}`, ...properties },
-  }) as unknown as ProjectLayer;
+    visible,
+    entry: { type: "layer", id, visible },
+    style: {
+      id: `s${id}`,
+      name: "Default",
+      position: 0,
+      revision: 1,
+      document: doc(`#${id}${id}${id}`),
+      issues: [],
+      stale: false,
+    },
+    otherStyles: [],
+  }) as unknown as MapLayer;
 
 const mapElement = (config: Record<string, unknown>): ReportElement => ({
   id: "map-1",
@@ -47,10 +67,7 @@ describe("materializeMapElements", () => {
     const [el] = materializeMapElements([mapElement({ lock_layers: true, lock_styles: true })], ctx);
     expect(el.config.locked_layer_ids).toEqual([7, 9]);
     expect(el.config.locked_basemap_url).toBe(ctx.basemapUrl);
-    expect(el.config.locked_layer_styles).toEqual({
-      7: { visibility: true, color: "#777" },
-      9: { visibility: true, color: "#999" },
-    });
+    expect(el.config.locked_layer_styles).toEqual({ 7: doc("#777"), 9: doc("#999") });
   });
 
   it("does not freeze styles when only layers are locked", () => {
@@ -94,5 +111,33 @@ describe("materializeMapElements", () => {
   it("waits for the initial view before filling one in", () => {
     const elements = [mapElement({})];
     expect(materializeMapElements(elements, { ...ctx, initialView: undefined })).toBe(elements);
+  });
+});
+
+describe("mapElementLayers", () => {
+  it("locked maps keep their frozen documents", () => {
+    const config = lockSnapshot(
+      { lock_layers: true, lock_styles: true },
+      visibleProjectLayers(projectLayers),
+      "url"
+    );
+    // The project's style changes after the map was locked.
+    const RED = doc("#ff0000");
+    const changed = projectLayers.map((l) =>
+      l.id === 7
+        ? ({ ...l, visible: false, style: { ...l.style, revision: 2, document: RED } } as MapLayer)
+        : l
+    );
+    const drawn = mapElementLayers(changed, config);
+    expect(drawn.map((l) => l.id)).toEqual([7, 9]);
+    expect(drawn[0].style?.document).toEqual(doc("#777"));
+    // Locked layers show whatever the project's visibility is now.
+    expect(drawn[0].visible).toBe(true);
+    // A snapshot taken before GOAT Style (layer properties) draws the live style.
+    const old = mapElementLayers(changed, { ...config, locked_layer_styles: { 7: { color: "#777" } } });
+    expect(old[0].style?.document).toEqual(RED);
+    // Unlocked: the project's drawn layers with their live styles; an atlas page can hide its coverage layer.
+    expect(mapElementLayers(changed, {}).map((l) => l.id)).toEqual([9]);
+    expect(mapElementLayers(projectLayers, {}, { hide: 9 }).map((l) => l.id)).toEqual([7]);
   });
 });

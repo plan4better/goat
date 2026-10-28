@@ -16,10 +16,13 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { LayerSearchGroup, LayerSearchResultItem } from "@/lib/api/processes";
 import { match, parse } from "@/lib/utils/match";
-import { buildPopupFieldConfig } from "@/lib/utils/map/popupProperties";
-import type { ProjectLayer } from "@/lib/validations/project";
+import { popupFieldConfigOf } from "@/lib/utils/map/popupProperties";
 
 import type { Feature } from "@/types/map/controllers";
+
+import type { MapLayer } from "@/hooks/map/useMapLayers";
+
+import { layerPopup } from "@/components/map/popover/normalizePopup";
 
 export type SearchLayerInfo = {
   projectLayerId: number;
@@ -31,7 +34,7 @@ export type SearchLayerInfo = {
    * The owning project layer, so a selected result can honour the same popup
    * configuration (enabled/trigger, field list) the map-click path honours.
    */
-  layer: ProjectLayer;
+  layer: MapLayer;
 };
 
 /** Dataset UUID → project layer info, keyed the same way `LayerSearchGroup.layer_id` is. */
@@ -210,7 +213,7 @@ const SearchResultsList = ({
   const fieldLabelsByLayer = useMemo(() => {
     const labels = new Map<string, Record<string, string>>();
     layersById.forEach((info, layerId) => {
-      if (info.layer) labels.set(layerId, buildPopupFieldConfig(info.layer).fieldLabels);
+      if (info.layer) labels.set(layerId, popupFieldConfigOf(layerPopup(info.layer)).fieldLabels);
     });
     return labels;
   }, [layersById]);

@@ -82,13 +82,6 @@ describe("static assets shipped in public/assets", () => {
     expect(missing).toEqual([]);
   });
 
-  it("has every fill pattern", async () => {
-    const { PATTERN_IMAGES } = await import("@/lib/constants/pattern-images");
-    const missing = PATTERN_IMAGES.map((p) => underAssets(p.url)).filter((p) => !exists(p));
-    expect(PATTERN_IMAGES.length).toBeGreaterThan(0);
-    expect(missing).toEqual([]);
-  });
-
   it("has the geofence of every toolbox mask layer", async () => {
     const { GEOFENCE_LAYERS_PATH } = await import("@/lib/constants");
     const { toolboxMaskLayerNames } = await import("@/lib/validations/tools");

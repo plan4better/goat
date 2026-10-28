@@ -23,7 +23,7 @@ import type { SelectorItem } from "@/types/map/common";
 
 import useLayerFields from "@/hooks/map/CommonHooks";
 import useLogicalExpressionOperations from "@/hooks/map/FilteringHooks";
-import { useActiveLayer } from "@/hooks/map/LayerPanelHooks";
+import { useFilterQueries } from "@/hooks/map/LayerPanelHooks";
 
 import type { PopperMenuItem } from "@/components/common/PopperMenu";
 import MoreMenu from "@/components/common/PopperMenu";
@@ -70,7 +70,7 @@ const Expression: React.FC<ExpressionProps> = (props) => {
   );
 
   // Use provided layerId prop if available, otherwise fall back to active layer
-  const { activeLayer } = useActiveLayer(projectId as string);
+  const { activeLayer } = useFilterQueries(projectId as string);
   const effectiveLayerId = props.layerId || activeLayer?.layer_id || "";
   const { layerFields } = useLayerFields(effectiveLayerId);
   const selectedAttribute = useMemo(() => {

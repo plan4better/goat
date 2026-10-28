@@ -3,19 +3,27 @@ import { Box, Stack, Tab, Tabs, Typography } from "@mui/material";
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useProjectMap } from "@/lib/api/map";
+import { useFeatureCount } from "@/lib/api/processes";
 import { setSelectedLayers } from "@/lib/store/layer/slice";
 import { setActiveRightPanel } from "@/lib/store/map/slice";
-import type { ProjectLayer } from "@/lib/validations/project";
+import type { Geometry } from "@/lib/style/compile/types";
+import { sourceOf } from "@/lib/style/layerSource";
+import { canSetDefaultStyle } from "@/lib/utils/layerPermissions";
 
 import { MapSidebarItemID } from "@/types/map/common";
 
 import { useLazyTabs } from "@/hooks/map/useLazyTabs";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
+import { useLayerStyle } from "@/hooks/style/useLayerStyle";
 
 import Container from "@/components/map/panels/Container";
 import FilterImpl from "@/components/map/panels/filter/Filter";
 import PropertiesPanelImpl from "@/components/map/panels/properties/Properties";
-import LayerStyleImpl from "@/components/map/panels/style/LayerStyle";
+import { NamedStyles } from "@/components/map/panels/styleEditor/NamedStyles";
+import { ProjectStylePanel } from "@/components/map/panels/styleEditor/ProjectStylePanel";
+import { type EditorLayer, StyleHeader } from "@/components/map/panels/styleEditor/StyleEditor";
 
 // Tab switches flip local state in this component; without memo every switch
 // re-renders all mounted tab trees (~500ms of render work in dev). The trees
@@ -23,11 +31,11 @@ import LayerStyleImpl from "@/components/map/panels/style/LayerStyle";
 // loses nothing.
 const Filter = React.memo(FilterImpl);
 const PropertiesPanel = React.memo(PropertiesPanelImpl);
-const LayerStyle = React.memo(LayerStyleImpl);
 
 interface LayerSettingsPanelProps {
   projectId: string;
-  projectLayers?: ProjectLayer[];
+  /** The map's layers: the Style tab edits the active style of the selected one. */
+  projectLayers?: MapLayer[];
 }
 
 // Helper function to get max tab index for layer type
@@ -78,6 +86,24 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
   }, [selectedLayerIds, projectLayers]);
 
   const layerType = activeLayer?.type;
+  const store = useLayerStyle(projectId, layerType === "table" ? undefined : (activeLayer ?? undefined));
+  const { setLayerState, mutate } = useProjectMap(projectId);
+  const { featureCount } = useFeatureCount(activeLayer?.layer_id ?? undefined);
+  const editorLayer = useMemo<EditorLayer>(() => {
+    const g = activeLayer?.feature_layer_geometry_type?.toLowerCase();
+    const geometry = (g === "point" || g === "line" || g === "polygon" ? g : undefined) as
+      | Geometry
+      | undefined;
+    const source = activeLayer ? sourceOf(activeLayer) : undefined;
+    const kind: EditorLayer["kind"] =
+      activeLayer?.type !== "raster" ? "vector" : source?.kind === "cog" ? "raster" : "service";
+    return {
+      id: String(activeLayer?.id ?? ""),
+      name: activeLayer?.name ?? t("layer_settings"),
+      geometry,
+      kind,
+    };
+  }, [activeLayer, t]);
 
   const [activeTab, setActiveTab] = useState(() =>
     clampTabValue(getTabFromPanelId(activeRightPanel, layerType), layerType)
@@ -135,6 +161,19 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
 
     // ... (Single selection logic)
     if (selectedLayerIds.length === 1 && activeLayer) {
+      // The named styles head the style tab: only the style changes with them.
+      const namedStyles = activeLayer.style ? (
+        <NamedStyles
+          projectId={projectId}
+          layer={activeLayer}
+          store={store}
+          kind={editorLayer.kind}
+          geometry={editorLayer.geometry}
+          canSetDefault={canSetDefaultStyle(activeLayer)}
+          onSwitch={(styleId) => setLayerState(activeLayer.id, { active_style_id: styleId })}
+          onChanged={() => mutate()}
+        />
+      ) : undefined;
       return (
         <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
           <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
@@ -150,12 +189,21 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
               <Tab label={t("metadata.title")} />
             </Tabs>
           </Box>
-          <Box sx={{ flexGrow: 1, overflowY: "auto", p: 0 }}>
+          {/* The style panel scrolls its own sections; the other tabs scroll here. */}
+          <Box
+            sx={{
+              flexGrow: 1,
+              minHeight: 0,
+              overflowY: activeTab === 0 && layerType !== "table" ? "hidden" : "auto",
+              p: 0,
+            }}>
             {/* Raster: Style (0), Metadata (1) */}
             {layerType === "raster" && (
               <>
                 <Box role="tabpanel" hidden={activeTab !== 0} sx={{ height: "100%" }}>
-                  {isTabLive(0) && <LayerStyle projectId={projectId} />}
+                  {isTabLive(0) && (
+                    <ProjectStylePanel projectId={projectId} layer={activeLayer} top={namedStyles} />
+                  )}
                 </Box>
                 <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: "100%" }}>
                   {isTabLive(1) && <PropertiesPanel activeLayer={activeLayer} />}
@@ -177,7 +225,9 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
             {layerType !== "raster" && layerType !== "table" && (
               <>
                 <Box role="tabpanel" hidden={activeTab !== 0} sx={{ height: "100%" }}>
-                  {isTabLive(0) && <LayerStyle projectId={projectId} />}
+                  {isTabLive(0) && (
+                    <ProjectStylePanel projectId={projectId} layer={activeLayer} top={namedStyles} />
+                  )}
                 </Box>
                 <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: "100%" }}>
                   {isTabLive(1) && <Filter activeLayer={activeLayer} projectId={projectId} />}
@@ -194,10 +244,21 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
     return null;
   };
 
-  const title = activeLayer ? activeLayer.name : t("layer_settings");
   return (
     <Box sx={{ height: "100%" }}>
-      <Container title={title} disablePadding={true} close={handleClose} body={renderContent()} />
+      <Container
+        header={
+          <StyleHeader
+            layer={editorLayer}
+            store={store}
+            featureCount={layerType === "raster" || layerType === "table" ? undefined : featureCount}
+            noHint={!activeLayer || layerType === "table"}
+          />
+        }
+        disablePadding={true}
+        close={handleClose}
+        body={renderContent()}
+      />
     </Box>
   );
 };

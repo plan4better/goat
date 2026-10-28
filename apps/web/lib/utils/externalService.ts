@@ -6,11 +6,7 @@ import { generateLayerGetLegendGraphicUrl, generateWmsUrl } from "@/lib/transfor
 import { convertWmtsToXYZUrl } from "@/lib/transformers/wmts";
 import WFSCapabilities from "@/lib/utils/parser/ol/format/WFSCapabilities";
 import type { CreateLayerFromDataset, CreateRasterLayer } from "@/lib/validations/layer";
-import {
-  createLayerFromDatasetSchema,
-  createRasterLayerSchema,
-  rasterLayerPropertiesSchema,
-} from "@/lib/validations/layer";
+import { createLayerFromDatasetSchema, createRasterLayerSchema } from "@/lib/validations/layer";
 
 /**
  * External services a layer can be connected from: what an address is, what the service
@@ -33,6 +29,9 @@ export type UnsupportedReason =
   /** A WMTS whose Web Mercator grid does not match the map's zoom levels, such as one offset by five. */
   | { reason: "grid" };
 
+/** A style a service offers for a layer (WMS `Style`, WMTS `Style`), with its legend. */
+export type ServiceStyle = { name: string; title: string; legendUrl?: string };
+
 export type ServiceLayer = {
   /** The service's own name for it, unique within the service. */
   id: string;
@@ -46,6 +45,8 @@ export type ServiceLayer = {
   /** WMS: the style drawn and its legend. */
   style?: string;
   legendUrl?: string;
+  /** Every style the service offers for the layer, the default first. */
+  styles?: ServiceStyle[];
   /** WMTS: the XYZ template the layer is drawn from. */
   tileUrl?: string;
   /** WFS: the CRS as the service names it, passed on to the import. */
@@ -225,6 +226,13 @@ const parseWms = (address: string, text: string): ConnectedService => {
         unsupported: crs.length && !crs.some(isWebMercator) ? { reason: "projection", crs } : undefined,
         style: style?.Name ?? "",
         legendUrl: style?.LegendURL?.[0]?.OnlineResource,
+        styles: ((layer.Style ?? []) as any[])
+          .filter((s) => s?.Name)
+          .map((s) => ({
+            name: s.Name,
+            title: s.Title || s.Name,
+            ...(s.LegendURL?.[0]?.OnlineResource ? { legendUrl: s.LegendURL[0].OnlineResource } : {}),
+          })),
       });
     }
     const children: any[] = layer.Layer ?? [];
@@ -378,6 +386,13 @@ const parseWmts = (address: string, text: string): ConnectedService => {
     return {
       id: layer.Identifier,
       title: layer.Title || layer.Identifier,
+      styles: ((layer.Style ?? []) as any[])
+        .filter((style) => style?.Identifier)
+        .map((style) => ({
+          name: style.Identifier,
+          title: typeof style.Title === "string" && style.Title ? style.Title : style.Identifier,
+          ...(style.LegendURL?.[0]?.href ? { legendUrl: style.LegendURL[0].href } : {}),
+        })),
       abstract: layer.Abstract || undefined,
       crs,
       bounds,
@@ -581,6 +596,9 @@ export const buildLayerRequest = (
       : service.kind === "wmts" && layers.length
         ? { layers: [layers[0].id] }
         : {};
+  // One service layer: the styles it offers, for the style panel's choice (spec 9.8).
+  const styles = layers.length === 1 ? layers[0].styles : undefined;
+  if (styles?.length) Object.assign(otherProperties, { service_styles: styles });
 
   return {
     kind: "raster",
@@ -592,7 +610,6 @@ export const buildLayerRequest = (
       // The COG protocol prefix is the map's business; the layer stores the file's address.
       url: service.kind === "cog" ? service.url : source.url,
       ...(bounds ? { extent: extentWkt(bounds) } : {}),
-      properties: rasterLayerPropertiesSchema.parse({ visibility: true }),
       other_properties: otherProperties,
     }),
   };

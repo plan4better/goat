@@ -32,6 +32,10 @@ import { MAX_EDITABLE_LAYER_SIZE } from "@/lib/constants";
 import { emitInteractionEvent } from "@/lib/store/interaction/slice";
 import { setSelectedBundle, setSelectedLayers } from "@/lib/store/layer/slice";
 import { setActiveRightPanel, setDataPanelLayerId, setIsDataPanelOpen } from "@/lib/store/map/slice";
+import type { Geometry } from "@/lib/style/compile/types";
+import { type JsonObject, isObject } from "@/lib/style/json";
+import { baseSwatch, buildLegend, informative } from "@/lib/style/legend";
+import type { TimeStep } from "@/lib/style/time";
 import { isBundleMemberLayer, isEditableBundleMember } from "@/lib/utils/bundleEditable";
 import {
   catalogItemSnapshot,
@@ -39,10 +43,9 @@ import {
   isCatalogLayerFailed,
   isCatalogLayerPending,
 } from "@/lib/utils/catalog-layer";
-import { rgbToHex } from "@/lib/utils/helpers";
 import { canEditLayerFeatures } from "@/lib/utils/layerPermissions";
+import { type ExtentLayer, canZoomTo } from "@/lib/utils/map/layerExtent";
 import { selectedTreeItemIds } from "@/lib/utils/map/layerTreeSelection";
-import { getLegendColorMap, getLegendMarkerMap, resolveFeatureMarker } from "@/lib/utils/map/legend";
 import { zoomToLayer, zoomToProjectLayer } from "@/lib/utils/map/navigate";
 // API & Store
 import type {
@@ -57,7 +60,10 @@ import { MapSidebarItemID } from "@/types/map/common";
 
 import { useLayerSettingsMoreMenu } from "@/hooks/map/LayerPanelHooks";
 import { useBundleMemberGates } from "@/hooks/map/useBundleMemberGates";
+import type { GroupStateChange, LayerStateChange, LayerTimeChange } from "@/hooks/map/useLayerTreeState";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 import useStartEditingGuard from "@/hooks/map/useStartEditingGuard";
+import { timeOf } from "@/hooks/map/useTimeSteps";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 // Modals
@@ -66,6 +72,8 @@ import PopupContentRenderer from "@/components/builder/widgets/common/PopupConte
 // Common Components
 import MoreMenu from "@/components/common/PopperMenu";
 import type { PopperMenuItem } from "@/components/common/PopperMenu";
+import { StyleLegend, SwatchIcon } from "@/components/map/legend/StyleLegend";
+import { LayerTimeSlider } from "@/components/map/panels/layer/LayerTimeSlider";
 import { MaskedImageIcon } from "@/components/map/panels/style/other/MaskedImageIcon";
 import ConfirmModal from "@/components/modals/Confirm";
 import ContentDialogWrapper from "@/components/modals/ContentDialogWrapper";
@@ -75,17 +83,14 @@ import ProjectLayerGroupModal from "@/components/modals/ProjectLayerGroupModal";
 import ProjectLayerRenameModal from "@/components/modals/ProjectLayerRename";
 
 // Tree Components
-import type { BaseTreeItem } from "./DraggableTreeView";
 import { DraggableTreeView } from "./DraggableTreeView";
 import { LockedLayerRow } from "./LockedLayerRow";
-import { LayerIcon } from "./legend/LayerIcon";
-import { LayerLegendPanel } from "./legend/LayerLegend";
-
-// Extended tree item interface to include project layer data
-interface ProjectTreeItem extends BaseTreeItem {
-  data: ProjectLayerTreeNode;
-  canExpand?: boolean;
-}
+import {
+  type ProjectTreeItem,
+  formatApiDataForDnd,
+  formatDndDataForApi,
+  treeChanges,
+} from "./layerTreeItems";
 
 // 1. HELPER COMPONENTS
 
@@ -222,133 +227,10 @@ export const VisibilityToggle = ({
 // ----------------------------------------------------------------------
 // 2. UTILS
 // ----------------------------------------------------------------------
-function formatApiDataForDnd(
-  nodes: ProjectLayerTreeNode[],
-  statusLabel?: (node: ProjectLayerTreeNode) => string | undefined
-): ProjectTreeItem[] {
-  // First, identify which groups are invisible
-  const invisibleGroupIds = new Set(
-    nodes
-      .filter((node) => node.type === "group" && !(node.properties?.visibility ?? true))
-      .map((node) => node.id)
-  );
-
-  // Function to check if a node should be hidden (invisible group or child of invisible group)
-  const shouldHideNode = (node: ProjectLayerTreeNode): boolean => {
-    const nodeVisibility = node.properties?.visibility ?? true;
-
-    if (node.type === "group" && !nodeVisibility) {
-      return false; // Show invisible groups themselves, but hide their children
-    }
-
-    // Check if this node is a child of an invisible group
-    let currentParentId = node.parent_id;
-    while (currentParentId) {
-      if (invisibleGroupIds.has(currentParentId)) {
-        return true; // Hide children of invisible groups
-      }
-      // Find the parent node to check its parent
-      const parentNode = nodes.find((n) => n.id === currentParentId && n.type === "group");
-      currentParentId = parentNode?.parent_id || null;
-    }
-
-    return false;
-  };
-
-  // Groups backed by a bundle have locked membership: layers can't be dragged
-  // into/out of them, and members can't be removed individually.
-  const bundleGroupIds = new Set(
-    nodes.filter((node) => node.type === "group" && node.bundle_id).map((node) => node.id)
-  );
-
-  return nodes
-    .filter((node) => !shouldHideNode(node))
-    .map((node) => {
-      const isBundleGroup = node.type === "group" && !!node.bundle_id;
-      const isBundleMember = node.type === "layer" && !!node.parent_id && bundleGroupIds.has(node.parent_id);
-      return {
-        id: `${node.type}-${node.id}`,
-        parentId: node.parent_id ? `group-${node.parent_id}` : null,
-        label: node.name,
-        collapsed:
-          node.type === "group"
-            ? !(node.properties?.expanded ?? true) // For groups, use expanded property
-            : (node.properties?.legend?.collapsed ?? false), // For layers, use legend.collapsed property
-        isGroup: node.type === "group",
-        labelInfo: node.type === "layer" ? statusLabel?.(node) : undefined,
-        data: node,
-        // Hide expand/collapse functionality for invisible groups
-        canExpand: node.type === "group" ? (node.properties?.visibility ?? true) : undefined,
-        // Bundle-group lock: member layers can't be dragged at all, and nothing
-        // can be dropped into the group. The group itself stays a drop target so
-        // it can be reordered — marking it undroppable leaves a project holding
-        // only bundles with no valid drop target anywhere, and nothing moves.
-        // Membership is enforced in handleDragEnd, which rejects any drop that
-        // would adopt a bundle group as parent.
-        isBundleGroup,
-        dragDisabled: isBundleMember,
-        dropDisabled: isBundleMember,
-      };
-    });
-}
-
-function formatDndDataForApi(flatItems: ProjectTreeItem[]): ProjectLayerTreeUpdate {
-  const items = flatItems.map((item, index) => {
-    const parts = item.id.split("-");
-    const id = parseInt(parts[1], 10);
-    const type = parts[0] as "group" | "layer";
-    let parent_id: number | null = null;
-    if (item.parentId) {
-      parent_id = parseInt(item.parentId.split("-")[1], 10);
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updateItem: any = {
-      id,
-      type,
-      order: index,
-      parent_id,
-      properties: {},
-    };
-
-    // Handle properties based on item type
-    if (type === "group") {
-      // For groups: include collapsed state, visibility, and expanded state
-      if (item.data.properties) {
-        updateItem.properties = { ...item.data.properties };
-      }
-
-      // Include expanded state (opposite of collapsed for groups)
-      updateItem.properties.expanded = !item.collapsed;
-
-      // Include visibility if it exists (get from properties)
-      const nodeVisibility = item.data.properties?.visibility;
-      if (nodeVisibility !== undefined) {
-        updateItem.properties.visibility = nodeVisibility;
-      }
-    } else if (type === "layer") {
-      // For layers: create a deep copy to avoid read-only property errors
-      if (item.data.properties) {
-        updateItem.properties = JSON.parse(JSON.stringify(item.data.properties));
-      }
-
-      // Include visibility if it exists (get from properties)
-      const nodeVisibility = item.data.properties?.visibility;
-      if (nodeVisibility !== undefined) {
-        updateItem.properties.visibility = nodeVisibility;
-      }
-
-      // Update legend collapsed state from the tree item's collapsed property
-      if (!updateItem.properties.legend) {
-        updateItem.properties.legend = {};
-      }
-      updateItem.properties.legend.collapsed = item.collapsed;
-    }
-
-    return updateItem;
-  });
-  return { items };
-}
+const geometryOf = (type: string | null | undefined): Geometry | undefined => {
+  const g = type?.toLowerCase();
+  return g === "point" || g === "line" || g === "polygon" ? g : undefined;
+};
 
 const castNodeToProjectLayer = (node: ProjectLayerTreeNode): ProjectLayer => {
   return {
@@ -356,7 +238,6 @@ const castNodeToProjectLayer = (node: ProjectLayerTreeNode): ProjectLayer => {
     layer_id: node.layer_id || "",
     id: node.id,
     name: node.name,
-    properties: node.properties || {},
     // Map geometry_type from tree node to feature_layer_geometry_type expected by ProjectLayer
     feature_layer_geometry_type: node.geometry_type as "point" | "line" | "polygon" | undefined,
   } as unknown as ProjectLayer;
@@ -396,9 +277,17 @@ const filterMenuForCatalogLayer = (menuOptions: PopperMenuItem[]): PopperMenuIte
 
 interface ProjectLayerTreeProps {
   projectId: string;
-  projectLayers?: ProjectLayer[];
+  /** The map's layers: rows with their map entry and active style. */
+  projectLayers?: MapLayer[];
   projectLayerGroups?: ProjectLayerGroup[];
+  /** Order, parents and groups opened or closed (the tree PUT). */
   onTreeUpdate?: (updatePayload: ProjectLayerTreeUpdate) => Promise<void>;
+  /** A layer shown or hidden, its legend opened or closed (map state). */
+  onLayerStateChange?: LayerStateChange;
+  /** A group shown or hidden (map state). */
+  onGroupStateChange?: GroupStateChange;
+  /** A time-enabled layer's slider moved (map state). */
+  onLayerTimeChange?: LayerTimeChange;
   onCreateGroup?: (groupData: { name: string; parent_id?: number }) => Promise<void>;
   onUpdateGroup?: (groupData: { name?: string; groupId?: number }) => Promise<void>;
   onDeleteGroup?: (groupData: { groupId?: number }) => Promise<void>;
@@ -444,6 +333,9 @@ export const ProjectLayerTree = ({
   projectLayers = [],
   projectLayerGroups = [],
   onTreeUpdate,
+  onLayerStateChange,
+  onGroupStateChange,
+  onLayerTimeChange,
   onCreateGroup,
   onUpdateGroup,
   onDeleteGroup,
@@ -476,6 +368,8 @@ export const ProjectLayerTree = ({
   const currentZoom = useAppSelector((state) =>
     dimOutOfZoom && viewMode === "view" ? state.map.currentZoom : undefined
   );
+  // Swatches and legends show values by zoom at the map's whole zoom.
+  const legendZoom = useAppSelector((state) => Math.round(state.map.currentZoom ?? 12));
   const editingLayerId = useAppSelector((state) => state.featureEditor.activeLayerId);
   const startEditingGuard = useStartEditingGuard();
   // Which member layers of the project's bundles may be edited, by role.
@@ -521,7 +415,8 @@ export const ProjectLayerTree = ({
         parent_id: group.parent_id,
         order: group.order ?? 0, // Provide default value for order
         extent: "", // Groups don't have extent, use empty string as default
-        properties: group.properties, // Include properties for groups
+        visible: group.visible,
+        expanded: group.expanded,
         bundle_id: group.bundle_id, // Bundle-backed groups have locked membership
       });
     });
@@ -538,7 +433,9 @@ export const ProjectLayerTree = ({
         layer_id: layer.layer_id,
         layer_type: layer.type,
         geometry_type: layer.feature_layer_geometry_type,
-        properties: layer.properties,
+        visible: layer.entry?.visible !== false,
+        legend_expanded: layer.entry?.legend?.expanded !== false,
+        style: layer.style?.document ?? null,
         query: layer.query,
         other_properties: layer.other_properties,
         // A catalog layer has no owner; the tree's node type says "unknown".
@@ -641,55 +538,37 @@ export const ProjectLayerTree = ({
   const handleVisibilityToggle = useCallback(
     async (node: ProjectLayerTreeNode, e: React.MouseEvent) => {
       e.stopPropagation();
+      const before = itemsRef.current;
+      const visible = node.visible === false;
 
-      const currentVisibility = node.properties?.visibility ?? true;
-      const newVisibility = !currentVisibility;
-
-      // Compute updated items from the current snapshot (via ref to avoid stale closure)
-      const newItems = itemsRef.current.map((i) => {
-        if (i.data.id === node.id && i.data.type === node.type) {
-          return {
-            ...i,
-            data: {
-              ...i.data,
-              properties: { ...i.data.properties, visibility: newVisibility },
-            },
-            collapsed: !newVisibility,
-          };
-        }
-        return i;
-      });
-
-      setItems(newItems);
+      // Shown at once; a hidden layer's legend closes with it.
+      setItems(
+        before.map((i) =>
+          i.data.id === node.id && i.data.type === node.type
+            ? { ...i, data: { ...i.data, visible }, collapsed: !visible }
+            : i
+        )
+      );
 
       // Emit interaction events based on visibility toggle
       if (node.type === "layer") {
-        dispatch(
-          emitInteractionEvent({
-            type: "visibility_changed",
-            sourceId: node.id,
-            value: newVisibility,
-          })
-        );
+        dispatch(emitInteractionEvent({ type: "visibility_changed", sourceId: node.id, value: visible }));
       }
       // When turning a group ON, activate it (switch tab). Turning OFF is just hiding.
-      if (node.type === "group" && newVisibility) {
+      if (node.type === "group" && visible) {
         dispatch(emitInteractionEvent({ type: "group_activated", sourceId: node.id }));
       }
 
       try {
-        const updatePayload = formatDndDataForApi(newItems);
-        if (onTreeUpdate) {
-          await onTreeUpdate(updatePayload);
-        }
+        if (node.type === "layer") await onLayerStateChange?.(node.id, { visible });
+        else await onGroupStateChange?.(node.id, { visible });
       } catch (err) {
-        // Revert to the snapshot captured before the optimistic update
-        setItems(itemsRef.current);
+        setItems(before);
         toast.error(t("error_updating_visibility"));
         console.error("Error in handleVisibilityToggle:", err);
       }
     },
-    [dispatch, onTreeUpdate, t]
+    [dispatch, onLayerStateChange, onGroupStateChange, t]
   );
 
   const handleProperties = useCallback(
@@ -806,6 +685,39 @@ export const ProjectLayerTree = ({
     }
   };
 
+  // --- ZOOM TO ---
+  /** The project layer a tree row stands for: the tree node carries too little of it (no data type, no address). */
+  const zoomTargetOf = useCallback(
+    (node: ProjectLayerTreeNode): ProjectLayer =>
+      projectLayers.find((layer) => layer.id === node.id) ?? castNodeToProjectLayer(node),
+    [projectLayers]
+  );
+
+  /** Layers whose area is being read for a zoom to, or could not be; asked again once the layers reload. */
+  const [zoomStates, setZoomStates] = useState<Record<number, "pending" | "failed">>({});
+  useEffect(() => setZoomStates((states) => (Object.keys(states).length ? {} : states)), [projectLayers]);
+
+  const zoomTo = useCallback(
+    async (node: ProjectLayerTreeNode) => {
+      const currentMap = mapRef.current;
+      if (!currentMap) return;
+      if (node.type !== "layer") {
+        if (node.extent) zoomToLayer(currentMap, node.extent);
+        return;
+      }
+      setZoomStates((states) => ({ ...states, [node.id]: "pending" }));
+      const zoomed = await zoomToProjectLayer(currentMap, zoomTargetOf(node));
+      setZoomStates((states) => {
+        const next = { ...states };
+        if (zoomed) delete next[node.id];
+        else next[node.id] = "failed";
+        return next;
+      });
+      if (!zoomed) toast.info(t("zoom_to_extent_unknown"));
+    },
+    [mapRef, zoomTargetOf, t]
+  );
+
   // --- ROW ACTIONS ---
   // Defined as a useCallback (not a nested component) so its reference stays stable
   // across re-renders that don't change relevant deps. A nested component definition
@@ -814,7 +726,7 @@ export const ProjectLayerTree = ({
   const renderRowActions = useCallback(
     (item: ProjectTreeItem) => {
       const node = item.data as ProjectLayerTreeNode;
-      const nodeVisibility = node.properties?.visibility ?? true;
+      const nodeVisibility = node.visible !== false;
 
       // Prepare Menu Options
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -930,6 +842,21 @@ export const ProjectLayerTree = ({
         });
       }
 
+      // Zoom to: gone where nothing could ever tell the layer's area (an XYZ tile template); off, saying why, while
+      // the area is being read or after it could not be.
+      if (node.type === "layer") {
+        if (!canZoomTo(zoomTargetOf(node) as ExtentLayer)) {
+          menuOptions = menuOptions.filter((opt) => opt.id !== MapLayerActions.ZOOM_TO);
+        } else if (zoomStates[node.id]) {
+          const tooltip = t(
+            zoomStates[node.id] === "pending" ? "zoom_to_extent_reading" : "zoom_to_extent_unknown"
+          );
+          menuOptions = menuOptions.map((opt) =>
+            opt.id === MapLayerActions.ZOOM_TO ? { ...opt, disabled: true, tooltip } : opt
+          );
+        }
+      }
+
       const hasFilter = node.query?.cql?.["args"]?.length;
       const isFilterActive = activeLayerId === node.id && activeRightPanel === MapSidebarItemID.FILTER;
 
@@ -970,42 +897,37 @@ export const ProjectLayerTree = ({
                 {menuOptions.map(
                   (opt) =>
                     opt.icon && (
-                      <Tooltip key={opt.id} title={opt.label} placement="top">
-                        <IconButton
-                          size="small"
-                          sx={{ p: 0.25 }}
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            const handleAction = async () => {
-                              if (opt.id === MapLayerActions.ZOOM_TO) {
-                                const currentMap = mapRef.current;
-                                if (currentMap) {
-                                  if (node.type === "layer") {
-                                    const target = castNodeToProjectLayer(node);
-                                    await zoomToProjectLayer(currentMap, target);
-                                  } else if (node.extent) {
-                                    zoomToLayer(currentMap, node.extent);
-                                  }
+                      <Tooltip key={opt.id} title={opt.tooltip ?? opt.label} placement="top">
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={opt.disabled}
+                            sx={{ p: 0.25 }}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const handleAction = async () => {
+                                if (opt.id === MapLayerActions.ZOOM_TO) {
+                                  await zoomTo(node);
+                                } else if (node.type === "layer") {
+                                  const target = castNodeToProjectLayer(node);
+                                  if (opt.id === MapLayerActions.PROPERTIES) handleProperties(target);
+                                  else if (opt.id === MapLayerActions.STYLE) handleStyle(target);
+                                  else if (opt.id === MapLayerActions.DUPLICATE) handleDuplicate(target);
+                                  else if (opt.id === ContentActions.TABLE) {
+                                    if (mapMode === "data") {
+                                      dispatch(setDataPanelLayerId(target.id));
+                                      dispatch(setIsDataPanelOpen(true));
+                                    } else {
+                                      openMoreMenu(opt, target);
+                                    }
+                                  } else openMoreMenu(opt, target);
                                 }
-                              } else if (node.type === "layer") {
-                                const target = castNodeToProjectLayer(node);
-                                if (opt.id === MapLayerActions.PROPERTIES) handleProperties(target);
-                                else if (opt.id === MapLayerActions.STYLE) handleStyle(target);
-                                else if (opt.id === MapLayerActions.DUPLICATE) handleDuplicate(target);
-                                else if (opt.id === ContentActions.TABLE) {
-                                  if (mapMode === "data") {
-                                    dispatch(setDataPanelLayerId(target.id));
-                                    dispatch(setIsDataPanelOpen(true));
-                                  } else {
-                                    openMoreMenu(opt, target);
-                                  }
-                                } else openMoreMenu(opt, target);
-                              }
-                            };
-                            await handleAction();
-                          }}>
-                          <Icon iconName={opt.icon} style={{ fontSize: "13px" }} htmlColor={opt.color} />
-                        </IconButton>
+                              };
+                              await handleAction();
+                            }}>
+                            <Icon iconName={opt.icon} style={{ fontSize: "13px" }} htmlColor={opt.color} />
+                          </IconButton>
+                        </span>
                       </Tooltip>
                     )
                 )}
@@ -1023,15 +945,7 @@ export const ProjectLayerTree = ({
                 }
                 onSelect={async (menuItem: PopperMenuItem) => {
                   if (menuItem.id === MapLayerActions.ZOOM_TO) {
-                    const currentMap = mapRef.current;
-                    if (currentMap) {
-                      if (node.type === "layer") {
-                        const target = castNodeToProjectLayer(node);
-                        await zoomToProjectLayer(currentMap, target);
-                      } else if (node.extent) {
-                        zoomToLayer(currentMap, node.extent);
-                      }
-                    }
+                    await zoomTo(node);
                     return;
                   }
                   if (node.type === "layer") {
@@ -1128,6 +1042,9 @@ export const ProjectLayerTree = ({
       activeLayerId,
       activeRightPanel,
       bundleMemberGates,
+      zoomTargetOf,
+      zoomTo,
+      zoomStates,
     ]
   );
 
@@ -1135,24 +1052,10 @@ export const ProjectLayerTree = ({
   const itemsWithIcons = useMemo(() => {
     return items.map((item) => {
       const node = item.data;
-      const nodeVisibility = node.properties?.visibility ?? true; // Get visibility state
-
-      // Check zoom-based visibility for layers in view mode
-      let isZoomVisible = true;
-      if (viewMode === "view" && node.type === "layer" && currentZoom !== undefined) {
-        const minZoom = node.properties?.min_zoom;
-        const maxZoom = node.properties?.max_zoom;
-        if (minZoom !== undefined && maxZoom !== undefined) {
-          isZoomVisible = currentZoom >= minZoom && currentZoom <= maxZoom;
-        }
-      }
+      const nodeVisibility = node.visible !== false;
 
       // 1. Group Icon
       if (node.type === "group") {
-        // Check if legend should be shown based on viewMode
-        const shouldShowLegend = viewMode === "view" ? node.properties?.legend?.show !== false : true;
-        const legendCaption = shouldShowLegend ? node.properties?.legend?.caption : undefined;
-
         const customIcon = groupIcons?.[`group_icon_${node.id}`];
         return {
           ...item,
@@ -1177,14 +1080,12 @@ export const ProjectLayerTree = ({
           // bundle, which has metadata of its own and can be filtered as a
           // whole — but only in edit mode, where that panel exists at all.
           isSelectable: !!item.isBundleGroup && isEditMode,
-          labelInfo: legendCaption,
         };
       }
 
-      // D7: a locked layer's `properties` are blanked by the backend, so
-      // there is no geometry preview or legend to draw from them — show the
-      // lock icon + hint instead, and refuse selection (there is no style
-      // panel to open).
+      // D7: a locked layer has no style for this user, so there is no
+      // preview or legend to draw — show the lock icon + hint instead, and
+      // refuse selection (there is no style panel to open).
       if (node.locked) {
         return {
           ...item,
@@ -1197,176 +1098,106 @@ export const ProjectLayerTree = ({
         };
       }
 
-      const props = node.properties || {};
-      const geomType = node.geometry_type?.toLowerCase() || "polygon";
-      const hasComplexLegend = props.color_field || props.stroke_color_field || props.marker_field;
-      // Combine visibility with zoom-based visibility
-      const isVisible = nodeVisibility && isZoomVisible;
-      let iconNode: React.ReactNode = null;
-      let legendNode: React.ReactNode = undefined;
-      let isSelectable = true; // Default to selectable
-
-      // 2. Table Icon (System Icon)
       if (node.layer_type === "table") {
-        iconNode = (
-          <Icon iconName={ICON_NAME.TABLE} style={{ fontSize: "1rem", color: theme.palette.action.active }} />
-        );
+        return {
+          ...item,
+          icon: (
+            <Icon
+              iconName={ICON_NAME.TABLE}
+              style={{ fontSize: "1rem", color: theme.palette.action.active }}
+            />
+          ),
+          isVisible: nodeVisibility,
+        };
       }
-      // 3. Raster Icon (System Icon)
-      else if (node.layer_type === "raster") {
-        iconNode = (
+
+      // The style says what the row shows (spec 7.2): its zoom range dims it in view mode, its legend options hide the
+      // legend or add a caption, and the legend itself is the style's.
+      const style = (node.style ?? null) as JsonObject | null;
+      const legendOptions = style && isObject(style.legend) ? style.legend : undefined;
+      let isZoomVisible = true;
+      if (viewMode === "view" && currentZoom !== undefined && style) {
+        const minZoom = typeof style.min_zoom === "number" ? style.min_zoom : 0;
+        const maxZoom = typeof style.max_zoom === "number" ? style.max_zoom : 24;
+        isZoomVisible = currentZoom >= minZoom && currentZoom <= maxZoom;
+      }
+      const isVisible = nodeVisibility && isZoomVisible;
+      const shouldShowLegend =
+        viewMode !== "view" || (style?.legend !== false && legendOptions?.show !== false);
+      const geometry = geometryOf(node.geometry_type);
+      const legend =
+        style && isVisible && shouldShowLegend && !simpleLegendLayerIds?.includes(node.id)
+          ? buildLegend(style, {
+              geometry,
+              zoom: legendZoom,
+              serviceLegendUrl: (node.other_properties as { legend_urls?: string[] } | null)
+                ?.legend_urls?.[0],
+            })
+          : null;
+      const icon =
+        node.layer_type === "raster" ? (
           <Icon
             iconName={ICON_NAME.RASTER}
             fontSize="small"
             style={{ fontSize: "1rem", color: theme.palette.action.active }}
           />
-        );
-
-        // Check if raster has categories or color_range style for legend
-        const rasterStyle = props.style as {
-          style_type?: string;
-          categories?: unknown[];
-          color_map?: unknown[];
-        };
-        const hasRasterLegend =
-          (rasterStyle?.style_type === "categories" &&
-            Array.isArray(rasterStyle.categories) &&
-            rasterStyle.categories.length > 0) ||
-          (rasterStyle?.style_type === "color_range" &&
-            Array.isArray(rasterStyle.color_map) &&
-            rasterStyle.color_map.length > 0);
-
-        if (hasRasterLegend && isVisible) {
-          legendNode = (
-            <LayerLegendPanel properties={props} geometryType="raster" hideHeading={hideLegendHeading} />
-          );
-        }
-      }
-      // 4. Complex Legend - Only show legend if layer is visible. Layers
-      // opted into the simple legend fall through to the geometry preview
-      // below (base marker, else fill color) with no attribute breakdown.
-      else if (hasComplexLegend && !simpleLegendLayerIds?.includes(node.id)) {
-        // Check if legend panel will actually have content to show
-        const colorMap = getLegendColorMap(props, "color");
-        const strokeMap = getLegendColorMap(props, "stroke_color");
-        const markerMap = getLegendMarkerMap(props);
-        const hasLegendContent = colorMap.length > 1 || strokeMap.length > 1 || markerMap.length > 1;
-
-        if (isVisible && hasLegendContent) {
-          // Show legend content for visible layers
-          // TODO: Add collapse/expand functionality to LayerLegendPanel component
-          legendNode = (
-            <LayerLegendPanel properties={props} geometryType={geomType} hideHeading={hideLegendHeading} />
-          );
-        } else if (!isVisible) {
-          // If not visible, don't show anything and make it non-selectable
-          isSelectable = false;
-        }
-
-        // Fallback icon when legend panel has no content (e.g. fill/stroke disabled)
-        if (!hasLegendContent) {
-          if (props.marker_field && props.custom_marker) {
-            // Attribute-based markers with no colors: generic location marker icon
-            iconNode = (
-              <Icon
-                iconName={ICON_NAME.LOCATION_MARKER}
-                style={{ fontSize: "1rem", color: theme.palette.action.active }}
-              />
-            );
-          } else {
-            const baseColor = props.color
-              ? Array.isArray(props.color) && props.color.length >= 3
-                ? rgbToHex(props.color as [number, number, number])
-                : Array.isArray(props.color)
-                  ? `rgb(${props.color.join(",")})`
-                  : props.color
-              : "#ccc";
-            const strokeColor = props.stroke_color
-              ? Array.isArray(props.stroke_color) && props.stroke_color.length >= 3
-                ? rgbToHex(props.stroke_color as [number, number, number])
-                : Array.isArray(props.stroke_color)
-                  ? `rgb(${props.stroke_color.join(",")})`
-                  : props.stroke_color
-              : undefined;
-            // When fill is disabled and custom marker is active, use black to match map behavior
-            const iconColor = props.filled === false && props.custom_marker ? "#000000" : baseColor;
-            iconNode = (
-              <LayerIcon
-                type={geomType}
-                color={iconColor}
-                strokeColor={props.stroked !== false ? strokeColor : undefined}
-                filled={props.filled !== false}
-                iconUrl={
-                  !props.marker_field && props.custom_marker && props.marker?.url
-                    ? props.marker.url
-                    : undefined
-                }
-                iconSource={
-                  !props.marker_field && props.custom_marker && props.marker?.source
-                    ? props.marker.source
-                    : "library"
-                }
-              />
-            );
-          }
-        }
-      }
-      // 5. Simple Feature (Geometry Preview) - for layers without complex
-      // legends and for simple-legend layers
-      else {
-        const baseColor = props.color
-          ? Array.isArray(props.color) && props.color.length >= 3
-            ? rgbToHex(props.color as [number, number, number])
-            : Array.isArray(props.color)
-              ? `rgb(${props.color.join(",")})`
-              : props.color
-          : "#ccc";
-        const strokeColor = props.stroke_color
-          ? Array.isArray(props.stroke_color) && props.stroke_color.length >= 3
-            ? rgbToHex(props.stroke_color as [number, number, number])
-            : Array.isArray(props.stroke_color)
-              ? `rgb(${props.stroke_color.join(",")})`
-              : props.stroke_color
-          : undefined;
-        // When fill is disabled and custom marker is active, use black to match map behavior
-        const iconColor = props.filled === false && props.custom_marker ? "#000000" : baseColor;
-        // Base marker with mapped-marker layers falling back to their base
-        // marker — the same precedence as the map's icon-image expression.
-        const simpleMarker = resolveFeatureMarker(props);
-        iconNode = (
-          <LayerIcon
-            type={geomType} // Use geometry type for vector preview
-            color={iconColor}
-            strokeColor={props.stroked !== false ? strokeColor : undefined}
-            filled={props.filled !== false}
-            iconUrl={simpleMarker?.url}
-            iconSource={simpleMarker?.source ?? "library"}
-          />
-        );
-      }
-      // Check if legend should be shown based on viewMode
-      const shouldShowLegend = viewMode === "view" ? node.properties?.legend?.show !== false : true;
-      const legendCaption = shouldShowLegend ? node.properties?.legend?.caption : undefined;
+        ) : style ? (
+          <SwatchIcon swatch={baseSwatch(style, { geometry: geometry ?? "polygon", zoom: legendZoom })} />
+        ) : undefined;
+      const caption =
+        shouldShowLegend && typeof legendOptions?.caption === "string" ? legendOptions.caption : undefined;
+      const time = timeOf(style);
+      const layer = time && node.layer_id ? projectLayers.find((l) => l.id === node.id) : undefined;
 
       return {
         ...item,
-        icon: iconNode,
-        legendContent: shouldShowLegend ? legendNode : undefined,
-        isSelectable,
+        icon,
+        footer:
+          time && layer && isVisible && onLayerTimeChange ? (
+            <LayerTimeSlider
+              datasetId={layer.layer_id}
+              time={time}
+              value={layer.entry?.time?.value as TimeStep | undefined}
+              version={layer.dataset_updated_at}
+              onChange={(value, committed) => void onLayerTimeChange(node.id, value, committed)}
+            />
+          ) : undefined,
+        legendContent:
+          legend && informative(legend) ? (
+            // The caption goes into the row's caption slot instead.
+            <StyleLegend
+              legend={{ ...legend, caption: undefined }}
+              variant="tree"
+              hideHeading={hideLegendHeading}
+            />
+          ) : undefined,
+        isSelectable: true,
         isVisible,
         // The legend caption shares the row's one caption slot with the
         // catalog materialize status the item already carries — don't clobber.
-        labelInfo: legendCaption ?? item.labelInfo,
+        labelInfo: caption ?? item.labelInfo,
       };
     });
-  }, [items, theme, currentZoom, viewMode, isEditMode, hideLegendHeading, groupIcons, simpleLegendLayerIds]);
+  }, [
+    items,
+    theme,
+    currentZoom,
+    legendZoom,
+    viewMode,
+    isEditMode,
+    hideLegendHeading,
+    groupIcons,
+    simpleLegendLayerIds,
+    projectLayers,
+    onLayerTimeChange,
+  ]);
 
   const renderPrefix = useCallback(
     togglePosition === "left"
       ? (item: ProjectTreeItem) => {
           const node = item.data as ProjectLayerTreeNode;
           if (hideActions || node.layer_type === "table" || node.locked) return null;
-          const nodeVisibility = node.properties?.visibility ?? true;
+          const nodeVisibility = node.visible !== false;
           return (
             <Box onClick={(e) => e.stopPropagation()} sx={{ display: "flex", alignItems: "center" }}>
               <VisibilityToggle
@@ -1492,13 +1323,13 @@ export const ProjectLayerTree = ({
           items={itemsWithIcons}
           onItemsChange={(newItems) => {
             // Always update local state so expand/collapse arrows work in view mode.
-            // Persist to the API only in edit mode.
+            // Persist only in edit mode: legends as map state, order and groups by the tree PUT.
+            const changes = treeChanges(itemsRef.current, newItems);
             setItems(newItems);
             if (!isEditMode) return;
-            if (onTreeUpdate) {
-              const updatePayload = formatDndDataForApi(newItems);
-              onTreeUpdate(updatePayload);
-            }
+            for (const [id, expanded] of changes.legends)
+              void onLayerStateChange?.(id, { legend_expanded: expanded });
+            if (changes.tree && onTreeUpdate) void onTreeUpdate(formatDndDataForApi(newItems));
           }}
           renderActions={renderRowActions}
           renderPrefix={togglePosition === "left" ? renderPrefix : undefined}

@@ -16,7 +16,7 @@ import {
   Typography,
 } from "@mui/material";
 import { styled } from "@mui/material/styles";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
@@ -33,6 +33,8 @@ import type { Project, ProjectLayer, ProjectLayerGroup } from "@/lib/validations
 import type { TemplateRead, TemplateUseResult } from "@/lib/validations/template";
 import { createEmptyWorkflowConfig } from "@/lib/validations/workflow";
 import type { Workflow } from "@/lib/validations/workflow";
+
+import { useMapLayers } from "@/hooks/map/useMapLayers";
 
 import NewMenuButton from "@/components/common/NewMenuButton";
 import MoreMenu from "@/components/common/PopperMenu";
@@ -82,6 +84,12 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
 
   // Fetch workflows from API
   const { workflows, isLoading, mutate } = useWorkflows(project?.id);
+  // The tree shows each layer with its style; the rows passed in say which layers the panel offers.
+  const { layers: mapLayers } = useMapLayers(project?.id);
+  const treeLayers = useMemo(() => {
+    const offered = new Set(projectLayers.map((layer) => layer.id));
+    return mapLayers.filter((layer) => offered.has(layer.id));
+  }, [mapLayers, projectLayers]);
 
   // Local state
   // The store is the single source of truth for which workflow is open — the
@@ -411,7 +419,7 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
           {project?.id && (
             <ProjectLayerTree
               projectId={project.id}
-              projectLayers={projectLayers}
+              projectLayers={treeLayers}
               projectLayerGroups={projectLayerGroups}
               viewMode="view"
               hideActions

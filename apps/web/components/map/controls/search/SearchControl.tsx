@@ -23,8 +23,7 @@ import type { LayerSearchGroup, LayerSearchResultItem } from "@/lib/api/processe
 import { MAPBOX_TOKEN } from "@/lib/constants";
 import { setGeocoderResult, setPopupInfo } from "@/lib/store/map/slice";
 import {
-  buildPopupFieldConfig,
-  getEffectivePopupTrigger,
+  popupFieldConfigOf,
   popupFieldInfo,
   selectPopupProperties,
   splitPopupProperties,
@@ -35,6 +34,7 @@ import type { Feature } from "@/types/map/controllers";
 import { type SearchSource, useUnifiedSearch } from "@/hooks/map/useUnifiedSearch";
 import { useAppDispatch } from "@/hooks/store/ContextHooks";
 
+import { layerPopup } from "@/components/map/popover/normalizePopup";
 import MobileSearchOverlay from "@/components/map/controls/search/MobileSearchOverlay";
 import SearchResultsList, {
   type SearchLayersById,
@@ -275,15 +275,15 @@ const SearchControl = ({
     // Without the owning project layer there is nothing to title or configure
     // the popup with; the camera move above still applies.
     if (!layerInfo) return;
-    // Same gate the map-click path applies: a layer whose popup is disabled
-    // (or legacy `interaction.type === "none"`) must never open one, so a
-    // search result can't leak fields the popup config hides.
-    if (!getEffectivePopupTrigger(layerInfo.layer)) return;
+    // Same gate the map-click path applies: a layer whose style shows no popup
+    // must never open one, so a search result can't leak fields the popup hides.
+    const popup = layerPopup(layerInfo.layer);
+    if (!popup || popup.enabled === false) return;
     try {
       const feature = await getFeature(layerInfo.datasetId, String(item.id));
       if (selectSeqRef.current !== seq) return;
       const featureProperties = (feature?.properties ?? {}) as Record<string, unknown>;
-      const fieldConfig = buildPopupFieldConfig(layerInfo.layer);
+      const fieldConfig = popupFieldConfigOf(popup);
       const { properties, jsonProperties } = splitPopupProperties(
         selectPopupProperties(fieldConfig, featureProperties)
       );

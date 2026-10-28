@@ -76,6 +76,14 @@ const getAccessToken = async (): Promise<string | null> => {
   return pendingSessionPromise;
 };
 
+/** Asks for a new session (after a 401 the cached token may be the reason); false when there is none, which needs a
+ * new sign-in. */
+export const renewAccessToken = async (): Promise<boolean> => {
+  cachedToken = null;
+  cacheExpiry = 0;
+  return (await getAccessToken()) !== null;
+};
+
 /** Clear the cached token (call on sign-out) */
 export const clearTokenCache = () => {
   cachedToken = null;

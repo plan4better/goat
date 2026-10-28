@@ -14,7 +14,16 @@ export type Basemap = BuiltInBasemap;
  * immutably.
  *
  * Imagery stays on MapTiler: no free provider serves comparable resolution. */
-const OFM_STYLE_URL = (style: string): string => `https://tiles.openfreemap.org/styles/${style}`;
+const OFM_URL = "https://tiles.openfreemap.org";
+const OFM_STYLE_URL = (style: string): string => `${OFM_URL}/styles/${style}`;
+
+/** Glyphs for the styles GOAT builds itself (raster and solid basemaps), from the default basemaps' host. */
+export const GLYPHS_URL = `${OFM_URL}/fonts/{fontstack}/{range}.pbf`;
+
+/** GOAT's label fonts. Labels take their glyphs from the basemap's glyph server: OpenFreeMap's and basemap.de's both
+ * serve Noto Sans (Roboto only basemap.de), and neither serves a combined font stack, so a label names one font. */
+export const LABEL_FONT = "Noto Sans Regular";
+export const LABEL_FONT_BOLD = "Noto Sans Bold";
 
 /** MapTiler's imagery basemap, offered only when a MapTiler key is configured.
  * A project that saved it resolves to `DEFAULT_BASEMAP` without one. */

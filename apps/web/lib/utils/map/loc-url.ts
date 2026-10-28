@@ -107,3 +107,29 @@ export function writeMapLocToUrl(map: MapCameraSource): void {
     pitch: map.getPitch(),
   });
 }
+
+/** A public viewer's choice of named styles, by project layer id (`styles=<layer>:<style>,…`): view
+ * state that travels with the link, never written to the project. */
+export function getStylesFromUrl(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const raw = new URLSearchParams(window.location.search).get("styles");
+  const choices: Record<string, string> = {};
+  for (const pair of raw?.split(",") ?? []) {
+    const [layer, style] = pair.split(":");
+    if (/^\d+$/.test(layer ?? "") && style) choices[layer] = style;
+  }
+  return choices;
+}
+
+export function writeStylesToUrl(choices: Record<string, string>): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  const value = Object.entries(choices)
+    .map(([layer, style]) => `${layer}:${style}`)
+    .join(",");
+  if (value) url.searchParams.set("styles", value);
+  else url.searchParams.delete("styles");
+  // Readable like loc: commas and colons stay as they are.
+  url.search = url.searchParams.toString().replace(/%2C/g, ",").replace(/%3A/g, ":");
+  window.history.replaceState(window.history.state, "", url.toString());
+}

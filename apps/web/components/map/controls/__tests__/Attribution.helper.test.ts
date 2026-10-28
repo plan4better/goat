@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_ATTRIBUTIONS, buildAttributionParts } from "../Attribution";
+import { DEFAULT_ATTRIBUTIONS, buildAttributionParts, sanitizeAttributionHtml } from "../Attribution";
 
 describe("buildAttributionParts", () => {
   it("puts custom attribution in madeWith and sources in dataSources", () => {
@@ -27,5 +27,19 @@ describe("buildAttributionParts", () => {
   it("default attributions no longer include MapLibre", () => {
     expect(DEFAULT_ATTRIBUTIONS.join(" ")).toContain("Made with GOAT");
     expect(DEFAULT_ATTRIBUTIONS.join(" ").toLowerCase()).not.toContain("maplibre");
+  });
+});
+
+describe("sanitizeAttributionHtml", () => {
+  it("keeps links and inline formatting", () => {
+    const html = '<a href="https://openstreetmap.org" target="_blank">© <b>OSM</b></a><br>';
+    expect(sanitizeAttributionHtml(html)).toBe(html);
+  });
+
+  it("drops scripts, event handlers and javascript: links", () => {
+    const out = sanitizeAttributionHtml(
+      '<img src=x onerror="alert(1)"><a href="javascript:alert(1)" onclick="alert(2)">x</a><script>alert(3)</script>'
+    );
+    expect(out).toBe("<a>x</a>");
   });
 });

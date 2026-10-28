@@ -5,14 +5,20 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { MapRef } from "react-map-gl/maplibre";
 import { MapProvider } from "react-map-gl/maplibre";
 
+import { useDatasetStyle } from "@/lib/api/map";
 import { getBasemapUrl } from "@/lib/constants/basemaps";
 import { DrawProvider } from "@/lib/providers/DrawProvider";
 import { setHighlightedFeature, setPopupInfo } from "@/lib/store/map/slice";
-import { hasLegend } from "@/lib/utils/datasets";
+import type { LayerStyle } from "@/lib/style/generated/types";
+import type { JsonObject } from "@/lib/style/json";
+import { buildLegend, informative } from "@/lib/style/legend";
+import { fromPopupConfig } from "@/lib/style/popup";
+import type { ViewLayer } from "@/lib/style/render/viewLayers";
 import { detailPopupConfig } from "@/lib/utils/map/detailPopup";
+import { resolveLayerBounds, storedBounds } from "@/lib/utils/map/layerExtent";
+import { fitBounds } from "@/lib/utils/map/navigate";
 import { globalExtent, wktToGeoJSON } from "@/lib/utils/map/wkt";
 import type { Layer } from "@/lib/validations/layer";
-import type { ProjectLayer } from "@/lib/validations/project";
 
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
 import useLayerFields from "@/hooks/map/CommonHooks";
@@ -20,7 +26,7 @@ import { useAppDispatch } from "@/hooks/store/ContextHooks";
 
 import DetailMapAttribution from "@/components/dashboard/common/DetailMapAttribution";
 import MapViewer from "@/components/map/MapViewer";
-import { LayerLegendPanel } from "@/components/map/panels/layer/legend/LayerLegend";
+import { StyleLegend } from "@/components/map/legend/StyleLegend";
 import { MapFixedPopupSlot } from "@/components/map/popover/MapFixedPopupSlot";
 
 /** Room kept clear for the credit strip, which sits in the corner opposite the pinned panel. */
@@ -34,9 +40,9 @@ interface DatasetMapPreviewProps {
   dataset: Layer;
 }
 
-/** An owned layer on a map: the layer's own tiles, styled by its own
- * properties, under the chrome the catalog's detail map wears. It fills the
- * box it is placed in, which is where its height comes from. */
+/** An owned layer on a map: the layer's own tiles in its default style, under
+ * the chrome the catalog's detail map wears. It fills the box it is placed in,
+ * which is where its height comes from. */
 const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
   const theme = useTheme();
   const mapRef = useRef<MapRef | null>(null);
@@ -45,8 +51,23 @@ const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
   const basemapStyle = useCatalogBasemapStyle() ?? getBasemapUrl(null);
   const geojson = wktToGeoJSON(dataset.extent || globalExtent);
   const boundingBox = bbox(geojson);
+  // A dataset stored without an extent (a COG, a map service) opens on the world; the area the file or the service
+  // tells replaces it once read.
+  const hasExtent = !!storedBounds(dataset);
+  useEffect(() => {
+    if (hasExtent) return;
+    let live = true;
+    resolveLayerBounds({ ...dataset, layer_id: dataset.id }).then((found) => {
+      if (live && found && mapRef.current) fitBounds(mapRef.current, found, 40, 18, 0);
+    });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataset.id, hasExtent]);
   const dispatch = useAppDispatch();
   const { layerFields } = useLayerFields(dataset.id, undefined, HIDDEN_FIELDS);
+  const { style } = useDatasetStyle(dataset.id);
 
   // `popupInfo` and the highlight live in the shared map store, so a panel left
   // open here would survive into the next dialog or a project map.
@@ -83,17 +104,29 @@ const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
     [dataset.type, layerFields, panelHeight]
   );
 
-  // Ensure the layer has visibility enabled for preview
-  const layerWithVisibility = useMemo(() => {
-    return {
-      ...dataset,
-      properties: {
-        ...dataset.properties,
-        visibility: true,
-        ...(popup ? { popup } : {}),
-      },
-    };
-  }, [dataset, popup]);
+  // The dataset in its default style, shown, with the detail popup in place of its own.
+  const layers = useMemo<ViewLayer[]>(() => {
+    if (!style) return [];
+    const document = popup
+      ? ({ ...style.document, popup: fromPopupConfig(popup, style.document.popup) } as LayerStyle)
+      : style.document;
+    return [{ ...dataset, visible: true, entry: {}, style: { ...style, document } }];
+  }, [dataset, popup, style]);
+
+  const geometry = dataset.feature_layer_geometry_type?.toLowerCase();
+  const legend = useMemo(
+    () =>
+      style
+        ? buildLegend(style.document as unknown as JsonObject, {
+            geometry:
+              geometry === "point" || geometry === "line" || geometry === "polygon" ? geometry : undefined,
+            zoom: 12,
+            serviceLegendUrl: (dataset.other_properties as { legend_urls?: string[] } | null)
+              ?.legend_urls?.[0],
+          })
+        : null,
+    [style, geometry, dataset.other_properties]
+  );
 
   return (
     <DrawProvider>
@@ -101,7 +134,7 @@ const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
         <Box ref={mapBox} sx={{ position: "relative", height: "100%" }}>
           <MapViewer
             mapRef={mapRef}
-            layers={[layerWithVisibility]}
+            layers={layers}
             initialViewState={{
               bounds: boundingBox as [number, number, number, number],
               fitBoundsOptions: { padding: 40 },
@@ -122,15 +155,13 @@ const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
 
             {/* `MapViewer` renders in-place popups only; a pinned one is drawn by
                 this slot, which anchors to the nearest positioned box — here
-                `MapViewer`'s own root. The slot reads `id`, `layer_id`, `name`,
-                `properties`, `layer_type` and `feature_layer_geometry_type`,
-                all of which a plain `Layer` carries or leaves undefined. */}
-            <MapFixedPopupSlot layers={[layerWithVisibility] as unknown as ProjectLayer[]} />
+                `MapViewer`'s own root. */}
+            <MapFixedPopupSlot layers={layers} />
 
-            {/* The dataset's legend, drawn by the Layers panel's own component
-                from the same style the features are rendered with — only where
-                that style has something to explain. */}
-            {hasLegend(dataset) && (
+            {/* The dataset's legend, drawn like the layer list's from the style
+                the features are rendered with, only where it says more than the
+                base look. */}
+            {legend && informative(legend) && (
               <Paper
                 elevation={0}
                 sx={{
@@ -150,10 +181,7 @@ const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
                   // narrow map.
                   zIndex: 2,
                 }}>
-                <LayerLegendPanel
-                  properties={dataset.properties as Record<string, unknown>}
-                  geometryType={dataset.feature_layer_geometry_type ?? ""}
-                />
+                <StyleLegend legend={legend} variant="tree" />
               </Paper>
             )}
           </MapViewer>

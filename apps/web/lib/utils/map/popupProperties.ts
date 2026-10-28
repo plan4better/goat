@@ -1,8 +1,5 @@
 import type { FormatNumberTypes } from "@/lib/validations/common";
-import {
-  type LayerInteractionFieldListContent,
-  layerInteractionContentType,
-} from "@/lib/validations/layer";
+import type { PopupProperties } from "@/lib/validations/layer";
 
 import type { MapPopoverInfoProps } from "@/types/map/popover";
 
@@ -31,8 +28,9 @@ export function isSystemPropertyKey(key: string): boolean {
 
 /**
  * Split raw feature properties into the two buckets a feature popup consumes:
- * values that parse to a JSON object/array go to `jsonProperties` (rendered as
- * nested content), everything else stays a primitive property.
+ * objects and arrays go to `jsonProperties` (rendered as nested content),
+ * everything else stays a primitive property. Vector tiles carry nested values
+ * as JSON strings, GeoJSON sources as the objects themselves.
  */
 export function splitPopupProperties(raw: Record<string, unknown> | undefined): {
   properties: NonNullable<MapPopoverInfoProps["properties"]>;
@@ -44,6 +42,10 @@ export function splitPopupProperties(raw: Record<string, unknown> | undefined): 
     for (const key in raw) {
       if (isSystemPropertyKey(key)) continue;
       const value = raw[key];
+      if (typeof value === "object" && value !== null) {
+        jsonProperties[key] = value;
+        continue;
+      }
       try {
         const parsedValue = JSON.parse(value as string);
         if (typeof parsedValue === "object" && parsedValue !== null) {
@@ -62,51 +64,7 @@ export function splitPopupProperties(raw: Record<string, unknown> | undefined): 
   };
 }
 
-/** A ProjectLayer/Layer as far as popup configuration is concerned. */
-export type PopupConfigLayerLike = { properties?: unknown } | null | undefined;
-
 export type PopupTrigger = "click" | "hover" | "click_and_hover";
-
-/**
- * Resolve the effective popup trigger for a layer. Prefers the new `popup`
- * schema; falls back to the legacy `interaction.type` for layers that haven't
- * been migrated yet. `undefined` means "this layer shows no popup at all"
- * (explicitly disabled, or legacy `interaction.type === "none"`).
- *
- * Layers with no popup *and* no interaction config (e.g. layers freshly added
- * from the data explorer) default to "click" — same behavior as
- * `seedPopupFromInteraction`, so runtime interaction detection stays in sync
- * with what the renderer actually shows.
- */
-export function getEffectivePopupTrigger(layer: PopupConfigLayerLike): PopupTrigger | undefined {
-  const props =
-    ((layer?.properties ?? undefined) as
-      | {
-          interaction?: { type?: string };
-          popup?: { enabled?: boolean; trigger?: PopupTrigger };
-        }
-      | undefined) ?? {};
-  const popup = props.popup;
-  if (popup) {
-    if (popup.enabled === false) return undefined;
-    if (
-      popup.trigger === "click" ||
-      popup.trigger === "hover" ||
-      popup.trigger === "click_and_hover"
-    ) {
-      return popup.trigger;
-    }
-  }
-  // Legacy fallback: only `click` and `none` are wired in the existing
-  // useInteractionOptions hook, so `hover` here is rare but accepted.
-  if (props.interaction?.type === "click") return "click";
-  if (props.interaction?.type === "hover") return "hover";
-  if (props.interaction?.type === "none") return undefined;
-  // Nothing configured at all → treat as clickable. Matches
-  // seedPopupFromInteraction(undefined), which produces
-  // `{ enabled: true, trigger: "click", ... }`.
-  return "click";
-}
 
 export type PopupFieldConfig = {
   fieldOrder: string[];
@@ -116,38 +74,28 @@ export type PopupFieldConfig = {
 };
 
 /**
- * Build field-list metadata (labels, order, decorators) from all `field_list`
- * interaction contents of a layer. Raw values stay keyed by column name so the
- * popup renderer can apply kind-aware formatting (e.g. m² → ha for area fields).
+ * Field-list metadata from a popup configuration's `fieldList` blocks (a style's
+ * popup, `toPopupConfig`): labels, order and decorators, first definition wins.
  */
-export function buildPopupFieldConfig(layer: PopupConfigLayerLike): PopupFieldConfig {
-  const interactionFieldLists = (
-    layer?.properties as { interaction?: { content?: { type?: string }[] } } | undefined
-  )?.interaction?.content?.filter(
-    (content) => content.type === layerInteractionContentType.Enum.field_list
-  ) as LayerInteractionFieldListContent[] | undefined;
-
+export function popupFieldConfigOf(popup: PopupProperties | undefined): PopupFieldConfig {
   const fieldLabels: Record<string, string> = {};
   const fieldOrder: string[] = [];
-  const fieldDecorators: Record<
-    string,
-    { prefix?: string; suffix?: string; format?: FormatNumberTypes }
-  > = {};
-  interactionFieldLists?.forEach((content) => {
-    content.attributes.forEach((attr) => {
-      if (fieldOrder.includes(attr.name)) return; // first definition wins
+  const fieldDecorators: PopupFieldConfig["fieldDecorators"] = {};
+  for (const block of popup?.blocks ?? []) {
+    if (block.type !== "fieldList") continue;
+    for (const attr of block.attributes ?? []) {
+      if (fieldOrder.includes(attr.name)) continue;
       fieldOrder.push(attr.name);
       fieldLabels[attr.name] = attr.label || attr.name;
       if (attr.format || attr.prefix || attr.suffix) {
         fieldDecorators[attr.name] = {
-          format: attr.format as FormatNumberTypes | undefined,
-          prefix: attr.prefix,
-          suffix: attr.suffix,
+          ...(attr.format ? { format: attr.format as FormatNumberTypes } : {}),
+          ...(attr.prefix ? { prefix: attr.prefix } : {}),
+          ...(attr.suffix ? { suffix: attr.suffix } : {}),
         };
       }
-    });
-  });
-
+    }
+  }
   return { fieldOrder, fieldLabels, fieldDecorators, hasFieldList: fieldOrder.length > 0 };
 }
 

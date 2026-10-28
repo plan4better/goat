@@ -4,10 +4,11 @@ import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 import { fetcher } from "@/lib/api/fetcher";
 import { COLLECTIONS_API_BASE_URL } from "@/lib/api/layers";
 import type { LayerQueryables } from "@/lib/validations/layer";
-import type { ProjectLayer } from "@/lib/validations/project";
 
 import type { SearchLayersById } from "@/components/map/controls/search/SearchResultsList";
-import { buildLayerIcon } from "@/components/map/panels/layer/legend/LayerIcon";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
+
+import { layerSwatchIcon } from "@/components/map/legend/StyleLegend";
 
 const NAME_HINTS = ["name", "title", "label", "bezeichnung", "street", "strasse"];
 const MAX_COLUMNS = 3;
@@ -58,17 +59,16 @@ function queryablesKey(datasetId: string): [string] {
  * contributing up to three name-like string columns. Queryables are only
  * fetched once `enabled` flips (i.e. the user opened the search control).
  */
-export function useEditorSearchLayers(projectLayers: ProjectLayer[], enabled: boolean) {
+export function useEditorSearchLayers(projectLayers: MapLayer[], enabled: boolean) {
   const candidates = useMemo(() => {
     const seen = new Set<string>();
-    const visible: ProjectLayer[] = [];
+    const visible: MapLayer[] = [];
     for (const layer of projectLayers) {
       if (layer.type !== "feature") continue;
-      if (!(layer.properties?.visibility ?? true)) continue;
-      // D7: a locked layer's `properties` is `{}`, so the visibility check
-      // above defaults it to "visible" — exclude it explicitly, or its
-      // dataset's queryables (and then its features) would be requested
-      // from geoapi for a layer this viewer has no access to.
+      if (!layer.visible) continue;
+      // D7: a locked layer is not searched, or its dataset's queryables (and
+      // then its features) would be requested from geoapi for a layer this
+      // viewer has no access to.
       if (layer.locked) continue;
       if (seen.has(layer.layer_id)) continue;
       seen.add(layer.layer_id);
@@ -134,7 +134,7 @@ export function useEditorSearchLayers(projectLayers: ProjectLayer[], enabled: bo
         projectLayerId: layer.id,
         datasetId: layer.layer_id,
         name: layer.name ?? "",
-        icon: buildLayerIcon(layer),
+        icon: layerSwatchIcon(layer),
         layer,
       });
     });

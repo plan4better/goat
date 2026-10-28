@@ -1,21 +1,16 @@
 "use client";
 
-import { cogProtocol } from "@geomatico/maplibre-cog-protocol";
 import { Box } from "@mui/material";
-import maplibregl from "maplibre-gl";
 import { useParams, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Map, MapProvider, type MapRef } from "react-map-gl/maplibre";
 
 import { DEFAULT_BASEMAP, getBasemapUrl } from "@/lib/constants/basemaps";
-import { PATTERN_IMAGES } from "@/lib/constants/pattern-images";
-import { addOrUpdateMarkerImages, addPatternImages } from "@/lib/transformers/map-image";
-import type { FeatureLayerPointProperties } from "@/lib/validations/layer";
-import type { ProjectLayer } from "@/lib/validations/project";
+import { renderLayersOf } from "@/lib/style/render/viewLayers";
+import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
+import { thumbnailLayers } from "@/lib/utils/map/thumbnail";
 
-import Layers from "@/components/map/Layers";
-
-maplibregl.addProtocol("cog", cogProtocol);
+import { StyledLayers } from "@/components/map/StyledLayers";
 
 // Thumbnail dimensions
 const THUMBNAIL_WIDTH = 800;
@@ -43,7 +38,8 @@ interface ThumbnailData {
     pitch?: number;
   };
   basemap: string;
-  layers: ProjectLayer[];
+  /** The map's layers top first, each with its active style document (`style`). */
+  layers: unknown[];
   bounds?: [number, number, number, number]; // [west, south, east, north]
   useBounds?: boolean; // If true, fit to bounds; if false, use viewState (default: true if bounds provided)
 }
@@ -138,9 +134,10 @@ export default function ThumbnailPage() {
     return DEFAULT_VIEW_STATE;
   }, [thumbnailData]);
 
-  const layersToRender = useMemo((): ProjectLayer[] => {
-    return thumbnailData?.layers ?? [];
-  }, [thumbnailData]);
+  const layersToRender = useMemo(
+    () => renderLayersOf(thumbnailLayers(thumbnailData?.layers)),
+    [thumbnailData]
+  );
 
   const bounds = useMemo(() => {
     return thumbnailData?.bounds ?? null;
@@ -168,17 +165,7 @@ export default function ThumbnailPage() {
     setMapLoaded(true);
 
     if (mapRef.current) {
-      // Add marker images for point layers with custom markers
-      layersToRender.forEach((layer) => {
-        if (layer.type === "feature" && layer.feature_layer_geometry_type === "point") {
-          const pointFeatureProperties = layer.properties as FeatureLayerPointProperties;
-          addOrUpdateMarkerImages(layer.id, pointFeatureProperties, mapRef.current);
-        }
-      });
-
-      // Add pattern images for fill layers
-      addPatternImages(PATTERN_IMAGES ?? [], mapRef.current);
-
+      // Icons and patterns load on demand through the renderer's image resolver.
       // Fit bounds if provided and useBounds is true
       // This ensures the thumbnail shows all content within the bounds
       if (bounds && useBounds) {
@@ -205,7 +192,7 @@ export default function ThumbnailPage() {
         );
       }
     }
-  }, [bounds, useBounds, layersToRender, type]);
+  }, [bounds, useBounds, type]);
 
   // Signal to Playwright that the page is ready
   useEffect(() => {
@@ -262,6 +249,7 @@ export default function ThumbnailPage() {
       }}>
       <MapProvider>
         <Map
+          {...MAPLIBRE_MAP_OPTIONS}
           ref={mapRef}
           mapStyle={basemapUrl}
           initialViewState={viewState}
@@ -272,7 +260,7 @@ export default function ThumbnailPage() {
           onLoad={handleMapLoad}
           interactive={false} // Disable interactivity for thumbnails
         >
-          {mapLoaded && layersToRender.length > 0 && <Layers layers={layersToRender} />}
+          {mapLoaded && layersToRender.length > 0 && <StyledLayers layers={layersToRender} locale="en" />}
         </Map>
       </MapProvider>
 

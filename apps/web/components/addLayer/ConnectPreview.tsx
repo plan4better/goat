@@ -1,8 +1,6 @@
 "use client";
 
-import { cogProtocol } from "@geomatico/maplibre-cog-protocol";
 import { Box, Typography, useTheme } from "@mui/material";
-import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,14 +8,11 @@ import type { MapRef } from "react-map-gl/maplibre";
 import { Layer as MapLayer, Map as MapLibre, Source } from "react-map-gl/maplibre";
 
 import type { LngLatBounds } from "@/lib/utils/externalService";
+import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
 
 import DetailMapAttribution from "@/components/dashboard/common/DetailMapAttribution";
-
-// The project map registers it too; a dialog opened from the datasets page has no map
-// behind it to have done so.
-maplibregl.addProtocol("cog", cogProtocol);
 
 const GERMANY = { longitude: 10.4, latitude: 51.1, zoom: 4.5 };
 
@@ -62,6 +57,7 @@ const ConnectPreview = ({
         flexShrink: 0,
       }}>
       <MapLibre
+        {...MAPLIBRE_MAP_OPTIONS}
         ref={map}
         // Named: the dialog opens over the project map, inside the same `MapProvider`, and
         // a second id-less map there throws "Multiple maps with the same id: default".

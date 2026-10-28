@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { getLocFromUrl, parseLoc, serializeLoc, writeLocToUrl, writeMapLocToUrl } from "../loc-url";
+import {
+  getLocFromUrl,
+  getStylesFromUrl,
+  parseLoc,
+  serializeLoc,
+  writeLocToUrl,
+  writeMapLocToUrl,
+  writeStylesToUrl,
+} from "../loc-url";
 
 describe("serializeLoc", () => {
   it("serializes lat,lng,zoom with z suffix and trimmed trailing zeros", () => {
@@ -186,5 +194,19 @@ describe("writeMapLocToUrl", () => {
       getPitch: () => 0,
     });
     expect(new URLSearchParams(window.location.search).get("loc")).toBe("48.13,11.57,10z,45b");
+  });
+});
+
+describe("getStylesFromUrl / writeStylesToUrl", () => {
+  it("a public viewer's style choices travel as styles=<layer>:<style>,… next to loc", () => {
+    window.history.replaceState(null, "", "/map/public/p?loc=48.1,11.5,12z");
+    expect(getStylesFromUrl()).toEqual({});
+    writeStylesToUrl({ "12": "7f3a91c2-0d4e-4c8a-9b1f-2a3b4c5d6e7f", "13": "a" });
+    expect(window.location.search).toBe("?loc=48.1,11.5,12z&styles=12:7f3a91c2-0d4e-4c8a-9b1f-2a3b4c5d6e7f,13:a");
+    expect(getStylesFromUrl()).toEqual({ "12": "7f3a91c2-0d4e-4c8a-9b1f-2a3b4c5d6e7f", "13": "a" });
+    writeStylesToUrl({});
+    expect(window.location.search).toBe("?loc=48.1,11.5,12z");
+    window.history.replaceState(null, "", "/map/public/p?styles=x:,12:b,:c,13");
+    expect(getStylesFromUrl()).toEqual({ "12": "b" });
   });
 });

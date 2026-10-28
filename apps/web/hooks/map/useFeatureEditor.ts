@@ -17,6 +17,7 @@ import {
   getFeatures,
   replaceFeature,
 } from "@/lib/api/layers";
+import { useProjectMap } from "@/lib/api/map";
 import { useProjectLayers } from "@/lib/api/projects";
 import { useDraw } from "@/lib/providers/DrawProvider";
 import {
@@ -34,10 +35,9 @@ import {
   updatePendingGeometry,
 } from "@/lib/store/featureEditor/slice";
 import { setIsMapGetInfoActive, setMapCursor, setPopupInfo } from "@/lib/store/map/slice";
-import { getMapboxStyleMarker } from "@/lib/transformers/layer";
+import { editorIconProps, editorLayerIds } from "@/lib/style/render/viewLayers";
 import { defaultProperties } from "@/lib/utils/allowedValues";
-import type { FeatureLayerPointProperties } from "@/lib/validations/layer";
-import type { ProjectLayer } from "@/lib/validations/project";
+import { drawEvents } from "@/lib/utils/map/drawEvents";
 
 import useLayerFields from "@/hooks/map/CommonHooks";
 import { useBundleEditSave } from "@/hooks/map/useBundleEditSave";
@@ -57,6 +57,7 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
   );
   const { projectId } = useParams();
   const { layers: projectLayers, mutate: mutateProjectLayers } = useProjectLayers(projectId as string);
+  const { map: projectMap } = useProjectMap(projectId as string);
   const featureEditor = useAppSelector((state) => state.featureEditor);
   const { activeLayerId, activeFeatureId, geometryType, mode, pendingFeatures, isSaving } = featureEditor;
   const activeLayerIdRef = useRef(activeLayerId);
@@ -92,16 +93,15 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
     dispatch(pushSnapshot(captureSnapshot()));
   }, [dispatch, captureSnapshot]);
 
-  // Find the project layer's numeric ID (used as MapLibre layer ID in Layers.tsx)
+  // The project layer showing the edited dataset; the renderer keys its MapLibre layers by its id.
   const editingProjectLayer = projectLayers?.find((l) => l.layer_id === activeLayerId);
-  // The rendered map layers holding this layer's geometry, which is where snap
-  // candidates are read from. `stroke-<id>` exists for polygons only; a line
-  // layer's decoration layers are symbols, not geometry, so they are no use here.
-  const snapLayerIds = useMemo(() => {
-    if (!editingProjectLayer) return [];
-    const base = String(editingProjectLayer.id);
-    return editingProjectLayer.feature_layer_geometry_type === "polygon" ? [base, `stroke-${base}`] : [base];
-  }, [editingProjectLayer]);
+  // The rendered map layers holding this layer's geometry, which is where snap candidates are read from (labels and
+  // line decorations are no use here), looked up in the renderer's registry when needed.
+  const snapLayerIds = useCallback(() => {
+    const map = mapRef?.current?.getMap();
+    if (!map || !editingProjectLayer) return [];
+    return editorLayerIds(map, String(editingProjectLayer.id), { snap: true });
+  }, [mapRef, editingProjectLayer]);
   // Offered for a bundle's editable member only: its topology is what the server
   // derives on save. Plain layers keep drawing exactly as before.
   // Drawing a new edge, or holding a selected edge's vertex: both are moments
@@ -124,45 +124,11 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
   const editingProjectLayerIdRef = useRef(editingProjectLayer?.id);
   editingProjectLayerIdRef.current = editingProjectLayer?.id;
 
-  // Build icon properties for custom_marker layers (used as MapboxDraw user properties)
-  const iconProps = useMemo(() => {
-    if (!editingProjectLayer?.properties?.["custom_marker"]) return null;
-    const props = editingProjectLayer.properties as FeatureLayerPointProperties;
-    const markerSize = props.marker_size ?? 100;
-    // Resolve icon-image — may be a data-driven expression or a simple string
-    const iconImage = getMapboxStyleMarker(editingProjectLayer as ProjectLayer);
-    const iconImageName =
-      typeof iconImage === "string" ? iconImage : `${editingProjectLayer.id}-${props.marker?.name}`;
-    const iconSize = markerSize / 200;
-
-    // The draw styles render the selection as a ring AROUND the icon. Its
-    // radius must come from the icon's real rendered size — icon images have
-    // arbitrary intrinsic dimensions, so a fixed formula based on _iconSize
-    // alone leaves the ring hidden behind larger icons.
-    let iconRadius: number | undefined;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const img = (mapRef?.current?.getMap() as any)?.getImage?.(iconImageName);
-      const width = img?.data?.width;
-      if (typeof width === "number" && width > 0) {
-        const pixelRatio = img.pixelRatio ?? 1;
-        const height = img.data.height ?? width;
-        const cssSize = Math.max(width, height) / pixelRatio;
-        iconRadius = Math.round((cssSize * iconSize) / 2 + 4);
-      }
-    } catch {
-      /* image not registered (yet) — styles fall back to the size formula */
-    }
-
-    return {
-      _iconImage: iconImageName,
-      _iconSize: iconSize,
-      _iconAnchor: props.marker_anchor || "center",
-      _iconOpacity: props.filled ? (props.opacity ?? 1) : 1,
-      _iconColor: "#000000",
-      ...(iconRadius !== undefined ? { _iconRadius: iconRadius } : {}),
-    };
-  }, [editingProjectLayer, mapRef]);
+  // The layer's marker icon on the features being drawn (MapboxDraw user properties), from its active style.
+  const editingStyle = editingProjectLayer
+    ? projectMap?.styles[String(editingProjectLayer.id)]?.active.document
+    : undefined;
+  const iconProps = useMemo(() => editorIconProps(editingStyle), [editingStyle]);
 
   // Timestamp of last feature create — used to ignore the map click that follows a draw.create
   const lastCreateTimeRef = useRef(0);
@@ -494,26 +460,10 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
 
       // Query rendered features at click point — check both tile layer and pending overlay
       const point = e.point;
-      const projectLayerId = String(editingProjectLayerIdRef.current);
-      const layerIds: string[] = [];
-      // Add main layer if it exists on the map
-      if (map.getLayer(projectLayerId)) layerIds.push(projectLayerId);
-      if (map.getLayer(`stroke-${projectLayerId}`)) {
-        layerIds.push(`stroke-${projectLayerId}`);
-      }
-      if (map.getLayer(`text-label-${projectLayerId}`)) {
-        layerIds.push(`text-label-${projectLayerId}`);
-      }
-      // Also check pending features overlay layers
-      const pendingLayerIds = [
-        "pending-features-fill",
-        "pending-features-line",
-        "pending-features-circle",
-        "pending-features-symbol",
-      ];
-      for (const id of pendingLayerIds) {
-        if (map.getLayer(id)) layerIds.push(id);
-      }
+      // The edited layer's own map layers and the pending features drawn over them, from the renderer's registry.
+      const layerIds = editorLayerIds(map, String(editingProjectLayerIdRef.current)).filter((id) =>
+        map.getLayer(id)
+      );
       const features = map.queryRenderedFeatures(point, { layers: layerIds });
       const clickedFeature = features[0];
 
@@ -637,13 +587,13 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
     const map = mapRef?.current?.getMap();
     if (!map || !drawControl || !activeLayerId) return;
 
-    map.on(MapboxDraw.constants.events.CREATE, handleFeatureCreate);
-    map.on(MapboxDraw.constants.events.UPDATE, handleFeatureUpdate);
+    drawEvents(map).on(MapboxDraw.constants.events.CREATE, handleFeatureCreate);
+    drawEvents(map).on(MapboxDraw.constants.events.UPDATE, handleFeatureUpdate);
     map.on("click", handleMapClick);
 
     return () => {
-      map.off(MapboxDraw.constants.events.CREATE, handleFeatureCreate);
-      map.off(MapboxDraw.constants.events.UPDATE, handleFeatureUpdate);
+      drawEvents(map).off(MapboxDraw.constants.events.CREATE, handleFeatureCreate);
+      drawEvents(map).off(MapboxDraw.constants.events.UPDATE, handleFeatureUpdate);
       map.off("click", handleMapClick);
     };
   }, [mapRef, drawControl, activeLayerId, handleFeatureCreate, handleFeatureUpdate, handleMapClick]);
@@ -660,9 +610,9 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
       if (e.mode === MapboxDraw.constants.modes.SIMPLE_SELECT) requestDrawSync();
     };
 
-    map.on("draw.modechange", onModeChange);
+    drawEvents(map).on("draw.modechange", onModeChange);
     return () => {
-      map.off("draw.modechange", onModeChange);
+      drawEvents(map).off("draw.modechange", onModeChange);
     };
   }, [mapRef, drawControl, activeLayerId, requestDrawSync]);
 
@@ -826,13 +776,13 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
   const refreshAfterSave = useCallback(
     (layerIds: string[]) => {
       const ids = layerIds.filter(Boolean);
-      // Refresh tiles by optimistically updating updated_at — the tile URL's
+      // Refresh tiles by optimistically moving the dataset's data change time — the tile URL's
       // v= cache-buster derives from it, so bumping it makes MapLibre refetch.
       const bumpLayerUpdatedAt = () =>
         mutateProjectLayers(
           (current) =>
             current?.map((l) =>
-              ids.includes(l.layer_id) ? { ...l, updated_at: new Date().toISOString() } : l
+              ids.includes(l.layer_id) ? { ...l, dataset_updated_at: new Date().toISOString() } : l
             ),
           { revalidate: false }
         );
@@ -855,7 +805,7 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
       // refresh runs on a background thread (~1s) — the immediate revalidate
       // and tile refetch can race it and get the pre-write snapshot, so do
       // both once more after the pin has had time to advance. Without the
-      // second updated_at bump the stale tiles would stick: MapLibre only
+      // second bump the stale tiles would stick: MapLibre only
       // refetches when the tile URL changes.
       setTimeout(() => {
         revalidateCollections();

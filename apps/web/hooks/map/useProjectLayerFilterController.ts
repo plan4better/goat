@@ -49,7 +49,7 @@ export const useProjectLayerFilterController = ({
         : null;
 
       await mutateProjectLayers(layers, false);
-      await updateProjectLayer(projectId, projectLayer.id, layers[index]);
+      await updateProjectLayer(projectId, projectLayer.id, { query: layers[index].query });
     },
     [projectLayers, projectLayer.id, layerFields, logicalOperator, mutateProjectLayers, projectId]
   );

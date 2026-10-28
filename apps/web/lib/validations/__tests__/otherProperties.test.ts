@@ -5,11 +5,10 @@ import { canSetDefaultStyle } from "@/lib/utils/layerPermissions";
 import { projectLayerSchema } from "@/lib/validations/project";
 
 /**
- * `useActiveLayer` runs the project layer through `projectLayerSchema.parse`,
- * and a plain `z.object` drops every key it does not declare. `catalog_item`
- * lives in `other_properties`, so parsing turned a catalog layer into an
- * ordinary one — and the style panel offered "Set as default" on a dataset
- * whose `PUT` the server refuses.
+ * A plain `z.object` drops every key it does not declare. `catalog_item`
+ * lives in `other_properties`, so a parse that dropped it would turn a catalog
+ * layer into an ordinary one, and the style panel would offer "Set as default"
+ * on a dataset whose `PUT` the server refuses.
  */
 const catalogProjectLayer = {
   id: 87197,
@@ -19,7 +18,6 @@ const catalogProjectLayer = {
   public_read: false,
   created_at: "2026-08-30T18:49:26.000Z",
   updated_at: "2026-08-30T18:49:26.000Z",
-  properties: { visibility: true },
   other_properties: {
     catalog_item: { id: "2b83c9a3-1026-4edb-ac7f-77bc2ddcb4cc", title: "Quartiere Biel" },
     catalog_materialize: { status: "ready" },

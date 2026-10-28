@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { MapLayer } from "@/hooks/map/useMapLayers";
+
 /**
  * Group-swipe on the tabs layer layout (mobile dashboard).
  *
@@ -49,11 +51,9 @@ const GROUPS = [
   { id: 3, name: "Baustellen", parent_id: null, order: 2 },
 ];
 
-const LAYERS = [
-  { id: 11, name: "Stau", layer_project_group_id: 1, type: "feature", properties: {} },
-  { id: 21, name: "Parkhaus", layer_project_group_id: 2, type: "feature", properties: {} },
-  { id: 31, name: "Sperrung", layer_project_group_id: 3, type: "feature", properties: {} },
-];
+const layer = (id: number, name: string, group: number) =>
+  ({ id, name, layer_project_group_id: group, type: "feature", visible: true, entry: { type: "layer", id }, style: null }) as unknown as MapLayer;
+const LAYERS = [layer(11, "Stau", 1), layer(21, "Parkhaus", 2), layer(31, "Sperrung", 3)];
 
 function renderLayout() {
   return render(
@@ -62,7 +62,7 @@ function renderLayout() {
       projectLayers={LAYERS}
       projectLayerGroups={GROUPS}
       config={{ type: "layers", options: { layout_style: "tabs" } }}
-      onTreeUpdate={vi.fn()}
+      onLayerStateChange={vi.fn()}
     />
   );
 }
