@@ -5,6 +5,10 @@ and the default point marker (`foundation-marker.svg`). The web app serves
 them at `/assets/icons/maki/<name>.svg`; stored layer styles reference them by
 that path.
 
+`symbols.json` holds the catalogue icons' path data in one file, so the icon
+picker draws all of them from one request. `pnpm generate:style` writes it from
+the SVGs; a test fails when it no longer matches them.
+
 They come from several icon sets, each under its own licence:
 
 | Source | Files | Licence |

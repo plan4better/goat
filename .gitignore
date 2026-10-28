@@ -37,6 +37,8 @@ coverage
 
 # next.js
 .next/
+# MapLibre's worker, copied in by apps/web/next.config.js
+apps/web/public/vendor/maplibre/
 out/
 !apps/docs/**/out/
 build

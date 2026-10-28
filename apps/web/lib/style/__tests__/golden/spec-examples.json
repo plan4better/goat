@@ -1,0 +1,8035 @@
+{
+ "142": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#c7e9b4",
+     "fill-opacity": 0.72
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1.2
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "201": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#a1d99b",
+     "fill-opacity": 0.7
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ],
+     "line-opacity": 1,
+     "line-dasharray": [
+      "literal",
+      [
+       1,
+       0
+      ]
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "218": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": [
+      "case",
+      [
+       "has",
+       "land_use"
+      ],
+      [
+       "match",
+       [
+        "get",
+        "land_use"
+       ],
+       "residential",
+       "#e6ab02",
+       "green",
+       "#66a61e",
+       "#9aa3ad"
+      ],
+      "#2bb381"
+     ],
+     "fill-opacity": [
+      "case",
+      [
+       "has",
+       "land_use"
+      ],
+      [
+       "match",
+       [
+        "get",
+        "land_use"
+       ],
+       "residential",
+       1,
+       "green",
+       1,
+       1
+      ],
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      [
+       "case",
+       [
+        "has",
+        "land_use"
+       ],
+       [
+        "match",
+        [
+         "get",
+         "land_use"
+        ],
+        "residential",
+        "#e6ab02",
+        "green",
+        "#66a61e",
+        "#9aa3ad"
+       ],
+       "#2bb381"
+      ]
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      2
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "246": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": [
+      "match",
+      [
+       "get",
+       "land_use"
+      ],
+      "mixed",
+      "#fcbba1",
+      "green",
+      "#c7e9c0",
+      "#deebf7"
+     ],
+     "fill-opacity": [
+      "match",
+      [
+       "get",
+       "land_use"
+      ],
+      "mixed",
+      0.4,
+      "green",
+      0.4,
+      0.6
+     ]
+    }
+   },
+   {
+    "id": "1-pattern",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-pattern": [
+      "case",
+      [
+       "==",
+       [
+        "match",
+        [
+         "get",
+         "land_use"
+        ],
+        "mixed",
+        "hatch_45",
+        "green",
+        "cross",
+        "none"
+       ],
+       "none"
+      ],
+      "",
+      [
+       "concat",
+       "goat-pattern:",
+       [
+        "match",
+        [
+         "get",
+         "land_use"
+        ],
+        "mixed",
+        "hatch_45",
+        "green",
+        "cross",
+        "none"
+       ],
+       "|10|2|",
+       [
+        "match",
+        [
+         "get",
+         "land_use"
+        ],
+        "mixed",
+        "#cb181d",
+        "green",
+        "#238b45",
+        [
+         "match",
+         [
+          "get",
+          "land_use"
+         ],
+         "mixed",
+         "#fcbba1",
+         "green",
+         "#c7e9c0",
+         "#deebf7"
+        ]
+       ]
+      ]
+     ],
+     "fill-opacity": [
+      "match",
+      [
+       "get",
+       "land_use"
+      ],
+      "mixed",
+      1,
+      "green",
+      1,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#636363"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "279": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-casing",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-cap": "round",
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": "#ffffff",
+     "line-width": 6,
+     "line-offset": 2,
+     "line-opacity": 1
+    }
+   },
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-cap": "round",
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      3
+     ],
+     "line-offset": 2,
+     "line-opacity": 1
+    }
+   },
+   {
+    "id": "1-arrows",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_decoration",
+    "layout": {
+     "icon-image": "goat:arrow",
+     "icon-size": 0.5,
+     "icon-rotation-alignment": "map",
+     "icon-allow-overlap": true,
+     "icon-rotate": [
+      "get",
+      "bearing"
+     ]
+    },
+    "paint": {
+     "icon-color": "#2166ac"
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:arrow",
+    "url": "/sprites/goat-arrow.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {
+   "decorations": [
+    "center"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "304": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-cap": "square",
+     "line-join": "miter"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      4,
+      4
+     ],
+     "line-blur": 1.5
+    }
+   },
+   {
+    "id": "1-arrows",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_decoration",
+    "layout": {
+     "icon-image": "goat:arrow",
+     "icon-size": 0.5,
+     "icon-rotation-alignment": "map",
+     "icon-allow-overlap": true,
+     "icon-rotate": [
+      "get",
+      "bearing"
+     ]
+    },
+    "paint": {
+     "icon-color": "#d7301f"
+    }
+   },
+   {
+    "id": "1-arrows-back",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_decoration",
+    "layout": {
+     "icon-image": "goat:arrow",
+     "icon-size": 0.5,
+     "icon-rotation-alignment": "map",
+     "icon-allow-overlap": true,
+     "icon-rotate": [
+      "+",
+      [
+       "get",
+       "bearing"
+      ],
+      180
+     ]
+    },
+    "paint": {
+     "icon-color": "#d7301f"
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:arrow",
+    "url": "/sprites/goat-arrow.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {
+   "decorations": [
+    "start",
+    "end"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "318": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-cap": "butt",
+     "line-join": "bevel"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      4,
+      4
+     ]
+    }
+   },
+   {
+    "id": "1-arrows",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_decoration",
+    "layout": {
+     "icon-image": "goat:arrow",
+     "icon-size": 0.5833333333,
+     "icon-rotation-alignment": "map",
+     "icon-allow-overlap": true,
+     "icon-rotate": [
+      "+",
+      [
+       "get",
+       "bearing"
+      ],
+      180
+     ]
+    },
+    "paint": {
+     "icon-color": "#2166ac"
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:arrow",
+    "url": "/sprites/goat-arrow.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {
+   "decorations": [
+    "end"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "332": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      3
+     ]
+    }
+   },
+   {
+    "id": "1-arrows",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "symbol-placement": "line",
+     "symbol-spacing": 150,
+     "icon-image": "goat:arrow",
+     "icon-size": 0.4166666667,
+     "icon-rotation-alignment": "map",
+     "icon-allow-overlap": true,
+     "icon-rotate": 90
+    },
+    "paint": {
+     "icon-color": "#2166ac"
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:arrow",
+    "url": "/sprites/goat-arrow.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "344": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      3
+     ]
+    }
+   },
+   {
+    "id": "1-arrows",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_decoration",
+    "layout": {
+     "icon-image": "goat:arrow",
+     "icon-size": 0.5,
+     "icon-rotation-alignment": "map",
+     "icon-allow-overlap": true,
+     "icon-rotate": [
+      "get",
+      "bearing"
+     ]
+    },
+    "paint": {
+     "icon-color": "#2166ac"
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:arrow",
+    "url": "/sprites/goat-arrow.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {
+   "decorations": [
+    "start"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "360": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": 4,
+     "circle-opacity": 0.9,
+     "circle-stroke-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "374": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-ring",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-radius": 10.5,
+     "circle-color": "rgba(0,0,0,0)",
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-marker",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "icon-image": "goat-marker:circle|18|goat:star-solid|#f28e2b|#ffffff|1.5|#ffffff",
+     "icon-size": 1,
+     "icon-allow-overlap": true
+    },
+    "paint": {}
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:star-solid",
+    "url": "/assets/icons/maki/star-solid.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "388": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-icon",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "icon-image": "goat:arrow-up-solid",
+     "icon-size": 0.6666666667,
+     "icon-rotate": [
+      "to-number",
+      [
+       "get",
+       "bearing"
+      ],
+      0
+     ],
+     "icon-rotation-alignment": "map",
+     "icon-anchor": "bottom",
+     "icon-allow-overlap": true
+    },
+    "paint": {
+     "icon-color": "#3a3541"
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:arrow-up-solid",
+    "url": "/assets/icons/maki/arrow-up-solid.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "409": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": 5,
+     "circle-opacity": 0,
+     "circle-stroke-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#1a6b4d"
+     ],
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      2
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "423": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-icon-asset",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "icon-image": "asset:7f3a91c2",
+     "icon-size": 1,
+     "icon-anchor": "bottom",
+     "icon-offset": [
+      "literal",
+      [
+       0,
+       -2
+      ]
+     ]
+    },
+    "paint": {}
+   }
+  ],
+  "images": [
+   {
+    "name": "asset:7f3a91c2",
+    "url": "http://localhost:8000/api/v2/asset/7f3a91c2/file",
+    "sdf": false,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "458": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": 4,
+     "circle-stroke-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "472": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#deebf7"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_anchor",
+    "minzoom": 11,
+    "layout": {
+     "text-field": [
+      "to-string",
+      [
+       "get",
+       "name"
+      ]
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Bold"
+     ]
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {
+   "label": true,
+   "fields": [
+    "name"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "495": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#deebf7"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": "#ffc300",
+     "line-width": 3,
+     "line-opacity": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      1,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_anchor",
+    "layout": {
+     "text-field": [
+      "format",
+      [
+       "to-string",
+       [
+        "get",
+        "name"
+       ]
+      ],
+      {
+       "text-font": [
+        "literal",
+        [
+         "Noto Sans Bold"
+        ]
+       ]
+      },
+      "\n",
+      {},
+      [
+       "concat",
+       [
+        "case",
+        [
+         "has",
+         "area_km2"
+        ],
+        [
+         "number-format",
+         [
+          "to-number",
+          [
+           "get",
+           "area_km2"
+          ],
+          0
+         ],
+         {
+          "locale": [
+           "global-state",
+           "locale"
+          ],
+          "min-fraction-digits": 1,
+          "max-fraction-digits": 1
+         }
+        ],
+        ""
+       ],
+       " km²"
+      ],
+      {
+       "font-scale": 0.8333333333,
+       "text-color": "#6b7280"
+      }
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Regular"
+     ],
+     "text-max-width": 10,
+     "symbol-sort-key": [
+      "-",
+      [
+       "to-number",
+       [
+        "get",
+        "area_km2"
+       ],
+       0
+      ]
+     ]
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {
+   "locale": {
+    "default": "en-US"
+   }
+  },
+  "tileParams": {
+   "label": true,
+   "fields": [
+    "area_km2",
+    "name"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "519": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#283593",
+     "circle-radius": 4,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "text-field": [
+      "concat",
+      [
+       "case",
+       [
+        "has",
+        "year"
+       ],
+       [
+        "to-string",
+        [
+         "round",
+         [
+          "to-number",
+          [
+           "get",
+           "year"
+          ],
+          0
+         ]
+        ]
+       ],
+       ""
+      ],
+      ": ",
+      [
+       "case",
+       [
+        "has",
+        "vehicles"
+       ],
+       [
+        "case",
+        [
+         ">=",
+         [
+          "abs",
+          [
+           "to-number",
+           [
+            "get",
+            "vehicles"
+           ],
+           0
+          ]
+         ],
+         1000000
+        ],
+        [
+         "concat",
+         [
+          "number-format",
+          [
+           "/",
+           [
+            "to-number",
+            [
+             "get",
+             "vehicles"
+            ],
+            0
+           ],
+           1000000
+          ],
+          {
+           "locale": [
+            "global-state",
+            "locale"
+           ],
+           "min-fraction-digits": 1,
+           "max-fraction-digits": 1
+          }
+         ],
+         " M"
+        ],
+        [
+         ">=",
+         [
+          "abs",
+          [
+           "to-number",
+           [
+            "get",
+            "vehicles"
+           ],
+           0
+          ]
+         ],
+         1000
+        ],
+        [
+         "concat",
+         [
+          "number-format",
+          [
+           "/",
+           [
+            "to-number",
+            [
+             "get",
+             "vehicles"
+            ],
+            0
+           ],
+           1000
+          ],
+          {
+           "locale": [
+            "global-state",
+            "locale"
+           ],
+           "min-fraction-digits": 1,
+           "max-fraction-digits": 1
+          }
+         ],
+         " k"
+        ],
+        [
+         "number-format",
+         [
+          "to-number",
+          [
+           "get",
+           "vehicles"
+          ],
+          0
+         ],
+         {
+          "locale": [
+           "global-state",
+           "locale"
+          ]
+         }
+        ]
+       ],
+       ""
+      ],
+      " vehicles"
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Regular"
+     ],
+     "text-variable-anchor-offset": [
+      "top",
+      [
+       0,
+       0.8333333333
+      ],
+      "bottom",
+      [
+       0,
+       -0.1666666667
+      ],
+      "right",
+      [
+       -0.5,
+       0.3333333333
+      ],
+      "left",
+      [
+       0.5,
+       0.3333333333
+      ]
+     ]
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {
+   "locale": {
+    "default": "en-US"
+   }
+  },
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "554": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#deebf7"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": "#ffc300",
+     "line-width": 3,
+     "line-opacity": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      1,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_anchor",
+    "layout": {
+     "text-field": [
+      "concat",
+      "{",
+      [
+       "to-string",
+       [
+        "get",
+        " name "
+       ]
+      ],
+      "}"
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Regular"
+     ]
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {
+   "label": true,
+   "fields": [
+    " name "
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "566": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": 4,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "text-field": [
+      "to-string",
+      [
+       "get",
+       "name"
+      ]
+     ],
+     "text-size": 11,
+     "text-font": [
+      "Noto Sans Regular"
+     ],
+     "text-max-width": 10.9090909091,
+     "text-anchor": "bottom",
+     "text-offset": [
+      0,
+      -0.7272727273
+     ]
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "584": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "minzoom": 12,
+    "maxzoom": 18,
+    "paint": {
+     "fill-color": "#9ecae1"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "minzoom": 8,
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#3182bd"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_anchor",
+    "minzoom": 13,
+    "layout": {
+     "text-field": [
+      "to-string",
+      [
+       "get",
+       "name"
+      ]
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Regular"
+     ]
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {
+   "label": true,
+   "fields": [
+    "name"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "614": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "any",
+     [
+      "!=",
+      [
+       "get",
+       "status"
+      ],
+      "planned"
+     ],
+     [
+      ">=",
+      [
+       "zoom"
+      ],
+      12.5
+     ]
+    ],
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      3
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "638": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "zoom"
+      ],
+      10,
+      [
+       "case",
+       [
+        "any",
+        [
+         "boolean",
+         [
+          "feature-state",
+          "active"
+         ],
+         false
+        ],
+        [
+         "boolean",
+         [
+          "feature-state",
+          "hover"
+         ],
+         false
+        ]
+       ],
+       "#ffc300",
+       "#9ecae1"
+      ],
+      14,
+      [
+       "case",
+       [
+        "any",
+        [
+         "boolean",
+         [
+          "feature-state",
+          "active"
+         ],
+         false
+        ],
+        [
+         "boolean",
+         [
+          "feature-state",
+          "hover"
+         ],
+         false
+        ]
+       ],
+       "#ffc300",
+       "#2166ac"
+      ],
+      17,
+      [
+       "case",
+       [
+        "any",
+        [
+         "boolean",
+         [
+          "feature-state",
+          "active"
+         ],
+         false
+        ],
+        [
+         "boolean",
+         [
+          "feature-state",
+          "hover"
+         ],
+         false
+        ]
+       ],
+       "#ffc300",
+       "#08306b"
+      ]
+     ],
+     "line-width": [
+      "interpolate",
+      [
+       "exponential",
+       1.6
+      ],
+      [
+       "zoom"
+      ],
+      9,
+      [
+       "case",
+       [
+        "any",
+        [
+         "boolean",
+         [
+          "feature-state",
+          "active"
+         ],
+         false
+        ],
+        [
+         "boolean",
+         [
+          "feature-state",
+          "hover"
+         ],
+         false
+        ]
+       ],
+       3,
+       1
+      ],
+      13,
+      [
+       "case",
+       [
+        "any",
+        [
+         "boolean",
+         [
+          "feature-state",
+          "active"
+         ],
+         false
+        ],
+        [
+         "boolean",
+         [
+          "feature-state",
+          "hover"
+         ],
+         false
+        ]
+       ],
+       3,
+       3
+      ],
+      17,
+      [
+       "case",
+       [
+        "any",
+        [
+         "boolean",
+         [
+          "feature-state",
+          "active"
+         ],
+         false
+        ],
+        [
+         "boolean",
+         [
+          "feature-state",
+          "hover"
+         ],
+         false
+        ]
+       ],
+       10,
+       10
+      ]
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "659": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#deebf7"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#3182bd"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ],
+     "line-dasharray": [
+      "step",
+      [
+       "zoom"
+      ],
+      [
+       "literal",
+       [
+        0.5,
+        2
+       ]
+      ],
+      13,
+      [
+       "literal",
+       [
+        2,
+        2
+       ]
+      ],
+      16,
+      [
+       "literal",
+       [
+        1,
+        0
+       ]
+      ]
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "679": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-ring",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-radius": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "zoom"
+      ],
+      11,
+      5,
+      15,
+      9
+     ],
+     "circle-color": "rgba(0,0,0,0)",
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-marker",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "icon-image": [
+      "step",
+      [
+       "zoom"
+      ],
+      "goat-marker:circle|18|goat:circle-solid|#f28e2b||0|#ffffff",
+      15,
+      "goat-marker:circle|18|goat:star-solid|#f28e2b||0|#ffffff"
+     ],
+     "icon-size": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "zoom"
+      ],
+      11,
+      0.5555555556,
+      15,
+      1
+     ],
+     "icon-allow-overlap": true
+    },
+    "paint": {}
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:circle-solid",
+    "url": "/assets/icons/maki/circle-solid.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   },
+   {
+    "name": "goat:star-solid",
+    "url": "/assets/icons/maki/star-solid.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "696": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-icon",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "icon-image": [
+      "step",
+      [
+       "zoom"
+      ],
+      "goat:circle-solid",
+      15,
+      "goat:star-solid"
+     ],
+     "icon-size": 0.3333333333
+    },
+    "paint": {
+     "icon-color": "#f28e2b"
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:circle-solid",
+    "url": "/assets/icons/maki/circle-solid.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   },
+   {
+    "name": "goat:star-solid",
+    "url": "/assets/icons/maki/star-solid.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "710": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#2bb381",
+     "fill-opacity": 0.8
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "725": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#2bb381",
+     "circle-radius": [
+      "/",
+      [
+       "case",
+       [
+        "all",
+        [
+         "has",
+         "pupils"
+        ],
+        [
+         ">=",
+         [
+          "to-number",
+          [
+           "get",
+           "pupils"
+          ],
+          0
+         ],
+         0
+        ]
+       ],
+       [
+        "interpolate",
+        [
+         "linear"
+        ],
+        [
+         "sqrt",
+         [
+          "to-number",
+          [
+           "get",
+           "pupils"
+          ],
+          0
+         ]
+        ],
+        0,
+        0,
+        38.72983346207417,
+        24
+       ],
+       8
+      ],
+      2
+     ],
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "742": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      2
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "769": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "zoom"
+      ],
+      11,
+      4,
+      16,
+      4
+     ],
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "844": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-ring",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "has",
+     "type"
+    ],
+    "paint": {
+     "circle-radius": 8,
+     "circle-color": "rgba(0,0,0,0)",
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-marker",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "has",
+     "type"
+    ],
+    "layout": {
+     "icon-image": [
+      "concat",
+      "goat-marker:circle|16|",
+      [
+       "match",
+       [
+        "get",
+        "type"
+       ],
+       [
+        "library",
+        "museum"
+       ],
+       "goat:museum",
+       "park",
+       "goat:park",
+       "pool",
+       "goat:swimming",
+       "health",
+       "goat:hospital",
+       "kindergarten",
+       "goat:playground",
+       ""
+      ],
+      "|",
+      [
+       "case",
+       [
+        "has",
+        "type"
+       ],
+       [
+        "match",
+        [
+         "get",
+         "type"
+        ],
+        [
+         "library",
+         "museum"
+        ],
+        "#b07aa1",
+        "park",
+        "#59a14f",
+        "pool",
+        "#4e79a7",
+        "health",
+        "#e15759",
+        "kindergarten",
+        "#f28e2b",
+        "#9aa3ad"
+       ],
+       "#9aa3ad"
+      ],
+      "||0|#ffffff"
+     ],
+     "icon-size": 1,
+     "icon-allow-overlap": true
+    },
+    "paint": {}
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:museum",
+    "url": "/assets/icons/maki/museum.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   },
+   {
+    "name": "goat:park",
+    "url": "/assets/icons/maki/park.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   },
+   {
+    "name": "goat:swimming",
+    "url": "/assets/icons/maki/swimming.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   },
+   {
+    "name": "goat:hospital",
+    "url": "/assets/icons/maki/hospital.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   },
+   {
+    "name": "goat:playground",
+    "url": "/assets/icons/maki/playground.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "883": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      [
+       "match",
+       [
+        "to-string",
+        [
+         "get",
+         "oneway"
+        ]
+       ],
+       "true",
+       "#08519c",
+       "#6baed6"
+      ]
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      3
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "895": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": [
+      "match",
+      [
+       "get",
+       "type"
+      ],
+      [
+       "library",
+       "museum"
+      ],
+      "#b07aa1",
+      "#9aa3ad"
+     ],
+     "circle-radius": 6,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "921": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#cccccc",
+     "fill-opacity": 0.8
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "935": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": [
+      "case",
+      [
+       "has",
+       "density"
+      ],
+      [
+       "step",
+       [
+        "to-number",
+        [
+         "get",
+         "density"
+        ],
+        0
+       ],
+       "#fef0d9",
+       2800,
+       "#fdcc8a",
+       3600,
+       "#fc8d59",
+       4300,
+       "#e34a33",
+       6300,
+       "#b30000"
+      ],
+      "#cccccc"
+     ],
+     "fill-opacity": 0.8
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "986": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#cccccc"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#636363"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1001": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#cccccc"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": "#ffc300",
+     "line-width": 3,
+     "line-opacity": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      1,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1015": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": [
+      "case",
+      [
+       "has",
+       "population"
+      ],
+      [
+       "step",
+       [
+        "to-number",
+        [
+         "get",
+         "population"
+        ],
+        0
+       ],
+       "#fff7ec",
+       10000,
+       "#fdd49e",
+       15000,
+       "#fc8d59",
+       20000,
+       "#b30000"
+      ],
+      "#cccccc"
+     ],
+     "fill-opacity": 0.85
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      [
+       "case",
+       [
+        "has",
+        "population"
+       ],
+       [
+        "step",
+        [
+         "to-number",
+         [
+          "get",
+          "population"
+         ],
+         0
+        ],
+        "#fff7ec",
+        10000,
+        "#fdd49e",
+        15000,
+        "#fc8d59",
+        20000,
+        "#b30000"
+       ],
+       "#cccccc"
+      ]
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1041": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": [
+      "case",
+      [
+       "has",
+       "population"
+      ],
+      [
+       "step",
+       [
+        "to-number",
+        [
+         "get",
+         "population"
+        ],
+        0
+       ],
+       "#fff7ec",
+       10000,
+       "#fdd49e",
+       20000,
+       "#b30000"
+      ],
+      "#cccccc"
+     ]
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": "#ffc300",
+     "line-width": 3,
+     "line-opacity": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      1,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1066": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#deebf7"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#3182bd"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      [
+       "max",
+       [
+        "case",
+        [
+         "has",
+         "population"
+        ],
+        [
+         "step",
+         [
+          "to-number",
+          [
+           "get",
+           "population"
+          ],
+          0
+         ],
+         0.5,
+         11000,
+         1.7,
+         16000,
+         2.8,
+         21000,
+         4
+        ],
+        1
+       ],
+       3
+      ],
+      [
+       "case",
+       [
+        "has",
+        "population"
+       ],
+       [
+        "step",
+        [
+         "to-number",
+         [
+          "get",
+          "population"
+         ],
+         0
+        ],
+        0.5,
+        11000,
+        1.7,
+        16000,
+        2.8,
+        21000,
+        4
+       ],
+       1
+      ]
+     ],
+     "line-dasharray": [
+      "case",
+      [
+       "has",
+       "land_use"
+      ],
+      [
+       "match",
+       [
+        "get",
+        "land_use"
+       ],
+       "residential",
+       [
+        "literal",
+        [
+         1,
+         0
+        ]
+       ],
+       "mixed",
+       [
+        "literal",
+        [
+         2,
+         2
+        ]
+       ],
+       "green",
+       [
+        "literal",
+        [
+         0.5,
+         2
+        ]
+       ],
+       [
+        "literal",
+        [
+         3,
+         2,
+         0.5,
+         2
+        ]
+       ]
+      ],
+      [
+       "literal",
+       [
+        1,
+        0
+       ]
+      ]
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1110": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-casing",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "any",
+     [
+      "!=",
+      [
+       "get",
+       "status"
+      ],
+      "planned"
+     ],
+     [
+      ">=",
+      [
+       "zoom"
+      ],
+      13
+     ]
+    ],
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": "#ffffff",
+     "line-width": 6,
+     "line-opacity": [
+      "match",
+      [
+       "get",
+       "status"
+      ],
+      "planned",
+      0,
+      1
+     ]
+    }
+   },
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "any",
+     [
+      "!=",
+      [
+       "get",
+       "status"
+      ],
+      "planned"
+     ],
+     [
+      ">=",
+      [
+       "zoom"
+      ],
+      13
+     ]
+    ],
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      3
+     ],
+     "line-opacity": [
+      "match",
+      [
+       "get",
+       "status"
+      ],
+      "planned",
+      0.6,
+      1
+     ],
+     "line-dasharray": [
+      "match",
+      [
+       "get",
+       "status"
+      ],
+      "planned",
+      [
+       "literal",
+       [
+        2,
+        2
+       ]
+      ],
+      [
+       "literal",
+       [
+        1,
+        0
+       ]
+      ]
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1141": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "circle-sort-key": [
+      "-",
+      [
+       "to-number",
+       [
+        "get",
+        "pupils"
+       ],
+       0
+      ]
+     ]
+    },
+    "paint": {
+     "circle-color": [
+      "case",
+      [
+       "has",
+       "type"
+      ],
+      [
+       "match",
+       [
+        "get",
+        "type"
+       ],
+       "primary",
+       "#1b9e77",
+       "secondary",
+       "#d95f02",
+       "#7570b3"
+      ],
+      "#999999"
+     ],
+     "circle-radius": 4,
+     "circle-stroke-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      [
+       "match",
+       [
+        "get",
+        "status"
+       ],
+       "planned",
+       "#d7301f",
+       "#ffffff"
+      ]
+     ],
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      [
+       "max",
+       [
+        "match",
+        [
+         "get",
+         "status"
+        ],
+        "planned",
+        2.5,
+        1
+       ],
+       3
+      ],
+      [
+       "match",
+       [
+        "get",
+        "status"
+       ],
+       "planned",
+       2.5,
+       1
+      ]
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1185": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": [
+      "case",
+      [
+       "has",
+       "land_use"
+      ],
+      [
+       "match",
+       [
+        "get",
+        "land_use"
+       ],
+       "green",
+       "#66c2a5",
+       "mixed",
+       "#fc8d62",
+       "#8da0cb"
+      ],
+      [
+       "case",
+       [
+        "has",
+        "density"
+       ],
+       [
+        "step",
+        [
+         "to-number",
+         [
+          "get",
+          "density"
+         ],
+         0
+        ],
+        "#fdcc8a",
+        3600,
+        "#e34a33"
+       ],
+       "#cccccc"
+      ]
+     ]
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": "#ffc300",
+     "line-width": 3,
+     "line-opacity": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      1,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1202": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": [
+      "match",
+      [
+       "get",
+       "land_use"
+      ],
+      "green",
+      "#66c2a5",
+      [
+       "case",
+       [
+        "has",
+        "density"
+       ],
+       [
+        "step",
+        [
+         "to-number",
+         [
+          "get",
+          "density"
+         ],
+         0
+        ],
+        "#fdcc8a",
+        3600,
+        "#e34a33"
+       ],
+       "#cccccc"
+      ]
+     ]
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": "#ffc300",
+     "line-width": 3,
+     "line-opacity": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      1,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1261": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "any",
+     [
+      "!",
+      [
+       "all",
+       [
+        "==",
+        [
+         "typeof",
+         [
+          "get",
+          "traffic"
+         ]
+        ],
+        "number"
+       ],
+       [
+        "<",
+        [
+         "get",
+         "traffic"
+        ],
+        1500
+       ]
+      ]
+     ],
+     [
+      ">=",
+      [
+       "zoom"
+      ],
+      14
+     ]
+    ],
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      [
+       "case",
+       [
+        "!",
+        [
+         "has",
+         "name"
+        ]
+       ],
+       "#9aa3ad",
+       "#2166ac"
+      ]
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      3
+     ]
+    }
+   },
+   {
+    "id": "1-arrows",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "any",
+     [
+      "!",
+      [
+       "all",
+       [
+        "==",
+        [
+         "typeof",
+         [
+          "get",
+          "traffic"
+         ]
+        ],
+        "number"
+       ],
+       [
+        "<",
+        [
+         "get",
+         "traffic"
+        ],
+        1500
+       ]
+      ]
+     ],
+     [
+      ">=",
+      [
+       "zoom"
+      ],
+      14
+     ]
+    ],
+    "layout": {
+     "symbol-placement": "line",
+     "symbol-spacing": 150,
+     "icon-image": "goat:arrow",
+     "icon-size": [
+      "/",
+      [
+       "case",
+       [
+        "==",
+        [
+         "get",
+         "oneway"
+        ],
+        true
+       ],
+       12,
+       10
+      ],
+      24
+     ],
+     "icon-rotation-alignment": "map",
+     "icon-allow-overlap": true,
+     "icon-rotate": 90
+    },
+    "paint": {
+     "icon-color": [
+      "case",
+      [
+       "!",
+       [
+        "has",
+        "name"
+       ]
+      ],
+      "#9aa3ad",
+      "#2166ac"
+     ],
+     "icon-opacity": [
+      "case",
+      [
+       "==",
+       [
+        "get",
+        "oneway"
+       ],
+       true
+      ],
+      1,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:arrow",
+    "url": "/sprites/goat-arrow.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1293": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "!",
+     [
+      "all",
+      [
+       "==",
+       [
+        "get",
+        "status"
+       ],
+       "planned"
+      ],
+      [
+       "all",
+       [
+        "==",
+        [
+         "typeof",
+         [
+          "get",
+          "pupils"
+         ]
+        ],
+        "number"
+       ],
+       [
+        "<",
+        [
+         "get",
+         "pupils"
+        ],
+        300
+       ]
+      ],
+      [
+       "!",
+       [
+        "in",
+        [
+         "get",
+         "type"
+        ],
+        [
+         "literal",
+         [
+          "primary",
+          "special"
+         ]
+        ]
+       ]
+      ]
+     ]
+    ],
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": 4,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1318": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": [
+      "case",
+      [
+       "in",
+       "Gymnasium",
+       [
+        "to-string",
+        [
+         "get",
+         "name"
+        ]
+       ]
+      ],
+      "#d95f02",
+      "#1a6b4d"
+     ],
+     "circle-radius": [
+      "/",
+      [
+       "case",
+       [
+        "in",
+        "Gymnasium",
+        [
+         "to-string",
+         [
+          "get",
+          "name"
+         ]
+        ]
+       ],
+       12,
+       8
+      ],
+      2
+     ],
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1343": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "!",
+     [
+      "==",
+      [
+       "slice",
+       [
+        "to-string",
+        [
+         "get",
+         "name"
+        ]
+       ],
+       0,
+       14
+      ],
+      "Primary%school"
+     ]
+    ],
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": 4,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1354": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "!",
+     [
+      "==",
+      [
+       "get",
+       "pupils"
+      ],
+      "300"
+     ]
+    ],
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": 4,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1387": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      3
+     ]
+    }
+   },
+   {
+    "id": "1-arrows",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_decoration",
+    "layout": {
+     "icon-image": "goat:arrow",
+     "icon-size": 0.5,
+     "icon-rotation-alignment": "map",
+     "icon-allow-overlap": true,
+     "icon-rotate": [
+      "get",
+      "bearing"
+     ]
+    },
+    "paint": {
+     "icon-color": "#2166ac"
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:arrow",
+    "url": "/sprites/goat-arrow.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {
+   "decorations": [
+    "center"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "1403": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "any",
+     [
+      "==",
+      [
+       "global-state",
+       "1:time"
+      ],
+      null
+     ],
+     [
+      "==",
+      [
+       "get",
+       "year"
+      ],
+      [
+       "global-state",
+       "1:time"
+      ]
+     ]
+    ],
+    "layout": {
+     "circle-sort-key": [
+      "-",
+      [
+       "to-number",
+       [
+        "get",
+        "vehicles"
+       ],
+       0
+      ]
+     ]
+    },
+    "paint": {
+     "circle-color": "#2bb381",
+     "circle-radius": 5,
+     "circle-opacity": 0.9,
+     "circle-stroke-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ],
+     "circle-stroke-opacity": 0.9
+    }
+   }
+  ],
+  "images": [],
+  "state": {
+   "1:time": {
+    "default": null
+   }
+  },
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1473": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#f28e2b",
+     "circle-radius": 4,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1537": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-ring",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-radius": 9,
+     "circle-color": "rgba(0,0,0,0)",
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-marker",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "icon-image": "goat-marker:circle|18|goat:marker|#f28e2b||0|#ffffff",
+     "icon-size": 1,
+     "icon-allow-overlap": true
+    },
+    "paint": {}
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:marker",
+    "url": "/assets/icons/maki/marker.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1569": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#f28e2b",
+     "circle-radius": 5,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1595": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#f28e2b",
+     "circle-radius": 5,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1607": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#deebf7"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#3182bd"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1624": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#deebf7"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#3182bd"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1646": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#f28e2b",
+     "circle-radius": 5,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1666": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-heatmap",
+    "type": "heatmap",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "heatmap-radius": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "zoom"
+      ],
+      10,
+      15,
+      14,
+      40
+     ],
+     "heatmap-weight": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "visitors"
+       ],
+       0
+      ],
+      0,
+      0,
+      50000,
+      1
+     ],
+     "heatmap-color": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "heatmap-density"
+      ],
+      0,
+      "rgba(0, 0, 0, 0)",
+      0.1428571429,
+      "#000004",
+      0.2857142857,
+      "#2c115f",
+      0.4285714286,
+      "#721f81",
+      0.5714285714,
+      "#b73779",
+      0.7142857143,
+      "#f1605d",
+      0.8571428571,
+      "#feb078",
+      1,
+      "#fcfdbf"
+     ]
+    },
+    "maxzoom": 15
+   },
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#3f007d",
+     "circle-radius": 3,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    },
+    "minzoom": 15
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1702": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "geojson",
+    "data": "https://geoapi.example/items",
+    "cluster": true,
+    "clusterRadius": 50,
+    "clusterMinPoints": 3,
+    "clusterMaxZoom": 13
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "filter": [
+     "!",
+     [
+      "has",
+      "point_count"
+     ]
+    ],
+    "paint": {
+     "circle-color": "#283593",
+     "circle-radius": 4,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-cluster-marker",
+    "type": "circle",
+    "source": "s",
+    "filter": [
+     "has",
+     "point_count"
+    ],
+    "paint": {
+     "circle-color": "#283593",
+     "circle-radius": [
+      "/",
+      [
+       "case",
+       [
+        "all",
+        [
+         "has",
+         "point_count"
+        ],
+        [
+         ">=",
+         [
+          "to-number",
+          [
+           "get",
+           "point_count"
+          ],
+          0
+         ],
+         0
+        ]
+       ],
+       [
+        "interpolate",
+        [
+         "linear"
+        ],
+        [
+         "sqrt",
+         [
+          "to-number",
+          [
+           "get",
+           "point_count"
+          ],
+          0
+         ]
+        ],
+        1.7320508075688772,
+        16,
+        31.622776601683793,
+        40
+       ],
+       8
+      ],
+      2
+     ],
+     "circle-stroke-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      2
+     ]
+    }
+   },
+   {
+    "id": "1-cluster-label",
+    "type": "symbol",
+    "source": "s",
+    "filter": [
+     "has",
+     "point_count"
+    ],
+    "layout": {
+     "text-field": [
+      "to-string",
+      [
+       "get",
+       "point_count"
+      ]
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Regular"
+     ],
+     "text-variable-anchor-offset": [
+      "top",
+      [
+       0,
+       0.5
+      ],
+      "bottom",
+      [
+       0,
+       -0.5
+      ],
+      "right",
+      [
+       -0.5,
+       0
+      ],
+      "left",
+      [
+       0.5,
+       0
+      ]
+     ]
+    },
+    "paint": {
+     "text-color": "#ffffff",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1736": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   },
+   "s-h3": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}?h3=auto&h3_value=sum&h3_field=pupils"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-h3-fill",
+    "type": "fill",
+    "source": "s-h3",
+    "source-layer": "h3",
+    "maxzoom": 15,
+    "paint": {
+     "fill-color": "#fc8d59",
+     "fill-opacity": 0.85
+    }
+   },
+   {
+    "id": "1-h3-outline",
+    "type": "line",
+    "source": "s-h3",
+    "source-layer": "h3",
+    "maxzoom": 15,
+    "paint": {
+     "line-color": "#ffffff",
+     "line-width": 1
+    }
+   },
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": 3.5,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    },
+    "minzoom": 15
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1757": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   },
+   "s-h3": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}?h3=8&h3_value=mean&h3_field=visitors"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-h3-fill",
+    "type": "fill",
+    "source": "s-h3",
+    "source-layer": "h3",
+    "paint": {
+     "fill-color": "#21918c",
+     "fill-opacity": 0.85
+    }
+   },
+   {
+    "id": "1-h3-outline",
+    "type": "line",
+    "source": "s-h3",
+    "source-layer": "h3",
+    "paint": {
+     "line-color": "#ffffff",
+     "line-width": 1
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1776": {
+  "id": "1",
+  "sources": {
+   "s-dem": {
+    "type": "raster-dem",
+    "tiles": [
+     "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp"
+    ],
+    "tileSize": 256,
+    "encoding": "terrarium"
+   }
+  },
+  "layers": [
+   {
+    "id": "1-hillshade",
+    "type": "hillshade",
+    "source": "s-dem",
+    "paint": {
+     "hillshade-method": "standard",
+     "hillshade-illumination-direction": 315,
+     "hillshade-illumination-altitude": 45,
+     "hillshade-exaggeration": 0.5,
+     "hillshade-shadow-color": "rgba(0, 0, 0, 0.8)",
+     "hillshade-highlight-color": "rgba(255, 255, 255, 0.8)",
+     "hillshade-accent-color": "rgba(0, 0, 0, 0.8)"
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1816": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6WzEsMiwzXSwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {
+     "raster-brightness-min": 0.1,
+     "raster-contrast": 0.05,
+     "raster-saturation": 0.2
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1831": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6WzQsMSwyXSwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {}
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1838": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6bnVsbCwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {
+     "raster-resampling": "nearest"
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1852": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjoxLCJjb2xvcnMiOlsiIzJmNmIzYSIsIiM1ZjllNGQiLCIjYThjNjZjIiwiI2U4ZGM4ZiIsIiNjOWEzNmIiLCIjOGY2YjRjIiwiI2YyZjJmMiJdLCJkb21haW4iOlsyMDAsNDUwXSwia2luZCI6InJhbXAiLCJub0RhdGEiOltdLCJvdXRzaWRlIjoiaGlkZSIsInYiOjF9"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {
+     "raster-opacity": 0.7
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1865": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjoxLCJpbnRlcnBvbGF0ZSI6ImxpbmVhciIsImtpbmQiOiJzdG9wcyIsIm5vRGF0YSI6W10sIm91dHNpZGUiOiJjbGFtcCIsInN0b3BzIjpbeyJjb2xvciI6IiMxYTk4NTAiLCJ2YWx1ZSI6MTgwfSx7ImNvbG9yIjoiI2Q5ZWY4YiIsInZhbHVlIjoyNjB9LHsiY29sb3IiOiIjZmRhZTYxIiwidmFsdWUiOjM0MH0seyJjb2xvciI6IiNhNTAwMjYiLCJ2YWx1ZSI6NDQwfV0sInYiOjF9"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {}
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1892": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjoxLCJjb2xvcnMiOlsiIzJmNmIzYSIsIiM1ZjllNGQiLCIjYThjNjZjIiwiI2U4ZGM4ZiIsIiNjOWEzNmIiLCIjOGY2YjRjIiwiI2YyZjJmMiJdLCJkb21haW4iOm51bGwsImtpbmQiOiJyYW1wIiwibm9EYXRhIjpbXSwib3V0c2lkZSI6ImNsYW1wIiwidiI6MX0"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {}
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1906": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjo0LCJjb2xvcnMiOlsiIzQ0MDE1NCIsIiM0NDM5ODMiLCIjMzE2ODhlIiwiIzIxOTE4YyIsIiMzNWI3NzkiLCIjOTBkNzQzIiwiI2ZkZTcyNSJdLCJkb21haW4iOlsxMCwyMzBdLCJraW5kIjoicmFtcCIsIm5vRGF0YSI6W10sIm91dHNpZGUiOiJjbGFtcCIsInYiOjF9"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {}
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1913": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjoiKGI0IC0gYjEpIC8gKGI0ICsgYjEpIiwiY29sb3JzIjpbIiNlNmY2ZWYiLCIjYmZlOWQ2IiwiIzhmZGFiOSIsIiM1ZmNhOWIiLCIjMmJiMzgxIiwiIzFmOGE2MyIsIiMxNDVjNDIiXSwiZG9tYWluIjpbLTAuNCwwLjddLCJraW5kIjoicmFtcCIsIm5vRGF0YSI6W10sIm91dHNpZGUiOiJjbGFtcCIsInYiOjF9"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {}
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1941": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjoxLCJjb2xvcnMiOlsiIzJmNmIzYSIsIiM1ZjllNGQiLCIjYThjNjZjIiwiI2U4ZGM4ZiIsIiNjOWEzNmIiLCIjOGY2YjRjIiwiI2YyZjJmMiJdLCJkb21haW4iOlsxODEsNDQwXSwia2luZCI6InJhbXAiLCJub0RhdGEiOltdLCJvdXRzaWRlIjoiY2xhbXAiLCJ2IjoxfQ"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {}
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1961": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiMyZjZiM2EiLCJ0byI6MjQwfSx7ImNvbG9yIjoiI2E4YzY2YyIsImZyb20iOjI0MCwidG8iOjI3NX0seyJjb2xvciI6IiNlOGRjOGYiLCJmcm9tIjoyNzUsInRvIjozMDB9LHsiY29sb3IiOiIjOGY2YjRjIiwiZnJvbSI6MzAwLCJ0byI6MzQwfSx7ImNvbG9yIjoiI2YyZjJmMiIsImZyb20iOjM0MH1dLCJraW5kIjoiY2xhc3NlcyIsIm5vRGF0YSI6W10sInYiOjF9"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {}
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1985": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiM0YTkwYzIiLCJ2YWx1ZSI6MX0seyJjb2xvciI6IiNjMDUwNGQiLCJ2YWx1ZSI6Mn0seyJjb2xvciI6IiMyZTdkMzIiLCJ2YWx1ZSI6M30seyJjb2xvciI6IiNlNmMzNWMiLCJ2YWx1ZSI6NH0seyJjb2xvciI6IiM5Y2NjNjUiLCJ2YWx1ZSI6NX0seyJjb2xvciI6bnVsbCwidmFsdWUiOjZ9XSwia2luZCI6ImNhdGVnb3JpZXMiLCJub0RhdGEiOltdLCJvdGhlciI6IiNjY2NjY2MiLCJ2IjoxfQ"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {
+     "raster-opacity": 0.75,
+     "raster-resampling": "nearest"
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2013": {
+  "id": "1",
+  "sources": {
+   "s-dem": {
+    "type": "raster-dem",
+    "tiles": [
+     "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp"
+    ],
+    "tileSize": 256,
+    "encoding": "terrarium"
+   }
+  },
+  "layers": [
+   {
+    "id": "1-hillshade",
+    "type": "hillshade",
+    "source": "s-dem",
+    "paint": {
+     "hillshade-method": "multidirectional",
+     "hillshade-illumination-direction": [
+      225,
+      270,
+      315,
+      0
+     ],
+     "hillshade-illumination-altitude": [
+      45,
+      45,
+      45,
+      45
+     ],
+     "hillshade-exaggeration": 0.6,
+     "hillshade-shadow-color": [
+      "rgba(45, 58, 74, 0.6)",
+      "rgba(45, 58, 74, 0.6)",
+      "rgba(45, 58, 74, 0.6)",
+      "rgba(45, 58, 74, 0.6)"
+     ],
+     "hillshade-highlight-color": [
+      "rgba(255, 255, 255, 0.6)",
+      "rgba(255, 255, 255, 0.6)",
+      "rgba(255, 255, 255, 0.6)",
+      "rgba(255, 255, 255, 0.6)"
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2025": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjoxLCJjb2xvcnMiOlsiIzJmNmIzYSIsIiM1ZjllNGQiLCIjYThjNjZjIiwiI2U4ZGM4ZiIsIiNjOWEzNmIiLCIjOGY2YjRjIiwiI2YyZjJmMiJdLCJkb21haW4iOlsxODEsNDQwXSwia2luZCI6InJhbXAiLCJub0RhdGEiOltdLCJvdXRzaWRlIjoiY2xhbXAiLCJ2IjoxfQ"
+    ],
+    "tileSize": 256
+   },
+   "s-dem": {
+    "type": "raster-dem",
+    "tiles": [
+     "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp"
+    ],
+    "tileSize": 256,
+    "encoding": "terrarium"
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {}
+   },
+   {
+    "id": "1-hillshade",
+    "type": "hillshade",
+    "source": "s-dem",
+    "paint": {
+     "hillshade-method": "standard",
+     "hillshade-illumination-direction": 315,
+     "hillshade-illumination-altitude": 45,
+     "hillshade-exaggeration": 0.5,
+     "hillshade-shadow-color": "rgba(0, 0, 0, 1)",
+     "hillshade-highlight-color": "rgba(255, 255, 255, 1)",
+     "hillshade-accent-color": "rgba(0, 0, 0, 1)"
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2052": {
+  "id": "1",
+  "sources": {
+   "s-dem": {
+    "type": "raster-dem",
+    "tiles": [
+     "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp"
+    ],
+    "tileSize": 256,
+    "encoding": "terrarium"
+   }
+  },
+  "layers": [
+   {
+    "id": "1-hillshade",
+    "type": "hillshade",
+    "source": "s-dem",
+    "paint": {
+     "hillshade-method": "combined",
+     "hillshade-illumination-direction": 315,
+     "hillshade-illumination-altitude": 45,
+     "hillshade-exaggeration": 0.5,
+     "hillshade-shadow-color": "rgba(0, 0, 0, 1)",
+     "hillshade-highlight-color": "rgba(255, 255, 255, 1)"
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2057": {
+  "id": "1",
+  "sources": {
+   "s-dem": {
+    "type": "raster-dem",
+    "tiles": [
+     "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp"
+    ],
+    "tileSize": 256,
+    "encoding": "terrarium"
+   }
+  },
+  "layers": [
+   {
+    "id": "1-hillshade",
+    "type": "hillshade",
+    "source": "s-dem",
+    "paint": {
+     "hillshade-method": "igor",
+     "hillshade-illumination-direction": 315,
+     "hillshade-illumination-altitude": 45,
+     "hillshade-exaggeration": 0.7,
+     "hillshade-shadow-color": "rgba(0, 0, 0, 1)",
+     "hillshade-highlight-color": "rgba(255, 255, 255, 1)"
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2062": {
+  "id": "1",
+  "sources": {
+   "s-dem": {
+    "type": "raster-dem",
+    "tiles": [
+     "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp"
+    ],
+    "tileSize": 256,
+    "encoding": "terrarium"
+   }
+  },
+  "layers": [
+   {
+    "id": "1-hillshade",
+    "type": "hillshade",
+    "source": "s-dem",
+    "paint": {
+     "hillshade-method": "basic",
+     "hillshade-illumination-direction": 315,
+     "hillshade-illumination-altitude": 45,
+     "hillshade-exaggeration": 0.5,
+     "hillshade-shadow-color": "rgba(0, 0, 0, 1)",
+     "hillshade-highlight-color": "rgba(255, 255, 255, 1)"
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2071": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6WzEsMiwzXSwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "minzoom": 10,
+    "paint": {}
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2084": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjoxLCJjb2xvcnMiOlsiIzJmNmIzYSIsIiM1ZjllNGQiLCIjYThjNjZjIiwiI2U4ZGM4ZiIsIiNjOWEzNmIiLCIjOGY2YjRjIiwiI2YyZjJmMiJdLCJkb21haW4iOlsxODEsNDQwXSwia2luZCI6InJhbXAiLCJub0RhdGEiOltdLCJvdXRzaWRlIjoiY2xhbXAiLCJ2IjoxfQ"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {}
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2102": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://wms.example/?STYLES=grey&BBOX={bbox-epsg-3857}"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "minzoom": 12,
+    "paint": {
+     "raster-opacity": 0.9,
+     "raster-brightness-min": 0.1,
+     "raster-contrast": 0.1
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2118": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}.png"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {
+     "raster-opacity": 0.5,
+     "raster-saturation": -0.6
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2125": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster",
+    "tiles": [
+     "https://wms.example/?STYLES=&BBOX={bbox-epsg-3857}"
+    ],
+    "tileSize": 256
+   }
+  },
+  "layers": [
+   {
+    "id": "1-raster",
+    "type": "raster",
+    "source": "s",
+    "paint": {}
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2284": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#2bb381"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "line-width": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "zoom"
+      ],
+      10,
+      [
+       "case",
+       [
+        "any",
+        [
+         "boolean",
+         [
+          "feature-state",
+          "active"
+         ],
+         false
+        ],
+        [
+         "boolean",
+         [
+          "feature-state",
+          "hover"
+         ],
+         false
+        ]
+       ],
+       3,
+       1
+      ],
+      14,
+      [
+       "case",
+       [
+        "any",
+        [
+         "boolean",
+         [
+          "feature-state",
+          "active"
+         ],
+         false
+        ],
+        [
+         "boolean",
+         [
+          "feature-state",
+          "hover"
+         ],
+         false
+        ]
+       ],
+       3,
+       1
+      ]
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2298": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "!",
+     [
+      "all",
+      [
+       "==",
+       [
+        "typeof",
+        [
+         "get",
+         "name"
+        ]
+       ],
+       "string"
+      ],
+      [
+       ">",
+       [
+        "get",
+        "name"
+       ],
+       "M"
+      ]
+     ]
+    ],
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      2
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2310": {
+  "id": "1",
+  "sources": {
+   "s-dem": {
+    "type": "raster-dem",
+    "tiles": [
+     "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp"
+    ],
+    "tileSize": 256,
+    "encoding": "terrarium"
+   }
+  },
+  "layers": [
+   {
+    "id": "1-hillshade",
+    "type": "hillshade",
+    "source": "s-dem",
+    "paint": {
+     "hillshade-method": "standard",
+     "hillshade-illumination-direction": 315,
+     "hillshade-illumination-altitude": 45,
+     "hillshade-exaggeration": 0.5,
+     "hillshade-shadow-color": "rgba(0, 0, 0, 1)",
+     "hillshade-highlight-color": "rgba(255, 255, 255, 1)",
+     "hillshade-accent-color": "rgba(0, 0, 0, 1)"
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2316": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": 4,
+     "circle-stroke-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "2326": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#deebf7"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": "#ffc300",
+     "line-width": 3,
+     "line-opacity": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      1,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_anchor",
+    "layout": {
+     "text-field": [
+      "concat",
+      "{",
+      [
+       "to-string",
+       [
+        "get",
+        " name "
+       ]
+      ],
+      "}"
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Regular"
+     ]
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {
+   "label": true,
+   "fields": [
+    " name "
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "2585": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-casing",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "any",
+     [
+      "!=",
+      [
+       "get",
+       "status"
+      ],
+      "planned"
+     ],
+     [
+      ">=",
+      [
+       "zoom"
+      ],
+      13
+     ]
+    ],
+    "layout": {
+     "line-cap": "round",
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": "#ffffff",
+     "line-width": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "zoom"
+      ],
+      10,
+      5,
+      16,
+      9
+     ],
+     "line-offset": 2,
+     "line-opacity": [
+      "match",
+      [
+       "get",
+       "status"
+      ],
+      "planned",
+      0,
+      1
+     ]
+    }
+   },
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "filter": [
+     "any",
+     [
+      "!=",
+      [
+       "get",
+       "status"
+      ],
+      "planned"
+     ],
+     [
+      ">=",
+      [
+       "zoom"
+      ],
+      13
+     ]
+    ],
+    "layout": {
+     "line-cap": "round",
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "zoom"
+      ],
+      10,
+      [
+       "case",
+       [
+        "any",
+        [
+         "boolean",
+         [
+          "feature-state",
+          "active"
+         ],
+         false
+        ],
+        [
+         "boolean",
+         [
+          "feature-state",
+          "hover"
+         ],
+         false
+        ]
+       ],
+       3,
+       2
+      ],
+      16,
+      [
+       "case",
+       [
+        "any",
+        [
+         "boolean",
+         [
+          "feature-state",
+          "active"
+         ],
+         false
+        ],
+        [
+         "boolean",
+         [
+          "feature-state",
+          "hover"
+         ],
+         false
+        ]
+       ],
+       6,
+       6
+      ]
+     ],
+     "line-offset": 2,
+     "line-opacity": [
+      "match",
+      [
+       "get",
+       "status"
+      ],
+      "planned",
+      0.6,
+      1
+     ],
+     "line-dasharray": [
+      "match",
+      [
+       "get",
+       "status"
+      ],
+      "planned",
+      [
+       "literal",
+       [
+        2,
+        2
+       ]
+      ],
+      [
+       "literal",
+       [
+        1,
+        0
+       ]
+      ]
+     ]
+    }
+   },
+   {
+    "id": "1-arrows",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_decoration",
+    "filter": [
+     "any",
+     [
+      "!=",
+      [
+       "get",
+       "status"
+      ],
+      "planned"
+     ],
+     [
+      ">=",
+      [
+       "zoom"
+      ],
+      13
+     ]
+    ],
+    "layout": {
+     "icon-image": "goat:arrow",
+     "icon-size": 0.5,
+     "icon-rotation-alignment": "map",
+     "icon-allow-overlap": true,
+     "icon-rotate": [
+      "get",
+      "bearing"
+     ]
+    },
+    "paint": {
+     "icon-color": "#2166ac"
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:arrow",
+    "url": "/sprites/goat-arrow.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {
+   "decorations": [
+    "center"
+   ],
+   "fields": [
+    "status"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "2663": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": [
+      "case",
+      [
+       "has",
+       "density"
+      ],
+      [
+       "step",
+       [
+        "to-number",
+        [
+         "get",
+         "density"
+        ],
+        0
+       ],
+       "#fef0d9",
+       2800,
+       "#fdcc8a",
+       3600,
+       "#fc8d59",
+       4300,
+       "#e34a33",
+       6300,
+       "#b30000"
+      ],
+      "#cccccc"
+     ],
+     "fill-opacity": 0.8
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_anchor",
+    "minzoom": 11,
+    "layout": {
+     "text-field": [
+      "concat",
+      [
+       "to-string",
+       [
+        "get",
+        "name"
+       ]
+      ],
+      "\n",
+      [
+       "case",
+       [
+        "has",
+        "area_km2"
+       ],
+       [
+        "number-format",
+        [
+         "to-number",
+         [
+          "get",
+          "area_km2"
+         ],
+         0
+        ],
+        {
+         "locale": [
+          "global-state",
+          "locale"
+         ],
+         "min-fraction-digits": 1,
+         "max-fraction-digits": 1
+        }
+       ],
+       ""
+      ],
+      " km²"
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Bold"
+     ]
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {
+   "locale": {
+    "default": "en-US"
+   }
+  },
+  "tileParams": {
+   "label": true,
+   "fields": [
+    "area_km2",
+    "name"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ }
+}
