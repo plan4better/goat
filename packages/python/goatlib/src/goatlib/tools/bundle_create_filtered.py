@@ -45,7 +45,7 @@ from goatlib.storage.query_builder import build_cql_filter
 from goatlib.tools.authz import authorize_bundle_copy
 from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
 from goatlib.tools.schemas import ToolInputBase
-from goatlib.tools.style import get_bundle_style
+from goatlib.tools.style import bundle_role_style
 
 logger = logging.getLogger(__name__)
 
@@ -375,8 +375,8 @@ class BundleCreateFilteredRunner(BundleImportRunner):
                 # The same style the original's members were created with, from
                 # the same rule — a clipped copy of a street network should not
                 # arrive in different colours from the network it came from.
-                properties=(
-                    get_bundle_style(spec.type, role, geometry_type)
+                style=(
+                    bundle_role_style(spec.type, role, geometry_type, seed=layer_id)
                     if geometry_type
                     else None
                 ),

@@ -29,7 +29,8 @@ logger = logging.getLogger(__name__)
 # images — there is no second list to keep in sync.
 REQUIRED_DUCKDB_EXTENSIONS = ["spatial", "httpfs", "postgres", "ducklake"]
 # Community-repository extensions the analysis tools load on their own
-# connections (``INSTALL h3 FROM community``). Not loaded by the managers,
+# connections (``INSTALL h3 FROM community``) and geoapi's pool loads for its H3
+# tiles (``DuckLakePool.COMMUNITY_EXTENSIONS``). Not loaded by the managers,
 # but baked into the images alongside the list above so those INSTALLs
 # resolve from disk instead of community-extensions.duckdb.org.
 COMMUNITY_DUCKDB_EXTENSIONS = ["h3"]
@@ -940,6 +941,9 @@ class DuckLakePool:
     """
 
     REQUIRED_EXTENSIONS = REQUIRED_DUCKDB_EXTENSIONS
+    # Community extensions a service's queries use (geoapi's H3 tiles). A
+    # connection that cannot load one still serves everything else.
+    COMMUNITY_EXTENSIONS: tuple[str, ...] = ()
 
     # Max age for connections in seconds - older connections are recreated
     # This helps prevent stale PostgreSQL connections inside DuckLake
@@ -1225,6 +1229,13 @@ class DuckLakePool:
             self._extensions_installed = True
         for ext in self.REQUIRED_EXTENSIONS:
             con.execute(f"LOAD {ext}")
+        for ext in self.COMMUNITY_EXTENSIONS:
+            try:
+                if not baked:
+                    con.execute(f"INSTALL {ext} FROM community")
+                con.execute(f"LOAD {ext}")
+            except duckdb.Error as e:
+                logger.warning("Could not load extension %s: %s", ext, e)
 
         apply_duckdb_s3_settings(
             con,

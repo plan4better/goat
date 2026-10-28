@@ -212,6 +212,65 @@ async def test_schemas(postgres_pool: asyncpg.Pool) -> None:
                 tags TEXT[],
                 thumbnail_url TEXT,
                 layer_order INTEGER[],
+                space_id UUID,
+                basemap TEXT,
+                custom_basemaps JSONB,
+                max_extent FLOAT[],
+                builder_config JSONB,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+        # Create customer.user_project table (a user's view of a project)
+        await conn.execute(f"""
+            CREATE TABLE {TEST_CUSTOMER_SCHEMA}.user_project (
+                id SERIAL PRIMARY KEY,
+                user_id UUID NOT NULL,
+                project_id UUID NOT NULL
+                    REFERENCES {TEST_CUSTOMER_SCHEMA}.project(id) ON DELETE CASCADE,
+                initial_view_state JSONB NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(user_id, project_id)
+            )
+        """)
+
+        # Create customer.workflow and customer.report_layout tables
+        for table, extra in (
+            ("workflow", ""),
+            ("report_layout", "is_predefined BOOLEAN DEFAULT FALSE,"),
+        ):
+            await conn.execute(f"""
+                CREATE TABLE {TEST_CUSTOMER_SCHEMA}.{table} (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    project_id UUID NOT NULL
+                        REFERENCES {TEST_CUSTOMER_SCHEMA}.project(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    is_default BOOLEAN DEFAULT FALSE,
+                    {extra}
+                    config JSONB,
+                    thumbnail_url TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+
+        # Create customer.uploaded_asset table (icons and images users upload)
+        await conn.execute(f"""
+            CREATE TABLE {TEST_CUSTOMER_SCHEMA}.uploaded_asset (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES {TEST_CUSTOMER_SCHEMA}.user(id) ON DELETE CASCADE,
+                folder_id UUID,
+                s3_key TEXT NOT NULL UNIQUE,
+                file_name TEXT NOT NULL,
+                display_name TEXT,
+                category TEXT,
+                mime_type TEXT NOT NULL,
+                file_size BIGINT NOT NULL,
+                asset_type TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -221,8 +280,9 @@ async def test_schemas(postgres_pool: asyncpg.Pool) -> None:
         await conn.execute(f"""
             CREATE TABLE {TEST_CUSTOMER_SCHEMA}.layer (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                user_id UUID NOT NULL REFERENCES {TEST_CUSTOMER_SCHEMA}.user(id) ON DELETE CASCADE,
-                folder_id UUID NOT NULL REFERENCES {TEST_CUSTOMER_SCHEMA}.folder(id) ON DELETE CASCADE,
+                -- NULL for a promoted catalog layer, which has no owner
+                user_id UUID REFERENCES {TEST_CUSTOMER_SCHEMA}.user(id) ON DELETE CASCADE,
+                folder_id UUID REFERENCES {TEST_CUSTOMER_SCHEMA}.folder(id) ON DELETE CASCADE,
                 space_id UUID REFERENCES {TEST_CUSTOMER_SCHEMA}.space(id) ON DELETE SET NULL,
                 name TEXT NOT NULL,
                 description TEXT,
@@ -236,8 +296,35 @@ async def test_schemas(postgres_pool: asyncpg.Pool) -> None:
                 properties JSONB,
                 other_properties JSONB,
                 data_type TEXT,
+                url TEXT,
                 tool_type TEXT,
                 job_id UUID,
+                data_snapshot BIGINT,
+                field_config JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+                public_read BOOLEAN NOT NULL DEFAULT false,
+                catalog_external_uid TEXT,
+                catalog_version TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+        await conn.execute(f"""
+            CREATE UNIQUE INDEX layer_catalog_identity
+            ON {TEST_CUSTOMER_SCHEMA}.layer (catalog_external_uid, catalog_version)
+            WHERE catalog_external_uid IS NOT NULL
+        """)
+
+        # Create customer.layer_project_group table (layer tree groups)
+        await conn.execute(f"""
+            CREATE TABLE {TEST_CUSTOMER_SCHEMA}.layer_project_group (
+                id SERIAL PRIMARY KEY,
+                project_id UUID NOT NULL REFERENCES {TEST_CUSTOMER_SCHEMA}.project(id) ON DELETE CASCADE,
+                parent_id INTEGER,
+                name TEXT NOT NULL,
+                "order" INTEGER NOT NULL DEFAULT 0,
+                visible BOOLEAN NOT NULL DEFAULT true,
+                expanded BOOLEAN NOT NULL DEFAULT true,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -253,10 +340,75 @@ async def test_schemas(postgres_pool: asyncpg.Pool) -> None:
                 "order" INTEGER NOT NULL DEFAULT 0,
                 properties JSONB,
                 other_properties JSONB,
+                layer_project_group_id INTEGER,
+                query JSONB,
+                charts JSONB,
+                active_style_id UUID,
+                visible BOOLEAN NOT NULL DEFAULT true,
+                position TEXT NOT NULL DEFAULT 'top',
+                time_value JSONB,
+                legend_expanded BOOLEAN NOT NULL DEFAULT true,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
                 UNIQUE(layer_id, project_id)
             )
+        """)
+
+        # Style rows (core's layer_style and layer_style_revision): a dataset's
+        # default, or a named style of a project layer.
+        await conn.execute(f"""
+            CREATE TABLE {TEST_CUSTOMER_SCHEMA}.layer_style (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                layer_project_id INTEGER REFERENCES {TEST_CUSTOMER_SCHEMA}.layer_project(id) ON DELETE CASCADE,
+                layer_id UUID REFERENCES {TEST_CUSTOMER_SCHEMA}.layer(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                position SMALLINT NOT NULL DEFAULT 0,
+                document JSONB NOT NULL,
+                revision INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_by UUID,
+                CHECK ((layer_project_id IS NULL) <> (layer_id IS NULL))
+            )
+        """)
+        await conn.execute(f"""
+            CREATE UNIQUE INDEX layer_style_layer_id_key
+            ON {TEST_CUSTOMER_SCHEMA}.layer_style (layer_id) WHERE layer_id IS NOT NULL
+        """)
+        await conn.execute(f"""
+            CREATE TABLE {TEST_CUSTOMER_SCHEMA}.layer_style_revision (
+                style_id UUID REFERENCES {TEST_CUSTOMER_SCHEMA}.layer_style(id) ON DELETE CASCADE,
+                revision INTEGER NOT NULL,
+                document JSONB NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (style_id, revision)
+            )
+        """)
+
+        # The data snapshot tracker's cursor (core's data_snapshot_cursor)
+        await conn.execute(f"""
+            CREATE TABLE {TEST_CUSTOMER_SCHEMA}.data_snapshot_cursor (
+                id SMALLINT PRIMARY KEY,
+                snapshot_id BIGINT NOT NULL
+            )
+        """)
+
+        # core's authorization rule, reduced to ownership: enough for tools
+        # that ask it before reading what they were handed.
+        await conn.execute(f"""
+            CREATE FUNCTION {TEST_CUSTOMER_SCHEMA}.can(
+                resource_type TEXT, resource_id UUID, user_id UUID, action TEXT
+            ) RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
+                SELECT CASE resource_type
+                    WHEN 'project' THEN EXISTS (
+                        SELECT 1 FROM {TEST_CUSTOMER_SCHEMA}.project p
+                        WHERE p.id = resource_id AND p.user_id = can.user_id)
+                    WHEN 'layer' THEN EXISTS (
+                        SELECT 1 FROM {TEST_CUSTOMER_SCHEMA}.layer l
+                        WHERE l.id = resource_id AND l.user_id = can.user_id)
+                    ELSE false
+                END
+            $$
         """)
 
         logger.info("Created all test tables")

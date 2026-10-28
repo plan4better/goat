@@ -111,4 +111,4 @@ def test_layer_metadata_field_config_defaults_empty() -> None:
 
 def test_format_version() -> None:
     """Format version constant is set."""
-    assert FORMAT_VERSION == "1.1"
+    assert FORMAT_VERSION == "1.2"

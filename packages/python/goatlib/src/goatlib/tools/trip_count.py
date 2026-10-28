@@ -30,7 +30,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import get_trip_count_style
+from goatlib.tools.style import classified
 
 logger = logging.getLogger(__name__)
 
@@ -226,35 +226,15 @@ class TripCountToolRunner(BaseToolRunner[TripCountToolParams]):
             "geometry": "GEOMETRY",
         }
 
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: TripCountToolParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return trip count style with graduated color scale for total trips."""
-        color_field = "total"
-
-        # Compute quantile breaks from the DuckLake table (6 breaks for 7 colors)
-        color_scale_breaks = None
-        table_name = table_info["table_name"] if table_info else None
-        if table_name or parquet_path:
-            color_scale_breaks = self.compute_quantile_breaks(
-                table_name=table_name,
-                column_name=color_field,
-                num_breaks=6,
-                strip_zeros=True,
-                parquet_path=parquet_path,
-            )
-            if color_scale_breaks:
-                logger.info(
-                    "Computed quantile breaks for %s: %s",
-                    color_field,
-                    color_scale_breaks,
-                )
-
-        return get_trip_count_style(color_scale_breaks=color_scale_breaks)
+        """Stations classified by their total trips."""
+        return classified("total", "colorbrewer:BuPu", geometry)
 
     def process(
         self: Self, params: TripCountToolParams, temp_dir: Path

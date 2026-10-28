@@ -29,6 +29,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
+from goatlib.tools.style import categories
 
 logger = logging.getLogger(__name__)
 
@@ -110,37 +111,28 @@ class BufferToolRunner(BaseToolRunner[BufferToolParams]):
         columns[col_name] = "INTEGER"
         return columns
 
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: BufferToolParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return style for buffer with ordinal scale based on buffer_distance values.
-
-        Creates an ordinal color map where each buffer distance gets a distinct color.
-        Uses the shared get_ordinal_polygon_style utility with color interpolation.
-        """
-        from goatlib.tools.style import get_ordinal_polygon_style
-
-        # Get buffer distances from params (only for constant distances)
-        if params.distance_type == DistanceType.constant and params.distances:
-            from goatlib.utils.helper import UNIT_TO_METERS
-
-            unit_mult = UNIT_TO_METERS.get(params.units, 1.0)
-            # Convert to integers (matching how they're stored in the parquet)
-            distances = sorted([int(round(d * unit_mult)) for d in params.distances])
-        else:
-            # For field-based distances, use default style
+        """One class per buffer distance, in orange-red; the default style for
+        distances read from a field."""
+        if params.distance_type != DistanceType.constant or not params.distances:
             return None
+        from goatlib.utils.helper import UNIT_TO_METERS
 
-        # Use shared ordinal style utility with OrRd (orange-red) palette
-        return get_ordinal_polygon_style(
-            color_field="buffer_distance",
-            values=distances,
-            palette="OrRd",
-            opacity=0.7,
+        unit_mult = UNIT_TO_METERS.get(params.units, 1.0)
+        # Whole meters, as the distances are stored in the parquet
+        distances = sorted({int(round(d * unit_mult)) for d in params.distances})
+        return categories(
+            "buffer_distance",
+            distances,
+            "colorbrewer:OrRd",
+            geometry,
+            symbol={"fill": {"opacity": 0.7}},
         )
 
     def process(

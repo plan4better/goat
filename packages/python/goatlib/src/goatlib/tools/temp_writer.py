@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import tempfile
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,8 +65,8 @@ class TempLayerMetadata(BaseModel):
         None, description="Process/tool ID that created this layer"
     )
     size_bytes: int = Field(0, description="Size of the parquet file in bytes")
-    properties: dict[str, Any] | None = Field(
-        None, description="Layer style properties from the tool"
+    style: dict[str, Any] | None = Field(
+        None, description="The layer's GOAT Style document, with computed values"
     )
 
 
@@ -153,7 +154,7 @@ class TempLayerWriter:
         layer_name: str,
         process_id: str | None = None,
         duckdb_con: duckdb.DuckDBPyConnection | None = None,
-        properties: dict[str, Any] | None = None,
+        style: Callable[[str | None], dict[str, Any] | None] | None = None,
     ) -> TempLayerResult:
         """Write a parquet file to temporary storage.
 
@@ -167,7 +168,8 @@ class TempLayerWriter:
             layer_name: Display name for the layer
             process_id: Optional process/tool ID
             duckdb_con: Optional DuckDB connection for reading parquet metadata
-            properties: Optional layer style properties from the tool
+            style: Builds the layer's style from its geometry type as read from
+                the data
 
         Returns:
             TempLayerResult with paths and metadata
@@ -190,9 +192,8 @@ class TempLayerWriter:
             duckdb_con=duckdb_con,
         )
 
-        # Attach tool style properties if provided
-        if properties:
-            metadata.properties = properties
+        if style is not None:
+            metadata.style = style(metadata.geometry_type)
 
         # Generate PMTiles if enabled and has geometry
         pmtiles_path = None

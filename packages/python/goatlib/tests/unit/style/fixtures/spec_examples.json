@@ -1,0 +1,3560 @@
+[
+ {
+  "line": 142,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#c7e9b4",
+     "opacity": 0.72
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1.2
+    }
+   }
+  }
+ },
+ {
+  "line": 201,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#a1d99b",
+     "opacity": 0.7
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1,
+     "opacity": 1,
+     "dash": "solid"
+    }
+   }
+  }
+ },
+ {
+  "line": 218,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": false,
+    "outline": {
+     "color": "fill",
+     "width": 2
+    }
+   },
+   "classify": [
+    {
+     "field": "land_use",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "residential"
+       ],
+       "fill": {
+        "color": "#e6ab02"
+       }
+      },
+      {
+       "values": [
+        "green"
+       ],
+       "fill": {
+        "color": "#66a61e"
+       }
+      }
+     ],
+     "other": {
+      "fill": {
+       "color": "#9aa3ad"
+      }
+     }
+    }
+   ]
+  }
+ },
+ {
+  "line": 246,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7",
+     "opacity": 0.6
+    },
+    "outline": {
+     "color": "#636363",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "use",
+     "field": "land_use",
+     "method": "categories",
+     "classes": [
+      {
+       "id": "mixed",
+       "values": [
+        "mixed"
+       ],
+       "name": "Planned",
+       "fill": {
+        "color": "#fcbba1",
+        "opacity": 0.4,
+        "pattern": "hatch_45",
+        "pattern_color": "#cb181d"
+       }
+      },
+      {
+       "id": "green",
+       "values": [
+        "green"
+       ],
+       "name": "Protected",
+       "fill": {
+        "color": "#c7e9c0",
+        "opacity": 0.4,
+        "pattern": "cross",
+        "pattern_color": "#238b45"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 279,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 3,
+     "opacity": 1,
+     "cap": "round",
+     "join": "round",
+     "offset": 2
+    },
+    "casing": {
+     "color": "#ffffff",
+     "width": 1.5,
+     "opacity": 1
+    },
+    "arrows": {
+     "placement": "center",
+     "direction": "forward",
+     "size": 12
+    }
+   }
+  }
+ },
+ {
+  "line": 304,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 4,
+     "cap": "square",
+     "join": "miter",
+     "blur": 1.5
+    },
+    "arrows": {
+     "placement": "both_ends",
+     "direction": "both",
+     "size": 12,
+     "color": "#d7301f"
+    }
+   }
+  }
+ },
+ {
+  "line": 318,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 4,
+     "cap": "butt",
+     "join": "bevel"
+    },
+    "arrows": {
+     "placement": "end",
+     "direction": "backward",
+     "size": 14
+    }
+   }
+  }
+ },
+ {
+  "line": 332,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 3
+    },
+    "arrows": {
+     "placement": "repeat",
+     "spacing": 150,
+     "size": 10
+    }
+   }
+  }
+ },
+ {
+  "line": 344,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 3
+    },
+    "arrows": {
+     "placement": "start",
+     "size": 12
+    }
+   }
+  }
+ },
+ {
+  "line": 360,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8,
+     "opacity": 0.9
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   }
+  }
+ },
+ {
+  "line": 374,
+  "target": "facilities",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#f28e2b",
+     "size": 18,
+     "icon": "goat:star-solid",
+     "icon_color": "#ffffff"
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1.5
+    }
+   }
+  }
+ },
+ {
+  "line": 388,
+  "target": "counters",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "icon",
+     "icon": "goat:arrow-up-solid",
+     "color": "#3a3541",
+     "size": 16,
+     "rotation": {
+      "field": "bearing"
+     },
+     "anchor": "bottom",
+     "allow_overlap": true
+    }
+   }
+  }
+ },
+ {
+  "line": 409,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 10,
+     "fill": false
+    },
+    "outline": {
+     "color": "fill",
+     "width": 2
+    }
+   }
+  }
+ },
+ {
+  "line": 423,
+  "target": "facilities",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "icon",
+     "icon": "asset:7f3a91c2",
+     "size": 24,
+     "anchor": "bottom",
+     "offset": [
+      0,
+      -2
+     ]
+    }
+   }
+  }
+ },
+ {
+  "line": 458,
+  "target": "schools",
+  "expect": [
+   "dash_on_point_outline"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1,
+     "dash": "dashed"
+    }
+   }
+  }
+ },
+ {
+  "line": 472,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7"
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    },
+    "label": {
+     "text": "{name}",
+     "size": 12,
+     "color": "#3a3541",
+     "font": {
+      "weight": "bold"
+     },
+     "halo": {
+      "color": "#ffffff",
+      "width": 1.5
+     },
+     "placement": "inside",
+     "min_zoom": 11
+    }
+   }
+  }
+ },
+ {
+  "line": 495,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7"
+    },
+    "label": {
+     "text": "{name}\n{area_km2} km²",
+     "format": {
+      "decimals": 1
+     },
+     "size": 12,
+     "max_width": 120,
+     "lines": [
+      {
+       "font": {
+        "weight": "bold"
+       }
+      },
+      {
+       "size": 10,
+       "color": "#6b7280"
+      }
+     ],
+     "halo": {
+      "color": "#ffffff",
+      "width": 1.5
+     },
+     "placement": "inside",
+     "priority": {
+      "field": "area_km2",
+      "top": "largest"
+     },
+     "allow_overlap": false
+    }
+   }
+  }
+ },
+ {
+  "line": 519,
+  "target": "counters",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#283593",
+     "size": 8
+    },
+    "label": {
+     "text": "{year}: {vehicles} vehicles",
+     "format": {
+      "abbreviate": true,
+      "decimals": "auto"
+     },
+     "formats": {
+      "year": {
+       "thousands_separator": false,
+       "decimals": 0
+      }
+     },
+     "placement": "auto",
+     "offset": [
+      0,
+      4
+     ]
+    }
+   }
+  }
+ },
+ {
+  "line": 554,
+  "target": "districts",
+  "expect": [
+   "template_syntax"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7"
+    },
+    "label": {
+     "text": "{{ name }}"
+    }
+   }
+  }
+ },
+ {
+  "line": 566,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "geometry": "point",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8
+    },
+    "label": {
+     "text": "{name}",
+     "size": 11,
+     "placement": "above",
+     "offset": [
+      0,
+      -2
+     ]
+    }
+   },
+   "popup": {
+    "enabled": false
+   }
+  }
+ },
+ {
+  "line": 584,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "min_zoom": 8,
+   "symbol": {
+    "fill": {
+     "color": "#9ecae1",
+     "min_zoom": 12,
+     "max_zoom": 18
+    },
+    "outline": {
+     "color": "#3182bd",
+     "width": 1
+    },
+    "label": {
+     "text": "{name}",
+     "min_zoom": 13
+    }
+   }
+  }
+ },
+ {
+  "line": 614,
+  "target": "routes",
+  "expect": [
+   "zoom_not_whole"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 3
+    }
+   },
+   "classify": [
+    {
+     "field": "status",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "planned"
+       ],
+       "min_zoom": 12.5
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 638,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "width": {
+      "zoom": [
+       [
+        9,
+        1
+       ],
+       [
+        13,
+        3
+       ],
+       [
+        17,
+        10
+       ]
+      ],
+      "interpolate": "exponential",
+      "base": 1.6
+     },
+     "color": {
+      "zoom": [
+       [
+        10,
+        "#9ecae1"
+       ],
+       [
+        14,
+        "#2166ac"
+       ],
+       [
+        17,
+        "#08306b"
+       ]
+      ],
+      "interpolate": "linear"
+     }
+    }
+   }
+  }
+ },
+ {
+  "line": 659,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7"
+    },
+    "outline": {
+     "color": "#3182bd",
+     "dash": {
+      "zoom": [
+       [
+        10,
+        "dotted"
+       ],
+       [
+        13,
+        "dashed"
+       ],
+       [
+        16,
+        "solid"
+       ]
+      ],
+      "interpolate": "step"
+     }
+    }
+   }
+  }
+ },
+ {
+  "line": 679,
+  "target": "facilities",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#f28e2b",
+     "size": {
+      "zoom": [
+       [
+        11,
+        10
+       ],
+       [
+        15,
+        18
+       ]
+      ]
+     },
+     "icon": {
+      "zoom": [
+       [
+        11,
+        "goat:circle-solid"
+       ],
+       [
+        15,
+        "goat:star-solid"
+       ]
+      ],
+      "interpolate": "step"
+     },
+     "icon_color": "#ffffff"
+    }
+   }
+  }
+ },
+ {
+  "line": 696,
+  "target": "facilities",
+  "expect": [
+   "zoom_needs_step"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "icon",
+     "color": "#f28e2b",
+     "icon": {
+      "zoom": [
+       [
+        11,
+        "goat:circle-solid"
+       ],
+       [
+        15,
+        "goat:star-solid"
+       ]
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "line": 710,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": {
+      "field": "density",
+      "palette": "colorbrewer:YlGnBu"
+     },
+     "opacity": 0.8
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": {
+      "field": "population",
+      "range": [
+       0.5,
+       4
+      ],
+      "scale": "linear"
+     }
+    }
+   }
+  }
+ },
+ {
+  "line": 725,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "size": {
+      "field": "pupils",
+      "domain": [
+       0,
+       1500
+      ],
+      "range": [
+       0,
+       24
+      ],
+      "scale": "sqrt",
+      "title": "Pupils"
+     },
+     "color": {
+      "field": "pupils",
+      "palette": "d3:viridis",
+      "reverse": true,
+      "no_data": "#bdbdbd"
+     }
+    }
+   }
+  }
+ },
+ {
+  "line": 742,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": {
+      "field": "traffic",
+      "range": [
+       1,
+       8
+      ],
+      "scale": "log"
+     }
+    }
+   }
+  }
+ },
+ {
+  "line": 769,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": {
+      "zoom": [
+       [
+        11,
+        {
+         "field": "pupils",
+         "range": [
+          3,
+          10
+         ],
+         "scale": "sqrt"
+        }
+       ],
+       [
+        16,
+        {
+         "field": "pupils",
+         "range": [
+          6,
+          20
+         ],
+         "scale": "sqrt"
+        }
+       ]
+      ],
+      "interpolate": "linear"
+     }
+    }
+   }
+  }
+ },
+ {
+  "line": 844,
+  "target": "facilities",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#9aa3ad",
+     "size": 16,
+     "icon_color": "#ffffff"
+    }
+   },
+   "classify": [
+    {
+     "id": "type",
+     "title": "Facility type",
+     "field": "type",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "library",
+        "museum"
+       ],
+       "name": "Culture",
+       "marker": {
+        "color": "#b07aa1",
+        "icon": "goat:museum"
+       }
+      },
+      {
+       "values": [
+        "park"
+       ],
+       "name": "Park",
+       "marker": {
+        "color": "#59a14f",
+        "icon": "goat:park"
+       }
+      },
+      {
+       "values": [
+        "pool"
+       ],
+       "name": "Pool",
+       "marker": {
+        "color": "#4e79a7",
+        "icon": "goat:swimming"
+       }
+      },
+      {
+       "values": [
+        "health"
+       ],
+       "name": "Health",
+       "marker": {
+        "color": "#e15759",
+        "icon": "goat:hospital"
+       }
+      },
+      {
+       "values": [
+        "kindergarten"
+       ],
+       "name": "Kindergarten",
+       "marker": {
+        "color": "#f28e2b",
+        "icon": "goat:playground"
+       }
+      }
+     ],
+     "other": {
+      "name": "Other",
+      "marker": {
+       "color": "#9aa3ad"
+      }
+     },
+     "no_data": {
+      "visible": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "line": 883,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#6baed6",
+     "width": 3
+    }
+   },
+   "classify": [
+    {
+     "field": "oneway",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "true"
+       ],
+       "name": "One-way",
+       "line": {
+        "color": "#08519c"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 895,
+  "target": "facilities",
+  "expect": [
+   "category_duplicate"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#9aa3ad",
+     "size": 12
+    }
+   },
+   "classify": [
+    {
+     "field": "type",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "library",
+        "museum"
+       ],
+       "marker": {
+        "color": "#b07aa1"
+       }
+      },
+      {
+       "values": [
+        "museum"
+       ],
+       "marker": {
+        "color": "#7f3c8d"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 921,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc",
+     "opacity": 0.8
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "title": "Inhabitants per km²",
+     "field": "density",
+     "method": "quantile",
+     "count": 5,
+     "palette": "colorbrewer:OrRd"
+    }
+   ]
+  }
+ },
+ {
+  "line": 935,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc",
+     "opacity": 0.8
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "title": "Inhabitants per km²",
+     "field": "density",
+     "method": "quantile",
+     "count": 5,
+     "palette": "colorbrewer:OrRd",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "to": 3600,
+       "fill": {
+        "color": "#fdcc8a"
+       }
+      },
+      {
+       "id": "c3",
+       "from": 3600,
+       "to": 4300,
+       "fill": {
+        "color": "#fc8d59"
+       }
+      },
+      {
+       "id": "c4",
+       "from": 4300,
+       "to": 6300,
+       "fill": {
+        "color": "#e34a33"
+       }
+      },
+      {
+       "id": "c5",
+       "from": 6300,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ],
+     "computed": {
+      "at": "2026-10-23T10:00:00Z",
+      "data": "sample-v1",
+      "scope": "dataset",
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#fef0d9",
+        "c2": "#fdcc8a",
+        "c3": "#fc8d59",
+        "c4": "#e34a33",
+        "c5": "#b30000"
+       }
+      }
+     }
+    }
+   ]
+  }
+ },
+ {
+  "line": 986,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    },
+    "outline": {
+     "color": "#636363",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "title": "Density",
+     "field": "density",
+     "method": "std_dev",
+     "count": 4,
+     "palette": "colorbrewer:RdBu",
+     "reverse": true
+    },
+    {
+     "title": "Population",
+     "field": "population",
+     "method": "natural_breaks",
+     "count": 3,
+     "target": "outline.width",
+     "range": [
+      0.5,
+      3
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 1001,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "title": "Population",
+     "field": "population",
+     "method": "heads_and_tails",
+     "count": 3,
+     "palette": [
+      "#fee8c8",
+      "#fdbb84",
+      "#e34a33"
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 1015,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc",
+     "opacity": 0.85
+    },
+    "outline": {
+     "color": "fill",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "title": "Population",
+     "unit": "inhabitants",
+     "format": {
+      "decimals": 0,
+      "thousands_separator": true
+     },
+     "field": "population",
+     "method": "manual",
+     "classes": [
+      {
+       "to": 10000,
+       "name": "Small",
+       "fill": {
+        "color": "#fff7ec"
+       }
+      },
+      {
+       "from": 10000,
+       "to": 15000,
+       "name": "Medium",
+       "fill": {
+        "color": "#fdd49e"
+       }
+      },
+      {
+       "from": 15000,
+       "to": 20000,
+       "name": "Large",
+       "fill": {
+        "color": "#fc8d59"
+       }
+      },
+      {
+       "from": 20000,
+       "name": "Very large",
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 1041,
+  "target": "districts",
+  "expect": [
+   "classes_invalid"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "field": "population",
+     "method": "manual",
+     "classes": [
+      {
+       "to": 15000,
+       "fill": {
+        "color": "#fff7ec"
+       }
+      },
+      {
+       "from": 10000,
+       "to": 20000,
+       "fill": {
+        "color": "#fdd49e"
+       }
+      },
+      {
+       "from": 20000,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 1066,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7"
+    },
+    "outline": {
+     "color": "#3182bd",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "title": "Population",
+     "field": "population",
+     "method": "equal_interval",
+     "count": 4,
+     "target": "outline.width",
+     "range": [
+      0.5,
+      4
+     ],
+     "classes": [
+      {
+       "to": 11000,
+       "outline": {
+        "width": 0.5
+       }
+      },
+      {
+       "from": 11000,
+       "to": 16000,
+       "outline": {
+        "width": 1.7
+       }
+      },
+      {
+       "from": 16000,
+       "to": 21000,
+       "outline": {
+        "width": 2.8
+       }
+      },
+      {
+       "from": 21000,
+       "outline": {
+        "width": 4
+       }
+      }
+     ],
+     "computed": {
+      "at": "2026-10-23T10:00:00Z",
+      "data": "sample-v1",
+      "scope": "dataset"
+     }
+    },
+    {
+     "title": "Main land use",
+     "field": "land_use",
+     "method": "categories",
+     "target": "outline.dash",
+     "classes": [
+      {
+       "values": [
+        "residential"
+       ],
+       "name": "Residential",
+       "outline": {
+        "dash": "solid"
+       }
+      },
+      {
+       "values": [
+        "mixed"
+       ],
+       "name": "Mixed",
+       "outline": {
+        "dash": "dashed"
+       }
+      },
+      {
+       "values": [
+        "green"
+       ],
+       "name": "Green",
+       "outline": {
+        "dash": "dotted"
+       }
+      }
+     ],
+     "other": {
+      "name": "Other",
+      "outline": {
+       "dash": "dash_dot"
+      }
+     }
+    }
+   ]
+  }
+ },
+ {
+  "line": 1110,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 3
+    },
+    "casing": {
+     "color": "#ffffff",
+     "width": 1.5
+    }
+   },
+   "classify": [
+    {
+     "title": "Route status",
+     "field": "status",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "existing"
+       ],
+       "name": "Existing"
+      },
+      {
+       "values": [
+        "planned"
+       ],
+       "name": "Planned",
+       "min_zoom": 13,
+       "line": {
+        "dash": "dashed",
+        "opacity": 0.6
+       },
+       "casing": false
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 1141,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#999999",
+     "size": {
+      "field": "pupils",
+      "range": [
+       4,
+       18
+      ],
+      "scale": "sqrt"
+     }
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "title": "School type",
+     "field": "type",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "primary"
+       ],
+       "name": "Primary",
+       "marker": {
+        "color": "#1b9e77"
+       }
+      },
+      {
+       "values": [
+        "secondary"
+       ],
+       "name": "Secondary",
+       "marker": {
+        "color": "#d95f02"
+       }
+      }
+     ],
+     "other": {
+      "name": "Other",
+      "marker": {
+       "color": "#7570b3"
+      }
+     }
+    },
+    {
+     "title": "Status",
+     "field": "status",
+     "method": "categories",
+     "target": "outline.color",
+     "classes": [
+      {
+       "values": [
+        "planned"
+       ],
+       "name": "Planned",
+       "outline": {
+        "color": "#d7301f",
+        "width": 2.5
+       }
+      }
+     ]
+    }
+   ],
+   "order": {
+    "field": "pupils",
+    "top": "smallest"
+   }
+  }
+ },
+ {
+  "line": 1185,
+  "target": "districts",
+  "expect": [
+   "classify_target_conflict"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "to": 3600,
+       "fill": {
+        "color": "#fdcc8a"
+       }
+      },
+      {
+       "from": 3600,
+       "fill": {
+        "color": "#e34a33"
+       }
+      }
+     ]
+    },
+    {
+     "field": "land_use",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "green"
+       ],
+       "fill": {
+        "color": "#66c2a5"
+       }
+      },
+      {
+       "values": [
+        "mixed"
+       ],
+       "fill": {
+        "color": "#fc8d62"
+       }
+      }
+     ],
+     "other": {
+      "fill": {
+       "color": "#8da0cb"
+      }
+     }
+    }
+   ]
+  }
+ },
+ {
+  "line": 1202,
+  "target": "districts",
+  "expect": [
+   "classify_partial_overlap"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "to": 3600,
+       "fill": {
+        "color": "#fdcc8a"
+       }
+      },
+      {
+       "from": 3600,
+       "fill": {
+        "color": "#e34a33"
+       }
+      }
+     ]
+    },
+    {
+     "field": "land_use",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "green"
+       ],
+       "name": "Green space",
+       "fill": {
+        "color": "#66c2a5"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 1261,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 3
+    }
+   },
+   "rules": [
+    {
+     "id": "oneway",
+     "name": "One-way",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "oneway"
+       },
+       true
+      ]
+     },
+     "arrows": {
+      "placement": "repeat",
+      "spacing": 150,
+      "size": 12
+     }
+    },
+    {
+     "id": "quiet",
+     "name": "Quiet routes",
+     "legend": false,
+     "when": {
+      "op": "<",
+      "args": [
+       {
+        "property": "traffic"
+       },
+       1500
+      ]
+     },
+     "min_zoom": 14
+    },
+    {
+     "id": "unnamed",
+     "name": "Unnamed",
+     "when": {
+      "op": "isNull",
+      "args": [
+       {
+        "property": "name"
+       }
+      ]
+     },
+     "line": {
+      "color": "#9aa3ad"
+     }
+    }
+   ]
+  }
+ },
+ {
+  "line": 1293,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8
+    }
+   },
+   "rules": [
+    {
+     "name": "Small planned schools",
+     "when": {
+      "op": "and",
+      "args": [
+       {
+        "op": "=",
+        "args": [
+         {
+          "property": "status"
+         },
+         "planned"
+        ]
+       },
+       {
+        "op": "<",
+        "args": [
+         {
+          "property": "pupils"
+         },
+         300
+        ]
+       },
+       {
+        "op": "not",
+        "args": [
+         {
+          "op": "in",
+          "args": [
+           {
+            "property": "type"
+           },
+           [
+            "primary",
+            "special"
+           ]
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "visible": false
+    }
+   ]
+  }
+ },
+ {
+  "line": 1318,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8
+    }
+   },
+   "rules": [
+    {
+     "name": "Gymnasium",
+     "when": {
+      "op": "like",
+      "args": [
+       {
+        "property": "name"
+       },
+       "%Gymnasium%"
+      ]
+     },
+     "marker": {
+      "color": "#d95f02",
+      "size": 12
+     }
+    }
+   ]
+  }
+ },
+ {
+  "line": 1343,
+  "target": "schools",
+  "expect": [
+   "like_pattern_unsupported"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8
+    }
+   },
+   "rules": [
+    {
+     "when": {
+      "op": "like",
+      "args": [
+       {
+        "property": "name"
+       },
+       "Primary%school%"
+      ]
+     },
+     "visible": false
+    }
+   ]
+  }
+ },
+ {
+  "line": 1354,
+  "target": "schools",
+  "expect": [
+   "operator_type_mismatch"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8
+    }
+   },
+   "rules": [
+    {
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "pupils"
+       },
+       "300"
+      ]
+     },
+     "visible": false
+    }
+   ]
+  }
+ },
+ {
+  "line": 1387,
+  "target": "routes",
+  "expect": [
+   "override_not_per_feature"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 3
+    },
+    "arrows": {
+     "placement": "center",
+     "size": 12
+    }
+   },
+   "rules": [
+    {
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "oneway"
+       },
+       true
+      ]
+     },
+     "arrows": {
+      "placement": "repeat",
+      "spacing": 120
+     }
+    }
+   ]
+  }
+ },
+ {
+  "line": 1403,
+  "target": "counters",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "opacity": 0.9,
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "size": 10,
+     "color": {
+      "field": "vehicles",
+      "palette": "d3:magma",
+      "reverse": true
+     }
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "order": {
+    "field": "vehicles",
+    "top": "smallest"
+   },
+   "time": {
+    "field": "year",
+    "step": 1
+   },
+   "legend": {
+    "show": true,
+    "title": "Traffic counters",
+    "caption": "Source: city traffic department"
+   },
+   "popup": {
+    "trigger": "click",
+    "highlight_active_feature": true,
+    "blocks": [
+     {
+      "id": "fields",
+      "type": "field_list",
+      "attributes": [
+       {
+        "field": "name"
+       },
+       {
+        "field": "vehicles",
+        "label": "Vehicles per day",
+        "format": {
+         "decimals": 0,
+         "thousands_separator": true
+        }
+       },
+       {
+        "field": "year",
+        "format": {
+         "thousands_separator": false
+        }
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ {
+  "line": 1473,
+  "target": "facilities",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#f28e2b",
+     "size": 8
+    }
+   },
+   "legend": false,
+   "popup": false
+  }
+ },
+ {
+  "line": 1537,
+  "target": "facilities",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#f28e2b",
+     "size": 18,
+     "icon": "goat:marker",
+     "icon_color": "#ffffff"
+    }
+   },
+   "popup": {
+    "trigger": "click_and_hover",
+    "blocks": [
+     {
+      "id": "kind",
+      "type": "badge",
+      "field": "type",
+      "mode": "per_value",
+      "palette": {
+       "library": "#3969ac",
+       "pool": "#11a5c9"
+      },
+      "labels": {
+       "pool": "Swimming pool"
+      }
+     },
+     {
+      "id": "facts",
+      "type": "field_list",
+      "layout": "list",
+      "attributes": [
+       {
+        "field": "name",
+        "label": "Name"
+       },
+       {
+        "field": "visitors",
+        "label": "Visitors",
+        "type": "number",
+        "format": {
+         "abbreviate": true,
+         "always_show_sign": false,
+         "suffix": " a year"
+        }
+       }
+      ],
+      "collapse_after": 5
+     },
+     {
+      "id": "photo",
+      "type": "image",
+      "source": "field",
+      "field": "photo_url",
+      "sizing": "aspect",
+      "aspect": "16/9"
+     },
+     {
+      "id": "note",
+      "type": "text",
+      "html": "<p>{{ name }} welcomes about {{ visitors }} visitors a year.</p>"
+     },
+     {
+      "id": "line",
+      "type": "divider",
+      "thickness": 1,
+      "color": "#e0e0e0"
+     },
+     {
+      "id": "hours",
+      "type": "button",
+      "label": "Opening hours",
+      "url_template": "https://www.example.org/facilities?name={{ name }}",
+      "style": "filled",
+      "color": "#2bb381"
+     }
+    ],
+    "header": "compact"
+   }
+  }
+ },
+ {
+  "line": 1569,
+  "target": "facilities",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#f28e2b",
+     "size": 10
+    }
+   },
+   "popup": {
+    "mode": "html",
+    "html": "<h3>{{ name | upcase }}</h3>{% if visitors %}<p>{{ visitors }} visitors a year</p>{% endif %}<img src=\"{{ photo_url }}\" alt=\"\">",
+    "width": 300,
+    "max_height": 360
+   }
+  }
+ },
+ {
+  "line": 1595,
+  "target": "facilities",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#f28e2b",
+     "size": 10
+    }
+   },
+   "popup": {
+    "trigger": "hover",
+    "blocks": [
+     {
+      "type": "field_list",
+      "attributes": [
+       {
+        "field": "name"
+       }
+      ]
+     }
+    ],
+    "header": "none"
+   }
+  }
+ },
+ {
+  "line": 1607,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7"
+    },
+    "outline": {
+     "color": "#3182bd",
+     "width": 1
+    }
+   },
+   "popup": {
+    "layout": "right_sidebar",
+    "highlight_active_feature": false,
+    "blocks": [
+     {
+      "type": "field_list",
+      "layout": "table",
+      "attributes": [
+       {
+        "field": "name"
+       },
+       {
+        "field": "population",
+        "format": {
+         "thousands_separator": true
+        }
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ {
+  "line": 1624,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7"
+    },
+    "outline": {
+     "color": "#3182bd",
+     "width": 1
+    }
+   },
+   "popup": {
+    "layout": "pinned",
+    "anchor": "top_left",
+    "width": 360,
+    "blocks": [
+     {
+      "type": "image",
+      "source": "static",
+      "url": "https://www.example.org/logo.png",
+      "sizing": "fixed",
+      "height": 48
+     },
+     {
+      "type": "badge",
+      "field": "land_use",
+      "mode": "single",
+      "color": "#3182bd",
+      "full_width": true
+     },
+     {
+      "type": "field_list",
+      "attributes": [
+       {
+        "field": "name"
+       },
+       {
+        "field": "population",
+        "format": {
+         "prefix": "about ",
+         "decimals": "auto",
+         "abbreviate": true
+        }
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ {
+  "line": 1646,
+  "target": "facilities",
+  "expect": [
+   "unknown_field"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#f28e2b",
+     "size": 10
+    }
+   },
+   "popup": {
+    "blocks": [
+     {
+      "type": "button",
+      "label": "Website",
+      "url_template": "{{ website }}",
+      "style": "link"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "line": 1666,
+  "target": "facilities",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "render": {
+    "type": "heatmap",
+    "radius": {
+     "zoom": [
+      [
+       10,
+       15
+      ],
+      [
+       14,
+       40
+      ]
+     ],
+     "interpolate": "linear"
+    },
+    "intensity": 1,
+    "weight": {
+     "field": "visitors",
+     "domain": [
+      0,
+      50000
+     ]
+    },
+    "palette": "d3:magma",
+    "points_from_zoom": 15
+   },
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#3f007d",
+     "size": 6
+    }
+   }
+  }
+ },
+ {
+  "line": 1702,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "render": {
+    "type": "cluster",
+    "radius": 50,
+    "cluster_until_zoom": 14,
+    "min_points": 3,
+    "symbol": {
+     "marker": {
+      "shape": "circle",
+      "color": "#283593",
+      "size": {
+       "field": "count",
+       "range": [
+        16,
+        40
+       ],
+       "scale": "sqrt"
+      }
+     },
+     "outline": {
+      "color": "#ffffff",
+      "width": 2
+     },
+     "label": {
+      "text": "{count}",
+      "color": "#ffffff",
+      "size": 12
+     }
+    }
+   },
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#283593",
+     "size": 8
+    }
+   }
+  }
+ },
+ {
+  "line": 1736,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "render": {
+    "type": "h3",
+    "resolution": "auto",
+    "value": {
+     "op": "sum",
+     "field": "pupils"
+    },
+    "palette": "colorbrewer:OrRd",
+    "classify": {
+     "method": "quantile",
+     "count": 5
+    },
+    "opacity": 0.85,
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    },
+    "points_from_zoom": 15
+   },
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 7
+    }
+   }
+  }
+ },
+ {
+  "line": 1757,
+  "target": "facilities",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "render": {
+    "type": "h3",
+    "resolution": 8,
+    "value": {
+     "op": "mean",
+     "field": "visitors"
+    },
+    "palette": "d3:viridis"
+   },
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#f28e2b",
+     "size": 8
+    }
+   }
+  }
+ },
+ {
+  "line": 1776,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "opacity": 0.8,
+   "resampling": "linear",
+   "render": {
+    "type": "terrain",
+    "method": "standard",
+    "direction": 315,
+    "altitude": 45,
+    "exaggeration": 0.5
+   },
+   "legend": {
+    "show": true,
+    "title": "Elevation",
+    "unit": "m"
+   }
+  }
+ },
+ {
+  "line": 1816,
+  "target": "satellite",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "image",
+    "bands": [
+     1,
+     2,
+     3
+    ]
+   },
+   "brightness": 0.1,
+   "contrast": 0.05,
+   "saturation": 0.2,
+   "hue": 0
+  }
+ },
+ {
+  "line": 1831,
+  "target": "satellite",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "image",
+    "bands": [
+     4,
+     1,
+     2
+    ]
+   }
+  }
+ },
+ {
+  "line": 1838,
+  "target": "landcover",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "resampling": "nearest",
+   "render": {
+    "type": "image"
+   }
+  }
+ },
+ {
+  "line": 1852,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "opacity": 0.7,
+   "render": {
+    "type": "continuous",
+    "band": 1,
+    "palette": "goat:elevation",
+    "domain": [
+     200,
+     450
+    ],
+    "outside": "hide"
+   },
+   "legend": {
+    "unit": "m"
+   }
+  }
+ },
+ {
+  "line": 1865,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "continuous",
+    "stops": [
+     {
+      "value": 180,
+      "color": "#1a9850"
+     },
+     {
+      "value": 260,
+      "color": "#d9ef8b"
+     },
+     {
+      "value": 340,
+      "color": "#fdae61"
+     },
+     {
+      "value": 440,
+      "color": "#a50026"
+     }
+    ],
+    "interpolate": "linear",
+    "outside": "clamp"
+   }
+  }
+ },
+ {
+  "line": 1892,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "continuous",
+    "palette": "goat:elevation"
+   },
+   "legend": {
+    "title": "Elevation",
+    "unit": "m",
+    "min_label": "Low",
+    "max_label": "High"
+   }
+  }
+ },
+ {
+  "line": 1906,
+  "target": "satellite",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "continuous",
+    "band": 4,
+    "palette": "d3:viridis",
+    "domain": [
+     10,
+     230
+    ]
+   }
+  }
+ },
+ {
+  "line": 1913,
+  "target": "satellite",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "continuous",
+    "band": {
+     "name": "NDVI",
+     "expression": "(b4 - b1) / (b4 + b1)"
+    },
+    "palette": "goat:green",
+    "domain": [
+     -0.4,
+     0.7
+    ],
+    "classify": {
+     "method": "equal_interval",
+     "count": 5
+    }
+   },
+   "legend": {
+    "title": "Vegetation (NDVI)"
+   }
+  }
+ },
+ {
+  "line": 1941,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "continuous",
+    "palette": "goat:elevation",
+    "domain": [
+     181,
+     440
+    ],
+    "classify": {
+     "method": "quantile",
+     "count": 5,
+     "classes": [
+      {
+       "name": "Valley floor"
+      },
+      {
+       "color": "#2bb381"
+      },
+      {},
+      {},
+      {
+       "visible": false
+      }
+     ]
+    }
+   }
+  }
+ },
+ {
+  "line": 1961,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "continuous",
+    "palette": "goat:elevation",
+    "domain": [
+     181,
+     440
+    ],
+    "classify": {
+     "method": "manual",
+     "classes": [
+      {
+       "to": 240
+      },
+      {
+       "from": 240,
+       "to": 275
+      },
+      {
+       "from": 275,
+       "to": 300
+      },
+      {
+       "from": 300,
+       "to": 340
+      },
+      {
+       "from": 340
+      }
+     ]
+    }
+   }
+  }
+ },
+ {
+  "line": 1985,
+  "target": "landcover",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "opacity": 0.75,
+   "resampling": "nearest",
+   "render": {
+    "type": "categorical",
+    "band": 1,
+    "classes": [
+     {
+      "value": 1,
+      "name": "Water",
+      "color": "#4a90c2"
+     },
+     {
+      "value": 2,
+      "name": "Built-up",
+      "color": "#c0504d"
+     },
+     {
+      "value": 3,
+      "name": "Forest",
+      "color": "#2e7d32"
+     },
+     {
+      "value": 4,
+      "name": "Farmland",
+      "color": "#e6c35c"
+     },
+     {
+      "value": 5,
+      "name": "Grassland",
+      "color": "#9ccc65"
+     },
+     {
+      "value": 6,
+      "name": "Wetland",
+      "color": "#7a87c6",
+      "visible": false
+     }
+    ],
+    "other_color": "#cccccc"
+   },
+   "legend": {
+    "title": "Land cover"
+   }
+  }
+ },
+ {
+  "line": 2013,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "opacity": 0.6,
+   "render": {
+    "type": "terrain",
+    "method": "multidirectional",
+    "direction": 315,
+    "altitude": 45,
+    "exaggeration": 0.6,
+    "shadow_color": "#2d3a4a",
+    "highlight_color": "#ffffff"
+   }
+  }
+ },
+ {
+  "line": 2025,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "terrain",
+    "method": "standard",
+    "direction": 315,
+    "altitude": 45,
+    "exaggeration": 0.5,
+    "accent_color": "#000000",
+    "palette": "goat:elevation",
+    "domain": [
+     181,
+     440
+    ],
+    "classify": {
+     "method": "equal_interval",
+     "count": 6
+    }
+   }
+  }
+ },
+ {
+  "line": 2052,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "terrain",
+    "method": "combined",
+    "exaggeration": 0.5
+   }
+  }
+ },
+ {
+  "line": 2057,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "terrain",
+    "method": "igor",
+    "exaggeration": 0.7
+   }
+  }
+ },
+ {
+  "line": 2062,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "terrain",
+    "method": "basic",
+    "shadow_color": "#000000"
+   }
+  }
+ },
+ {
+  "line": 2071,
+  "target": "satellite",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "min_zoom": 10,
+   "render": {
+    "type": "image",
+    "bands": [
+     1,
+     2,
+     3
+    ]
+   },
+   "popup": {
+    "trigger": "click",
+    "bands": "all"
+   }
+  }
+ },
+ {
+  "line": 2084,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "continuous",
+    "palette": "goat:elevation",
+    "domain": [
+     181,
+     440
+    ]
+   },
+   "popup": {
+    "trigger": "hover",
+    "bands": "styled"
+   },
+   "legend": {
+    "unit": "m"
+   }
+  }
+ },
+ {
+  "line": 2102,
+  "target": "wms",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "opacity": 0.9,
+   "min_zoom": 12,
+   "render": {
+    "type": "image",
+    "service_style": "grey"
+   },
+   "brightness": 0.1,
+   "contrast": 0.1,
+   "legend": {
+    "title": "Aerial photo 2024"
+   }
+  }
+ },
+ {
+  "line": 2118,
+  "target": "tiles",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "opacity": 0.5,
+   "saturation": -0.6,
+   "render": {
+    "type": "image"
+   },
+   "legend": false
+  }
+ },
+ {
+  "line": 2125,
+  "target": "wms",
+  "expect": [
+   "render_not_for_source"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "continuous",
+    "palette": "goat:elevation"
+   }
+  }
+ },
+ {
+  "line": 2154,
+  "target": "map",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "basemap": {
+    "id": "light"
+   },
+   "view": {
+    "center": [
+     11.57,
+     48.14
+    ],
+    "zoom": 12,
+    "pitch": 0,
+    "bearing": 0
+   },
+   "locale": "de-DE",
+   "layers": [
+    {
+     "type": "group",
+     "name": "Mobility",
+     "visible": true,
+     "children": [
+      {
+       "type": "layer",
+       "id": 413,
+       "visible": true,
+       "legend": {
+        "expanded": false
+       }
+      },
+      {
+       "type": "layer",
+       "id": 410,
+       "visible": true,
+       "time": {
+        "value": 2024
+       }
+      }
+     ]
+    },
+    {
+     "type": "layer",
+     "id": 414,
+     "visible": true,
+     "style": "s1",
+     "position": "below_labels",
+     "filter": {
+      "op": "<>",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "green"
+      ]
+     },
+     "legend": {
+      "expanded": true
+     }
+    }
+   ]
+  }
+ },
+ {
+  "line": 2284,
+  "target": "districts",
+  "expect": [
+   "unknown_field",
+   "part_not_for_geometry",
+   "zoom_stops"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": {
+      "field": "inhabitants",
+      "palette": "d3:viridis"
+     }
+    },
+    "line": {
+     "color": "#000000"
+    },
+    "outline": {
+     "width": {
+      "zoom": [
+       [
+        14,
+        1
+       ],
+       [
+        10,
+        3
+       ]
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "line": 2298,
+  "target": "routes",
+  "expect": [
+   "field_type_mismatch",
+   "operator_type_mismatch"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac"
+    }
+   },
+   "classify": [
+    {
+     "field": "status",
+     "method": "quantile",
+     "count": 5,
+     "palette": "d3:viridis"
+    }
+   ],
+   "rules": [
+    {
+     "when": {
+      "op": ">",
+      "args": [
+       {
+        "property": "name"
+       },
+       "M"
+      ]
+     },
+     "visible": false
+    }
+   ]
+  }
+ },
+ {
+  "line": 2310,
+  "target": "satellite",
+  "expect": [
+   "unknown_band",
+   "render_type_mismatch"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "raster",
+   "render": {
+    "type": "terrain",
+    "band": 7
+   }
+  }
+ },
+ {
+  "line": 2316,
+  "target": "schools",
+  "expect": [
+   "dash_on_point_outline"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1,
+     "dash": "dashed"
+    }
+   }
+  }
+ },
+ {
+  "line": 2326,
+  "target": "districts",
+  "expect": [
+   "template_syntax"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7"
+    },
+    "label": {
+     "text": "{{ name }}"
+    }
+   }
+  }
+ },
+ {
+  "line": 2585,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": {
+      "zoom": [
+       [
+        10,
+        2
+       ],
+       [
+        16,
+        6
+       ]
+      ]
+     },
+     "cap": "round",
+     "join": "round",
+     "offset": 2
+    },
+    "casing": {
+     "color": "#ffffff",
+     "width": 1.5
+    },
+    "arrows": {
+     "placement": "center",
+     "size": 12
+    }
+   },
+   "classify": [
+    {
+     "field": "status",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "existing"
+       ],
+       "name": "Existing"
+      },
+      {
+       "values": [
+        "planned"
+       ],
+       "name": "Planned",
+       "min_zoom": 13,
+       "line": {
+        "dash": "dashed",
+        "opacity": 0.6
+       },
+       "casing": false
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 2610,
+  "target": "maplibre",
+  "expect": [],
+  "doc": [
+   {
+    "id": "413-casing",
+    "type": "line",
+    "source": "s413",
+    "source-layer": "default",
+    "filter": [
+     "any",
+     [
+      "!=",
+      [
+       "get",
+       "status"
+      ],
+      "planned"
+     ],
+     [
+      ">=",
+      [
+       "zoom"
+      ],
+      13
+     ]
+    ],
+    "layout": {
+     "line-cap": "round",
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": "#ffffff",
+     "line-width": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "zoom"
+      ],
+      10,
+      5,
+      16,
+      9
+     ],
+     "line-offset": 2,
+     "line-opacity": [
+      "match",
+      [
+       "get",
+       "status"
+      ],
+      "planned",
+      0,
+      1
+     ]
+    }
+   },
+   {
+    "id": "413-line",
+    "type": "line",
+    "source": "s413",
+    "source-layer": "default",
+    "filter": [
+     "any",
+     [
+      "!=",
+      [
+       "get",
+       "status"
+      ],
+      "planned"
+     ],
+     [
+      ">=",
+      [
+       "zoom"
+      ],
+      13
+     ]
+    ],
+    "layout": {
+     "line-cap": "round",
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": "#2166ac",
+     "line-width": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "zoom"
+      ],
+      10,
+      2,
+      16,
+      6
+     ],
+     "line-offset": 2,
+     "line-opacity": [
+      "match",
+      [
+       "get",
+       "status"
+      ],
+      "planned",
+      0.6,
+      1
+     ],
+     "line-dasharray": [
+      "match",
+      [
+       "get",
+       "status"
+      ],
+      "planned",
+      [
+       "literal",
+       [
+        2,
+        2
+       ]
+      ],
+      [
+       "literal",
+       [
+        1,
+        0
+       ]
+      ]
+     ]
+    }
+   },
+   {
+    "id": "413-arrows",
+    "type": "symbol",
+    "source": "s413",
+    "source-layer": "default_decoration",
+    "filter": [
+     "any",
+     [
+      "!=",
+      [
+       "get",
+       "status"
+      ],
+      "planned"
+     ],
+     [
+      ">=",
+      [
+       "zoom"
+      ],
+      13
+     ]
+    ],
+    "layout": {
+     "icon-image": "goat:arrow",
+     "icon-size": 0.5,
+     "icon-rotate": [
+      "get",
+      "bearing"
+     ],
+     "icon-rotation-alignment": "map",
+     "icon-allow-overlap": true
+    },
+    "paint": {
+     "icon-color": "#2166ac"
+    }
+   }
+  ]
+ },
+ {
+  "line": 2663,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc",
+     "opacity": 0.8
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    },
+    "label": {
+     "text": "{name}\n{area_km2} km²",
+     "format": {
+      "decimals": 1
+     },
+     "size": 12,
+     "color": "#3a3541",
+     "font": {
+      "weight": "bold"
+     },
+     "halo": {
+      "color": "#ffffff",
+      "width": 1.5
+     },
+     "min_zoom": 11
+    }
+   },
+   "classify": [
+    {
+     "field": "density",
+     "method": "quantile",
+     "count": 5,
+     "palette": "colorbrewer:OrRd",
+     "classes": [
+      {
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "from": 2800,
+       "to": 3600,
+       "fill": {
+        "color": "#fdcc8a"
+       }
+      },
+      {
+       "from": 3600,
+       "to": 4300,
+       "fill": {
+        "color": "#fc8d59"
+       }
+      },
+      {
+       "from": 4300,
+       "to": 6300,
+       "fill": {
+        "color": "#e34a33"
+       }
+      },
+      {
+       "from": 6300,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ],
+     "computed": {
+      "at": "2026-10-23T10:00:00Z",
+      "data": "snapshot-1841",
+      "scope": "dataset"
+     }
+    }
+   ]
+  }
+ },
+ {
+  "line": 2702,
+  "target": "maplibre",
+  "expect": [],
+  "doc": [
+   {
+    "id": "414-fill",
+    "type": "fill",
+    "source": "s414",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": [
+      "case",
+      [
+       "has",
+       "density"
+      ],
+      [
+       "step",
+       [
+        "to-number",
+        [
+         "get",
+         "density"
+        ],
+        0
+       ],
+       "#fef0d9",
+       2800,
+       "#fdcc8a",
+       3600,
+       "#fc8d59",
+       4300,
+       "#e34a33",
+       6300,
+       "#b30000"
+      ],
+      "#cccccc"
+     ],
+     "fill-opacity": 0.8
+    }
+   },
+   {
+    "id": "414-outline",
+    "type": "line",
+    "source": "s414",
+    "source-layer": "default",
+    "paint": {
+     "line-color": "#ffffff",
+     "line-width": 1
+    }
+   },
+   {
+    "id": "414-label",
+    "type": "symbol",
+    "source": "s414",
+    "source-layer": "default_anchor",
+    "minzoom": 11,
+    "layout": {
+     "text-field": [
+      "concat",
+      [
+       "to-string",
+       [
+        "get",
+        "name"
+       ]
+      ],
+      "\n",
+      [
+       "case",
+       [
+        "has",
+        "area_km2"
+       ],
+       [
+        "number-format",
+        [
+         "to-number",
+         [
+          "get",
+          "area_km2"
+         ],
+         0
+        ],
+        {
+         "locale": [
+          "global-state",
+          "locale"
+         ],
+         "min-fraction-digits": 1,
+         "max-fraction-digits": 1
+        }
+       ],
+       ""
+      ],
+      " km²"
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Bold"
+     ]
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ]
+ }
+]

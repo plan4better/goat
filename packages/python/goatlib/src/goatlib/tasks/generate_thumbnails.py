@@ -12,7 +12,7 @@ For table layers:
 
 The task:
 1. Queries PostgreSQL for projects/layers updated in the last N hours (default: 12)
-2. Computes a content hash for each item (basemap + bounds + layer properties)
+2. Computes a content hash for each item (basemap + bounds + layer styles)
 3. Compares hash with the hash embedded in existing thumbnail URL
 4. If hash differs, regenerates thumbnail
 5. Uploads new thumbnails to S3 (filename includes hash)
@@ -45,6 +45,11 @@ from typing import Any, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+from goatlib.style.compute import without_stamps
+from goatlib.style.defaults import default_style
+from goatlib.style.map_rows import GroupRow, LayerRow, build_map_document, drawn_layers
+from goatlib.style.migrate import context_for
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +175,94 @@ class ThumbnailTaskOutput(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+def _json(value: Any) -> Any:
+    """A JSONB column read as text (see the queries) as Python."""
+    return json.loads(value) if isinstance(value, str) else value
+
+
+#: What the thumbnail page reads of a layer's `other_properties`: a map
+#: service's tile size and layer names.
+_SERVICE_KEYS = ("tile_size", "layers")
+
+
+def layer_payload(row: dict[str, Any]) -> dict[str, Any]:
+    """One layer as the thumbnail page draws it, with its style: the project
+    layer's active style, else the dataset's default, else the default style."""
+    style = _json(row.get("style")) or _json(row.get("default_style"))
+    if not isinstance(style, dict):
+        style = default_style(
+            context_for(
+                row["type"],
+                row.get("feature_layer_geometry_type"),
+                row.get("data_type"),
+            ),
+            seed=str(row["layer_id"]),
+        )
+    other = _json(row.get("other_properties"))
+    folder_id = row.get("folder_id")
+    # The page has no time slider: the stored step travels with the layer (none stored, every time shows).
+    time_value = _json(row.get("time_value"))
+    entry = {"entry": {"time": {"value": time_value}}} if time_value is not None else {}
+    return {
+        "id": row.get("layer_project_id") or str(row["layer_id"]),
+        "layer_id": str(row["layer_id"]),
+        "name": row.get("name"),
+        "type": row["type"],
+        "feature_layer_geometry_type": row.get("feature_layer_geometry_type"),
+        "url": row.get("url"),
+        "data_type": row.get("data_type"),
+        "other_properties": {
+            k: other[k] for k in _SERVICE_KEYS if isinstance(other, dict) and k in other
+        },
+        "extent": row.get("extent"),
+        "folder_id": str(folder_id) if folder_id else None,
+        "query": None,
+        "visible": True,
+        "style": style,
+        **entry,
+    }
+
+
+def project_layer_payload(
+    groups: list[dict[str, Any]], links: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """A project's drawn layers, top first, in the order and with the visibility
+    of its map document. Tables draw nothing and are left out."""
+    drawable = {row["layer_project_id"]: row for row in links if row["type"] != "table"}
+    document = build_map_document(
+        basemap=None,
+        locale=None,
+        view_state=None,
+        bounds=None,
+        groups=[
+            GroupRow(
+                g["id"],
+                g["name"],
+                g["parent_id"],
+                g["order"],
+                g["visible"],
+                g["expanded"],
+            )
+            for g in groups
+        ],
+        layers=[
+            LayerRow(
+                row["layer_project_id"],
+                row["group_id"],
+                row["order"],
+                row["visible"],
+                "top",
+                None,
+                None,
+                True,
+                None,
+            )
+            for row in drawable.values()
+        ],
+    )
+    return [layer_payload(drawable[entry["id"]]) for entry in drawn_layers(document)]
+
+
 @dataclass
 class ItemToProcess:
     """Information about an item needing thumbnail generation.
@@ -197,7 +290,9 @@ class ItemToProcess:
         """Compute a hash of the visual content that affects the thumbnail.
 
         For projects and feature/raster layers:
-        - basemap style, view_state, bounds, layer properties
+        - basemap style, view_state, bounds, the layers in drawing order with
+          their styles (without computed stamps: a recompute that only moves
+          the stamps draws the same map)
 
         For table layers:
         - layer ID (schema is queried from DuckLake at render time)
@@ -221,14 +316,15 @@ class ItemToProcess:
                 "layers": [],
             }
 
-            # Include relevant layer info (sorted by layer_id for consistency)
-            for layer in sorted(self.layers, key=lambda x: x.get("layer_id", "")):
-                layer_info = {
-                    "layer_id": layer.get("layer_id"),
-                    "type": layer.get("type"),
-                    "properties": layer.get("properties", {}),
-                }
-                content["layers"].append(layer_info)
+            for layer in self.layers:
+                content["layers"].append(
+                    {
+                        "layer_id": layer.get("layer_id"),
+                        "type": layer.get("type"),
+                        "visible": layer.get("visible", True),
+                        "style": without_stamps(layer.get("style")),
+                    }
+                )
 
         # Create deterministic JSON and hash it
         json_str = json.dumps(content, sort_keys=True, separators=(",", ":"))
@@ -555,81 +651,51 @@ class ThumbnailGeneratorTask:
     async def _fetch_project_layers(
         self: Self, conn: Any, project_id: UUID
     ) -> list[dict]:
-        """Fetch visible layers for a project in the format needed for rendering.
-
-        Only includes layers where visibility is True (or not set, defaults to True).
+        """A project's drawn layers in the format needed for rendering: visible
+        layers in visible groups, top first (`project_layer_payload`).
 
         Note: JSONB columns are cast to ::text to avoid asyncpg type introspection
         timeouts that can occur with large JSONB columns.
         """
-        rows = await conn.fetch(
+        groups = await conn.fetch(
             """
-            SELECT
-                lp.id as layer_project_id,
-                lp.layer_id,
-                lp.properties::text as layer_project_properties,
-                l.id,
-                l.name,
-                l.type,
-                l.feature_layer_geometry_type,
-                l.properties::text as layer_properties,
-                l.url,
-                l.extent::text as extent,
-                l.folder_id
-            FROM customer.layer_project lp
-            JOIN customer.layer l ON lp.layer_id = l.id
-            WHERE lp.project_id = $1
-            ORDER BY lp.id
+            SELECT id, name, parent_id, "order", visible, expanded
+            FROM customer.layer_project_group
+            WHERE project_id = $1
             """,
             project_id,
         )
-
-        layers = []
-        for row in rows:
-            # Merge layer properties with layer_project overrides
-            properties = row["layer_properties"]
-            if properties is None:
-                properties = {}
-            elif isinstance(properties, str):
-                properties = json.loads(properties) or {}
-
-            lp_props = row["layer_project_properties"]
-            if lp_props is None:
-                lp_props = {}
-            elif isinstance(lp_props, str):
-                lp_props = json.loads(lp_props) or {}
-
-            # Ensure we have dicts (json.loads can return None for "null")
-            if not isinstance(properties, dict):
-                properties = {}
-            if not isinstance(lp_props, dict):
-                lp_props = {}
-
-            # Layer project properties override layer properties
-            merged_props = {**properties, **lp_props}
-
-            # Skip layers that are not visible
-            # Default to True if visibility is not set
-            if not merged_props.get("visibility", True):
-                continue
-
-            merged_props["visibility"] = True
-
-            layer_data = {
-                "id": row["layer_project_id"],
-                "layer_id": str(row["layer_id"]),
-                "name": row["name"],
-                "type": row["type"],
-                "feature_layer_geometry_type": row["feature_layer_geometry_type"],
-                "properties": merged_props,
-                "url": row["url"],
-                "extent": row["extent"],
-                "folder_id": str(row["folder_id"]) if row["folder_id"] else None,
-                "query": None,
-            }
-            layers.append(layer_data)
-
-        return layers
+        rows = await conn.fetch(
+            """
+            SELECT
+                lp.id AS layer_project_id,
+                lp.layer_id,
+                lp.layer_project_group_id AS group_id,
+                lp."order",
+                lp.visible,
+                lp.time_value::text AS time_value,
+                l.name,
+                l.type,
+                l.feature_layer_geometry_type,
+                l.url,
+                l.data_type,
+                l.other_properties::text AS other_properties,
+                l.extent::text AS extent,
+                l.folder_id,
+                (SELECT s.document::text FROM customer.layer_style s
+                 WHERE s.layer_project_id = lp.id
+                 ORDER BY s.id = lp.active_style_id DESC NULLS LAST,
+                          s.position, s.created_at
+                 LIMIT 1) AS style,
+                (SELECT d.document::text FROM customer.layer_style d
+                 WHERE d.layer_id = l.id) AS default_style
+            FROM customer.layer_project lp
+            JOIN customer.layer l ON lp.layer_id = l.id
+            WHERE lp.project_id = $1
+            """,
+            project_id,
+        )
+        return project_layer_payload([dict(g) for g in groups], [dict(r) for r in rows])
 
     async def _fetch_bundle_layers(
         self: Self, conn: Any, bundle_id: UUID
@@ -649,10 +715,13 @@ class ThumbnailGeneratorTask:
                 l.name,
                 l.type,
                 l.feature_layer_geometry_type,
-                l.properties::text as layer_properties,
                 l.url,
+                l.data_type,
+                l.other_properties::text AS other_properties,
                 l.extent::text as extent,
-                l.folder_id
+                l.folder_id,
+                (SELECT d.document::text FROM customer.layer_style d
+                 WHERE d.layer_id = l.id) AS default_style
             FROM customer.bundle_layer bl
             JOIN customer.layer l ON l.id = bl.layer_id
             WHERE bl.bundle_id = $1
@@ -669,32 +738,7 @@ class ThumbnailGeneratorTask:
             bundle_id,
         )
 
-        layers = []
-        for row in rows:
-            properties = row["layer_properties"]
-            if isinstance(properties, str):
-                properties = json.loads(properties) or {}
-            if not isinstance(properties, dict):
-                properties = {}
-            # A member's own visibility flag is about a project's layer list,
-            # not about whether the bundle contains it.
-            properties["visibility"] = True
-
-            layers.append(
-                {
-                    "id": str(row["id"]),
-                    "layer_id": str(row["id"]),
-                    "name": row["name"],
-                    "type": row["type"],
-                    "feature_layer_geometry_type": row["feature_layer_geometry_type"],
-                    "properties": properties,
-                    "url": row["url"],
-                    "extent": row["extent"],
-                    "folder_id": str(row["folder_id"]) if row["folder_id"] else None,
-                    "query": None,
-                }
-            )
-        return layers
+        return [layer_payload({**dict(row), "layer_id": row["id"]}) for row in rows]
 
     async def _fetch_bundles_to_update(
         self: Self,
@@ -711,7 +755,7 @@ class ThumbnailGeneratorTask:
 
         `updated_at` on the bundle moves when the bundle does, not when a
         member's data changes; the content hash covers the rest, since it is
-        computed from the members' own properties and extents.
+        computed from the members' own styles and extents.
         """
         pool = await self._get_pg_pool()
 
@@ -816,8 +860,11 @@ class ThumbnailGeneratorTask:
                         name,
                         type,
                         feature_layer_geometry_type,
-                        properties::text as properties,
                         url,
+                        data_type,
+                        other_properties::text AS other_properties,
+                        (SELECT d.document::text FROM customer.layer_style d
+                         WHERE d.layer_id = customer.layer.id) AS default_style,
                         extent::text as extent,
                         folder_id,
                         updated_at,
@@ -841,8 +888,11 @@ class ThumbnailGeneratorTask:
                         name,
                         type,
                         feature_layer_geometry_type,
-                        properties::text as properties,
                         url,
+                        data_type,
+                        other_properties::text AS other_properties,
+                        (SELECT d.document::text FROM customer.layer_style d
+                         WHERE d.layer_id = customer.layer.id) AS default_style,
                         extent::text as extent,
                         folder_id,
                         updated_at,
@@ -866,8 +916,11 @@ class ThumbnailGeneratorTask:
                         name,
                         type,
                         feature_layer_geometry_type,
-                        properties::text as properties,
                         url,
+                        data_type,
+                        other_properties::text AS other_properties,
+                        (SELECT d.document::text FROM customer.layer_style d
+                         WHERE d.layer_id = customer.layer.id) AS default_style,
                         extent::text as extent,
                         folder_id,
                         updated_at,
@@ -883,33 +936,13 @@ class ThumbnailGeneratorTask:
 
             items = []
             for row in rows:
-                # Parse layer properties
-                properties = row["properties"] or {}
-                if isinstance(properties, str):
-                    properties = json.loads(properties) or {}
-                if not isinstance(properties, dict):
-                    properties = {}
-                properties["visibility"] = True
-
                 # Parse extent to bounds
                 bounds = self._parse_extent_to_bounds(row["extent"])
 
                 # Calculate view state from bounds
                 view_state = self._calculate_view_state_from_bounds(bounds)
 
-                # Create layer data for rendering
-                layer_data = {
-                    "id": 1,  # layer_project id placeholder
-                    "layer_id": str(row["id"]),
-                    "name": row["name"],
-                    "type": row["type"],
-                    "feature_layer_geometry_type": row["feature_layer_geometry_type"],
-                    "properties": properties,
-                    "url": row["url"],
-                    "extent": row["extent"],
-                    "folder_id": str(row["folder_id"]) if row["folder_id"] else None,
-                    "query": None,
-                }
+                layer_data = layer_payload({**dict(row), "layer_id": row["id"]})
 
                 # Determine layer_type from database type column
                 db_type = row["type"]
@@ -1062,8 +1095,7 @@ class ThumbnailGeneratorTask:
 
         for layer in layers:
             # Only consider visible layers
-            props = layer.get("properties", {})
-            if not props.get("visibility", True):
+            if not layer.get("visible", True):
                 continue
 
             extent = layer.get("extent")

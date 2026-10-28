@@ -515,10 +515,6 @@ class LayerImportRunner(BaseToolRunner[LayerImportParams]):
     ) -> dict[str, Any]:
         """Ingest one converted dataset and record it as a layer."""
         layer_id = str(uuid_module.uuid4())
-        custom_properties = self.get_layer_properties(
-            params, metadata, parquet_path=parquet
-        )
-
         try:
             table_info = self._ingest_to_ducklake(
                 user_id=params.user_id, layer_id=layer_id, parquet_path=parquet
@@ -540,7 +536,6 @@ class LayerImportRunner(BaseToolRunner[LayerImportParams]):
                     output_name=name,
                     metadata=metadata,
                     table_info=table_info,
-                    custom_properties=custom_properties,
                 )
             )
         except BaseException:

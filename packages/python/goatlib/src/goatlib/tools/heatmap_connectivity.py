@@ -24,7 +24,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import get_heatmap_style
+from goatlib.tools.style import TEAL, classified
 
 logger = logging.getLogger(__name__)
 
@@ -111,41 +111,15 @@ class HeatmapConnectivityToolRunner(BaseToolRunner[HeatmapConnectivityToolParams
             "geometry": "GEOMETRY",
         }
 
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: HeatmapConnectivityToolParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return heatmap style for connectivity accessibility with quantile breaks."""
-        # Connectivity outputs "accessibility" (not "total_accessibility")
-        color_field = "accessibility"
-
-        # Compute quantile breaks from the DuckLake table (6 breaks for 7 colors)
-        color_scale_breaks = None
-        table_name = table_info["table_name"] if table_info else None
-        if table_name or parquet_path:
-            color_scale_breaks = self.compute_quantile_breaks(
-                table_name=table_name,
-                column_name=color_field,
-                num_breaks=6,
-                strip_zeros=True,
-                parquet_path=parquet_path,
-            )
-            if color_scale_breaks:
-                logger.info(
-                    "Computed quantile breaks for %s: %s",
-                    color_field,
-                    color_scale_breaks,
-                )
-
-        # Use Teal (blue) for connectivity - represents spatial coverage/area
-        return get_heatmap_style(
-            color_field_name=color_field,
-            color_scale_breaks=color_scale_breaks,
-            color_range_name="Teal",
-        )
+        """Connectivity in teal: the area reached."""
+        return classified("accessibility", TEAL, geometry)
 
     def process(
         self: Self, params: HeatmapConnectivityToolParams, temp_dir: Path

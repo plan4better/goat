@@ -593,10 +593,10 @@ def test_a_layer_where_no_edge_resolves_is_refused(tmp_path, con) -> None:
 def test_a_bundle_is_styled_as_a_backdrop_with_one_part_picked_out() -> None:
     """Both types get one grey bulk and one red accent, from the same pair.
 
-    An ordinary upload gets a random colour, which is right when nothing is
-    known about it — but a bundle's members are one dataset, so a network would
-    otherwise arrive as two unrelated layers in two random colours. Grey and
-    thin is what a network being routed *on* should look like: present, and not
+    An ordinary upload gets a colour of its own, which is right when nothing is
+    known about it, but a bundle's members are one dataset, so a network would
+    otherwise arrive as two unrelated layers in two colours. Grey and thin is
+    what a network being routed *on* should look like: present, and not
     competing with the result drawn over it. Which member is the accent differs
     by type: a street network is its edges with the junctions picked out, while
     a PT network is its stops along the lines they run on.
@@ -606,34 +606,27 @@ def test_a_bundle_is_styled_as_a_backdrop_with_one_part_picked_out() -> None:
         BUNDLE_ACCENT_RED,
         BUNDLE_BACKDROP_GREY,
         BUNDLE_POINT_HALO_WHITE,
-        get_bundle_style,
-        hex_to_rgb,
+        bundle_role_style,
     )
 
-    grey = hex_to_rgb(BUNDLE_BACKDROP_GREY)
-    red = hex_to_rgb(BUNDLE_ACCENT_RED)
+    grey, red = BUNDLE_BACKDROP_GREY, BUNDLE_ACCENT_RED
 
-    edges = get_bundle_style(BundleTypeName.street_network, "edges", "line")
-    nodes = get_bundle_style(BundleTypeName.street_network, "nodes", "point")
-    assert edges["color"] == edges["stroke_color"] == grey
-    assert edges["stroke_width"] == 2
-    assert nodes["color"] == red
-    assert nodes["radius"] == 3
+    edges = bundle_role_style(BundleTypeName.street_network, "edges", "line")
+    nodes = bundle_role_style(BundleTypeName.street_network, "nodes", "point")
+    assert edges["symbol"]["line"] == {"color": grey, "width": 2}
+    assert nodes["symbol"]["marker"]["color"] == red
+    assert nodes["symbol"]["marker"]["size"] == 6
 
-    stops = get_bundle_style(BundleTypeName.pt_network_gtfs, "stops", "point")
-    shapes = get_bundle_style(BundleTypeName.pt_network_gtfs, "shape_lines", "line")
-    assert stops["color"] == grey
-    assert stops["radius"] == 4
-    # Haloed, and `stroked` on — the renderer draws a width of 0 without it,
-    # so setting the colour and width alone would show no outline at all.
-    assert stops["stroked"] is True
-    assert stops["stroke_color"] == hex_to_rgb(BUNDLE_POINT_HALO_WHITE)
-    assert stops["stroke_width"] == 2
-    assert shapes["color"] == shapes["stroke_color"] == red
-    assert shapes["stroke_width"] == 3
+    stops = bundle_role_style(BundleTypeName.pt_network_gtfs, "stops", "point")
+    shapes = bundle_role_style(BundleTypeName.pt_network_gtfs, "shape_lines", "line")
+    assert stops["symbol"]["marker"]["color"] == grey
+    assert stops["symbol"]["marker"]["size"] == 8
+    # Haloed: an outline is what keeps a grey stop apart from the red line.
+    assert stops["symbol"]["outline"] == {"color": BUNDLE_POINT_HALO_WHITE, "width": 2}
+    assert shapes["symbol"]["line"] == {"color": red, "width": 3}
 
-    # A role with nothing to say inherits the geometry's default untouched,
-    # random colour included — the override is per role, not per bundle.
-    other = get_bundle_style(BundleTypeName.pt_network_gtfs, "routes", "point")
-    assert other["radius"] == 5  # the generic point default, not the stops rule
-    assert other["color"] not in (grey, red)
+    # A role with nothing to say gets the geometry's default style: the
+    # override is per role, not per bundle.
+    other = bundle_role_style(BundleTypeName.pt_network_gtfs, "routes", "point")
+    assert other["symbol"]["marker"]["size"] == 10
+    assert other["symbol"]["marker"]["color"] not in (grey, red)

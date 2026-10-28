@@ -539,8 +539,8 @@ def export_style(
     remembered = export_data.get("outputStyle")
     if isinstance(remembered, dict) and remembered:
         return remembered
-    source_properties = (source_result or {}).get("properties")
-    return source_properties if isinstance(source_properties, dict) else None
+    tool_style = (source_result or {}).get("style")
+    return tool_style if isinstance(tool_style, dict) else None
 
 
 def build_tool_inputs(
@@ -1122,9 +1122,9 @@ def main(
                     "overwrite_previous": overwrite_previous,
                 }
 
-                properties = export_style(export_data, source_result)
-                if properties:
-                    finalize_inputs["properties"] = properties
+                style = export_style(export_data, source_result)
+                if style:
+                    finalize_inputs["style"] = style
 
                 job_id, result = run_tool_node(
                     export_node_id, "finalize_layer", finalize_inputs

@@ -37,7 +37,7 @@ from goatlib.models.io import DatasetMetadata
 from goatlib.tools.authz import authorize_bundle_ingest
 from goatlib.tools.base import BaseToolRunner
 from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
-from goatlib.tools.style import get_bundle_style
+from goatlib.tools.style import bundle_role_style
 
 logger = logging.getLogger(__name__)
 
@@ -338,13 +338,14 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                         feature_count=info.get("feature_count", 0),
                         size=info.get("size", 0),
                         # Stated rather than left to `create_layer`, which
-                        # picks a random colour when given none: a bundle's
-                        # members are one dataset and should not arrive in two
+                        # gives each layer its own colour: a bundle's members
+                        # are one dataset and should not arrive in two
                         # unrelated colours.
-                        properties=get_bundle_style(
+                        style=bundle_role_style(
                             bundle_type,
                             extracted.role,
                             normalize_geometry_type(info.get("geometry_type")),
+                            seed=layer_id,
                         ),
                     )
                     if field_config:
@@ -414,15 +415,10 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         )
         try:
             for position, layer in enumerate(placed):
-                geom = normalize_geometry_type(layer.geometry_type)
-                properties = (
-                    get_bundle_style(bundle_type, layer.role, geom) if geom else None
-                )
                 await db.add_to_project(
                     layer_id=layer.layer_id,
                     project_id=project_id,
                     name=layer.name,
-                    properties=properties,
                     group_id=group_id,
                     # Directly below the group header, in import order. Without an
                     # explicit position every member lands on 0 and they tie.

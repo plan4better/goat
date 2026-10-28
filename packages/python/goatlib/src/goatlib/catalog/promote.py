@@ -39,6 +39,13 @@ from typing import Any
 import asyncpg
 import duckdb
 
+from goatlib.catalog.item import item_style, layer_type
+from goatlib.style.compute import stamp_computed
+from goatlib.style.defaults import default_style
+from goatlib.style.fingerprint import fingerprint
+from goatlib.style.migrate import context_for
+from goatlib.tools.style_rows import insert_dataset_default
+
 logger = logging.getLogger(__name__)
 
 _ITEM_COLUMNS = [
@@ -197,20 +204,6 @@ def resolve_item_ids(
     return resolved
 
 
-def layer_type(item: dict[str, Any]) -> tuple[str, str | None]:
-    """(layer type, geometry type) for the layer row.
-
-    ``goat:geometryType`` absent means an attribute table (contract §3.1).
-    """
-    geom = item.get("goat:geometryType")
-    declared = (item.get("goat:layerType") or "").lower()
-    if geom:
-        return "feature", str(geom).lower()
-    if declared in ("table", "feature", "raster"):
-        return declared, None
-    return "table", None
-
-
 def _jsonable(item: dict[str, Any]) -> dict[str, Any]:
     """The item with every value JSON-serialisable (timestamps to ISO)."""
 
@@ -279,9 +272,8 @@ def published_style(
     than failing the add: a dataset that draws in the wrong colours is a far
     smaller thing than one that cannot be added at all.
 
-    Stored verbatim. A raster item publishes a raster style and promotes to a
-    raster layer, so the shapes match without dispatching here; validating the
-    members would be a second copy of a schema that is the renderer's.
+    Returned as published; :func:`catalog_default_style` makes it the layer's
+    GOAT Style document.
     """
     assets = item.get("assets")
     asset = assets.get("style") if isinstance(assets, dict) else None
@@ -301,10 +293,32 @@ def published_style(
     return document
 
 
-def _default_style(geometry_type: str | None) -> dict[str, Any]:
-    from goatlib.tools.style import get_default_style
+def catalog_default_style(
+    item: dict[str, Any],
+    *,
+    seed: str,
+    read_object: Callable[[str], bytes] | None = None,
+) -> dict[str, Any] | None:
+    """The promoted layer's default style: the item's published style asset as a
+    GOAT Style document, else GOAT's default. None for a table.
 
-    return dict(get_default_style(geometry_type))
+    The publisher computed the asset's classes from this version of the data, so
+    they are stamped with it (`catalog:<version>`) and not recomputed on the
+    first map load; classes the asset leaves to the server are computed then.
+    """
+    ltype, geom_type = layer_type(item)
+    if ltype == "table":
+        return None
+    document = item_style(published_style(item, read_object=read_object), item)
+    if document is None:
+        return default_style(context_for(ltype, geom_type, None), seed=seed)
+    if ltype == "raster":
+        return document
+    return stamp_computed(
+        document,
+        fingerprint(data_snapshot=None, catalog_version=str(item.get("version") or "")),
+        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
 
 
 async def promote(
@@ -355,14 +369,11 @@ async def promote(
         }
 
     ltype, geom_type = layer_type(item)
+    new_id = uuid_module.uuid4()
     # The dataset's own rendering when it publishes one; GOAT's default is the
-    # fallback, not the rule. The style has to be on the row *here*: the
-    # project link copies `properties` off the layer as it is created, which is
-    # what makes styling per-project, so a style arriving later would never
-    # reach the layer someone just added.
-    style = published_style(item) or (_default_style(geom_type) if geom_type else {})
-    if style:
-        style.setdefault("visibility", True)
+    # fallback, not the rule. The default row is written *here*, with the layer:
+    # the project layer's first style is copied from it as the link is created.
+    style = catalog_default_style(item, seed=str(new_id))
     name = (item.get("title") or "").strip() or item_id
     other_properties = {
         "catalog_materialize": {
@@ -377,46 +388,47 @@ async def promote(
         for k in ("bbox_xmin", "bbox_ymin", "bbox_xmax", "bbox_ymax")
     )
 
-    new_id = uuid_module.uuid4()
-    inserted = await conn.fetchrow(
-        f"""
-        INSERT INTO {schema}.layer (
-            id, name, description, type,
-            feature_layer_type, feature_layer_geometry_type, extent,
-            properties, other_properties,
-            public_read, catalog_external_uid, catalog_version,
-            created_at, updated_at
-        ) VALUES (
-            $1, $2, $3, $4,
-            CASE WHEN $4 = 'feature' THEN 'standard' ELSE NULL END,
-            $5,
-            CASE WHEN $6 THEN
-                ST_Multi(ST_MakeEnvelope($7, $8, $9, $10, 4326))
-            END,
-            $11::jsonb, $12::jsonb,
-            FALSE, $13, $14,
-            NOW(), NOW()
+    async with conn.transaction():
+        inserted = await conn.fetchrow(
+            f"""
+            INSERT INTO {schema}.layer (
+                id, name, description, type,
+                feature_layer_type, feature_layer_geometry_type, extent,
+                other_properties,
+                public_read, catalog_external_uid, catalog_version,
+                created_at, updated_at
+            ) VALUES (
+                $1, $2, $3, $4,
+                CASE WHEN $4 = 'feature' THEN 'standard' ELSE NULL END,
+                $5,
+                CASE WHEN $6 THEN
+                    ST_Multi(ST_MakeEnvelope($7, $8, $9, $10, 4326))
+                END,
+                $11::jsonb,
+                FALSE, $12, $13,
+                NOW(), NOW()
+            )
+            ON CONFLICT (catalog_external_uid, catalog_version)
+                WHERE catalog_external_uid IS NOT NULL
+            DO NOTHING
+            RETURNING id
+            """,
+            new_id,
+            name,
+            item.get("description"),
+            ltype,
+            geom_type,
+            has_bbox,
+            item.get("bbox_xmin"),
+            item.get("bbox_ymin"),
+            item.get("bbox_xmax"),
+            item.get("bbox_ymax"),
+            json.dumps(other_properties),
+            item_id,
+            version,
         )
-        ON CONFLICT (catalog_external_uid, catalog_version)
-            WHERE catalog_external_uid IS NOT NULL
-        DO NOTHING
-        RETURNING id
-        """,
-        new_id,
-        name,
-        item.get("description"),
-        ltype,
-        geom_type,
-        has_bbox,
-        item.get("bbox_xmin"),
-        item.get("bbox_ymin"),
-        item.get("bbox_xmax"),
-        item.get("bbox_ymax"),
-        json.dumps(style),
-        json.dumps(other_properties),
-        item_id,
-        version,
-    )
+        if inserted is not None and style is not None:
+            await insert_dataset_default(conn, schema, new_id, style)
 
     if inserted is None:
         # Same reasoning as the fast path: bump updated_at so a concurrent

@@ -30,6 +30,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
+from goatlib.tools.style import styled
 
 logger = logging.getLogger(__name__)
 
@@ -248,28 +249,21 @@ class GeocodingToolRunner(BaseToolRunner[GeocodingToolParams]):
 
         return columns
 
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: GeocodingToolParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return style for geocoded output - simple point markers."""
-        # Import here to avoid circular imports
-        from goatlib.tools.style import DEFAULT_POINT_STYLE, hex_to_rgb
-
-        # Blue color for geocoded points
-        color = hex_to_rgb("#3B82F6")
-
-        return {
-            "color": color,
-            **DEFAULT_POINT_STYLE,
-            "radius": 6,
-            "stroked": True,
-            "stroke_color": [255, 255, 255],
-            "stroke_width": 2,
-        }
+        """Geocoded addresses as blue points with a white halo."""
+        return styled(
+            geometry,
+            {
+                "marker": {"color": "#3b82f6", "size": 12},
+                "outline": {"color": "#ffffff", "width": 2},
+            },
+        )
 
     def process(
         self: Self, params: GeocodingToolParams, temp_dir: Path

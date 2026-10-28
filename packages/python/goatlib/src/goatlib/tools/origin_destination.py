@@ -28,6 +28,7 @@ from goatlib.tools.schemas import (
     ToolOutputBase,
     get_default_layer_name,
 )
+from goatlib.tools.style import classified
 
 logger = logging.getLogger(__name__)
 
@@ -291,151 +292,41 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
         finally:
             tool.cleanup()
 
-    def get_weight_color_style(
+    def get_layer_style(
         self: Self,
-        table_name: str | None = None,
-        weight_column: str = "weight",
-        parquet_path: Path | str | None = None,
-    ) -> dict[str, Any]:
-        """Generate a color style based on weight values using quantile breaks.
-
-        Args:
-            table_name: DuckLake table path
-            weight_column: Column to base colors on
-            parquet_path: Alternative to table_name — compute from parquet
-
-        Returns:
-            Layer properties dict with color_field configuration
-        """
-        # Use a sequential color palette (low=cool, high=warm) - hex strings
-        # 5 colors for 5 quantile bins
-        color_palette_hex = [
-            "#FEF0D9",  # Light cream
-            "#FDCC8A",  # Light orange
-            "#FC8D59",  # Orange
-            "#E34A33",  # Red-orange
-            "#B30000",  # Dark red
-        ]
-
-        # Base style for lines
-        base_style = {
-            "min_zoom": 1,
-            "max_zoom": 22,
-            "visibility": True,
-            "filled": True,
-            "opacity": 0.8,
-            "stroked": True,
-            "stroke_width": 2,
-            "stroke_width_range": [1, 10],
-            "stroke_width_scale": "quantile",
-            "color": [252, 141, 89],  # Orange as base
-            "stroke_color": [252, 141, 89],  # Orange as base stroke
-        }
-
-        # Compute quantile breaks - use 4 breaks for 5 color bins
-        breaks_info = self.compute_quantile_breaks(
-            table_name=table_name,
-            column_name=weight_column,
-            num_breaks=4,  # 4 breaks create 5 bins matching 5 colors
-            strip_zeros=True,
-            parquet_path=parquet_path,
+        params: OriginDestinationToolParams,
+        metadata: DatasetMetadata,
+        geometry: str | None,
+        relation: str,
+    ) -> dict[str, Any] | None:
+        """The OD lines: colored by weight classes, wider with more weight."""
+        return classified(
+            "weight",
+            "colorbrewer:OrRd",
+            "line",
+            count=5,
+            symbol={
+                "line": {
+                    "opacity": 0.8,
+                    "width": {"field": "weight", "range": [1, 10]},
+                }
+            },
         )
 
-        if not breaks_info:
-            # Fallback to simple style without breaks
-            return base_style
-
-        return {
-            **base_style,
-            "stroke_color_field": {
-                "name": weight_column,
-                "type": "number",
+    def points_style(self: Self) -> dict[str, Any]:
+        """The OD points: colored by weight classes, larger with more weight."""
+        return classified(
+            "weight",
+            "colorbrewer:OrRd",
+            "point",
+            count=5,
+            symbol={
+                "marker": {
+                    "opacity": 0.8,
+                    "size": {"field": "weight", "range": [10, 50]},
+                }
             },
-            "stroke_color_scale": "quantile",
-            "stroke_color_range": {
-                "name": "Custom OD",
-                "colors": color_palette_hex,
-                "category": "sequential",
-            },
-            "stroke_color_scale_breaks": breaks_info,
-            "stroke_width_field": {
-                "name": weight_column,
-                "type": "number",
-            },
-            "stroke_width_scale_breaks": breaks_info,
-        }
-
-    def get_point_weight_style(
-        self: Self,
-        table_name: str | None = None,
-        weight_column: str = "weight",
-        parquet_path: Path | str | None = None,
-    ) -> dict[str, Any]:
-        """Generate a color and size style for points based on weight.
-
-        Args:
-            table_name: DuckLake table path
-            weight_column: Column to base styling on
-            parquet_path: Alternative to table_name — compute from parquet
-
-        Returns:
-            Layer properties dict with color and radius configuration
-        """
-        # Color palette for points (same as lines for consistency) - hex strings
-        # 5 colors for 5 quantile bins
-        color_palette_hex = [
-            "#FEF0D9",  # Light cream
-            "#FDCC8A",  # Light orange
-            "#FC8D59",  # Orange
-            "#E34A33",  # Red-orange
-            "#B30000",  # Dark red
-        ]
-
-        # Base style for points
-        base_style = {
-            "min_zoom": 1,
-            "max_zoom": 22,
-            "visibility": True,
-            "filled": True,
-            "opacity": 0.8,
-            "stroked": False,
-            "fixed_radius": False,
-            "radius": 10,
-            "radius_range": [5, 25],
-            "radius_scale": "linear",
-            "color": [252, 141, 89],  # Orange as base
-        }
-
-        # Compute quantile breaks - use 4 breaks for 5 color bins
-        breaks_info = self.compute_quantile_breaks(
-            table_name=table_name,
-            column_name=weight_column,
-            num_breaks=4,  # 4 breaks create 5 bins matching 5 colors
-            strip_zeros=True,
-            parquet_path=parquet_path,
         )
-
-        if not breaks_info:
-            return base_style
-
-        return {
-            **base_style,
-            "color_field": {
-                "name": weight_column,
-                "type": "number",
-            },
-            "color_scale": "quantile",
-            "color_range": {
-                "name": "Custom OD",
-                "colors": color_palette_hex,
-                "category": "sequential",
-            },
-            "color_scale_breaks": breaks_info,
-            "radius_field": {
-                "name": weight_column,
-                "type": "number",
-            },
-        }
 
     @drops_unrecorded_tables
     def run(self: Self, params: OriginDestinationToolParams) -> dict[str, Any]:
@@ -486,14 +377,6 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
                 f"Analysis complete: lines={output_parquet_lines}, points={output_parquet_points}"
             )
 
-            # Compute styles from parquet (works for both temp and permanent)
-            lines_style = self.get_weight_color_style(
-                weight_column="weight", parquet_path=output_parquet_lines
-            )
-            points_style = self.get_point_weight_style(
-                weight_column="weight", parquet_path=output_parquet_points
-            )
-
             # Temp mode: write primary (lines) output only, skip DB records
             if temp_mode:
                 result = self._write_temp_result(
@@ -501,7 +384,7 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
                     output_parquet=output_parquet_lines,
                     output_name=output_name_lines,
                     output_layer_id=output_layer_id_lines,
-                    properties=lines_style,
+                    metadata=metadata_lines,
                 )
                 asyncio.get_event_loop().run_until_complete(self._close_db_service())
                 return result
@@ -533,7 +416,6 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
                     output_name=output_name_lines,
                     metadata=metadata_lines,
                     table_info=table_info_lines,
-                    custom_properties=lines_style,
                 )
             )
 
@@ -545,7 +427,7 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
                     output_name=output_name_points,
                     metadata=metadata_points,
                     table_info=table_info_points,
-                    custom_properties=points_style,
+                    style=self.points_style(),
                 )
             )
 

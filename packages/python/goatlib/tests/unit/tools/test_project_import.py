@@ -876,13 +876,13 @@ class TestProjectImportRunner:
             runner.run(params)
 
         # Layer_project insert signature (see _insert_pg_records):
-        # (layer_uuid, project_uuid, name, order, properties,
-        #  other_properties, query, charts, group_serial)
+        # (layer_uuid, project_uuid, name, order, other_properties, query,
+        #  charts, group_serial, visible, position, time_value, legend_expanded)
         assert (
             len(lp_insert_args) == 2
         ), f"Expected 2 layer_project inserts, got {len(lp_insert_args)}"
         for args in lp_insert_args:
-            group_serial = args[8]
+            group_serial = args[7]
             assert group_serial == new_group_serial, (
                 f"Link must be assigned to remapped group {new_group_serial},"
                 f" got {group_serial!r}. Full args: {args}"
@@ -1568,7 +1568,7 @@ class TestImportWorkflowExportLinks:
         new_workflow_id = str(workflow_args[0])
         assert new_workflow_id != "wf-1"
         (link_args,) = link_inserts
-        assert link_args[5] == {
+        assert link_args[4] == {
             "table_config": {"hidden": []},
             "workflow_export": {
                 "workflow_id": new_workflow_id,
@@ -1647,3 +1647,29 @@ class TestImportDucklakeLayerGeometry:
         assert con.execute(
             f'SELECT ST_AsText(geometry) FROM lake."{table[0]}"."{table[1]}"'
         ).fetchall() == [("POINT (7.1 50.7)",)]
+
+
+class TestImportNamedStyles:
+    """An archive's named styles (format 1.2) as the importer stores them."""
+
+    def test_at_most_ten_named_styles_are_kept_with_the_active_one(self) -> None:
+        from goatlib.style.context import DataContext
+
+        doc = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
+        link = {
+            "styles": [
+                {"name": f"s{i}", "position": i, "document": doc, "active": i == 11}
+                for i in range(12)
+            ]
+        }
+        styles, _ = ProjectImportRunner._link_styles(
+            link,
+            DataContext(kind="vector", geometry="polygon"),
+            seed="L",
+            asset_ids={},
+            asset_for_url=None,
+            stamp=lambda d: d,
+        )
+        assert len(styles) == 10
+        assert [s["name"] for s in styles if s["active"]] == ["s11"]
+        assert [s["name"] for s in styles][:9] == [f"s{i}" for i in range(9)]

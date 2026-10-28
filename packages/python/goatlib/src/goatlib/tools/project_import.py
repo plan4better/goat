@@ -20,6 +20,7 @@ import tempfile
 import uuid
 import zipfile
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Self
 from uuid import uuid4
@@ -29,11 +30,18 @@ from pydantic import BaseModel, Field
 
 from goatlib.io.bbox_columns import is_bbox_struct
 from goatlib.models.project import DEFAULT_INITIAL_VIEW_STATE
+from goatlib.style.compute import stamp_computed
+from goatlib.style.context import DataContext
+from goatlib.style.fingerprint import fingerprint
+from goatlib.style.map_rows import MAX_STYLES
+from goatlib.style.migrate import context_for, migrate_style, stored_document
 from goatlib.tools.base import SimpleToolRunner, drops_unrecorded_tables
 from goatlib.tools.project_schemas import (
     EXTERNAL_DATA_TYPES,
     FORMAT_VERSION,
+    ExportAssetEntry,
     ExportAssetManifest,
+    ExportLayerGroup,
     ExportLayerGroupTree,
     ExportLayerIndex,
     ExportLayerProjectLinks,
@@ -43,12 +51,46 @@ from goatlib.tools.project_schemas import (
     ExportWorkflow,
 )
 from goatlib.tools.schemas import ToolInputBase
+from goatlib.tools.style_rows import (
+    DEFAULT_NAME,
+    insert_dataset_default,
+    insert_first_style,
+)
 from goatlib.utils.builder_config import remap_interactions, remap_layer_project_ids
-from goatlib.utils.layer import layer_schema_name, layer_table_path
+from goatlib.utils.layer import layer_schema_name, layer_table_path, table_path_parts
 
 logger = logging.getLogger(__name__)
 
 _GROUP_ICON_KEY_RE = re.compile(r"^group_icon_(\d+)$")
+_ASSET_REF_RE = re.compile(r"^asset:(.+)$")
+
+
+def remap_asset_refs(node: Any, asset_ids: dict[str, str]) -> Any:
+    """`node` with every `asset:<old id>` of an imported asset renamed to its new
+    id; references to assets the archive does not carry stay as they are."""
+    if isinstance(node, dict):
+        return {k: remap_asset_refs(v, asset_ids) for k, v in node.items()}
+    if isinstance(node, list):
+        return [remap_asset_refs(v, asset_ids) for v in node]
+    if isinstance(node, str):
+        match = _ASSET_REF_RE.match(node)
+        if match and match.group(1) in asset_ids:
+            return f"asset:{asset_ids[match.group(1)]}"
+    return node
+
+
+def _flag(value: Any, default: bool) -> bool:
+    return value if isinstance(value, bool) else default
+
+
+def group_state(group: ExportLayerGroup) -> tuple[bool, bool]:
+    """(visible, expanded) of a group: its columns (1.2), else what `properties`
+    held before."""
+    props = group.properties or {}
+    return (
+        _flag(group.visible, _flag(props.get("visibility"), True)),
+        _flag(group.expanded, _flag(props.get("expanded"), True)),
+    )
 
 
 class ProjectImportParams(ToolInputBase):
@@ -164,6 +206,177 @@ class ProjectImportRunner(SimpleToolRunner):
 
         logger.info("Generated %d ID mappings", len(id_map))
         return id_map
+
+    @staticmethod
+    def _archive_assets(archive_dir: Path) -> list[ExportAssetEntry]:
+        """The uploaded assets the archive lists."""
+        index = archive_dir / "assets" / "index.json"
+        if not index.exists():
+            return []
+        with open(index) as f:
+            return ExportAssetManifest.model_validate(json.load(f)).assets
+
+    @staticmethod
+    def _asset_file(archive_dir: Path, asset: ExportAssetEntry) -> Path | None:
+        """The asset's file inside the archive, if it carries one."""
+        if asset.archive_path is None:
+            return None
+        path = (archive_dir / asset.archive_path).resolve()
+        if not path.is_relative_to(archive_dir.resolve()):
+            logger.warning("Skipping unsafe asset path: %s", asset.archive_path)
+            return None
+        return path if path.exists() else None
+
+    @staticmethod
+    def _asset_key(user_id: str, asset_id: str, file_name: str) -> str:
+        return f"assets/{user_id}/{asset_id}{Path(file_name).suffix}"
+
+    async def _insert_assets(
+        self: Self,
+        conn: Any,
+        schema: str,
+        archive_dir: Path,
+        id_map: dict[str, str],
+        user_id: str,
+    ) -> dict[str, str]:
+        """Rows for the assets the archive carries files of, under their new ids
+        and object keys. Returns old id -> new id for those."""
+        imported: dict[str, str] = {}
+        for asset in self._archive_assets(archive_dir):
+            path = self._asset_file(archive_dir, asset)
+            new_id = id_map.get(asset.id)
+            if path is None or new_id is None:
+                continue
+            content = path.read_bytes()
+            await conn.execute(
+                f"""
+                INSERT INTO {schema}.uploaded_asset
+                    (id, user_id, s3_key, file_name, display_name, category,
+                     mime_type, file_size, asset_type, content_hash,
+                     created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+                """,
+                uuid.UUID(new_id),
+                uuid.UUID(user_id),
+                self._asset_key(user_id, new_id, asset.file_name),
+                asset.file_name,
+                asset.display_name,
+                asset.category,
+                asset.mime_type,
+                len(content),
+                asset.asset_type,
+                hashlib.sha256(content).hexdigest(),
+            )
+            imported[asset.id] = new_id
+        return imported
+
+    @staticmethod
+    def _link_styles(
+        link: dict[str, Any],
+        ctx: DataContext | None,
+        *,
+        seed: str,
+        asset_ids: dict[str, str],
+        asset_for_url: Any,
+        stamp: Any,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """A project layer's named styles and map state from its archive entry:
+        the 1.2 fields (at most `MAX_STYLES`), else its `properties` converted
+        into one "Default". A
+        table (`ctx` None) gets map state only. `stamp` marks the computed values
+        as computed from the imported data."""
+        state: dict[str, Any] = {
+            "visible": _flag(link.get("visible"), True),
+            "position": link.get("position") or "top",
+            "time_value": link.get("time_value"),
+            "legend_expanded": _flag(link.get("legend_expanded"), True),
+        }
+        named = link.get("styles")
+        if named:
+            if ctx is None:
+                return [], state
+            named = sorted(named, key=lambda st: st.get("position", 0))
+            if len(named) > MAX_STYLES:  # a hand-edited archive: keep the active one
+                active = [st for st in named if st.get("active")][:1]
+                rest = [st for st in named if st not in active]
+                named = sorted(
+                    rest[: MAX_STYLES - len(active)] + active,
+                    key=lambda st: st.get("position", 0),
+                )
+            return [
+                {
+                    "name": style["name"],
+                    "position": style.get("position", 0),
+                    "active": style.get("active", False),
+                    "document": stamp(
+                        stored_document(
+                            remap_asset_refs(style["document"], asset_ids),
+                            ctx,
+                            seed=seed,
+                        )
+                    ),
+                }
+                for style in named
+            ], state
+        properties = link.get("properties")
+        if not properties:
+            return [], state
+        migrated = migrate_style(
+            properties,
+            ctx or DataContext(kind="vector"),
+            fingerprint=None,
+            at="",
+            asset_for_url=asset_for_url,
+            seed=seed,
+        )
+        state["visible"] = _flag(migrated.map_state.get("visible"), state["visible"])
+        state["legend_expanded"] = _flag(
+            migrated.map_state.get("legend_expanded"), state["legend_expanded"]
+        )
+        if ctx is None:
+            return [], state
+        document = stamp(remap_asset_refs(migrated.document, asset_ids))
+        return [
+            {"name": DEFAULT_NAME, "position": 0, "active": True, "document": document}
+        ], state
+
+    @staticmethod
+    async def _insert_named_styles(
+        conn: Any, schema: str, link_id: int, styles: list[dict[str, Any]]
+    ) -> None:
+        """The named styles of a project layer with their revision 1 rows; the
+        one marked active (else the first) becomes active."""
+        active_id = first_id = None
+        for style in sorted(styles, key=lambda st: st["position"]):
+            document = json.dumps(style["document"])
+            style_id = await conn.fetchval(
+                f"""
+                INSERT INTO {schema}.layer_style
+                    (layer_project_id, name, position, document, revision)
+                VALUES ($1, $2, $3, $4::text::jsonb, 1)
+                RETURNING id
+                """,
+                link_id,
+                style["name"],
+                style["position"],
+                document,
+            )
+            await conn.execute(
+                f"""
+                INSERT INTO {schema}.layer_style_revision (style_id, revision, document)
+                VALUES ($1, 1, $2::text::jsonb)
+                """,
+                style_id,
+                document,
+            )
+            first_id = first_id or style_id
+            if style["active"] and active_id is None:
+                active_id = style_id
+        await conn.execute(
+            f"UPDATE {schema}.layer_project SET active_style_id = $2 WHERE id = $1",
+            link_id,
+            active_id or first_id,
+        )
 
     def _load_layer_project_links(
         self: Self,
@@ -463,8 +676,16 @@ class ProjectImportRunner(SimpleToolRunner):
         new_user_id: str,
         target_folder_id: str,
         project_name_override: str | None = None,
+        data_snapshots: dict[str, int] | None = None,
     ) -> None:
-        """Insert all PostgreSQL records in a single transaction."""
+        """Insert all PostgreSQL records in a single transaction.
+
+        `data_snapshots` names, by archive layer id, the DuckLake snapshot that
+        wrote each imported table: the archive's rows are the data its styles'
+        computed values come from, so they are stamped with it.
+        """
+        snapshots = data_snapshots or {}
+        at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         if self.settings is None:
             raise RuntimeError("Settings not initialized")
 
@@ -611,18 +832,20 @@ class ProjectImportRunner(SimpleToolRunner):
                         if group.parent_id
                         else None
                     )
+                    visible, expanded = group_state(group)
                     new_serial = await conn.fetchval(
                         f"""
                         INSERT INTO {schema}.layer_project_group
-                            (name, "order", properties, project_id, parent_id,
+                            (name, "order", visible, expanded, project_id, parent_id,
                              created_at, updated_at)
                         VALUES
-                            ($1, $2, $3, $4, $5, NOW(), NOW())
+                            ($1, $2, $3, $4, $5, $6, NOW(), NOW())
                         RETURNING id
                         """,
                         group.name,
                         group.order,
-                        group.properties,
+                        visible,
+                        expanded,
                         uuid.UUID(new_project_id),
                         parent_serial,
                     )
@@ -640,10 +863,33 @@ class ProjectImportRunner(SimpleToolRunner):
                             old_gid, 0
                         )
 
+                # Uploaded icons and images the archive carries: rows for their
+                # new ids (the files were uploaded under those ids), so the
+                # styles' `asset:<id>` references resolve.
+                asset_ids = await self._insert_assets(
+                    conn, schema, archive_dir, id_map, new_user_id
+                )
+                old_id_by_key = {
+                    a.s3_key: a.id
+                    for a in self._archive_assets(archive_dir)
+                    if a.s3_key
+                }
+
+                def asset_for_url(path: str) -> str | None:
+                    """An icon a style before 1.2 names by its URL: the asset
+                    whose old object key the URL ends with, by its new id."""
+                    old_id = next(
+                        (i for key, i in old_id_by_key.items() if path.endswith(key)),
+                        None,
+                    )
+                    return asset_ids.get(old_id) if old_id else None
+
                 # 4a. Insert one layer row per unique dataset. Skipped layers
                 # (e.g. street_network) are not entered in old_to_new_layer_id,
                 # so 4b's `target_layer_id is None` branch drops their links.
                 old_to_new_layer_id: dict[str, str] = {}
+                layer_ctx: dict[str, DataContext | None] = {}
+                layer_stamp: dict[str, Any] = {}
                 for layer_meta in layer_index.layers:
                     if layer_meta.feature_layer_type == "street_network":
                         logger.info(
@@ -659,14 +905,28 @@ class ProjectImportRunner(SimpleToolRunner):
                     remapped_other_properties = self._remap_layer_other_properties(
                         layer_meta.other_properties, id_map
                     )
+                    snapshot = snapshots.get(old_layer_id)
+
+                    def stamp(
+                        document: dict[str, Any], snapshot: int | None = snapshot
+                    ) -> dict[str, Any]:
+                        if snapshot is None:
+                            return document
+                        return stamp_computed(
+                            document,
+                            fingerprint(data_snapshot=snapshot, catalog_version=None),
+                            at,
+                        )
+
+                    layer_stamp[old_layer_id] = stamp
 
                     await conn.execute(
                         f"""
                         INSERT INTO {schema}.layer
                             (id, user_id, folder_id, space_id, name, description, type,
                              feature_layer_type, feature_layer_geometry_type,
-                             data_type, url, properties, other_properties,
-                             size, field_config,
+                             data_type, url, other_properties,
+                             size, field_config, data_snapshot,
                              created_at, updated_at)
                         VALUES
                             ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
@@ -684,11 +944,39 @@ class ProjectImportRunner(SimpleToolRunner):
                         layer_meta.feature_layer_geometry_type,
                         layer_meta.data_type,
                         layer_meta.url,
-                        layer_meta.properties,
                         remapped_other_properties,
                         layer_meta.size,
                         layer_meta.field_config,
+                        snapshot,
                     )
+                    # The dataset default: the archive's document (1.2), else
+                    # its `properties` converted. Tables have none.
+                    ctx = None
+                    if layer_meta.type != "table":
+                        ctx = context_for(
+                            layer_meta.type,
+                            layer_meta.feature_layer_geometry_type,
+                            layer_meta.data_type,
+                        )
+                        if layer_meta.style is not None:
+                            document = stored_document(
+                                remap_asset_refs(layer_meta.style, asset_ids),
+                                ctx,
+                                seed=new_layer_id,
+                            )
+                        else:
+                            document = migrate_style(
+                                layer_meta.properties or {},
+                                ctx,
+                                fingerprint=None,
+                                at="",
+                                asset_for_url=asset_for_url,
+                                seed=new_layer_id,
+                            ).document
+                        await insert_dataset_default(
+                            conn, schema, uuid.UUID(new_layer_id), stamp(document)
+                        )
+                    layer_ctx[old_layer_id] = ctx
 
                 # 4b. Insert one layer_project row per exported link.
                 # Format 1.1: links in archive_dir/layer_project_links.json.
@@ -712,28 +1000,48 @@ class ProjectImportRunner(SimpleToolRunner):
                         if old_group_id
                         else None
                     )
+                    ctx = layer_ctx.get(link_layer_id)
+                    styles, state = self._link_styles(
+                        link_data,
+                        ctx,
+                        seed=target_layer_id,
+                        asset_ids=asset_ids,
+                        asset_for_url=asset_for_url,
+                        stamp=layer_stamp.get(link_layer_id, lambda d: d),
+                    )
                     new_link_id = await conn.fetchval(
                         f"""
                         INSERT INTO {schema}.layer_project
-                            (layer_id, project_id, name, "order", properties,
+                            (layer_id, project_id, name, "order",
                              other_properties, query, charts, layer_project_group_id,
+                             visible, position, time_value, legend_expanded,
                              created_at, updated_at)
                         VALUES
-                            ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+                            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                             NOW(), NOW())
                         RETURNING id
                         """,
                         uuid.UUID(target_layer_id),
                         uuid.UUID(new_project_id),
                         link_data.get("name"),
                         link_data.get("order", 0),
-                        link_data.get("properties"),
                         self._remap_layer_other_properties(
                             link_data.get("other_properties"), id_map
                         ),
                         link_data.get("query"),
                         link_data.get("charts"),
                         group_serial,
+                        state["visible"],
+                        state["position"],
+                        state["time_value"],
+                        state["legend_expanded"],
                     )
+                    if styles:
+                        await self._insert_named_styles(
+                            conn, schema, new_link_id, styles
+                        )
+                    elif ctx is not None:
+                        await insert_first_style(conn, schema, new_link_id)
                     # Track old layer_project_id -> new for builder_config remapping
                     old_link_id = link_data.get("id")
                     if old_link_id is not None and new_link_id is not None:
@@ -943,6 +1251,7 @@ class ProjectImportRunner(SimpleToolRunner):
                 # bounded — otherwise importing into a big catalog OOMs the worker.
                 imported_layer_count = 0
                 recycle_every = 5
+                data_snapshots: dict[str, int] = {}
                 for layer_meta in layer_index_layers:
                     old_layer_id = layer_meta["id"]
                     if not uuid_re.match(old_layer_id):
@@ -972,6 +1281,11 @@ class ProjectImportRunner(SimpleToolRunner):
                                 new_user_id=new_user_id,
                                 new_layer_id=new_layer_id,
                             )
+                            snapshot = self._get_ducklake_snapshot_id(
+                                *table_path_parts(layer_table_path(new_layer_id))
+                            )
+                            if snapshot is not None:
+                                data_snapshots[old_layer_id] = snapshot
                             imported_layer_count += 1
                             if imported_layer_count % recycle_every == 0:
                                 self.recycle_duckdb_connection()
@@ -981,30 +1295,18 @@ class ProjectImportRunner(SimpleToolRunner):
                                 old_layer_id,
                             )
 
-                # 7. Upload S3 assets
-                assets_index_path = archive_dir / "assets" / "index.json"
-                if assets_index_path.exists():
-                    with open(assets_index_path) as f:
-                        asset_manifest = ExportAssetManifest.model_validate(
-                            json.load(f)
+                # 7. Upload S3 assets (their rows are written with the records)
+                for asset in self._archive_assets(archive_dir):
+                    local_asset_path = self._asset_file(archive_dir, asset)
+                    if local_asset_path is not None and asset.id in id_map:
+                        self._upload_s3_asset(
+                            local_path=local_asset_path,
+                            s3_key=self._asset_key(
+                                new_user_id, id_map[asset.id], asset.file_name
+                            ),
+                            content_type=asset.mime_type,
+                            tracker=tracker,
                         )
-                    for asset in asset_manifest.assets:
-                        local_asset_path = (archive_dir / asset.archive_path).resolve()
-                        if not local_asset_path.is_relative_to(archive_dir.resolve()):
-                            logger.warning(
-                                "Skipping unsafe asset path: %s", asset.archive_path
-                            )
-                            continue
-                        if local_asset_path.exists():
-                            new_asset_id = id_map.get(asset.id, asset.id)
-                            suffix = Path(asset.file_name).suffix
-                            s3_key = f"assets/{new_user_id}/{new_asset_id}{suffix}"
-                            self._upload_s3_asset(
-                                local_path=local_asset_path,
-                                s3_key=s3_key,
-                                content_type=asset.mime_type,
-                                tracker=tracker,
-                            )
 
                 # 8. Upload thumbnail if present
                 thumbnail_path = archive_dir / "assets" / "thumbnail.png"
@@ -1026,6 +1328,7 @@ class ProjectImportRunner(SimpleToolRunner):
                         new_user_id=new_user_id,
                         target_folder_id=params.target_folder_id,
                         project_name_override=params.project_name,
+                        data_snapshots=data_snapshots,
                     )
                 )
 

@@ -17,6 +17,7 @@ FeatureTypeLiteral = Literal["standard", "tool", "street_network"]
 FeatureGeometryTypeLiteral = Literal["point", "line", "polygon"]
 DataTypeLiteral = Literal["mvt", "wfs", "wms", "xyz", "wmts", "cog"]
 AssetTypeLiteral = Literal["image", "icon"]
+MapPositionLiteral = Literal["top", "below_labels", "below_roads"]
 
 
 class ExportManifest(BaseModel):
@@ -66,6 +67,9 @@ class ExportLayerMetadata(BaseModel):
     feature_layer_geometry_type: FeatureGeometryTypeLiteral | None = None
     data_type: DataTypeLiteral | None = None
     url: str | None = None
+    # The dataset's default style, a GOAT Style document (format 1.2).
+    style: dict[str, Any] | None = None
+    # Today's style format, in archives before 1.2; converted on import.
     properties: dict[str, Any] | None = None
     other_properties: dict[str, Any] | None = None
     # Per-column metadata keyed by column name (field kind, formula and its
@@ -94,8 +98,20 @@ class ExportLayerProjectLink(BaseModel):
     group_id: str | int | None = None  # References group by original ID
 
 
+class ExportNamedStyle(BaseModel):
+    """One named style of a project layer (format 1.2)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+    position: int = 0
+    document: dict[str, Any]
+    active: bool = False
+
+
 class ExportLayerProjectLinkEntry(BaseModel):
-    """One entry in layer_project_links.json (format 1.1).
+    """One entry in layer_project_links.json (format 1.1; 1.2 adds the named
+    styles and the map state, and drops `properties`).
 
     Unlike [ExportLayerProjectLink], this carries `layer_id` so the archive
     can represent multiple links referencing the same dataset.
@@ -117,6 +133,11 @@ class ExportLayerProjectLinkEntry(BaseModel):
     charts: dict[str, Any] | None = None
     layer_project_group_id: int | None = None
     group_id: str | int | None = None
+    styles: list[ExportNamedStyle] | None = None
+    visible: bool | None = None
+    position: MapPositionLiteral | None = None
+    time_value: Any = None
+    legend_expanded: bool | None = None
 
 
 class ExportLayerProjectLinks(BaseModel):
@@ -143,7 +164,10 @@ class ExportLayerGroup(BaseModel):
     id: str | int  # Original group ID (int in DB, coerced to str for portability)
     name: str
     order: int = 0
+    # Before 1.2 the map state sat in `properties` (`visibility`, `expanded`).
     properties: dict[str, Any] | None = None
+    visible: bool | None = None
+    expanded: bool | None = None
     parent_id: str | int | None = None  # Self-referencing for nesting
 
 
@@ -195,7 +219,11 @@ class ExportAssetEntry(BaseModel):
     file_size: int = 0
     asset_type: AssetTypeLiteral
     content_hash: str | None = None
-    archive_path: str  # Path within the ZIP (e.g., "assets/abc123.png")
+    # The object key on the source instance: how styles before 1.2 name an icon.
+    s3_key: str | None = None
+    # Path within the ZIP (e.g., "assets/abc123.png"); archives before 1.2 have
+    # none, and their assets no file.
+    archive_path: str | None = None
 
 
 class ExportAssetManifest(BaseModel):
@@ -208,4 +236,4 @@ class ExportAssetManifest(BaseModel):
 
 # Constants
 EXTERNAL_DATA_TYPES = {"wms", "wfs", "xyz", "cog", "wmts", "mvt"}
-FORMAT_VERSION = "1.1"
+FORMAT_VERSION = "1.2"

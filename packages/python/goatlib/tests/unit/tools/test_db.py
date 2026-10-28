@@ -6,6 +6,8 @@ resolve space_id from the target folder before writing.
 """
 
 import uuid
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -25,6 +27,21 @@ def make_pool(
     else:
         pool.fetchrow = AsyncMock(return_value={"space_id": space_id})
     pool.execute = AsyncMock(return_value=None)
+    # The connection a transaction runs on: `create_layer` writes the layer row
+    # and its default style together.
+    pool.conn = MagicMock()
+    pool.conn.execute = AsyncMock(return_value=None)
+
+    @asynccontextmanager
+    async def transaction() -> AsyncIterator[None]:
+        yield
+
+    @asynccontextmanager
+    async def acquire() -> AsyncIterator[Any]:
+        yield pool.conn
+
+    pool.conn.transaction = transaction
+    pool.acquire = acquire
     return pool
 
 
@@ -51,10 +68,11 @@ class TestCreateLayerSpaceId:
         assert "customer.folder" in lookup_sql
 
         # ... and passed as an INSERT parameter.
-        insert_sql = pool.execute.await_args.args[0]
-        insert_params = pool.execute.await_args.args[1:]
-        assert "space_id" in insert_sql
-        assert SPACE_ID in insert_params
+        layer_insert, style_insert = pool.conn.execute.await_args_list
+        assert "space_id" in layer_insert.args[0]
+        assert SPACE_ID in layer_insert.args[1:]
+        # The layer's default style is written in the same transaction.
+        assert "layer_style" in style_insert.args[0]
 
     async def test_orphan_folder_raises_clear_error(self) -> None:
         """A folder with no space must not produce an unreachable layer row."""
@@ -71,7 +89,7 @@ class TestCreateLayerSpaceId:
                 geometry_type="POINT",
             )
 
-        pool.execute.assert_not_awaited()
+        pool.conn.execute.assert_not_awaited()
 
     async def test_missing_folder_raises_clear_error(self) -> None:
         pool = make_pool(folder_exists=False)
@@ -87,7 +105,7 @@ class TestCreateLayerSpaceId:
                 geometry_type="POINT",
             )
 
-        pool.execute.assert_not_awaited()
+        pool.conn.execute.assert_not_awaited()
 
 
 class TestCreateBundleSpaceId:

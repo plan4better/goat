@@ -1,0 +1,408 @@
+{
+ "counters": {
+  "kind": "vector",
+  "geometry": "point",
+  "feature_count": 240000,
+  "fields": [
+   {
+    "name": "name",
+    "type": "string",
+    "values": [
+     "Counter 1",
+     "Counter 2",
+     "Counter 3",
+     "Counter 4",
+     "Counter 5",
+     "Counter 6",
+     "Counter 7",
+     "Counter 8",
+     "Counter 9",
+     "Counter 10"
+    ]
+   },
+   {
+    "name": "year",
+    "type": "number",
+    "min": 2022,
+    "max": 2024
+   },
+   {
+    "name": "mode",
+    "type": "string",
+    "values": [
+     "bike",
+     "car"
+    ]
+   },
+   {
+    "name": "bearing",
+    "type": "number",
+    "min": 29,
+    "max": 336
+   },
+   {
+    "name": "vehicles",
+    "type": "number",
+    "min": 418,
+    "max": 12137
+   }
+  ]
+ },
+ "facilities": {
+  "kind": "vector",
+  "geometry": "point",
+  "feature_count": 28,
+  "fields": [
+   {
+    "name": "name",
+    "type": "string",
+    "values": [
+     "Library Altstadt",
+     "Pool Lindenau",
+     "Health centre Schlossberg",
+     "Park Nordend",
+     "Museum Am Bach",
+     "Kindergarten Auenwald",
+     "Library Westend",
+     "Pool Neustadt",
+     "Health centre Rosental",
+     "Park Südpark",
+     "Museum Ostheim",
+     "Kindergarten Sonnenhang",
+     "Library Hafen",
+     "Pool Feldmark",
+     "Health centre Talblick",
+     "Park Bergviertel",
+     "Museum Mühlberg",
+     "Kindergarten Wiesengrund",
+     "Library Seefeld",
+     "Pool Kirchhof",
+     "Health centre Altstadt",
+     "Park Lindenau",
+     "Museum Schlossberg",
+     "Kindergarten Nordend",
+     "Library Am Bach",
+     "Pool Auenwald",
+     "Health centre Westend",
+     "Park Neustadt"
+    ]
+   },
+   {
+    "name": "type",
+    "type": "string",
+    "values": [
+     "library",
+     "pool",
+     "health",
+     "park",
+     "museum",
+     "kindergarten"
+    ]
+   },
+   {
+    "name": "visitors",
+    "type": "number",
+    "min": 160,
+    "max": 19120
+   },
+   {
+    "name": "photo_url",
+    "type": "string",
+    "values": [
+     "https://images.example.org/facilities/f0.jpg",
+     "https://images.example.org/facilities/f1.jpg",
+     "https://images.example.org/facilities/f2.jpg",
+     "https://images.example.org/facilities/f3.jpg",
+     "https://images.example.org/facilities/f4.jpg",
+     "https://images.example.org/facilities/f5.jpg",
+     "https://images.example.org/facilities/f6.jpg",
+     "https://images.example.org/facilities/f7.jpg",
+     "https://images.example.org/facilities/f8.jpg",
+     "https://images.example.org/facilities/f9.jpg",
+     "https://images.example.org/facilities/f10.jpg",
+     "https://images.example.org/facilities/f11.jpg",
+     "https://images.example.org/facilities/f12.jpg",
+     "https://images.example.org/facilities/f13.jpg",
+     "https://images.example.org/facilities/f14.jpg",
+     "https://images.example.org/facilities/f15.jpg",
+     "https://images.example.org/facilities/f16.jpg",
+     "https://images.example.org/facilities/f17.jpg",
+     "https://images.example.org/facilities/f18.jpg",
+     "https://images.example.org/facilities/f19.jpg",
+     "https://images.example.org/facilities/f20.jpg",
+     "https://images.example.org/facilities/f21.jpg",
+     "https://images.example.org/facilities/f22.jpg",
+     "https://images.example.org/facilities/f23.jpg",
+     "https://images.example.org/facilities/f24.jpg",
+     "https://images.example.org/facilities/f25.jpg",
+     "https://images.example.org/facilities/f26.jpg",
+     "https://images.example.org/facilities/f27.jpg"
+    ]
+   }
+  ]
+ },
+ "schools": {
+  "kind": "vector",
+  "geometry": "point",
+  "feature_count": 45,
+  "fields": [
+   {
+    "name": "name",
+    "type": "string",
+    "values": [
+     "Primary school 1",
+     "Special school 2",
+     "Secondary school 3",
+     "Secondary school 4",
+     "Secondary school 5",
+     "Primary school 6",
+     "Special school 7",
+     "Secondary school 8",
+     "Primary school 9",
+     "Special school 10",
+     "Special school 11",
+     "Secondary school 12",
+     "Secondary school 13",
+     "Secondary school 14",
+     "Vocational school 15",
+     "Secondary school 16",
+     "Vocational school 17",
+     "Primary school 18",
+     "Primary school 19",
+     "Secondary school 20",
+     "Primary school 21",
+     "Primary school 22",
+     "Primary school 23",
+     "Secondary school 24",
+     "Special school 25",
+     "Primary school 26",
+     "Secondary school 27",
+     "Primary school 28",
+     "Secondary school 29",
+     "Special school 30",
+     "Special school 31",
+     "Primary school 32",
+     "Secondary school 33",
+     "Secondary school 34",
+     "Vocational school 35",
+     "Secondary school 36",
+     "Special school 37",
+     "Secondary school 38",
+     "Special school 39",
+     "Vocational school 40",
+     "Secondary school 41",
+     "Vocational school 42",
+     "Secondary school 43",
+     "Secondary school 44",
+     "Secondary school 45"
+    ]
+   },
+   {
+    "name": "type",
+    "type": "string",
+    "values": [
+     "primary",
+     "special",
+     "secondary",
+     "vocational"
+    ]
+   },
+   {
+    "name": "status",
+    "type": "string",
+    "values": [
+     "open",
+     "closed",
+     "planned"
+    ]
+   },
+   {
+    "name": "pupils",
+    "type": "number",
+    "min": 65,
+    "max": 1391
+   }
+  ]
+ },
+ "routes": {
+  "kind": "vector",
+  "geometry": "line",
+  "feature_count": 7,
+  "fields": [
+   {
+    "name": "name",
+    "type": "string",
+    "values": [
+     "Route A",
+     "Route B",
+     "Route C",
+     "Route D",
+     "Route E",
+     "Route F",
+     "Route G"
+    ]
+   },
+   {
+    "name": "status",
+    "type": "string",
+    "values": [
+     "existing",
+     "planned"
+    ]
+   },
+   {
+    "name": "oneway",
+    "type": "boolean",
+    "values": [
+     false,
+     true
+    ]
+   },
+   {
+    "name": "traffic",
+    "type": "number",
+    "min": 965,
+    "max": 3910
+   },
+   {
+    "name": "road_class",
+    "type": "number",
+    "min": 1,
+    "max": 3
+   }
+  ]
+ },
+ "landcover": {
+  "kind": "raster",
+  "source": "file",
+  "bands": [
+   {
+    "index": 1,
+    "min": 1,
+    "max": 6
+   }
+  ],
+  "no_data": 0,
+  "data_type": "integer",
+  "color_table": true
+ },
+ "satellite": {
+  "kind": "raster",
+  "source": "file",
+  "bands": [
+   {
+    "index": 1,
+    "min": 12,
+    "max": 229
+   },
+   {
+    "index": 2,
+    "min": 27,
+    "max": 204
+   },
+   {
+    "index": 3,
+    "min": 15,
+    "max": 180
+   },
+   {
+    "index": 4,
+    "min": 4,
+    "max": 255
+   }
+  ],
+  "no_data": 0,
+  "data_type": "uint8",
+  "color_table": false
+ },
+ "elevation": {
+  "kind": "raster",
+  "source": "file",
+  "bands": [
+   {
+    "index": 1,
+    "min": 181.1414031982422,
+    "max": 439.28814697265625
+   }
+  ],
+  "no_data": -9999,
+  "data_type": "float",
+  "color_table": false
+ },
+ "districts": {
+  "kind": "vector",
+  "geometry": "polygon",
+  "feature_count": 20,
+  "fields": [
+   {
+    "name": "name",
+    "type": "string",
+    "values": [
+     "Altstadt",
+     "Nordend",
+     "Westend",
+     "Südpark",
+     "Hafen",
+     "Bergviertel",
+     "Seefeld",
+     "Lindenau",
+     "Am Bach",
+     "Neustadt",
+     "Ostheim",
+     "Feldmark",
+     "Mühlberg",
+     "Kirchhof",
+     "Schlossberg",
+     "Auenwald",
+     "Rosental",
+     "Sonnenhang",
+     "Talblick",
+     "Wiesengrund"
+    ]
+   },
+   {
+    "name": "population",
+    "type": "number",
+    "min": 3440,
+    "max": 25580
+   },
+   {
+    "name": "area_km2",
+    "type": "number",
+    "min": 2.3,
+    "max": 3.7
+   },
+   {
+    "name": "density",
+    "type": "number",
+    "min": 1229,
+    "max": 10658
+   },
+   {
+    "name": "land_use",
+    "type": "string",
+    "values": [
+     "residential",
+     "commercial",
+     "green",
+     "mixed"
+    ]
+   }
+  ]
+ },
+ "wms": {
+  "kind": "raster",
+  "source": "wms",
+  "service_styles": [
+   "default",
+   "grey"
+  ],
+  "legend_image": true
+ },
+ "tiles": {
+  "kind": "raster",
+  "source": "xyz",
+  "service_styles": [],
+  "legend_image": false
+ }
+}

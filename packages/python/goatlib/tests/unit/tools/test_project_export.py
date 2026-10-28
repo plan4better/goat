@@ -250,7 +250,7 @@ class TestProjectExportRunner:
 
             # Check manifest
             manifest = json.loads(zf.read("manifest.json"))
-            assert manifest["format_version"] == "1.1"
+            assert manifest["format_version"] == "1.2"
             assert manifest["project_name"] == "Test Project"
             assert manifest["layer_count"] == 1
 
@@ -289,7 +289,7 @@ class TestProjectExportRunner:
             "feature_layer_geometry_type": "point",
             "tool_type": None,
             "job_id": None,
-            "properties": None,
+            "style": None,
             "other_properties": None,
             "size": None,
             "thumbnail_url": None,
@@ -326,17 +326,21 @@ class TestProjectExportRunner:
             "layer_project_group_id": None,
             "order": 0,
             "name": "My Layer",
-            "properties": None,
             "other_properties": None,
             "query": None,
             "charts": None,
+            "styles": [],
+            "visible": True,
+            "position": "top",
+            "time_value": None,
+            "legend_expanded": True,
         }
 
         async def fake_fetch(query: str, *args: object) -> list[dict[str, Any]]:
             queries.append(query)
-            if "FROM customer.layer_project\n" in query:
+            if "FROM customer.layer_project lp\n" in query:
                 return [link_row]
-            if "FROM customer.layer\n" in query:
+            if "FROM customer.layer l\n" in query:
                 return [layer_row]
             return []
 
@@ -350,7 +354,7 @@ class TestProjectExportRunner:
             mock_asyncpg.connect = AsyncMock(return_value=conn)
             metadata = await runner._gather_metadata(str(project_id), str(user_id))
 
-        layer_select = next(q for q in queries if "FROM customer.layer\n" in q)
+        layer_select = next(q for q in queries if "FROM customer.layer l\n" in q)
         assert "field_config" in layer_select, (
             "layer SELECT must request field_config, got:\n" + layer_select
         )

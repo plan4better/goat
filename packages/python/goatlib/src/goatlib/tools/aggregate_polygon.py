@@ -33,6 +33,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
+from goatlib.tools.style import classified
 
 logger = logging.getLogger(__name__)
 
@@ -259,54 +260,25 @@ class AggregatePolygonToolRunner(BaseToolRunner[AggregatePolygonToolParams]):
 
         return columns
 
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: AggregatePolygonToolParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return style for aggregated output with quantile breaks."""
-        # Determine the value field based on the statistics operation
-        # Use first statistic for styling
-        stat_op = params.column_statistics[0].operation
-        stat_field = params.column_statistics[0].field
-
-        if stat_op.value == "count":
-            color_field = "count"
+        """Aggregates classified by their first statistic, in oranges."""
+        stat = params.column_statistics[0]
+        stat_op = stat.operation
+        if stat.result_name:
+            field = stat.result_name
+        elif stat_op.value == "count":
+            field = "count"
         else:
             # For sum/mean/min/max, the output column is named after the operation
-            color_field = (
-                f"{stat_op.value}_{stat_field}" if stat_field else stat_op.value
-            )
+            field = f"{stat_op.value}_{stat.field}" if stat.field else stat_op.value
 
-        # Compute quantile breaks from the DuckLake table
-        color_scale_breaks = None
-        table_name = table_info["table_name"] if table_info else None
-        if table_name or parquet_path:
-            color_scale_breaks = self.compute_quantile_breaks(
-                table_name=table_name,
-                column_name=color_field,
-                num_breaks=6,
-                strip_zeros=True,
-                parquet_path=parquet_path,
-            )
-            if color_scale_breaks:
-                logger.info(
-                    "Computed quantile breaks for %s: %s",
-                    color_field,
-                    color_scale_breaks,
-                )
-
-        # Import here to avoid circular imports
-        from goatlib.tools.style import get_heatmap_style
-
-        # Use Orange for aggregation - represents count/sum data
-        return get_heatmap_style(
-            color_field_name=color_field,
-            color_scale_breaks=color_scale_breaks,
-            color_range_name="Oranges",
-        )
+        return classified(field, "colorbrewer:Oranges", geometry)
 
     def process(
         self: Self, params: AggregatePolygonToolParams, temp_dir: Path

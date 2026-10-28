@@ -12,6 +12,8 @@ analysis algorithms, geospatial I/O, and shared models used by the `core`,
 | `analysis/` | Analysis algorithms backing the tools |
 | `io/` | Dataset import/export, format conversion, and remote sources (WFS, …) |
 | `models/` | Pydantic models shared across services |
+| `style/` | GOAT Style, the layer style format: validation, conversion of today's styles, merge, defaults, JSON Schema |
+| `raster/` | Raster files read and colored on the server: band formulas, the coloring a tile URL carries, coloring, reading COGs with rio-tiler, statistics for computed values (the `raster` extra) |
 | `services/`, `storage/`, `tasks/` | Service clients, object storage, background task helpers |
 | `computed_columns/`, `i18n/`, `config/`, `utils/` | Supporting modules |
 
@@ -75,6 +77,153 @@ the table's maximum and the column's high-water mark (core's
 `layer_create_filtered` copies the source's marks along with its
 `field_config`; a copy made any other way (project export and import) has no
 mark and continues from its own highest number.
+
+## GOAT Style (`style/`)
+
+GOAT Style is the format of layer styles: one JSON document per style, written
+by the style panel and the AI, compiled to MapLibre by the web app. This package
+is its single validator; core, processes and the catalog import it, and it does
+no IO except `dryrun` and `data` (the data description and statistics, read from
+DuckDB by processes).
+
+The format is specified in `docs/style-spec.md`; "spec N" in the code, tests and
+READMEs means section N of that file.
+
+- **Documents stay dicts.** The models in `style/models/` check structure and
+  produce the JSON Schema (`style/data/goat-style.schema.json`, regenerated with
+  `python -m goatlib.style.schema --write`, checked by a test). Nothing rebuilds
+  a document from a model, so a stored style holds exactly what its author set;
+  defaults belong to the compiler. For the same reason the models are strict
+  about JSON types: `"0.5"` is not a number.
+- **MapLibre's limits live in one table.** GOAT Style is its own format, not
+  MapLibre's, but most settings compile to a MapLibre property and must stay
+  inside what MapLibre accepts: its bounds (opacity 0 to 1, layer zooms 0 to 24)
+  and its value forms (a property MapLibre does not take data-driven values for
+  takes no attribute mapping and is set once per layer). Those limits are copied,
+  per GOAT setting, into `style/data/maplibre_limits.json`, next to the MapLibre
+  properties the setting compiles to and GOAT's own choices; the models read them
+  through `limits.py`. The web's drift test
+  (`apps/web/lib/style/__tests__/maplibre-limits.test.ts`) compares the table
+  with the installed style spec, so a MapLibre upgrade that moves a limit fails
+  there by name. A new MapLibre feature does not reach GOAT by itself: it is
+  added deliberately, through the models, the editor and the compiler.
+- **Three layers of checks**, each returning `Issue`s with a code, a level and a
+  JSON pointer (list items addressed by their `id`): the models (`parse.py`),
+  rules about the document as a whole (`check.py`), and rules against the data
+  (`data_check.py`), which read a `DataContext` built by whoever can see the data.
+  `validate.py` runs all three.
+- **Styles before GOAT Style are version 0.** `convert_v0.py` turns them into
+  documents and returns map state (`visibility`, `legend.collapsed`) and what it
+  could not keep separately; it never raises, because the server never validated
+  those styles. `upgrade.py` runs it for anything that still arrives in the old
+  shape, and `migrate.py` holds what every place that stores such a style uses:
+  `migrate_style` (convert, give ids, stamp the computed values with the data
+  they belong to, fall back to the default style rather than fail; core's data
+  migration and the import of older project archives) and `current` (any
+  version to the current one with ids: a saved workflow result's remembered
+  style, a catalog style asset, a 1.2 archive).
+- **Merging** (`merge.py`) follows the save protocol: objects merge key by key,
+  lists of items with ids merge item by item, every other list is one value, and
+  values the server computes are never part of a diff. Items added without an id
+  get one first (`ids.py`), and what one side removed stays removed. The browser
+  runs the same rules; `tests/unit/style/fixtures/merge_cases.json` keeps the two
+  equal.
+- **Catalogues** (`style/data/palettes.json`, `icons.json`) are the palette and
+  icon ids styles may use; palettes are published to the web and the AI from here.
+- **Computed values** (`compute.py`): a style states the intent (a method and a
+  count, a value form without a domain), `needed_stats` names the statistics it
+  needs, whoever can read the data computes them, and `apply_computed` writes the
+  results next to the intent with the data's fingerprint. `data.compute_into`
+  does both over a DuckDB relation; processes' style check and the tools (for
+  the layers they create) call it, so both compute alike. The server is the only place classes, colors and domains are
+  computed, so the compiler, the legend and published maps never disagree;
+  palette sampling and ranges live in `colors.py`, breaks in the shared
+  `analysis.statistics` module. A recompute keeps what classes carry (by position
+  for numeric classes, by value for categories); values the server wrote itself
+  (`computed.generated`) follow the palette and range, values set by hand stay.
+  Numeric classes keep open first and last classes and store the field's minimum
+  and maximum as `computed.domain` (manual classes get only that), so labels can
+  show the data's ends. A
+  part with an error of its own is not computed, so a malformed style comes back
+  as issues. `same_ignoring_stamps` lets a save tell a recompute with the same
+  result from a change.
+  A raster style's computed values are the same kind of statistics over the band
+  (or band formula) as the field: its range as `render.computed.domain`, classes
+  into `render.classify`, computed by `raster.stats` from an overview sample with
+  the shared class breaks.
+
+- **The data fingerprint** (`fingerprint.py`): computed values record the data
+  they come from (`ducklake:<layer.data_snapshot>`, `catalog:<catalog_version>`,
+  a raster file's `url:<hash of its address>`: core reads no file, so a file
+  replaced under the same address is not noticed) and `is_stale` compares. `layer.data_snapshot` is moved by one Postgres
+  statement, `advance_data_snapshots_sql`, which reads DuckLake's change log after
+  a cursor; core runs it when a map loads (after `data_snapshots_pending_sql`,
+  three index reads, says something is new), the maintenance task before it
+  expires snapshots. No data writer has to remember to mark its layer, and a change that
+  expired unseen makes every layer recompute once, which is safe. A tool that
+  creates a layer writes the snapshot that wrote its table, the value the
+  statement would set (it only ever raises the column), so the layer's classes
+  are not stale on its first load.
+- **The map document from rows** (`map_rows.py`): the layer tree in order (groups
+  and layers share one `order` per parent, top first) with the map state of
+  every entry. core's map request, publishing and data migration assemble it with
+  `build_map_document`; the thumbnail task draws a project's `drawn_layers`.
+
+## Raster files (`raster/`)
+
+Raster layers are COG addresses read in place over HTTP: geoapi serves colored
+tiles, elevation tiles, statistics and point values from them, processes computes
+a raster style's values. Both install the `raster` extra (rio-tiler; rasterio's
+wheel bundles its own GDAL, so neither image needs a system GDAL). core needs
+none of it: `formula` and `token` import no raster stack, so validation runs in
+core too.
+
+- **One formula grammar** (`formula.py`): `b1`, `b2`, ... up to the file's band
+  count, numbers, `+ - * /`, brackets, parsed into a small tree and evaluated with
+  numpy, never `eval`. Validation (`style.data_check`) and evaluation use the same
+  parser. Division by zero is no data.
+- **The coloring travels in the tile URL** (`token.py`): the web resolves the
+  style into a coloring (palette colors, class bounds and colors) and sends it as
+  base64url JSON; the service needs no palette catalogue and no lookup, and the
+  token is its own cache key. `tests/unit/raster/fixtures/web_tokens.json` holds
+  tokens the web wrote; both test suites read it.
+- **Colors match the browser's of before the service** (`color.py`): a ramp is a
+  256-color lookup, stops blend or take the nearest, classes are `[from, to)`,
+  categories match the rounded value; no data (the file's, with float32 rounding,
+  NaN, the style's values) is transparent.
+- **Only checked addresses open** (`source.py`): http(s) hosts that resolve to
+  public addresses or are listed by the service (`private_hosts`); redirects
+  answered to a HEAD request are followed hop by hop with the same check
+  (`io/remote_source/url_guard.py`, shared with WFS imports), the result kept ten
+  minutes. GDAL resolves the name again and follows redirects a server sends only
+  to its reads: the residual `url_guard` names, so deployments also restrict the
+  services' outgoing traffic. A file that does not answer fails within seconds
+  (no retries, a stalled transfer cut after five seconds) and then fails at once
+  for 30 seconds. A read that would decimate the coarsest overview more than 8x
+  is skipped, so a COG without overviews is never downloaded whole.
+
+## Styles of the layers goatlib creates
+
+Tools, bundles, catalog promotion, workflow results and project imports write
+style rows themselves, through `tools/style_rows.py`: the dataset's default style
+and a project layer's first named style, "Default", copied from it and active
+(core's add paths write the same rows with their own driver). They store only
+documents goatlib built or upgraded:
+
+- **Tool looks** are documents from `tools/style.py` (`classified`,
+  `categories`, the bundle role symbols, ...). A tool returns its look from
+  `BaseToolRunner.get_layer_style`; the runner fills the classes from the result
+  (`computed_style`) and stamps them with the new table's snapshot. A workflow
+  preview has no layer: its result and the preview's metadata file carry the
+  document as `style`, stamped `temp`, and saving the result computes it again.
+- **Catalog items** promote with their published style asset upgraded for the
+  item's geometry (`catalog/item.py`, shared with the catalog service's asset
+  route), stamped `catalog:<version>`, else the default style.
+- **Project archives** (format 1.2) carry every layer's default style, every
+  project layer's named styles with the active one, the map state of layers and
+  groups, and the uploaded icons the styles name (`asset:<id>`, remapped to the
+  imported assets); archives before 1.2 carry `properties`, which the import
+  converts.
 
 ## Copies behind a project entry
 

@@ -34,7 +34,7 @@ from goatlib.tools.schemas import (
     ToolOutputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import DEFAULT_POINT_STYLE, build_ordinal_color_map, hex_to_rgb
+from goatlib.tools.style import SUNSET, categories
 
 logger = logging.getLogger(__name__)
 
@@ -304,11 +304,6 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
             output_parquet_points, metadata_points = self.process(params, temp_path)
             summary_result = self._summary_result
 
-            # Compute style from params (static, no data dependency)
-            points_style = self.get_layer_properties(
-                params, metadata_points, parquet_path=output_parquet_points
-            )
-
             # Temp mode: write primary (points) output only, skip summary and DB records
             if temp_mode:
                 result = self._write_temp_result(
@@ -316,7 +311,7 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
                     output_parquet=output_parquet_points,
                     output_name=output_name_points,
                     output_layer_id=output_layer_id_points,
-                    properties=points_style,
+                    metadata=metadata_points,
                 )
                 asyncio.get_event_loop().run_until_complete(self._close_db_service())
                 return result
@@ -366,7 +361,6 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
                     output_name=output_name_points,
                     metadata=metadata_points,
                     table_info=table_info_points,
-                    custom_properties=points_style,
                 )
             )
 
@@ -381,7 +375,7 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
                         output_name=output_name_summary,
                         metadata=metadata_summary,
                         table_info=table_info_summary,
-                        custom_properties=summary_style,
+                        style=summary_style,
                     )
                 )
 
@@ -443,58 +437,32 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
     def _get_summary_style(
         self: Self, params: ClusteringZonesToolParams
     ) -> dict[str, Any]:
-        """Get layer properties for styling the cluster summary layer."""
-        cluster_values = list(range(params.nb_cluster))
-        colors, color_map = build_ordinal_color_map(cluster_values, palette="Sunset")
+        """The cluster summary: one larger, lighter point per cluster."""
+        return categories(
+            "cluster_id",
+            list(range(params.nb_cluster)),
+            SUNSET,
+            "point",
+            symbol={"marker": {"size": 16, "opacity": 0.6}},
+        )
 
-        return {
-            **DEFAULT_POINT_STYLE,
-            "color": hex_to_rgb(colors[len(colors) // 2]),
-            "opacity": 0.6,
-            "radius": 8,
-            "color_field": {"name": "cluster_id", "type": "number"},
-            "color_range": {
-                "name": "Custom",
-                "type": "custom",
-                "colors": colors,
-                "category": "Custom",
-                "color_map": color_map,
-            },
-            "color_scale": "ordinal",
-        }
-
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: ClusteringZonesToolParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Get layer properties for styling the clustering results."""
-        color_field = "cluster_id"
-
-        # Generate cluster ID values based on number of clusters
-        cluster_values = list(range(params.nb_cluster))
-
-        # Use build_ordinal_color_map to create exact number of colors for clusters
-        colors, color_map = build_ordinal_color_map(cluster_values, palette="Sunset")
-
-        # Build custom style with interpolated colors
-        return {
-            **DEFAULT_POINT_STYLE,
-            "color": hex_to_rgb(colors[len(colors) // 2]),  # Middle color as default
-            "opacity": 0.8,
-            "radius": 4,
-            "color_field": {"name": color_field, "type": "number"},
-            "color_range": {
-                "name": "Custom",
-                "type": "custom",
-                "colors": colors,
-                "category": "Custom",
-                "color_map": color_map,
-            },
-            "color_scale": "ordinal",
-        }
+        """One class per cluster, in sunset colors."""
+        return categories(
+            "cluster_id",
+            list(range(params.nb_cluster)),
+            SUNSET,
+            geometry,
+            symbol={"marker": {"size": 8, "opacity": 0.8}}
+            if geometry == "point"
+            else None,
+        )
 
 
 def main(params: ClusteringZonesToolParams) -> dict[str, Any]:

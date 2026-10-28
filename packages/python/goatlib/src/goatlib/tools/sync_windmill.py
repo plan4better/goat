@@ -240,7 +240,7 @@ def main(
     folder_id: str,
     layer_name: str | None = None,
     export_node_id: str | None = None,
-    properties: dict | None = None,
+    style: dict | None = None,
     overwrite_previous: bool = False,
 ) -> dict:
     from goatlib.tools.finalize_layer import main as _main
@@ -252,7 +252,7 @@ def main(
         folder_id=folder_id,
         layer_name=layer_name,
         export_node_id=export_node_id,
-        properties=properties,
+        style=style,
         overwrite_previous=overwrite_previous,
     )
 '''

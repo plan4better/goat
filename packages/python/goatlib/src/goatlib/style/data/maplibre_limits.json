@@ -1,0 +1,1199 @@
+{
+  "about": [
+    "The limits GOAT Style takes from MapLibre, by GOAT setting. goatlib's models read them through goatlib.style.limits;",
+    "apps/web/lib/style/__tests__/maplibre-limits.test.ts fails when the installed MapLibre style spec no longer matches.",
+    "models: the model fields (Model.field in the JSON Schema; * matches any name; Zoom*.zoom.0 is a zoom stop's zoom).",
+    "maplibre: what the setting compiles to, as <spec group>.<name>; a value drawn into an image names the image property.",
+    "spec: copied from MapLibre's style spec, over all of maplibre: the highest minimum, the lowest maximum, for paint and",
+    "layout properties the zoom expressions they take (blend: interpolated, step, null: none) and whether they take",
+    "data-driven ones (feature).",
+    "goat: where goatlib sets its own value instead: min, max, zoom, attribute (attribute mappings; default: feature) and",
+    "per_feature (classes and rules may set it; default: feature) and choice (a name the compiler turns into the value:",
+    "MapLibre's min and max bound what the compiler writes, not the name). Everything else is spec's.",
+    "differs: why goatlib allows more than MapLibre for this setting."
+  ],
+  "settings": {
+    "fill.color": {
+      "models": [
+        "Fill.color"
+      ],
+      "maplibre": [
+        "paint_fill.fill-color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "fill.opacity": {
+      "models": [
+        "Fill.opacity"
+      ],
+      "maplibre": [
+        "paint_fill.fill-opacity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "fill.pattern": {
+      "models": [
+        "Fill.pattern"
+      ],
+      "maplibre": [
+        "paint_fill.fill-pattern"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "attribute": false
+      }
+    },
+    "fill.pattern_color": {
+      "models": [
+        "Fill.pattern_color"
+      ],
+      "maplibre": [
+        "paint_fill.fill-pattern"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "zoom": "blend"
+      },
+      "differs": "drawn into the pattern image, which switches at zoom stops: a blend shows as a step at each stop"
+    },
+    "fill.pattern_spacing": {
+      "models": [
+        "Fill.pattern_spacing"
+      ],
+      "maplibre": [
+        "paint_fill.fill-pattern"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "min": 0,
+        "attribute": false
+      }
+    },
+    "fill.pattern_width": {
+      "models": [
+        "Fill.pattern_width"
+      ],
+      "maplibre": [
+        "paint_fill.fill-pattern"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "min": 0,
+        "attribute": false
+      }
+    },
+    "outline.color": {
+      "models": [
+        "Outline.color"
+      ],
+      "maplibre": [
+        "paint_line.line-color",
+        "paint_circle.circle-stroke-color",
+        "paint_symbol.icon-halo-color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "outline.width": {
+      "models": [
+        "Outline.width"
+      ],
+      "maplibre": [
+        "paint_line.line-width",
+        "paint_circle.circle-stroke-width",
+        "paint_symbol.icon-halo-width"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "outline.opacity": {
+      "models": [
+        "Outline.opacity"
+      ],
+      "maplibre": [
+        "paint_line.line-opacity",
+        "paint_circle.circle-stroke-opacity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "outline.dash": {
+      "models": [
+        "Outline.dash"
+      ],
+      "maplibre": [
+        "paint_line.line-dasharray"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "choice": true,
+        "attribute": false
+      }
+    },
+    "line.color": {
+      "models": [
+        "Line.color"
+      ],
+      "maplibre": [
+        "paint_line.line-color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "line.width": {
+      "models": [
+        "Line.width"
+      ],
+      "maplibre": [
+        "paint_line.line-width"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "line.opacity": {
+      "models": [
+        "Line.opacity"
+      ],
+      "maplibre": [
+        "paint_line.line-opacity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "line.dash": {
+      "models": [
+        "Line.dash"
+      ],
+      "maplibre": [
+        "paint_line.line-dasharray"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "choice": true,
+        "attribute": false
+      }
+    },
+    "line.cap": {
+      "models": [
+        "Line.cap"
+      ],
+      "maplibre": [
+        "layout_line.line-cap"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "attribute": false
+      }
+    },
+    "line.join": {
+      "models": [
+        "Line.join"
+      ],
+      "maplibre": [
+        "layout_line.line-join"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "attribute": false
+      }
+    },
+    "line.offset": {
+      "models": [
+        "Line.offset"
+      ],
+      "maplibre": [
+        "paint_line.line-offset"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "line.blur": {
+      "models": [
+        "Line.blur"
+      ],
+      "maplibre": [
+        "paint_line.line-blur"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "casing.color": {
+      "models": [
+        "Casing.color"
+      ],
+      "maplibre": [
+        "paint_line.line-color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "casing.width": {
+      "models": [
+        "Casing.width"
+      ],
+      "maplibre": [
+        "paint_line.line-width"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "casing.opacity": {
+      "models": [
+        "Casing.opacity"
+      ],
+      "maplibre": [
+        "paint_line.line-opacity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "arrows.placement": {
+      "models": [
+        "Arrows.placement"
+      ],
+      "maplibre": [
+        "layout_symbol.symbol-placement"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": false
+      },
+      "goat": {
+        "zoom": null
+      }
+    },
+    "arrows.direction": {
+      "models": [
+        "Arrows.direction"
+      ],
+      "maplibre": [
+        "layout_symbol.icon-rotate"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false,
+        "per_feature": false
+      }
+    },
+    "arrows.spacing": {
+      "models": [
+        "Arrows.spacing"
+      ],
+      "maplibre": [
+        "layout_symbol.symbol-spacing"
+      ],
+      "spec": {
+        "min": 1,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "arrows.size": {
+      "models": [
+        "Arrows.size"
+      ],
+      "maplibre": [
+        "layout_symbol.icon-size"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "arrows.color": {
+      "models": [
+        "Arrows.color"
+      ],
+      "maplibre": [
+        "paint_symbol.icon-color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "marker.shape": {
+      "models": [
+        "Marker.shape"
+      ],
+      "maplibre": [
+        "layout_symbol.icon-image"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false
+      }
+    },
+    "marker.color": {
+      "models": [
+        "Marker.color"
+      ],
+      "maplibre": [
+        "paint_circle.circle-color",
+        "paint_symbol.icon-color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "marker.fill": {
+      "models": [
+        "Marker.fill"
+      ],
+      "maplibre": [
+        "paint_circle.circle-opacity",
+        "layout_symbol.icon-image"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "choice": true,
+        "attribute": false,
+        "zoom": null
+      }
+    },
+    "marker.size": {
+      "models": [
+        "Marker.size"
+      ],
+      "maplibre": [
+        "paint_circle.circle-radius",
+        "layout_symbol.icon-size"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "marker.opacity": {
+      "models": [
+        "Marker.opacity"
+      ],
+      "maplibre": [
+        "paint_circle.circle-opacity",
+        "paint_symbol.icon-opacity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "marker.icon": {
+      "models": [
+        "Marker.icon"
+      ],
+      "maplibre": [
+        "layout_symbol.icon-image"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "attribute": false
+      }
+    },
+    "marker.icon_color": {
+      "models": [
+        "Marker.icon_color"
+      ],
+      "maplibre": [
+        "layout_symbol.icon-image"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "zoom": "blend"
+      },
+      "differs": "drawn into the marker image, which switches at zoom stops: a blend shows as a step at each stop"
+    },
+    "marker.rotation": {
+      "models": [
+        "Marker.rotation"
+      ],
+      "maplibre": [
+        "layout_symbol.icon-rotate"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "marker.anchor": {
+      "models": [
+        "Marker.anchor"
+      ],
+      "maplibre": [
+        "layout_symbol.icon-anchor"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "attribute": false
+      }
+    },
+    "marker.offset": {
+      "models": [
+        "Marker.offset"
+      ],
+      "maplibre": [
+        "paint_circle.circle-translate",
+        "layout_symbol.icon-offset"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "per_feature": true
+      },
+      "differs": "circle-translate takes one value per layer: circles move by the base offset, classes and rules move icons and marker images only (4.5)"
+    },
+    "marker.allow_overlap": {
+      "models": [
+        "Marker.allow_overlap"
+      ],
+      "maplibre": [
+        "layout_symbol.icon-allow-overlap"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": false
+      },
+      "goat": {
+        "zoom": null
+      }
+    },
+    "label.text": {
+      "models": [
+        "Label.text"
+      ],
+      "maplibre": [
+        "layout_symbol.text-field"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false
+      }
+    },
+    "label.format": {
+      "models": [
+        "Label.format"
+      ],
+      "maplibre": [
+        "layout_symbol.text-field"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false,
+        "per_feature": false
+      }
+    },
+    "label.formats": {
+      "models": [
+        "Label.formats"
+      ],
+      "maplibre": [
+        "layout_symbol.text-field"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false,
+        "per_feature": false
+      }
+    },
+    "label.lines": {
+      "models": [
+        "Label.lines"
+      ],
+      "maplibre": [
+        "layout_symbol.text-field"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false,
+        "per_feature": false
+      }
+    },
+    "label.size": {
+      "models": [
+        "Label.size"
+      ],
+      "maplibre": [
+        "layout_symbol.text-size"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "label.color": {
+      "models": [
+        "Label.color"
+      ],
+      "maplibre": [
+        "paint_symbol.text-color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "label.halo.color": {
+      "models": [
+        "Halo.color"
+      ],
+      "maplibre": [
+        "paint_symbol.text-halo-color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "label.halo.width": {
+      "models": [
+        "Halo.width"
+      ],
+      "maplibre": [
+        "paint_symbol.text-halo-width"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "label.font.weight": {
+      "models": [
+        "Font.weight"
+      ],
+      "maplibre": [
+        "layout_symbol.text-font"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "attribute": false
+      }
+    },
+    "label.placement": {
+      "models": [
+        "Label.placement"
+      ],
+      "maplibre": [
+        "layout_symbol.symbol-placement",
+        "layout_symbol.text-variable-anchor-offset",
+        "layout_symbol.text-anchor"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": false
+      },
+      "goat": {
+        "zoom": null
+      }
+    },
+    "label.offset": {
+      "models": [
+        "Label.offset"
+      ],
+      "maplibre": [
+        "layout_symbol.text-offset",
+        "layout_symbol.text-variable-anchor-offset"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "attribute": false
+      }
+    },
+    "label.max_width": {
+      "models": [
+        "Label.max_width"
+      ],
+      "maplibre": [
+        "layout_symbol.text-max-width"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      }
+    },
+    "label.priority": {
+      "models": [
+        "Label.priority"
+      ],
+      "maplibre": [
+        "layout_symbol.symbol-sort-key"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false,
+        "per_feature": false
+      }
+    },
+    "label.allow_overlap": {
+      "models": [
+        "Label.allow_overlap"
+      ],
+      "maplibre": [
+        "layout_symbol.text-allow-overlap"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": false
+      },
+      "goat": {
+        "zoom": null
+      }
+    },
+    "label.lines.size": {
+      "models": [
+        "LabelLine.size"
+      ],
+      "maplibre": [
+        "layout_symbol.text-field"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "min": 0,
+        "zoom": null,
+        "attribute": false
+      }
+    },
+    "opacity": {
+      "models": [
+        "VectorStyle.opacity"
+      ],
+      "maplibre": [
+        "paint_fill.fill-layer-opacity",
+        "paint_line.line-layer-opacity",
+        "paint_circle.circle-opacity",
+        "paint_circle.circle-stroke-opacity",
+        "paint_symbol.icon-opacity",
+        "paint_symbol.text-opacity",
+        "paint_heatmap.heatmap-opacity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "zoom": {
+      "models": [
+        "*.min_zoom",
+        "*.max_zoom",
+        "*.points_from_zoom",
+        "ClusterRender.cluster_until_zoom",
+        "Zoom*.zoom.0"
+      ],
+      "maplibre": [
+        "layer.minzoom",
+        "layer.maxzoom",
+        "source_geojson.clusterMaxZoom"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 24
+      }
+    },
+    "heatmap.radius": {
+      "models": [
+        "HeatmapRender.radius"
+      ],
+      "maplibre": [
+        "paint_heatmap.heatmap-radius"
+      ],
+      "spec": {
+        "min": 1,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "attribute": false
+      }
+    },
+    "heatmap.intensity": {
+      "models": [
+        "HeatmapRender.intensity"
+      ],
+      "maplibre": [
+        "paint_heatmap.heatmap-intensity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "min": 0.2,
+        "max": 3
+      }
+    },
+    "heatmap.opacity": {
+      "models": [
+        "HeatmapRender.opacity"
+      ],
+      "maplibre": [
+        "paint_heatmap.heatmap-opacity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "heatmap.weight": {
+      "models": [
+        "HeatmapRender.weight"
+      ],
+      "maplibre": [
+        "paint_heatmap.heatmap-weight"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false
+      }
+    },
+    "cluster.radius": {
+      "models": [
+        "ClusterRender.radius"
+      ],
+      "maplibre": [
+        "source_geojson.clusterRadius"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null
+      }
+    },
+    "cluster.min_points": {
+      "models": [
+        "ClusterRender.min_points"
+      ],
+      "maplibre": [
+        "source_geojson.clusterMinPoints"
+      ],
+      "spec": {
+        "min": null,
+        "max": null
+      },
+      "goat": {
+        "min": 2
+      }
+    },
+    "h3.opacity": {
+      "models": [
+        "H3Render.opacity"
+      ],
+      "maplibre": [
+        "paint_fill.fill-opacity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false
+      }
+    },
+    "h3.outline.width": {
+      "models": [
+        "H3Outline.width"
+      ],
+      "maplibre": [
+        "paint_line.line-width"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false
+      }
+    },
+    "raster.opacity": {
+      "models": [
+        "RasterStyle.opacity"
+      ],
+      "maplibre": [
+        "paint_raster.raster-opacity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "raster.brightness": {
+      "models": [
+        "RasterStyle.brightness"
+      ],
+      "maplibre": [
+        "paint_raster.raster-brightness-min",
+        "paint_raster.raster-brightness-max"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "min": -1,
+        "max": 1,
+        "zoom": null
+      },
+      "differs": "compiled as raster-brightness-min = max(0, b) and raster-brightness-max = min(1, 1 + b), which stay in 0 to 1"
+    },
+    "raster.contrast": {
+      "models": [
+        "RasterStyle.contrast"
+      ],
+      "maplibre": [
+        "paint_raster.raster-contrast"
+      ],
+      "spec": {
+        "min": -1,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "zoom": null
+      }
+    },
+    "raster.saturation": {
+      "models": [
+        "RasterStyle.saturation"
+      ],
+      "maplibre": [
+        "paint_raster.raster-saturation"
+      ],
+      "spec": {
+        "min": -1,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "zoom": null
+      }
+    },
+    "raster.hue": {
+      "models": [
+        "RasterStyle.hue"
+      ],
+      "maplibre": [
+        "paint_raster.raster-hue-rotate"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "zoom": null
+      }
+    },
+    "terrain.direction": {
+      "models": [
+        "TerrainRender.direction"
+      ],
+      "maplibre": [
+        "paint_hillshade.hillshade-illumination-direction"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 359,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "zoom": null
+      }
+    },
+    "terrain.altitude": {
+      "models": [
+        "TerrainRender.altitude"
+      ],
+      "maplibre": [
+        "paint_hillshade.hillshade-illumination-altitude"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 90,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "zoom": null
+      }
+    },
+    "terrain.exaggeration": {
+      "models": [
+        "TerrainRender.exaggeration"
+      ],
+      "maplibre": [
+        "paint_hillshade.hillshade-exaggeration"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "zoom": null
+      }
+    },
+    "view.zoom": {
+      "models": [
+        "View.zoom"
+      ],
+      "maplibre": [
+        "$root.zoom"
+      ],
+      "spec": {
+        "min": null,
+        "max": null
+      },
+      "goat": {
+        "min": 0,
+        "max": 24
+      }
+    },
+    "view.pitch": {
+      "models": [
+        "View.pitch"
+      ],
+      "maplibre": [
+        "$root.pitch"
+      ],
+      "spec": {
+        "min": null,
+        "max": null
+      },
+      "goat": {
+        "min": 0,
+        "max": 85
+      }
+    }
+  }
+}

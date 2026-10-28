@@ -29,6 +29,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
+from goatlib.tools.style import TEAL, classified
 
 logger = logging.getLogger(__name__)
 
@@ -178,55 +179,23 @@ class DissolveToolRunner(BaseToolRunner[DissolveToolParams]):
 
         return columns
 
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: DissolveToolParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return style for dissolved output.
-
-        If statistics were computed, use quantile breaks on the first statistic field.
-        Otherwise, use a simple fill style.
-        """
-        # Determine if we have a numeric field to style by
-        color_field = None
-        if params.calculate_statistics and params.field_statistics:
-            # Use the first statistic for styling
-            first_stat = params.field_statistics[0]
-            if first_stat.operation.value == "count":
-                color_field = "count"
-            else:
-                color_field = f"{first_stat.operation.value}_{first_stat.field}"
-
-        # Import here to avoid circular imports
-        from goatlib.tools.style import get_heatmap_style
-
-        # Use Teal for dissolve - represents aggregated data
-        # If no statistics, this will still return a valid style with default color
-        color_scale_breaks = None
-        table_name = table_info["table_name"] if table_info else None
-        if color_field and (table_name or parquet_path):
-            color_scale_breaks = self.compute_quantile_breaks(
-                table_name=table_name,
-                column_name=color_field,
-                num_breaks=6,
-                strip_zeros=True,
-                parquet_path=parquet_path,
-            )
-            if color_scale_breaks:
-                logger.info(
-                    "Computed quantile breaks for %s: %s",
-                    color_field,
-                    color_scale_breaks,
-                )
-
-        return get_heatmap_style(
-            color_field_name=color_field or "count",
-            color_scale_breaks=color_scale_breaks,
-            color_range_name="Teal",
-        )
+        """Dissolved features classified by their first statistic, in teal; the
+        default style without statistics."""
+        if not (params.calculate_statistics and params.field_statistics):
+            return None
+        first_stat = params.field_statistics[0]
+        if first_stat.operation.value == "count":
+            field = "count"
+        else:
+            field = f"{first_stat.operation.value}_{first_stat.field}"
+        return classified(field, TEAL, geometry)
 
     def process(
         self: Self, params: DissolveToolParams, temp_dir: Path

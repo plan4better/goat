@@ -1,0 +1,1784 @@
+[
+ {
+  "name": "disjoint keys",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   }
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#bbbbbb",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   }
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.8
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   }
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#bbbbbb",
+     "opacity": 0.8
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   }
+  },
+  "refused": []
+ },
+ {
+  "name": "same key, last write wins",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   }
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#bbbbbb",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   }
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   }
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#bbbbbb",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   }
+  },
+  "refused": []
+ },
+ {
+  "name": "added class and recolored class",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "to": 3600,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "to": 3600,
+       "fill": {
+        "color": "#b30000"
+       }
+      },
+      {
+       "id": "c3",
+       "from": 3600,
+       "fill": {
+        "color": "#e34a33"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#111111"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "to": 3600,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#111111"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "to": 3600,
+       "fill": {
+        "color": "#b30000"
+       }
+      },
+      {
+       "id": "c3",
+       "from": 3600,
+       "fill": {
+        "color": "#e34a33"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "refused": []
+ },
+ {
+  "name": "removal wins",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#222222"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "refused": [
+   "/classify/density/classes/c2/fill/color"
+  ]
+ },
+ {
+  "name": "move",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "rules": [
+    {
+     "id": "r1",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v1"
+      ]
+     },
+     "fill": {
+      "color": "#000001"
+     }
+    },
+    {
+     "id": "r2",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v2"
+      ]
+     },
+     "fill": {
+      "color": "#000002"
+     }
+    },
+    {
+     "id": "r3",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v3"
+      ]
+     },
+     "fill": {
+      "color": "#000003"
+     }
+    }
+   ]
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "rules": [
+    {
+     "id": "r1",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v1"
+      ]
+     },
+     "fill": {
+      "color": "#000001"
+     }
+    },
+    {
+     "id": "r3",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v3"
+      ]
+     },
+     "fill": {
+      "color": "#000003"
+     }
+    },
+    {
+     "id": "r2",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v2"
+      ]
+     },
+     "fill": {
+      "color": "#000002"
+     }
+    }
+   ]
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "rules": [
+    {
+     "id": "r1",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v1"
+      ]
+     },
+     "fill": {
+      "color": "#000001"
+     }
+    },
+    {
+     "id": "r2",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v2"
+      ]
+     },
+     "fill": {
+      "color": "#000002"
+     }
+    },
+    {
+     "id": "r3",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v3"
+      ]
+     },
+     "fill": {
+      "color": "#000003"
+     }
+    },
+    {
+     "id": "r4",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v4"
+      ]
+     },
+     "fill": {
+      "color": "#000004"
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "rules": [
+    {
+     "id": "r1",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v1"
+      ]
+     },
+     "fill": {
+      "color": "#000001"
+     }
+    },
+    {
+     "id": "r3",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v3"
+      ]
+     },
+     "fill": {
+      "color": "#000003"
+     }
+    },
+    {
+     "id": "r2",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v2"
+      ]
+     },
+     "fill": {
+      "color": "#000002"
+     }
+    },
+    {
+     "id": "r4",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v4"
+      ]
+     },
+     "fill": {
+      "color": "#000004"
+     }
+    }
+   ]
+  },
+  "refused": []
+ },
+ {
+  "name": "non-id list is one value",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": {
+      "zoom": [
+       [
+        10,
+        1
+       ],
+       [
+        14,
+        3
+       ]
+      ]
+     }
+    }
+   }
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": {
+      "zoom": [
+       [
+        10,
+        2
+       ],
+       [
+        14,
+        4
+       ]
+      ]
+     }
+    }
+   }
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": {
+      "zoom": [
+       [
+        8,
+        1
+       ],
+       [
+        16,
+        5
+       ]
+      ]
+     }
+    }
+   }
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": {
+      "zoom": [
+       [
+        10,
+        2
+       ],
+       [
+        14,
+        4
+       ]
+      ]
+     }
+    }
+   }
+  },
+  "refused": []
+ },
+ {
+  "name": "server values ignored",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "quantile",
+     "count": 2,
+     "palette": "colorbrewer:OrRd",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ],
+     "computed": {
+      "at": "2026-10-23T10:00:01",
+      "data": "ducklake:01",
+      "scope": "dataset"
+     }
+    }
+   ]
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "quantile",
+     "count": 2,
+     "palette": "colorbrewer:OrRd",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ],
+     "computed": {
+      "at": "2026-10-23T10:00:01",
+      "data": "ducklake:01",
+      "scope": "dataset"
+     }
+    }
+   ]
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "quantile",
+     "count": 2,
+     "palette": "colorbrewer:OrRd",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 3100,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 3100,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ],
+     "computed": {
+      "at": "2026-10-23T11:00:02",
+      "data": "ducklake:02",
+      "scope": "dataset"
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "quantile",
+     "count": 2,
+     "palette": "colorbrewer:OrRd",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 3100,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 3100,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ],
+     "computed": {
+      "at": "2026-10-23T11:00:02",
+      "data": "ducklake:02",
+      "scope": "dataset"
+     }
+    }
+   ]
+  },
+  "refused": []
+ },
+ {
+  "name": "retry changes nothing",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "refused": []
+ },
+ {
+  "name": "a removed list stays removed",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#222222"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   }
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   }
+  },
+  "refused": [
+   "/classify/density/classes/c1/fill/color"
+  ]
+ },
+ {
+  "name": "an added item without an id gets one and merges item by item",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#b30000"
+       }
+      },
+      {
+       "from": 5000,
+       "fill": {
+        "color": "#e34a33"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#111111"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#111111"
+       }
+      },
+      {
+       "id": "c3",
+       "from": 5000,
+       "fill": {
+        "color": "#e34a33"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "refused": []
+ },
+ {
+  "name": "a retried add keeps the current item",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#b30000"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#333333"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "id": "density",
+     "field": "density",
+     "method": "manual",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 2800,
+       "fill": {
+        "color": "#fef0d9"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 2800,
+       "fill": {
+        "color": "#333333"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "refused": []
+ },
+ {
+  "name": "an item placed after a removed item keeps its place",
+  "base": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "rules": [
+    {
+     "id": "r1",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v1"
+      ]
+     },
+     "fill": {
+      "color": "#000001"
+     }
+    },
+    {
+     "id": "r2",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v2"
+      ]
+     },
+     "fill": {
+      "color": "#000002"
+     }
+    },
+    {
+     "id": "r3",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v3"
+      ]
+     },
+     "fill": {
+      "color": "#000003"
+     }
+    }
+   ]
+  },
+  "incoming": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "rules": [
+    {
+     "id": "r1",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v1"
+      ]
+     },
+     "fill": {
+      "color": "#000001"
+     }
+    },
+    {
+     "id": "r9",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v9"
+      ]
+     },
+     "fill": {
+      "color": "#000009"
+     }
+    },
+    {
+     "id": "r2",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v2"
+      ]
+     },
+     "fill": {
+      "color": "#000002"
+     }
+    },
+    {
+     "id": "r3",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v3"
+      ]
+     },
+     "fill": {
+      "color": "#000003"
+     }
+    }
+   ]
+  },
+  "current": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "rules": [
+    {
+     "id": "r2",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v2"
+      ]
+     },
+     "fill": {
+      "color": "#000002"
+     }
+    },
+    {
+     "id": "r3",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v3"
+      ]
+     },
+     "fill": {
+      "color": "#000003"
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#aaaaaa",
+     "opacity": 0.5
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "rules": [
+    {
+     "id": "r9",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v9"
+      ]
+     },
+     "fill": {
+      "color": "#000009"
+     }
+    },
+    {
+     "id": "r2",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v2"
+      ]
+     },
+     "fill": {
+      "color": "#000002"
+     }
+    },
+    {
+     "id": "r3",
+     "when": {
+      "op": "=",
+      "args": [
+       {
+        "property": "land_use"
+       },
+       "v3"
+      ]
+     },
+     "fill": {
+      "color": "#000003"
+     }
+    }
+   ]
+  },
+  "refused": []
+ }
+]

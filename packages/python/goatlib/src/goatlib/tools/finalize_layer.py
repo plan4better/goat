@@ -36,6 +36,9 @@ from pydantic import BaseModel, Field
 
 from goatlib.io.bbox_columns import star_excluding, stray_bbox_columns
 from goatlib.storage.ducklake import fetch_one
+from goatlib.style.context import DataContext
+from goatlib.style.fingerprint import fingerprint
+from goatlib.style.migrate import stored_document
 from goatlib.tools.authz import authorize_workflow_export
 from goatlib.tools.base import (
     BaseToolRunner,
@@ -44,6 +47,7 @@ from goatlib.tools.base import (
 )
 from goatlib.tools.layer_replace import LayerReplaceMixin
 from goatlib.tools.schemas import ToolInputBase
+from goatlib.tools.style_rows import insert_first_style
 from goatlib.tools.workflow_dataset_nodes import retarget_dataset_nodes
 from goatlib.tools.workflow_export_target import (
     ExportTarget,
@@ -80,10 +84,10 @@ class FinalizeLayerParams(ToolInputBase):
         "Default False to keep files available for frontend preview. "
         "Cleanup happens at the start of the next workflow execution.",
     )
-    properties: dict[str, Any] | None = Field(
+    style: dict[str, Any] | None = Field(
         default=None,
-        description="Layer style properties from the source tool. "
-        "If None, properties are read from metadata.json or defaults are used.",
+        description="The layer's style: the template's remembered style or the "
+        "source tool's. If None, the style in metadata.json or the default is used.",
     )
     overwrite_previous: bool = Field(
         default=False,
@@ -408,39 +412,52 @@ class FinalizeLayerRunner(LayerReplaceMixin, BaseToolRunner[FinalizeLayerParams]
             )
             if row:
                 return int(row["id"])
-
-            inserted = await pool.fetchrow(
-                f"""
-                INSERT INTO {schema}.layer_project (
-                    layer_id, project_id, name, "order",
-                    created_at, updated_at
+            async with pool.acquire() as conn, conn.transaction():
+                return await self._insert_project_link(
+                    conn, schema, layer_id, project_id, name
                 )
-                VALUES ($1, $2, $3, 0, NOW(), NOW())
-                RETURNING id
-                """,
-                uuid_module.UUID(layer_id),
-                uuid_module.UUID(project_id),
-                name,
-            )
-            if inserted is None:
-                raise RuntimeError(
-                    f"Failed to link layer {layer_id} to project {project_id}"
-                )
-            link_id = int(inserted["id"])
-
-            await pool.execute(
-                f"""
-                UPDATE {schema}.project
-                SET layer_order = array_prepend($1, COALESCE(layer_order, ARRAY[]::int[])),
-                    updated_at = NOW()
-                WHERE id = $2
-                """,
-                link_id,
-                uuid_module.UUID(project_id),
-            )
-            return link_id
         finally:
             await pool.close()
+
+    @staticmethod
+    async def _insert_project_link(
+        conn: Any, schema: str, layer_id: str, project_id: str, name: str
+    ) -> int:
+        """A new project entry at the top, with its first style (a copy of the
+        dataset's default). Run it inside the caller's transaction."""
+        import uuid as uuid_module
+
+        inserted = await conn.fetchrow(
+            f"""
+            INSERT INTO {schema}.layer_project (
+                layer_id, project_id, name, "order",
+                created_at, updated_at
+            )
+            VALUES ($1, $2, $3, 0, NOW(), NOW())
+            RETURNING id
+            """,
+            uuid_module.UUID(layer_id),
+            uuid_module.UUID(project_id),
+            name,
+        )
+        if inserted is None:
+            raise RuntimeError(
+                f"Failed to link layer {layer_id} to project {project_id}"
+            )
+        link_id = int(inserted["id"])
+        await insert_first_style(conn, schema, link_id)
+
+        await conn.execute(
+            f"""
+            UPDATE {schema}.project
+            SET layer_order = array_prepend($1, COALESCE(layer_order, ARRAY[]::int[])),
+                updated_at = NOW()
+            WHERE id = $2
+            """,
+            link_id,
+            uuid_module.UUID(project_id),
+        )
+        return link_id
 
     def process(self, params: FinalizeLayerParams) -> str:
         """Finalize a temporary layer to permanent storage.
@@ -529,6 +546,36 @@ class FinalizeLayerRunner(LayerReplaceMixin, BaseToolRunner[FinalizeLayerParams]
         except Exception as e:
             logger.warning(f"Failed to delete temp files: {e}")
 
+    def _layer_style(
+        self,
+        style: dict[str, Any] | None,
+        *,
+        geometry_type: str | None,
+        relation: str,
+        data_snapshot: int | None,
+        layer_id: str,
+    ) -> dict[str, Any] | None:
+        """The saved layer's default style: `style` at the current version (a
+        version 0 style, remembered by an older template, is converted for the
+        real geometry), else the default, computed for the saved data. None for
+        a table."""
+        from goatlib.tools.db import normalize_geometry_type
+
+        geometry = normalize_geometry_type(geometry_type)
+        if geometry is None:
+            return None
+        document = None
+        if style:
+            ctx = DataContext(kind="vector", geometry=geometry)  # type: ignore[arg-type]
+            document = stored_document(style, ctx, seed=layer_id)
+        return self.computed_style(
+            document,
+            relation=relation,
+            geometry=geometry,
+            fingerprint=fingerprint(data_snapshot=data_snapshot, catalog_version=None),
+            seed=layer_id,
+        )
+
     def _create_new_layer(
         self,
         params: FinalizeLayerParams,
@@ -597,6 +644,13 @@ class FinalizeLayerRunner(LayerReplaceMixin, BaseToolRunner[FinalizeLayerParams]
         snapshot_id = self._get_ducklake_snapshot_id(
             schema, f"t_{new_layer_id.replace('-', '')}"
         )
+        layer_style = self._layer_style(
+            params.style or metadata.get("style"),
+            geometry_type=geometry_type,
+            relation=table_name,
+            data_snapshot=snapshot_id,
+            layer_id=new_layer_id,
+        )
 
         if (
             geometry_type
@@ -637,14 +691,14 @@ class FinalizeLayerRunner(LayerReplaceMixin, BaseToolRunner[FinalizeLayerParams]
                 }
             }
 
-        async def create_layer_record(db_service: Any) -> dict[str, Any] | None:
+        async def create_layer_record(db_service: Any) -> None:
             folder_id = await db_service.get_project_folder_id(params.project_id)
             if not folder_id:
                 raise ValueError(
                     f"Could not find folder for project {params.project_id}"
                 )
             is_feature = bool(geometry_type)
-            properties: dict[str, Any] | None = await db_service.create_layer(
+            await db_service.create_layer(
                 layer_id=new_layer_id,
                 user_id=user_id,
                 folder_id=folder_id,
@@ -655,12 +709,12 @@ class FinalizeLayerRunner(LayerReplaceMixin, BaseToolRunner[FinalizeLayerParams]
                 extent_wkt=extent_wkt,
                 feature_count=feature_count,
                 size=parquet_path.stat().st_size,
-                properties=params.properties or metadata.get("properties"),
+                style=layer_style,
                 other_properties=stamp,
                 tool_type=metadata.get("process_id"),
                 job_id=None,
+                data_snapshot=snapshot_id,
             )
-            return properties
 
         async def create_db_records() -> int:
             from goatlib.tools.db import ToolDatabaseService
@@ -669,12 +723,11 @@ class FinalizeLayerRunner(LayerReplaceMixin, BaseToolRunner[FinalizeLayerParams]
             try:
                 if claim_link_id is None:
                     db_service = ToolDatabaseService(pool, schema=schema)
-                    layer_properties = await create_layer_record(db_service)
+                    await create_layer_record(db_service)
                     link_id: int = await db_service.add_to_project(
                         layer_id=new_layer_id,
                         project_id=params.project_id,
                         name=layer_name,
-                        properties=layer_properties,
                         other_properties=stamp,
                     )
                     return link_id
@@ -750,7 +803,7 @@ def main(
     folder_id: str,
     layer_name: str | None = None,
     export_node_id: str | None = None,
-    properties: dict[str, Any] | None = None,
+    style: dict[str, Any] | None = None,
     overwrite_previous: bool = False,
 ) -> dict:
     """Windmill entry point for finalize layer.
@@ -766,7 +819,7 @@ def main(
         project_id=project_id,
         folder_id=folder_id,
         layer_name=layer_name,
-        properties=properties,
+        style=style,
         overwrite_previous=overwrite_previous,
         export_node_id=export_node_id,
     )
