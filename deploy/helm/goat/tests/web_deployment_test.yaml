@@ -37,14 +37,14 @@ tests:
       web.enabled: true
       web.auth.enabled: true
       web.auth.existingSecret: "goat-keycloak-creds"
-      web.auth.publicUrl: "https://goat.civitas.test"
+      web.auth.publicUrl: "https://goat.example.test"
     template: web/deployment.yaml
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
             name: NEXTAUTH_URL
-            value: "https://goat.civitas.test"
+            value: "https://goat.example.test"
       - contains:
           path: spec.template.spec.containers[0].env
           content:

@@ -478,7 +478,7 @@ def test_queryables_mark_generated_columns() -> None:
 
 # --- turning an existing column into a serial -------------------------------------
 
-BONN_ENTRY = {
+NUMBER_ENTRY = {
     "vorhaben_id": {
         "kind": "number",
         "is_computed": False,
@@ -496,7 +496,7 @@ async def test_converting_a_number_column_keeps_its_entry_and_sets_the_mark(
 ) -> None:
     from geoapi.routers.features_write import update_column
 
-    async with _routes(BONN_ENTRY, marks={"vorhaben_id": 500}) as (
+    async with _routes(NUMBER_ENTRY, marks={"vorhaben_id": 500}) as (
         pool,
         service,
         written,
@@ -531,7 +531,7 @@ async def test_converting_a_number_column_keeps_its_entry_and_sets_the_mark(
 async def test_a_start_travels_with_the_conversion(layer_info) -> None:
     from geoapi.routers.features_write import update_column
 
-    async with _routes(BONN_ENTRY) as (_, service, written):
+    async with _routes(NUMBER_ENTRY) as (_, service, written):
         await update_column(
             layer_info,
             OWNER,
@@ -545,7 +545,7 @@ async def test_a_start_travels_with_the_conversion(layer_info) -> None:
 async def test_a_refused_conversion_changes_nothing(layer_info) -> None:
     from geoapi.routers.features_write import update_column
 
-    async with _routes(BONN_ENTRY, marks={}, fail=True) as (pool, _, written):
+    async with _routes(NUMBER_ENTRY, marks={}, fail=True) as (pool, _, written):
         with pytest.raises(HTTPException) as refused:
             await update_column(
                 layer_info, OWNER, ColumnUpdate(kind="serial"), columnName="vorhaben_id"
@@ -573,11 +573,11 @@ async def test_a_refused_conversion_changes_nothing(layer_info) -> None:
             400,
             "cannot become",
         ),
-        (BONN_ENTRY, ColumnUpdate(kind="uuid"), 400, "not supported"),
-        (BONN_ENTRY, ColumnUpdate(kind="string"), 400, "not supported"),
-        (BONN_ENTRY, ColumnUpdate(kind="serial", new_name="x"), 400, "on its own"),
-        (BONN_ENTRY, ColumnUpdate(kind="serial", start=-1), 400, "between 0"),
-        (BONN_ENTRY, ColumnUpdate(kind="number"), 400, "not a serial"),
+        (NUMBER_ENTRY, ColumnUpdate(kind="uuid"), 400, "not supported"),
+        (NUMBER_ENTRY, ColumnUpdate(kind="string"), 400, "not supported"),
+        (NUMBER_ENTRY, ColumnUpdate(kind="serial", new_name="x"), 400, "on its own"),
+        (NUMBER_ENTRY, ColumnUpdate(kind="serial", start=-1), 400, "between 0"),
+        (NUMBER_ENTRY, ColumnUpdate(kind="number"), 400, "not a serial"),
         (SERIAL, ColumnUpdate(kind="number", start=3), 400, "Only a serial"),
         (SERIAL, ColumnUpdate(start=3), 400, "Only a number column"),
     ],
@@ -599,7 +599,7 @@ async def test_conversions_that_are_refused(
 async def test_a_bundle_members_column_cannot_be_converted(layer_info) -> None:
     from geoapi.routers.features_write import update_column
 
-    async with _routes(BONN_ENTRY) as (_, service, _):
+    async with _routes(NUMBER_ENTRY) as (_, service, _):
         with (
             patch(
                 "geoapi.routers.features_write.layer_is_bundle_member",
@@ -617,7 +617,7 @@ async def test_a_bundle_members_column_cannot_be_converted(layer_info) -> None:
 async def test_an_unknown_column_is_not_found(layer_info) -> None:
     from geoapi.routers.features_write import update_column
 
-    async with _routes(BONN_ENTRY) as _:
+    async with _routes(NUMBER_ENTRY) as _:
         with pytest.raises(HTTPException) as refused:
             await update_column(
                 layer_info, OWNER, ColumnUpdate(kind="serial"), columnName="nope"

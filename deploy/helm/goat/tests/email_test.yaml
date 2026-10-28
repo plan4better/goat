@@ -23,8 +23,8 @@ tests:
       email.port: 25
       email.security: none
       email.from: goat@example.org
-      email.fromName: GOAT Bonn
-      email.brandName: GOAT Bonn
+      email.fromName: GOAT City
+      email.brandName: GOAT City
       email.contactUrl: https://example.org/contact
     asserts:
       - equal:
@@ -41,10 +41,10 @@ tests:
           value: goat@example.org
       - equal:
           path: data.EMAILS_FROM_NAME
-          value: GOAT Bonn
+          value: GOAT City
       - equal:
           path: data.EMAIL_BRAND_NAME
-          value: GOAT Bonn
+          value: GOAT City
       - equal:
           path: data.EMAIL_CONTACT_URL
           value: https://example.org/contact

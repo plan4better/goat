@@ -1,9 +1,9 @@
 """Turning an existing number column into a serial (``convert_to_serial``).
 
-The real case is Bonn's "Vorhaben (Eingabe)": ``vorhaben_id`` holds 1–17 and
-19 on 18 features, typed by hand, and workflows, filters and dashboards refer
-to it by name. Converting must keep the name and every value, and the next
-feature must get 20 — not the free 18.
+A typical case: ``vorhaben_id`` holds 1-17 and 19 on 18 features, typed by
+hand, and workflows, filters and dashboards refer to it by name. Converting
+must keep the name and every value, and the next feature must get 20, not the
+free 18.
 
 Against a real, file-backed DuckLake, like ``test_generated_fields.py``.
 """
@@ -26,7 +26,7 @@ from geoapi.services.feature_write_service import FeatureWriteService
 LAYER_ID = "abc123de-f456-7890-1234-5678901234ab"
 POINT = {"type": "Point", "coordinates": [7.1, 50.7]}
 SERVICE = FeatureWriteService()
-BONN = [*range(1, 18), 19]
+HAND_TYPED = [*range(1, 18), 19]
 
 
 class _LockedManager:
@@ -108,11 +108,11 @@ def _create(
     return feature_id
 
 
-def test_the_bonn_layer_keeps_its_numbers_and_continues_after_19(lake) -> None:
+def test_a_hand_typed_column_keeps_its_numbers_and_continues_after_19(lake) -> None:
     """A GOAT "Number" column is DOUBLE: its values move into a BIGINT column
     of the same name. Same rows, same feature ids, same numbers; the mark is
     19, so the next feature gets 20 and 18 stays free."""
-    layer = _layer(lake, "DOUBLE", [float(v) for v in BONN])
+    layer = _layer(lake, "DOUBLE", [float(v) for v in HAND_TYPED])
     before = _rows(lake)
 
     result, counters = _convert(layer)
@@ -122,7 +122,7 @@ def test_the_bonn_layer_keeps_its_numbers_and_continues_after_19(lake) -> None:
     assert _type(lake) == "BIGINT"
     after = _rows(lake)
     assert [(r, t, int(v)) for r, t, v in before] == after
-    assert [v for _, _, v in after] == BONN
+    assert [v for _, _, v in after] == HAND_TYPED
 
     marks = dict(counters.assigned)
     first = _create(layer, marks, vorhaben_id=18, titel="neu")
@@ -133,7 +133,7 @@ def test_the_bonn_layer_keeps_its_numbers_and_continues_after_19(lake) -> None:
     # Delete it again: still no reuse.
     SERVICE.delete_feature(layer, first)
     _create(layer, marks)
-    assert sorted(v for _, _, v in _rows(lake)) == [*BONN, 21]
+    assert sorted(v for _, _, v in _rows(lake)) == [*HAND_TYPED, 21]
     assert 18 not in [v for _, _, v in _rows(lake)]
 
 

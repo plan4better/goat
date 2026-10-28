@@ -254,8 +254,8 @@ async def test_two_pods_writing_and_deleting_never_reuse_a_number(
 async def test_a_create_during_a_conversion_waits_and_gets_the_next_number(
     pods, tmp_path: Path
 ) -> None:
-    """Pod A converts Bonn's ``vorhaben_id`` (1-17 and 19) while pod B creates
-    a feature with a hand-typed 5 — a duplicate the moment the column is a
+    """Pod A converts a hand-typed ``vorhaben_id`` (1-17 and 19) while pod B
+    creates a feature with a typed 5, a duplicate the moment the column is a
     serial. B's write takes the same lock and reads the column definition
     under it, so it waits for A, sees the serial, and gets 20."""
     import json

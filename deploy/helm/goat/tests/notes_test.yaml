@@ -104,7 +104,7 @@ tests:
     asserts:
       - matchRegexRaw:
           pattern: "WARNING: mixed authentication. AUTH is ON for core but OFF\nfor web, geoapi, processes, catalog"
-  - it: counts an explicit AUTH in <svc>.config (civitas shape, all on)
+  - it: counts an explicit AUTH in <svc>.config (set per service, all on)
     set:
       global.auth.enabled: true
       global.auth.existingSecret: kc

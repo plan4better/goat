@@ -160,10 +160,10 @@ SOURCE = "27ceed82-0a35-46dc-bb71-3a574744e297"
 COPY = "f16bfd54-0000-4000-8000-000000000001"
 
 
-def _pruefroutine_config() -> dict[str, Any]:
-    """The shape of the Bonn "Prüfroutine (mehrere Vorhaben)" input: a dataset
-    node saved with `layerId` only (`layerType: "layer"`, no
-    `projectLayerId`), read by a tool node, plus an unrelated dataset."""
+def _layer_only_config() -> dict[str, Any]:
+    """A workflow whose input is a dataset node saved with `layerId` only
+    (`layerType: "layer"`, no `projectLayerId`), read by a tool node, plus an
+    unrelated dataset."""
     return {
         "nodes": [
             {
@@ -171,9 +171,9 @@ def _pruefroutine_config() -> dict[str, Any]:
                 "type": "dataset",
                 "data": {
                     "type": "dataset",
-                    "label": "Vorhaben (Eingabe)",
+                    "label": "Standorte (Eingabe)",
                     "layerId": SOURCE,
-                    "layerName": "Vorhaben (Eingabe)",
+                    "layerName": "Standorte (Eingabe)",
                     "layerType": "layer",
                     "geometryType": "point",
                     "filterInitialized": True,
@@ -202,7 +202,7 @@ def test_a_node_without_an_entry_follows_the_copy_by_its_layer() -> None:
     from goatlib.tools.workflow_dataset_nodes import _unlinked_retargeted
 
     out = _unlinked_retargeted(
-        _pruefroutine_config(),
+        _layer_only_config(),
         source_layer_id=SOURCE,
         layer_id=COPY,
         link_id=748,
@@ -210,11 +210,11 @@ def test_a_node_without_an_entry_follows_the_copy_by_its_layer() -> None:
     )
 
     assert out is not None
-    vorhaben, other, tool = out["nodes"]
-    assert vorhaben["data"]["layerId"] == COPY
+    site, other, tool = out["nodes"]
+    assert site["data"]["layerId"] == COPY
     # Given the entry, so later swaps behind it reach the node too.
-    assert vorhaben["data"]["projectLayerId"] == 748
-    assert vorhaben["data"]["layerName"] == "Vorhaben (Eingabe)"
+    assert site["data"]["projectLayerId"] == 748
+    assert site["data"]["layerName"] == "Standorte (Eingabe)"
     assert other["data"] == {"type": "dataset", "layerId": "other-layer"}
     assert tool["data"]["config"] == {"input_layer_id": COPY, "distances": [500]}
 
@@ -222,7 +222,7 @@ def test_a_node_without_an_entry_follows_the_copy_by_its_layer() -> None:
 def test_a_node_with_an_entry_of_the_project_is_left_to_its_entry() -> None:
     from goatlib.tools.workflow_dataset_nodes import _unlinked_retargeted
 
-    config = _pruefroutine_config()
+    config = _layer_only_config()
     config["nodes"][0]["data"]["projectLayerId"] = 749
     assert (
         _unlinked_retargeted(
@@ -239,7 +239,7 @@ def test_a_node_with_an_entry_of_the_project_is_left_to_its_entry() -> None:
 def test_a_node_with_an_entry_of_another_project_counts_as_without() -> None:
     from goatlib.tools.workflow_dataset_nodes import _unlinked_retargeted
 
-    config = _pruefroutine_config()
+    config = _layer_only_config()
     config["nodes"][0]["data"]["projectLayerId"] = 12  # the author's project
     out = _unlinked_retargeted(
         config,
@@ -257,7 +257,7 @@ def test_nothing_names_the_source_nothing_changes() -> None:
 
     assert (
         _unlinked_retargeted(
-            _pruefroutine_config(),
+            _layer_only_config(),
             source_layer_id="not-in-this-workflow",
             layer_id=COPY,
             link_id=748,

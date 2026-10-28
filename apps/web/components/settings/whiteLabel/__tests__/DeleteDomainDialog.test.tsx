@@ -47,14 +47,14 @@ describe("DeleteDomainDialog", () => {
       <DeleteDomainDialog
         open
         domain={domain}
-        assignedProjectName="Bonn Dashboard"
+        assignedProjectName="City Dashboard"
         onClose={vi.fn()}
         onConfirm={vi.fn().mockResolvedValue(undefined)}
       />
     );
 
     expect(screen.getByRole("button", { name: "Delete domain" })).toBeInTheDocument();
-    expect(screen.getByText(/Bonn Dashboard/)).toBeInTheDocument();
+    expect(screen.getByText(/City Dashboard/)).toBeInTheDocument();
   });
 
   it("blocks Cancel and the header close while the confirm is in flight", async () => {

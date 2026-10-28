@@ -91,10 +91,10 @@ describe("ProjectImport", () => {
   it("swaps the drop zone for the chosen archive and allows the import", () => {
     render(<ProjectImportModal open defaultFolderId="folder-1" onClose={() => {}} />);
 
-    pickFile("bonn-mobility.zip");
+    pickFile("mobility.zip");
 
     expect(screen.queryByText("upload_drop_or_browse")).not.toBeInTheDocument();
-    expect(screen.getByText(/bonn-mobility\.zip/)).toBeInTheDocument();
+    expect(screen.getByText(/mobility\.zip/)).toBeInTheDocument();
     expect(screen.getByText("project_name")).toBeInTheDocument();
     expect(importButton().disabled).toBe(false);
   });
@@ -112,7 +112,7 @@ describe("ProjectImport", () => {
   it("brings the drop zone back when the archive is removed", () => {
     render(<ProjectImportModal open defaultFolderId="folder-1" onClose={() => {}} />);
 
-    pickFile("bonn-mobility.zip");
+    pickFile("mobility.zip");
     fireEvent.click(screen.getByRole("button", { name: "upload_remove_file" }));
 
     expect(screen.getByText("upload_drop_or_browse")).toBeInTheDocument();
