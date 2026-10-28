@@ -133,6 +133,16 @@ The full cycle of backup, complete wipe and restore has been tested.
    ./smoke.sh --quick
    ```
 
+Releases that convert stored data say so in their release notes. The release that introduces GOAT Style, the new layer styles, converts every stored style while the database migrates (tens of thousands of styles take about a minute) and keeps the old styles for one release. To go back, restore the backup from step 1: style changes made after the upgrade are lost. Map thumbnails are drawn again once, the next time the thumbnail job runs. A published project whose layers were restyled after its last publish lists those layers as unpublished changes: they never were published, and the public map stays as it is until you publish again.
+
+From that release on, GOAT stores the extent of a raster layer added from a COG file, so zoom to layer and map previews find it. Layers added before have none. Once the new release runs, fill them in once:
+
+```bash
+docker compose exec geoapi python -m geoapi.scripts.backfill_raster_extents
+```
+
+It reads only each file's header and changes only layers without an extent, so running it again does no harm; `--dry-run` lists what it would store. A file it cannot reach is logged and its layer keeps no extent; the map then asks for the file's bounds when it needs them.
+
 ## Logs {#logs}
 
 ```bash

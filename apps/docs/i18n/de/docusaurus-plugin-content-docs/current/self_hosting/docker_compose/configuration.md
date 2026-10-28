@@ -116,6 +116,8 @@ Die Dienste von GOAT benennen ihre Datenbanksitzungen nach sich selbst (`goat-co
 | `ODOO_SUPPORT_POST_ACTION` | `GOAT: post message as ticket participant` | Odoo-Serveraktion, die eine Nachricht als Teilnehmer des Tickets veröffentlicht |
 | `OTEL_ENABLED` | `false` | Traces, Metriken und Logs über OpenTelemetry exportieren |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | leer | Ihr OpenTelemetry-Endpunkt (OTLP) |
+| `RASTER_PRIVATE_HOSTS` | leer | Hosts, von denen geoapi und processes die COG-Dateien von Rasterlayern lesen dürfen, obwohl sie auf eine private, Loopback- oder Link-Local-Adresse auflösen, durch Kommas getrennt: ein Objektspeicher in Ihrem eigenen Netz. Jeder andere Host muss auf öffentliche Adressen auflösen, damit ein Layer GOAT nicht aus Ihrem Netz lesen lassen kann. |
+| `GOAT_GEOAPI_URL` | *(auskommentiert)*, `http://geoapi:8000` | Wo core geoapi erreicht: Wird ein Rasterlayer aus einer COG-Datei hinzugefügt, fragt core geoapi nach den Grenzen der Datei und speichert sie als Ausdehnung des Layers. Ändern Sie sie nur, wenn geoapi außerhalb des Bundles läuft. |
 
 ## E-Mail {#email}
 

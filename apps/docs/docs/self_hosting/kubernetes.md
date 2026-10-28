@@ -47,6 +47,8 @@ You can also point the chart at an existing PostgreSQL or Redis instead of the b
 
 Every service has memory requests and limits by default, and a CPU request without a limit. The chart README lists them; raise them under `<service>.resources` if a service needs more, for example geoapi on a large catalog, and set requests and limits together.
 
+Raster layers are COG files that geoapi and processes read over HTTPS where their address points, so both need outbound HTTPS to those hosts. A host that resolves to a private, loopback or link-local address is refused, so a layer cannot make GOAT read from inside the cluster. List the hosts that may anyway, such as an object store in the cluster that holds COGs, in `global.rasterPrivateHosts` (`RASTER_PRIVATE_HOSTS`). GDAL, which reads the files, resolves a host again when it reads and follows redirects, so also block outgoing traffic from geoapi and processes to private address ranges with a NetworkPolicy, except for the hosts you listed. When a raster layer is added from a COG file, core asks geoapi for the file's bounds and stores them as the layer's extent; the chart points core at its own geoapi. If geoapi runs outside the release, set `core.config.GOAT_GEOAPI_URL` to its in-cluster address.
+
 ## What you have to set {#required-values}
 
 ### Public URLs {#public-urls}
@@ -104,6 +106,16 @@ The default Windmill worker only handles small jobs. **Analysis tools, dataset i
 The shared data volume defaults to `ReadWriteOnce`, which works on a single node. On a cluster with several nodes, set `data.accessMode: ReadWriteMany` with an RWX-capable storage class (`data.storageClassName`), or supply your own claim with `data.existingClaim`.
 
 geoapi, processes and the Windmill workers all write to this volume, and a fresh RWX volume belongs to root, so they run as root. If your cluster does not allow that, see the chart README ("The shared data volume").
+
+## Upgrades {#upgrade}
+
+`helm upgrade` runs the database migrations in core's migrate hook before the new pods start; the chart README says what each chart version changes. The release that introduces GOAT Style, the new layer styles, converts every stored style in that hook (tens of thousands of styles take about a minute) and keeps the old styles for one release. Back up the database before you upgrade: going back means restoring that backup, and style changes made after the upgrade are lost. Map thumbnails are drawn again once. A published project whose layers were restyled after its last publish lists those layers as unpublished changes: they never were published, and the public map stays as it is until you publish again. A project published while the upgrade ran shows no layers on its public page until it is published again.
+
+From that release on, GOAT stores the extent of a raster layer added from a COG file, so zoom to layer and map previews find it. Layers added before have none. Once the new release runs, fill them in once (it changes only layers without an extent, so running it again does no harm; `--dry-run` lists what it would store):
+
+```bash
+kubectl -n goat exec deploy/goat-geoapi -- python -m geoapi.scripts.backfill_raster_extents
+```
 
 ## Further reading {#further-reading}
 

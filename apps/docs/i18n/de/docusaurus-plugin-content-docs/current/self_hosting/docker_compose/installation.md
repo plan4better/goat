@@ -26,7 +26,7 @@ Außerdem benötigen Sie:
 
 - **Offener Port 443**, dazu Port 80 für die Umleitung von `http://` auf HTTPS, oder der eine Port, den Sie für unverschlüsseltes HTTP wählen. Sonst muss nichts von außen erreichbar sein.
 - **Einen DNS-Namen, der auf den Server zeigt**, wenn Sie automatisches HTTPS mit Let's Encrypt möchten.
-- **Ausgehenden Internetzugang**, um die Images von `ghcr.io` zu laden, sowie für die Routing-Basisdaten, die Grundkarten und die optionalen Integrationen.
+- **Ausgehenden Internetzugang**, um die Images von `ghcr.io` zu laden, sowie für die Routing-Basisdaten, die Grundkarten, die Dateien der Rasterlayer (geoapi und processes lesen jedes COG dort, wohin seine Adresse zeigt) und die optionalen Integrationen.
 - **`openssl`** für `setup.sh` sowie **`curl` und `jq`** für `smoke.sh`.
 
 Das Paket installiert und aktualisiert Docker nicht. Installieren Sie es nach der [Docker-Dokumentation](https://docs.docker.com/engine/install/), unter Ubuntu mit [Dockers apt-Paketquelle](https://docs.docker.com/engine/install/ubuntu/). Das `docker.io`-Paket der Distribution ist oft zu alt. `setup.sh` prüft die Versionen von Docker Engine und Compose, bevor es etwas schreibt, und `smoke.sh` prüft, ob `curl` und `jq` vorhanden sind; beide brechen mit einer Meldung ab, wenn etwas fehlt oder zu alt ist.

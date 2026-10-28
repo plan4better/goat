@@ -16,10 +16,10 @@ data:
   {{- $pgKeys := splitList " " (include "goat.postgresql.configKeys" .) }}
   {{- range $k, $v := .Values.core.config }}
   {{- /* Omit the Keycloak placeholders when auth is wired to a Secret (the
-         deployment sets them from it), and GOAT_PROCESSES_URL and the Postgres
-         connection (emitted below so they aren't rendered twice when an
-         operator sets them explicitly) */}}
-  {{- if or (and $authWired (has $k (list "KEYCLOAK_SERVER_URL" "REALM_NAME" "KEYCLOAK_CLIENT_ID" "KEYCLOAK_CLIENT_SECRET"))) (has $k (append $pgKeys "GOAT_PROCESSES_URL")) -}}
+         deployment sets them from it), and GOAT_PROCESSES_URL, GOAT_GEOAPI_URL
+         and the Postgres connection (emitted below so they aren't rendered
+         twice when an operator sets them explicitly) */}}
+  {{- if or (and $authWired (has $k (list "KEYCLOAK_SERVER_URL" "REALM_NAME" "KEYCLOAK_CLIENT_ID" "KEYCLOAK_CLIENT_SECRET"))) (has $k (concat $pgKeys (list "GOAT_PROCESSES_URL" "GOAT_GEOAPI_URL" "DUCKLAKE_CATALOG_SCHEMA"))) -}}
   {{- /* skip */ -}}
   {{- else }}
   {{ $k }}: {{ $v | quote }}
@@ -31,9 +31,17 @@ data:
   {{- if not (or $authWired (include "goat.env.userSet" (dict "values" .Values.core "key" "AUTH"))) }}
   AUTH: {{ include "goat.auth.value" $auth | quote }}
   {{- end }}
+  {{- /* core reads DuckLake's change log when a map loads (GOAT Style data
+         snapshots): the same catalog schema geoapi and processes use. */}}
+  DUCKLAKE_CATALOG_SCHEMA: {{ .Values.core.config.DUCKLAKE_CATALOG_SCHEMA | default .Values.ducklakeBootstrap.catalogSchema | quote }}
   {{- $processesUrl := .Values.core.config.GOAT_PROCESSES_URL | default (include "goat.processes.url" .) }}
   {{- if $processesUrl }}
   GOAT_PROCESSES_URL: {{ $processesUrl | quote }}
+  {{- end }}
+  {{- /* A COG layer's bounds, stored as its extent when the layer is added. */}}
+  {{- $geoapiUrl := .Values.core.config.GOAT_GEOAPI_URL | default (include "goat.geoapi.url" .) }}
+  {{- if $geoapiUrl }}
+  GOAT_GEOAPI_URL: {{ $geoapiUrl | quote }}
   {{- end }}
   {{- /* Links in core's emails. A key set in core.config / core.extraEnv is
          used as is. */}}

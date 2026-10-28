@@ -27,6 +27,14 @@
         "storageClass": {
           "type": "string"
         },
+        "rasterPrivateHosts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[^,\\s]+$"
+          },
+          "description": "Hosts geoapi and processes may read raster files from although they resolve to a private address (RASTER_PRIVATE_HOSTS)."
+        },
         "auth": {
           "type": "object",
           "properties": {
@@ -286,7 +294,13 @@
           ]
         },
         "config": {
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "GOAT_GEOAPI_URL": {
+              "type": "string",
+              "description": "In-cluster URL of geoapi, where core reads a COG's bounds when a raster layer is added. Unset: the in-chart geoapi service."
+            }
+          }
         },
         "extraEnv": {
           "type": "array"

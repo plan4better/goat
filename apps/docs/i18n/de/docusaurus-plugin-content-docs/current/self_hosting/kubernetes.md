@@ -47,6 +47,8 @@ Statt der mitgelieferten Instanzen können Sie das Chart auch auf ein bestehende
 
 Jeder Dienst hat standardmäßig Speicher-Requests und -Limits sowie einen CPU-Request ohne Limit. Die README des Charts listet sie auf; braucht ein Dienst mehr, etwa geoapi bei einem großen Katalog, erhöhen Sie sie unter `<service>.resources` und setzen Sie Requests und Limits gemeinsam.
 
+Rasterlayer sind COG-Dateien, die geoapi und processes per HTTPS dort lesen, wohin ihre Adresse zeigt; beide brauchen daher ausgehendes HTTPS zu diesen Hosts. Ein Host, der auf eine private, Loopback- oder Link-Local-Adresse auflöst, wird abgelehnt, damit ein Layer GOAT nicht aus dem Cluster lesen lassen kann. Hosts, die es trotzdem dürfen, etwa ein Objektspeicher im Cluster mit COG-Dateien, tragen Sie in `global.rasterPrivateHosts` ein (`RASTER_PRIVATE_HOSTS`). GDAL, das die Dateien liest, löst einen Host beim Lesen erneut auf und folgt Weiterleitungen; sperren Sie daher zusätzlich ausgehenden Verkehr von geoapi und processes in private Adressbereiche mit einer NetworkPolicy, ausgenommen die eingetragenen Hosts. Wird ein Rasterlayer aus einer COG-Datei hinzugefügt, fragt core geoapi nach den Grenzen der Datei und speichert sie als Ausdehnung des Layers; das Chart verweist core auf sein eigenes geoapi. Läuft geoapi außerhalb des Releases, tragen Sie seine Adresse im Cluster in `core.config.GOAT_GEOAPI_URL` ein.
+
 ## Was Sie einstellen müssen {#required-values}
 
 ### Öffentliche URLs {#public-urls}
@@ -104,6 +106,16 @@ Der Standard-Worker von Windmill übernimmt nur kleine Jobs. **Analyse-Werkzeuge
 Das gemeinsame Daten-Volume verwendet standardmäßig `ReadWriteOnce`, was auf einem einzelnen Node funktioniert. In einem Cluster mit mehreren Nodes setzen Sie `data.accessMode: ReadWriteMany` mit einer RWX-fähigen Storage-Class (`data.storageClassName`) oder stellen mit `data.existingClaim` Ihren eigenen Claim bereit.
 
 geoapi, processes und die Windmill-Worker schreiben alle in dieses Volume, und ein neues RWX-Volume gehört root, deshalb laufen sie als root. Erlaubt Ihr Cluster das nicht, finden Sie die Alternative in der README des Charts („The shared data volume“).
+
+## Updates {#upgrade}
+
+`helm upgrade` führt die Datenbankmigrationen im Migrations-Hook von core aus, bevor die neuen Pods starten; das Chart-README nennt, was jede Chart-Version ändert. Das Release, das GOAT Style einführt, die neuen Layer-Stile, wandelt in diesem Hook jeden gespeicherten Stil um (zehntausende Stile dauern etwa eine Minute) und behält die alten Stile für ein Release. Sichern Sie die Datenbank vor dem Update: Zurückgehen heißt, diese Sicherung wiederherzustellen, und Änderungen an Stilen nach dem Update gehen dabei verloren. Die Vorschaubilder der Karten werden einmal neu gezeichnet. Ein veröffentlichtes Projekt, dessen Layer nach der letzten Veröffentlichung umgestaltet wurden, führt diese Layer als unveröffentlichte Änderungen: Sie waren nie veröffentlicht, und die öffentliche Karte bleibt, wie sie ist, bis Sie erneut veröffentlichen. Ein Projekt, das während des Updates veröffentlicht wurde, zeigt auf seiner öffentlichen Seite keine Layer, bis es erneut veröffentlicht wird.
+
+Ab diesem Release speichert GOAT die Ausdehnung eines Raster-Layers, der aus einer COG-Datei hinzugefügt wird, damit „Auf Layer zoomen“ und die Kartenvorschau ihn finden. Layer, die vorher hinzugefügt wurden, haben keine. Sobald das neue Release läuft, ergänzen Sie sie einmal (der Befehl ändert nur Layer ohne Ausdehnung, ein erneuter Lauf schadet also nicht; `--dry-run` zeigt, was er speichern würde):
+
+```bash
+kubectl -n goat exec deploy/goat-geoapi -- python -m geoapi.scripts.backfill_raster_extents
+```
 
 ## Weiterführende Informationen {#further-reading}
 

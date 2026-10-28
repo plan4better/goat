@@ -15,6 +15,7 @@ data:
   {{- end }}
   {{- end }}
   {{- include "goat.postgresql.configEnv" (dict "root" $ "config" .Values.processes.config) | nindent 2 }}
+  {{- include "goat.rasterPrivateHosts" (dict "root" $ "config" .Values.processes.config) | nindent 2 }}
   {{- /* The DuckLake location this service attaches READ-ONLY. Its
          ducklake-init init container reads this same ConfigMap, so it creates
          the catalog exactly where the service looks. Defaults to

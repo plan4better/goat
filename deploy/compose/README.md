@@ -23,8 +23,9 @@ This file is the short version. The full guide is in the GOAT documentation:
 - Open ports: **443**, plus 80 for the redirect from `http://` (or the one port you
   choose for plain HTTP). Nothing else needs to be reachable.
 - For automatic HTTPS: a DNS name pointing at the server.
-- Outgoing internet access for the base data download, the basemaps and the
-  optional integrations.
+- Outgoing internet access for the base data download, the basemaps, the raster
+  layers' files (geoapi and processes read each COG where its address points) and
+  the optional integrations.
 - `openssl` for `setup.sh`, `curl` and `jq` for `smoke.sh`.
 
 The bundle does not install or upgrade Docker: install it from
@@ -85,6 +86,12 @@ More in the docs: [HTTPS and addresses](https://goat.plan4better.de/docs/self_ho
   (or turn its direct access grants off).
 - **No login at all** (local demos only): `AUTH=False`. Everybody acts as one
   built-in administrator.
+- **Raster files on your own network:** geoapi and processes refuse a raster
+  layer whose address resolves to a private, loopback or link-local address, so a
+  layer cannot make GOAT read from inside your network. List the hosts that may
+  anyway (an object store holding COGs) in `RASTER_PRIVATE_HOSTS`, comma-separated.
+  core asks the bundle's geoapi for a COG's bounds when a raster layer is added
+  (`GOAT_GEOAPI_URL`, `http://geoapi:8000`; change it only if geoapi runs elsewhere).
 
 More in the docs: [External services](https://goat.plan4better.de/docs/self_hosting/docker_compose/external_services)
 
@@ -193,6 +200,23 @@ tar xzf goat-compose-<new-version>.tar.gz --strip-components=1
 docker compose pull
 docker compose up -d   # database migrations run automatically
 ./smoke.sh --quick
+```
+
+The release that introduces GOAT Style, the new layer styles, converts every
+stored style while the database migrates (tens of thousands of styles take about
+a minute) and keeps the old styles for one release. Back up before upgrading:
+going back means restoring that backup, and style changes made after the upgrade
+are lost. Map thumbnails are drawn again once. A published project whose layers
+were restyled after its last publish lists those layers as unpublished changes:
+they never were published, and the public map stays as it is until you publish
+again.
+
+From that release on, GOAT stores the extent of a raster layer added from a COG
+file. Fill it in once for layers added before (idempotent, `--dry-run` lists what
+it would store):
+
+```bash
+docker compose exec geoapi python -m geoapi.scripts.backfill_raster_extents
 ```
 
 More in the docs: [Operations → Upgrades](https://goat.plan4better.de/docs/self_hosting/docker_compose/operations#upgrade)

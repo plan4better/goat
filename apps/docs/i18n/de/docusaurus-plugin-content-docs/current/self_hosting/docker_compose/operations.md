@@ -133,6 +133,16 @@ Der vollständige Ablauf aus Backup, vollständigem Löschen und Wiederherstelle
    ./smoke.sh --quick
    ```
 
+Releases, die gespeicherte Daten umwandeln, nennen das in ihren Release Notes. Das Release, das GOAT Style einführt, die neuen Layer-Stile, wandelt bei der Datenbankmigration jeden gespeicherten Stil um (zehntausende Stile dauern etwa eine Minute) und behält die alten Stile für ein Release. Um zurückzugehen, stellen Sie das Backup aus Schritt 1 wieder her: Änderungen an Stilen nach dem Update gehen dabei verloren. Die Vorschaubilder der Karten werden einmal neu gezeichnet, beim nächsten Lauf des Vorschaubild-Jobs. Ein veröffentlichtes Projekt, dessen Layer nach der letzten Veröffentlichung umgestaltet wurden, führt diese Layer als unveröffentlichte Änderungen: Sie waren nie veröffentlicht, und die öffentliche Karte bleibt, wie sie ist, bis Sie erneut veröffentlichen.
+
+Ab diesem Release speichert GOAT die Ausdehnung eines Raster-Layers, der aus einer COG-Datei hinzugefügt wird, damit „Auf Layer zoomen“ und die Kartenvorschau ihn finden. Layer, die vorher hinzugefügt wurden, haben keine. Sobald das neue Release läuft, ergänzen Sie sie einmal:
+
+```bash
+docker compose exec geoapi python -m geoapi.scripts.backfill_raster_extents
+```
+
+Der Befehl liest nur den Header jeder Datei und ändert nur Layer ohne Ausdehnung; ein erneuter Lauf schadet also nicht. `--dry-run` zeigt, was er speichern würde. Eine Datei, die er nicht erreicht, wird protokolliert, und ihr Layer bleibt ohne Ausdehnung; die Karte fragt dann bei Bedarf nach den Grenzen der Datei.
+
 ## Logs {#logs}
 
 ```bash

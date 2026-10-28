@@ -116,6 +116,8 @@ GOAT's services name their database sessions after themselves (`goat-core`, `goa
 | `ODOO_SUPPORT_POST_ACTION` | `GOAT: post message as ticket participant` | Odoo server action that posts a message as the ticket participant |
 | `OTEL_ENABLED` | `false` | Export traces, metrics and logs through OpenTelemetry |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Your OpenTelemetry (OTLP) endpoint |
+| `RASTER_PRIVATE_HOSTS` | empty | Hosts geoapi and processes may read raster layers' COG files from although they resolve to a private, loopback or link-local address, comma-separated: an object store on your own network. Every other host must resolve to public addresses, so a layer cannot make GOAT read from inside your network. |
+| `GOAT_GEOAPI_URL` | *(commented out)*, `http://geoapi:8000` | Where core reaches geoapi: when a raster layer is added from a COG file, core asks geoapi for the file's bounds and stores them as the layer's extent. Change it only if geoapi runs outside the bundle. |
 
 ## Email {#email}
 

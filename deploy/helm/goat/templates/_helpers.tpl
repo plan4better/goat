@@ -232,6 +232,24 @@ Service port is 80, so no port suffix.
 {{- end }}
 
 {{/*
+In-cluster URL of the geoapi service, or empty when it is not deployed. Core
+asks it for a COG's bounds when a raster layer is added, and stores them as
+the layer's extent. Unset, such a layer is stored without one and the web asks
+geoapi itself.
+*/}}
+{{- define "goat.geoapi.url" -}}
+{{- if .Values.geoapi.enabled -}}
+{{- $host := include "goat.serviceFullname" (dict "context" . "component" "geoapi") -}}
+{{- $port := int (.Values.geoapi.service.port | default 80) -}}
+{{- if eq $port 80 -}}
+{{- printf "http://%s" $host -}}
+{{- else -}}
+{{- printf "http://%s:%d" $host $port -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Derive a browser-facing URL from a service's ingress block: scheme from
 whether TLS is configured, host from the first entry. Empty when the ingress
 is off or has no hosts.
@@ -316,6 +334,19 @@ empty, and the services then accept tokens of every client. Param: root.
 {{- define "goat.auth.allowedClients" -}}
 {{- $g := .Values.global.auth | default dict -}}
 {{- join "," ($g.allowedClients | default list) -}}
+{{- end }}
+
+{{/*
+RASTER_PRIVATE_HOSTS for geoapi and processes: the hosts in
+`global.rasterPrivateHosts`, comma-separated, rendered when the list is not
+empty and the service's own config does not set it. Param: dict with "root"
+and "config" (the service's config map).
+*/}}
+{{- define "goat.rasterPrivateHosts" -}}
+{{- $hosts := join "," (.root.Values.global.rasterPrivateHosts | default list) -}}
+{{- if and $hosts (not (hasKey .config "RASTER_PRIVATE_HOSTS")) }}
+RASTER_PRIVATE_HOSTS: {{ $hosts | quote }}
+{{- end }}
 {{- end }}
 
 {{/*

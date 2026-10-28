@@ -13,6 +13,13 @@ global:
   imagePullSecrets: []             # e.g. [{name: ghcr-pull-secret}]
   commonLabels: {}
   storageClass: ""                 # default StorageClass for all PVCs ("" = cluster default)
+  # Raster layers are COG addresses that geoapi and processes read over HTTP(S)
+  # (both need outbound HTTPS to those hosts). A host that resolves to a
+  # private, loopback or link-local address is refused, so a layer cannot make
+  # GOAT read from inside the cluster; list the hosts that may anyway (an
+  # object store in the cluster holding COGs). Rendered as RASTER_PRIVATE_HOSTS
+  # for geoapi and processes; a service's own config value wins.
+  rasterPrivateHosts: []           # e.g. [garage.goat.svc.cluster.local]
 
   # ── Authentication (OIDC / Keycloak) — ONE switch for the whole release ──
   # core, web, geoapi, processes and catalog all follow `global.auth.enabled`
@@ -227,6 +234,9 @@ core:
     JOB_TIMEOUT_DEFAULT: "500"
     CRUD_NUM_RETRIES: "40"
     CRUD_RETRY_INTERVAL: "3"
+    # Where core reads a COG's bounds when a raster layer is added, to store
+    # them as its extent. Unset: the in-chart geoapi service (geoapi.enabled).
+    # GOAT_GEOAPI_URL: "http://my-geoapi"
     # The two subtrees of the shared `data` volume core reads, and only reads.
     # Defaults match the mount paths the chart sets up; change them only if you
     # mount the volume somewhere else.
@@ -280,8 +290,8 @@ core:
   # OIDC/Keycloak — per-service override of `global.auth` (see there). Leave
   # everything unset to follow the global switch. When wired to a Secret,
   # core reads server-url, realm, client-id and client-secret from it and the
-  # Keycloak placeholders above are dropped from the ConfigMap. The
-  # civitas-goat-addon provisions this Secret in civitas-core deployments.
+  # Keycloak placeholders above are dropped from the ConfigMap. An addon
+  # chart that installs GOAT into a platform can provision this Secret.
   auth:
     enabled: null                  # null = global.auth.enabled; true/false overrides it
     existingSecret: ""             # "" = global.auth.existingSecret
@@ -419,13 +429,13 @@ web:
   extraVolumeMounts: []
   # OIDC/Keycloak — per-service override of `global.auth` (see there). When
   # wired to a Secret, web reads server-url, realm, client-id, client-secret
-  # and nextauth-secret (a NextAuth.js signing key; the civitas addon generates
-  # one per release) from it, replacing the placeholders in web.config.
+  # and nextauth-secret (a NextAuth.js signing key, for example one generated
+  # per release) from it, replacing the placeholders in web.config.
   auth:
     enabled: null                  # null = global.auth.enabled; true/false overrides it
     existingSecret: ""             # "" = global.auth.existingSecret
     existingSecretKeys: {}         # per key; unset keys = global.auth.existingSecretKeys
-    # NEXTAUTH_URL is the public URL of the web frontend (e.g. https://goat.civitas.test).
+    # NEXTAUTH_URL is the public URL of the web frontend (e.g. https://goat.example.org).
     # When set, overrides the placeholder in web.config.NEXTAUTH_URL.
     publicUrl: ""
   resources:
@@ -1183,10 +1193,11 @@ ducklakeBootstrap:
   # Emitted as DUCKLAKE_CATALOG_SCHEMA (the Postgres schema holding the
   # DuckLake metadata) and DUCKLAKE_DATA_DIR (the DATA_PATH of the catalog's
   # parquet files) into the geoapi and processes ConfigMaps, which both the
-  # services and their init containers read. `geoapi.config.*` /
-  # `processes.config.*` keys of the same name win. Defaults match GOAT's own
-  # (geoapi/processes config.py); the data dir sits on the shared `data`
-  # volume.
+  # services and their init containers read; core gets the catalog schema
+  # too (it reads DuckLake's change log to mark styles whose data changed).
+  # `core.config.*` / `geoapi.config.*` / `processes.config.*` keys of the
+  # same name win. Defaults match GOAT's own (geoapi/processes config.py);
+  # the data dir sits on the shared `data` volume.
   catalogSchema: "ducklake"
   dataDir: "/app/data/ducklake"
 

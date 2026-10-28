@@ -460,6 +460,8 @@ services:
       ALLOW_ORGANIZATION_CREATION: ${ALLOW_ORGANIZATION_CREATION:-true}
       CLIENT_URL: ${GOAT_PUBLIC_URL}
       API_URL: ${GOAT_PUBLIC_URL}/api/v2
+      # A COG layer's bounds, which core stores as its extent when it is added.
+      GOAT_GEOAPI_URL: ${GOAT_GEOAPI_URL:-http://geoapi:8000}
       POSTGRES_POOL_SIZE: ${POSTGRES_POOL_SIZE:-5}
       POSTGRES_MAX_OVERFLOW: ${POSTGRES_MAX_OVERFLOW:-10}
       # User-uploaded avatars and images
@@ -545,6 +547,9 @@ services:
       # together.
       GEOAPI_DUCKLAKE_POOL_SIZE: "2"
       GEOAPI_DUCKDB_MEMORY_LIMIT: 512MB
+      # Raster layers are COG addresses read over HTTPS; hosts that resolve
+      # to a private address are refused unless listed (see .env.example).
+      RASTER_PRIVATE_HOSTS: ${RASTER_PRIVATE_HOSTS:-}
     volumes:
       - goat-data:/app/data
     networks: [goat]
@@ -577,6 +582,8 @@ services:
       # Three DuckDB connections (analytics, SQL previews, layer search) get
       # this budget each; together they fit the memory limit below.
       PROCESSES_DUCKDB_MEMORY_LIMIT: 384MB
+      # Reads raster files for style statistics, like geoapi.
+      RASTER_PRIVATE_HOSTS: ${RASTER_PRIVATE_HOSTS:-}
     volumes:
       - goat-data:/app/data
     networks: [goat]
