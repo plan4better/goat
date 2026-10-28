@@ -1,4 +1,14 @@
-import { Chip, Divider, List, ListItemButton, ListItemIcon, ListItemText, Paper, Tooltip, useTheme } from "@mui/material";
+import {
+  Chip,
+  Divider,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Paper,
+  Tooltip,
+  useTheme,
+} from "@mui/material";
 import { useState } from "react";
 
 import type { ICON_NAME } from "@p4b/ui/components/Icon";
@@ -12,6 +22,8 @@ export interface PopperMenuItem {
   icon?: ICON_NAME;
   color?: string;
   disabled?: boolean;
+  /** Shown on hover; for a disabled item, why it is. */
+  tooltip?: string;
   group?: string;
   tag?: string;
   tagTooltip?: string;
@@ -75,62 +87,73 @@ export default function PopperMenu(props: PopperMenuProps) {
           <List dense={true} disablePadding>
             {Object.keys(groupedMenuItems).map((group, groupIndex) => (
               <div key={groupIndex}>
-                {groupedMenuItems[group].map((item) => (
-                  <ListItemButton
-                    disabled={item.disabled}
-                    selected={selectedItem?.label === item.label}
-                    key={item.id}
-                    onClick={(event) => {
-                      props?.onSelect?.(item);
-                      item.onClick?.();
-                      setPopperMenuOpen(false);
-                      event.stopPropagation();
-                    }}
-                    sx={{
-                      ...(item.color && {
-                        color: item.color,
-                      }),
-                    }}>
-                    {item.icon && (
-                      <ListItemIcon
-                        sx={{
-                          color: item.color || "inherit",
-                          pr: 4,
-                          minWidth: 0,
-                        }}>
-                        <Icon
-                          style={{ fontSize: 15 }}
-                          iconName={item.icon}
-                          htmlColor={item.color || "inherit"}
-                        />
-                      </ListItemIcon>
-                    )}
-                    <ListItemText
-                      primary={item.label}
-                      sx={{
-                        "& .MuiTypography-root": {
-                          ...(item.color && {
-                            color: item.color,
-                          }),
-                        },
+                {groupedMenuItems[group].map((item) => {
+                  const button = (
+                    <ListItemButton
+                      disabled={item.disabled}
+                      selected={selectedItem?.label === item.label}
+                      key={item.id}
+                      onClick={(event) => {
+                        if (item.disabled) return;
+                        props?.onSelect?.(item);
+                        item.onClick?.();
+                        setPopperMenuOpen(false);
+                        event.stopPropagation();
                       }}
-                    />
-                    {item.tag && (
-                      <Tooltip title={item.tagTooltip || ""} placement="right" arrow>
-                        <Chip
-                          label={item.tag}
-                          size="small"
+                      sx={{
+                        ...(item.color && {
+                          color: item.color,
+                        }),
+                      }}>
+                      {item.icon && (
+                        <ListItemIcon
                           sx={{
-                            ml: 1,
-                            height: 18,
-                            fontSize: "0.65rem",
-                            fontWeight: 600,
-                          }}
-                        />
-                      </Tooltip>
-                    )}
-                  </ListItemButton>
-                ))}
+                            color: item.color || "inherit",
+                            pr: 4,
+                            minWidth: 0,
+                          }}>
+                          <Icon
+                            style={{ fontSize: 15 }}
+                            iconName={item.icon}
+                            htmlColor={item.color || "inherit"}
+                          />
+                        </ListItemIcon>
+                      )}
+                      <ListItemText
+                        primary={item.label}
+                        sx={{
+                          "& .MuiTypography-root": {
+                            ...(item.color && {
+                              color: item.color,
+                            }),
+                          },
+                        }}
+                      />
+                      {item.tag && (
+                        <Tooltip title={item.tagTooltip || ""} placement="right" arrow>
+                          <Chip
+                            label={item.tag}
+                            size="small"
+                            sx={{
+                              ml: 1,
+                              height: 18,
+                              fontSize: "0.65rem",
+                              fontWeight: 600,
+                            }}
+                          />
+                        </Tooltip>
+                      )}
+                    </ListItemButton>
+                  );
+                  // A disabled button takes no pointer events: the tooltip listens on a wrapper.
+                  return item.tooltip ? (
+                    <Tooltip key={item.id} title={item.tooltip} placement="right" arrow>
+                      <span style={{ display: "block" }}>{button}</span>
+                    </Tooltip>
+                  ) : (
+                    button
+                  );
+                })}
                 {groupIndex < Object.keys(groupedMenuItems).length - 1 && <Divider sx={{ mx: 2 }} />}
               </div>
             ))}

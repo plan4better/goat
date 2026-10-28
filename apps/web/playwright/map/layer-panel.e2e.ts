@@ -1,7 +1,7 @@
 import { type Page, expect, test } from "@playwright/test";
 
 import { datasetOf } from "../fixtures/datasets";
-import { addDatasetsToProject, createProject, deleteProject } from "../fixtures/projects";
+import { addDatasetsToProject, createProject, deleteProject, projectMap } from "../fixtures/projects";
 import { API_URL, apiAs, needsAuth } from "../fixtures/users";
 
 /**
@@ -33,7 +33,7 @@ test.afterAll(async () => {
   }
 });
 
-type ProjectLayer = { id: number; name: string; properties?: Record<string, unknown> };
+type ProjectLayer = { id: number; name: string };
 
 /** The project's one layer, as stored. */
 const storedLayer = async (): Promise<ProjectLayer | undefined> => {
@@ -42,6 +42,30 @@ const storedLayer = async (): Promise<ProjectLayer | undefined> => {
     const layers = await api.get(`${API_URL}/api/v2/project/${projectId}/layer`);
     expect(layers.ok()).toBeTruthy();
     return ((await layers.json()) as ProjectLayer[])[0];
+  } finally {
+    await api.dispose();
+  }
+};
+
+/** The layer's active style, as the map request answers it. */
+const storedStyle = async (): Promise<{ symbol?: Record<string, unknown> } | undefined> => {
+  const layer = await storedLayer();
+  const api = await apiAs("owner");
+  try {
+    const { styles } = await projectMap(api, projectId);
+    return styles[String(layer?.id)]?.active.document as { symbol?: Record<string, unknown> };
+  } finally {
+    await api.dispose();
+  }
+};
+
+/** The layer's entry in the project's map document (its map state: shown, position, legend). */
+const storedEntry = async (): Promise<{ id: number; visible?: boolean } | undefined> => {
+  const layer = await storedLayer();
+  const api = await apiAs("owner");
+  try {
+    const { map: doc } = await projectMap(api, projectId);
+    return doc.layers.find((entry) => entry.id === layer?.id);
   } finally {
     await api.dispose();
   }
@@ -64,25 +88,31 @@ test("hiding a layer is stored with the project", async ({ page }) => {
   const row = await openProject(page, "E2E Points");
   await row.getByRole("button", { name: "Hide" }).click();
   await expect(row.getByRole("button", { name: "Show" })).toBeVisible();
-  await expect.poll(async () => (await storedLayer())?.properties?.visibility).toBe(false);
+  await expect.poll(async () => (await storedEntry())?.visible).toBe(false);
 
   await row.getByRole("button", { name: "Show" }).click();
-  await expect.poll(async () => (await storedLayer())?.properties?.visibility).toBe(true);
+  await expect.poll(async () => (await storedEntry())?.visible).toBe(true);
 });
 
-test("a fill colour typed as hex is stored as RGB", async ({ page }) => {
+test("a fill colour typed as hex in the color picker is stored in the layer's style", async ({ page }) => {
   const row = await openProject(page, "E2E Points");
   await row.getByText("E2E Points", { exact: true }).click();
   await expect(page.getByRole("tab", { name: "Style" })).toBeVisible();
 
-  // Fill comes before Stroke; both are labelled "Color".
-  await page.getByRole("button", { name: "Color", exact: true }).first().click();
+  const panel = page.locator("[data-style-panel]");
+  await panel
+    .getByRole("button", { name: /#[0-9a-f]{6}/i })
+    .first()
+    .click();
   const saved = page.waitForResponse(
-    (r) => r.url().includes(`/project/${projectId}/layer/`) && r.request().method() === "PUT"
+    (r) => /\/layer\/\d+\/style\//.test(r.url()) && r.request().method() === "PUT" && r.ok()
   );
-  await page.getByLabel("Layer color Hex input").fill("ff0000");
+  await page.getByRole("button", { name: "Pick a color" }).first().click();
+  await page.getByLabel("Color value").fill("#ff0000");
   await saved;
-  await expect.poll(async () => (await storedLayer())?.properties?.color).toEqual([255, 0, 0]);
+  await expect
+    .poll(async () => (await storedStyle())?.symbol)
+    .toMatchObject({ marker: { color: "#ff0000" } });
 });
 
 test("the data table shows the layer's rows", async ({ page }) => {

@@ -9,7 +9,6 @@ import {
   Tab,
   Tabs,
   TextField,
-  Tooltip,
   Typography,
   useTheme,
 } from "@mui/material";
@@ -31,6 +30,8 @@ import { MaskedImageIcon } from "@/components/map/panels/style/other/MaskedImage
 type MarkerGalleryProps = {
   selectedMarker?: Marker | undefined;
   onSelectMarker?: (marker: Marker) => void;
+  /** The library groups to show (GOAT Style's catalogue); today's Maki groups when absent. */
+  groups?: readonly { name: string; labelKey: string; icons: readonly string[] }[];
 };
 
 const MarkerGallery = (props: MarkerGalleryProps) => {
@@ -60,14 +61,17 @@ const MarkerGallery = (props: MarkerGalleryProps) => {
   );
 
   // Filter library icons
+  const libraryGroups = props.groups ?? MAKI_ICON_TYPES;
   const filteredGroups = useMemo(() => {
-    if (!search.trim()) return MAKI_ICON_TYPES;
+    if (!search.trim()) return libraryGroups;
     const lower = search.toLowerCase();
-    return MAKI_ICON_TYPES.map((group) => ({
-      ...group,
-      icons: group.icons.filter((icon) => icon.toLowerCase().includes(lower)),
-    })).filter((group) => group.icons.length > 0);
-  }, [search]);
+    return libraryGroups
+      .map((group) => ({
+        ...group,
+        icons: group.icons.filter((icon) => icon.toLowerCase().includes(lower)),
+      }))
+      .filter((group) => group.icons.length > 0);
+  }, [search, libraryGroups]);
 
   // Filter custom markers
   const filteredCustomMarkers = useMemo(() => {
@@ -122,36 +126,33 @@ const MarkerGallery = (props: MarkerGalleryProps) => {
       {icons.map((marker, idx) => {
         const isSelected = props.selectedMarker?.url === marker.url;
         return (
-          <Tooltip
+          <Box
             key={`${marker.name}-${idx}`}
             title={marker.name}
-            arrow
-            placement="top"
-            PopperProps={{ disablePortal: true }}>
-            <Box
-              onClick={() => props.onSelectMarker?.(marker)}
-              sx={{
-                cursor: "pointer",
-                m: 0.5,
-                p: 0.8,
-                borderRadius: 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "2px solid",
-                borderColor: isSelected ? "primary.main" : "transparent",
-                bgcolor: isSelected ? "action.selected" : "transparent",
-                "&:hover": {
-                  bgcolor: "action.hover",
-                },
-              }}>
-              <MaskedImageIcon
-                imageUrl={marker.url}
-                dimension={`${MAKI_ICON_SIZE}px`}
-                applyMask={marker?.source === "custom" ? false : true}
-              />
-            </Box>
-          </Tooltip>
+            role="button"
+            aria-label={marker.name}
+            onClick={() => props.onSelectMarker?.(marker)}
+            sx={{
+              cursor: "pointer",
+              m: 0.5,
+              p: 0.8,
+              borderRadius: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "2px solid",
+              borderColor: isSelected ? "primary.main" : "transparent",
+              bgcolor: isSelected ? "action.selected" : "transparent",
+              "&:hover": {
+                bgcolor: "action.hover",
+              },
+            }}>
+            <MaskedImageIcon
+              imageUrl={marker.url}
+              dimension={`${MAKI_ICON_SIZE}px`}
+              applyMask={marker?.source === "custom" ? false : true}
+            />
+          </Box>
         );
       })}
     </Box>

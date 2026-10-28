@@ -1,18 +1,6 @@
-import SearchIcon from "@mui/icons-material/Search";
-import {
-  Box,
-  Checkbox,
-  FormControl,
-  InputAdornment,
-  ListSubheader,
-  MenuItem,
-  Select,
-  TextField,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { Box, Checkbox, FormControl, MenuItem, Select, Typography, useTheme } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material";
 import { useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 import { type ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
@@ -20,6 +8,7 @@ import type { SelectorItem } from "@/types/map/common";
 
 import FormLabelHelper from "@/components/common/FormLabelHelper";
 import NoValuesFound from "@/components/map/common/NoValuesFound";
+import MenuSearchField from "@/components/map/panels/common/MenuSearchField";
 
 // Stable empty array reference to prevent re-renders
 const EMPTY_ARRAY: never[] = [];
@@ -40,13 +29,17 @@ type SelectorProps = {
   emptyMessage?: string;
   emptyMessageIcon?: ICON_NAME;
   disabled?: boolean;
+  /** The accessible name where no label is shown above (a label beside the field). */
+  ariaLabel?: string;
+  sx?: SxProps<Theme>;
+  /** A menu wider than the field, for options longer than a narrow field shows. */
+  menuWidth?: number;
 };
 
 const containsText = (text: string, searchText: string) =>
   text.toLowerCase().indexOf(searchText.toLowerCase()) > -1;
 
 const Selector = (props: SelectorProps) => {
-  const { t } = useTranslation("common");
   const theme = useTheme();
   const [searchText, setSearchText] = useState("");
   const {
@@ -64,6 +57,9 @@ const Selector = (props: SelectorProps) => {
     emptyMessageIcon,
     errorMessage,
     disabled,
+    ariaLabel,
+    sx,
+    menuWidth,
   } = props;
   const [focused, setFocused] = useState(false);
   const displayedItems = useMemo(() => {
@@ -130,6 +126,7 @@ const Selector = (props: SelectorProps) => {
               sx: {
                 maxHeight: "350px",
                 overflowY: "auto",
+                ...(menuWidth && { width: menuWidth, maxWidth: "none" }),
               },
             },
           },
@@ -137,8 +134,8 @@ const Selector = (props: SelectorProps) => {
         IconComponent={() => null}
         // The visible label is not a <label> tied to the field, so the
         // combobox carries it as its accessible name.
-        SelectDisplayProps={{ "aria-label": label || placeholder }}
-        sx={{ pr: 1 }}
+        SelectDisplayProps={{ "aria-label": ariaLabel || label || placeholder }}
+        sx={[{ pr: 1 }, ...(Array.isArray(sx) ? sx : [sx])]}
         displayEmpty
         disabled={disabled}
         error={!!errorMessage}
@@ -218,28 +215,7 @@ const Selector = (props: SelectorProps) => {
             </Typography>
           );
         }}>
-        {enableSearch && (
-          <ListSubheader sx={{ px: 2, pt: 1 }}>
-            <TextField
-              size="small"
-              autoFocus
-              placeholder={t("search_placeholder_short")}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
-              }}
-              onChange={(e) => setSearchText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== "Escape") {
-                  e.stopPropagation();
-                }
-              }}
-            />
-          </ListSubheader>
-        )}
+        {enableSearch && <MenuSearchField onChange={setSearchText} />}
         {emptyMessage && emptyMessageIcon && displayedItems.length === 0 && (
           <NoValuesFound text={emptyMessage} icon={emptyMessageIcon} />
         )}
@@ -270,17 +246,28 @@ const Selector = (props: SelectorProps) => {
                 />
               )
             )}
-            <Typography
-              variant="body2"
-              fontWeight="bold"
-              title={item.label}
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}>
-              {item.label}
-            </Typography>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography
+                variant="body2"
+                fontWeight="bold"
+                title={item.label}
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}>
+                {item.label}
+              </Typography>
+              {item.sub && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  component="p"
+                  sx={{ whiteSpace: "normal" }}>
+                  {item.sub}
+                </Typography>
+              )}
+            </Box>
           </MenuItem>
         ))}
       </Select>

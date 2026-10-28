@@ -5,14 +5,16 @@ import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { TypographyStyle } from "@/lib/constants/typography";
 import { DEFAULT_FONT_FAMILY, LEGEND_TYPOGRAPHY_DEFAULTS } from "@/lib/constants/typography";
+import { mapElementLayers } from "@/lib/print/mapElements";
+import type { Geometry } from "@/lib/style/compile/types";
+import { type JsonObject, isObject } from "@/lib/style/json";
+import { type Legend, baseSwatch, buildLegend, informative } from "@/lib/style/legend";
 import { cleanEditedText } from "@/lib/utils/editableText";
-import { rgbToHex } from "@/lib/utils/helpers";
-import type { RGBColor } from "@/types/map/color";
-import type { ProjectLayer } from "@/lib/validations/project";
 import type { ReportElement } from "@/lib/validations/reportLayout";
 
-import { LayerIcon } from "@/components/map/panels/layer/legend/LayerIcon";
-import { LayerLegendPanel } from "@/components/map/panels/layer/legend/LayerLegend";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
+
+import { StyleLegend, SwatchIcon } from "@/components/map/legend/StyleLegend";
 
 /**
  * Convert TypographyStyle to MUI sx props
@@ -124,8 +126,11 @@ const EditableText: React.FC<{
 
 interface LegendElementRendererProps {
   element: ReportElement;
-  projectLayers?: ProjectLayer[];
+  /** The project's map layers, with their styles. */
+  projectLayers?: MapLayer[];
   mapElements?: ReportElement[];
+  /** The map's number locale; the viewer's language without one. */
+  locale?: string;
   viewOnly?: boolean;
   /** Zoom level to scale content */
   zoom?: number;
@@ -143,6 +148,7 @@ const LegendElementRenderer: React.FC<LegendElementRendererProps> = ({
   element,
   projectLayers = [],
   mapElements = [],
+  locale,
   viewOnly: _viewOnly = true,
   zoom = 1,
   onElementUpdate,
@@ -177,67 +183,24 @@ const LegendElementRenderer: React.FC<LegendElementRendererProps> = ({
     [onElementUpdate, element.id, element.config, config?.textOverrides]
   );
 
-  // Resolve layers dynamically based on map element binding and lock state
-  const resolvedLayers = useMemo(() => {
-    // Find connected map element (if any)
-    const connectedMap = config?.mapElementId && mapElements.length > 0
+  // The connected map's layers (its locked ones, with their frozen documents), else the project's drawn layers whose
+  // style shows a legend.
+  const connectedMap =
+    config?.mapElementId && mapElements.length > 0
       ? mapElements.find((m) => m.id === config.mapElementId)
       : null;
-
-    // Determine which layer IDs to show
-    let layerIds: number[] | null = null;
-    let styleOverrides: Record<string, Record<string, unknown>> | null = null;
-
-    if (connectedMap) {
-      const mapConfig = connectedMap.config as Record<string, unknown> | undefined;
-      const mapLockLayers = mapConfig?.lock_layers === true;
-      const mapLockStyles = mapConfig?.lock_styles === true;
-      const mapLockedIds = mapConfig?.locked_layer_ids as number[] | undefined;
-      const mapLockedStyles = mapConfig?.locked_layer_styles as Record<string, Record<string, unknown>> | undefined;
-
-      if (mapLockLayers && mapLockedIds) {
-        // Map has locked layers - use those IDs
-        layerIds = mapLockedIds;
-        if (mapLockStyles && mapLockedStyles) {
-          // Map also has locked styles - use frozen properties
-          styleOverrides = mapLockedStyles;
-        }
-      } else if (connectedMap.map_config?.layers) {
-        // Fallback to map_config.layers if available
-        layerIds = connectedMap.map_config.layers;
-      }
-    }
-
-    // Filter project layers
-    let result: ProjectLayer[];
-    if (layerIds) {
-      result = projectLayers.filter((l) => layerIds!.includes(l.id));
-    } else {
-      // Show all visible layers with legend enabled
-      result = projectLayers.filter((layer) => {
-        const props = layer.properties as Record<string, unknown>;
-        const isVisible = props.visibility !== false;
-        const legendShow = (props.legend as { show?: boolean })?.show !== false;
-        return isVisible && legendShow;
-      });
-    }
-
-    // Apply style overrides if the connected map has locked styles
-    if (styleOverrides) {
-      result = result.map((layer) => {
-        const frozenProps = styleOverrides![String(layer.id)];
-        if (frozenProps) {
-          return { ...layer, properties: frozenProps };
-        }
-        return layer;
-      });
-    }
-
-    return result;
-  }, [projectLayers, mapElements, config?.mapElementId]);
+  const mapZoom = (connectedMap?.config?.viewState as { zoom?: number } | undefined)?.zoom ?? 12;
+  const resolvedLayers = useMemo(() => {
+    const mapConfig = (connectedMap?.config ?? {}) as Record<string, unknown>;
+    if (mapConfig.lock_layers === true && mapConfig.locked_layer_ids)
+      return mapElementLayers(projectLayers, mapConfig);
+    const ids = connectedMap?.map_config?.layers;
+    if (ids) return projectLayers.filter((l) => ids.includes(l.id));
+    return projectLayers.filter((layer) => layer.visible && legendShown(layer));
+  }, [projectLayers, connectedMap]);
 
   // Freeze mechanism: when auto_update is off, keep showing the last resolved layers
-  const frozenLayersRef = useRef<ProjectLayer[]>(resolvedLayers);
+  const frozenLayersRef = useRef<MapLayer[]>(resolvedLayers);
   useEffect(() => {
     if (autoUpdate) {
       // Auto-update is on: always keep frozen ref in sync
@@ -292,6 +255,8 @@ const LegendElementRenderer: React.FC<LegendElementRendererProps> = ({
             <LayerLegendItem
               key={layer.id}
               layer={layer}
+              zoom={mapZoom}
+              locale={locale}
               showLayerName={layoutConfig.showLayerNames !== false}
               typography={typography}
               editable={isEditable}
@@ -305,13 +270,39 @@ const LegendElementRenderer: React.FC<LegendElementRendererProps> = ({
   );
 };
 
+/** The position keys print layouts used before GOAT Style, by the entry key StyleLegend renders with: entries in order
+ * (`item_<n>`), a ramp's ends (`item_min`, `item_max`). */
+function legacyItemKeys(legend: Legend | null): Record<string, string> {
+  const keys: Record<string, string> = {};
+  let n = 0;
+  for (const section of legend?.sections ?? []) {
+    if (section.kind === "entries")
+      for (const entry of section.entries) keys[`${section.id}_${entry.id}`] = `item_${n++}`;
+    if (section.kind === "ramp") {
+      keys[`${section.id}_0`] = "item_min";
+      keys[`${section.id}_1`] = "item_max";
+    }
+  }
+  return keys;
+}
+
+/** Whether a layer's style shows a legend (spec 7.2). */
+const legendShown = (layer: MapLayer): boolean => {
+  const legend = (layer.style?.document as { legend?: unknown } | undefined)?.legend;
+  return legend !== false && !(isObject(legend) && legend.show === false);
+};
+
+const GEOMETRIES = new Set(["point", "line", "polygon"]);
+
 /**
- * Individual layer legend item.
- * Mirrors the logic from ProjectLayerTree for deciding between
- * simple icon vs expanded LayerLegendPanel.
+ * One layer's legend: the same model and drawing as the layer list's (StyleLegend). A layer whose legend is only its
+ * base look shows that swatch beside its name.
  */
 interface LayerLegendItemProps {
-  layer: ProjectLayer;
+  layer: MapLayer;
+  /** The connected map's zoom: legend values by zoom read it. */
+  zoom: number;
+  locale?: string;
   showLayerName?: boolean;
   typography?: LegendTypographyConfig;
   editable?: boolean;
@@ -319,89 +310,56 @@ interface LayerLegendItemProps {
   onTextSave?: (key: string, text: string) => void;
 }
 
-
 const LayerLegendItem: React.FC<LayerLegendItemProps> = ({
   layer,
+  zoom,
+  locale,
   showLayerName = true,
   typography,
   editable = false,
   textOverrides,
   onTextSave,
 }) => {
-  const props = layer.properties as Record<string, unknown>;
-  const geomType = layer.type === "feature"
-    ? (layer.feature_layer_geometry_type || "polygon")
-    : layer.type === "raster"
-      ? "raster"
-      : "polygon";
-
-  // Same check as ProjectLayerTree line 756
-  const hasComplexLegend = !!(
-    (props.filled !== false && props.color_field) ||
-    (props.stroked !== false && props.stroke_color_field) ||
-    props.marker_field
-  );
-
-  // Raster legend check
-  const rasterStyle = props.style as { style_type?: string; categories?: unknown[]; color_map?: unknown[] } | undefined;
-  const hasRasterLegend =
-    layer.type === "raster" &&
-    rasterStyle &&
-    ((rasterStyle.style_type === "categories" && Array.isArray(rasterStyle.categories) && rasterStyle.categories.length > 0) ||
-      (rasterStyle.style_type === "color_range" && Array.isArray(rasterStyle.color_map) && rasterStyle.color_map.length > 0));
-
-  // Simple icon props (same logic as ProjectLayerTree lines 813-842)
-  const baseColor: string = props.color
-    ? Array.isArray(props.color) && (props.color as number[]).length >= 3
-      ? rgbToHex(props.color as RGBColor)
-      : Array.isArray(props.color)
-        ? `rgb(${(props.color as number[]).join(",")})`
-        : String(props.color)
-    : "#ccc";
-  const stroked = props.stroked !== false;
-  const strokeColor: string | undefined = stroked && props.stroke_color
-    ? Array.isArray(props.stroke_color) && (props.stroke_color as number[]).length >= 3
-      ? rgbToHex(props.stroke_color as RGBColor)
-      : Array.isArray(props.stroke_color)
-        ? `rgb(${(props.stroke_color as number[]).join(",")})`
-        : String(props.stroke_color)
+  const style = (layer.style?.document ?? null) as JsonObject | null;
+  const type = layer.feature_layer_geometry_type?.toLowerCase();
+  const geometry = type && GEOMETRIES.has(type) ? (type as Geometry) : undefined;
+  const legend = style
+    ? buildLegend(style, {
+        geometry,
+        zoom,
+        serviceLegendUrl: (layer.other_properties as { legend_urls?: string[] } | null)?.legend_urls?.[0],
+      })
+    : null;
+  const detailed = informative(legend);
+  const legendOptions = style && isObject(style.legend) ? style.legend : undefined;
+  const caption = typeof legendOptions?.caption === "string" ? legendOptions.caption : undefined;
+  const itemOverrides = editable
+    ? extractPrefixedOverrides(textOverrides, `legenditem_${layer.id}_`)
     : undefined;
+  // Layouts saved before GOAT Style keyed their entries by position (`item_<n>`, a ramp's `item_min` and `item_max`).
+  const legacyKeys = useMemo(() => legacyItemKeys(legend), [legend]);
+  const overrideOf = (key: string) =>
+    itemOverrides?.[key] ?? (legacyKeys[key] ? itemOverrides?.[legacyKeys[key]] : undefined);
+  const itemSx = typographyToSx(typography?.legendItem, "legendItem");
+
+  const layerNameKey = `layer_${layer.id}`;
+  // Hide the layer name row entirely when the user has cleared the text.
+  const layerNameCleared =
+    editable && textOverrides?.[layerNameKey] != null && !textOverrides[layerNameKey].trim();
 
   return (
     <Box sx={{ minWidth: 0 }}>
-      {/* Layer name with icon */}
-      {showLayerName && (() => {
-        const isComplex = hasComplexLegend || hasRasterLegend;
-        const layerNameKey = `layer_${layer.id}`;
-        const layerNameCleared = editable && textOverrides?.[layerNameKey] != null && !textOverrides[layerNameKey].trim();
-        // Hide the layer name row entirely when user has cleared the text
-        if (layerNameCleared) return null;
-        return (
+      {showLayerName && !layerNameCleared && (
         <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.5 }}>
-          {!isComplex && (
-            <Box sx={{ flexShrink: 0 }}>
-              <LayerIcon
-                type={geomType}
-                color={baseColor}
-                strokeColor={strokeColor}
-                filled={props.filled !== false}
-                iconUrl={
-                  !props.marker_field && props.custom_marker && (props.marker as Record<string, unknown>)?.url
-                    ? ((props.marker as Record<string, unknown>).url as string)
-                    : undefined
-                }
-                iconSource={
-                  !props.marker_field && props.custom_marker && (props.marker as Record<string, unknown>)?.source
-                    ? ((props.marker as Record<string, unknown>).source as "custom" | "library")
-                    : "library"
-                }
-              />
+          {!detailed && style && geometry && (
+            <Box sx={{ flexShrink: 0, display: "flex" }}>
+              <SwatchIcon swatch={baseSwatch(style, { geometry, zoom })} />
             </Box>
           )}
           <EditableText
-            text={editable && textOverrides?.[`layer_${layer.id}`] ? textOverrides[`layer_${layer.id}`] : layer.name}
+            text={editable && textOverrides?.[layerNameKey] ? textOverrides[layerNameKey] : layer.name}
             editable={editable}
-            onSave={(text) => onTextSave?.(`layer_${layer.id}`, text)}
+            onSave={(text) => onTextSave?.(layerNameKey, text)}
             variant="caption"
             sx={{
               wordBreak: "break-word",
@@ -409,16 +367,12 @@ const LayerLegendItem: React.FC<LayerLegendItemProps> = ({
             }}
           />
         </Stack>
-        );
-      })()}
+      )}
 
-      {/* Legend caption */}
-      {!!(props.legend && (props.legend as Record<string, unknown>).caption) && (
+      {caption && (
         <EditableText
           text={
-            editable && textOverrides?.[`caption_${layer.id}`]
-              ? textOverrides[`caption_${layer.id}`]
-              : String((props.legend as Record<string, unknown>).caption)
+            editable && textOverrides?.[`caption_${layer.id}`] ? textOverrides[`caption_${layer.id}`] : caption
           }
           editable={editable}
           onSave={(text) => onTextSave?.(`caption_${layer.id}`, text)}
@@ -427,40 +381,24 @@ const LayerLegendItem: React.FC<LayerLegendItemProps> = ({
         />
       )}
 
-      {/* Complex feature legend - attribute-based styling (compact/inline) */}
-      {hasComplexLegend && layer.type === "feature" && (
-        <LayerLegendPanel
-          properties={props}
-          geometryType={geomType}
-          itemTypographySx={typographyToSx(typography?.legendItem, "legendItem")}
-          headingTypographySx={typographyToSx(typography?.heading, "heading")}
-          compact
-          editable={editable}
-          textOverrides={editable ? extractPrefixedOverrides(textOverrides, `legenditem_${layer.id}_`) : undefined}
-          onTextSave={editable ? (key, text) => onTextSave?.(`legenditem_${layer.id}_${key}`, text) : undefined}
+      {legend && detailed && (
+        <StyleLegend
+          legend={{ ...legend, caption: undefined }}
+          variant="tree"
+          locale={locale}
+          itemSx={itemSx}
+          headingSx={typographyToSx(typography?.heading, "heading")}
+          renderText={(key, text) => (
+            <EditableText
+              text={overrideOf(key) ?? text}
+              editable={editable}
+              onSave={(next) => onTextSave?.(`legenditem_${layer.id}_${key}`, next)}
+              variant="caption"
+              sx={itemSx}
+            />
+          )}
         />
       )}
-
-      {/* Raster legend */}
-      {hasRasterLegend && (
-        <LayerLegendPanel
-          properties={props}
-          geometryType="raster"
-          itemTypographySx={typographyToSx(typography?.legendItem, "legendItem")}
-          editable={editable}
-          textOverrides={editable ? extractPrefixedOverrides(textOverrides, `legenditem_${layer.id}_`) : undefined}
-          onTextSave={editable ? (key, text) => onTextSave?.(`legenditem_${layer.id}_${key}`, text) : undefined}
-        />
-      )}
-
-      {/* Raster legend URLs */}
-      {layer.type === "raster" &&
-        layer.other_properties?.legend_urls &&
-        (layer.other_properties.legend_urls as string[]).map((url: string) => (
-          <Stack key={url} spacing={1} sx={{ mt: 0.5 }} direction="column">
-            <img src={url} alt="" style={{ width: "100%" }} />
-          </Stack>
-        ))}
     </Box>
   );
 };

@@ -1,43 +1,36 @@
+// The style panel of dashboards and mobile maps: the layer's opacity, and for a published map's
+// viewer the choice between the layer's named styles. What a change does (a style save, view state) is the caller's.
 import { Box } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { FeatureLayerProperties } from "@/lib/validations/layer";
-import type { ProjectLayer } from "@/lib/validations/project";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 
-import FormLabelHelper from "@/components/common/FormLabelHelper";
-import SliderInput from "@/components/map/panels/common/SliderInput";
+import { ChoiceRow } from "@/components/map/panels/styleEditor/rows/ChoiceRow";
+import { SliderRow } from "@/components/map/panels/styleEditor/rows/SliderRow";
 
 interface SimpleLayerStyleProps {
-  activeLayer: ProjectLayer;
-  onStyleChange?: (layerId: string, styleChanges: { opacity: number }) => void;
+  layer: MapLayer | null | undefined;
+  /** The released opacity. */
+  onOpacityChange: (layer: MapLayer, opacity: number) => void;
+  /** Another named style picked; only where the viewer may switch. */
+  onStyleChange?: (layer: MapLayer, styleId: string) => void;
 }
 
-const SimpleLayerStyle = ({ activeLayer, onStyleChange }: SimpleLayerStyleProps) => {
+/** The viewer's opacity, else the style's (a zoom curve shows as fully opaque; a change replaces it). */
+const opacityOf = (layer: MapLayer | null | undefined): number => {
+  const styled = layer?.style?.document.opacity;
+  return layer?.opacity ?? (typeof styled === "number" ? styled : 1);
+};
+
+const SimpleLayerStyle = ({ layer, onOpacityChange, onStyleChange }: SimpleLayerStyleProps) => {
   const { t } = useTranslation("common");
+  const [opacity, setOpacity] = useState(() => opacityOf(layer));
+  const stored = opacityOf(layer);
+  // Another layer, or the stored value moved: follow it.
+  useEffect(() => setOpacity(stored), [layer?.id, stored]);
 
-  // Get initial opacity from layer properties or default to 1
-  const layerProperties = activeLayer?.properties as FeatureLayerProperties;
-  const initialOpacity = layerProperties?.opacity ?? 1;
-  const [opacity, setOpacity] = useState(initialOpacity);
-
-  // Reset opacity when active layer changes
-  useEffect(() => {
-    const newOpacity = (activeLayer?.properties as FeatureLayerProperties)?.opacity ?? 1;
-    setOpacity(newOpacity);
-  }, [activeLayer]);
-
-  const handleOpacityChange = (value: number) => {
-    setOpacity(value);
-  };
-
-  const handleOpacityChangeCommitted = (value: number) => {
-    if (onStyleChange && activeLayer) {
-      onStyleChange(activeLayer.id.toString(), { opacity: value });
-    }
-  };
-
-  if (!activeLayer) {
+  if (!layer) {
     return (
       <Box sx={{ p: 2 }}>
         <div>{t("no_layer_selected", { defaultValue: "No layer selected" })}</div>
@@ -45,24 +38,28 @@ const SimpleLayerStyle = ({ activeLayer, onStyleChange }: SimpleLayerStyleProps)
     );
   }
 
+  const styles = layer.style ? [layer.style, ...layer.otherStyles] : [];
   return (
-    <Box sx={{ p: 2 }}>
-      <FormLabelHelper label={t("opacity")} color="inherit" />
-      <SliderInput
-        value={opacity}
-        isRange={false}
-        rootSx={{
-          pl: 1,
-          pt: 0,
-          "&&": {
-            mt: 0,
-          },
-        }}
+    <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 0.5 }}>
+      {onStyleChange && layer.style && styles.length > 1 && (
+        <ChoiceRow
+          label={t("style_editor.named_style")}
+          value={layer.style.id}
+          options={styles.map((style) => ({ value: style.id, label: style.name }))}
+          onChange={(styleId) => {
+            if (styleId !== layer.style?.id) onStyleChange(layer, styleId);
+          }}
+        />
+      )}
+      <SliderRow
+        label={t("style_editor.opacity")}
         min={0}
         max={1}
         step={0.01}
-        onChange={handleOpacityChange}
-        onChangeCommitted={handleOpacityChangeCommitted}
+        pct
+        value={opacity}
+        onChange={setOpacity}
+        onCommit={(value) => onOpacityChange(layer, value)}
       />
     </Box>
   );
