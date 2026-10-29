@@ -10,14 +10,15 @@ import type { BasemapLayerConfig } from "@/lib/validations/project";
 
 import { useAppSelector } from "@/hooks/store/ContextHooks";
 
-// Overlays (the active feature's pulse, pending edits, drawing, measuring) stay above every data layer: they annotate
-// features, so they are neither data nor basemap.
+// Overlays (the active feature's pulse, pending edits, drawing, measuring, the PT network Explorer) stay above every
+// data layer: they annotate features, so they are neither data nor basemap.
 const isOverlayId = (id: string) =>
   id.startsWith("popup-active-feature") ||
   id.startsWith("pending-features") ||
   id.startsWith("gl-draw") ||
   id.startsWith("mapbox-gl-draw") ||
-  id.startsWith("__measure");
+  id.startsWith("__measure") ||
+  id.startsWith("explorer-");
 
 /** Applies the active custom basemap's layer settings around the project layers `keys` (top first). */
 export function useBasemapStacking(map: MaplibreMap | undefined, keys: string[]): void {

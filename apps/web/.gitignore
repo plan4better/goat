@@ -40,3 +40,6 @@ yarn-error.log*
 
 #other
 /.idea
+
+# DuckDB-WASM, copied from node_modules by scripts/copy-duckdb-wasm.mjs
+/public/vendor/duckdb/

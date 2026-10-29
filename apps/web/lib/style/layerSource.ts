@@ -91,6 +91,8 @@ export interface SourceOptions {
   extra?: unknown[];
   /** The feature editor edits this dataset: tiles are made from the table, not from stored PMTiles. */
   dynamic?: boolean;
+  /** A workflow result: geoapi looks for its tiles in the workflow temp storage straight away. */
+  temp?: boolean;
   /** When the dataset's data last changed (ISO). */
   version?: string | null;
   /** Features held in the browser instead of geoapi's (the feature editor's pending changes). */
@@ -143,6 +145,7 @@ export function compileSourceFor(layer: SourceLayer, opts: SourceOptions): Compi
   const params = new URLSearchParams();
   if (filter) params.set("filter", JSON.stringify(filter));
   if (opts.dynamic) params.set("dynamic", "true");
+  if (opts.temp) params.set("temp", "true");
   if (version) params.set("v", version);
   const query = params.toString();
   return {

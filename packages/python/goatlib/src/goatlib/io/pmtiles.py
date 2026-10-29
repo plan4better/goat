@@ -45,6 +45,24 @@ from goatlib.utils.layer import layer_id_to_table_name
 logger = logging.getLogger(__name__)
 
 
+def publish_tiles(built: Path, final: Path) -> None:
+    """Move tiles built on local disk into place, atomically.
+
+    tippecanoe builds PMTiles in an SQLite database at its output path and
+    converts it at the end, so it is pointed at local disk: SQLite is unsafe
+    on network file systems. The finished file is copied next to `final`
+    under a pid-tagged temp name (concurrent runs for one layer don't share
+    it) and renamed over `final`, so readers never see a partial file.
+    """
+    final.parent.mkdir(parents=True, exist_ok=True)
+    temp = final.parent / f".tmp_{os.getpid()}_{final.name}"
+    try:
+        shutil.copyfile(built, temp)
+        os.replace(temp, final)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
 @dataclass
 class PMTilesConfig:
     """Configuration for PMTiles generation.
@@ -132,10 +150,10 @@ class PMTilesGenerator:
         """Get the path where PMTiles should be stored.
 
         Flat, keyed only by layer id: the id is globally unique, so no
-        directory is needed to disambiguate. Earlier versions nested tiles
-        under the owner's DuckLake schema, which meant the writer had to
-        agree with the reader about where a layer's table lived — see
-        `legacy_pmtiles_paths` for reading those.
+        directory is needed to disambiguate. Every lookup is a single stat()
+        of this path: listing the tiles directory (tens of thousands of
+        files) is slow on network storage and has failed outright on NFS
+        clients that cached it.
 
         Args:
             layer_id: Layer UUID (with or without dashes)
@@ -144,15 +162,6 @@ class PMTilesGenerator:
             Path to the PMTiles file
         """
         return self.tiles_data_dir / f"{layer_id_to_table_name(layer_id)}.pmtiles"
-
-    def legacy_pmtiles_paths(self: Self, layer_id: str) -> list[Path]:
-        """Find PMTiles written before the layout went flat.
-
-        Those live one directory down, under the owner's schema name.
-        """
-        return sorted(
-            self.tiles_data_dir.glob(f"*/{layer_id_to_table_name(layer_id)}.pmtiles")
-        )
 
     def get_anchor_pmtiles_path(self: Self, layer_id: str) -> Path:
         """Get the path for the label anchor PMTiles file (polygon layers only).
@@ -180,11 +189,7 @@ class PMTilesGenerator:
         Returns:
             True if PMTiles file exists
         """
-        if self.get_pmtiles_path(layer_id).exists():
-            return True
-        # Tiles written before the layout went flat still count as present,
-        # so a layer is not needlessly rebuilt while a rollout is partway.
-        return bool(self.legacy_pmtiles_paths(layer_id))
+        return self.get_pmtiles_path(layer_id).exists()
 
     def is_pmtiles_valid(self: Self, pmtiles_path: Path | str) -> bool:
         """Check if a PMTiles file is valid and readable.
@@ -324,45 +329,37 @@ class PMTilesGenerator:
             duckdb_con, table_name, geometry_column
         )
 
-        # Use a temp file for the PMTiles output, then atomically rename
-        # This prevents corrupted files if the process is interrupted
-        # NOTE: tippecanoe uses file extension to determine output format!
-        # .pmtiles -> PMTiles, anything else -> MBTiles (SQLite)
-        # So we use a .tmp_ prefix instead of .tmp suffix.
-        # The pid keeps the extension intact while making the temp name unique:
-        # two jobs materializing the same layer concurrently must not write the
-        # same temp file and corrupt each other's output before the rename.
-        temp_tag = f".tmp_{os.getpid()}_"
-        temp_pmtiles_path = pmtiles_path.parent / f"{temp_tag}{pmtiles_path.name}"
-
         # Check if this is a polygon layer that needs label anchor points
         geom_upper = geometry_type.upper() if geometry_type else ""
         is_polygon = "POLYGON" in geom_upper
 
         # Anchor PMTiles path (separate file for polygon label points)
         anchor_pmtiles_path = self.get_anchor_pmtiles_path(layer_id)
-        temp_anchor_path = (
-            anchor_pmtiles_path.parent / f"{temp_tag}{anchor_pmtiles_path.name}"
-        )
 
         try:
-            with tempfile.NamedTemporaryFile(
-                suffix=".geojson", delete=True, prefix="pmtiles_"
-            ) as tmp_geojson:
+            # Everything is built on local disk and only the finished files
+            # are published (see publish_tiles). tippecanoe picks the output
+            # format by extension, so the built files keep the final names.
+            with tempfile.TemporaryDirectory(prefix="pmtiles_") as work:
+                work_dir = Path(work)
+                geojson_path = work_dir / "features.geojson"
+                built_path = work_dir / pmtiles_path.name
+                built_anchor_path = work_dir / anchor_pmtiles_path.name
+
                 # Step 1: Export to GeoJSON (preserves attribute types)
                 # Note: FlatGeobuf is faster but tippecanoe converts integers to strings
                 self._export_to_geojson(
                     duckdb_con=duckdb_con,
                     table_name=table_name,
-                    output_path=tmp_geojson.name,
+                    output_path=str(geojson_path),
                     geometry_column=geometry_column,
                     exclude_columns=exclude_columns,
                 )
 
                 # Step 2: Generate main geometry tiles (all layer types)
                 self._run_tippecanoe(
-                    input_path=tmp_geojson.name,
-                    output_path=str(temp_pmtiles_path),
+                    input_path=str(geojson_path),
+                    output_path=str(built_path),
                     geometry_type=geometry_type,
                     snapshot_id=snapshot_id,
                     show_progress=show_progress,
@@ -372,18 +369,17 @@ class PMTilesGenerator:
                 if is_polygon:
                     logger.info("Generating label anchor point tiles...")
                     self._run_tippecanoe(
-                        input_path=tmp_geojson.name,
-                        output_path=str(temp_anchor_path),
+                        input_path=str(geojson_path),
+                        output_path=str(built_anchor_path),
                         geometry_type=geometry_type,
                         snapshot_id=snapshot_id,
                         show_progress=show_progress,
                         label_anchor=True,
                     )
 
-            # Atomically rename temp files to final paths
-            temp_pmtiles_path.rename(pmtiles_path)
-            if is_polygon and temp_anchor_path.exists():
-                temp_anchor_path.rename(anchor_pmtiles_path)
+                publish_tiles(built_path, pmtiles_path)
+                if is_polygon and built_anchor_path.exists():
+                    publish_tiles(built_anchor_path, anchor_pmtiles_path)
 
             size_mb = pmtiles_path.stat().st_size / 1024 / 1024
             logger.info(
@@ -399,11 +395,6 @@ class PMTilesGenerator:
 
         except Exception as e:
             logger.error(f"PMTiles generation failed: {e}")
-            # Clean up temp files if they exist
-            if temp_pmtiles_path.exists():
-                temp_pmtiles_path.unlink()
-            if temp_anchor_path.exists():
-                temp_anchor_path.unlink()
             return None
 
     def generate_anchor_from_table(
@@ -439,12 +430,6 @@ class PMTilesGenerator:
 
         exclude_columns = exclude_columns or ["bbox"]
         anchor_pmtiles_path = self.get_anchor_pmtiles_path(layer_id)
-        anchor_pmtiles_path.parent.mkdir(parents=True, exist_ok=True)
-        # pid-tagged so concurrent runs for one layer don't share a temp file.
-        temp_anchor_path = (
-            anchor_pmtiles_path.parent
-            / f".tmp_{os.getpid()}_{anchor_pmtiles_path.name}"
-        )
 
         logger.info(
             f"Generating anchor PMTiles for {table_name} -> {anchor_pmtiles_path}"
@@ -462,27 +447,30 @@ class PMTilesGenerator:
             return None
 
         try:
-            with tempfile.NamedTemporaryFile(
-                suffix=".geojson", delete=True, prefix="pmtiles_"
-            ) as tmp_geojson:
+            # Built on local disk, then published (see publish_tiles).
+            with tempfile.TemporaryDirectory(prefix="pmtiles_") as work:
+                work_dir = Path(work)
+                geojson_path = work_dir / "features.geojson"
+                built_anchor_path = work_dir / anchor_pmtiles_path.name
+
                 self._export_to_geojson(
                     duckdb_con=duckdb_con,
                     table_name=table_name,
-                    output_path=tmp_geojson.name,
+                    output_path=str(geojson_path),
                     geometry_column=geometry_column,
                     exclude_columns=exclude_columns,
                 )
 
                 self._run_tippecanoe(
-                    input_path=tmp_geojson.name,
-                    output_path=str(temp_anchor_path),
+                    input_path=str(geojson_path),
+                    output_path=str(built_anchor_path),
                     geometry_type=geometry_type,
                     snapshot_id=snapshot_id,
                     show_progress=show_progress,
                     label_anchor=True,
                 )
 
-            temp_anchor_path.rename(anchor_pmtiles_path)
+                publish_tiles(built_anchor_path, anchor_pmtiles_path)
             anchor_mb = anchor_pmtiles_path.stat().st_size / 1024 / 1024
             logger.info(
                 f"Anchor PMTiles generated: {anchor_pmtiles_path} ({anchor_mb:.1f} MB)"
@@ -491,8 +479,6 @@ class PMTilesGenerator:
 
         except Exception as e:
             logger.error(f"Anchor PMTiles generation failed: {e}")
-            if temp_anchor_path.exists():
-                temp_anchor_path.unlink()
             return None
 
     def _detect_geometry_type(
@@ -836,9 +822,6 @@ class PMTilesGenerator:
     def delete_pmtiles(self: Self, layer_id: str) -> bool:
         """Delete PMTiles file, anchor file, and metadata for a layer.
 
-        Sweeps the pre-flat locations too, so deleting a layer does not
-        strand tiles written under the old schema-nested layout.
-
         Args:
             layer_id: Layer UUID
 
@@ -864,17 +847,5 @@ class PMTilesGenerator:
         if meta_path.exists():
             meta_path.unlink()
             logger.debug(f"Deleted PMTiles metadata: {meta_path}")
-
-        # Tiles written before the layout went flat sit one directory down.
-        for legacy in self.legacy_pmtiles_paths(layer_id):
-            for path in (
-                legacy,
-                legacy.with_name(legacy.stem + "_anchor.pmtiles"),
-                legacy.with_suffix(".pmtiles.meta.json"),
-            ):
-                if path.exists():
-                    path.unlink()
-                    logger.info(f"Deleted legacy PMTiles: {path}")
-            deleted = True
 
         return deleted

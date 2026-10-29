@@ -35,6 +35,7 @@ import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { useFeatureEditor } from "@/hooks/map/useFeatureEditor";
 import { useRenderLayers } from "@/hooks/map/useRenderLayers";
+import { ExplorerMapLayers } from "@/components/explorer/ExplorerMapLayers";
 import GeocoderLayer from "@/components/map/GeocoderLayer";
 import { type EditedLayer, StyledLayers, useLiveLayer } from "@/components/map/StyledLayers";
 import ToolboxLayers from "@/components/map/ToolboxLayers";
@@ -842,6 +843,7 @@ const MapViewer: React.FC<MapProps> = ({
           <GeocoderLayer />
           <UserLocationLayer />
           <ToolboxLayers />
+          <ExplorerMapLayers />
           <MeasureLabels />
           {popupInfo && activePopupConfig && (
             <>

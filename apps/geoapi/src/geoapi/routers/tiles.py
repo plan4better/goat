@@ -230,6 +230,35 @@ async def _reject_unknown_tile_properties(
     )
 
 
+def _pmtiles_tile_response(
+    result: tuple[bytes, bool, str], request_id: str, start_time: float
+) -> Response:
+    """The response for a tile read from PMTiles (204 when it is empty)."""
+    tile_data, is_gzip, source = result
+    elapsed_ms = (time.monotonic() - start_time) * 1000
+    if not tile_data:
+        return Response(
+            status_code=204,
+            headers={
+                "X-Request-ID": request_id,
+                "X-Response-Time": f"{elapsed_ms:.1f}ms",
+            },
+        )
+    headers = {
+        "Cache-Control": "public, max-age=3600",
+        "X-Tile-Source": source,
+        "X-Request-ID": request_id,
+        "X-Response-Time": f"{elapsed_ms:.1f}ms",
+    }
+    if is_gzip:
+        headers["Content-Encoding"] = "gzip"
+    return Response(
+        content=tile_data,
+        media_type="application/vnd.mapbox-vector-tile",
+        headers=headers,
+    )
+
+
 @router.get(
     "/collections/{collectionId}/tiles/{tileMatrixSetId}/{z}/{x}/{y}",
     summary="Get vector tile",
@@ -285,6 +314,10 @@ async def get_tile(
         pattern=r"^\d+(,\d+)*$",
         description="H3 tiles only: count only these features (comma-separated ids).",
     ),
+    temp: bool = Query(
+        default=False,
+        description="The collection is a workflow result (temporary layer)",
+    ),
     if_none_match: str | None = Header(default=None, alias="if-none-match"),
 ) -> Response:
     """Get a vector tile for the specified collection and tile coordinates."""
@@ -319,31 +352,10 @@ async def get_tile(
                 x=x,
                 y=y,
                 label=label,
+                search_temp=temp,
             )
             if result is not None:
-                tile_data, is_gzip, source = result
-                elapsed_ms = (time.monotonic() - start_time) * 1000
-                if not tile_data:
-                    return Response(
-                        status_code=204,
-                        headers={
-                            "X-Request-ID": request_id,
-                            "X-Response-Time": f"{elapsed_ms:.1f}ms",
-                        },
-                    )
-                headers = {
-                    "Cache-Control": "public, max-age=3600",
-                    "X-Tile-Source": source,
-                    "X-Request-ID": request_id,
-                    "X-Response-Time": f"{elapsed_ms:.1f}ms",
-                }
-                if is_gzip:
-                    headers["Content-Encoding"] = "gzip"
-                return Response(
-                    content=tile_data,
-                    media_type="application/vnd.mapbox-vector-tile",
-                    headers=headers,
-                )
+                return _pmtiles_tile_response(result, request_id, start_time)
     except Exception as e:
         # Log but continue to fallback path
         logger.warning("Ultra-fast PMTiles path failed for %s: %s", layer_id, e)
@@ -352,7 +364,29 @@ async def get_tile(
     # Import here to avoid circular dependency and delay the slow lookup
     from geoapi.dependencies import get_layer_info
 
-    layer_info = await get_layer_info(collection_id)
+    try:
+        layer_info = await get_layer_info(collection_id)
+    except HTTPException as e:
+        # No layer by that id: it may be a workflow result, whose tiles sit
+        # in the workflow temp tree. Searching that tree is expensive, so it
+        # happens here, for ids that are no layer, instead of for every layer
+        # without tiles. Already done above when the client said `temp`.
+        if (
+            e.status_code != 404
+            or temp
+            or dynamic
+            or decoration is not None
+            or not tile_service.can_serve_from_pmtiles_by_layer_id(
+                layer_id, cql_filter, bbox
+            )
+        ):
+            raise
+        result = await tile_service.get_tile_from_pmtiles_by_layer_id(
+            layer_id=layer_id, z=z, x=x, y=y, label=label, search_temp=True
+        )
+        if result is None:
+            raise
+        return _pmtiles_tile_response(result, request_id, start_time)
 
     # Check if we can still use PMTiles with layer_info (redundant but safe)
     if (

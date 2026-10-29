@@ -1,4 +1,5 @@
 import {
+  Box,
   Chip,
   Divider,
   List,
@@ -7,6 +8,7 @@ import {
   ListItemText,
   Paper,
   Tooltip,
+  alpha,
   useTheme,
 } from "@mui/material";
 import { useState } from "react";
@@ -27,6 +29,8 @@ export interface PopperMenuItem {
   group?: string;
   tag?: string;
   tagTooltip?: string;
+  /** Its icon on a filled tile, to stand out from the rest of the menu. */
+  featured?: boolean;
   onClick?: () => void;
 }
 
@@ -104,8 +108,35 @@ export default function PopperMenu(props: PopperMenuProps) {
                         ...(item.color && {
                           color: item.color,
                         }),
+                        // Tinted, inset from the menu's edges.
+                        ...(item.featured && {
+                          mx: 0.5,
+                          mb: 0.5,
+                          borderRadius: 1.5,
+                          bgcolor: alpha(theme.palette.primary.main, 0.08),
+                          "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.14) },
+                        }),
                       }}>
-                      {item.icon && (
+                      {/* The tile is centred on the plain icons' column and its label
+                          starts where theirs do, the row's inset taken back. */}
+                      {item.featured && item.icon && (
+                        <ListItemIcon sx={{ minWidth: 0, ml: "-5.5px", pr: "12.5px" }}>
+                          <Box
+                            sx={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 1,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              bgcolor: "primary.main",
+                              color: "primary.contrastText",
+                            }}>
+                            <Icon style={{ fontSize: 11 }} iconName={item.icon} htmlColor="inherit" />
+                          </Box>
+                        </ListItemIcon>
+                      )}
+                      {!item.featured && item.icon && (
                         <ListItemIcon
                           sx={{
                             color: item.color || "inherit",
@@ -122,6 +153,7 @@ export default function PopperMenu(props: PopperMenuProps) {
                       <ListItemText
                         primary={item.label}
                         sx={{
+                          ...(item.featured && { mr: -0.5 }),
                           "& .MuiTypography-root": {
                             ...(item.color && {
                               color: item.color,

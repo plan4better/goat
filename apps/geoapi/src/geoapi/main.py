@@ -28,6 +28,7 @@ from geoapi.models import HealthCheck
 from geoapi.routers import (
     bundle_edits_router,
     download_router,
+    explorer_router,
     expressions_router,
     features_router,
     features_write_router,
@@ -35,6 +36,7 @@ from geoapi.routers import (
     rasters_router,
     tiles_router,
 )
+from geoapi.routers.explorer import cleanup_explorer_dir
 from geoapi.services.layer_service import layer_service
 
 # Configure logging
@@ -77,6 +79,30 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
             )
 
 
+class GZipExceptParquet(GZipMiddleware):
+    """Compression, except for the Explorer's Parquet files: they are zstd
+    already, and gzipping them would cost CPU and drop the Content-Length a
+    browser reports download progress from."""
+
+    async def __call__(self, scope, receive, send):  # type: ignore[no-untyped-def]
+        if scope["type"] == "http" and scope["path"].endswith(".parquet"):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
+async def _clean_explorer_hourly() -> None:
+    """Remove stale Explorer build folders: now, then every hour."""
+    while True:
+        try:
+            removed = await asyncio.to_thread(cleanup_explorer_dir)
+            if removed:
+                logger.info("Removed %d stale Explorer snapshot entries", removed)
+        except Exception as e:  # never fatal: the next round tries again
+            logger.warning("Explorer cleanup failed: %s", e)
+        await asyncio.sleep(3600)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager.
@@ -102,12 +128,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Start the cross-pod catalog-change subscriber (best-effort Redis pub/sub)
     start_subscriber()
 
+    explorer_cleanup = asyncio.create_task(_clean_explorer_hourly())
+
     logger.info("GeoAPI started successfully")
 
     yield
 
     # Cleanup
     logger.info("Shutting down GeoAPI...")
+    explorer_cleanup.cancel()
     await layer_service.close()
     stop_subscriber()
     ducklake_pool.close()
@@ -161,7 +190,7 @@ app.add_middleware(
 
 # Add compression middleware. Level 6 over the default 9: on multi-MB items
 # responses level 9 costs ~2x the CPU for ~4% smaller output.
-app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
+app.add_middleware(GZipExceptParquet, minimum_size=1000, compresslevel=6)
 
 
 # Include routers
@@ -173,6 +202,7 @@ app.include_router(tiles_router)
 app.include_router(rasters_router)
 app.include_router(expressions_router)
 app.include_router(download_router)
+app.include_router(explorer_router)
 
 
 @app.get(

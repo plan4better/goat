@@ -672,6 +672,7 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
         id: tempLayerUuid,
         type: "feature",
         feature_layer_geometry_type: tempGeometry,
+        temp: true,
         visible: true,
         entry: {},
         style: { document: tempStyle ?? defaultStyle(tempGeometry) },

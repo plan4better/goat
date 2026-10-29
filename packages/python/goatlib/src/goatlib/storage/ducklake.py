@@ -759,6 +759,13 @@ class BaseDuckLakeManager:
         mode = "read-only" if self._read_only else "read-write"
         logger.info("DuckLake catalog attached (%s)", mode)
 
+    def latest_snapshot_id(self: "BaseDuckLakeManager") -> int:
+        """The catalog's newest snapshot id, whatever this manager is pinned to.
+
+        For a reader that has to name the data it reads (``AT (VERSION => n)``)
+        rather than read whatever is current when its query runs."""
+        return self._fetch_latest_snapshot_id()
+
     def _fetch_latest_snapshot_id(self: "BaseDuckLakeManager") -> int:
         """Newest snapshot id, via a plain postgres attach (~2 ms).
 

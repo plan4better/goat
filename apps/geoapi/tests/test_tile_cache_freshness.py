@@ -7,7 +7,9 @@ same layer id, so every tile someone had already looked at came back old for
 up to an hour, which looked exactly like the overwrite had not happened.
 """
 
+import asyncio
 import os
+import threading
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -60,7 +62,9 @@ async def test_regenerated_tiles_are_not_served_from_the_cache(tmp_path: Path) -
     reads = AsyncMock(side_effect=[(b"old tile", True), (b"new tile", True)])
 
     with (
-        patch.object(service, "_find_pmtiles_by_layer_id", return_value=pmtiles),
+        patch.object(
+            service, "_find_pmtiles_by_layer_id_async", AsyncMock(return_value=pmtiles)
+        ),
         patch.object(service, "_get_tile_from_pmtiles_path", new=reads),
         patch("geoapi.tile_cache.get_redis_client", return_value=_FakeRedis()),
     ):
@@ -87,16 +91,13 @@ def _service_over(tiles_dir: Path) -> TileService:
 async def test_tiles_regenerated_at_another_path_are_found_again(
     tmp_path: Path,
 ) -> None:
-    """A layer still on the legacy ``<schema>/t_x.pmtiles`` layout has that
-    path cached; an overwrite deletes it and writes the flat ``t_x.pmtiles``.
-    The stale cached path must not lose the fast path for good."""
-    legacy = tmp_path / "user_abc" / "t_abc.pmtiles"
-    legacy.parent.mkdir()
-    legacy.write_bytes(b"pmtiles")
+    """A cached path whose file is gone (deleted for regeneration, or written
+    at another path since) must not lose the fast path for good: the lookup
+    runs again and finds the flat ``t_x.pmtiles``."""
+    stale = tmp_path / "user_abc" / "t_abc.pmtiles"
     service = _service_over(tmp_path)
-    assert service._find_pmtiles_by_layer_id("abc") == legacy
+    service._pmtiles_path_cache["abc"] = stale
 
-    legacy.unlink()
     flat = tmp_path / "t_abc.pmtiles"
     flat.write_bytes(b"pmtiles")
     read_from: list[Path] = []
@@ -146,3 +147,84 @@ async def test_label_tiles_follow_a_regenerated_anchor_file(tmp_path: Path) -> N
 
     assert first == (b"old labels", True, "pmtiles")
     assert regenerated == (b"new labels", True, "pmtiles")
+
+
+def test_lookup_by_layer_id_never_lists_the_tiles_directory(tmp_path: Path) -> None:
+    """The tiles directory holds tens of thousands of files and is only ever
+    probed by path: a schema-nested copy is not searched for, and listing the
+    directory is not attempted at all."""
+    nested = tmp_path / "user_abc" / "t_abc.pmtiles"
+    nested.parent.mkdir()
+    nested.write_bytes(b"pmtiles")
+    service = _service_over(tmp_path)
+
+    with patch.object(Path, "glob", side_effect=AssertionError("tiles dir listed")):
+        assert service._find_pmtiles_by_layer_id("abc") is None
+
+    flat = tmp_path / "t_abc.pmtiles"
+    flat.write_bytes(b"pmtiles")
+    assert service._find_pmtiles_by_layer_id("abc") == flat
+
+
+@pytest.mark.asyncio
+async def test_temp_tree_search_runs_once_off_the_event_loop(tmp_path: Path) -> None:
+    """A layer without tiles is served dynamically, so every one of its tile
+    requests asks for its PMTiles. Walking the workflow temp tree each time
+    blocked the event loop on network storage until even the health check
+    timed out: the walk runs in a worker thread, once per layer while its
+    "not found" verdict lasts, however many requests arrive together."""
+    (tmp_path / "temporary").mkdir()
+    service = _service_over(tmp_path / "tiles")
+    walks: list[str] = []
+    real_glob = Path.glob
+
+    def recording_glob(self: Path, pattern: str) -> Any:
+        walks.append(threading.current_thread().name)
+        return real_glob(self, pattern)
+
+    with patch.object(Path, "glob", recording_glob):
+        found = await asyncio.gather(
+            *(
+                service._find_pmtiles_by_layer_id_async("abc", search_temp=True)
+                for _ in range(5)
+            )
+        )
+        again = await service._find_pmtiles_by_layer_id_async("abc", search_temp=True)
+
+    assert found == [None] * 5 and again is None
+    assert len(walks) == 1
+    assert walks[0] != threading.main_thread().name
+
+
+@pytest.mark.asyncio
+async def test_workflow_tiles_written_later_are_found_after_invalidation(
+    tmp_path: Path,
+) -> None:
+    temp = tmp_path / "temporary" / "user_u" / "w_w" / "n_n"
+    temp.mkdir(parents=True)
+    service = _service_over(tmp_path / "tiles")
+    assert (
+        await service._find_pmtiles_by_layer_id_async("abc", search_temp=True) is None
+    )
+
+    tiles = temp / "t_abc.pmtiles"
+    tiles.write_bytes(b"pmtiles")
+    service.invalidate_pmtiles_path_cache("abc")
+
+    assert (
+        await service._find_pmtiles_by_layer_id_async("abc", search_temp=True) == tiles
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_layer_without_tiles_never_walks_the_temp_tree(tmp_path: Path) -> None:
+    """The temp tree holds thousands of directories on NFS. A layer has its
+    tiles at the flat path or none, so a layer lookup is stat() calls only;
+    the tree is searched just for workflow results (`search_temp`)."""
+    temp = tmp_path / "temporary" / "user_u" / "w_w" / "n_n"
+    temp.mkdir(parents=True)
+    (temp / "t_abc.pmtiles").write_bytes(b"pmtiles")
+    service = _service_over(tmp_path / "tiles")
+
+    with patch.object(Path, "glob", side_effect=AssertionError("temp tree walked")):
+        assert await service._find_pmtiles_by_layer_id_async("abc") is None

@@ -1,0 +1,9 @@
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+P,Main Station,52.5,13.4,1,
+S1,Main Station Platform 1,52.5,13.4,0,P
+S2,Second,52.5,13.41,0,
+S3,Third,52.5,13.42,0,
+S4,Fourth,52.5,13.43,0,
+S5,Fifth,52.5,13.44,0,
+S6,Sixth,52.5,13.45,0,
+X,Unused,52.6,13.5,0,

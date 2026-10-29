@@ -543,8 +543,9 @@ services:
       # DuckDB spills to disk only at its own budget, so the budgets fit the
       # memory limit below: the pool's shared connection gets POOL_SIZE x
       # MEMORY_LIMIT, the read and write connections MEMORY_LIMIT each, and
-      # the rest is left for the catalog metadata and Python. Raise them
-      # together.
+      # the rest is left for the catalog metadata and Python — and for the
+      # Explorer's snapshot build, a fixed 512 MB while it runs, once per
+      # bundle revision. Raise them together.
       GEOAPI_DUCKLAKE_POOL_SIZE: "2"
       GEOAPI_DUCKDB_MEMORY_LIMIT: 512MB
       # Raster layers are COG addresses read over HTTPS; hosts that resolve

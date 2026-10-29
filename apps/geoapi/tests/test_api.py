@@ -3,6 +3,10 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import HTTPException
+
+from geoapi.dependencies import LayerInfo
+
 
 def features_json_fragment(features):
     """Mimic get_features_json's return: (fragment, returned, total)."""
@@ -597,6 +601,82 @@ class TestTileEndpoints:
             "/collections/abc123de-f456-7890-1234-5678901234ab/tiles/WebMercatorQuad/10/512/256"
         )
         assert response.status_code == 204
+
+    TILE = (
+        "/collections/abc123de-f456-7890-1234-5678901234ab"
+        "/tiles/WebMercatorQuad/10/512/256"
+    )
+
+    @patch("geoapi.dependencies.get_layer_info")
+    @patch("geoapi.routers.tiles.tile_service")
+    def test_an_unknown_id_is_served_from_workflow_tiles(
+        self, mock_tile_service, mock_get_layer_info, test_client
+    ):
+        """No layer by that id: the workflow temp tree is searched, once."""
+        mock_get_layer_info.side_effect = HTTPException(status_code=404)
+        mock_tile_service.can_serve_from_pmtiles_by_layer_id = MagicMock(
+            return_value=True
+        )
+        mock_tile_service.get_tile_from_pmtiles_by_layer_id = AsyncMock(
+            side_effect=[None, (b"\x1a\x00", False, "pmtiles")]
+        )
+
+        response = test_client.get(self.TILE)
+
+        assert response.status_code == 200
+        searches = [
+            c.kwargs["search_temp"]
+            for c in mock_tile_service.get_tile_from_pmtiles_by_layer_id.call_args_list
+        ]
+        assert searches == [False, True]
+
+    @patch("geoapi.dependencies.get_layer_info")
+    @patch("geoapi.routers.tiles.tile_service")
+    def test_a_layer_never_searches_workflow_tiles(
+        self, mock_tile_service, mock_get_layer_info, test_client
+    ):
+        """A known layer without flat tiles goes on to its own paths; the
+        workflow temp tree is not searched for it."""
+        mock_get_layer_info.return_value = LayerInfo(
+            layer_id="abc123def456789012345678901234ab",
+            schema_name="user_x",
+            table_name="t_abc123def456789012345678901234ab",
+        )
+        mock_tile_service.can_serve_from_pmtiles_by_layer_id = MagicMock(
+            return_value=True
+        )
+        mock_tile_service.get_tile_from_pmtiles_by_layer_id = AsyncMock(
+            return_value=None
+        )
+        mock_tile_service.can_serve_from_pmtiles = MagicMock(return_value=True)
+        mock_tile_service.get_tile_from_pmtiles_only = AsyncMock(
+            return_value=(b"\x1a\x00", False, "pmtiles")
+        )
+
+        response = test_client.get(self.TILE)
+
+        assert response.status_code == 200
+        calls = mock_tile_service.get_tile_from_pmtiles_by_layer_id.call_args_list
+        assert [c.kwargs["search_temp"] for c in calls] == [False]
+
+    @patch("geoapi.dependencies.get_layer_info")
+    @patch("geoapi.routers.tiles.tile_service")
+    def test_a_temp_hint_searches_workflow_tiles_straight_away(
+        self, mock_tile_service, mock_get_layer_info, test_client
+    ):
+        mock_tile_service.can_serve_from_pmtiles_by_layer_id = MagicMock(
+            return_value=True
+        )
+        mock_tile_service.get_tile_from_pmtiles_by_layer_id = AsyncMock(
+            return_value=(b"\x1a\x00", False, "pmtiles")
+        )
+
+        response = test_client.get(f"{self.TILE}?temp=true")
+
+        assert response.status_code == 200
+        call = mock_tile_service.get_tile_from_pmtiles_by_layer_id.call_args
+        assert call.kwargs["search_temp"] is True
+        mock_get_layer_info.assert_not_called()
 
     @patch("geoapi.routers.tiles.layer_service")
     def test_get_tilejson(self, mock_layer_service, test_client, sample_layer_metadata):

@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { AppDispatch } from "@/lib/store";
 import { selectNodes } from "@/lib/store/workflow/selectors";
 import { addNode, removeNodes } from "@/lib/store/workflow/slice";
+import { useLayerWriteAccess } from "@/lib/api/layers";
 import type { ExportNodeData } from "@/lib/validations/workflow";
 
 import { type TOOL_ICON_NAME, toolIconMap } from "@p4b/ui/assets/svg/ToolIcons";
@@ -68,9 +69,16 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
   const { status: nodeStatus_ } = useNodeExecutionStatus(id);
   const nodeStatus = nodeStatus_ || data.status;
 
-  const missingDatasetName = !data.datasetName?.trim();
+  // "Existing dataset" needs a target dataset instead of a name
+  const isExisting = data.destination === "existing";
+
+  const missingDatasetName = !isExisting && !data.datasetName?.trim();
+  const missingTarget = isExisting && !data.targetLayerId;
+  // Checked before the run too: without edit rights this step fails.
+  const { canWrite } = useLayerWriteAccess(isExisting ? data.targetLayerId : undefined);
+  const noEditRights = isExisting && !!data.targetLayerId && canWrite === false;
   const missingConnection = !edges.some((e) => e.target === id);
-  const hasWarning = missingDatasetName || missingConnection;
+  const hasWarning = missingDatasetName || missingTarget || noEditRights || missingConnection;
 
   const warningMessage = useMemo(() => {
     const parts: string[] = [];
@@ -80,8 +88,14 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
     if (missingDatasetName) {
       parts.push(t("dataset_name_required"));
     }
+    if (missingTarget) {
+      parts.push(t("append_target_required"));
+    }
+    if (noEditRights) {
+      parts.push(t("append_no_edit_rights"));
+    }
     return parts.join(". ");
-  }, [missingConnection, missingDatasetName, t]);
+  }, [missingConnection, missingDatasetName, missingTarget, noEditRights, t]);
 
   // Handle duplicate node
   const handleDuplicate = useCallback(
@@ -140,9 +154,19 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
 
       <NodeContainer selected={selected}>
         {/* Warning badge for missing dataset name or connection */}
-        {hasWarning && !nodeStatus && (
+        {/* New nodes carry status "idle": not run yet, so warn as with none */}
+        {hasWarning && !nodeStatus_ && (!data.status || data.status === "idle") && (
           <Tooltip title={warningMessage} arrow>
-            <WarningBadge>
+            <WarningBadge
+              aria-label={
+                missingDatasetName
+                  ? t("dataset_name_required")
+                  : missingTarget
+                    ? t("append_target_required")
+                    : noEditRights
+                      ? t("append_no_edit_rights")
+                      : warningMessage
+              }>
               <WarningIcon sx={{ fontSize: 16 }} />
             </WarningBadge>
           </Tooltip>
@@ -180,7 +204,17 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
         {/* Parameters section — same layout as ToolNode's ParamRow */}
         <NodeParamsSection>
           <Stack spacing={0.25}>
-          {data.datasetName && (
+          {isExisting && data.targetLayerName && (
+            <ParamRow>
+              <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ fontSize: 11 }}>
+                {t("export_mode_existing")}:
+              </Typography>
+              <Typography variant="caption" fontWeight="medium" sx={{ fontSize: 11 }}>
+                {data.targetLayerName}
+              </Typography>
+            </ParamRow>
+          )}
+          {!isExisting && data.datasetName && (
             <ParamRow>
               <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ fontSize: 11 }}>
                 {t("dataset_name")}:
@@ -200,7 +234,7 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
               </Typography>
             </ParamRow>
           )}
-          {data.overwritePrevious && (
+          {!isExisting && data.overwritePrevious && (
             <ParamRow>
               <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ fontSize: 11 }}>
                 {t("overwrite")}:

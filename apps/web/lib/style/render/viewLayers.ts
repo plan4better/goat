@@ -29,6 +29,8 @@ export interface ViewLayer extends SourceLayer {
   style: { id?: string; revision?: number; document: LayerStyle } | null;
   /** A viewer's opacity, applied over the style's (view state). */
   opacity?: number | null;
+  /** A workflow result, whose tiles sit in the workflow temp storage. */
+  temp?: boolean;
 }
 
 export interface RenderOptions {
@@ -119,6 +121,7 @@ export function renderLayersOf(layers: ViewLayer[], opts: RenderOptions = {}): R
       extra: temporaryFiltersFor(layer.id, opts.temporaryFilters),
       dynamic: isEdited,
       version: layer.dataset_updated_at,
+      temp: layer.temp,
     });
     if (!source) continue;
     const filter = {

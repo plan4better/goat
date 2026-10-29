@@ -32,6 +32,12 @@ import { useMeasureTool } from "@/hooks/map/useMeasureTool";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { FloatingPanel } from "@/components/common/FloatingPanel";
+import { ExplorerBottomBar } from "@/components/explorer/ExplorerBottomBar";
+import { ExplorerProvider } from "@/components/explorer/ExplorerContext";
+import { EXPLORER_PANEL_WIDTH, ExplorerLeftPanel } from "@/components/explorer/ExplorerLeftPanel";
+import { ExplorerRightPanel } from "@/components/explorer/right/ExplorerRightPanel";
+import { EXPLORER_RIGHT_PANEL_WIDTH, useRightPanelWidth } from "@/components/explorer/right/panelSize";
+import { STRIP_TOP } from "@/components/explorer/strip/stripLayout";
 import AttributionControl from "@/components/map/controls/Attribution";
 import { BasemapSelector } from "@/components/map/controls/BasemapSelector";
 import { CustomBasemapDialog } from "@/components/map/controls/CustomBasemapDialog";
@@ -54,6 +60,19 @@ const toolbarHeight = 52;
 const panelWidth = 300;
 const LAYER_SETTINGS_IDS = [MapSidebarItemID.PROPERTIES, MapSidebarItemID.FILTER, MapSidebarItemID.STYLE];
 const GAP_SIZE = 16;
+/** The room the Explorer leaves under its left panel and bottom bar, whose
+ * bottoms line up: the scale bar sits in it under the panel (EXPLORER_FOOT_GAP
+ * below it) and the map credits under the bar, neither covered. */
+const EXPLORER_FOOT = 30;
+/** The round map controls' column (zoom, fullscreen, basemap), and how much
+ * higher they sit in the Explorer to end on its panels' line: their stack
+ * otherwise ends 8 px lower, on the credits. */
+const MAP_CONTROLS_WIDTH = 40;
+const EXPLORER_CONTROLS_LIFT = 8;
+const EXPLORER_FOOT_GAP = 8;
+/** The Explorer's bottom bar from the left panel: the same 8 px as the cost
+ * card under it. */
+const EXPLORER_BAR_GAP = 8;
 
 interface DataProjectLayoutProps {
   project: Project;
@@ -114,6 +133,14 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
   const [editing, setEditing] = useState<CustomBasemap | null>(null);
 
   const activeRight = useAppSelector((state) => state.map.activeRightPanel);
+  // The PT network Explorer takes over the panels (docs/pt-network-editor).
+  const explorerActive = useAppSelector((state) => state.explorer.active);
+  const explorerBundleId = useAppSelector((state) => state.explorer.bundleId);
+  const leftWidth = explorerActive ? EXPLORER_PANEL_WIDTH : panelWidth;
+  // The Explorer's right panel (or its rail) takes the map's right edge; the
+  // map controls and the bottom bar move left of it.
+  const explorerRight = useRightPanelWidth();
+  const explorerRightRoom = explorerRight ? explorerRight + GAP_SIZE : 0;
   const featureEditorActive = useAppSelector((state) => state.featureEditor.activeLayerId);
   const selectedBundleId = useAppSelector((state) => state.layers.selectedBundleId);
   const featureEditorActiveFeature = useAppSelector((state) => state.featureEditor.activeFeatureId);
@@ -296,21 +323,47 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
     const MEASURE_PANEL_WIDTH = 320;
     const widths: number[] = [];
     if (measureVisible) widths.push(MEASURE_PANEL_WIDTH);
-    if (showFeatureEditPanel) widths.push(FEATURE_EDIT_PANEL_WIDTH);
-    if (activeRight) widths.push(panelWidth);
+    // The right-hand panels belong to the data view, not the Explorer.
+    if (showFeatureEditPanel && !explorerActive) widths.push(FEATURE_EDIT_PANEL_WIDTH);
+    if (activeRight && !explorerActive) widths.push(panelWidth);
     if (widths.length === 0) return 0;
     return widths.reduce((a, b) => a + b, 0) + GAP_SIZE * (widths.length - 1);
-  }, [measureVisible, showFeatureEditPanel, activeRight]);
+  }, [measureVisible, showFeatureEditPanel, activeRight, explorerActive]);
 
-  return (
+  const layerTree = (
+    <ProjectLayerTree
+      projectId={projectId}
+      projectLayers={treeLayers}
+      projectLayerGroups={treeGroups}
+      isLoading={false}
+      onTreeUpdate={handleTreeUpdate}
+      onLayerStateChange={treeState.onLayerStateChange}
+      onGroupStateChange={treeState.onGroupStateChange}
+      onLayerTimeChange={treeState.onLayerTimeChange}
+      onLayerDuplicate={handleLayerDuplicate}
+      onCreateGroup={handleCreateGroup}
+      onUpdateGroup={handleUpdateGroup}
+      onDeleteGroup={handleDeleteGroup}
+      viewMode={isProjectEditor ? "edit" : "view"}
+      projectOwnerId={project.owned_by?.id}
+    />
+  );
+  // The right-hand panels belong to the data view, not the Explorer.
+  const rightComponent = explorerActive ? undefined : activeRightComponent;
+  const showFeaturePanel = !explorerActive && showFeatureEditPanel;
+
+  const layout = (
     <>
+      {/* The 10px margin to the map's edge is padding, not an offset: the
+          column clips what overflows it, and a panel flush with the clip edge
+          has its shadow cut square at the rounded corners. */}
       <Box
         {...{ [DATA_PANEL_HEIGHT_CONSUMER_ATTR]: "" }}
         sx={{
           position: "absolute",
-          top: toolbarHeight + 10,
-          height: `calc(100% - ${toolbarHeight + 20}px - var(${DATA_PANEL_HEIGHT_VAR}, 0px))`,
-          left: 10,
+          top: toolbarHeight,
+          height: `calc(100% - ${toolbarHeight}px - var(${DATA_PANEL_HEIGHT_VAR}, 0px))`,
+          left: 0,
           zIndex: (theme) => theme.zIndex.drawer + 1,
           pointerEvents: "none",
         }}>
@@ -318,40 +371,35 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           direction="column"
           sx={{
             height: "100%",
+            boxSizing: "border-box",
+            p: "10px",
             alignItems: "flex-start",
             flexWrap: "wrap",
             alignContent: "flex-start",
-            rowGap: 4,
+            rowGap: explorerActive ? `${EXPLORER_FOOT_GAP}px` : 4,
             columnGap: 2,
             overflow: "hidden",
           }}>
-          <FloatingPanel width={panelWidth} maxHeight="100%">
-            <ProjectLayerTree
-              projectId={projectId}
-              projectLayers={treeLayers}
-              projectLayerGroups={treeGroups}
-              isLoading={false}
-              onTreeUpdate={handleTreeUpdate}
-              onLayerStateChange={treeState.onLayerStateChange}
-              onGroupStateChange={treeState.onGroupStateChange}
-              onLayerTimeChange={treeState.onLayerTimeChange}
-              onLayerDuplicate={handleLayerDuplicate}
-              onCreateGroup={handleCreateGroup}
-              onUpdateGroup={handleUpdateGroup}
-              onDeleteGroup={handleDeleteGroup}
-              viewMode={isProjectEditor ? "edit" : "view"}
-              projectOwnerId={project.owned_by?.id}
-            />
-          </FloatingPanel>
+          {explorerActive ? (
+            <Box sx={{ height: `calc(100% - ${EXPLORER_FOOT}px)`, flexShrink: 0 }}>
+              <ExplorerLeftPanel layersTab={layerTree} />
+            </Box>
+          ) : (
+            <FloatingPanel width={panelWidth} maxHeight="100%">
+              {layerTree}
+            </FloatingPanel>
+          )}
           <Box sx={{ marginTop: "auto" }}>
             <Scalebar />
           </Box>
         </Stack>
         <Box
+          // The Explorer's bottom panel grows up to just under these tools.
+          {...{ [STRIP_TOP]: "" }}
           sx={{
             position: "absolute",
-            left: `${panelWidth + GAP_SIZE}px`,
-            top: 0,
+            left: `${leftWidth + GAP_SIZE + 10}px`,
+            top: 10,
           }}>
           <SearchControl
             source={searchSource}
@@ -364,7 +412,7 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
               buttons below it step aside while it is open. */}
           {!searchPanelOpen && (
             <>
-              {isProjectEditor && (
+              {isProjectEditor && !explorerActive && (
                 <ToolboxCtrl onToggle={handleToolboxToggle} open={activeRight === MapSidebarItemID.TOOLBOX} />
               )}
               <MeasureButton {...measureTool} />
@@ -381,8 +429,12 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           position: "absolute",
           top: toolbarHeight + 10,
           height: `calc(100% - ${toolbarHeight + 20}px - var(${DATA_PANEL_HEIGHT_VAR}, 0px))`,
-          // The map controls sit left of the right panels, which run the whole height (prototype `.style`).
-          right: rightStackWidth ? `${rightStackWidth + GAP_SIZE + 10}px` : 10,
+          // The map controls sit left of the right panels, which run the whole height (prototype `.style`),
+          // and of the Explorer's right panel.
+          right:
+            (rightStackWidth ? rightStackWidth + GAP_SIZE : 0) +
+            10 +
+            (explorerActive ? explorerRightRoom : 0),
           zIndex: (theme) => theme.zIndex.drawer + 1,
           pointerEvents: "none",
           alignItems: "flex-end",
@@ -395,7 +447,12 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
             flexShrink: 0,
             pointerEvents: "none",
           }}>
-          <Stack direction="column" alignItems="flex-end" sx={{ mb: 1 }}>
+          {/* In the Explorer the controls end on the panels' and the bar's
+              line, EXPLORER_FOOT above the map's edge. */}
+          <Stack
+            direction="column"
+            alignItems="flex-end"
+            sx={{ mb: explorerActive ? `${EXPLORER_CONTROLS_LIFT + 4}px` : 1 }}>
             <Zoom tooltipZoomIn={t("zoom_in")} tooltipZoomOut={t("zoom_out")} />
             <Fullscren tooltipOpen={t("fullscreen")} tooltipExit={t("exit_fullscreen")} />
             <BasemapSelector
@@ -438,7 +495,7 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
             position: "absolute",
             top: toolbarHeight + 10,
             height: `calc(100% - ${toolbarHeight + 20}px - var(${DATA_PANEL_HEIGHT_VAR}, 0px))`,
-            right: 10,
+            right: 10 + (explorerActive ? explorerRightRoom : 0),
             zIndex: (theme) => theme.zIndex.drawer + 1,
             pointerEvents: "none",
           }}>
@@ -447,14 +504,14 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
             spacing={2}
             sx={{ alignItems: "flex-start", height: "100%", overflow: "hidden" }}>
             <MeasureResultsPanel {...measureTool} />
-            {showFeatureEditPanel && (
+            {showFeaturePanel && (
               <FloatingPanel width={320} maxHeight="100%" fillHeight>
                 <FeatureEditPanel />
               </FloatingPanel>
             )}
-            {activeRightComponent && (
+            {rightComponent && (
               <FloatingPanel width={panelWidth} maxHeight="100%" fillHeight>
-                {activeRightComponent}
+                {rightComponent}
               </FloatingPanel>
             )}
           </Stack>
@@ -473,7 +530,7 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
         sx={{
           position: "absolute",
           top: toolbarHeight + 10,
-          left: panelWidth + GAP_SIZE + 10,
+          left: leftWidth + GAP_SIZE + 10,
           right: (rightStackWidth ? rightStackWidth + GAP_SIZE : 0) + 10,
           bottom: `calc(10px + var(${DATA_PANEL_HEIGHT_VAR}, 0px))`,
           pointerEvents: "none",
@@ -484,6 +541,39 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
         }}>
         <MapFixedPopupSlot layers={mapLayers} />
       </Box>
+      {explorerActive && explorerRight > 0 && (
+        // As high as the left panel, ending at the same foot: the credits run
+        // below the bar, clear of it.
+        <Box
+          sx={{
+            position: "absolute",
+            top: toolbarHeight + 10,
+            bottom: 10 + EXPLORER_FOOT,
+            right: 10,
+            zIndex: (theme) => theme.zIndex.drawer + 1,
+          }}>
+          <ExplorerRightPanel />
+        </Box>
+      )}
+      {explorerActive && (
+        <Box
+          sx={{
+            position: "absolute",
+            // On one line with the left panel's foot: the credits run below it.
+            bottom: 10 + EXPLORER_FOOT,
+            left: leftWidth + EXPLORER_BAR_GAP + 10,
+            // To the map controls' column, the map's usual gap from it: the
+            // bar spans the map (board 3).
+            right: 10 + MAP_CONTROLS_WIDTH + GAP_SIZE + explorerRightRoom,
+            zIndex: (theme) => theme.zIndex.drawer + 1,
+            // Making room for the right panel eases in (spec › Motion).
+            transition: "right 180ms ease-out",
+            "@media (prefers-reduced-motion: reduce)": { transition: "none" },
+          }}>
+          {/* Squeezed by the right panel, the bar goes compact (spec). */}
+          <ExplorerBottomBar compact={explorerRight === EXPLORER_RIGHT_PANEL_WIDTH} />
+        </Box>
+      )}
       <CustomBasemapDialog
         open={dialogOpen}
         initial={editing}
@@ -511,6 +601,12 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
         }
       />
     </>
+  );
+
+  return explorerActive && explorerBundleId ? (
+    <ExplorerProvider bundleId={explorerBundleId}>{layout}</ExplorerProvider>
+  ) : (
+    layout
   );
 };
 

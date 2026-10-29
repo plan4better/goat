@@ -865,6 +865,106 @@ def cleanup_previous_results(params: WorkflowRunnerParams) -> None:
     )
 
 
+def _produced_source(
+    node_id: str, edges: list[dict], results: dict[str, dict]
+) -> tuple[str, dict] | None:
+    """The upstream node whose temp result a final node (export, append)
+    writes: the first non-empty produced source, else any produced source."""
+    produced = [
+        (e["source"], results.get(e["source"]) or {})
+        for e in edges
+        if e["target"] == node_id
+        and (results.get(e["source"]) or {}).get("temp_layer_id")
+    ]
+    if not produced:
+        return None
+    return next(
+        ((sid, r) for sid, r in produced if (r.get("feature_count") or 0) > 0),
+        produced[0],
+    )
+
+
+def _appends_to_existing(node: dict) -> bool:
+    """A "Save as dataset" node set to "Add to existing"."""
+    data = node.get("data", {})
+    return data.get("type") == "export" and data.get("destination") == "existing"
+
+
+def run_append_nodes(
+    params: "WorkflowRunnerParams",
+    sorted_nodes: list[dict],
+    edges: list[dict],
+    results: dict[str, dict],
+    node_jobs: dict[str, str],
+    errors: list[dict],
+) -> None:
+    """Run the "Save as dataset" nodes set to "Add to existing" through
+    ``finalize_layer`` with a ``target_layer_id``.
+
+    Called once every tool and export node succeeded. Each node commits on
+    its own; a failure is recorded in ``errors`` like an export's.
+    """
+    append_nodes = [n for n in sorted_nodes if _appends_to_existing(n)]
+    if append_nodes:
+        print(f"[workflow_runner] Processing {len(append_nodes)} append node(s)...")
+    for node in append_nodes:
+        node_id = node["id"]
+        data = node.get("data", {})
+        if results.get(node_id, {}).get("status") == "skipped":
+            print(
+                f"[workflow_runner] Append node {node_id} on rejected branch, skipping"
+            )
+            continue
+        target = data.get("targetLayerId")
+        if not target:
+            errors.append({"node_id": node_id, "error": "Choose a target layer."})
+            continue
+        produced = _produced_source(node_id, edges, results)
+        if produced is None:
+            errors.append(
+                {
+                    "node_id": node_id,
+                    "error": "Connect the result of a tool to this node; a dataset "
+                    "cannot be appended directly.",
+                }
+            )
+            continue
+        source_node_id, source_result = produced
+        # If-nodes pass an upstream temp_layer_id through without writing a
+        # temp dir: append from the node that actually wrote it.
+        temp_parts = (source_result.get("temp_layer_id") or "").split(":")
+        temp_node_id = temp_parts[1] if len(temp_parts) >= 2 else source_node_id
+        inputs = {
+            "user_id": params.user_id,
+            "workflow_id": params.workflow_id,
+            "node_id": temp_node_id,
+            "export_node_id": node_id,
+            "project_id": params.project_id,
+            "folder_id": params.folder_id,
+            "target_layer_id": target,
+            "add_to_project": bool(data.get("addToProject", True)),
+            "delete_temp": False,
+        }
+        try:
+            job_id, result = run_tool_node(node_id, "finalize_layer", inputs)
+            node_jobs[node_id] = job_id
+            results[node_id] = result
+            if "error" in result:
+                print(
+                    f"[workflow_runner] Append node {node_id} failed: {result.get('error')}"
+                )
+                errors.append({"node_id": node_id, "error": result.get("error")})
+            else:
+                print(
+                    f"[workflow_runner] Append node {node_id} completed: "
+                    f"{result.get('rows_appended')} row(s) into {target}"
+                )
+        except Exception as e:
+            print(f"[workflow_runner] Append node {node_id} failed: {e}")
+            logger.error(f"Append node {node_id} failed: {e}")
+            errors.append({"node_id": node_id, "error": str(e)})
+
+
 def main(
     user_id: str,
     project_id: str,
@@ -1054,8 +1154,12 @@ def main(
 
     # Finalize export nodes (only if no errors from tool execution)
     if not errors:
+        # "Save as dataset" set to "Add to existing" appends instead; those run
+        # in the append phase below.
         export_nodes = [
-            n for n in sorted_nodes if n.get("data", {}).get("type") == "export"
+            n
+            for n in sorted_nodes
+            if n.get("data", {}).get("type") == "export" and not _appends_to_existing(n)
         ]
         if export_nodes:
             print(f"[workflow_runner] Processing {len(export_nodes)} export node(s)...")
@@ -1080,23 +1184,14 @@ def main(
                 )
                 continue
 
-            # Pick the first non-empty produced source, else any produced source.
-            produced = [
-                (e["source"], results.get(e["source"]))
-                for e in edges
-                if e["target"] == export_node_id
-                and results.get(e["source"], {}).get("temp_layer_id")
-            ]
-            if not produced:
+            produced = _produced_source(export_node_id, edges, results)
+            if produced is None:
                 print(
                     f"[workflow_runner] Export node {export_node_id}: "
                     f"no produced source, skipping"
                 )
                 continue
-            source_node_id, source_result = next(
-                ((sid, r) for sid, r in produced if (r.get("feature_count") or 0) > 0),
-                produced[0],
-            )
+            source_node_id, source_result = produced
 
             print(
                 f"[workflow_runner] Finalizing export node {export_node_id} "
@@ -1159,6 +1254,10 @@ def main(
                         "error": str(e),
                     }
                 )
+
+    # Append nodes, after the exports and only if every step so far succeeded.
+    if not errors:
+        run_append_nodes(params, sorted_nodes, edges, results, node_jobs, errors)
 
     print(
         f"[workflow_runner] Workflow complete: {len(results)} results, {len(errors)} errors"

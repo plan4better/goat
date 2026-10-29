@@ -609,7 +609,8 @@ class PTToolBase(AnalysisTool):
             FROM read_parquet('{stops_path}')
             WHERE stop_lat IS NOT NULL
               AND stop_lon IS NOT NULL
-              AND (location_type IS NULL OR location_type IN ('0', ''))
+              AND (location_type IS NULL
+                   OR CAST(location_type AS VARCHAR) IN ('0', ''))
         """)
 
     def _import_bundle_gtfs_stop_times(
@@ -631,6 +632,11 @@ class PTToolBase(AnalysisTool):
 
         Either calendar file may be absent — GTFS requires one of them, not both
         — so each contributes only if it is there.
+
+        Dates and enums are compared as text, which reads the same whether the
+        layer stores them typed (``DATE``, ``INTEGER``) or as published text
+        (a bundle imported before typing): a ``DATE`` prints ``YYYY-MM-DD``, so
+        its dashes are dropped to match GTFS's ``YYYYMMDD``.
         """
         day = datetime.strptime(service_date, "%Y-%m-%d").date()
         gtfs_date = day.strftime("%Y%m%d")
@@ -645,8 +651,8 @@ class PTToolBase(AnalysisTool):
             f"""
             SELECT service_id FROM read_parquet('{calendar_path}')
             WHERE {weekday_column} IN ('1', 1)
-              AND CAST(start_date AS VARCHAR) <= '{gtfs_date}'
-              AND CAST(end_date AS VARCHAR) >= '{gtfs_date}'
+              AND replace(CAST(start_date AS VARCHAR), '-', '') <= '{gtfs_date}'
+              AND replace(CAST(end_date AS VARCHAR), '-', '') >= '{gtfs_date}'
             """
             if calendar_path
             else "SELECT NULL AS service_id WHERE FALSE"
@@ -655,12 +661,12 @@ class PTToolBase(AnalysisTool):
         if calendar_dates_path:
             added = f"""
                 SELECT service_id FROM read_parquet('{calendar_dates_path}')
-                WHERE CAST(date AS VARCHAR) = '{gtfs_date}'
+                WHERE replace(CAST(date AS VARCHAR), '-', '') = '{gtfs_date}'
                   AND CAST(exception_type AS VARCHAR) = '1'
             """
             removed = f"""
                 SELECT service_id FROM read_parquet('{calendar_dates_path}')
-                WHERE CAST(date AS VARCHAR) = '{gtfs_date}'
+                WHERE replace(CAST(date AS VARCHAR), '-', '') = '{gtfs_date}'
                   AND CAST(exception_type AS VARCHAR) = '2'
             """
 

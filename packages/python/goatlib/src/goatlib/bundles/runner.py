@@ -164,8 +164,8 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         self, db: ToolDatabaseService, user_id: str, layer_ids: List[str]
     ) -> None:
         """Best-effort removal of member layers created before a failure — their
-        DuckLake tables and Postgres rows (which cascade the membership links) —
-        so a partial import never leaves orphaned data behind."""
+        DuckLake tables, Postgres rows (which cascade the membership links) and
+        PMTiles — so a partial import never leaves orphaned data behind."""
         if not layer_ids:
             return
         self.recycle_duckdb_connection()  # start from a clean connection for drops
@@ -184,6 +184,7 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                 logger.warning(
                     "Cleanup: could not delete layer row %s: %s", layer_id, e
                 )
+            self._delete_new_pmtiles(layer_id)
         logger.info("Rolled back %d partially-imported layer(s)", len(layer_ids))
 
     async def _rollback_bundle(
@@ -269,6 +270,21 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                     info = self._ingest_to_ducklake(
                         user_id=user_id, layer_id=layer_id, parquet_path=parquet_path
                     )
+                    # Read from the data, so an empty layer has none: a feed's
+                    # header-only shapes.txt gives shape lines without a line.
+                    # The importer's own word stands in.
+                    geometry_type = info.get("geometry_type") or extracted.geometry_type
+                    # Prebuilt tiles, as any imported layer gets: simplified
+                    # and thinned at low zoom. Cut on the fly instead, a
+                    # region's worth of a city's shape lines runs to several
+                    # MB a tile, which the map holds in memory and on the GPU.
+                    if extracted.layer_type == "feature" and info.get("geometry_type"):
+                        self._generate_pmtiles(
+                            user_id=user_id,
+                            layer_id=layer_id,
+                            table_name=info["table_name"],
+                            geometry_column=info.get("geometry_column", "geometry"),
+                        )
 
                     # The role's contract as per-column metadata: which columns
                     # are computed and by what formula, which the bundle owns,
@@ -333,7 +349,7 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                         feature_layer_type=(
                             "standard" if extracted.layer_type == "feature" else None
                         ),
-                        geometry_type=info.get("geometry_type"),
+                        geometry_type=geometry_type,
                         extent_wkt=info.get("extent_wkt"),
                         feature_count=info.get("feature_count", 0),
                         size=info.get("size", 0),
@@ -344,7 +360,7 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                         style=bundle_role_style(
                             bundle_type,
                             extracted.role,
-                            normalize_geometry_type(info.get("geometry_type")),
+                            normalize_geometry_type(geometry_type),
                             seed=layer_id,
                         ),
                     )
@@ -364,7 +380,7 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                             layer_id=layer_id,
                             name=layer_name,
                             layer_type=extracted.layer_type,
-                            geometry_type=info.get("geometry_type"),
+                            geometry_type=geometry_type,
                             feature_count=info.get("feature_count", 0),
                         )
                     )

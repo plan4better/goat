@@ -6,6 +6,7 @@ This service retrieves features from DuckLake as GeoJSON.
 import json
 import logging
 import re
+from datetime import timedelta
 from typing import Any, Optional
 
 from goatlib.storage import build_filters, build_order_clause
@@ -43,10 +44,19 @@ def sanitize_string(value: Any) -> Any:
     return value
 
 
+def format_interval(value: timedelta) -> str:
+    """An interval as ``HH:MM:SS``, hours past 23 kept (a GTFS time such as
+    ``25:10:00``), the same text the items path renders in SQL."""
+    total = int(value.total_seconds())
+    sign = "-" if total < 0 else ""
+    total = abs(total)
+    return f"{sign}{total // 3600:02d}:{total % 3600 // 60:02d}:{total % 60:02d}"
+
+
 def sanitize_properties(properties: dict[str, Any]) -> dict[str, Any]:
     """Sanitize all string values in properties dict and remove hidden fields."""
     return {
-        k: sanitize_string(v)
+        k: format_interval(v) if isinstance(v, timedelta) else sanitize_string(v)
         for k, v in properties.items()
         if k not in settings.HIDDEN_FIELDS
     }
@@ -124,6 +134,15 @@ def _json_value_expr(column: str, native_type: str) -> str:
     native = (native_type or "").upper()
     if "JSON" in native:
         return f'CAST("{ident}" AS JSON)'
+    if native == "INTERVAL":
+        # HH:MM:SS with hours past 23 kept, as `format_interval` does for the
+        # single-feature path; DuckDB's own text would say "1 day 01:10:00".
+        seconds = f'CAST(epoch("{ident}") AS BIGINT)'
+        return (
+            f'CASE WHEN "{ident}" IS NOT NULL THEN '
+            f"printf('%02d:%02d:%02d', {seconds} // 3600, "
+            f"({seconds} % 3600) // 60, {seconds} % 60) END"
+        )
     if native.startswith("TIMESTAMP"):
         if "WITH TIME ZONE" in native or native.startswith("TIMESTAMPTZ"):
             return (

@@ -8,7 +8,13 @@ import type { BaseTreeItem } from "@/components/map/panels/layer/DraggableTreeVi
 export interface ProjectTreeItem extends BaseTreeItem {
   data: ProjectLayerTreeNode;
   canExpand?: boolean;
+  /** The "Tables" row a bundle folds its feed tables under (board 1): the
+   * bundle group's id. A row of the tree only, never saved. */
+  tablesOf?: number;
+  tableCount?: number;
 }
+
+export const TABLES_PREFIX = "tables-";
 
 const shown = (node: ProjectLayerTreeNode) => node.visible !== false;
 
@@ -56,13 +62,63 @@ export function formatApiDataForDnd(
     });
 }
 
+/**
+ * A bundle's feed tables folded under one "Tables" row (board 1), so its map
+ * layers lead: where a bundle group holds both, its tables move under a row
+ * of the tree's own, which is never saved (formatDndDataForApi drops it).
+ */
+export function foldBundleTables(items: ProjectTreeItem[], label: string): ProjectTreeItem[] {
+  const out = [...items];
+  for (const group of items.filter((i) => i.isBundleGroup)) {
+    const members = items.filter((i) => i.parentId === group.id);
+    const tables = members.filter((i) => i.data.layer_type === "table");
+    if (!tables.length || tables.length === members.length) continue;
+    const rowId = `${TABLES_PREFIX}${group.data.id}`;
+    const tableIds = new Set(tables.map((t) => t.id));
+    for (let k = 0; k < out.length; k++) if (tableIds.has(out[k].id)) out[k] = { ...out[k], parentId: rowId };
+    const lastLayer = members.filter((i) => !tableIds.has(i.id)).pop() ?? group;
+    out.splice(out.indexOf(lastLayer) + 1, 0, {
+      id: rowId,
+      parentId: group.id,
+      label,
+      collapsed: true,
+      isGroup: true,
+      isSelectable: false,
+      dragDisabled: true,
+      dropDisabled: true,
+      tablesOf: group.data.id,
+      tableCount: tables.length,
+      data: {
+        id: -group.data.id,
+        type: "group",
+        name: label,
+        parent_id: group.data.id,
+        order: 0,
+        extent: "",
+      },
+    });
+  }
+  return out;
+}
+
+/** The rows the server knows: without the Tables rows, their tables back in the bundle group. */
+function savedRows(items: ProjectTreeItem[]): ProjectTreeItem[] {
+  return items
+    .filter((item) => item.tablesOf === undefined)
+    .map((item) =>
+      item.parentId?.startsWith(TABLES_PREFIX)
+        ? { ...item, parentId: `group-${item.parentId.slice(TABLES_PREFIX.length)}` }
+        : item
+    );
+}
+
 const idOf = (item: ProjectTreeItem) => Number(item.id.split("-")[1]);
 const parentOf = (item: ProjectTreeItem) => (item.parentId ? Number(item.parentId.split("-")[1]) : null);
 
 /** The tree PUT: every row's order and parent, and each group open or closed. */
 export function formatDndDataForApi(items: ProjectTreeItem[]): ProjectLayerTreeUpdate {
   return {
-    items: items.map((item, index) => ({
+    items: savedRows(items).map((item, index) => ({
       id: idOf(item),
       type: item.data.type,
       order: index,
@@ -75,9 +131,12 @@ export function formatDndDataForApi(items: ProjectTreeItem[]): ProjectLayerTreeU
 /** What a change of the rows writes: the layers whose legend opened or closed (with legend_expanded), and whether the
  * order, a parent or a group's open state changed (the tree PUT). */
 export function treeChanges(
-  before: ProjectTreeItem[],
-  after: ProjectTreeItem[]
+  beforeRows: ProjectTreeItem[],
+  afterRows: ProjectTreeItem[]
 ): { legends: Array<[number, boolean]>; tree: boolean } {
+  // A Tables row folding or unfolding is the tree's own and writes nothing.
+  const before = savedRows(beforeRows);
+  const after = savedRows(afterRows);
   const previous = new Map(before.map((item, index) => [item.id, { item, index }]));
   const legends: Array<[number, boolean]> = [];
   let tree = before.length !== after.length;

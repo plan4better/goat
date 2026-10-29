@@ -509,8 +509,13 @@ SPECS: Dict[BundleTypeName, BundleTypeSpec] = {
                 key="shape_lines",
                 label="Shape lines",
                 geometry="line",
+                # Also drawn from the stops, for trips without a shape: never
+                # written back either way.
                 derived_from="shapes",
-                description="The shape points joined into one line per shape.",
+                description=(
+                    "The shape points joined into one line per shape, and a line "
+                    "through the stops for each trip without a shape."
+                ),
             ),
             RoleSpec(key="frequencies", label="Frequencies", geometry="none"),
             RoleSpec(key="transfers", label="Transfers", geometry="none"),
@@ -555,9 +560,9 @@ SPECS: Dict[BundleTypeName, BundleTypeSpec] = {
             BundleArtifactKind.pt_network_graph,
             BundleArtifactKind.pt_network_linkage,
         ),
-        # The member layers are the feed: one layer per GTFS file, imported as
-        # text, so writing them back out reconstitutes what the timetable is
-        # built from. That is what makes a rebuild possible after an edit or a
+        # The member layers are the feed: one layer per GTFS file with every
+        # column kept (typed where the GTFS reference types it), so writing
+        # them back out reconstitutes what the timetable is built from. That is what makes a rebuild possible after an edit or a
         # re-link, rather than only a fresh import.
         artifacts_build_from_layers=True,
         dependencies=(
@@ -605,10 +610,10 @@ def get_spec(type_: "BundleTypeName | str") -> BundleTypeSpec:
 def artifacts_from_layers(type_: "BundleTypeName | str") -> bool:
     """Whether this type's artifacts can be produced from its member layers.
 
-    What both a filtered copy and an in-place rebuild need: a GTFS bundle's
-    timetable is built from the uploaded feed, which is not kept, so neither
-    operation has anything to build from. A type that derives no artifacts at
-    all trivially qualifies — there is nothing to produce.
+    What both a filtered copy and an in-place rebuild need: the uploaded
+    source is not kept past the import, so a type whose artifacts can only be
+    built from it has nothing to rebuild from. A type that derives no artifacts
+    at all trivially qualifies — there is nothing to produce.
 
     One definition, shared by the tools that refuse the job and the API that
     tells the client not to offer it.
