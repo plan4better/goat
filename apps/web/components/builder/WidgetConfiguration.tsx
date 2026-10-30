@@ -127,7 +127,8 @@ const WidgetConfiguration = ({ onChange, samePanelWidgets }: WidgetConfiguration
 
   return (
     <Stack direction="column" spacing={2} justifyContent="space-between">
-      <WidgetInfo config={widgetConfig} onChange={handleConfigChange} />
+      {/* key: remount per widget so the title/description editors never carry over text */}
+      <WidgetInfo key={selectedBuilderItem?.id} config={widgetConfig} onChange={handleConfigChange} />
       {hasDataConfig && <WidgetData config={widgetConfig} onChange={handleConfigChange} />}
       <WidgetLayout config={widgetConfig} onChange={handleConfigChange} />
       <WidgetSetup config={widgetConfig} onChange={handleConfigChange} />
