@@ -10,7 +10,7 @@ dependencies = [
   "psycopg==3.2.3",
   "psycopg-binary==3.2.3",
   "shapely==2.0.6",
-  "aiohttp==3.14.3",
+  "aiohttp==3.14.4",
   "alembic==1.14.0",
   "httpx==0.27.2",
   "python-jose[cryptography]==3.5.0",
@@ -41,5 +41,5 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
   "asyncpg-stubs>=0.30.0",
-  "pytest>=8.3.5",
+  "pytest>=9.1.1",
 ]
