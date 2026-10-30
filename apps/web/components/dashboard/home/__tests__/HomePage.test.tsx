@@ -34,7 +34,12 @@ vi.mock("@/lib/api/content", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/content")>("@/lib/api/content");
   return { ...actual, refreshContentFeed: refreshContentFeedMock };
 });
-vi.mock("@/hooks/jobs/JobStatus", () => ({ useJobStatus: useJobStatusMock }));
+vi.mock("@/hooks/jobs/JobStatus", () => ({
+  JobStatusWatcher: ({ onSuccess }: { onSuccess?: () => void }) => {
+    useJobStatusMock(onSuccess);
+    return null;
+  },
+}));
 vi.mock("@/lib/api/templates", () => ({
   useTemplates: (...args: unknown[]) => useTemplatesMock(...args),
 }));

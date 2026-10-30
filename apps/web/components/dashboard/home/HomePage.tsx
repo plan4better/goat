@@ -12,7 +12,7 @@ import type { TemplateKind, TemplateRead, TemplateSourceFilter } from "@/lib/val
 import { useHomeCreate } from "@/hooks/dashboard/home/useHomeCreate";
 import type { SetupStepId } from "@/hooks/dashboard/home/useHomeStage";
 import { runSetupStep, useHomeStage } from "@/hooks/dashboard/home/useHomeStage";
-import { useJobStatus } from "@/hooks/jobs/JobStatus";
+import { JobStatusWatcher } from "@/hooks/jobs/JobStatus";
 import { templateResultHref } from "@/hooks/templates/useUseTemplate";
 
 import BlogSection from "@/components/dashboard/home/BlogSection";
@@ -50,10 +50,11 @@ const HomePage = () => {
   // An upload's dialog closes before its background import has written the
   // layer, so the lists refresh when the job finishes, as the Content page
   // does. The onboarding facts follow, since they hold "has an uploaded layer".
-  useJobStatus(() => {
+  // Through JobStatusWatcher, so the job polling re-renders only the watcher.
+  const onJobSuccess = () => {
     refreshContentFeed();
     refreshFacts();
-  });
+  };
 
   // T10/§4: one template browser + `UseTemplateFlow` pair for the
   // checklist's "Run your first analysis"/"Build a workflow" steps —
@@ -115,6 +116,7 @@ const HomePage = () => {
         gap: mobile ? "28px" : "40px",
       }}>
       {dialogs}
+      <JobStatusWatcher onSuccess={onJobSuccess} />
       {templateBrowser && (
         <TemplateBrowser
           mode="dialog"
