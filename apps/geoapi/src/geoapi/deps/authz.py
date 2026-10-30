@@ -121,6 +121,12 @@ async def _check_and_enforce(collection_id: str, user_id: UUID | None) -> None:
     logger.warning("read_authz.would_deny layer=%s user=%s", layer_id, user_id)
 
 
+async def enforce_layer_read(layer_id: str, user_id: UUID | None) -> None:
+    """The verdict of `require_layer_read` for a layer a route resolves itself
+    (the Explorer authorizes a bundle through its stops layer)."""
+    await _check_and_enforce(layer_id, user_id)
+
+
 async def require_layer_read(
     collection_id: Annotated[str, Path(alias="collectionId")],
     user_id: UUID | None = Depends(get_optional_user_id),

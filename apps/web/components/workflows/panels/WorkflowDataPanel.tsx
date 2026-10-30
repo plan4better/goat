@@ -423,10 +423,11 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
 
   const { layerUuid: tempLayerUuid } = tempLayerParts;
 
-  // Build vector tile URL for temp layer map (same as regular layers, just use layer UUID)
+  // Build vector tile URL for temp layer map (same as regular layers, plus temp=true so
+  // geoapi looks for the tiles in the workflow temp storage straight away)
   const tempTileUrl = useMemo(() => {
     if (!tempLayerUuid) return null;
-    return `${GEOAPI_BASE_URL}/collections/${tempLayerUuid}/tiles/WebMercatorQuad/{z}/{x}/{y}`;
+    return `${GEOAPI_BASE_URL}/collections/${tempLayerUuid}/tiles/WebMercatorQuad/{z}/{x}/{y}?temp=true`;
   }, [tempLayerUuid]);
 
   // Temp layer data (from temp storage) - only for table pagination

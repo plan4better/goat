@@ -11,6 +11,7 @@ GeoAPI serves the **data** of a layer; core holds its metadata. It provides:
 - **Editing**: create, update and delete features and columns, and batch edits of a bundle's network layers.
 - **Expressions**: validating and previewing computed-column expressions.
 - **Download**: exporting a layer of a published project in common GIS formats.
+- **Explorer snapshots**: a public transport bundle as the compact, indexed Parquet files the Explorer loads into DuckDB-WASM (`/bundles/{bundleId}/explorer`).
 
 The collection id is the layer UUID. The full, current route list is the OpenAPI document at `/api/docs`.
 
@@ -23,8 +24,9 @@ Tiles and features are the latency-critical path every map view hits. Keeping th
 - Each layer is one DuckLake table, `t_<layer id without hyphens>`. New layers live in schema `main`; layers created before the flat layout stay in their old `user_<id>` schema and are found by an indexed lookup in DuckLake's own Postgres catalog.
 - **Feature ids are `rowid + 1`**, because MapLibre treats an MVT feature id of 0 as "unset". The bundle editor keys on the layer's `id` column instead, since deletes within one batch would shift rowids.
 - **Promoted catalog datasets** are not DuckLake tables: they are parquet files under `CATALOG_LAYERS_DIR`, exposed through an in-memory view that adds the same `rowid`. They are read-only.
-- **PMTiles** live in `TILES_DATA_DIR` (user layers) and `CATALOG_TILES_DIR` (catalog layers). They are built outside geoapi, by goatlib tasks.
+- **PMTiles** live in `TILES_DATA_DIR` (user layers) and `CATALOG_TILES_DIR` (catalog layers). They are built outside geoapi, by goatlib: every import builds them for the layers it creates, a bundle's map members included (cut on the fly, a region's worth of a network's shape lines runs to several MB a tile), and goatlib tasks rebuild them after edits.
 - **Workflow previews** are parquet and PMTiles files under `/app/data/temporary/user_<id>/…`, read with `?temp=true`.
+- **Explorer snapshots** live in `DATA_DIR/explorer/<bundle id>/r<revision>.s<schema>/`, one per bundle revision, built by geoapi on the first request for it (`packages/python/goatlib/src/goatlib/bundles/explorer/snapshot.py` does the conversion). The manifest answers 202 while the build runs, and a failed build for five minutes after (so a broken feed is not rebuilt on every poll) unless the request says `?retry=true`, which the Explorer's Try again does; the files' URLs name the revision, so they never change, and browsers keep them for a month (`FILE_MAX_AGE_SECONDS` in `routers/explorer.py`). A build reads the revision and the DuckLake snapshot id together under the bundle's advisory lock, taken shared (`goatlib.bundles.locks`) — a writer of a bundle's layers takes it exclusively from its revision claim to its DuckLake commit — and reads every table at that snapshot. One build at a time per pod, on its own DuckLake connection, at most 512 MB plus spill; a `.building-r<n>` marker keeps a second pod from building the same revision. Shapes go in simplified to 2 m (`SHAPE_TOLERANCE_M`), a thousand at a time so the build stays within its memory, with every stop placed along its trip's shape: playback moves vehicles along the lines the map draws. A trip without a shape gets the line through its stops as its shape, the same line the bundle's `shape_lines` member draws (`packages/python/goatlib/src/goatlib/bundles/importers/pt_network/stop_chains.py`), so shapeless feeds draw, play and click like any other. The previous revision, or a snapshot of an older schema, is kept an hour for downloads in flight; stale temporary folders and snapshots untouched for 30 days are removed hourly.
 
 ## How It Stays Consistent
 
@@ -41,6 +43,7 @@ Tiles and features are the latency-critical path every map view hits. Keeping th
 - A layer of a published project is readable by anyone. Otherwise `customer.can('layer', …, 'read')` in core's database decides. **Read authorization runs in shadow mode by default** (`GEOAPI_ENFORCE_READ_AUTHZ=false`, also read as `ENFORCE_READ_AUTHZ`, the name the Helm chart sets): a denial is only logged as `read_authz.would_deny`, and the layer is served anyway.
 - Writes need a user and pass `customer.layer_write_allowed`. Features of a bundle member layer are edited through the bundle routes, though columns may still be added to it; catalog layers cannot be edited.
 - Download needs no token but only works for layers of a published project.
+- An Explorer snapshot is readable by whoever may read the bundle's stops layer: member layers carry the bundle's grants, and a project holding the bundle shares them, which are the two ways core lets a bundle be read.
 - A token must verify, and with `AUTH_ALLOWED_CLIENTS` set it must be issued to one of those clients (goatlib's `KeycloakAuth`). A token that fails is a 401 where a user is required; where a token is optional, the request runs as anonymous.
 - With `AUTH=False`, requests without a token run as the built-in development user.
 

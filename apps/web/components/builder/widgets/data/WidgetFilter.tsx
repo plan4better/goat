@@ -3,6 +3,7 @@ import { Box } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMap } from "react-map-gl/maplibre";
 
+import { DEFAULT_WIDGET_COLOR } from "@/lib/constants/ui";
 import { useDatasetCollectionItems } from "@/lib/api/layers";
 import type { TemporaryFilter } from "@/lib/store/map/slice";
 import { addTemporaryFilter, removeTemporaryFilter, updateTemporaryFilter } from "@/lib/store/map/slice";
@@ -479,7 +480,7 @@ export const FilterDataWidget = ({ id, config: rawConfig, projectLayers }: Filte
         mb: 2,
         transition: "background-color 0.3s ease",
         backgroundColor: isFlashing
-          ? `${rawConfig?.options?.color || "#0e58ff"}18`
+          ? `${rawConfig?.options?.color || DEFAULT_WIDGET_COLOR}18`
           : "transparent",
         borderRadius: 1,
       }}>

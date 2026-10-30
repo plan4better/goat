@@ -176,12 +176,15 @@ def _root_level_feed(source_path: str, workdir: str) -> str:
 def _write_feed_from_layers(layer_paths: Dict[str, str], feed_dir: str) -> List[str]:
     """Write the member layers back out as a GTFS feed. Returns the files made.
 
-    The import stored every column as text and kept the feed's own columns, so
-    writing them back is a faithful round trip. What is left out is only what
-    the import added: the geometry next to a stop's own coordinates, and the
-    shape lines, which are a drawing of the shape points rather than a file.
-    Members the spec does not name are files the feed brought beyond it and go
-    back under their own name.
+    The import kept the feed's own columns, typed where the GTFS reference
+    types them (``gtfs_schema``), so writing them back is a round trip of the
+    values: dates go back to ``YYYYMMDD`` and times to ``HH:MM:SS`` (see
+    ``gtfs_text``), and a column still stored as text — a bundle imported
+    before typing — goes back as it is. What is left out is only what the
+    import added: the geometry next to a stop's own coordinates, and the shape
+    lines, which are a drawing of the shape points rather than a file. Members
+    the spec does not name are files the feed brought beyond it and go back
+    under their own name.
 
     A GTFS file whose layer lacks a column that file requires is not written:
     a bundle imported before shapes were kept point by point holds only lines,
@@ -194,6 +197,7 @@ def _write_feed_from_layers(layer_paths: Dict[str, str], feed_dir: str) -> List[
         _GTFS_FILE,
         _REQUIRED_COLUMNS,
     )
+    from goatlib.bundles.importers.pt_network.gtfs_schema import gtfs_text
 
     spec = get_spec(BundleTypeName.pt_network_gtfs)
     written: List[str] = []
@@ -214,11 +218,12 @@ def _write_feed_from_layers(layer_paths: Dict[str, str], feed_dir: str) -> List[
                 f"DESCRIBE SELECT * FROM read_parquet('{path}')"
             ).fetchall()
             has_geometry = any("GEOMETRY" in str(row[1]).upper() for row in described)
-            columns = [
-                row[0]
+            kept = [
+                (row[0], str(row[1]))
                 for row in described
                 if not (has_geometry and row[0] in _IMPORT_COLUMNS)
             ]
+            columns = [name for name, _ in kept]
             if not columns:
                 continue
             absent = _REQUIRED_COLUMNS.get(role, set()) - set(columns)
@@ -230,7 +235,7 @@ def _write_feed_from_layers(layer_paths: Dict[str, str], feed_dir: str) -> List[
                     ", ".join(sorted(absent)),
                 )
                 continue
-            select = ", ".join(f'"{c}"' for c in columns)
+            select = ", ".join(gtfs_text(name, sql_type) for name, sql_type in kept)
             out = os.path.join(feed_dir, filename)
             con.execute(
                 f"COPY (SELECT {select} FROM read_parquet('{path}')) "
@@ -317,8 +322,8 @@ class GtfsArtifactBuilder(ArtifactBuilder):
         """Rebuild from the member layers rather than the uploaded feed.
 
         The feed is not kept past the import, but the layers *are* the feed —
-        one per GTFS file, imported as text — so writing them back out
-        reconstitutes it. That is what lets an edited or re-linked bundle be
+        one per GTFS file, every column kept — so writing them back out
+        reconstitutes it (see ``_write_feed_from_layers``). That is what lets an edited or re-linked bundle be
         rebuilt at all, and it is the same path the street network already
         takes.
 
@@ -383,8 +388,14 @@ class GtfsArtifactBuilder(ArtifactBuilder):
 
     @classmethod
     def _window_from_layers(cls, layer_paths: Dict[str, str]) -> Tuple[str, int]:
-        """The service window, read from the calendar layers."""
+        """The service window, read from the calendar layers.
+
+        The dates are read as GTFS writes them (``YYYYMMDD``) whichever way the
+        layer stores them: typed as ``DATE``, or as text in a bundle imported
+        before typing."""
         import duckdb
+
+        from goatlib.bundles.importers.pt_network.gtfs_schema import gtfs_text
 
         raw: List[str] = []
         con = duckdb.connect()
@@ -397,7 +408,7 @@ class GtfsArtifactBuilder(ArtifactBuilder):
                 if not path:
                     continue
                 present = {
-                    row[0]
+                    str(row[0]): str(row[1])
                     for row in con.execute(
                         f"DESCRIBE SELECT * FROM read_parquet('{path}')"
                     ).fetchall()
@@ -405,10 +416,11 @@ class GtfsArtifactBuilder(ArtifactBuilder):
                 for column in columns:
                     if column not in present:
                         continue
+                    value = gtfs_text(column, present[column])
                     raw.extend(
                         str(row[0]).strip()
                         for row in con.execute(
-                            f"SELECT DISTINCT \"{column}\" FROM read_parquet('{path}') "
+                            f"SELECT DISTINCT {value} FROM read_parquet('{path}') "
                             f'WHERE "{column}" IS NOT NULL'
                         ).fetchall()
                     )

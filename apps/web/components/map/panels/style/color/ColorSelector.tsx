@@ -2,6 +2,7 @@ import { Paper, Stack } from "@mui/material";
 import { styled, useTheme } from "@mui/material/styles";
 import { useCallback, useState } from "react";
 
+import { pickerBorderColor, pickerBorderHoverColor } from "@/lib/constants/ui";
 import { rgbToHex } from "@/lib/utils/helpers";
 import type { ColorRange } from "@/lib/validations/layer";
 
@@ -103,7 +104,7 @@ const ColorSelector = (props: ColorSelectorProps) => {
               border: "1px solid",
               outline: "2px solid transparent",
               minHeight: "40px",
-              borderColor: theme.palette.mode === "dark" ? "#464B59" : "#CBCBD1",
+              borderColor: pickerBorderColor(theme),
               ...(open && {
                 outline: `2px solid ${theme.palette.primary.main}`,
               }),
@@ -111,7 +112,7 @@ const ColorSelector = (props: ColorSelectorProps) => {
               p: 2,
               "&:hover": {
                 ...(!open && {
-                  borderColor: theme.palette.mode === "dark" ? "#5B5F6E" : "#B8B7BF",
+                  borderColor: pickerBorderHoverColor(theme),
                 }),
               },
             }}>

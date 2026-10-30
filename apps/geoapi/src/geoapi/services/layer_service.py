@@ -450,6 +450,10 @@ class LayerService:
         """Map DuckDB data type to JSON schema type."""
         type_lower = duckdb_type.lower()
 
+        # Before the integer check, which "int" in "interval" would match. An
+        # interval (a GTFS time such as 25:10:00) is served as its HH:MM:SS text.
+        if "interval" in type_lower:
+            return "string"
         if any(t in type_lower for t in ["int", "bigint", "smallint", "tinyint"]):
             return "integer"
         elif any(

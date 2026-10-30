@@ -73,6 +73,27 @@ def test_pmtiles_exists_true() -> None:
         assert generator.pmtiles_exists("layer1") is True
 
 
+def test_pmtiles_lookups_never_list_the_tiles_directory() -> None:
+    """The tiles directory holds tens of thousands of files and is only ever
+    probed by path: checking or deleting a layer's tiles does not list it."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        generator = PMTilesGenerator(tiles_data_dir=tmpdir)
+        nested = pathlib.Path(tmpdir) / "user_abc" / "t_layer1.pmtiles"
+        nested.parent.mkdir()
+        nested.touch()
+
+        with (
+            patch.object(
+                pathlib.Path, "glob", side_effect=AssertionError("tiles dir listed")
+            ),
+            patch.object(
+                pathlib.Path, "iterdir", side_effect=AssertionError("tiles dir listed")
+            ),
+        ):
+            assert generator.pmtiles_exists("layer1") is False
+            assert generator.delete_pmtiles("layer1") is False
+
+
 def test_delete_pmtiles_file_exists() -> None:
     """Test delete_pmtiles when file exists."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -183,3 +204,39 @@ def test_tippecanoe_command_point_layer() -> None:
             # Should NOT have polygon-specific settings
             assert "--drop-densest-as-needed" not in cmd
             assert "--no-tiny-polygon-reduction" not in cmd
+
+
+def test_tiles_are_built_on_local_disk_and_published_whole() -> None:
+    """tippecanoe builds PMTiles in an SQLite database at its output path, which
+    is unsafe on network storage: it writes to a local work directory, and only
+    the finished file lands in the tiles directory."""
+    import duckdb
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    con.execute(
+        "CREATE TABLE lines AS SELECT 1 AS id, "
+        "ST_GeomFromText('LINESTRING(11.5 48.1, 11.6 48.2)') AS geometry"
+    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tiles_dir = pathlib.Path(tmpdir)
+        generator = PMTilesGenerator(tiles_data_dir=tiles_dir)
+        outputs: list[pathlib.Path] = []
+
+        def fake_tippecanoe(**kwargs: object) -> None:
+            output = pathlib.Path(str(kwargs["output_path"]))
+            outputs.append(output)
+            output.write_bytes(b"tiles")
+
+        with patch.object(generator, "_run_tippecanoe", side_effect=fake_tippecanoe):
+            path = generator.generate_from_table(
+                duckdb_con=con,
+                table_name="lines",
+                layer_id="layer1",
+                show_progress=False,
+            )
+
+        assert path == generator.get_pmtiles_path("layer1")
+        assert path.read_bytes() == b"tiles"
+        assert outputs and all(tiles_dir not in p.parents for p in outputs)
+        assert [p.name for p in tiles_dir.iterdir()] == [path.name]

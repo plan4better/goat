@@ -1,6 +1,6 @@
 import ChevronRight from "@mui/icons-material/ChevronRight";
 import Close from "@mui/icons-material/Close";
-import { Badge, Box, Button, Divider, IconButton, Stack, Switch, Typography } from "@mui/material";
+import { Badge, Box, Button, Divider, IconButton, Stack, Typography } from "@mui/material";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { v4 } from "uuid";
@@ -16,6 +16,7 @@ import type { SelectorItem } from "@/types/map/common";
 import CollapsibleConfigCard from "@/components/builder/widgets/common/CollapsibleConfigCard";
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
 import Selector from "@/components/map/panels/common/Selector";
+import SwitchRow from "@/components/map/panels/common/SwitchRow";
 
 // ---------------------------------------------------------------------------
 // Helper: find all tabs widgets across all panels
@@ -422,14 +423,11 @@ const InteractionsModal: React.FC<InteractionsModalProps> = ({
                 canRemove>
                 <Stack spacing={2}>
                   {/* Enable / disable switch */}
-                  <Stack direction="row" alignItems="center" justifyContent="space-between">
-                    <Typography variant="body2">{t("interaction_enabled")}</Typography>
-                    <Switch
-                      size="small"
-                      checked={rule.enabled}
-                      onChange={(e) => handleRuleChange({ ...rule, enabled: e.target.checked })}
-                    />
-                  </Stack>
+                  <SwitchRow
+                    label={t("interaction_enabled")}
+                    checked={rule.enabled}
+                    onChange={(checked) => handleRuleChange({ ...rule, enabled: checked })}
+                  />
 
                   <Divider />
 

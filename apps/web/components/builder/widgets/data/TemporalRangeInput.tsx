@@ -12,6 +12,7 @@ import { useDayjsLocale } from "@/i18n/utils";
 
 import { useDatasetCollectionItems } from "@/lib/api/layers";
 import { useProjectLayerHistogramStats } from "@/lib/api/projects";
+import { DEFAULT_WIDGET_COLOR } from "@/lib/constants/ui";
 import type { HistogramStatsQueryParams } from "@/lib/validations/project";
 
 dayjs.extend(utc);
@@ -46,7 +47,7 @@ export default function TemporalRangeInput({
   layerId,
   fieldName,
   showHistogram = true,
-  color = "#0e58ff",
+  color = DEFAULT_WIDGET_COLOR,
   selectedRange,
   onSelectedRangeChange,
 }: TemporalRangeInputProps) {

@@ -4,6 +4,7 @@ import { useTheme } from "@mui/material/styles";
 import { useMemo, useState } from "react";
 
 import { MAKI_ICONS_BASE_URL, MAKI_ICON_SIZE, NO_ICON_ICON } from "@/lib/constants/icons";
+import { pickerBorderColor, pickerBorderHoverColor } from "@/lib/constants/ui";
 import type { Marker } from "@/lib/validations/layer";
 
 import FormLabelHelper from "@/components/common/FormLabelHelper";
@@ -28,9 +29,9 @@ const MarkerIconPicker = (props: MarkerIconPickerProps) => {
     } else if (!!props.selectedMarker?.url) {
       return "";
     } else {
-      return theme.palette.mode === "dark" ? "#5B5F6E" : "#B8B7BF";
+      return pickerBorderHoverColor(theme);
     }
-  }, [open, props.selectedMarker?.url, theme.palette.mode, theme.palette.primary.main]);
+  }, [open, props.selectedMarker?.url, theme]);
 
   return (
     <>
@@ -56,7 +57,7 @@ const MarkerIconPicker = (props: MarkerIconPickerProps) => {
             borderRadius: theme.spacing(1.2),
             border: "1px solid",
             outline: "2px solid transparent",
-            borderColor: theme.palette.mode === "dark" ? "#464B59" : "#CBCBD1",
+            borderColor: pickerBorderColor(theme),
             ...(open && {
               outline: `2px solid ${theme.palette.primary.main}`,
             }),
@@ -66,7 +67,7 @@ const MarkerIconPicker = (props: MarkerIconPickerProps) => {
             minHeight: "40px",
             "&:hover": {
               ...(!open && {
-                borderColor: theme.palette.mode === "dark" ? "#5B5F6E" : "#B8B7BF",
+                borderColor: pickerBorderHoverColor(theme),
               }),
             },
           }}>

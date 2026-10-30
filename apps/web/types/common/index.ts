@@ -35,6 +35,8 @@ export enum MapLayerActions {
   ZOOM_TO = "zoomTo",
   PROPERTIES = "properties",
   STYLE = "style",
+  OPEN_EXPLORER = "openExplorer",
+  EXIT_EXPLORER = "exitExplorer",
 }
 
 export enum LayerStyleActions {

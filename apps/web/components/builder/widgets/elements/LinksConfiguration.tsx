@@ -11,8 +11,6 @@ import {
   IconButton,
   Stack,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Typography,
   useTheme,
 } from "@mui/material";
@@ -28,6 +26,7 @@ import type { SelectorItem } from "@/types/map/common";
 
 import SectionHeader from "@/components/map/panels/common/SectionHeader";
 import SectionOptions from "@/components/map/panels/common/SectionOptions";
+import SegmentedControl from "@/components/map/panels/common/SegmentedControl";
 import Selector from "@/components/map/panels/common/Selector";
 import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
 import LinkPopupEditDialog from "@/components/builder/widgets/elements/LinkPopupEditDialog";
@@ -133,19 +132,16 @@ const SortableLinkItem = ({
         </IconButton>
       </Stack>
 
-      <ToggleButtonGroup
-        exclusive
-        size="small"
-        value={linkType}
-        onChange={(_, value) => value && onLinkTypeChange(index, value as "url" | "popup")}
-        sx={{ mb: 1, width: "100%" }}>
-        <ToggleButton value="url" sx={{ flex: 1, fontSize: 11, py: 0.5, textTransform: "none" }}>
-          {t("link_url")}
-        </ToggleButton>
-        <ToggleButton value="popup" sx={{ flex: 1, fontSize: 11, py: 0.5, textTransform: "none" }}>
-          {t("popup")}
-        </ToggleButton>
-      </ToggleButtonGroup>
+      <Box sx={{ mb: 1 }}>
+        <SegmentedControl
+          value={linkType}
+          onChange={(value) => onLinkTypeChange(index, value as "url" | "popup")}
+          items={[
+            { value: "url", label: t("link_url") },
+            { value: "popup", label: t("popup") },
+          ]}
+        />
+      </Box>
 
       <Stack spacing={1}>
         <TextField

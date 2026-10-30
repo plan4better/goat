@@ -32,6 +32,7 @@ export interface BaseTreeItem {
   collapsed?: boolean;
   isGroup?: boolean;
   icon?: React.ReactNode;
+  /** A layer: its legend, below the row. A group: shown instead of its children. */
   legendContent?: React.ReactNode;
   isSelectable?: boolean;
   isVisible?: boolean; // Add this property for visibility styling
@@ -498,7 +499,12 @@ const RecursiveTreeItemInner = <T extends BaseTreeItem>({
         <Collapse in={isExpanded} timeout="auto" unmountOnExit>
           <Box>
             {/* For groups: show children */}
-            {item.isGroup && (
+            {item.isGroup && hasLegend && (
+              <Box sx={{ paddingLeft: `${baseIndent + 28}px`, paddingRight: 1, paddingBottom: 1, paddingTop: 0.5 }}>
+                {item.legendContent}
+              </Box>
+            )}
+            {item.isGroup && !hasLegend && (
               <>
                 {children.map((child) => (
                   <MemoizedRecursiveTreeItem

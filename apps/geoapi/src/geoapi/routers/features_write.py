@@ -238,6 +238,9 @@ def _duckdb_type_to_kind(duckdb_type: str) -> str:
         return "boolean"
     if "timestamp" in t or "date" in t:
         return "datetime"
+    # Before the number check, which "int" in "interval" would match.
+    if "interval" in t:
+        return "string"
     if any(x in t for x in ("int", "double", "float", "decimal", "numeric", "real")):
         return "number"
     return "string"

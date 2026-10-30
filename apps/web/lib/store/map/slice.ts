@@ -180,6 +180,12 @@ const mapSlice = createSlice({
       state.activeBasemap = action.payload.basemap;
       state.activeBasemapProjectId = action.payload.projectId;
     },
+    // Back to the project's own basemap: what the session chose is dropped
+    // (the Explorer's theme basemap, when the Explorer closes).
+    clearActiveBasemap: (state) => {
+      state.activeBasemap = undefined;
+      state.activeBasemapProjectId = undefined;
+    },
     // Live preview of basemap layer settings (dialog edits before save). Set
     // while the dialog is open; the map renderer prefers it over the persisted
     // activeBasemap.layer_config. Cleared (undefined) on dialog close.
@@ -339,6 +345,7 @@ export const {
   setProject,
   updateProject,
   setActiveBasemap,
+  clearActiveBasemap,
   setBasemapLayerConfigOverride,
   setActiveLeftPanel,
   setActiveRightPanel,

@@ -314,22 +314,29 @@ class ClusteringZones(AnalysisTool):
         # Output 2: Multifeature summary per cluster with characteristics
         self.con.execute(f"""
             CREATE OR REPLACE TEMP VIEW cluster_summary AS
-            WITH cluster_points AS (
-                SELECT a.cluster_id, p.feature_id, p.x, p.y
+            WITH cluster_hulls AS (
+                -- The farthest pair always lies on the convex hull, so only hull vertices are compared
+                SELECT
+                    a.cluster_id,
+                    ST_Points(ST_ConvexHull(ST_Collect(LIST(ST_Point(p.x, p.y))))) AS hull
                 FROM final_assignments a
                 JOIN features_metric p ON a.feature_id = p.feature_id
+                GROUP BY a.cluster_id
+            ),
+            hull_points AS (
+                SELECT h.cluster_id, ST_X(d.geom) AS x, ST_Y(d.geom) AS y
+                FROM cluster_hulls h, LATERAL (SELECT UNNEST(ST_Dump(h.hull)).geom AS geom) d
             ),
             pairwise_distances AS (
                 SELECT
-                    cp1.cluster_id,
+                    hp1.cluster_id,
                     MAX(SQRT(
-                        (cp1.x - cp2.x) * (cp1.x - cp2.x) +
-                        (cp1.y - cp2.y) * (cp1.y - cp2.y)
+                        (hp1.x - hp2.x) * (hp1.x - hp2.x) +
+                        (hp1.y - hp2.y) * (hp1.y - hp2.y)
                     )) AS max_distance
-                FROM cluster_points cp1
-                JOIN cluster_points cp2 ON cp1.cluster_id = cp2.cluster_id
-                                        AND cp1.feature_id < cp2.feature_id
-                GROUP BY cp1.cluster_id
+                FROM hull_points hp1
+                JOIN hull_points hp2 ON hp1.cluster_id = hp2.cluster_id
+                GROUP BY hp1.cluster_id
             )
             SELECT
                 a.cluster_id,

@@ -6,6 +6,7 @@ import type { TooltipProps } from "recharts";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
 
+import { DEFAULT_WIDGET_COLOR } from "@/lib/constants/ui";
 import { useProjectLayerHistogramStats } from "@/lib/api/projects";
 import { formatNumber } from "@/lib/utils/format-number";
 import type { HistogramStatsQueryParams } from "@/lib/validations/project";
@@ -162,7 +163,7 @@ export const HistogramChartWidget = ({ config: rawConfig }: { config: HistogramC
   }, [layerId, queryParams]);
 
   // Colors
-  const baseColor = config?.options?.color || "#0e58ff";
+  const baseColor = config?.options?.color || DEFAULT_WIDGET_COLOR;
   const rawHoverColor = config?.options?.highlight_color;
   const hoverColor =
     rawHoverColor && rawHoverColor.toLowerCase() !== "#3b82f6"

@@ -3,6 +3,9 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { MAX_FILTER_VALUES, useFilterValues } from "./useFilterValues";
+import { DEFAULT_WIDGET_COLOR } from "@/lib/constants/ui";
+
+import { selectableChipSx } from "@/components/builder/widgets/common/selectableChipSx";
 
 interface ChipsFilterProps {
   layerId: string;
@@ -30,7 +33,7 @@ const ChipsFilter = ({
   showAllOption = true,
   customOrder,
   cqlFilter,
-  color = "#0e58ff",
+  color = DEFAULT_WIDGET_COLOR,
   labelMap,
 }: ChipsFilterProps) => {
   const theme = useTheme();
@@ -132,18 +135,7 @@ const ChipsFilter = ({
               size="small"
               clickable
               onClick={handleAllClick}
-              sx={{
-                borderRadius: 4,
-                fontWeight: allSelected ? 600 : 400,
-                backgroundColor: allSelected ? color : theme.palette.action.hover,
-                color: allSelected ? theme.palette.getContrastText(color) : theme.palette.text.primary,
-                borderColor: allSelected ? color : theme.palette.divider,
-                "&:hover": {
-                  backgroundColor: allSelected ? color : theme.palette.action.selected,
-                  filter: allSelected ? "brightness(0.9)" : "none",
-                },
-                transition: "all 0.15s ease-in-out",
-              }}
+              sx={selectableChipSx(theme, allSelected, color)}
             />
             <Divider orientation="vertical" flexItem sx={{ mx: 0.5, borderColor: theme.palette.text.disabled }} />
           </>
@@ -157,18 +149,7 @@ const ChipsFilter = ({
               size="small"
               clickable
               onClick={() => handleChipClick(value)}
-              sx={{
-                borderRadius: 4,
-                fontWeight: isSelected ? 600 : 400,
-                backgroundColor: isSelected ? color : theme.palette.action.hover,
-                color: isSelected ? theme.palette.getContrastText(color) : theme.palette.text.primary,
-                borderColor: isSelected ? color : theme.palette.divider,
-                "&:hover": {
-                  backgroundColor: isSelected ? color : theme.palette.action.selected,
-                  filter: isSelected ? "brightness(0.9)" : "none",
-                },
-                transition: "all 0.15s ease-in-out",
-              }}
+              sx={selectableChipSx(theme, isSelected, color)}
             />
           );
         })}

@@ -1,0 +1,5 @@
+route_id,agency_id,route_short_name,route_long_name,route_type,route_color
+R1,A,1,Main Line,3,1E88E5
+R2,A,2,Tram,0,E53935
+R3,A,L,Loop,3,
+R4,A,F,Frequent,3,

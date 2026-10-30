@@ -4,9 +4,10 @@ import {
   Checkbox,
   FormControlLabel,
   IconButton,
+  MenuItem,
   Popover,
+  Select,
   Stack,
-  Switch,
   TextField,
   Tooltip,
   Typography,
@@ -19,7 +20,7 @@ import { Icon, ICON_NAME } from "@p4b/ui/components/Icon";
 
 import { useProjectLayerGroups, useProjectLayers } from "@/lib/api/projects";
 import { SYSTEM_LAYERS_IDS } from "@/lib/constants";
-import type { LayerInformationSchema } from "@/lib/validations/widget";
+import type { GroupSwitcherLayoutType, LayerInformationSchema } from "@/lib/validations/widget";
 import { layersOutOfZoomBehaviorTypes } from "@/lib/validations/widget";
 import type { Marker } from "@/lib/validations/layer";
 
@@ -29,7 +30,8 @@ import { MAKI_ICON_SIZE } from "@/lib/constants/icons";
 
 import SectionHeader from "@/components/map/panels/common/SectionHeader";
 import SectionOptions from "@/components/map/panels/common/SectionOptions";
-import Selector from "@/components/map/panels/common/Selector";
+import SegmentedControl from "@/components/map/panels/common/SegmentedControl";
+import SwitchRow from "@/components/map/panels/common/SwitchRow";
 import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
 import MarkerPopper from "@/components/map/panels/style/marker/MarkerPopper";
 import { MaskedImageIcon } from "@/components/map/panels/style/other/MaskedImageIcon";
@@ -74,6 +76,29 @@ const LayersWidgetConfig = ({ config, onChange }: LayersWidgetConfigProps) => {
   const legendSimpleLayers: number[] = opts.legend_simple_layers ?? [];
   const downloadableLayers: number[] = opts.downloadable_layers ?? [];
   const groupInfo = config.setup?.group_info ?? {};
+
+  const groupSwitchers = config.setup?.group_switchers ?? {};
+
+  /** "list" is the plain tree; the other types show the group one layer at a time. */
+  const handleGroupTypeChange = useCallback(
+    (groupId: number, type: "list" | GroupSwitcherLayoutType) => {
+      const { [String(groupId)]: previous, ...others } = groupSwitchers;
+      handleSetupChange(
+        "group_switchers",
+        type === "list" ? others : { ...others, [String(groupId)]: { show_play: previous?.show_play ?? false, layout: type } }
+      );
+    },
+    [groupSwitchers, handleSetupChange]
+  );
+
+  const handleGroupPlayChange = useCallback(
+    (groupId: number, showPlay: boolean) => {
+      const current = groupSwitchers[String(groupId)];
+      if (!current) return;
+      handleSetupChange("group_switchers", { ...groupSwitchers, [String(groupId)]: { ...current, show_play: showPlay } });
+    },
+    [groupSwitchers, handleSetupChange]
+  );
 
   const handleGroupInfoChange = useCallback(
     (groupId: number, value: string) => {
@@ -231,6 +256,39 @@ const LayersWidgetConfig = ({ config, onChange }: LayersWidgetConfigProps) => {
                       onChange={(value) => handleGroupInfoChange(group.id, value)}
                     />
                   </Stack>
+                  {/* How the group is shown: a list, or one layer at a time. Offered where there is
+                      something to switch between (the switcher leaves out tables and locked layers),
+                      and always once set, so it can be undone. */}
+                  {(groupSwitchers[String(group.id)] ||
+                    groupLayers.filter((l) => !excludedLayers.includes(l.id) && l.type !== "table" && !l.locked)
+                      .length >= 2) && (
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ pl: 3.5, pb: 0.5 }}>
+                      <Select
+                        size="small"
+                        value={groupSwitchers[String(group.id)]?.layout ?? "list"}
+                        onChange={(e) => handleGroupTypeChange(group.id, e.target.value as "list" | GroupSwitcherLayoutType)}
+                        inputProps={{ "aria-label": `${t("layout_style")}: ${group.name}` }}
+                        sx={{ fontSize: "0.8125rem", minWidth: 110, "& .MuiSelect-select": { py: 0.5 } }}>
+                        <MenuItem value="list">{t("list")}</MenuItem>
+                        <MenuItem value="chips">{t("chips")}</MenuItem>
+                        <MenuItem value="slider">{t("slider")}</MenuItem>
+                        <MenuItem value="dropdown">{t("dropdown")}</MenuItem>
+                      </Select>
+                      {groupSwitchers[String(group.id)] && (
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              size="small"
+                              checked={groupSwitchers[String(group.id)]?.show_play ?? false}
+                              onChange={(e) => handleGroupPlayChange(group.id, e.target.checked)}
+                            />
+                          }
+                          label={<Typography variant="body2">{t("play")}</Typography>}
+                          sx={{ ml: 0 }}
+                        />
+                      )}
+                    </Stack>
+                  )}
                   {/* Layers in group */}
                   {groupLayers.map((l) => (
                     <ConfigLayerRow
@@ -276,21 +334,21 @@ const LayersWidgetConfig = ({ config, onChange }: LayersWidgetConfigProps) => {
         active
         baseOptions={
           <>
-            <Selector
-              selectedItems={layoutStyleItems.find((i) => i.value === (options.layout_style || "tree"))}
-              setSelectedItems={(item: SelectorItem) => handleOptionChange("layout_style", item.value)}
+            <SegmentedControl
+              value={options.layout_style || "tree"}
+              onChange={(value) => handleOptionChange("layout_style", value)}
               items={layoutStyleItems}
               label={t("layout_style")}
             />
-            <Selector
-              selectedItems={toggleStyleItems.find((i) => i.value === (options.toggle_style || "eye"))}
-              setSelectedItems={(item: SelectorItem) => handleOptionChange("toggle_style", item.value)}
+            <SegmentedControl
+              value={options.toggle_style || "eye"}
+              onChange={(value) => handleOptionChange("toggle_style", value)}
               items={toggleStyleItems}
               label={t("toggle_style")}
             />
-            <Selector
-              selectedItems={togglePositionItems.find((i) => i.value === (options.toggle_position || "right"))}
-              setSelectedItems={(item: SelectorItem) => handleOptionChange("toggle_position", item.value)}
+            <SegmentedControl
+              value={options.toggle_position || "right"}
+              onChange={(value) => handleOptionChange("toggle_position", value)}
               items={togglePositionItems}
               label={t("toggle_position")}
             />
@@ -334,9 +392,9 @@ const LayersWidgetConfig = ({ config, onChange }: LayersWidgetConfigProps) => {
       <SectionOptions
         active
         baseOptions={
-          <Selector
-            selectedItems={outOfZoomBehaviorItems.find((i) => i.value === (options.out_of_zoom_behavior || "hide"))}
-            setSelectedItems={(item: SelectorItem) => handleOptionChange("out_of_zoom_behavior", item.value)}
+          <SegmentedControl
+            value={options.out_of_zoom_behavior || "hide"}
+            onChange={(value) => handleOptionChange("out_of_zoom_behavior", value)}
             items={outOfZoomBehaviorItems}
             label={t("out_of_zoom_behavior")}
           />
@@ -349,9 +407,9 @@ const LayersWidgetConfig = ({ config, onChange }: LayersWidgetConfigProps) => {
         active
         baseOptions={
           <>
-            <Selector
-              selectedItems={moreOptionsStyleItems.find((i) => i.value === (options.more_options_style || "compact"))}
-              setSelectedItems={(item: SelectorItem) => handleOptionChange("more_options_style", item.value)}
+            <SegmentedControl
+              value={options.more_options_style || "compact"}
+              onChange={(value) => handleOptionChange("more_options_style", value)}
               items={moreOptionsStyleItems}
               label={t("more_options_style")}
             />
@@ -565,35 +623,11 @@ const LayerSettingsPopover = ({
       transformOrigin={{ vertical: "top", horizontal: "right" }}
       slotProps={{ paper: { sx: { p: 1.5, minWidth: 180 } } }}>
       <Stack spacing={0.5}>
-        <Stack direction="row" alignItems="center">
-          <Switch
-            size="small"
-            checked={legendShow}
-            onChange={onToggleLegend}
-            sx={{ transform: "scale(0.8)" }}
-          />
-          <Typography variant="body2">{t("show_in_legend")}</Typography>
-        </Stack>
+        <SwitchRow label={t("show_in_legend")} checked={legendShow} onChange={onToggleLegend} />
         {legendShow && (
-          <Stack direction="row" alignItems="center">
-            <Switch
-              size="small"
-              checked={legendSimple}
-              onChange={onToggleSimpleLegend}
-              sx={{ transform: "scale(0.8)" }}
-            />
-            <Typography variant="body2">{t("simple_legend")}</Typography>
-          </Stack>
+          <SwitchRow label={t("simple_legend")} checked={legendSimple} onChange={onToggleSimpleLegend} />
         )}
-        <Stack direction="row" alignItems="center">
-          <Switch
-            size="small"
-            checked={downloadable}
-            onChange={onToggleDownload}
-            sx={{ transform: "scale(0.8)" }}
-          />
-          <Typography variant="body2">{t("download")}</Typography>
-        </Stack>
+        <SwitchRow label={t("download")} checked={downloadable} onChange={onToggleDownload} />
       </Stack>
     </Popover>
   );

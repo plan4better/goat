@@ -282,7 +282,7 @@ const TabsWidget: React.FC<TabsWidgetProps> = ({
                 minHeight: 32,
                 py: 0.5,
                 px: 1.5,
-                fontSize: "0.85rem",
+                fontSize: "0.8125rem",
               }}
             />
           ))}

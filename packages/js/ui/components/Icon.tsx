@@ -13,6 +13,7 @@ import {
   faStackOverflow,
   faXTwitter,
 } from "@fortawesome/free-brands-svg-icons";
+import { faCircleXmark as faCircleXmarkOutline } from "@fortawesome/free-regular-svg-icons";
 import {
   faAlignCenter,
   faAlignJustify,
@@ -55,6 +56,7 @@ import {
   faClone,
   faClose,
   faCode,
+  faCoins,
   faComment,
   faCookieBite,
   faCopy,
@@ -260,6 +262,7 @@ export enum ICON_NAME {
   TRASH = "trash",
   EDIT = "edit",
   XCLOSE = "xclose",
+  CIRCLE_XCLOSE = "circle-xclose",
   EDITPEN = "editpen",
   SAVE = "save",
   DATABASE = "database",
@@ -318,6 +321,7 @@ export enum ICON_NAME {
   UNLOCK = "unlock",
   PLAY = "play",
   CUBE = "cube",
+  COINS = "coins",
   GRIP_HORIZONTAL = "grip",
   GRIP_VERTICAL = "grip-vertical",
   IMAGE = "image",
@@ -458,6 +462,7 @@ const nameToIcon: { [k in ICON_NAME]: IconDefinition } = {
   [ICON_NAME.TRASH]: faTrash,
   [ICON_NAME.EDIT]: faEdit,
   [ICON_NAME.XCLOSE]: faXmark,
+  [ICON_NAME.CIRCLE_XCLOSE]: faCircleXmarkOutline,
   [ICON_NAME.EDITPEN]: faPen,
   [ICON_NAME.SAVE]: faFloppyDisk,
   [ICON_NAME.DATABASE]: faDatabase,
@@ -513,6 +518,7 @@ const nameToIcon: { [k in ICON_NAME]: IconDefinition } = {
   [ICON_NAME.UNLOCK]: faUnlock,
   [ICON_NAME.PLAY]: faPlay,
   [ICON_NAME.CUBE]: faCube,
+  [ICON_NAME.COINS]: faCoins,
   [ICON_NAME.GRIP_HORIZONTAL]: faGripHorizontal,
   [ICON_NAME.GRIP_VERTICAL]: faGripVertical,
   [ICON_NAME.IMAGE]: faImage,

@@ -448,7 +448,8 @@ const Layers = (props: LayersProps) => {
         id.startsWith("pending-features") ||
         id.startsWith("gl-draw") ||
         id.startsWith("mapbox-gl-draw") ||
-        id.startsWith("__measure");
+        id.startsWith("__measure") ||
+        id.startsWith("explorer-");
 
       // Basemap layers = everything that isn't a user data layer or an overlay.
       // Capture their pristine order once per basemap style (keyed by the basemap

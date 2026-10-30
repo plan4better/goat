@@ -11,6 +11,7 @@ import {
   Switch,
   Tooltip,
   Typography,
+  alpha,
   useTheme,
 } from "@mui/material";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -29,6 +30,7 @@ import { projectLayersKey } from "@/lib/api/projects";
 // Redux
 import { useUserProfile } from "@/lib/api/users";
 import { MAX_EDITABLE_LAYER_SIZE } from "@/lib/constants";
+import { clearRestoreGroup, closeExplorer, openExplorer } from "@/lib/store/explorer/slice";
 import { emitInteractionEvent } from "@/lib/store/interaction/slice";
 import { setSelectedBundle, setSelectedLayers } from "@/lib/store/layer/slice";
 import { setActiveRightPanel, setDataPanelLayerId, setIsDataPanelOpen } from "@/lib/store/map/slice";
@@ -85,7 +87,16 @@ import { LayerLegendPanel } from "./legend/LayerLegend";
 interface ProjectTreeItem extends BaseTreeItem {
   data: ProjectLayerTreeNode;
   canExpand?: boolean;
+  /** The "Tables" row a bundle folds its feed tables under (board 1): the
+   * bundle group's id. A row of the tree only, never saved. */
+  tablesOf?: number;
+  tableCount?: number;
 }
+
+const TABLES_PREFIX = "tables-";
+
+/** For a visibility change made for the user rather than by a click. */
+const SYNTHETIC_CLICK = { stopPropagation: () => undefined } as React.MouseEvent;
 
 // 1. HELPER COMPONENTS
 
@@ -93,26 +104,77 @@ export const AddLayerButton = ({
   projectId,
   variant = "outlined",
   startIcon = true,
+  disabled = false,
 }: {
   projectId: string;
   variant?: "text" | "outlined" | "contained";
   startIcon?: boolean;
+  /** Off while the Explorer is open (board 5). */
+  disabled?: boolean;
 }) => {
   const { t } = useTranslation("common");
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
   return (
     <>
-      <Button
-        variant={variant}
-        size="small"
-        startIcon={startIcon ? <AddIcon fontSize="small" /> : undefined}
-        onClick={(event) => setAnchorEl(event.currentTarget)}
-        sx={{ borderRadius: 4, textTransform: "none", fontWeight: "bold", whiteSpace: "nowrap" }}>
-        {t("add_layer")}
-      </Button>
+      <Tooltip title={disabled ? t("explorer_add_layer_off") : ""}>
+        <span>
+          <Button
+            variant={variant}
+            size="small"
+            disabled={disabled}
+            startIcon={startIcon ? <AddIcon fontSize="small" /> : undefined}
+            onClick={(event) => setAnchorEl(event.currentTarget)}
+            sx={{ borderRadius: 4, textTransform: "none", fontWeight: "bold", whiteSpace: "nowrap" }}>
+            {t("add_layer")}
+          </Button>
+        </span>
+      </Tooltip>
       <AddLayerMenu anchorEl={anchorEl} onClose={() => setAnchorEl(null)} projectId={projectId} />
     </>
+  );
+};
+
+/** How many rows a folded Tables row holds. */
+const CountPill = ({ count }: { count: number }) => (
+  <Box
+    component="span"
+    sx={{
+      px: 0.75,
+      py: 0.125,
+      mr: 0.5,
+      borderRadius: 1,
+      bgcolor: "action.hover",
+      color: "text.secondary",
+      fontSize: 11,
+      fontWeight: 600,
+    }}>
+    {count}
+  </Box>
+);
+
+/** Marks the bundle the Explorer has open (board 5). */
+const InExplorerChip = () => {
+  const { t } = useTranslation("common");
+  return (
+    <Stack
+      direction="row"
+      alignItems="center"
+      spacing={0.5}
+      sx={{
+        px: 0.75,
+        py: 0.25,
+        mr: 0.5,
+        borderRadius: 1,
+        bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+        color: "primary.dark",
+        flexShrink: 0,
+      }}>
+      <Icon iconName={ICON_NAME.BUS} style={{ fontSize: 10 }} htmlColor="inherit" />
+      <Typography variant="caption" fontWeight={700} sx={{ lineHeight: 1.4, whiteSpace: "nowrap" }}>
+        {t("explorer_in_explorer")}
+      </Typography>
+    </Stack>
   );
 };
 
@@ -292,7 +354,54 @@ function formatApiDataForDnd(
     });
 }
 
-function formatDndDataForApi(flatItems: ProjectTreeItem[]): ProjectLayerTreeUpdate {
+/**
+ * A bundle's feed tables folded under one "Tables" row (board 1), so its map
+ * layers lead: where a bundle group holds both, its tables move under a row
+ * of the tree's own, which is never saved (formatDndDataForApi drops it).
+ */
+function foldBundleTables(items: ProjectTreeItem[], label: string): ProjectTreeItem[] {
+  const out = [...items];
+  for (const group of items.filter((i) => i.isBundleGroup)) {
+    const members = items.filter((i) => i.parentId === group.id);
+    const tables = members.filter((i) => i.data.layer_type === "table");
+    if (!tables.length || tables.length === members.length) continue;
+    const rowId = `${TABLES_PREFIX}${group.data.id}`;
+    const tableIds = new Set(tables.map((t) => t.id));
+    for (let k = 0; k < out.length; k++) if (tableIds.has(out[k].id)) out[k] = { ...out[k], parentId: rowId };
+    const lastLayer = members.filter((i) => !tableIds.has(i.id)).pop() ?? group;
+    out.splice(out.indexOf(lastLayer) + 1, 0, {
+      id: rowId,
+      parentId: group.id,
+      label,
+      collapsed: true,
+      isGroup: true,
+      isSelectable: false,
+      dragDisabled: true,
+      dropDisabled: true,
+      tablesOf: group.data.id,
+      tableCount: tables.length,
+      data: {
+        id: -group.data.id,
+        type: "group",
+        name: label,
+        parent_id: group.data.id,
+        order: 0,
+        extent: "",
+      },
+    });
+  }
+  return out;
+}
+
+function formatDndDataForApi(allItems: ProjectTreeItem[]): ProjectLayerTreeUpdate {
+  // The Tables rows are the tree's own: their tables belong to the bundle group.
+  const flatItems = allItems
+    .filter((item) => item.tablesOf === undefined)
+    .map((item) =>
+      item.parentId?.startsWith(TABLES_PREFIX)
+        ? { ...item, parentId: `group-${item.parentId.slice(TABLES_PREFIX.length)}` }
+        : item
+    );
   const items = flatItems.map((item, index) => {
     const parts = item.id.split("-");
     const id = parseInt(parts[1], 10);
@@ -433,6 +542,8 @@ interface ProjectLayerTreeProps {
   headerContent?: React.ReactNode;
   /** Per-group info text (keyed by group ID string) shown as an ⓘ button on the group row */
   groupInfo?: Record<string, string>;
+  /** Content shown under a group row instead of its layers, keyed by group ID */
+  groupContent?: Record<number, React.ReactNode>;
   /** Project owner's user id, used to decide whether feature editing is offered.
    * Passed in rather than fetched so the public dashboard, which renders this
    * tree read-only, makes no authenticated request. */
@@ -463,6 +574,7 @@ export const ProjectLayerTree = ({
   dimOutOfZoom = true,
   headerContent,
   groupInfo,
+  groupContent,
   projectOwnerId,
 }: ProjectLayerTreeProps) => {
   const { t } = useTranslation("common");
@@ -480,6 +592,16 @@ export const ProjectLayerTree = ({
   const startEditingGuard = useStartEditingGuard();
   // Which member layers of the project's bundles may be edited, by role.
   const bundleMemberGates = useBundleMemberGates(projectLayerGroups.map((group) => group.bundle_id));
+  // Bundle groups holding a GTFS feed, which the Explorer opens: a member
+  // with the stop_times role says so, whatever the group is called.
+  const ptBundleGroupIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const layer of projectLayers) {
+      const role = bundleMemberGates?.get(layer.layer_id)?.role;
+      if (role === "stop_times" && layer.layer_project_group_id) ids.add(layer.layer_project_group_id);
+    }
+    return ids;
+  }, [projectLayers, bundleMemberGates]);
 
   const [items, setItems] = useState<ProjectTreeItem[]>([]);
   const itemsRef = useRef<ProjectTreeItem[]>([]);
@@ -498,6 +620,12 @@ export const ProjectLayerTree = ({
   const selectedLayerIds = useAppSelector((state) => state.layers.selectedLayerIds || []);
   const selectedBundleId = useAppSelector((state) => state.layers.selectedBundleId);
   const mapMode = useAppSelector((state) => state.map.mapMode);
+  // The bundle the Explorer has open: marked in the tree (board 5), and no
+  // layers are added meanwhile.
+  const exploredBundleId = useAppSelector((state) =>
+    state.explorer.active ? state.explorer.bundleId : null
+  );
+  const restoreGroupId = useAppSelector((state) => state.explorer.restoreGroupId);
   const {
     getLayerMoreMenuOptions,
     openMoreMenu,
@@ -608,7 +736,7 @@ export const ProjectLayerTree = ({
   useEffect(() => {
     if (treeData) {
       setItems((prevItems) => {
-        const newItems = formatApiDataForDnd(treeData, catalogStatusLabel);
+        const newItems = foldBundleTables(formatApiDataForDnd(treeData, catalogStatusLabel), t("tables"));
         if (prevItems.length === 0) return newItems;
         // For items that already existed, preserve their collapsed state.
         // Newly appearing layer items (e.g. inside a group that was just toggled visible)
@@ -627,7 +755,7 @@ export const ProjectLayerTree = ({
         });
       });
     }
-  }, [treeData, catalogStatusLabel]);
+  }, [treeData, catalogStatusLabel, t]);
 
   // What the tree highlights is what is actually open — a selected bundle
   // included, whose row is a group and so has no entry in `selectedLayerIds`.
@@ -692,6 +820,16 @@ export const ProjectLayerTree = ({
     [dispatch, onTreeUpdate, t]
   );
 
+  // The Explorer has closed: show again the bundle it hid, unless the user
+  // switched it on meanwhile.
+  useEffect(() => {
+    if (restoreGroupId === null) return;
+    const item = itemsRef.current.find((i) => i.data.type === "group" && i.data.id === restoreGroupId);
+    if (!item) return;
+    dispatch(clearRestoreGroup());
+    if (!(item.data.properties?.visibility ?? true)) void handleVisibilityToggle(item.data, SYNTHETIC_CLICK);
+  }, [restoreGroupId, items, dispatch, handleVisibilityToggle]);
+
   const handleProperties = useCallback(
     (layer: ProjectLayer) => {
       dispatch(setSelectedLayers([layer.id]));
@@ -722,6 +860,12 @@ export const ProjectLayerTree = ({
   );
 
   const handleNodeClick = (compositeIds: string[]) => {
+    // A Tables row has nothing to open: a click on it folds or unfolds it.
+    const tablesRow = compositeIds.find((id) => id.startsWith(TABLES_PREFIX));
+    if (tablesRow) {
+      setItems((prev) => prev.map((i) => (i.id === tablesRow ? { ...i, collapsed: !i.collapsed } : i)));
+      return;
+    }
     const realIds = compositeIds
       .map((cId) => {
         const item = items.find((i) => i.id === cId);
@@ -815,12 +959,31 @@ export const ProjectLayerTree = ({
     (item: ProjectTreeItem) => {
       const node = item.data as ProjectLayerTreeNode;
       const nodeVisibility = node.properties?.visibility ?? true;
+      if (item.tablesOf !== undefined) return <CountPill count={item.tableCount ?? 0} />;
 
       // Prepare Menu Options
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let menuOptions: PopperMenuItem[] = [];
       if (node.type === "group") {
         menuOptions = [
+          ...(item.isBundleGroup && ptBundleGroupIds.has(node.id) && mapMode === "data"
+            ? [
+                // The bundle open in the Explorer offers the way out instead.
+                node.bundle_id && node.bundle_id === exploredBundleId
+                  ? {
+                      id: MapLayerActions.EXIT_EXPLORER,
+                      label: t("explorer_exit"),
+                      icon: ICON_NAME.SIGNOUT,
+                    }
+                  : {
+                      id: MapLayerActions.OPEN_EXPLORER,
+                      label: t("explorer"),
+                      icon: ICON_NAME.BUS,
+                      // The menu's leading entry, its icon on a tile (board 2).
+                      featured: true,
+                    },
+              ]
+            : []),
           ...(node.extent
             ? [
                 {
@@ -1059,7 +1222,24 @@ export const ProjectLayerTree = ({
                       openMoreMenu(menuItem, target);
                     }
                   } else {
-                    if (menuItem.id === MapLayerActions.RENAME && node.type === "group") {
+                    if (menuItem.id === MapLayerActions.EXIT_EXPLORER) {
+                      dispatch(closeExplorer());
+                    } else if (menuItem.id === MapLayerActions.OPEN_EXPLORER && node.bundle_id) {
+                      dispatch(setIsDataPanelOpen(false));
+                      dispatch(setActiveRightPanel(undefined));
+                      // The Explorer draws the bundle itself: its own layers
+                      // are switched off, as the row's eye would, and back on
+                      // when the Explorer closes.
+                      const wasVisible = node.properties?.visibility ?? true;
+                      if (wasVisible) void handleVisibilityToggle(node, SYNTHETIC_CLICK);
+                      dispatch(
+                        openExplorer({
+                          bundleId: node.bundle_id,
+                          bundleName: node.name,
+                          hiddenGroupId: wasVisible ? node.id : null,
+                        })
+                      );
+                    } else if (menuItem.id === MapLayerActions.RENAME && node.type === "group") {
                       setGroupModal({ open: true, mode: "rename", group: node });
                     } else if (menuItem.id === ContentActions.DELETE && node.type === "group") {
                       setGroupModal({ open: true, mode: "delete", group: node });
@@ -1128,6 +1308,7 @@ export const ProjectLayerTree = ({
       activeLayerId,
       activeRightPanel,
       bundleMemberGates,
+      ptBundleGroupIds,
     ]
   );
 
@@ -1145,6 +1326,21 @@ export const ProjectLayerTree = ({
         if (minZoom !== undefined && maxZoom !== undefined) {
           isZoomVisible = currentZoom >= minZoom && currentZoom <= maxZoom;
         }
+      }
+
+      // 0. A bundle's Tables row
+      if (item.tablesOf !== undefined) {
+        return {
+          ...item,
+          icon: (
+            <Icon
+              iconName={ICON_NAME.TABLE}
+              style={{ fontSize: "1rem", color: theme.palette.action.active }}
+            />
+          ),
+          isVisible: true,
+          isSelectable: false,
+        };
       }
 
       // 1. Group Icon
@@ -1171,13 +1367,46 @@ export const ProjectLayerTree = ({
               style={{ fontSize: "1rem", color: theme.palette.action.active }}
             />
           ),
-          isVisible: nodeVisibility,
+          // The bundle the Explorer has open: its layers are switched off
+          // because the Explorer draws it, so the row is not faded, and it
+          // says so in its label — the actions stay where every row has them.
+          isVisible: nodeVisibility || (!!node.bundle_id && node.bundle_id === exploredBundleId),
+          ...(!!node.bundle_id &&
+            node.bundle_id === exploredBundleId && {
+              contentOverride: (
+                <Stack direction="row" alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
+                  {/* The icon in the tree's own slot (24 px, then a gap), so the
+                      name lines up with every other row's. */}
+                  <Box
+                    sx={{
+                      width: 24,
+                      height: 24,
+                      mr: 1,
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}>
+                    <Icon
+                      iconName={ICON_NAME.CUBE}
+                      style={{ fontSize: "1rem", color: theme.palette.action.active }}
+                    />
+                  </Box>
+                  {/* The name takes the room, the chip keeps to the right edge. */}
+                  <Typography variant="body2" noWrap title={node.name} sx={{ minWidth: 0, flex: 1, mr: 1 }}>
+                    {node.name}
+                  </Typography>
+                  <InExplorerChip />
+                </Stack>
+              ),
+            }),
           // A plain group is only a container, so selecting it would open a
           // panel with nothing in it. A bundle-backed group stands for the
           // bundle, which has metadata of its own and can be filtered as a
           // whole — but only in edit mode, where that panel exists at all.
           isSelectable: !!item.isBundleGroup && isEditMode,
           labelInfo: legendCaption,
+          legendContent: groupContent?.[node.id],
         };
       }
 
@@ -1359,13 +1588,25 @@ export const ProjectLayerTree = ({
         labelInfo: legendCaption ?? item.labelInfo,
       };
     });
-  }, [items, theme, currentZoom, viewMode, isEditMode, hideLegendHeading, groupIcons, simpleLegendLayerIds]);
+  }, [
+    items,
+    theme,
+    currentZoom,
+    viewMode,
+    isEditMode,
+    hideLegendHeading,
+    groupIcons,
+    simpleLegendLayerIds,
+    exploredBundleId,
+    groupContent,
+  ]);
 
   const renderPrefix = useCallback(
     togglePosition === "left"
       ? (item: ProjectTreeItem) => {
           const node = item.data as ProjectLayerTreeNode;
-          if (hideActions || node.layer_type === "table" || node.locked) return null;
+          if (hideActions || node.layer_type === "table" || node.locked || item.tablesOf !== undefined)
+            return null;
           const nodeVisibility = node.properties?.visibility ?? true;
           return (
             <Box onClick={(e) => e.stopPropagation()} sx={{ display: "flex", alignItems: "center" }}>
@@ -1425,7 +1666,7 @@ export const ProjectLayerTree = ({
                   <Icon iconName={ICON_NAME.LAYERS} />
                 </IconButton>
               </Tooltip>
-              <AddLayerButton projectId={projectId} />
+              <AddLayerButton projectId={projectId} disabled={!!exploredBundleId} />
             </Stack>
           </Stack>
         </Box>

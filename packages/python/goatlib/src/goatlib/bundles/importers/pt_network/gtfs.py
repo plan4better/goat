@@ -2,9 +2,11 @@
 
 Role → file and per-role column requirements are GTFS-specific and live here;
 which roles are *required* comes from the spec. Every file becomes one layer
-holding its rows and columns as published, all as text. Stops carry a geometry
-alongside their own columns, and the shape points get a derived line layer for
-the map; neither replaces the data it is drawn from.
+holding its rows and columns as published, typed where the GTFS reference
+types a field (``gtfs_schema``) and text otherwise. Stops carry a geometry
+alongside their own columns, and a derived line layer draws the shape points
+for the map, with a line through the stops for each trip without a shape
+(``stop_chains``); neither replaces the data it is drawn from.
 """
 
 import csv
@@ -24,6 +26,7 @@ from goatlib.bundles.importers.base import (
     bound_duckdb,
     register_importer,
 )
+from goatlib.bundles.importers.pt_network.stop_chains import stop_chain_lines_parquet
 from goatlib.io.config import parquet_copy_options
 from goatlib.models.bundle import BundleTypeName
 
@@ -294,6 +297,8 @@ class GtfsImporter(BundleImporter):
         """
         layers: List[ExtractedLayer] = []
         essential = self._essential_roles()
+        # Each role's typed table, for the lines drawn after the loop.
+        converted: Dict[str, str] = {}
         with zipfile.ZipFile(source_path) as zf:
             names = {
                 os.path.basename(n) for n in zf.namelist() if self._is_feed_file(n)
@@ -334,23 +339,11 @@ class GtfsImporter(BundleImporter):
                         file_path=out_path,
                     )
                 )
-                if role == "shapes":
-                    lines_spec = self.spec.role("shape_lines")
-                    lines_path = os.path.join(workdir, "shape_lines.parquet")
-                    try:
-                        self._shape_lines_parquet(out_path, lines_path)
-                    except Exception as e:
-                        logger.warning("Skipping the shape lines: %s", e)
-                    else:
-                        layers.append(
-                            ExtractedLayer(
-                                role="shape_lines",
-                                name=lines_spec.label if lines_spec else "Shape lines",
-                                layer_type="feature",
-                                geometry_type="line",
-                                file_path=lines_path,
-                            )
-                        )
+                converted[role] = out_path
+
+            lines = self._lines_layer(converted, workdir)
+            if lines is not None:
+                layers.append(lines)
 
             known = set(_GTFS_FILE.values())
             for fname in sorted(names - known):
@@ -483,28 +476,44 @@ class GtfsImporter(BundleImporter):
 
     @staticmethod
     def _txt_to_parquet(txt_path: str, out_path: str, point: bool = False) -> str:
-        """Convert a GTFS text file to parquet with all columns as VARCHAR.
+        """Convert a GTFS text file to parquet, typed as the reference types it.
 
-        ``all_varchar`` disables type auto-detection — GTFS ids/codes/names are
-        strings and must not be coerced to numbers. DuckDB streams the file, so
-        this is memory-safe for large tables (e.g. stop_times).
+        Read as text first: ``all_varchar`` disables type auto-detection, which
+        would turn ids that look like numbers into numbers. The columns the
+        GTFS reference types are then parsed by the declared schema in
+        ``gtfs_schema`` (times, dates, numbers, enums); every other column stays
+        text. A file the schema does not describe stays text throughout.
+
+        A value that does not parse in a field the reference requires makes the
+        file unreadable (raises, with the column and examples); in an optional
+        field it is dropped and the count logged.
 
         GTFS is RFC4180 CSV, so the dialect is set explicitly rather than sniffed:
         ``read_csv_auto`` infers it from an early sample, which misparses quoted
         fields with embedded commas (e.g. a stop_headsign "Town, Street") when
         they first appear past the sample. ``strict_mode=false`` also tolerates
-        the minor RFC deviations real-world feeds commonly have.
+        the minor RFC deviations real-world feeds commonly have. DuckDB streams
+        both passes, so this is memory-safe for large tables (e.g. stop_times).
 
         ``point`` adds a nullable ``geometry`` built from ``stop_lon``/``stop_lat``,
-        leaving both columns as they were.
+        leaving both columns as they are.
         """
         # Imported here, not at module scope: `core` depends on goatlib
         # without the `full` extra, so it must be able to import this module
         # (the registry does) without duckdb present. Only conversion needs it.
         import duckdb
 
+        from goatlib.bundles.importers.pt_network.gtfs_schema import (
+            find_failures,
+            typed_select,
+        )
+
+        fname = os.path.basename(txt_path)
+        role = fname[: -len(".txt")] if fname.endswith(".txt") else fname
         src = txt_path.replace("'", "''")
         dst = out_path.replace("'", "''")
+        text_path = f"{out_path}.text.parquet"
+        text = text_path.replace("'", "''")
         read = (
             f"read_csv('{src}', all_varchar=true, header=true, delim=',', "
             f"quote='\"', escape='\"', strict_mode=false)"
@@ -512,35 +521,131 @@ class GtfsImporter(BundleImporter):
         # Bounded, spilling next to the output: see bound_duckdb.
         con = bound_duckdb(duckdb.connect(), os.path.dirname(os.path.abspath(out_path)))
         try:
-            select = f"SELECT * FROM {read}"
+            # The CSV is parsed once; the checks and the typed copy then read
+            # the columnar copy, which is far cheaper to scan twice.
+            con.execute(
+                f"COPY (SELECT * FROM {read}) TO '{text}' {parquet_copy_options()}"
+            )
+            relation = f"read_parquet('{text}')"
+            columns = [
+                row[0]
+                for row in con.execute(f"DESCRIBE SELECT * FROM {relation}").fetchall()
+            ]
+            failures = find_failures(con, role, relation, columns)
+            refused = [f for f in failures if f.required]
+            if refused:
+                raise ValueError("; ".join(f.describe() for f in refused))
+            for failure in failures:
+                logger.warning("%s: %s; dropped", fname, failure.describe())
+
+            select = f"SELECT {typed_select(role, columns)} FROM {relation}"
             if not point:
                 con.execute(f"COPY ({select}) TO '{dst}' {parquet_copy_options()}")
                 return out_path
             from goatlib.io.geoparquet import write_optimized_parquet
 
             con.execute("INSTALL spatial; LOAD spatial")
-            columns = {row[0] for row in con.execute(f"DESCRIBE {select}").fetchall()}
-            if {"stop_lon", "stop_lat"} <= columns:
+            if {"stop_lon", "stop_lat"} <= set(columns):
                 select = (
-                    f"SELECT *, ST_Point(TRY_CAST(trim(stop_lon) AS DOUBLE), "
-                    f"TRY_CAST(trim(stop_lat) AS DOUBLE)) AS geometry FROM {read}"
+                    f"SELECT *, ST_Point(stop_lon, stop_lat) AS geometry "
+                    f"FROM ({select})"
                 )
             else:
-                select = f"SELECT *, NULL::GEOMETRY AS geometry FROM {read}"
+                select = f"SELECT *, NULL::GEOMETRY AS geometry FROM ({select})"
             # The writer every feature upload goes through: it adds the bbox
             # the tile and feature paths prune row groups on.
             write_optimized_parquet(con, select, out_path)
         finally:
             con.close()
+            if os.path.exists(text_path):
+                os.remove(text_path)
         return out_path
+
+    def _lines_layer(
+        self, converted: Dict[str, str], workdir: str
+    ) -> Optional[ExtractedLayer]:
+        """The ``shape_lines`` member: the feed's shapes as lines, and a line
+        through the stops for each trip without one (``stop_chains``), so a
+        feed without shapes is drawn all the same. None where the feed has
+        nothing to draw a line from."""
+        import duckdb
+
+        from goatlib.io.geoparquet import write_optimized_parquet
+
+        parts: List[str] = []
+        drawn: Set[str] = set()
+        if "shapes" in converted:
+            shape_path = os.path.join(workdir, "shape_lines.shapes.parquet")
+            try:
+                self._shape_lines_parquet(converted["shapes"], shape_path)
+            except Exception as e:
+                logger.warning("Skipping the shape lines: %s", e)
+            else:
+                parts.append(shape_path)
+                con = duckdb.connect()
+                try:
+                    drawn = {
+                        row[0]
+                        for row in con.execute(
+                            "SELECT shape_id FROM read_parquet(?)", [shape_path]
+                        ).fetchall()
+                    }
+                finally:
+                    con.close()
+        if {"trips", "stop_times", "stops"} <= converted.keys():
+            chain_path = os.path.join(workdir, "shape_lines.stops.parquet")
+            try:
+                count = stop_chain_lines_parquet(
+                    converted["trips"],
+                    converted["stop_times"],
+                    converted["stops"],
+                    drawn,
+                    chain_path,
+                )
+            except Exception as e:
+                logger.warning("Skipping the lines through the stops: %s", e)
+            else:
+                logger.info(
+                    "%d lines through the stops for trips without a shape", count
+                )
+                parts.append(chain_path)
+        if not parts:
+            return None
+        out_path = os.path.join(workdir, "shape_lines.parquet")
+        # Bounded, spilling next to the output: see bound_duckdb.
+        con = bound_duckdb(duckdb.connect(), workdir)
+        try:
+            con.execute("INSTALL spatial; LOAD spatial")
+            union = " UNION ALL ".join(
+                f"SELECT shape_id, geometry FROM read_parquet('{p.replace(chr(39), chr(39) * 2)}')"
+                if p.endswith(".shapes.parquet")
+                else f"SELECT shape_id, ST_GeomFromWKB(wkb) AS geometry "
+                f"FROM read_parquet('{p.replace(chr(39), chr(39) * 2)}')"
+                for p in parts
+            )
+            write_optimized_parquet(con, union, out_path)
+        finally:
+            con.close()
+            for p in parts:
+                if os.path.exists(p):
+                    os.remove(p)
+        spec = self.spec.role("shape_lines")
+        return ExtractedLayer(
+            role="shape_lines",
+            name=spec.label if spec else "Shape lines",
+            layer_type="feature",
+            geometry_type="line",
+            file_path=out_path,
+        )
 
     @staticmethod
     def _shape_lines_parquet(shapes_path: str, out_path: str) -> str:
         """One line per shape, joined from its points in sequence order.
 
-        A drawing of the shapes table, not a copy of it: points whose sequence or
-        coordinates do not parse are left out of the line but stay in the table,
-        and a shape with fewer than two drawable points gets no line.
+        A drawing of the shapes table, not a copy of it: points without a
+        sequence or coordinates are left out of the line but stay in the table,
+        and a shape with fewer than two drawable points gets no line. Reads the
+        typed shapes table (see ``_txt_to_parquet``).
 
         DuckDB sorts the points, which spills to disk under the import's memory
         bound; the lines are then assembled one shape at a time as the sorted
@@ -568,9 +673,9 @@ class GtfsImporter(BundleImporter):
                 SELECT shape_id, lon, lat
                 FROM (
                     SELECT shape_id,
-                           TRY_CAST(trim(shape_pt_sequence) AS BIGINT) AS seq,
-                           TRY_CAST(trim(shape_pt_lon) AS DOUBLE) AS lon,
-                           TRY_CAST(trim(shape_pt_lat) AS DOUBLE) AS lat
+                           shape_pt_sequence AS seq,
+                           shape_pt_lon AS lon,
+                           shape_pt_lat AS lat
                     FROM read_parquet('{src}')
                 )
                 WHERE seq IS NOT NULL AND lon IS NOT NULL AND lat IS NOT NULL

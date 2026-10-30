@@ -51,7 +51,9 @@ def include_name(name, type_, parent_names):
 
 _db_url = settings.ASYNC_SQLALCHEMY_DATABASE_URI
 assert _db_url is not None, "ASYNC_SQLALCHEMY_DATABASE_URI must be configured"
-config.set_main_option("sqlalchemy.url", _db_url)
+# The config is a ConfigParser, which reads "%" as interpolation; a password
+# with URI-special characters is percent-encoded in the URL, so double them.
+config.set_main_option("sqlalchemy.url", _db_url.replace("%", "%%"))
 
 
 def run_migrations_offline():

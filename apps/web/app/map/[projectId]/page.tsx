@@ -43,6 +43,7 @@ import { useProjectAssistantSurface } from "@/hooks/assistant/useProjectAssistan
 import { useAuthZ } from "@/hooks/auth/AuthZ";
 import { useBrandedTheme } from "@/hooks/dashboard/useBrandedTheme";
 import { useDashboardSaves } from "@/hooks/dashboard/useDashboardSaves";
+import { useExplorerBasemap } from "@/hooks/explorer/useExplorerBasemap";
 import { JobStatusWatcher } from "@/hooks/jobs/JobStatus";
 import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
 import { useBasemap } from "@/hooks/map/MapHooks";
@@ -80,6 +81,8 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
   // Read ?loc= once on mount; it wins over the project's saved initial view.
   const urlLoc = useMemo(() => getLocFromUrl(), []);
   const mapMode = useAppSelector((state) => state.map.mapMode);
+  // The Explorer has its own bottom bar and is not a feature-editing session.
+  const explorerActive = useAppSelector((state) => state.explorer.active);
   const dispatch = useAppDispatch();
 
   // A template result (T7) can land here as `?mode=workflows&workflow=<id>` /
@@ -148,6 +151,9 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
   }, [allProjectLayersIncludingTables]);
 
   const { activeBasemap, mapStyle, setActiveBasemap } = useBasemap(project);
+  // The theme's basemap in the Explorer, where nobody has chosen the project's:
+  // told by the project as core sends it, before the schema fills in a default.
+  useExplorerBasemap(_project);
 
   // Keep the Redux active basemap (read by Layers for basemap layer_config) in
   // sync with the persisted basemap, re-resolving only when the active basemap
@@ -312,7 +318,10 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
     const partial = typeof keyOrPartial === "string" ? { [keyOrPartial]: valueOrRefresh } : keyOrPartial;
     const refreshFlag = typeof keyOrPartial === "string" ? refresh : (valueOrRefresh ?? false);
     try {
-      const projectToUpdate = JSON.parse(JSON.stringify(project));
+      // The project as core sent it, not as parsed: the cache holds the API's
+      // shape, and the schema's defaults (an unset basemap read as High
+      // Fidelity) must not be written back into it as if core had sent them.
+      const projectToUpdate = JSON.parse(JSON.stringify(_project ?? project));
       Object.assign(projectToUpdate, partial);
       if ("builder_config" in partial) {
         // Shown at once; read again only once the save is in, so the read
@@ -616,11 +625,15 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                               isEditor={isProjectEditor}
                             />
                           </ThemeProvider>
-                          <DataPanel
-                            projectLayers={allProjectLayersIncludingTables}
-                            isEditor={isProjectEditor}
-                          />
-                          <EditModeHalo />
+                          {!explorerActive && (
+                            <>
+                              <DataPanel
+                                projectLayers={allProjectLayersIncludingTables}
+                                isEditor={isProjectEditor}
+                              />
+                              <EditModeHalo />
+                            </>
+                          )}
                         </Box>
                         {mapMode === "builder" && dashboardSaves.conflict && (
                           <ConflictBanner

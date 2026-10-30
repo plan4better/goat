@@ -3,6 +3,7 @@ import { useTheme } from "@mui/material/styles";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { pickerBorderColor, pickerBorderHoverColor } from "@/lib/constants/ui";
 import type { ClassBreaks, FeatureLayerProperties, LayerClassBreaks, SizeOrdinalMap } from "@/lib/validations/layer";
 
 import { ArrowPopper } from "@/components/ArrowPoper";
@@ -91,13 +92,13 @@ const SizeScaleSelector = ({ type, layerStyle, classBreaksValues, label, onStyle
             border: "1px solid",
             outline: "2px solid transparent",
             minHeight: "40px",
-            borderColor: theme.palette.mode === "dark" ? "#464B59" : "#CBCBD1",
+            borderColor: pickerBorderColor(theme),
             ...(open && { outline: `2px solid ${theme.palette.primary.main}` }),
             cursor: "pointer",
             p: 1.7,
             "&:hover": {
               ...(!open && {
-                borderColor: theme.palette.mode === "dark" ? "#5B5F6E" : "#B8B7BF",
+                borderColor: pickerBorderHoverColor(theme),
               }),
             },
           }}>

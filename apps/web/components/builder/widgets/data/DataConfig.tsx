@@ -23,6 +23,7 @@ import type {
   FilterLayoutTypes,
   WidgetDataConfig,
 } from "@/lib/validations/widget";
+import { DEFAULT_WIDGET_COLOR } from "@/lib/constants/ui";
 import { filterLayoutTypes } from "@/lib/validations/widget";
 
 import type { SelectorItem } from "@/types/map/common";
@@ -658,7 +659,7 @@ export const WidgetFilterLayout = ({
                   selectedLayout?.value === filterLayoutTypes.Values.checkbox ||
                   selectedLayout?.value === filterLayoutTypes.Values.range) && (
                   <WidgetColorPicker
-                    color={config.options?.color || "#0e58ff"}
+                    color={config.options?.color || DEFAULT_WIDGET_COLOR}
                     onChange={(color) => {
                       onChange({
                         ...config,

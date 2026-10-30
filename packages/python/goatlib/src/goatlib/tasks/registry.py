@@ -246,4 +246,18 @@ TASK_REGISTRY: tuple[TaskDefinition, ...] = (
         schedule="0 0 5 * * *",
         worker_tag="tools",
     ),
+    TaskDefinition(
+        name="gtfs_typed_storage",
+        display_name="GTFS Typed Storage",
+        description=(
+            "One-off migration: store GTFS bundles imported before typing with "
+            "the GTFS reference's types (times, dates, numbers). Dry run by "
+            "default."
+        ),
+        module_path="goatlib.tasks.gtfs_typed_storage",
+        params_class_name="GtfsTypedStorageParams",
+        windmill_path="f/goat/tasks/gtfs_typed_storage",
+        schedule=None,  # Run manually
+        worker_tag="tools",
+    ),
 )

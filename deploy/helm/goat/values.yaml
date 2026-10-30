@@ -512,6 +512,9 @@ geoapi:
     # for the catalog metadata each connection keeps outside that budget;
     # DuckDB spills only at its own budget. Two pooled queries, not one: the
     # pool serves on while a connection is recycled. Raise them with the limit.
+    # That room also takes the Explorer's snapshot build: a fixed 512 MB plus
+    # its own catalog connection, for the seconds it runs, once per bundle
+    # revision (see the geoapi README).
     GEOAPI_DUCKLAKE_POOL_SIZE: "2"
     GEOAPI_DUCKDB_MEMORY_LIMIT: "768MB"
   extraEnv: []

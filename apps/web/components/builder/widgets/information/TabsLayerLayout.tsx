@@ -30,6 +30,8 @@ interface TabsLayerLayoutProps {
   hideLegendHeading?: boolean;
   groupIcons?: Record<string, { url: string; source?: string }>;
   dimOutOfZoom?: boolean;
+  /** Content shown for a group tab instead of its layers, keyed by group ID */
+  groupContent?: Record<number, React.ReactNode>;
 }
 
 const TabsLayerLayout = ({
@@ -43,6 +45,7 @@ const TabsLayerLayout = ({
   hideLegendHeading,
   groupIcons,
   dimOutOfZoom,
+  groupContent,
 }: TabsLayerLayoutProps) => {
   const { t } = useTranslation("common");
   const dispatch = useAppDispatch();
@@ -241,70 +244,81 @@ const TabsLayerLayout = ({
           tab strip above — that strip is `variant="scrollable"` and owns its own
           horizontal drag when the groups overflow. */}
       <Box onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-        {/* Reuse ProjectLayerTree — same rendering as tree mode, just filtered to active group */}
-        <ProjectLayerTree
-          projectId={projectId}
-          projectLayers={activeGroupLayers}
-          projectLayerGroups={[]}
-          viewMode="view"
-          isLoading={false}
-          onTreeUpdate={handleTreeUpdate}
-          toggleStyle={options?.toggle_style}
-          togglePosition={options?.toggle_position}
-          moreOptionsStyle={options?.more_options_style}
-          allowedActions={{
-            style: options?.show_style_action ?? true,
-            viewData: options?.show_view_data_action ?? true,
-            properties: options?.show_properties_action ?? true,
-            zoomTo: options?.show_zoom_to_action ?? true,
-          }}
-          downloadableLayers={downloadableLayers}
-          simpleLegendLayerIds={simpleLegendLayerIds}
-          hideLegendHeading={hideLegendHeading}
-          groupIcons={groupIcons}
-          dimOutOfZoom={dimOutOfZoom}
-          headerContent={
-            showAllToggle ? (
-              <Box
-                onClick={handleToggleAll}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  py: 0.25,
-                  mb: 0.5,
-                  borderBottom: 1,
-                  borderColor: "divider",
-                  cursor: "pointer",
-                  "&:hover": { bgcolor: "action.hover" },
-                }}>
-                {togglePosition === "left" && (
-                  <Box onClick={(e) => e.stopPropagation()} sx={{ display: "flex", alignItems: "center" }}>
-                    <VisibilityToggle
-                      toggleStyle={options?.toggle_style ?? "eye"}
-                      visible={allVisible}
-                      compact
-                      onToggle={handleToggleAll}
-                    />
-                  </Box>
-                )}
-                <Typography variant="body2" sx={{ flex: 1, fontWeight: 500 }}>
-                  {t("show_all")}
-                </Typography>
-                {togglePosition !== "left" && (
-                  <Box
-                    onClick={(e) => e.stopPropagation()}
-                    sx={{ display: "flex", alignItems: "center", pl: 1 }}>
-                    <VisibilityToggle
-                      toggleStyle={options?.toggle_style ?? "eye"}
-                      visible={allVisible}
-                      onToggle={handleToggleAll}
-                    />
-                  </Box>
-                )}
-              </Box>
-            ) : undefined
-          }
-        />
+        {/* A group shown one layer at a time gets its switcher instead of the tree */}
+        {activeGroup && groupContent?.[activeGroup.id] ? (
+          // Keep slider drags from reaching the swipe handlers, which would change the tab
+          <Box
+            sx={{ px: 1, py: 1 }}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}>
+            {groupContent[activeGroup.id]}
+          </Box>
+        ) : (
+          /* Reuse ProjectLayerTree — same rendering as tree mode, just filtered to active group */
+          <ProjectLayerTree
+            projectId={projectId}
+            projectLayers={activeGroupLayers}
+            projectLayerGroups={[]}
+            viewMode="view"
+            isLoading={false}
+            onTreeUpdate={handleTreeUpdate}
+            toggleStyle={options?.toggle_style}
+            togglePosition={options?.toggle_position}
+            moreOptionsStyle={options?.more_options_style}
+            allowedActions={{
+              style: options?.show_style_action ?? true,
+              viewData: options?.show_view_data_action ?? true,
+              properties: options?.show_properties_action ?? true,
+              zoomTo: options?.show_zoom_to_action ?? true,
+            }}
+            downloadableLayers={downloadableLayers}
+            simpleLegendLayerIds={simpleLegendLayerIds}
+            hideLegendHeading={hideLegendHeading}
+            groupIcons={groupIcons}
+            dimOutOfZoom={dimOutOfZoom}
+            headerContent={
+              showAllToggle ? (
+                <Box
+                  onClick={handleToggleAll}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    py: 0.25,
+                    mb: 0.5,
+                    borderBottom: 1,
+                    borderColor: "divider",
+                    cursor: "pointer",
+                    "&:hover": { bgcolor: "action.hover" },
+                  }}>
+                  {togglePosition === "left" && (
+                    <Box onClick={(e) => e.stopPropagation()} sx={{ display: "flex", alignItems: "center" }}>
+                      <VisibilityToggle
+                        toggleStyle={options?.toggle_style ?? "eye"}
+                        visible={allVisible}
+                        compact
+                        onToggle={handleToggleAll}
+                      />
+                    </Box>
+                  )}
+                  <Typography variant="body2" sx={{ flex: 1, fontWeight: 500 }}>
+                    {t("show_all")}
+                  </Typography>
+                  {togglePosition !== "left" && (
+                    <Box
+                      onClick={(e) => e.stopPropagation()}
+                      sx={{ display: "flex", alignItems: "center", pl: 1 }}>
+                      <VisibilityToggle
+                        toggleStyle={options?.toggle_style ?? "eye"}
+                        visible={allVisible}
+                        onToggle={handleToggleAll}
+                      />
+                    </Box>
+                  )}
+                </Box>
+              ) : undefined
+            }
+          />
+        )}
       </Box>
     </Box>
   );

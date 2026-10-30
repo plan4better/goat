@@ -38,6 +38,7 @@ import type { ProjectLayer } from "@/lib/validations/project";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { useFeatureEditor } from "@/hooks/map/useFeatureEditor";
+import { ExplorerMapLayers } from "@/components/explorer/ExplorerMapLayers";
 import GeocoderLayer from "@/components/map/GeocoderLayer";
 import Layers from "@/components/map/Layers";
 import ToolboxLayers from "@/components/map/ToolboxLayers";
@@ -880,6 +881,7 @@ const MapViewer: React.FC<MapProps> = ({
           <GeocoderLayer />
           <UserLocationLayer />
           <ToolboxLayers />
+          <ExplorerMapLayers />
           <MeasureLabels />
           {popupInfo && activePopupConfig && (
             <>

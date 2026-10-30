@@ -99,6 +99,35 @@ follows the same field rules as a hand edit (`goatlib.utils.field_config`).
 `field_config`; a copy made any other way (project export and import) has no
 mark and continues from its own highest number.
 
+## GTFS bundles are stored typed
+
+A GTFS bundle keeps one member layer per file of the feed, every column as
+published. The fields the GTFS reference types are stored as those types —
+times as `INTERVAL` (GTFS times run past midnight, `25:10:00`, which a `TIME`
+cannot hold), dates as `DATE`, coordinates and distances as `DOUBLE`, enums
+and counts as `INTEGER` — and everything else stays text: ids (so `007` keeps
+its zeros), names, colours, unknown and vendor columns, and whole files the
+schema does not describe (fares, pathways, Flex).
+
+The one declaration is `bundles/importers/pt_network/gtfs_schema.py`: the
+import parses with it, the timetable write-back (`_write_feed_from_layers`)
+turns values back into GTFS text with it, and the `gtfs_typed_storage` task
+converted the bundles imported before typing with it. Parsing is stricter
+than DuckDB's own casts (no `1.0` as an integer, no negative time). A value
+that does not parse fails the file when the reference requires the field —
+the import is refused for a file the feed cannot do without, an optional file
+is skipped — and is dropped and logged otherwise. Code reading GTFS layers
+should not assume either storage until every bundle has been converted;
+`analysis/accessibility/base.py` compares dates and enums as text for that
+reason.
+
+Shapes are optional in GTFS, and many feeds have none or have them for some
+trips only. The derived `shape_lines` member draws the feed's shapes and, for
+every trip without a usable one, a line through its stops
+(`bundles/importers/pt_network/stop_chains.py`), named after the stops so the
+Explorer's snapshot gives those trips the same line as their shape. Like any
+derived member it is never written back to the feed.
+
 ## Copies behind a project entry
 
 Two tools replace the layer a `layer_project` entry shows instead of adding a

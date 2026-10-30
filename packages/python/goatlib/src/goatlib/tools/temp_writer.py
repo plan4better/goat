@@ -358,6 +358,7 @@ class TempLayerWriter:
             logger.warning("tippecanoe not found, skipping PMTiles generation")
             return None
 
+        build_dir: Path | None = None
         try:
             # Create a DuckDB connection if not provided
             con = duckdb_con
@@ -413,11 +414,15 @@ class TempLayerWriter:
                 WITH (FORMAT GDAL, DRIVER 'GeoJSON')
             """)
 
-            # Run tippecanoe
+            # Run tippecanoe on local disk; only the finished file is published
+            # (see publish_tiles). The built file keeps the .pmtiles name,
+            # since tippecanoe picks the output format by extension.
+            build_dir = Path(tempfile.mkdtemp(prefix="pmtiles_"))
+            built_path = build_dir / self.pmtiles_path.name
             cmd = [
                 "tippecanoe",
                 "-o",
-                str(self.pmtiles_path),
+                str(built_path),
                 "--force",
                 "--generate-variable-depth-tile-pyramid",
                 f"--maximum-zoom={self.pmtiles_max_zoom}",
@@ -442,6 +447,9 @@ class TempLayerWriter:
                 logger.warning(f"tippecanoe failed: {result.stderr}")
                 return None
 
+            from goatlib.io.pmtiles import publish_tiles
+
+            publish_tiles(built_path, self.pmtiles_path)
             logger.info(f"Generated PMTiles: {self.pmtiles_path}")
             return self.pmtiles_path
 
@@ -452,6 +460,8 @@ class TempLayerWriter:
             logger.warning(f"PMTiles generation failed: {e}")
             return None
         finally:
+            if build_dir is not None:
+                shutil.rmtree(build_dir, ignore_errors=True)
             # Close connection if we created it
             if duckdb_con is None and con:
                 con.close()

@@ -98,13 +98,30 @@ def _has_geometry_column(con: duckdb.DuckDBPyConnection, table_name: str) -> boo
     return any(row[0] == "geometry" for row in result)
 
 
+def _interval_columns(con: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
+    """Columns stored as INTERVAL (a GTFS time such as 25:10:00)."""
+    return {
+        col_name
+        for col_name, col_type, *_ in con.execute(f"DESCRIBE {table_name}").fetchall()
+        if col_type.upper() == "INTERVAL"
+    }
+
+
 def _build_wkt_column_exprs(
-    columns: list[str], has_geometry: bool, crs: str | None, source_crs: str
+    columns: list[str],
+    has_geometry: bool,
+    crs: str | None,
+    source_crs: str,
+    text_columns: set[str] | None = None,
 ) -> str:
-    """Build column expressions converting geometry to WKT (for CSV/XLSX)."""
+    """Build column expressions converting geometry to WKT (for CSV/XLSX).
+
+    ``text_columns`` are written as their text: GDAL has no interval type."""
     exprs = []
     for col in columns:
-        if col == "geometry" and has_geometry:
+        if col in (text_columns or set()):
+            exprs.append(f'CAST("{col}" AS VARCHAR) AS "{col}"')
+        elif col == "geometry" and has_geometry:
             if crs:
                 exprs.append(
                     f"ST_AsText(ST_Transform(\"geometry\", '{source_crs}', "
@@ -167,7 +184,11 @@ def _export_layer_to_file(
 
         if output_format == "CSV":
             csv_columns_sql = _build_wkt_column_exprs(
-                exportable_columns, has_geometry, crs, source_crs
+                exportable_columns,
+                has_geometry,
+                crs,
+                source_crs,
+                _interval_columns(con, table_name),
             )
             con.execute(f"""
                 COPY (
@@ -177,7 +198,11 @@ def _export_layer_to_file(
             """)
         elif output_format == "XLSX":
             xlsx_columns_sql = _build_wkt_column_exprs(
-                exportable_columns, has_geometry, crs, source_crs
+                exportable_columns,
+                has_geometry,
+                crs,
+                source_crs,
+                _interval_columns(con, table_name),
             )
             con.execute(f"""
                 COPY (

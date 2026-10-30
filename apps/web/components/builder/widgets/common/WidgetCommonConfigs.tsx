@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
+import { DEFAULT_WIDGET_COLOR, pickerBorderColor, pickerBorderHoverColor } from "@/lib/constants/ui";
 import { DEFAULT_COLOR_RANGE } from "@/lib/constants/color";
 import { useLayerUniqueValues } from "@/lib/api/layers";
 import { useProjectLayers } from "@/lib/api/projects";
@@ -41,6 +42,7 @@ import LayerFieldSelector from "@/components/map/common/LayerFieldSelector";
 import { StatisticSelector } from "@/components/map/common/StatisticSelector";
 import SectionHeader from "@/components/map/panels/common/SectionHeader";
 import SectionOptions from "@/components/map/panels/common/SectionOptions";
+import SegmentedControl from "@/components/map/panels/common/SegmentedControl";
 import Selector from "@/components/map/panels/common/Selector";
 import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
 const FormulaBuilder = dynamic(() => import("@/components/modals/FormulaBuilder"), { ssr: false });
@@ -867,11 +869,9 @@ export const WidgetData = ({ sectionLabel, config, onChange }: WidgetConfigProps
               />
             )}
             {selectedLayer && isTableWidget && hasSortingDef && !isSqlMode && (
-              <Selector
-                selectedItems={selectedSorting}
-                setSelectedItems={(item: SelectorItem | undefined) => {
-                  handleOptionChange("sorting", item?.value || "desc");
-                }}
+              <SegmentedControl
+                value={selectedSorting?.value}
+                onChange={(value) => handleOptionChange("sorting", value)}
                 items={sortingOptions}
                 label={t("sort")}
               />
@@ -1639,7 +1639,7 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                 {showSimpleColorPicker && (
                   <WidgetColorPicker
                     label={t("base_color")}
-                    color={(config as any)?.options?.color || "#0e58ff"}
+                    color={(config as any)?.options?.color || DEFAULT_WIDGET_COLOR}
                     onChange={(color) => handleOptionChange("color", color)}
                   />
                 )}
@@ -1756,7 +1756,7 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                           border: "1px solid",
                           outline: "2px solid transparent",
                           minHeight: "40px",
-                          borderColor: theme.palette.mode === "dark" ? "#464B59" : "#CBCBD1",
+                          borderColor: pickerBorderColor(theme),
                           ...(paletteOpen && {
                             outline: `2px solid ${theme.palette.primary.main}`,
                           }),
@@ -1764,7 +1764,7 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                           p: 2,
                           "&:hover": {
                             ...(!paletteOpen && {
-                              borderColor: theme.palette.mode === "dark" ? "#5B5F6E" : "#B8B7BF",
+                              borderColor: pickerBorderHoverColor(theme),
                             }),
                           },
                         }}>
