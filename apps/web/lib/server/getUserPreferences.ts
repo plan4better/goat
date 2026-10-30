@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { getServerSession } from "next-auth";
 import { options } from "@/app/api/auth/[...nextauth]/options";
 import { getSystemSettings } from "@/lib/api/system/server";
@@ -14,7 +14,10 @@ export const getUserPreferencesForLayout = async () => {
         const session = await getServerSession(options);
         if (session?.access_token) {
             try {
-                const prefs = await getSystemSettings(session.access_token);
+                const prefs = await getSystemSettings(
+                    session.access_token,
+                    (await headers()).get("accept-language")
+                );
                 lang = prefs?.preferred_language ?? fallbackLng;
                 theme = prefs?.client_theme ?? "light";
             } catch (e) {

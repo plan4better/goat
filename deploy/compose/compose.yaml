@@ -302,6 +302,8 @@ services:
       EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-}
       EMAIL_CONTACT_URL: ${EMAIL_CONTACT_URL:-}
       EMAIL_PRIVACY_URL: ${EMAIL_PRIVACY_URL:-}
+      EMAIL_COMPANY_NAME: ${EMAIL_COMPANY_NAME:-}
+      EMAIL_COMPANY_URL: ${EMAIL_COMPANY_URL:-}
       STATIC_ASSETS_URL: ${STATIC_ASSETS_URL:-}
       # Values the realm file refers to as ${...}
       GOAT_PUBLIC_URL: ${GOAT_PUBLIC_URL}
@@ -486,6 +488,8 @@ services:
       EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-}
       EMAIL_CONTACT_URL: ${EMAIL_CONTACT_URL:-}
       EMAIL_PRIVACY_URL: ${EMAIL_PRIVACY_URL:-}
+      EMAIL_COMPANY_NAME: ${EMAIL_COMPANY_NAME:-}
+      EMAIL_COMPANY_URL: ${EMAIL_COMPANY_URL:-}
       # Plan4Better's Odoo (shared connection) and support tickets (Odoo
       # Helpdesk); support is off while any of the first four is empty
       ODOO_URL: ${ODOO_URL:-}

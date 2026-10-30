@@ -16,6 +16,7 @@ import {
 import type { AppDispatch } from "@/lib/store";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
 import { selectEdges, selectNodes, selectVariables } from "@/lib/store/workflow/selectors";
+import { creditsErrorMessage } from "@/lib/utils/credits";
 import { claimJobAnnouncement } from "@/lib/utils/jobAnnouncement";
 
 import { useAppSelector } from "@/hooks/store/ContextHooks";
@@ -374,7 +375,8 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       toast.dismiss();
       toast.success(t("workflow_started"));
     } catch (error) {
-      let message = error instanceof Error ? error.message : t("execution_failed");
+      let message =
+        creditsErrorMessage(error, t) ?? (error instanceof Error ? error.message : t("execution_failed"));
       let refusedStatuses: Record<string, NodeExecutionStatus> = {};
       if (error instanceof WorkflowRefusedError) {
         // Name the nodes as the canvas shows them, and mark them there.

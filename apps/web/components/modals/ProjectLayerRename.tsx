@@ -10,6 +10,7 @@ import { ICON_NAME } from "@p4b/ui/components/Icon";
 import { matchesContentListKey } from "@/lib/api/datasets";
 import { updateDataset, useDataset } from "@/lib/api/layers";
 import { updateProjectLayer, useProjectLayers } from "@/lib/api/projects";
+import { MAX_CONTENT_NAME_LENGTH } from "@/lib/validations/common";
 import type { ProjectLayer } from "@/lib/validations/project";
 import { isCatalogLayer } from "@/lib/utils/catalog-layer";
 
@@ -88,6 +89,7 @@ const ProjectLayerRenameModal: React.FC<ProjectLayerRenameDialogProps> = ({
           size="small"
           fullWidth
           inputProps={{
+            maxLength: MAX_CONTENT_NAME_LENGTH,
             style: {
               fontSize: "0.875rem",
               fontWeight: "bold",

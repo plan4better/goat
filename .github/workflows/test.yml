@@ -267,7 +267,12 @@ jobs:
         # The rest of tests/integration needs a populated DuckLake catalog and
         # data fixtures this job does not have. tests/benchmarks holds
         # manually-run scripts, not tests. -n 4: one worker per runner CPU.
-        run: uv run --no-sync pytest tests/unit tests/utils tests/io -n 4
+        # The billing task tests (credit reset, compute and traffic rollups) sit
+        # directly under tests/.
+        run: >-
+          uv run --no-sync pytest tests/unit tests/utils tests/io
+          tests/test_compute_rollup.py tests/test_credit_reset.py
+          tests/test_traffic_rollup.py -n 4
         working-directory: packages/python/goatlib
       - name: 🧪 pytest (DuckLake catalog on Postgres)
         # These need only Postgres: each test makes a throwaway catalog schema

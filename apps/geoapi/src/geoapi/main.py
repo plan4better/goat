@@ -24,6 +24,8 @@ from geoapi.deps.auth import decode_token
 from geoapi.ducklake import ducklake_manager
 from geoapi.ducklake_pool import ducklake_pool
 from geoapi.ducklake_write import ducklake_write_manager
+from geoapi.middleware import credit_metering
+from geoapi.middleware.credit_metering import CreditMeteringMiddleware
 from geoapi.models import HealthCheck
 from geoapi.routers import (
     bundle_edits_router,
@@ -128,6 +130,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     start_subscriber()
 
     explorer_cleanup = asyncio.create_task(_clean_explorer_hourly())
+    # Writes the metering counts to Redis every few seconds (billing on only).
+    meter_flusher = (
+        asyncio.create_task(credit_metering.run_flusher())
+        if settings.BILLING_ENABLED
+        else None
+    )
 
     logger.info("GeoAPI started successfully")
 
@@ -136,6 +144,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Cleanup
     logger.info("Shutting down GeoAPI...")
     explorer_cleanup.cancel()
+    if meter_flusher is not None:
+        # Cancelling runs one last flush, so no counts are lost on shutdown.
+        meter_flusher.cancel()
+        await asyncio.gather(meter_flusher, return_exceptions=True)
     await layer_service.close()
     stop_subscriber()
     ducklake_pool.close()
@@ -191,6 +203,10 @@ app.add_middleware(
 # responses level 9 costs ~2x the CPU for ~4% smaller output.
 app.add_middleware(GZipExceptParquet, minimum_size=1000, compresslevel=6)
 
+# Egress metering for credits (billing on only): counts response bytes per
+# organization and layer in Redis; the traffic_rollup task charges them.
+if settings.BILLING_ENABLED:
+    app.add_middleware(CreditMeteringMiddleware)
 
 # Include routers
 app.include_router(metadata_router)

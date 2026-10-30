@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+import calendar
+from datetime import datetime, timedelta, timezone
 from typing import Any, List, Optional
 from uuid import UUID
 
@@ -9,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, load_only
 from sqlalchemy.orm.attributes import flag_modified
 
+from core.accounts import report_suspension, report_trial
 from core.core.config import settings
 from core.crud.base import CRUDBase
+from core.crud.crud_billing_terms import trial_terms
 from core.crud.crud_folder import folder as crud_folder
 from core.crud.crud_invitation import invitation as crud_invitations
 from core.crud.crud_role import role as crud_role
@@ -34,30 +37,45 @@ from core.db.session import session_manager
 from core.deps.keycloak import get_keycloak_user
 from core.schemas import OrganizationUpdate
 from core.schemas.email import EmailTemplateContent
+from core.schemas.entitlement import naive_utc
 from core.schemas.organization import (
     OrganizationCreate,
     OrganizationMemberRoleUpdateEnum,
     OrganizationPermanentlyDeleted,
     OrganizationUser,
-    TrialPlanTypeEnum,
 )
 from core.services.s3 import s3_service
-from core.utils.email import send_email
+from core.utils.email import send_email, user_language
+from core.utils.i18n import language
 from core.utils.i18n import trans as _
 from core.utils.other import decode_base64_file, get_image_extension_from_base64
 
-from .crud_stripe import crud_stripe
 from .crud_user import user as crud_user
 
-# Quotas applied when no Stripe billing is configured (self-hosted deployments).
-SELF_HOSTED_PLAN_METADATA = {
-    "plan_name": settings.DEFAULT_PLAN_NAME,
-    "credits": 1000000,
+# Quotas applied when no billing is configured (self-hosted deployments).
+SELF_HOSTED_QUOTAS = {
+    "credits": settings.DEFAULT_QUOTA_CREDITS,
     "storage": settings.DEFAULT_QUOTA_STORAGE_MB,
     "projects": settings.DEFAULT_QUOTA_PROJECTS,
     "editors": settings.DEFAULT_QUOTA_EDITORS,
     "viewers": settings.DEFAULT_QUOTA_VIEWERS,
 }
+
+
+async def trial_quotas(db: AsyncSession) -> tuple[dict, int]:
+    """GOAT-managed trial for SaaS signups (billing on): its quotas and length
+    in days. No entitlement exists until the billing system converts the
+    organization; expiry is enforced by the trial_expiry Windmill task. The
+    terms are the billing system's (crud_billing_terms), read per call."""
+    terms = await trial_terms(db)
+    quotas = {
+        "credits": terms["credits"],
+        "storage": terms["storage_mb"],
+        "projects": terms["projects"],
+        "editors": terms["editors"],
+        "viewers": terms["viewers"],
+    }
+    return quotas, terms["days"]
 
 
 class OrganizationNotDeletableError(Exception):
@@ -68,6 +86,24 @@ class OrganizationNotDeletableError(Exception):
         super().__init__(", ".join(found))
 
 
+def add_month(moment: datetime) -> datetime:
+    """The same day and time one month later (the month's last day when shorter)."""
+    month = moment.month % 12 + 1
+    year = moment.year + (moment.month == 12)
+    day = min(moment.day, calendar.monthrange(year, month)[1])
+    return moment.replace(year=year, month=month, day=day)
+
+
+def sub_month(moment: datetime) -> datetime:
+    """The inverse of add_month: the same day and time one month earlier (the
+    month's last day when shorter). A reset date that add_month shortened
+    (Jan 31 -> Feb 28) comes back as Jan 28, a few days late at worst."""
+    month = (moment.month - 2) % 12 + 1
+    year = moment.year - (moment.month == 1)
+    day = min(moment.day, calendar.monthrange(year, month)[1])
+    return moment.replace(year=year, month=month, day=day)
+
+
 class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUpdate]):
     async def create_organization(
         self,
@@ -75,42 +111,34 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         organization_obj: OrganizationCreate,
         user_id: str,
         db: AsyncSession,
-        plan_name: TrialPlanTypeEnum = TrialPlanTypeEnum.profesional,
         is_superuser: bool = False,
     ) -> Organization:
         # Create user
         user = await crud_user.create_if_not_exists(user_id=user_id, db_session=db)
-        billing_enabled = bool(settings.STRIPE_SECRET_KEY)
-        product_metadata = (
-            crud_stripe.get_product_metadata(plan_name.value)
-            if billing_enabled
-            else SELF_HOSTED_PLAN_METADATA
+        # SaaS (billing on): GOAT-managed trial; the entitlement webhook takes
+        # over on conversion. Otherwise self-hosted: no trial.
+        saas_mode = settings.billing_enabled
+        quotas, trial_days = (
+            await trial_quotas(db) if saas_mode else (SELF_HOSTED_QUOTAS, 0)
         )
 
         # Create organization
         organization = Organization(
             name=organization_obj.name,
             avatar=organization_obj.avatar or settings.ORGANIZATION_DEFAULT_AVATAR,
-            on_trial=billing_enabled,
-            total_credits=product_metadata.get("credits"),
-            total_storage=product_metadata.get("storage"),
-            total_projects=product_metadata.get("projects"),
-            total_editors=product_metadata.get("editors"),
-            total_viewers=product_metadata.get("viewers"),
-            plan_name=product_metadata.get("plan_name"),
-            plan_renewal_date=datetime.now() + timedelta(days=14)
-            if billing_enabled
+            on_trial=saas_mode,
+            total_credits=quotas.get("credits"),
+            total_storage=quotas.get("storage"),
+            total_projects=quotas.get("projects"),
+            total_editors=quotas.get("editors"),
+            total_viewers=quotas.get("viewers"),
+            extras=[] if saas_mode else None,
+            plan_renewal_date=datetime.now() + timedelta(days=trial_days)
+            if saas_mode
             else None,
             type=organization_obj.type,
-            size=organization_obj.size,
-            industry=organization_obj.industry,
-            department=organization_obj.department,
-            use_case=organization_obj.use_case,
-            phone_number=organization_obj.phone_number,
-            location=organization_obj.location,
             region=organization_obj.region,
             contact_user_id=user_id,
-            stripe_id="",
             suspended=False,
             users=[user],
             newsletter_subscribe=organization_obj.newsletter_subscribe,
@@ -119,23 +147,6 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         if not is_superuser and organization_obj.newsletter_subscribe:
             user.newsletter_subscribe = True
 
-        # For superusers, we don't create stripe customer and don't subscribe
-        # This is because superusers are internal users
-        # Create stripe customer
-        if not is_superuser and billing_enabled:
-            customer = crud_stripe.create_customer(
-                organization=organization, email=user.email
-            )
-            organization.stripe_id = customer.id
-
-            # Create subscription with trial period
-            price_id = crud_stripe.get_stripe_plan_default_price(plan_name.value)
-            crud_stripe.create_stripe_subscription(
-                customer_id=organization.stripe_id,
-                price_id=price_id,
-                quantity=1,
-                trial_period_days=14,
-            )
         user.organization = organization
         db.add(organization)
         db.add(user)
@@ -150,6 +161,16 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         await db.commit()
         assert organization.id is not None
         await crud_space.ensure_organization(db, organization.id)
+
+        if settings.accounts_sync_enabled:
+            # Odoo's trial campaign sends the welcome and everything after it.
+            report_trial(organization, user.id)
+            await db.refresh(organization)
+            return organization
+        if not saas_mode:
+            # Self-hosted: no trial, no "free demo" email.
+            await db.refresh(organization)
+            return organization
 
         # Send email
         email_content = EmailTemplateContent(
@@ -177,20 +198,32 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         # todo: send email also to all members
         keycloak_user = await get_keycloak_user(organization_obj.contact_user_id)
         organization_obj.suspended = True
+        # Suspension alone can be undone by an entitlement push; this cannot.
+        if organization_obj.deleted_at is None:
+            organization_obj.deleted_at = datetime.now(timezone.utc).replace(
+                tzinfo=None
+            )
         db.add(organization_obj)
         await db.commit()
+        # The provider ends its trial too: no more trial mails to its people.
+        report_suspension(organization_obj)
 
         if keycloak_user.get("email"):
-            email_content = EmailTemplateContent(
-                artwork_url=f"{settings.email_artwork_url}/img/email/organization_suspended.png",
-                title=_("Organization has been deleted"),
-                message=_("Your organization has been deleted."),
-            )
-            send_email(
-                email_to=keycloak_user.get("email"),
-                subject="GOAT - Organization deleted",
-                environment=email_content.model_dump(),
-            )
+            lang = await user_language(db, organization_obj.contact_user_id)
+            with language(lang):
+                names = {"organization": organization_obj.name}
+                email_content = EmailTemplateContent(
+                    artwork_url=f"{settings.email_artwork_url}/img/email/organization_suspended.png",
+                    title=_("%(organization)s has been deleted") % names,
+                    message=_(
+                        "The organization and all its projects, layers and teams have been deleted for good."
+                    ),
+                )
+                send_email(
+                    email_to=keycloak_user.get("email"),
+                    subject=_("GOAT - Organization deleted"),
+                    environment=email_content.model_dump(),
+                )
 
         return organization_obj
 
@@ -223,7 +256,7 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         async with session_manager.transaction() as connection:
             organization = (
                 await connection.execute(
-                    select(Organization.id, Organization.stripe_id)
+                    select(Organization.id, Organization.odoo_company_id)
                     .where(Organization.id == organization_id)
                     .with_for_update()
                 )
@@ -346,7 +379,7 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         return OrganizationPermanentlyDeleted(
             id=organization_id,
             user_id=member_id,
-            stripe_id=organization.stripe_id or None,
+            odoo_company_id=organization.odoo_company_id,
         )
 
     async def update_organization_profile(
@@ -583,6 +616,9 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         reassign_to: str | None = None,
     ) -> Any:
         user = await crud_user.get_user_with_roles(db_session=db, user_id=user_id)
+        # Read before the user is removed: their settings go with them.
+        lang = await user_language(db, user.id)
+        organization = await self.get(db, id=organization_id)
         if str(user.organization_id) != str(organization_id):
             raise Exception(_("User is not part of the organization"))
         # find organization role of user
@@ -659,16 +695,21 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         if len(invitations_ids_to_remove) > 0:
             await crud_invitations.remove_multi(db, ids=invitations_ids_to_remove)
 
-        email_content = EmailTemplateContent(
-            artwork_url=f"{settings.email_artwork_url}/img/email/user_removed_from_organization.png",
-            title=_("You have been removed from the organization"),
-            message=_("You have been removed from the organization."),
-        )
-        send_email(
-            email_to=user.email,
-            subject=_("GOAT - Removed from organization"),
-            environment=email_content.model_dump(),
-        )
+        with language(lang):
+            names = {"organization": organization.name if organization else ""}
+            email_content = EmailTemplateContent(
+                artwork_url=f"{settings.email_artwork_url}/img/email/user_removed_from_organization.png",
+                title=_("You have been removed from %(organization)s") % names,
+                message=_(
+                    "You no longer have access to the projects and data of %(organization)s in GOAT. If you think this is a mistake, contact the administrators of the organization."
+                )
+                % names,
+            )
+            send_email(
+                email_to=user.email,
+                subject=_("GOAT - Removed from organization"),
+                environment=email_content.model_dump(),
+            )
 
         return user
 
@@ -776,7 +817,8 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
 
         if role in role_limits:
             total_attr, used_attr, role_name = role_limits[role]
-            if getattr(organization, total_attr) <= getattr(organization, used_attr):
+            total = getattr(organization, total_attr)
+            if total is not None and total <= getattr(organization, used_attr):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=_(f"Organization has reached the limit of {role_name}"),
@@ -786,6 +828,93 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=_("Invalid role"),
             )
+
+    _CAPACITY = {
+        "projects": ("total_projects", "used_projects"),
+        "storage": ("total_storage", "used_storage"),
+    }
+
+    def check_capacity_quota(
+        self, *, organization: Organization, quota: str, incoming: float = 0
+    ) -> None:
+        """Block when a capacity quota would be exceeded. NULL total = unlimited."""
+        total_attr, used_attr = self._CAPACITY[quota]
+        total = getattr(organization, total_attr)
+        if total is None:
+            return
+        used = getattr(organization, used_attr) or 0
+        if used + incoming > total:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=_(f"Organization has reached its {quota} limit"),
+            )
+
+    async def get_by_user(self, db: AsyncSession, user_id: UUID) -> Organization | None:
+        user = await db.get(User, user_id)
+        if user is None or user.organization_id is None:
+            return None
+        return await db.get(Organization, user.organization_id)
+
+    _ENTITLEMENT_CAPS = (
+        "total_credits",
+        "total_storage",
+        "total_projects",
+        "total_editors",
+        "total_viewers",
+    )
+
+    def apply_entitlement(
+        self,
+        *,
+        organization: Organization,
+        entitlement: dict,
+        reset_usage: bool = True,
+    ) -> bool:
+        """Apply a billing entitlement (caps + renewal). Zeroes used_credits on renewal.
+
+        Returns whether this push converted a trial into a subscription.
+
+        Provider-agnostic: `entitlement` is a plain dict (validated by
+        EntitlementPush at the webhook); absent keys are left as-is.
+        """
+        for cap in self._ENTITLEMENT_CAPS:
+            if cap in entitlement:
+                setattr(organization, cap, entitlement[cap])
+        if "extras" in entitlement:
+            extras = entitlement["extras"]
+            organization.extras = (
+                [str(e) for e in extras] if extras is not None else None
+            )
+        if "suspended" in entitlement:
+            organization.suspended = bool(entitlement["suspended"])
+        converted = False
+        if "on_trial" in entitlement:
+            converted = organization.on_trial and not entitlement["on_trial"]
+            organization.on_trial = bool(entitlement["on_trial"])
+
+        def moment(value: datetime | str) -> datetime:
+            return naive_utc(
+                value if isinstance(value, datetime) else datetime.fromisoformat(value)
+            )
+
+        # A repeated renewal (same renewal date, whatever its as_of) must not
+        # zero the credits used since the first one.
+        repeat = False
+        if entitlement.get("plan_renewal_date"):
+            renewal = moment(entitlement["plan_renewal_date"])
+            repeat = renewal == organization.plan_renewal_date
+            organization.plan_renewal_date = renewal
+        if entitlement.get("as_of"):
+            organization.entitlement_as_of = moment(entitlement["as_of"])
+        if (reset_usage and not repeat) or converted:
+            organization.used_credits = 0
+        # A subscription's credits reset monthly, from its first push on
+        # (credit_reset moves the date on); a trial's credits last the trial.
+        if not organization.on_trial and (
+            converted or organization.credits_reset_at is None
+        ):
+            organization.credits_reset_at = add_month(datetime.now())
+        return converted
 
 
 organization = CRUDOrganization(Organization)

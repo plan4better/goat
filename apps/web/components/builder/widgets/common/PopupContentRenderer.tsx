@@ -35,6 +35,9 @@ const POPOVER_MAX_WIDTH: Record<PopupSize, number> = {
   lg: 480,
 };
 
+/** Keeps tooltip and popover within the viewport; longer content scrolls. */
+const POPOVER_MAX_HEIGHT = "calc(100vh - 32px)";
+
 /** Paper widths for the dialog type, matching MUI's xs/sm/md breakpoints. */
 const DIALOG_MAX_WIDTH: Record<PopupSize, number> = {
   sm: 444,
@@ -111,7 +114,15 @@ const PopupContentRenderer = ({
           placement={tooltipPlacement}
           arrow
           slotProps={{
-            tooltip: { sx: { maxWidth: popoverMaxWidth, fontSize: 12, lineHeight: 1.5 } },
+            tooltip: {
+              sx: {
+                maxWidth: popoverMaxWidth,
+                maxHeight: POPOVER_MAX_HEIGHT,
+                overflowY: "auto",
+                fontSize: 12,
+                lineHeight: 1.5,
+              },
+            },
             popper: {
               anchorEl,
               modifiers: [
@@ -152,6 +163,8 @@ const PopupContentRenderer = ({
               sx={{
                 p: 2,
                 maxWidth: popoverMaxWidth,
+                maxHeight: POPOVER_MAX_HEIGHT,
+                overflowY: "auto",
                 bgcolor: "background.paper",
                 borderRadius: 1,
               }}>

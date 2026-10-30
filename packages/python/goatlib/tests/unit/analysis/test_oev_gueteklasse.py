@@ -11,6 +11,7 @@ from goatlib.analysis.accessibility import (
     OevGueteklasseTool,
     PTTimeWindow,
 )
+from goatlib.analysis.schemas.oev_gueteklasse import CatchmentType
 
 # =============================================================================
 # Fixtures
@@ -432,6 +433,56 @@ class TestOevGueteklasseTool:
         print(f"Total stations in area: {result['total_stations']}")
         print(f"Stations with service: {result['stations_with_service']}")
         print(f"Quality class distribution: {result['quality_class_counts']}")
+
+    def test_oev_gueteklasse_network_catchment(
+        self,
+        munich_districts_path: Path,
+        stops_path: Path,
+        stop_times_path: Path,
+        time_window_weekday: PTTimeWindow,
+        result_dir: Path,
+    ):
+        """Walking the distances along the network serves less area than circles."""
+        pytest.importorskip("routing")
+        from goatlib.config.settings import settings
+
+        if not Path(settings.routing.street_network_edges_base_path).exists():
+            pytest.skip("Street network not found")
+
+        areas: dict[str, dict[str, float]] = {}
+        for catchment_type in (CatchmentType.buffer, CatchmentType.network):
+            output_path = (
+                result_dir / f"unit_oev_gueteklasse_{catchment_type.value}.parquet"
+            )
+            OevGueteklasseTool().run(
+                OevGueteklasseParams(
+                    reference_area_path=str(munich_districts_path),
+                    stops_path=str(stops_path),
+                    stop_times_path=str(stop_times_path),
+                    time_window=time_window_weekday,
+                    output_path=str(output_path),
+                    catchment_type=catchment_type,
+                )
+            )
+            con = duckdb.connect()
+            con.execute("INSTALL spatial; LOAD spatial;")
+            areas[catchment_type.value] = dict(
+                con.execute(f"""
+                    SELECT pt_class_label, SUM(ST_Area_Spheroid(geometry))
+                    FROM '{output_path}'
+                    GROUP BY pt_class_label
+                """).fetchall()
+            )
+            invalid = con.execute(
+                f"SELECT COUNT(*) FROM '{output_path}' WHERE NOT ST_IsValid(geometry)"
+            ).fetchone()[0]
+            con.close()
+            assert invalid == 0
+
+        # A single class can grow (a smaller A leaves more room for B), but
+        # the area served at all shrinks.
+        assert areas["network"], "Network catchments should produce classes"
+        assert sum(areas["network"].values()) < sum(areas["buffer"].values())
 
     def test_oev_gueteklasse_saturday(
         self,

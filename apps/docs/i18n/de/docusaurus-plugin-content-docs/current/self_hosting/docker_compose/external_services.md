@@ -166,6 +166,8 @@ Standardmäßig zeigen die E-Mails von GOAT und von Keycloak den Namen `GOAT` un
 | `EMAIL_LOGO_URL` | Adresse eines Logo-Bildes, das statt des Namens erscheint |
 | `EMAIL_CONTACT_URL` | Kontakt-Link in der Fußzeile. Die App verwendet ihn auch für ihre <code>Kontakt</code>-Links. |
 | `EMAIL_PRIVACY_URL` | Link zur Datenschutzerklärung in der Fußzeile. Auch die Anmeldeseite verlinkt darauf. |
+| `EMAIL_COMPANY_NAME` | Wer Ihr GOAT betreibt, als Zeile in der Fußzeile, z. B. Name und Anschrift Ihrer Organisation. Entfällt, solange leer. |
+| `EMAIL_COMPANY_URL` | Website, auf die diese Zeile verlinkt. |
 
 Die Bilder in den E-Mails kommen von GOATs öffentlicher URL (`<öffentliche URL>/assets`) oder von `STATIC_ASSETS_URL`, falls gesetzt. Die Mailprogramme der Empfänger laden sie von dort, die Adresse muss für sie also erreichbar sein.
 

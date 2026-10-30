@@ -71,7 +71,7 @@ async def test_login_on_without_configured_org_seeds_into_system_org(
     org = await db_session.get(Organization, GOAT_SYSTEM_ORGANIZATION_ID)
     assert org is not None
     assert org.name == "GOAT"
-    assert org.plan_name == settings.DEFAULT_PLAN_NAME
+    assert org.total_projects == settings.DEFAULT_QUOTA_PROJECTS
     assert org.on_trial is False and org.suspended is False
     members = await _count(
         db_session,

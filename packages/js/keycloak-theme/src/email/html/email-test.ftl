@@ -18,7 +18,7 @@
     </tr>
     <#if layout.appUrl?has_content>
     <tr>
-      <td>
+      <td align="center">
         <a
           href="${layout.appUrl}"
           style="${properties.actionButtonStyle}"

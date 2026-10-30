@@ -20,7 +20,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.core.config import GOAT_SYSTEM_ORGANIZATION_ID, WEB_ARTWORK_PATH, settings
-from core.crud.crud_organization import SELF_HOSTED_PLAN_METADATA
+from core.crud.crud_organization import SELF_HOSTED_QUOTAS
 from core.crud.crud_space import space as crud_space
 from core.db.models.organization import Organization
 from core.db.models.template import Template, TemplateCatalogStatus, TemplatePayloadKind
@@ -530,22 +530,15 @@ async def ensure_system_organization(db: AsyncSession) -> UUID:
             name="GOAT",
             avatar=settings.ORGANIZATION_DEFAULT_AVATAR,
             on_trial=False,
-            total_credits=SELF_HOSTED_PLAN_METADATA["credits"],
-            total_storage=SELF_HOSTED_PLAN_METADATA["storage"],
-            total_projects=SELF_HOSTED_PLAN_METADATA["projects"],
-            total_editors=SELF_HOSTED_PLAN_METADATA["editors"],
-            total_viewers=SELF_HOSTED_PLAN_METADATA["viewers"],
+            total_credits=SELF_HOSTED_QUOTAS["credits"],
+            total_storage=SELF_HOSTED_QUOTAS["storage"],
+            total_projects=SELF_HOSTED_QUOTAS["projects"],
+            total_editors=SELF_HOSTED_QUOTAS["editors"],
+            total_viewers=SELF_HOSTED_QUOTAS["viewers"],
             used_editors=0,
-            plan_name=SELF_HOSTED_PLAN_METADATA["plan_name"],
             type="other",
-            industry="other",
-            department="system",
-            use_case="other",
-            phone_number="",
-            location="",
             region="EU",
             contact_user_id=UUID(int=0),
-            stripe_id=None,
             suspended=False,
         )
         .on_conflict_do_nothing(index_elements=["id"])

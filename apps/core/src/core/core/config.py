@@ -140,11 +140,16 @@ class Settings(BaseSettings):
     # Plan and quotas applied to organizations when no billing system is
     # configured (self-hosted deployments). With billing enabled these come
     # from the billing provider instead.
-    DEFAULT_PLAN_NAME: str = "goat_enterprise"
     DEFAULT_QUOTA_STORAGE_MB: int = 1048576
     DEFAULT_QUOTA_PROJECTS: int = 10000
     DEFAULT_QUOTA_EDITORS: int = 1000
     DEFAULT_QUOTA_VIEWERS: int = 1000
+    # Credit metering. Conversion rates live in the customer.credit_rate table
+    # (the metering SQL reads them there), pushed by the billing system with
+    # its terms. Only operational knobs live here.
+    MAX_TOOL_RUNTIME_SECONDS: int = 1800
+    # Self-hosted credit allowance. None == unlimited (gate skipped).
+    DEFAULT_QUOTA_CREDITS: float | None = None
 
     # ------------------------------------------------------------------
     # Templates (T11b): organization whose space owns the seeded GOAT
@@ -319,6 +324,9 @@ class Settings(BaseSettings):
     EMAIL_LOGO_URL: str | None = None
     EMAIL_CONTACT_URL: str | None = None
     EMAIL_PRIVACY_URL: str | None = None
+    # Who runs this GOAT, as a footer line (name, address), linked to the URL.
+    EMAIL_COMPANY_NAME: str | None = None
+    EMAIL_COMPANY_URL: str | None = None
 
     @field_validator(
         "SMTP_HOST",
@@ -330,6 +338,8 @@ class Settings(BaseSettings):
         "EMAIL_LOGO_URL",
         "EMAIL_CONTACT_URL",
         "EMAIL_PRIVACY_URL",
+        "EMAIL_COMPANY_NAME",
+        "EMAIL_COMPANY_URL",
         mode="before",
     )
     @classmethod
@@ -347,10 +357,42 @@ class Settings(BaseSettings):
         return self.SMTP_FROM or self.SMTP_USER
 
     # ------------------------------------------------------------------
-    # Billing / Stripe
+    # Billing (SaaS only). A switch of its own, read the same way by geoapi,
+    # processes and the workers; independent of which CRM/billing system
+    # (if any) pushes entitlements or receives account reports. On, new
+    # organizations start a GOAT-managed trial and the billing webhooks accept
+    # calls carrying BILLING_WEBHOOK_SECRET (X-Webhook-Secret header). The
+    # trial's terms and the credit rates are the billing system's: it pushes
+    # them (POST /webhooks/billing/terms), core keeps them in the database.
     # ------------------------------------------------------------------
-    STRIPE_SECRET_KEY: str | None = None
-    STRIPE_WEBHOOK_SECRET: str | None = None
+    BILLING_ENABLED: bool = False
+    BILLING_WEBHOOK_SECRET: str | None = None
+
+    @field_validator("BILLING_ENABLED", mode="before")
+    @classmethod
+    def _billing_empty_is_off(cls: type["Settings"], value: object) -> object:
+        # `BILLING_ENABLED: ${BILLING_ENABLED:-}` in a compose file means off.
+        return False if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("BILLING_WEBHOOK_SECRET", mode="before")
+    @classmethod
+    def _billing_empty_is_unset(cls: type["Settings"], value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @model_validator(mode="after")
+    def _require_billing_secret(self) -> "Settings":
+        if self.BILLING_ENABLED and self.BILLING_WEBHOOK_SECRET is None:
+            raise ValueError(
+                "BILLING_ENABLED is set but BILLING_WEBHOOK_SECRET is missing"
+            )
+        return self
+
+    @property
+    def billing_enabled(self) -> bool:
+        """Trials, credits and usage metering, quotas pushed by the billing
+        system. Off on self-hosted installs: organizations get the
+        DEFAULT_QUOTA_* values and nothing is metered. Independent of support."""
+        return self.BILLING_ENABLED and bool(self.BILLING_WEBHOOK_SECRET)
 
     # ------------------------------------------------------------------
     # Processes service (OGC API - Processes front for Windmill). Core posts
@@ -386,7 +428,8 @@ class Settings(BaseSettings):
     # Plan4Better's Odoo (SaaS only; see core.odoo). The connection is
     # shared; each integration has its own key, from its own least-privilege
     # Odoo user, and is on only when the connection and its settings are set.
-    # Self-hosted installs set none of them.
+    # Self-hosted installs set none of them. Billing (BILLING_ENABLED) does not
+    # depend on Odoo: the account reports below are one provider of it.
     # ------------------------------------------------------------------
     ODOO_URL: str | None = None
     ODOO_DB: str | None = None
@@ -394,17 +437,29 @@ class Settings(BaseSettings):
     ODOO_SUPPORT_API_KEY: str | None = None
     ODOO_SUPPORT_TEAM_ID: int | None = None
     ODOO_SUPPORT_POST_ACTION: str = "GOAT: post message as ticket participant"
+    # Sign-ups, organizations and trials as Odoo contacts (billing only), through
+    # the bridge portal user ("GOAT Accounts Bot") of the goat_accounts module.
+    ODOO_ACCOUNTS_API_KEY: str | None = None
 
     @field_validator(
         "ODOO_URL",
         "ODOO_DB",
         "ODOO_SUPPORT_API_KEY",
         "ODOO_SUPPORT_TEAM_ID",
+        "ODOO_ACCOUNTS_API_KEY",
         mode="before",
     )
     @classmethod
     def _odoo_empty_is_unset(cls: type["Settings"], value: object) -> object:
         return None if isinstance(value, str) and not value.strip() else value
+
+    @property
+    def accounts_sync_enabled(self) -> bool:
+        """Billing on and the Odoo connection with the accounts bridge's key
+        set: sign-ups and organizations are reported to Odoo (core.accounts)."""
+        return self.billing_enabled and all(
+            (self.ODOO_URL, self.ODOO_DB, self.ODOO_ACCOUNTS_API_KEY)
+        )
 
     @property
     def support_enabled(self) -> bool:
@@ -425,7 +480,8 @@ class Settings(BaseSettings):
         )
         return self
 
-    model_config = SettingsConfigDict(case_sensitive=True)
+    # A settings error names the setting, never echoes the environment (secrets).
+    model_config = SettingsConfigDict(case_sensitive=True, hide_input_in_errors=True)
 
 
 settings = Settings()

@@ -125,6 +125,10 @@ class Settings(BaseSettings):
     # Windmill settings for job execution
     WINDMILL_URL: str = os.getenv("WINDMILL_URL", "http://windmill-server:8000")
     WINDMILL_WORKSPACE: str = os.getenv("WINDMILL_WORKSPACE", "goat")
+    CORE_URL: str = os.getenv("CORE_URL", "http://goat-core:8000")
+    # SaaS: check the organization's credits before a job (core answers).
+    # Self-hosted installs leave it unset and nothing is checked.
+    BILLING_ENABLED: bool = False
 
     @property
     def WINDMILL_TOKEN(self) -> str:

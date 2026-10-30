@@ -26,6 +26,7 @@ import { dismissJob, useJobs } from "@/lib/api/processes";
 import { useProject } from "@/lib/api/projects";
 import { type WorkflowExecuteRequest, cleanupWorkflowTemp, executeWorkflow, useWorkflow } from "@/lib/api/workflows";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
+import { creditsErrorMessage } from "@/lib/utils/credits";
 import { claimJobAnnouncement } from "@/lib/utils/jobAnnouncement";
 
 import type { NodeExecutionInfo, NodeExecutionStatus } from "@/components/workflows/context/WorkflowExecutionContext";
@@ -164,7 +165,8 @@ export default function WorkflowRunner({ workflowId, onBack, onClose }: Workflow
       toast.dismiss();
       toast.success(t("workflow_started"));
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("execution_failed");
+      const message =
+        creditsErrorMessage(error, t) ?? (error instanceof Error ? error.message : t("execution_failed"));
       setExecState((s) => ({
         ...s,
         isExecuting: false,

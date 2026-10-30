@@ -66,6 +66,7 @@ async def _invite(
         patch.object(organizations.crud_organization, "check_seats_quota"),
         patch.object(organizations.crud_invitation, "create", create_invitation),
         patch.object(organizations, "send_email") as send_email,
+        patch.object(organizations, "user_language", AsyncMock(return_value="de")),
         patch.object(keycloak_deps, "keycloak_admin", AsyncMock(return_value=admin)),
     ):
         result = await organizations.invite_user_to_organization(

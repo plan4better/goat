@@ -73,6 +73,50 @@ async def get_keycloak_user(user_id: str) -> dict[str, Any]:
         return {}
 
 
+# Writes still running (a reference keeps the task alive until it is done).
+_locale_writes: set[asyncio.Task] = set()
+
+
+async def set_user_locale(user_id: str, lang: str) -> bool:
+    """Store GOAT's language for the user in Keycloak (attribute ``locale``), so
+    its pages and emails (verify, password reset) follow what the user chose in
+    GOAT. True when Keycloak has it.
+
+    Best effort, like the other enrichment: no admin client, Keycloak down or a
+    service account without manage-users only log a warning. The whole user is
+    read and sent back with only the locale changed: with the declarative user
+    profile, a field or attribute left out of the update is cleared (an update
+    with only the attributes emptied the user's first and last name)."""
+    if not settings.AUTH:
+        return False
+    admin = await keycloak_admin()
+    if admin is None:
+        return False
+
+    def write() -> None:
+        user = admin.get_user(user_id) or {}
+        attributes = dict(user.get("attributes") or {})
+        if not user or attributes.get("locale") == [lang]:
+            return
+        attributes["locale"] = [lang]
+        admin.update_user(user_id=user_id, payload={**user, "attributes": attributes})
+
+    try:
+        await asyncio.to_thread(write)
+        return True
+    except Exception:  # a background write: log anything, never raise
+        logger.warning("keycloak locale write failed for %s", user_id, exc_info=True)
+        return False
+
+
+def report_locale(user_id: str, lang: str) -> None:
+    """``set_user_locale`` in the background: saving the setting never waits for
+    Keycloak."""
+    task = asyncio.get_running_loop().create_task(set_user_locale(user_id, lang))
+    _locale_writes.add(task)
+    task.add_done_callback(_locale_writes.discard)
+
+
 async def create_invited_user(email: str) -> str | None:
     """Create a Keycloak account for an invited email that has none.
 

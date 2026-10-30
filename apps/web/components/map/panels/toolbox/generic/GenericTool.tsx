@@ -19,6 +19,7 @@ import { useUserProfile } from "@/lib/api/users";
 import { OEV_STATION_CONFIG_DEFAULT } from "@/lib/constants/oev-gueteklassen";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
 import { setToolboxStartingPoints } from "@/lib/store/map/slice";
+import { creditsErrorMessage } from "@/lib/utils/credits";
 import {
   applyDynamicDefaults,
   getDefaultValues,
@@ -644,6 +645,11 @@ export default function GenericTool({ processId, onBack, onClose }: GenericToolP
       handleReset();
     } catch (error) {
       console.error("Process execution error:", error);
+      const creditsMessage = creditsErrorMessage(error, t);
+      if (creditsMessage) {
+        toast.error(creditsMessage, { autoClose: 10000 });
+        return;
+      }
       toast.error(t("error_running_tool"));
     }
   };

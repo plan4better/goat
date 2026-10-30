@@ -13,7 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from processes.deps.auth import get_user_id
+from processes.deps.auth import get_user_id, oauth2_scheme
 from processes.ducklake import ducklake_manager
 from processes.services.access import (
     References,
@@ -101,6 +101,7 @@ async def execute_workflow(
     workflow_id: str,
     request: WorkflowExecuteRequest,
     user_id: UUID = Depends(get_user_id),
+    access_token: str | None = Depends(oauth2_scheme),
 ) -> WorkflowExecuteResponse:
     """Execute a workflow via Windmill.
 
@@ -124,6 +125,11 @@ async def execute_workflow(
         ),
         request.nodes,
     )
+
+    # Out of credits: a workflow runs tools too, so it is refused like one (402).
+    from processes.services.credit_gate import assert_credits_available
+
+    await assert_credits_available(access_token)
 
     # Build job inputs
     job_inputs: dict[str, Any] = {
@@ -196,6 +202,10 @@ async def finalize_workflow_layer(
         refs = References()
         refs.add("project", request.project_id, "write")
         await ensure_allowed(user_id, refs)
+
+    # Deliberately not credit-gated: finalize_layer only saves the result of a
+    # workflow that already ran (and was gated), so refusing it would throw
+    # that work away. Its compute is still charged post-hoc by compute_rollup.
 
     # Build job inputs for finalize_layer tool
     job_inputs = {

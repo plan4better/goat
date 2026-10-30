@@ -189,6 +189,12 @@
         },
         "privacyUrl": {
           "type": "string"
+        },
+        "companyName": {
+          "type": "string"
+        },
+        "companyUrl": {
+          "type": "string"
         }
       }
     },
