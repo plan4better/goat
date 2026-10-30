@@ -14,6 +14,7 @@ export interface ElementWrapperProps {
   isSelected: boolean;
   onSelect?: () => void;
   onDelete?: () => void;
+  onDuplicate?: () => void;
   /** Additional drag attributes for dnd-kit */
   dragAttributes?: DraggableAttributes;
   /** Additional drag listeners for dnd-kit */
@@ -48,6 +49,7 @@ export const ElementWrapper: React.FC<ElementWrapperProps> = ({
   isSelected,
   onSelect,
   onDelete,
+  onDuplicate,
   dragAttributes,
   dragListeners,
   showDragHandle = true,
@@ -110,6 +112,19 @@ export const ElementWrapper: React.FC<ElementWrapperProps> = ({
             </Tooltip>
           )}
           {controlPanelExtra}
+          {onDuplicate && (
+            <Tooltip title={t("duplicate")} placement="top" arrow>
+              <IconButton
+                aria-label={t("duplicate")}
+                sx={{ borderRadius: 0, color: "white" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDuplicate();
+                }}>
+                <Icon iconName={ICON_NAME.CLONE} style={{ fontSize: "12px" }} />
+              </IconButton>
+            </Tooltip>
+          )}
           {onDelete && (
             <Tooltip title={t("delete")} placement="top" arrow>
               <IconButton

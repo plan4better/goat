@@ -7,6 +7,7 @@ import { v4 } from "uuid";
 import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
 import { DEFAULT_BASEMAP } from "@/lib/constants/basemaps";
 import { setSelectedLayers, updateProjectLayer } from "@/lib/store/layer/slice";
+import { duplicateWidget } from "@/lib/utils/builderWidgets";
 import { useInteractionDispatcher } from "@/hooks/map/useInteractionDispatcher";
 import type { InteractionRule } from "@/lib/validations/interaction";
 import {
@@ -467,6 +468,18 @@ const PublicProjectLayout = ({
     });
   };
 
+  const onWidgetDuplicate = (widgetId: string) => {
+    if (viewOnly) return;
+    const duplicated = duplicateWidget(panels, widgetId);
+    if (!duplicated) return;
+    const builderConfig = {
+      ...project?.builder_config,
+      interface: duplicated.panels,
+    };
+    onProjectUpdate?.("builder_config", builderConfig);
+    dispatch(setSelectedBuilderItem(duplicated.copy));
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const onWidgetUpdate = (updatedWidget: BuilderWidgetSchema) => {
     if (viewOnly) return;
@@ -696,6 +709,7 @@ const PublicProjectLayout = ({
                   selected={selectedPanel?.type === "panel" && selectedPanel?.id === panel.id}
                   onChangeOrder={handleChangeOrder}
                   onWidgetDelete={onWidgetDelete}
+                  onWidgetDuplicate={onWidgetDuplicate}
                   onWidgetUpdate={onWidgetUpdate}
                   onClick={() => handlePanelClick(panel)}
                 />
