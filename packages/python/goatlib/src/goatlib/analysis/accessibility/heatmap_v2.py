@@ -25,6 +25,8 @@ import time
 from pathlib import Path
 from typing import Any, Self
 
+import numpy as np
+
 from goatlib.analysis.accessibility.base import HeatmapToolBase, sanitize_sql_name
 from goatlib.analysis.schemas.catchment_area_v2 import (
     CostType,
@@ -47,6 +49,7 @@ from goatlib.tools._routing_limits import (
     MAX_TIME_ACTIVE_MIN,
     MAX_TIME_CAR_MIN,
     validate_extent,
+    within_extent,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,6 +114,18 @@ _DECAY_MEMBERS = {
 }
 
 
+# An exclave is a small part of a reference area. When more of the area than
+# this share lies past the mode's reach of the destinations, the area itself is
+# too large and the request is refused as a whole instead.
+MAX_EXCLAVE_SHARE = 0.05
+
+#: One opportunity layer: (column_name, opp_groups, sensitivity, max_cost,
+#: n_destinations), each opp group (seeds_xy_3857, weight, rep_x, rep_y).
+_LayerSpec = tuple[
+    str, list[tuple[list[tuple[float, float]], float, float, float]], float, float, int
+]
+
+
 def _score_column(label: str) -> str:
     """The quoted score column of one opportunity layer. A sanitized label
     can start with a digit, and such a name only parses quoted."""
@@ -128,6 +143,19 @@ def _unbounded_by_reference_area(params: HeatmapV2Params) -> bool:
     )
 
 
+def _area_margin(
+    area_cells: list[tuple[float, float]], params: HeatmapV2Params
+) -> float:
+    """The mode's maximum travel time as a straight-line distance, in EPSG:3857
+    metres at the area's latitude farthest from the equator."""
+    car = params.routing_mode == RoutingMode.car
+    minutes = MAX_TIME_CAR_MIN if car else MAX_TIME_ACTIVE_MIN
+    speed = 50.0 if car else speed_or_default(params.speed or None, params.routing_mode)
+    furthest_y = max((y for _, y in area_cells), key=abs)
+    lat = 2 * math.atan(math.exp(furthest_y / 6378137.0)) - math.pi / 2
+    return minutes / 60 * speed * 1000 / max(math.cos(lat), 0.05)
+
+
 def _within_area_reach(
     opp_groups: list[tuple[list[tuple[float, float]], float, float, float]],
     area_cells: list[tuple[float, float]],
@@ -136,14 +164,9 @@ def _within_area_reach(
     """Opportunities that count for a reference area: within the mode's
     maximum travel time of the area's bbox, as a straight-line buffer. The
     engine loads the network over the area and these."""
-    car = params.routing_mode == RoutingMode.car
-    minutes = MAX_TIME_CAR_MIN if car else MAX_TIME_ACTIVE_MIN
-    speed = 50.0 if car else speed_or_default(params.speed or None, params.routing_mode)
+    margin = _area_margin(area_cells, params)
     xs = [x for x, _ in area_cells]
     ys = [y for _, y in area_cells]
-    furthest_y = max(ys, key=abs)
-    lat = 2 * math.atan(math.exp(furthest_y / 6378137.0)) - math.pi / 2
-    margin = minutes / 60 * speed * 1000 / max(math.cos(lat), 0.05)
     min_x, max_x = min(xs) - margin, max(xs) + margin
     min_y, max_y = min(ys) - margin, max(ys) + margin
     return [
@@ -153,17 +176,90 @@ def _within_area_reach(
     ]
 
 
+def _lat_lon(points: list[tuple[float, float]]) -> tuple[np.ndarray, np.ndarray]:
+    """Latitudes and longitudes in degrees of EPSG:3857 points."""
+    xy = np.asarray(points, dtype=float).reshape(-1, 2)
+    lons = np.degrees(xy[:, 0] / 6378137.0)
+    lats = np.degrees(2 * np.arctan(np.exp(xy[:, 1] / 6378137.0)) - np.pi / 2)
+    return lats, lons
+
+
 def _check_reference_area_extent(
     area_cells: list[tuple[float, float]], routing_mode: RoutingMode
 ) -> None:
     """The travel cost matrix's extent check, with the area's cells as both
     origins and destinations."""
-    lons = [math.degrees(x / 6378137.0) for x, _ in area_cells]
-    lats = [
-        math.degrees(2 * math.atan(math.exp(y / 6378137.0)) - math.pi / 2)
-        for _, y in area_cells
-    ]
+    lats, lons = (a.tolist() for a in _lat_lon(area_cells))
     validate_extent(routing_mode, lats, lons, lats, lons, "Reference area extent")
+
+
+def _near_cells(
+    seeds: list[tuple[float, float]],
+    area_cells: list[tuple[float, float]],
+    margin: float,
+) -> list[tuple[float, float]]:
+    """The seeds within `margin` of some area cell on both axes (EPSG:3857),
+    unlike the area's bbox, which an exclave stretches over the land between.
+    The cells are bucketed on a grid of half the margin and each seed is tested
+    against the buckets up to two steps from its own, so a seed up to half a
+    margin farther can pass too."""
+    side = margin / 2
+
+    def buckets(points: list[tuple[float, float]]) -> np.ndarray:
+        return np.floor(np.asarray(points, dtype=float).reshape(-1, 2) / side).astype(
+            np.int64
+        )
+
+    cells = buckets(area_cells)
+    occupied = np.unique(cells[:, 0] * 2**32 + cells[:, 1])
+    own = buckets(seeds)
+    near = np.zeros(len(own), dtype=bool)
+    for dx in range(-2, 3):
+        for dy in range(-2, 3):
+            near |= np.isin((own[:, 0] + dx) * 2**32 + own[:, 1] + dy, occupied)
+    return [seed for seed, n in zip(seeds, near.tolist()) if n]
+
+
+def _cells_to_route(
+    area_cells: list[tuple[float, float]],
+    layer_groups: list[list[tuple[list[tuple[float, float]], float, float, float]]],
+    params: HeatmapV2Params,
+) -> list[tuple[float, float]]:
+    """The reference-area cells to route. An area within the mode's reach
+    routes whole. Past it, the cells whose own extent with the destinations
+    (the opportunity seeds of every layer near some area cell) exceeds the
+    reach are an exclave: they stay out of routing, and the reference-area
+    clip returns them without a value like unreached cells. The extent check
+    then runs on the rest. When no cell or more than `MAX_EXCLAVE_SHARE` of
+    the area is out, nothing is left out and the area's own extent refusal
+    stands."""
+    try:
+        _check_reference_area_extent(area_cells, params.routing_mode)
+        return area_cells
+    except ValueError:
+        seeds = _near_cells(
+            [seed for groups in layer_groups for group in groups for seed in group[0]],
+            area_cells,
+            _area_margin(area_cells, params),
+        )
+        cell_lats, cell_lons = _lat_lon(area_cells)
+        seed_lats, seed_lons = _lat_lon(seeds)
+        fits = within_extent(
+            params.routing_mode, cell_lats, cell_lons, seed_lats, seed_lons
+        ).tolist()
+        n_out = fits.count(False)
+        if not n_out or n_out > MAX_EXCLAVE_SHARE * len(area_cells):
+            raise
+    kept = [cell for cell, fit in zip(area_cells, fits) if fit]
+    _check_reference_area_extent(kept, params.routing_mode)
+    logger.info(
+        "[Heatmap] %d of %d reference-area cells exceed the %s reach with the "
+        "opportunities; they are not routed",
+        n_out,
+        len(area_cells),
+        params.routing_mode.value,
+    )
+    return kept
 
 
 def _check_reference_area_cells(n_cells: int, max_cells: int | None = None) -> None:
@@ -502,16 +598,15 @@ class HeatmapV2Tool(HeatmapToolBase):
     def _reference_area_cells(
         self: Self, params: HeatmapV2Params
     ) -> list[tuple[float, float]]:
-        """The reference area's H3 cell centroids (EPSG:3857), after checking
-        the area against the mode's maximum extent."""
+        """The reference area's H3 cell centroids (EPSG:3857).
+        `_resolve_opportunity_layers` checks their extent against the mode's
+        reach (`_cells_to_route`)."""
         points, _ = self._rasterize_aoi_to_opportunities(
             params.reference_area_path,
             DEFAULT_H3_RESOLUTION[params.routing_mode],
         )
         _check_reference_area_cells(len(points))
-        cells = [(x, y) for x, y, _ in points]
-        _check_reference_area_extent(cells, params.routing_mode)
-        return cells
+        return [(x, y) for x, y, _ in points]
 
     # ----------------------- opportunity-layer resolution -------------------
 
@@ -519,19 +614,14 @@ class HeatmapV2Tool(HeatmapToolBase):
         self: Self,
         params: HeatmapV2Params,
         area_cells: list[tuple[float, float]] | None = None,
-    ) -> list[
-        tuple[
-            str,
-            list[tuple[list[tuple[float, float]], float, float, float]],
-            float,
-            float,
-            int,
-        ]
-    ]:
-        """Return per-layer (column_name, opp_groups, sensitivity, max_cost, n_destinations).
+    ) -> tuple[list[_LayerSpec], list[tuple[float, float]] | None]:
+        """Return per-layer (column_name, opp_groups, sensitivity, max_cost,
+        n_destinations), and the reference-area cells to route.
 
         Per-layer max_cost (minutes or meters) and n_destinations both drive
-        that layer's compute_heatmap call.
+        that layer's compute_heatmap call. With `area_cells`, an exclave past
+        the mode's reach is left out (`_cells_to_route`), and each layer keeps
+        the opportunities within reach of the cells left.
         """
         if params.heatmap_type == HeatmapType.connectivity:
             # Fixed per-mode rasterization resolution (same as every other
@@ -545,27 +635,29 @@ class HeatmapV2Tool(HeatmapToolBase):
             # Connectivity: each AOI cell is a 1-seed opportunity (weight 1,
             # rep == the cell centroid). closest_k is unused.
             conn_groups = [([(x, y)], w, x, y) for (x, y, w) in opp_points]
-            return [("connectivity", conn_groups, 0.0, float(params.max_cost), 1)]
+            return [
+                ("connectivity", conn_groups, 0.0, float(params.max_cost), 1)
+            ], area_cells
 
         if not params.opportunities:
             raise ValueError(
                 f"{params.heatmap_type.value} requires at least one "
                 "opportunity layer."
             )
-        layers: list[
-            tuple[
-                str,
-                list[tuple[list[tuple[float, float]], float, float, float]],
-                float,
-                float,
-                int,
-            ]
-        ] = []
+        layers: list[_LayerSpec] = []
         res = DEFAULT_H3_RESOLUTION[params.routing_mode]
+        loaded = []
         for idx, opp in enumerate(params.opportunities):
             opp_groups = self._load_opportunity_points(opp, idx, res)
             if area_cells:
                 opp_groups = _within_area_reach(opp_groups, area_cells, params)
+            loaded.append(opp_groups)
+        if area_cells:
+            kept = _cells_to_route(area_cells, loaded, params)
+            if len(kept) < len(area_cells):
+                loaded = [_within_area_reach(g, kept, params) for g in loaded]
+            area_cells = kept
+        for idx, (opp, opp_groups) in enumerate(zip(params.opportunities, loaded)):
             if not opp_groups:
                 logger.warning(
                     "Opportunity layer %s yielded 0 opportunities; skipping",
@@ -596,7 +688,7 @@ class HeatmapV2Tool(HeatmapToolBase):
                 f"{MAX_SEED_POINTS_TOTAL:,}. "
                 "Filter the layers or pick smaller datasets."
             )
-        return layers
+        return layers, area_cells
 
     # ----------------------------------------------------------- demand (2SFCA)
 
@@ -845,13 +937,14 @@ class HeatmapV2Tool(HeatmapToolBase):
             last_t = now
             return elapsed_ms
 
-        # Before the opportunities, so only those within the area's reach load
-        # and count toward the seed cap.
+        # The opportunity layers check the area's extent and leave out an
+        # exclave past the reach; the opportunities then count within reach of
+        # the cells left, before the seed cap.
         area_cells: list[tuple[float, float]] | None = None
         if _unbounded_by_reference_area(params):
             area_cells = self._reference_area_cells(params)
             logger.info("[Heatmap] Reference-area cells: %.0f ms", lap())
-        layer_specs = self._resolve_opportunity_layers(params, area_cells)
+        layer_specs, area_cells = self._resolve_opportunity_layers(params, area_cells)
         if not layer_specs:
             raise ValueError("No opportunity layers produced any points.")
         total_opps = sum(len(opps) for _, opps, _, _, _ in layer_specs)

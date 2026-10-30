@@ -10,8 +10,9 @@ and `max_value_from`; `validate_budget` enforces the same bounds server-side for
 callers that bypass the UI.
 """
 
-import math
 from typing import Any
+
+import numpy as np
 
 # The access/egress leg cap is owned by the analysis layer — that is what
 # consumes the lookup tables the cap describes. Imported rather than restated
@@ -373,6 +374,33 @@ MAX_EXTENT_M: dict[str, int] = {
     "pt": 300_000,
 }
 
+_EARTH_RADIUS_M = 6371000.0
+
+
+def _max_reach_m(routing_mode: Any) -> int:
+    return MAX_EXTENT_M.get(_val(routing_mode), 300_000)
+
+
+def _extent_m(
+    o_min_lat: Any,
+    o_max_lat: Any,
+    o_min_lon: Any,
+    o_max_lon: Any,
+    d_min_lat: Any,
+    d_max_lat: Any,
+    d_min_lon: Any,
+    d_max_lon: Any,
+) -> Any:
+    """Distance in metres between the farthest corners of the origin and
+    destination bounding boxes, which bounds the farthest O-D pair. Takes
+    degrees as floats, or the origin bounds as arrays for one origin each."""
+    lat_span = np.maximum(np.abs(o_max_lat - d_min_lat), np.abs(d_max_lat - o_min_lat))
+    lon_span = np.maximum(np.abs(o_max_lon - d_min_lon), np.abs(d_max_lon - o_min_lon))
+    avg_lat = np.radians((o_min_lat + o_max_lat + d_min_lat + d_max_lat) / 4.0)
+    dy = np.radians(lat_span) * _EARTH_RADIUS_M
+    dx = np.radians(lon_span) * _EARTH_RADIUS_M * np.cos(avg_lat)
+    return np.sqrt(dx * dx + dy * dy)
+
 
 def validate_extent(
     routing_mode: Any,
@@ -384,23 +412,19 @@ def validate_extent(
 ) -> None:
     """Reject a request whose origins and destinations lie further apart than
     the mode can route. Raises ValueError."""
-    # The farthest O-D pair is bounded by the distance between the
-    # farthest corners of the origin and destination bounding boxes.
-    earth_radius_m = 6371000.0
-    o_min_lat, o_max_lat = min(origin_lats), max(origin_lats)
-    o_min_lon, o_max_lon = min(origin_lons), max(origin_lons)
-    d_min_lat, d_max_lat = min(dest_lats), max(dest_lats)
-    d_min_lon, d_max_lon = min(dest_lons), max(dest_lons)
-
-    # Max lat/lon span between the two bbox extremes
-    lat_span = max(abs(o_max_lat - d_min_lat), abs(d_max_lat - o_min_lat))
-    lon_span = max(abs(o_max_lon - d_min_lon), abs(d_max_lon - o_min_lon))
-    avg_lat = math.radians((o_min_lat + o_max_lat + d_min_lat + d_max_lat) / 4.0)
-    dy = math.radians(lat_span) * earth_radius_m
-    dx = math.radians(lon_span) * earth_radius_m * math.cos(avg_lat)
-    extent_m = math.sqrt(dx * dx + dy * dy)
-
-    max_reach_m = MAX_EXTENT_M.get(_val(routing_mode), 300_000)
+    extent_m = float(
+        _extent_m(
+            min(origin_lats),
+            max(origin_lats),
+            min(origin_lons),
+            max(origin_lons),
+            min(dest_lats),
+            max(dest_lats),
+            min(dest_lons),
+            max(dest_lons),
+        )
+    )
+    max_reach_m = _max_reach_m(routing_mode)
     if extent_m > max_reach_m:
         raise ValueError(
             f"{label} ({extent_m / 1000:.0f} km) exceeds "
@@ -408,3 +432,25 @@ def validate_extent(
             f"({max_reach_m / 1000:.0f} km). "
             f"Reduce the area or choose a different mode."
         )
+
+
+def within_extent(
+    routing_mode: Any,
+    origin_lats: Any,
+    origin_lons: Any,
+    dest_lats: Any,
+    dest_lons: Any,
+) -> np.ndarray:
+    """Per origin, whether `validate_extent` accepts that origin alone with
+    all the destinations. Degrees in; a boolean array out, all False when
+    there is no destination."""
+    o_lat = np.asarray(origin_lats, dtype=float)
+    o_lon = np.asarray(origin_lons, dtype=float)
+    d_lat = np.asarray(dest_lats, dtype=float)
+    d_lon = np.asarray(dest_lons, dtype=float)
+    if not d_lat.size:
+        return np.zeros(o_lat.shape, dtype=bool)
+    extent_m = _extent_m(
+        o_lat, o_lat, o_lon, o_lon, d_lat.min(), d_lat.max(), d_lon.min(), d_lon.max()
+    )
+    return extent_m <= _max_reach_m(routing_mode)
