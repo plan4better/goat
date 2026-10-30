@@ -132,6 +132,17 @@ class ToolEnv:
     #: What this conversation created and ran, for the run tools' permission;
     #: the tools add to it as they create and run.
     runs: ConversationRuns = field(default_factory=ConversationRuns)
+    #: The workflows this answer created (the create tools add them): the
+    #: step that answers may still run one (``assistant.tools.toolset``).
+    workflows_created: set[str] = field(default_factory=set)
+    #: The catalog datasets this answer's searches and records showed, their
+    #: titles by id (``assistant.tools.catalog``): a card option that names
+    #: one adds it (``assistant.asks.unadded_dataset``).
+    catalog_titles: dict[str, str] = field(default_factory=dict)
+    #: The catalog datasets this answer found picked in a card
+    #: (``assistant.tools.workflows.catalog_picked``): a later check of the
+    #: same dataset does not look its bundles up again.
+    picked_datasets: set[str] = field(default_factory=set)
     #: Whether the service is shutting down, so a cancelled tool knows it was
     #: not the user's Stop (a workflow run then goes on).
     stopping: Callable[[], bool] = field(default=_not_stopping, repr=False)

@@ -3,7 +3,11 @@ adapters; the MCP adapter is ``assistant.mcp_server``).
 
 Every tool is registered once with its input model's JSON schema; validation,
 the data policy and the audit happen in ``execute``. A filter keeps the tools of
-the run's surface, in registry order. A run without a tool environment (the run
+the run's surface, in registry order, the same in every step of an answer: a
+provider reads the tool definitions as part of the cached prefix. Near the
+run's limits the stage of the step (``answer_step``) decides which calls run,
+as they run, by tool and, in the step that answers, by what a call names
+(``_answer_step_allows``). A run without a tool environment (the run
 machinery's own tests) is offered none.
 """
 
@@ -19,8 +23,14 @@ from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets import AbstractToolset, FunctionToolset
 from pydantic_core import SchemaValidator, core_schema
 
-from assistant.asks import ASK_TOOL
-from assistant.budget import RESULT_READS, StepGuard, next_call, read_allowance
+from assistant.asks import ASK_TOOL, answered_adds, answered_pick
+from assistant.budget import (
+    RESULT_READS,
+    RunBudget,
+    StepGuard,
+    next_call,
+    read_allowance,
+)
 from assistant.history import SHOWN_TOOLS
 from assistant.tools.ask import REPEATED_CARD, REPORT_FIRST
 from assistant.tools.http import service_failed
@@ -34,7 +44,9 @@ from assistant.tools.runtime import (
     execute,
     refuse,
 )
+from assistant.tools.workflow_runs import RUN
 from assistant.tools.workflow_tools import DESCRIBE_TOOL
+from assistant.tools.workflows import ADD_CATALOG_LAYER, catalog_picked
 
 if TYPE_CHECKING:
     from assistant.agent import RunDeps
@@ -219,6 +231,23 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                 spec.once_per_answer or REPEATED_CALL,
                 tool_call_id=ctx.tool_call_id,
             )
+        stage = prepared_stage(ctx)
+        if stage is not None and stage != "look up":
+            allowed = await _stage_allows(ctx, stage, spec, arguments)
+            _note_stage_call(ctx, allowed)
+            if not allowed:
+                # Counted like a call that ran: a model that keeps calling
+                # what its stage refuses still reaches the tool-call limit.
+                refusing = _step_guard(ctx)
+                if refusing is not None:
+                    refusing.admit_call(past_limit=True)
+                await refuse(
+                    spec,
+                    env,
+                    arguments,
+                    _stage_refusal(stage, spec),
+                    tool_call_id=ctx.tool_call_id,
+                )
         if spec.wire_name == ASK_TOOL and _unreported(ctx):
             await _report_first(ctx, spec, env, arguments)
         guard = _step_guard(ctx)
@@ -246,10 +275,12 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                     tool_call_id=ctx.tool_call_id,
                 )
             ctx.deps.result_reads[ctx.run_id] = reads + 1
-        # The reads of a run's result, and the card offered with them in a
-        # step prepared for them, run although a call took the last of the
-        # limit.
-        past_limit = reads_result or (reading and spec.wire_name == ASK_TOOL)
+        # The reads of a run's result, and the card in a step that allows it,
+        # run although a call took the last of the limit: the step was
+        # prepared with room for the card.
+        past_limit = reads_result or (
+            spec.wire_name == ASK_TOOL and stage in ("read or ask", "answer or ask")
+        )
         if guard is not None and not guard.admit_call(past_limit=past_limit):
             await refuse(
                 spec, env, arguments, LOOK_UPS_USED_UP, tool_call_id=ctx.tool_call_id
@@ -298,6 +329,8 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                 _count_search(ctx, spec, again)
                 _note_report(ctx, spec, again)
                 return again
+            if spec.wire_name == RUN.wire_name:
+                _note_run(ctx, arguments)
             try:
                 result = await execute(
                     spec,
@@ -457,13 +490,6 @@ async def _report_first(
     await refuse(spec, env, arguments, reason, tool_call_id=ctx.tool_call_id)
 
 
-def result_unreported(ctx: "RunContext[RunDeps]") -> bool:
-    """Whether the answer has a finished run's result to report and has
-    written no text since (``ToolSpec.report_first``): a card it sends
-    without text before it is refused (``_report_first``)."""
-    return _unreported(ctx)
-
-
 def read_allowance_of(ctx: "RunContext[RunDeps]") -> int:
     """The reads past the look-up budget of the result the answer has to
     report (``read_allowance``)."""
@@ -488,12 +514,13 @@ def _step_guard(ctx: "RunContext[RunDeps]") -> StepGuard | None:
     guard = ctx.deps.step
     if guard is None or guard.step != step:
         # The messages end with the step's own response here.
-        context = next_call(ctx.messages, ctx.run_id).raw
+        call = next_call(ctx.messages, ctx.run_id)
         guard = StepGuard(
             budget=budget,
             step=step,
             calls=ctx.deps.admitted_calls,
-            context=context,
+            context=call.raw,
+            cached=call.newest.cache_read_tokens,
         )
         ctx.deps.step = guard
     return guard
@@ -527,6 +554,174 @@ def _result_check(
 #: Where a run stands at the model call being prepared (``answer_step``).
 Stage = Literal["look up", "read or ask", "read", "answer or ask", "answer"]
 
+_NO_ROOM = "This call did not run: this answer has no room left for looking things up"
+_READ_THE_RESULT = (
+    "Read the workflow run's result with the project tools that read or "
+    "workflow_describe_tool"
+)
+#: The failure of a call its step's stage does not allow (``_stage_allows``):
+#: what the stage still allows instead.
+STAGE_REFUSALS: dict[Stage, str] = {
+    "read or ask": (
+        f"{_NO_ROOM}. {_READ_THE_RESULT}, answer from what you found, or ask with "
+        "ask_user if the user has to choose."
+    ),
+    "read": (
+        f"{_NO_ROOM} or asking. {_READ_THE_RESULT}, or answer from what you found."
+    ),
+    "answer or ask": (
+        f"{_NO_ROOM}. Answer from what you found, or ask with ask_user if the "
+        "user has to choose."
+    ),
+    "answer": f"{_NO_ROOM} or asking. Answer from what you found.",
+}
+_ANSWER_OR_ASK = (
+    "Answer from what you found, or ask with ask_user if the user has to choose."
+)
+#: In place of ``STAGE_REFUSALS["answer or ask"]`` for the tools that step
+#: still runs for some calls (``_answer_step_allows``).
+ANSWER_STEP_REFUSALS: dict[str, str] = {
+    RUN.wire_name: (
+        f"{_NO_ROOM}: workflow_run runs only a workflow created in this answer "
+        f"and not run yet, while its result can still be read. {_ANSWER_OR_ASK}"
+    ),
+    ADD_CATALOG_LAYER.wire_name: (
+        f"{_NO_ROOM}: project_add_catalog_layer adds only the datasets of the "
+        "options the user picked in the card this message answers. "
+        f"{_ANSWER_OR_ASK}"
+    ),
+}
+
+
+def _stage_refusal(stage: Stage, spec: ToolSpec[Any, Any]) -> str:
+    """The failure of a call of ``spec`` that ``stage`` does not allow."""
+    if stage == "answer or ask":
+        return ANSWER_STEP_REFUSALS.get(spec.wire_name, STAGE_REFUSALS[stage])
+    return STAGE_REFUSALS[stage]
+
+
+async def _stage_allows(
+    ctx: "RunContext[RunDeps]",
+    stage: Stage,
+    spec: ToolSpec[Any, Any],
+    arguments: dict[str, Any],
+) -> bool:
+    """Whether a step in ``stage`` lets a call of ``spec`` with ``arguments``
+    run: a look-up step every tool, a read step the reads of a finished
+    run's result (``RESULT_READ_TOOLS``), the card where the stage allows it,
+    and the step that answers with room for a card what it may still do
+    (``_answer_step_allows``)."""
+    if stage == "look up":
+        return True
+    if spec.wire_name == ASK_TOOL:
+        return stage in ("read or ask", "answer or ask")
+    if stage == "answer or ask":
+        return await _answer_step_allows(ctx, spec, arguments)
+    return stage in ("read or ask", "read") and spec.wire_name in RESULT_READ_TOOLS
+
+
+def _argument(
+    spec: ToolSpec[Any, Any], arguments: dict[str, Any], name: str
+) -> str | None:
+    """The argument ``name`` of a call, as the tool reads it; None for
+    arguments that do not validate (``execute`` would say why)."""
+    try:
+        validated = spec.input_model.model_validate(arguments)
+    except ValidationError:
+        return None
+    return str(getattr(validated, name))
+
+
+async def _answer_step_allows(
+    ctx: "RunContext[RunDeps]", spec: ToolSpec[Any, Any], arguments: dict[str, Any]
+) -> bool:
+    """What the step that answers, with room for a card, still runs besides
+    the card: a run of a workflow this answer built (``runnable_workflows``),
+    and the add of a dataset the user picked in the card the message
+    answers, as the add tool's own check reads that pick (a value or an id
+    in adds, or a member of a bundle one names: ``catalog_picked``). Asking
+    whether to run what the answer built, or whether to add what the user
+    just picked, would take the user a turn for a choice already made. A
+    call of either whose arguments do not validate goes on to ``execute``,
+    which says what to fix before anything runs."""
+    env = ctx.deps.env
+    if env is None:
+        return False
+    if spec.wire_name == RUN.wire_name:
+        workflow = _argument(spec, arguments, "workflow_id")
+        return workflow is None or workflow in runnable_workflows(ctx)
+    if spec.wire_name == ADD_CATALOG_LAYER.wire_name:
+        dataset = _argument(spec, arguments, "catalog_id")
+        return dataset is None or await catalog_picked(
+            env, dataset, answered_pick(env.asks)
+        )
+    return False
+
+
+def _ran(ctx: "RunContext[RunDeps]", workflow_id: str) -> bool:
+    """Whether this answer started a run of ``workflow_id``, whatever came of
+    it (``_note_run``), or has its run's summary among its results (a
+    repeated run returns it, ``REPEATED_RUN``)."""
+    if workflow_id in ctx.deps.run_attempts.get(ctx.run_id, {}):
+        return True
+    key = _call_key(RUN, {"workflow_id": workflow_id})
+    return key is not None and key in ctx.deps.earlier_results
+
+
+def _note_run(ctx: "RunContext[RunDeps]", arguments: dict[str, Any]) -> None:
+    """Notes a run of a workflow this answer starts, with its step: one that
+    fails, is refused or is still going is not offered again, and no other
+    workflow runs in its step (``runnable_workflows``)."""
+    workflow = _argument(RUN, arguments, "workflow_id")
+    if workflow is not None:
+        ctx.deps.run_attempts.setdefault(ctx.run_id, {})[workflow] = ctx.run_step
+
+
+def _note_stage_call(ctx: "RunContext[RunDeps]", allowed: bool) -> None:
+    """Notes a call of a step past the look-ups and whether its stage let it
+    run (``RunDeps.stage_calls``)."""
+    step, ran = ctx.deps.stage_calls.get(ctx.run_id, (None, False))
+    ran = ran if step == ctx.run_step else False
+    ctx.deps.stage_calls[ctx.run_id] = (ctx.run_step, ran or allowed)
+
+
+def runnable_workflows(ctx: "RunContext[RunDeps]") -> list[str]:
+    """The workflows the step that answers may still run: the ones this
+    answer created and has not run, while the run's result can be read
+    before the answer. That needs a read step and the answer step to fit as
+    the step was prepared (``RunBudget.read_fits``, ``RunDeps.run_room``):
+    the step that follows the run reads its result, in a read step when one
+    still fits then, else in the answer from the run's summary. Decided with
+    the stage, so the note that offers the run and the call agree. No other
+    result may wait to be written about, since one run's result takes that
+    room (a second run in the same step is refused), and the look-ups must
+    not have ended for good (``_ended``), after which a result is not read."""
+    env = ctx.deps.env
+    if (
+        env is None
+        or ctx.deps.run_room.get(ctx.run_id) != ctx.run_step
+        or _ended(ctx)
+        or _unreported(ctx)
+        or ctx.run_step in ctx.deps.run_attempts.get(ctx.run_id, {}).values()
+    ):
+        return []
+    return sorted(item for item in env.workflows_created if not _ran(ctx, item))
+
+
+def pickable_datasets(ctx: "RunContext[RunDeps]") -> list[str]:
+    """The datasets of the user's pick in the card the message answers that
+    this conversation has not added yet (an add repeated returns the first
+    one's result, ``REPEATED_WRITE``)."""
+    env = ctx.deps.env
+    if env is None:
+        return []
+    return [
+        item
+        for item in answered_adds(env.asks)
+        if _call_key(ADD_CATALOG_LAYER, {"catalog_id": item})
+        not in ctx.deps.earlier_results
+    ]
+
 
 def silent(response: ModelResponse) -> bool:
     """Whether ``response`` holds neither a tool call nor text beyond
@@ -548,32 +743,59 @@ def silent_responses(messages: Sequence[ModelMessage], run_id: str | None) -> in
 
 
 def answer_step(ctx: "RunContext[RunDeps]") -> Stage | None:
-    """Whether the call being prepared may look things up, may still read a
-    finished run's result it has not written about (``read_allowance``), or is
-    the step that answers; with or without room for a card
-    (``assistant.budget``). None without a budget. A result refused for its
-    size has ended the run's look-ups (``_result_check``), and so have
-    ``SILENT_RESPONSES`` responses without text or a tool call; then the
-    result is not read either."""
+    """Whether the model call being prepared may look things up, may still
+    read a finished run's result it has not written about
+    (``read_allowance``), or is the step that answers; with or without room
+    for a card (``assistant.budget``). None without a budget. Decided once
+    per step, as the call is prepared, from the messages it sends; the step's
+    calls are held to it as they run (``prepared_stage``). So is whether the
+    step that answers has room to run a workflow the answer built
+    (``RunDeps.run_room``, ``runnable_workflows``)."""
     budget = ctx.deps.budget
     if budget is None:
         return None
+    latest = ctx.deps.stages.get(ctx.run_id)
+    if latest is not None and latest[0] == ctx.run_step:
+        return latest[1]
+    stage = _stage(ctx, budget, looked_up=latest is None or latest[1] == "look up")
+    ctx.deps.stages[ctx.run_id] = (ctx.run_step, stage)
+    if stage in ("read or ask", "read"):
+        ctx.deps.reading_step = (ctx.run_id, ctx.run_step)
+        ctx.deps.result_reads.setdefault(ctx.run_id, 0)
+    if stage == "answer or ask" and budget.read_fits(
+        ctx.usage, next_call(ctx.messages, ctx.run_id)
+    ):
+        ctx.deps.run_room[ctx.run_id] = ctx.run_step
+    return stage
+
+
+def _stage(ctx: "RunContext[RunDeps]", budget: RunBudget, *, looked_up: bool) -> Stage:
+    """``answer_step``'s decision. ``looked_up``: the run's steps so far were
+    look-ups. A result refused for its size has ended the run's look-ups
+    (``_result_check``), and so have ``SILENT_RESPONSES`` responses without
+    text or a tool call; then the result is not read either. After a step
+    whose calls its stage all refused, the run answers in text
+    (``RunDeps.text_only``): each attempt is a model call of the whole
+    context, and a model that insisted would spend the answer's room."""
+    if ctx.deps.stage_calls.get(ctx.run_id) == (ctx.run_step - 1, False):
+        ctx.deps.text_only.add(ctx.run_id)
+    if ctx.run_id in ctx.deps.text_only:
+        return "answer"
     call = next_call(ctx.messages, ctx.run_id)
     # Every call let run counts, failed ones too (StepGuard); pydantic_ai's
     # count has only the successful ones.
     tool_calls = max(ctx.usage.tool_calls, ctx.deps.admitted_calls.get(ctx.run_id, 0))
-    ended = (
-        ctx.deps.refused_run == ctx.run_id
-        or silent_responses(ctx.messages, ctx.run_id) >= SILENT_RESPONSES
-    )
+    ended = _ended(ctx)
     reading = not ended and _result_to_read(ctx) and budget.read_fits(ctx.usage, call)
-    # A run that read past its budget looks nothing else up: the reading
-    # step's smaller context would let the budget allow a look-up it has no
-    # room for, and a look-up step offers other tools, so the provider would
-    # read none of the next call from its cache. A new result to read, which
-    # starts the reads again, comes only from a look-up.
+    # Look-ups once over stay over, and a run that read past its budget looks
+    # nothing else up: an answer step that read more from the cache than the
+    # look-ups did, or a read step's smaller context, would let the budget
+    # allow a look-up on paper, and an answer that went back to looking things
+    # up after its note to answer spent its room twice. A new result to read,
+    # which starts the reads again, comes only from a look-up.
     if (
-        not ended
+        looked_up
+        and not ended
         and ctx.run_id not in ctx.deps.result_reads
         and not budget.spent(ctx.usage, call, tool_calls)
     ):
@@ -584,6 +806,26 @@ def answer_step(ctx: "RunContext[RunDeps]") -> Stage | None:
     return "answer or ask" if ask else "answer"
 
 
+def _ended(ctx: "RunContext[RunDeps]") -> bool:
+    """Whether the run's look-ups ended for good: a result refused for its
+    size (``_result_check``), or ``SILENT_RESPONSES`` responses without text
+    or a tool call. A run's result is then not read either."""
+    return (
+        ctx.deps.refused_run == ctx.run_id
+        or silent_responses(ctx.messages, ctx.run_id) >= SILENT_RESPONSES
+    )
+
+
+def prepared_stage(ctx: "RunContext[RunDeps]") -> Stage | None:
+    """The stage the step of a running call was prepared in
+    (``answer_step``); None without a budget, and for a call of a step that
+    was not prepared (a tool called directly)."""
+    latest = ctx.deps.stages.get(ctx.run_id)
+    if latest is None or latest[0] != ctx.run_step:
+        return None
+    return latest[1]
+
+
 def _size(result: dict[str, Any]) -> int:
     """A result's size in bytes, measured as ``execute`` measures it."""
     return len(json.dumps(result, separators=(",", ":"), ensure_ascii=False).encode())
@@ -592,6 +834,9 @@ def _size(result: dict[str, Any]) -> int:
 async def _surface_tools(
     ctx: "RunContext[RunDeps]", tool_defs: list[ToolDefinition]
 ) -> list[ToolDefinition]:
+    """The tools of the run's surface, whatever the stage: near the run's
+    limits the stage refuses calls as they run (``_stage_allows``), so the
+    tool definitions stay the provider's cached prefix."""
     env = ctx.deps.env
     if env is None:
         return []
@@ -599,19 +844,6 @@ async def _surface_tools(
     if ctx.deps.asked:
         return []
     loaded = {spec.wire_name for spec in tools_for(env.page.surface)}
-    # Near the run's limits the model answers with what it has
-    # (assistant.budget), or asks with a card when the user has to choose: the
-    # card ends the answer, and the user's answer starts a run of its own.
-    # Before it answers, it may still read a finished run's result.
-    stage = answer_step(ctx)
-    if stage in ("read or ask", "read"):
-        ctx.deps.reading_step = (ctx.run_id, ctx.run_step)
-        ctx.deps.result_reads.setdefault(ctx.run_id, 0)
-        loaded &= RESULT_READ_TOOLS | ({ASK_TOOL} if stage == "read or ask" else set())
-    elif stage == "answer or ask":
-        loaded &= {ASK_TOOL}
-    elif stage == "answer":
-        loaded = set()
     return [tool_def for tool_def in tool_defs if tool_def.name in loaded]
 
 

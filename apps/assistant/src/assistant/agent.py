@@ -5,14 +5,25 @@ import asyncio
 import functools
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.capabilities import ProcessHistory
+from pydantic_ai.capabilities import (
+    AbstractCapability,
+    ProcessHistory,
+    WrapModelRequestHandler,
+)
 from pydantic_ai.exceptions import ModelRetry
-from pydantic_ai.messages import ModelMessage, RetryPromptPart, ToolReturnPart
-from pydantic_ai.models import Model
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    ToolReturnPart,
+    UserPromptPart,
+)
+from pydantic_ai.models import Model, ModelRequestContext
 from pydantic_ai.models.function import (
     AgentInfo,
     DeltaToolCall,
@@ -21,18 +32,22 @@ from pydantic_ai.models.function import (
 )
 from pydantic_ai.models.instrumented import InstrumentationSettings
 from pydantic_ai.models.test import TestModel
+from pydantic_ai.settings import ModelSettings, merge_model_settings
 
 from assistant.budget import RunBudget, StepGuard
 from assistant.events import DataPart, RunEvent
 from assistant.history import shorten_earlier_results
 from assistant.llm.types import DataPolicy
 from assistant.prompt import (
+    ADD_WHAT_WAS_PICKED,
     ANSWER_IN_TEXT,
     ANSWER_NOW,
     ANSWER_NOW_CARD,
     CARD_AFTER_TEXT,
     INSTRUCTIONS,
     NO_ANSWER_TEXT,
+    RUN_WHAT_YOU_BUILT,
+    as_note,
     read_the_result,
     static_instructions,
 )
@@ -40,14 +55,25 @@ from assistant.tools.runtime import ToolEnv
 from assistant.tools.toolset import (
     SILENT_RESPONSES,
     TOOL_RETRIES,
+    Stage,
     answer_step,
     goat_toolset,
+    pickable_datasets,
+    prepared_stage,
     read_allowance_of,
-    result_unreported,
+    runnable_workflows,
     silent_responses,
 )
 
-__all__ = ["INSTRUCTIONS", "PartIds", "RunDeps", "build_agent", "dev_model"]
+__all__ = [
+    "INSTRUCTIONS",
+    "STAGE_KEY",
+    "PartIds",
+    "RunDeps",
+    "StageNote",
+    "build_agent",
+    "dev_model",
+]
 
 
 class PartIds:
@@ -80,9 +106,9 @@ class RunDeps:
     #: The user's answer to a card, as the model reads it (assistant.asks);
     #: it follows the text of the user message (assistant.prompt.with_note).
     prompt_answer: str = ""
-    #: The run's limits; near them the model answers, or asks with a card, and
-    #: is offered no other tool (assistant.budget). None: no early answer (the
-    #: hard limits still apply).
+    #: The run's limits; near them the model is told to answer, or to ask with
+    #: a card, and its other calls are refused as they run (assistant.budget).
+    #: None: no early answer (the hard limits still apply).
     budget: RunBudget | None = None
     #: Results by call (assistant.tools.toolset): a repeated call gets the
     #: earlier result instead of a second request. Read tools' results of this
@@ -90,8 +116,9 @@ class RunDeps:
     #: those of earlier answers). The fallback model takes over before a tool
     #: ran, so it finds only those of earlier answers.
     earlier_results: dict[str, dict[str, Any]] = field(default_factory=dict)
-    #: The model showed the user a card (``ask_user``): the run offers no more
-    #: tools (``assistant.tools.toolset``), so the answer ends and waits for theirs.
+    #: The model showed the user a card (``ask_user``): the answer ends there
+    #: and waits for theirs (``runs/turn.py``); a run that goes on is offered
+    #: no more tools (``assistant.tools.toolset``).
     asked: bool = False
     #: What the current step's tool calls may still add to the run
     #: (``assistant.budget.StepGuard``); a new one at each step's first call.
@@ -135,6 +162,27 @@ class RunDeps:
     #: By run id: the reads past the look-up budget the result in
     #: ``unreported`` gets (``assistant.budget.read_allowance``).
     read_allowances: dict[str | None, int] = field(default_factory=dict)
+    #: By run id: the latest step prepared (its number) and its stage
+    #: (``assistant.tools.toolset.answer_step``), decided once per step; the
+    #: step's calls are held to it as they run.
+    stages: dict[str | None, tuple[int, Stage]] = field(default_factory=dict)
+    #: By run id: the latest step prepared in the stage "answer or ask" while
+    #: a step that reads a run's result and the answer step still fit
+    #: (``assistant.budget.RunBudget.read_fits``), decided with the stage:
+    #: only then may the step run a workflow this answer built, so its result
+    #: is read before the answer (``assistant.tools.toolset.runnable_workflows``).
+    run_room: dict[str | None, int] = field(default_factory=dict)
+    #: By run id: the workflows this answer started a run of, each with its
+    #: step, whatever came of the run (``assistant.tools.toolset._note_run``).
+    run_attempts: dict[str | None, dict[str, int]] = field(default_factory=dict)
+    #: By run id: the newest step past the look-ups that made calls, and
+    #: whether its stage let one of them run
+    #: (``assistant.tools.toolset._note_stage_call``).
+    stage_calls: dict[str | None, tuple[int, bool]] = field(default_factory=dict)
+    #: The runs (their ids) that answer in text from their next call on: a
+    #: step's calls were all refused by its stage. Their calls go out with
+    #: tool_choice "none" (``StageNote``).
+    text_only: set[str | None] = field(default_factory=set)
     #: The step (run id, step number) prepared for reading a finished run's
     #: result past the look-up budget: its reads count as such
     #: (``assistant.tools.toolset.RESULT_READ_TOOLS``). Matched by the step
@@ -202,10 +250,10 @@ def instrumentation() -> InstrumentationSettings | None:
     return _content_free_tracing() if enabled else None
 
 
-def answer_now(ctx: RunContext[RunDeps]) -> str:
-    """The instruction for a run near its limits, or whose responses held
-    neither text nor a tool call; nothing otherwise, so the fixed
-    instructions stay the cached prefix."""
+def stage_note(ctx: RunContext[RunDeps]) -> str:
+    """The note for the model call being prepared of a run near its limits,
+    or whose responses held neither text nor a tool call
+    (``assistant.tools.toolset.answer_step``); nothing in a look-up step."""
     stage = answer_step(ctx)
     if stage is None or stage == "look up":
         return ""
@@ -215,13 +263,67 @@ def answer_now(ctx: RunContext[RunDeps]) -> str:
         lead = ANSWER_IN_TEXT
     else:
         lead = ANSWER_NOW
-    # Named only while the card is offered (assistant.tools.toolset). While a
-    # run's result is not yet in the text, which a read step always has, a
-    # card without text before it is refused.
+    if stage == "answer or ask" and not ctx.deps.asked:
+        # What the step still runs besides the card (assistant.tools.toolset).
+        if runnable_workflows(ctx):
+            lead = f"{lead} {RUN_WHAT_YOU_BUILT}"
+        if pickable_datasets(ctx):
+            lead = f"{lead} {ADD_WHAT_WAS_PICKED}"
+    # Named only while the stage lets the card run (assistant.tools.toolset),
+    # always with the text before it: a card that comes alone leaves the user
+    # a question with nothing said before it.
     if stage in ("read or ask", "answer or ask") and not ctx.deps.asked:
-        card = f"{lead} {ANSWER_NOW_CARD}"
-        return f"{card} {CARD_AFTER_TEXT}" if result_unreported(ctx) else card
+        return f"{lead} {ANSWER_NOW_CARD} {CARD_AFTER_TEXT}"
     return lead
+
+
+#: The key of a request's stage (``answer_step``) in its metadata in the
+#: run's history: the note is not stored, and the metadata is not sent.
+STAGE_KEY = "goat_stage"
+
+
+@dataclass
+class StageNote(AbstractCapability[RunDeps]):
+    """Sends the note on the run's stage (``stage_note``) as the last content
+    of the model call, after the conversation: the instructions and the tools
+    stay the same in every call of an answer, so the provider reads all that
+    comes before the note from its cache.
+
+    The note goes into the request the model is sent, not into the run's
+    history: a later call, and the next answer, never see an earlier note.
+    Pydantic AI stores what ``before_model_request`` (a history processor)
+    returns as the run's history; ``wrap_model_request`` comes after that.
+    The note is a GOAT note (``prompt.as_note``) in a user message, after the
+    results of the newest call's tools. The request in the history records
+    the stage in its metadata instead (``STAGE_KEY``).
+
+    A run that answers in text (``RunDeps.text_only``) sends its call with
+    tool_choice "none" and the same tools: the tools stay in the cached
+    prefix, and the model cannot call one. Pydantic AI maps it for each
+    provider (one that misbehaves with it gets no tools instead)."""
+
+    async def wrap_model_request(
+        self,
+        ctx: RunContext[RunDeps],
+        *,
+        request_context: ModelRequestContext,
+        handler: WrapModelRequestHandler,
+    ) -> ModelResponse:
+        note = stage_note(ctx)
+        if ctx.run_id in ctx.deps.text_only:
+            request_context.model_settings = merge_model_settings(
+                request_context.model_settings, ModelSettings(tool_choice="none")
+            )
+        stage = prepared_stage(ctx)
+        stored = ctx.messages[-1] if ctx.messages else None
+        if stage is not None and isinstance(stored, ModelRequest):
+            stored.metadata = {**(stored.metadata or {}), STAGE_KEY: stage}
+        messages = request_context.messages
+        if note and messages and isinstance(messages[-1], ModelRequest):
+            last = messages[-1]
+            noted = replace(last, parts=[*last.parts, UserPromptPart(as_note(note))])
+            request_context.messages = [*messages[:-1], noted]
+        return await handler(request_context)
 
 
 def ends_with_text(ctx: RunContext[RunDeps], output: str) -> str:
@@ -238,15 +340,18 @@ def ends_with_text(ctx: RunContext[RunDeps], output: str) -> str:
 def build_agent(model: Model | str) -> Agent[RunDeps, str]:
     """The assistant's agent on ``model``; a string selects a development model
     (``test`` or ``demo``). Fixed instructions only (cached; the run's note
-    travels in the user message), GOAT's tools for the run's surface in a
-    fixed order."""
+    travels in the user message, the note on the run's stage after the
+    conversation), GOAT's tools for the run's surface in a fixed order."""
     agent: Agent[RunDeps, str] = Agent(
         dev_model(model) if isinstance(model, str) else model,
         deps_type=RunDeps,
-        instructions=[*static_instructions(), answer_now],
+        instructions=static_instructions(),
         toolsets=[goat_toolset()],
-        # Earlier answers' long tool results go to the model as counts.
-        capabilities=[ProcessHistory(shorten_earlier_results)],
+        capabilities=[
+            # Earlier answers' long tool results go to the model as counts.
+            ProcessHistory(shorten_earlier_results),
+            StageNote(),
+        ],
         # Also the budget for a tool name the surface does not offer: a history
         # from another page can make the model call one (spec §4.8).
         retries=TOOL_RETRIES,

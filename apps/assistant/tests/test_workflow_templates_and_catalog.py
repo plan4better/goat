@@ -788,9 +788,12 @@ async def test_inputs_the_template_left_open_are_named() -> None:
             }
         }
     )
-    result = await execute(CREATE_FROM_TEMPLATE, _env(core), {"template_id": TEMPLATE})
+    env = _env(core)
+    result = await execute(CREATE_FROM_TEMPLATE, env, {"template_id": TEMPLATE})
     assert core.paths()[-1] == USE
     assert result["workflow"]["id"] == WORKFLOW_ID
+    # A workflow this answer built: the step that answers may still run it.
+    assert env.workflows_created == {WORKFLOW_ID}
     assert result["open_issues"] == [
         {
             "step": "Schools",

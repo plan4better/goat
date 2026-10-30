@@ -30,6 +30,7 @@ from pydantic_ai.models.function import (
 from assistant.context import NO_PAGE, PageContext
 from assistant.llm.types import DataPolicy
 from assistant.login import Login, StaticLogin
+from assistant.prompt import NOTE_CLOSE, NOTE_OPEN
 from assistant.repo import Repository
 from assistant.surfaces import Locale
 from assistant.tools.http import ServiceClients
@@ -158,6 +159,25 @@ def tool_env(
     )
 
 
+def stage_note(messages: Sequence[ModelMessage]) -> str | None:
+    """The note on the run's stage that a model call's messages end with
+    (``assistant.agent.StageNote``), without its tags; None for a call
+    without one (a look-up step)."""
+    last = messages[-1] if messages else None
+    if not isinstance(last, ModelRequest) or not last.parts:
+        return None
+    part = last.parts[-1]
+    opening, closing = f"{NOTE_OPEN}\n", f"\n{NOTE_CLOSE}"
+    if (
+        isinstance(part, UserPromptPart)
+        and isinstance(part.content, str)
+        and part.content.startswith(opening)
+        and part.content.endswith(closing)
+    ):
+        return part.content[len(opening) : -len(closing)]
+    return None
+
+
 class ScriptedModel:
     """A model that makes the given tool calls in order, one per response, then
     answers. Records what it was shown. For single-turn tests: it counts the
@@ -187,6 +207,11 @@ class ScriptedModel:
                             return item
                     return ""
         return ""
+
+    def stage_note(self, request: int = -1) -> str | None:
+        """The note on the run's stage one recorded request ended with
+        (``stage_note``)."""
+        return stage_note(self.requests[request])
 
     def _step(self, messages: list[ModelMessage], info: AgentInfo) -> int:
         self.infos.append(info)

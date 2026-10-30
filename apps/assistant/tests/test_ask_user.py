@@ -37,10 +37,12 @@ from assistant.asks import (
     AskUserInput,
     CardAnswer,
     answer_lines,
+    answered_adds,
     card_data,
     picked_ids,
     public_args,
     recent_picked_ids,
+    unadded_dataset,
     user_chose,
 )
 from assistant.budget import MAX_RESULT_READS, RESULT_READS, RunBudget, read_allowance
@@ -49,14 +51,21 @@ from assistant.context import parse_context
 from assistant.encoding.ai_sdk import AiSdkEncoder
 from assistant.events import DataPart, ToolCalled, to_ui_message
 from assistant.login import Login
-from assistant.prompt import CARD_AFTER_TEXT, read_the_result, render_note
+from assistant.prompt import (
+    ANSWER_NOW_CARD,
+    CARD_AFTER_TEXT,
+    read_the_result,
+    render_note,
+)
 from assistant.runs.turn import Turn, run_turn
 from assistant.tools.ask import (
+    ADDS_NAMED,
     ASK_USER,
     ASKED_NOTE,
     ONE_CARD,
     REPEATED_CARD,
     REPORT_FIRST,
+    UNKNOWN_TITLE,
 )
 from assistant.tools.registry import BY_WIRE_NAME
 from assistant.tools.runtime import InputInvalid, execute
@@ -65,6 +74,7 @@ from assistant.tools.testing import (
     ScriptedModel,
     fake_clients,
     signed_in,
+    stage_note,
     tool_env,
 )
 from assistant.tools.toolset import (
@@ -990,6 +1000,271 @@ async def test_a_card_adding_more_than_50_datasets_is_refused_unchecked() -> Non
     assert catalog.requests == [] and shown == []
 
 
+# -- the datasets each option adds, by title ---------------------------------------
+
+CENSUS_TITLE = "Zensus 2022 - Bevölkerung"
+STOPS_EXPORT = "Priorität C - Bushaltestellen"
+
+
+async def test_the_shown_card_names_the_datasets_each_option_adds() -> None:
+    """Pass 7 (Q36): an option for the census grid added the user's own stop
+    export, since only the id's existence was checked. The card's result
+    names each option's datasets by title, from the lookups that check them,
+    so a wrong id shows before the user picks."""
+    catalog = Recorder(
+        {
+            ("GET", f"/stac/resolve/{CATALOG_ITEM}"): {
+                "kind": "collection",
+                "collection": {"id": CATALOG_ITEM, "title": CENSUS_TITLE},
+                "items": [],
+            },
+            ("GET", f"/stac/resolve/{OWN_DATASET}"): _not_found,
+        }
+    )
+    core = Recorder(
+        {
+            ("GET", f"/api/v2/layer/{OWN_DATASET}"): {
+                "id": OWN_DATASET,
+                "name": STOPS_EXPORT,
+            }
+        }
+    )
+    env, shown = _adds_env(catalog, core)
+    result = await execute(
+        ASK_USER, env, _adding(CATALOG_ITEM, OWN_DATASET), tool_call_id="c1"
+    )
+    assert result["adds"] == [
+        {"option": "Census grid", "datasets": [CENSUS_TITLE, STOPS_EXPORT]},
+        {"option": "Both grids", "datasets": [CENSUS_TITLE]},
+    ]
+    assert result["note"] == f"{ASKED_NOTE} {ADDS_NAMED}"
+    assert shown == ["ask"]
+    # Still one lookup per id and service.
+    assert sorted(catalog.paths()) == sorted(
+        [f"/stac/resolve/{CATALOG_ITEM}", f"/stac/resolve/{OWN_DATASET}"]
+    )
+    assert core.paths() == [f"/api/v2/layer/{OWN_DATASET}"]
+
+
+async def test_a_dataset_whose_title_cannot_be_read_is_named_so() -> None:
+    catalog = Recorder(
+        {("GET", f"/stac/resolve/{CATALOG_ITEM}"): {"kind": "item", "item": {}}}
+    )
+    env, _ = _adds_env(catalog)
+    result = await execute(ASK_USER, env, _adding(CATALOG_ITEM), tool_call_id="c1")
+    assert result["adds"] == [
+        {"option": "Census grid", "datasets": [UNKNOWN_TITLE]},
+        {"option": "Both grids", "datasets": [UNKNOWN_TITLE]},
+    ]
+
+
+async def test_a_card_that_adds_nothing_names_no_datasets() -> None:
+    env, _ = _adds_env(Recorder())
+    result = await execute(ASK_USER, env, CARD, tool_call_id="c1")
+    assert "adds" not in result
+    assert result["note"] == ASKED_NOTE
+
+
+# -- an option that names a dataset the answer found, without adding it -----------
+
+#: Catalog datasets an answer found (``ToolEnv.catalog_titles``), titles as
+#: the catalog has them.
+FOUND = {
+    CATALOG_ITEM: CENSUS_TITLE,
+    "de_zensus_2022_alter": "Zensus 2022 - Durchschnittsalter der Bevölkerung",
+    "hh_einzugsbereiche": "Einzugsbereiche von HVV-Haltestellen Hamburg",
+    "hh_verwaltungsgrenzen": "ALKIS - Verwaltungsgrenzen Hamburg – Bezirke",
+    "hh_bildungsatlas": (
+        "Regionaler Bildungsatlas - Kennzahlen zur Bevölkerung der "
+        "Statistischen Gebiete Hamburgs"
+    ),
+    "ch_oev_gueteklassen": "öV-Güteklasse – Solothurn",
+}
+
+
+def _option_card(option: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "questions": [
+            {
+                "question": "Which data should the workflow use?",
+                "header": "Data",
+                "options": [
+                    option,
+                    {"label": "Leave it open", "description": "Choose it later"},
+                ],
+            }
+        ]
+    }
+
+
+def _found_env() -> tuple[Any, list[str], Recorder]:
+    catalog = Recorder(
+        {("GET", f"/stac/resolve/{CATALOG_ITEM}"): {"kind": "item", "item": {}}}
+    )
+    env, shown = _adds_env(catalog)
+    env.catalog_titles.update(FOUND)
+    return env, shown, catalog
+
+
+@pytest.mark.parametrize(
+    ("label", "named"),
+    [
+        # The title, or a part of it with its own name.
+        ("Zensus 2022 – Bevölkerung", CENSUS_TITLE),
+        ("Zensus-2022-Gitterzellen", CENSUS_TITLE),
+        ("Verwaltungsgrenzen Hamburg", FOUND["hh_verwaltungsgrenzen"]),
+        # Three or more words of one title.
+        ("HVV-Haltestellen-Einzugsbereiche", FOUND["hh_einzugsbereiche"]),
+        ("Bildungsatlas statistische Gebiete", FOUND["hh_bildungsatlas"]),
+    ],
+)
+async def test_an_option_naming_a_dataset_the_answer_found_must_add_it(
+    label: str, named: str
+) -> None:
+    """Pass 6 and 7: an option named a catalog dataset without its id in
+    adds, so the user's pick did not let the next answer add it, and a
+    second card only asked to add it."""
+    env, shown, catalog = _found_env()
+    with pytest.raises(InputInvalid) as refused:
+        await execute(
+            ASK_USER,
+            env,
+            _option_card({"label": label, "value": "data"}),
+            tool_call_id="c1",
+        )
+    assert f'The option "{label}" names' in refused.value.message
+    assert named in refused.value.message
+    assert shown == [] and catalog.requests == []
+
+
+def test_the_refusal_names_the_dataset_its_id_and_what_to_do() -> None:
+    card = AskUserInput.model_validate(
+        _option_card({"label": "HVV-Haltestellen-Einzugsbereiche", "value": "hvv"})
+    )
+    assert unadded_dataset(card, FOUND) == (
+        'The option "HVV-Haltestellen-Einzugsbereiche" names the catalog dataset '
+        '"Einzugsbereiche von HVV-Haltestellen Hamburg" (id hh_einzugsbereiche), '
+        "but adds nothing, so picking it would not let you add the dataset. Put "
+        "the id of the dataset it uses in its adds; for a layer already in the "
+        "project, its layer_project_id is the value instead."
+    )
+    several = AskUserInput.model_validate(
+        _option_card({"label": "Zensus 2022", "value": "zensus"})
+    )
+    message = unadded_dataset(several, FOUND)
+    assert message is not None
+    assert message.startswith(
+        'The option "Zensus 2022" names the catalog datasets "Zensus 2022 - '
+        'Bevölkerung" (id de_zensus_2022_100m), "Zensus 2022 - '
+        'Durchschnittsalter der Bevölkerung" (id de_zensus_2022_alter), but'
+    )
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        # It adds the dataset, or its value stands for it or for a layer of
+        # the project.
+        {"label": "Zensus 2022", "value": "zensus", "adds": [CATALOG_ITEM]},
+        {"label": "Zensus 2022", "value": CATALOG_ITEM},
+        {"label": "Zensus 2022", "value": "42"},
+        {"label": "Zensus 2022", "value": OWN_DATASET},
+        # It leaves the dataset out.
+        {"label": "Ohne Zensus 2022", "value": "none"},
+        {"label": "Zensus 2022 später", "value": "later"},
+        # Ordinary choices, also with words of a title found.
+        {"label": "Bezirke", "value": "bezirke"},
+        {"label": "Stadtteile Hamburgs", "value": "stadtteile"},
+        {"label": "ÖV-Güteklassen", "value": "guete"},
+        {"label": "HVV-Einzugsbereiche", "value": "hvv"},
+        {"label": "Werktag 7–9 Uhr", "value": "am"},
+        {"label": "Nur Linienverkehr rechnen", "value": "pt_only"},
+        {"label": "Bevölkerung je Bezirk", "value": "districts"},
+    ],
+)
+async def test_options_that_add_or_do_not_name_a_found_dataset_are_shown(
+    option: dict[str, Any],
+) -> None:
+    env, shown, _ = _found_env()
+    result = await execute(ASK_USER, env, _option_card(option), tool_call_id="c1")
+    assert result["status"] == "asked" and shown == ["ask"]
+
+
+async def test_a_dataset_the_answer_did_not_find_is_not_matched() -> None:
+    env, shown = _adds_env(Recorder())
+    card = _option_card({"label": "Zensus 2022 – Bevölkerung", "value": "zensus"})
+    result = await execute(ASK_USER, env, card, tool_call_id="c1")
+    assert result["status"] == "asked" and shown == ["ask"]
+
+
+def test_a_list_of_short_words_names_no_dataset() -> None:
+    """Three words of a title name it only with one of more than five
+    letters: a list of short ones is a choice of its own (modes of
+    transport), not the dataset's name."""
+    found = {"hh_hvv_angebot": "HVV: Bus, Bahn, Fähre"}
+    modes = AskUserInput.model_validate(
+        _option_card({"label": "Bus, Bahn, Fähre", "value": "modes"})
+    )
+    assert unadded_dataset(modes, found) is None
+    named = AskUserInput.model_validate(
+        _option_card({"label": "Bildungsatlas statistische Gebiete", "value": "b"})
+    )
+    assert unadded_dataset(named, FOUND) is not None
+
+
+def test_a_question_that_offers_a_run_names_no_dataset() -> None:
+    """A run option says what the run uses; the run's pick adds nothing,
+    and its datasets are in the project already."""
+    card = AskUserInput.model_validate(
+        {
+            "questions": [
+                {
+                    "question": "Should the workflow run now?",
+                    "header": "Run",
+                    "options": [
+                        {
+                            "label": "Ja, mit Zensus 2022 ausführen",
+                            "value": f"run:{RUN_WORKFLOW}",
+                        },
+                        {"label": "Nein, Zensus 2022 später", "value": "no"},
+                    ],
+                }
+            ]
+        }
+    )
+    assert unadded_dataset(card, FOUND) is None
+
+
+def test_the_pick_that_started_the_answer_names_what_it_adds() -> None:
+    """The answer to a card that came with the message being answered:
+    what its picked options add, and nothing for an answer read back from
+    the stored conversation."""
+    card = AskUserInput.model_validate(_adding(CATALOG_ITEM, OWN_DATASET))
+    earlier = AskUserInput.model_validate(_adding("hh_bezirke"))
+    answer = CardAnswer.model_validate(
+        {"card_id": "ask-a2", "answers": [{"question": 0, "options": [0]}]}
+    )
+    earlier_answer = CardAnswer.model_validate(
+        {"card_id": "ask-a1", "answers": [{"question": 0, "options": [0]}]}
+    )
+    history = AskHistory(
+        cards={"ask-a1": earlier, "ask-a2": card},
+        answers={"ask-a1": earlier_answer},
+    ).with_answer(answer)
+    assert history.answering == "ask-a2"
+    assert answered_adds(history) == [CATALOG_ITEM, OWN_DATASET]
+    # Both picks count for the add tools' own check.
+    assert "hh_bezirke" in picked_ids(history)
+    stored = AskHistory(cards=history.cards, answers=history.answers)
+    assert stored.answering is None and answered_adds(stored) == []
+    # The second option adds the first id only.
+    second = CardAnswer.model_validate(
+        {"card_id": "ask-a2", "answers": [{"question": 0, "options": [1]}]}
+    )
+    picked_second = AskHistory(cards={"ask-a2": card}).with_answer(second)
+    assert answered_adds(picked_second) == [CATALOG_ITEM]
+
+
 # -- a card that offers again what the user picked --------------------------------
 
 DISTRICTS_QUESTION = "Which district boundaries should the analysis use?"
@@ -1036,8 +1311,10 @@ RUN_CARD = AskUserInput.model_validate(
     }
 )
 PICK_REFUSED = (
-    'The user already chose "Official districts" for "{question}". Use it; if it '
-    "did not work, say why in your text and offer only other options."
+    'The user already answered "{question}" (Districts): they chose "Official '
+    'districts" (value a). Use that answer. If it did not work or left something '
+    "open, say so in your text and ask only what is still open, under a new header "
+    "that names it."
 )
 
 
@@ -1172,28 +1449,212 @@ async def test_the_pick_is_found_by_label_value_or_datasets(
 
 
 @pytest.mark.parametrize(
-    ("history", "card"),
+    "card",
     [
-        # The same question with new options only: a follow-up.
-        (
-            _districts_answered([0]),
-            _asking(
-                DISTRICTS_QUESTION,
-                {"label": "Grid cells"},
-                {"label": "Postcode areas"},
-                header="Districts",
-            ),
+        # The same question with new options only.
+        _asking(
+            DISTRICTS_QUESTION,
+            {"label": "Grid cells"},
+            {"label": "Postcode areas"},
+            header="Districts",
         ),
         # The pick did not work, and the card leaves it out.
-        (
-            _districts_answered([0]),
-            _asking(
-                "The official districts hold no data here. Which areas instead?",
-                {"label": "Statistical areas", "value": "s", "adds": [STATISTICAL]},
-                {"label": "Postcode areas"},
-                header="Districts",
-            ),
+        _asking(
+            "The official districts hold no data here. Which areas instead?",
+            {"label": "Statistical areas", "value": "s", "adds": [STATISTICAL]},
+            {"label": "Postcode areas"},
+            header="Districts",
         ),
+        # Another question under the header, in other case and spacing.
+        _asking(
+            "Which areas should the map compare?",
+            {"label": "Grid cells"},
+            {"label": "Postcode areas"},
+            header="  DISTRICTS ",
+        ),
+    ],
+)
+async def test_a_card_under_an_answered_header_is_refused_whatever_it_offers(
+    card: dict[str, Any],
+) -> None:
+    """A header names the topic the user answered: asked again, with the
+    same or other options, the same topic took the user a second turn. The
+    refusal names the earlier answer; what it left open goes under a header
+    that names that."""
+    assert await _refusal(_districts_answered([0]), card) == PICK_REFUSED.format(
+        question=DISTRICTS_QUESTION
+    )
+
+
+async def test_a_header_answered_in_text_is_refused_with_the_text() -> None:
+    card = _asking(
+        DISTRICTS_QUESTION,
+        {"label": "Official districts"},
+        {"label": "Postcode areas"},
+        header="Districts",
+    )
+    history = _districts_answered([], "Only the seven   boroughs")
+    assert await _refusal(history, card) == (
+        f'The user already answered "{DISTRICTS_QUESTION}" (Districts): they '
+        'wrote "Only the seven boroughs". Use that answer. If it did not work or '
+        "left something open, say so in your text and ask only what is still "
+        "open, under a new header that names it."
+    )
+    both = _districts_answered([1], "the newer ones")
+    assert 'they chose "Statistical areas" (value s) and wrote "the newer ones".' in (
+        await _refusal(both, card)
+    )
+
+
+async def test_a_header_answered_in_any_earlier_turn_is_refused() -> None:
+    """The header of a card answered turns before the newest one counts as
+    well, and of two answers under one header the newer is named."""
+    data = AskUserInput.model_validate(
+        _asking(
+            "Which data should the analysis use?",
+            {"label": "Census grid", "value": "zensus"},
+            {"label": "District table", "value": "table"},
+            header="Data",
+        )
+    )
+    redone = AskUserInput.model_validate(
+        _asking(
+            "Which boundaries now?",
+            {"label": "Statistical areas", "value": "s"},
+            {"label": "Postcode areas"},
+            header="districts",
+        )
+    )
+    answers = {
+        card_id: CardAnswer.model_validate(
+            {"card_id": card_id, "answers": [{"question": 0, "options": [0]}]}
+        )
+        for card_id in ("ask-d1", "ask-x2", "ask-d3")
+    }
+    older = AskHistory(
+        cards={"ask-d1": DISTRICTS_CARD, "ask-x2": data},
+        answers={key: answers[key] for key in ("ask-d1", "ask-x2")},
+    )
+    card = _asking(
+        "Which areas?",
+        {"label": "Grid cells"},
+        {"label": "Postcode areas"},
+        header="Districts",
+    )
+    assert await _refusal(older, card) == PICK_REFUSED.format(
+        question=DISTRICTS_QUESTION
+    )
+    newer = AskHistory(
+        cards={**older.cards, "ask-d3": redone},
+        answers={**older.answers, "ask-d3": answers["ask-d3"]},
+    )
+    assert (
+        'already answered "Which boundaries now?" (districts): they chose '
+        '"Statistical areas" (value s).'
+    ) in await _refusal(newer, card)
+
+
+STOPS_TIME = _asking(
+    "Which time window should the stop analysis use?",
+    {"label": "Werktag 7-9 Uhr", "value": "am"},
+    {"label": "Werktag 16-18 Uhr", "value": "pm"},
+    header="Zeitraum",
+)
+CYCLING_DAY = _asking(
+    "Which day should the cycling comparison use?",
+    {"label": "Sonntag", "value": "sun"},
+    {"label": "Samstag", "value": "sat"},
+    header="Zeitraum",
+)
+STOPS_PICK = CardAnswer.model_validate(
+    {"card_id": "ask-z1", "answers": [{"question": 0, "options": [0]}]}
+)
+
+
+def _typed(text: str) -> dict[str, Any]:
+    """A message the user typed, as ``Repository.list_messages`` stores it."""
+    return {"role": "user", "parts": [{"type": "user_text", "text": text}]}
+
+
+def _asked(card_id: str, card: dict[str, Any]) -> dict[str, Any]:
+    """An answer that showed ``card``, as stored."""
+    return {
+        "role": "assistant",
+        "parts": [
+            {
+                "type": "tool",
+                "tool_name": "ask_user",
+                "state": "output",
+                "args": card,
+                "output": {"card_id": card_id, "status": "asked"},
+            }
+        ],
+    }
+
+
+def _picked_in(answer: CardAnswer) -> dict[str, Any]:
+    """A message that answers a card, as stored."""
+    return {
+        "role": "user",
+        "parts": [
+            {"type": "user_text", "text": "Werktag 7-9 Uhr"},
+            {"type": "answer", "answer": answer.model_dump(mode="json")},
+        ],
+    }
+
+
+async def test_a_header_answered_before_the_users_last_typed_message_may_be_asked() -> (
+    None
+):
+    """A header names a topic within the chain of picks that answers one
+    request: once the user typed a new message, a later question may use a
+    common header ("Zeitraum") for another analysis."""
+    stored = [
+        _typed("Wie gut sind die Haltestellen erschlossen?"),
+        _asked("ask-z1", STOPS_TIME),
+        _picked_in(STOPS_PICK),
+        _asked("ask-x2", _asking("Which areas?")),
+    ]
+    history = AskHistory.from_stored(stored).with_typed_message()
+    await _shown(history, CYCLING_DAY)
+    # Asked again in a later chain, a question with the pick offered again
+    # is still refused, wherever the user answered it.
+    refused = await _refusal(history, STOPS_TIME)
+    assert refused.startswith(
+        f'The user already answered "{STOPS_TIME["questions"][0]["question"]}"'
+    )
+
+
+async def test_within_the_chain_of_picks_a_header_is_not_asked_again() -> None:
+    """The cards answered since the user's last typed message, the answer
+    that came with this message among them: their headers are taken."""
+    stored = [
+        _typed("Wie gut sind die Haltestellen erschlossen?"),
+        _asked("ask-z1", STOPS_TIME),
+    ]
+    history = AskHistory.from_stored(stored).with_answer(STOPS_PICK)
+    assert (await _refusal(history, CYCLING_DAY)).startswith(
+        'The user already answered "Which time window should the stop analysis use?"'
+    )
+    later = AskHistory.from_stored(
+        [
+            *stored,
+            _picked_in(STOPS_PICK),
+            _asked("ask-x2", _asking("Which areas?")),
+        ]
+    ).with_answer(
+        CardAnswer.model_validate(
+            {"card_id": "ask-x2", "answers": [{"question": 0, "options": [0]}]}
+        )
+    )
+    assert (await _refusal(later, CYCLING_DAY)).startswith(
+        'The user already answered "Which time window should the stop analysis use?"'
+    )
+
+
+@pytest.mark.parametrize(
+    ("history", "card"),
+    [
         # A new question with new options.
         (_districts_answered([0], time=[0]), _asking("Which part of the city?")),
         # The pick offered again under another header and question.
@@ -1206,16 +1667,6 @@ async def test_the_pick_is_found_by_label_value_or_datasets(
                 header="Map",
             ),
         ),
-        # Answered in text only: there is no option to offer again.
-        (
-            _districts_answered([], "Only the seven boroughs"),
-            _asking(
-                DISTRICTS_QUESTION,
-                {"label": "Official districts"},
-                {"label": "Postcode areas"},
-                header="Districts",
-            ),
-        ),
         # Shown, but the user wrote a message instead of answering it.
         (
             AskHistory(cards={"ask-d1": DISTRICTS_CARD}),
@@ -1223,6 +1674,17 @@ async def test_the_pick_is_found_by_label_value_or_datasets(
                 DISTRICTS_QUESTION,
                 {"label": "Official districts"},
                 {"label": "Postcode areas"},
+                header="Districts",
+            ),
+        ),
+        # A question that offers a run, under a header the user answered:
+        # each run needs a pick of its own.
+        (
+            _districts_answered([0]),
+            _asking(
+                RUN_QUESTION,
+                {"label": "Run now", "value": "run:wf-a"},
+                {"label": "Later", "value": "later"},
                 header="Districts",
             ),
         ),
@@ -1304,8 +1766,9 @@ async def test_the_picks_of_a_card_whose_run_pick_was_used_count_no_more() -> No
         "Which day?", {"label": "Weekday"}, {"label": "Saturday"}, header="Day"
     )
     assert await _refusal(RUN_ANSWERED, card) == (
-        'The user already chose "Weekday" for "Which day?". Use it; if it did not '
-        "work, say why in your text and offer only other options."
+        'The user already answered "Which day?" (Day): they chose "Weekday". Use '
+        "that answer. If it did not work or left something open, say so in your "
+        "text and ask only what is still open, under a new header that names it."
     )
     await _shown(RUN_ANSWERED, card, used=["ask-r1"])
 
@@ -1352,8 +1815,10 @@ async def test_an_open_pick_with_a_value_still_counts() -> None:
     )
     history = _stops_left_open({"label": "Leave it open", "value": "open"})
     assert await _refusal(history, card) == (
-        f'The user already chose "Leave it open" for "{STOPS_QUESTION}". Use it; '
-        "if it did not work, say why in your text and offer only other options."
+        f'The user already answered "{STOPS_QUESTION}" (Stops): they chose "Leave '
+        'it open" (value open). Use that answer. If it did not work or left '
+        "something open, say so in your text and ask only what is still open, "
+        "under a new header that names it."
     )
 
 
@@ -1435,6 +1900,9 @@ class Answered:
     deps: RunDeps
     #: What each model call was offered, in order.
     infos: list[AgentInfo]
+    #: The note on the run's stage each model call ended with, in order; None
+    #: in a look-up step (``stage_note``).
+    notes: list[str | None]
 
 
 async def _answer(*responses: Response) -> tuple[Turn, list[DataPart]]:
@@ -1504,11 +1972,18 @@ async def _answer_run(
     usages: Sequence[Usage] = (),
     saved: int = 0,
     layers: list[dict[str, Any]] | None = None,
+    created: Sequence[str] = (),
+    asks: AskHistory | None = None,
+    core_routes: dict[tuple[str, str], Any] | None = None,
+    catalog: Recorder | None = None,
 ) -> Answered:
     """One answer on a workflow page whose model gives ``responses`` in order,
     then a closing text, under the run's limits as the run manager sets them
     from ``budget``. The open project's workflow has a finished run that
-    saved ``saved`` layers, and the project's ``layers`` can be listed."""
+    saved ``saved`` layers, and the project's ``layers`` can be listed. The
+    workflows in ``created`` were created in this answer; ``asks`` holds the
+    conversation's cards and answers, ``core_routes`` more of core's
+    answers, and ``catalog`` the catalog."""
     job, nodes = _finished_run(saved)
     core = Recorder(
         {
@@ -1519,6 +1994,7 @@ async def _answer_run(
             ("GET", f"/api/v2/project/{RUN_PROJECT}"): {"name": "Run project"},
             ("GET", f"/api/v2/project/{RUN_PROJECT}/layer"): layers or [],
             ("GET", f"/api/v2/project/{RUN_PROJECT}/group"): [],
+            **(core_routes or {}),
         }
     )
     # Listed while it was still going: workflow_run waits for it instead of
@@ -1532,11 +2008,13 @@ async def _answer_run(
     )
 
     infos: list[AgentInfo] = []
+    notes: list[str | None] = []
 
     async def stream(
         messages: list[ModelMessage], info: AgentInfo
     ) -> AsyncIterator[str | DeltaToolCalls]:
         infos.append(info)
+        notes.append(stage_note(messages))
         step = sum(isinstance(message, ModelResponse) for message in messages)
         if step >= len(responses):
             yield "The run buffered 3 features."
@@ -1571,10 +2049,14 @@ async def _answer_run(
         budget=budget,
     )
     deps.env = tool_env(
-        fake_clients(core=core, processes=processes),
+        fake_clients(core=core, processes=processes, catalog=catalog),
         page=page,
         emit_data=deps.emit_data,
     )
+    deps.env.workflows_created.update(created)
+    deps.env.runs.created.update(created)
+    if asks is not None:
+        deps.env.asks = asks
 
     async def on_event(event: Any) -> None:
         return None
@@ -1591,7 +2073,7 @@ async def _answer_run(
         on_event=on_event,
         usage_limits=budget.usage_limits() if budget is not None else None,
     )
-    return Answered(turn=turn, shown=shown, deps=deps, infos=infos)
+    return Answered(turn=turn, shown=shown, deps=deps, infos=infos, notes=notes)
 
 
 def _results(turn: Turn, tool: str) -> list[ToolReturnPart]:
@@ -1804,9 +2286,17 @@ def _offered(info: AgentInfo) -> set[str]:
     return {tool.name for tool in info.function_tools}
 
 
-def _instructions(info: AgentInfo) -> str:
-    parts = info.model_request_parameters.instruction_parts or []
-    return "\n".join(part.content for part in parts)
+def _stage(note: str | None) -> str:
+    """The stage a model call's note names (``assistant.agent.stage_note``):
+    "look up" for a call without one."""
+    if note is None:
+        return "look up"
+    reading = any(
+        read_the_result(reads) in note
+        for reads in range(RESULT_READS, MAX_RESULT_READS + 1)
+    )
+    stage = "read" if reading else "answer"
+    return f"{stage} or ask" if ANSWER_NOW_CARD in note else stage
 
 
 def test_the_result_is_read_with_the_project_reads_and_tool_descriptions() -> None:
@@ -1815,6 +2305,10 @@ def test_the_result_is_read_with_the_project_reads_and_tool_descriptions() -> No
     assert "at most 3 calls in all" in READ_THE_RESULT
     assert "at most 5 calls in all" in read_the_result(5)
     assert "card" not in READ_THE_RESULT
+    # It names the reads: every call offers every tool of the page.
+    assert "workflow_describe_tool" in READ_THE_RESULT
+    assert "project_group_statistics" in READ_THE_RESULT
+    assert "budget" not in READ_THE_RESULT
     assert CARD_AFTER_TEXT == (
         "Write the text first and the card after it, in the same response."
     )
@@ -1842,17 +2336,15 @@ async def test_past_its_budget_an_answer_still_reads_its_runs_result() -> None:
         ["The run buffered 3 features.", ("ask_user", CARD)],
         budget=RunBudget(max_tokens=10**9, max_tool_calls=30),
     )
-    reading = answered.infos[25]
-    assert _offered(reading) == (_offered(answered.infos[0]) & RESULT_READ_TOOLS) | {
-        "ask_user"
-    }
-    assert "project_get_layers" in _offered(reading)
-    assert READ_THE_RESULT in _instructions(reading)
-    assert CARD_AFTER_TEXT in _instructions(reading)
+    reading = answered.notes[25]
+    assert _stage(reading) == "read or ask"
+    assert READ_THE_RESULT in str(reading) and CARD_AFTER_TEXT in str(reading)
     [read] = _results(answered.turn, "project_get_layers")
     assert read.outcome != "failed"
-    # The tools stay the same while the result is read.
-    assert _offered(answered.infos[26]) == _offered(reading)
+    assert _stage(answered.notes[26]) == "read or ask"
+    # Every call offers the same tools; the stage refuses the others as they
+    # run.
+    assert all(_offered(info) == _offered(answered.infos[0]) for info in answered.infos)
     assert len(answered.shown) == 1
 
 
@@ -1864,17 +2356,13 @@ async def test_the_result_reads_run_past_the_tool_call_limit() -> None:
         budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
     )
     # The run took the run's only tool call; no card fits after it.
-    assert _offered(answered.infos[1]) == _offered(answered.infos[0]) & (
-        RESULT_READ_TOOLS
-    )
-    assert READ_THE_RESULT in _instructions(answered.infos[1])
-    assert "card" not in _instructions(answered.infos[1]).split(READ_THE_RESULT)[1]
+    assert answered.notes[1] == READ_THE_RESULT
     reads = _results(answered.turn, "project_get_layers")
     assert [read.outcome != "failed" for read in reads] == [True, True, True, False]
     assert reads[-1].content == LOOK_UPS_USED_UP
     assert list(answered.deps.admitted_calls.values()) == [1 + RESULT_READS]
     # Its reads used, the answer writes its text.
-    assert _offered(answered.infos[3]) == set()
+    assert _stage(answered.notes[3]) == "answer"
     assert answered.turn.output == "The run buffered 3 features."
 
 
@@ -1894,7 +2382,7 @@ async def test_the_description_of_the_tool_is_one_of_the_reads() -> None:
         [READ_CALL, READ_CALL, READ_CALL],
         budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
     )
-    assert "workflow_describe_tool" in _offered(answered.infos[1])
+    assert _stage(answered.notes[1]) == "read"
     [described] = _results(answered.turn, "workflow_describe_tool")
     assert described.outcome != "failed"
     reads = _results(answered.turn, "project_get_layers")
@@ -1908,9 +2396,8 @@ async def test_a_reported_result_ends_its_reads() -> None:
         ["The run buffered 3 features.", READ_CALL],
         budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
     )
-    assert "project_get_layers" in _offered(answered.infos[1])
-    assert _offered(answered.infos[2]) == set()
-    assert READ_THE_RESULT not in _instructions(answered.infos[2])
+    assert _stage(answered.notes[1]) == "read"
+    assert _stage(answered.notes[2]) == "answer"
 
 
 async def test_without_a_result_to_report_the_budget_ends_the_reads() -> None:
@@ -1918,14 +2405,13 @@ async def test_without_a_result_to_report_the_budget_ends_the_reads() -> None:
         [READ_CALL],
         budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
     )
-    assert _offered(answered.infos[1]) == set()
-    assert READ_THE_RESULT not in _instructions(answered.infos[1])
+    assert _stage(answered.notes[1]) == "answer"
 
 
-#: A run whose result arrives as its token budget is spent: the run's call
-#: misses the cache at 50,000 tokens. The first read step misses it too (its
-#: tools changed) at a smaller context, which would let the budget allow a
-#: look-up again.
+#: A run whose result arrives as its token budget is spent, on a provider
+#: that reads nothing from its cache: the run's call at 50,000 tokens. The
+#: first read step reports a smaller context, which would let the budget
+#: allow a look-up again.
 RUN_ON_TOKENS: tuple[Usage, Usage] = ((50_000, 0, 1_000), (20_000, 0, 500))
 #: After the run's call (51,000 spent, a context of about 51,200 with its
 #: result), a look-up and the two calls after it would need about 229,600:
@@ -1943,16 +2429,14 @@ async def test_when_tokens_end_the_look_ups_the_result_is_read_while_two_calls_f
         [READ_CALL],
         budget=READ_ON_TOKENS,
         # The second read step reads its input from the cache and writes a
-        # long output: after it, not even the answer step and a spare fit.
-        usages=[*RUN_ON_TOKENS, (20_600, 20_000, 40_000), (60_700, 0, 1_000)],
+        # long output: after it, the read step and the answer step no longer
+        # fit (about 237,900), the answer step does (about 185,000).
+        usages=[*RUN_ON_TOKENS, (20_600, 20_000, 50_000), (70_700, 0, 1_000)],
     )
-    everything, first, second, last = (_offered(info) for info in answered.infos)
-    assert first == (everything & RESULT_READ_TOOLS) | {"ask_user"}
-    assert READ_THE_RESULT in _instructions(answered.infos[1])
-    # Still reading, not a look-up with every tool.
-    assert second == first
-    assert last == set()
-    assert READ_THE_RESULT not in _instructions(answered.infos[3])
+    stages = [_stage(note) for note in answered.notes]
+    # Still reading after the smaller read step, not looking things up.
+    assert stages == ["look up", "read or ask", "read or ask", "answer or ask"]
+    assert READ_THE_RESULT in str(answered.notes[1])
     assert len(_results(answered.turn, "project_get_layers")) == 2
     assert answered.turn.output == "The run buffered 3 features."
 
@@ -1966,24 +2450,21 @@ async def test_a_run_that_read_past_its_budget_looks_nothing_else_up() -> None:
         budget=READ_ON_TOKENS,
         usages=RUN_ON_TOKENS,
     )
-    assert "project_get_layers" in _offered(answered.infos[1])
-    assert _offered(answered.infos[2]) == {"ask_user"}
+    assert _stage(answered.notes[1]) == "read or ask"
+    assert _stage(answered.notes[2]) == "answer or ask"
 
 
-async def test_a_read_step_needs_room_for_the_answer_step_and_a_spare() -> None:
-    """At 200,000, the answer step and a spare fit after the run's call
-    (about 161,400): the read step takes the room a look-up keeps for the
-    answer step and a spare."""
+async def test_a_read_step_needs_room_for_itself_and_the_answer_step() -> None:
+    """At 200,000, the read step and the answer step fit after the run's call
+    (about 161,400): the room a look-up keeps after it."""
     answered = await _answer_run(
         [LAST_RUN_CALL],
         [READ_CALL],
         budget=RunBudget(max_tokens=200_000, max_tool_calls=30),
         usages=RUN_ON_TOKENS,
     )
-    assert _offered(answered.infos[1]) == (
-        _offered(answered.infos[0]) & RESULT_READ_TOOLS
-    ) | {"ask_user"}
-    assert READ_THE_RESULT in _instructions(answered.infos[1])
+    assert _stage(answered.notes[1]) == "read or ask"
+    assert READ_THE_RESULT in str(answered.notes[1])
     assert answered.turn.output == "The run buffered 3 features."
 
 
@@ -1997,13 +2478,11 @@ LOOK_UPS_THEN_RUN: list[Usage] = [
 ]
 
 
-async def test_at_the_default_budget_a_finished_result_is_read_after_the_look_ups() -> (
-    None
-):
-    """After the run's call, one more look-up and the two calls after it no
-    longer fit (about 205,600 of 200,000), but the read step and the answer
-    step do (about 180,000): the answer reads its result, and its text
-    comes before any card."""
+async def test_at_the_default_budget_an_answer_that_ran_its_workflow_looks_on() -> None:
+    """After the run's call, about 67,800 weighted tokens in, one more
+    look-up and the read step and the answer step after it still fit (about
+    117,700 of 200,000): each reads the answer so far from the cache, so the
+    answer reads its result with every tool."""
     defaults = AssistantSettings.model_fields
     budget = RunBudget(
         max_tokens=defaults["run_max_tokens"].default,
@@ -2015,12 +2494,9 @@ async def test_at_the_default_budget_a_finished_result_is_read_after_the_look_up
         budget=budget,
         usages=LOOK_UPS_THEN_RUN,
     )
-    everything, after_run = _offered(answered.infos[0]), answered.infos[9]
-    # Every look-up step, the run's call among them, has every tool.
-    assert all(_offered(info) == everything for info in answered.infos[:9])
-    assert _offered(after_run) == (everything & RESULT_READ_TOOLS) | {"ask_user"}
-    assert READ_THE_RESULT in _instructions(after_run)
-    assert CARD_AFTER_TEXT in _instructions(after_run)
+    assert answered.notes == [None] * 10
+    everything = _offered(answered.infos[0])
+    assert all(_offered(info) == everything for info in answered.infos)
 
 
 async def test_with_its_reads_used_the_card_still_comes_after_the_text() -> None:
@@ -2033,20 +2509,21 @@ async def test_with_its_reads_used_the_card_still_comes_after_the_text() -> None
         [READ_CALL] * RESULT_READS,
         budget=RunBudget(max_tokens=10**9, max_tool_calls=30),
     )
-    answering = answered.infos[26]
-    assert _offered(answering) == {"ask_user"}
-    assert READ_THE_RESULT not in _instructions(answering)
-    assert CARD_AFTER_TEXT in _instructions(answering)
+    answering = answered.notes[26]
+    assert _stage(answering) == "answer or ask"
+    assert CARD_AFTER_TEXT in str(answering)
 
 
-async def test_without_a_result_to_report_the_card_needs_no_text_first() -> None:
+async def test_without_a_result_to_report_the_card_still_comes_after_the_text() -> None:
+    """Every step that may show the card asks for the text first: cards
+    that came alone left the user a question with nothing said before it."""
     answered = await _answer_run(
         *[LOOK_UP] * 25,
         budget=RunBudget(max_tokens=10**9, max_tool_calls=30),
     )
-    answering = answered.infos[25]
-    assert _offered(answering) == {"ask_user"}
-    assert CARD_AFTER_TEXT not in _instructions(answering)
+    answering = answered.notes[25]
+    assert _stage(answering) == "answer or ask"
+    assert str(answering).endswith(f"{ANSWER_NOW_CARD} {CARD_AFTER_TEXT}")
 
 
 async def test_two_cards_in_one_response_take_one_refusal() -> None:
@@ -2074,7 +2551,7 @@ async def test_a_read_that_reaches_the_limit_leaves_the_card_of_its_response() -
         ["The run buffered 3 features.", READ_CALL, ("ask_user", CARD)],
         budget=RunBudget(max_tokens=10**9, max_tool_calls=6),
     )
-    assert "ask_user" in _offered(answered.infos[5])
+    assert _stage(answered.notes[5]) == "read or ask"
     [card] = _card_results(answered.turn)
     assert card.outcome != "failed" and isinstance(card.content, dict)
     assert len(answered.shown) == 1
@@ -2095,7 +2572,7 @@ async def test_a_run_with_four_saved_layers_may_read_five_times() -> None:
         budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
         saved=4,
     )
-    assert read_the_result(5) in _instructions(answered.infos[1])
+    assert answered.notes[1] == read_the_result(5)
     reads = _results(answered.turn, "project_get_layers")
     assert [read.outcome != "failed" for read in reads] == [True] * 5 + [False]
     assert reads[-1].content == LOOK_UPS_USED_UP
@@ -2130,14 +2607,14 @@ async def test_reads_past_the_cap_in_a_batch_after_a_run_count_against_the_allow
         [READ_CALL] * 10,
         budget=RunBudget(max_tokens=10**9, max_tool_calls=30),
     )
-    assert len(_offered(answered.infos[24])) > len(RESULT_READ_TOOLS)
+    assert _stage(answered.notes[24]) == "look up"
     reads = _results(answered.turn, "project_get_layers")
     # Six within the limit, three past it, and the batch's last is refused.
     assert sum(read.outcome != "failed" for read in reads) == 6 + RESULT_READS
     assert [read.content for read in reads].count(LOOK_UPS_USED_UP) == 1
     assert list(answered.deps.admitted_calls.values()) == [30 + RESULT_READS]
     # The allowance is spent: no read step follows, and the answer writes.
-    assert _offered(answered.infos[25]) == set()
+    assert _stage(answered.notes[25]) == "answer"
     assert answered.turn.output == "The run buffered 3 features."
 
 
@@ -2151,10 +2628,10 @@ async def test_a_read_past_the_cap_is_held_to_the_answers_room() -> None:
         usages=[(2_000, 0, 100), (3_000, 0, 100)],
         layers=[{"id": 7, "name": "x" * 120_000, "type": "feature"}],
     )
-    assert len(_offered(answered.infos[1])) > len(RESULT_READ_TOOLS)
+    assert _stage(answered.notes[1]) == "look up"
     [read] = _results(answered.turn, "project_get_layers")
     assert read.outcome == "failed" and read.content == RESULT_TOO_LARGE
-    assert _offered(answered.infos[2]) == set()
+    assert _stage(answered.notes[2]) == "answer"
 
 
 async def test_a_read_in_the_response_that_ran_the_workflow_takes_none_of_its_reads() -> (

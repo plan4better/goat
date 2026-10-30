@@ -10,21 +10,32 @@ answer: a second ``ask_user`` call in the same response runs after the first
 ``ONE_CARD`` without showing anything (``assistant.tools.toolset``). A card
 after a finished workflow run's result, with no text written since, is
 refused with ``REPORT_FIRST`` the same way (``ToolSpec.report_first``), in
-at most two responses per result. A card that offers again what the user
-picked in an earlier card, under the same header or question, is refused
-with that pick named (``assistant.asks.repeated_question``). Not on MCP: its
-clients cannot show it.
+at most two responses per result. A card that asks again under the header of
+a question the user answered in an earlier card, or offers again what they
+picked under the same question, is refused with that answer named
+(``assistant.asks.repeated_question``), and so is one whose option names a
+catalog dataset the answer found but adds nothing
+(``assistant.asks.unadded_dataset``). The ids an option adds are looked up
+before the card is shown, and the result names each option's datasets by
+the titles found, so an id that is not the data its label names shows
+before the user picks. Not on MCP: its clients cannot show it.
 """
 
 import asyncio
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 from pydantic_ai.exceptions import ToolFailed
 
-from assistant.asks import CARD_PREFIX, AskUserInput, card_data, repeated_question
+from assistant.asks import (
+    CARD_PREFIX,
+    AskUserInput,
+    card_data,
+    repeated_question,
+    unadded_dataset,
+)
 from assistant.surfaces import SURFACES
 from assistant.tools.http import ServiceError, sign_in_expired
 from assistant.tools.runtime import InputInvalid, ToolEnv, ToolSpec
@@ -33,6 +44,14 @@ ASKED_NOTE = (
     "The card is shown to the user. End your answer now, without asking the same "
     "in text; their choices come with their next message."
 )
+#: Follows ASKED_NOTE when options add datasets (``AskShown.adds``): the ids
+#: are checked to exist, not to be the data the label names.
+ADDS_NAMED = (
+    "adds lists the datasets each option adds, by title: if one is not the "
+    "data its label names, tell the user in your text."
+)
+#: In ``AskShown.adds`` for a dataset whose lookup gave no title.
+UNKNOWN_TITLE = "(no title found)"
 #: The failure of a second card in the same answer.
 ONE_CARD = (
     "One card per answer: this card was not shown. Put every question into one "
@@ -64,36 +83,81 @@ MAX_CHECKED_ADDS = 50
 _NAMED_ADDS = 5
 
 
+class OptionAdds(BaseModel):
+    #: The option's label.
+    option: str
+    #: The title of each dataset it adds, as the lookup that checked its id
+    #: found it.
+    datasets: list[str]
+
+
 class AskShown(BaseModel):
     card_id: str
     status: Literal["asked"] = "asked"
+    #: The options that add datasets, each with their titles.
+    adds: list[OptionAdds] | None = None
     note: str = ASKED_NOTE
+
+
+#: What a lookup of an id found: whether it names a dataset (None when the
+#: service could not tell), and the dataset's title when it has one.
+Found = tuple[bool | None, str | None]
+
+
+def _title(value: Any) -> str | None:
+    return (value.strip() or None) if isinstance(value, str) else None
+
+
+def _catalog_title(resolved: Any) -> str | None:
+    """The title of a dataset or a bundle as the catalog resolves it."""
+    if not isinstance(resolved, dict):
+        return None
+    if resolved.get("kind") == "item":
+        item = resolved.get("item")
+        props = item.get("properties") if isinstance(item, dict) else None
+        return _title(props.get("title")) if isinstance(props, dict) else None
+    collection = resolved.get("collection")
+    return _title(collection.get("title")) if isinstance(collection, dict) else None
+
+
+async def _catalog_entry(env: ToolEnv, item: str) -> Found:
+    """Whether the catalog has a dataset or a bundle under ``item``, and its
+    title."""
+    try:
+        resolved = await env.call(
+            "catalog", "GET", f"/stac/resolve/{quote(item, safe='')}"
+        )
+    except ServiceError as exc:
+        return (False if exc.status == 404 else None), None
+    except ToolFailed:
+        return None, None
+    return True, _catalog_title(resolved)
 
 
 async def in_catalog(env: ToolEnv, item: str) -> bool | None:
     """Whether the catalog has a dataset or a bundle under ``item``; None
     when it cannot tell (it failed, or did not answer)."""
+    return (await _catalog_entry(env, item))[0]
+
+
+async def _core_entry(env: ToolEnv, path: str) -> tuple[bool | None, Any]:
+    """Whether core lets the user read ``path``, and what it answered; None
+    when it cannot tell (it failed, or the sign-in expired)."""
     try:
-        await env.call("catalog", "GET", f"/stac/resolve/{quote(item, safe='')}")
+        body = await env.call("core", "GET", path)
     except ServiceError as exc:
-        return False if exc.status == 404 else None
+        if sign_in_expired(exc) or exc.status not in (401, 403, 404, 422):
+            return None, None
+        return False, None
     except ToolFailed:
-        return None
-    return True
+        return None, None
+    return True, body
 
 
 async def core_reads(env: ToolEnv, path: str) -> bool | None:
     """Whether core lets the user read ``path``; None when it cannot tell (it
     failed, or the sign-in expired)."""
-    try:
-        await env.call("core", "GET", path)
-    except ServiceError as exc:
-        if sign_in_expired(exc) or exc.status not in (401, 403, 404, 422):
-            return None
-        return False
-    except ToolFailed:
-        return None
-    return True
+    return (await _core_entry(env, path))[0]
 
 
 async def users_dataset(env: ToolEnv, item: str) -> bool:
@@ -107,32 +171,39 @@ async def users_dataset(env: ToolEnv, item: str) -> bool:
     return await core_reads(env, f"/api/v2/layer/{dataset_id}") is True
 
 
-async def _readable(env: ToolEnv, item: str) -> bool | None:
+async def _readable(env: ToolEnv, item: str) -> Found:
     """Whether ``item`` is a dataset of the user's that they can read, as
     ``project_add_dataset`` checks it, or a bundle of theirs, whose layers a
     pick of it lets the add tool add (bundles have a table of their own);
-    None when core cannot tell."""
+    None when core cannot tell. A dataset's name is its title; core lists a
+    bundle's layers without one."""
     try:
         dataset_id = UUID(item)
     except ValueError:
-        return False
-    layer = await core_reads(env, f"/api/v2/layer/{dataset_id}")
+        return False, None
+    layer, body = await _core_entry(env, f"/api/v2/layer/{dataset_id}")
     if layer is not False:
-        return layer
-    return await core_reads(env, f"/api/v2/bundle/{dataset_id}/layers")
+        return layer, _title(body.get("name")) if isinstance(body, dict) else None
+    bundle, _ = await _core_entry(env, f"/api/v2/bundle/{dataset_id}/layers")
+    return bundle, None
 
 
-async def _unknown(env: ToolEnv, item: str) -> bool:
-    """Whether neither the catalog nor core knows ``item``. A lookup that
-    cannot tell lets it pass: the add tools check it again."""
-    found = await asyncio.gather(in_catalog(env, item), _readable(env, item))
-    return all(known is False for known in found)
+async def _lookup(env: ToolEnv, item: str) -> Found:
+    """Whether ``item`` names a dataset: False when neither the catalog nor
+    core knows it. A lookup that cannot tell lets it pass: the add tools
+    check it again. With the title either of them gave."""
+    (catalog, catalog_title), (own, own_title) = await asyncio.gather(
+        _catalog_entry(env, item), _readable(env, item)
+    )
+    known = False if catalog is False and own is False else True
+    return known, catalog_title or own_title
 
 
-async def _check_adds(env: ToolEnv, card: AskUserInput) -> None:
+async def _check_adds(env: ToolEnv, card: AskUserInput) -> dict[str, str | None]:
     """Refuses a card whose options add ids no dataset has, each id looked up
     once, all at the same time, and one with more ids than
-    ``MAX_CHECKED_ADDS`` without looking any up."""
+    ``MAX_CHECKED_ADDS`` without looking any up. The titles the lookups
+    found, by id."""
     ids = list(
         dict.fromkeys(
             item
@@ -146,17 +217,16 @@ async def _check_adds(env: ToolEnv, card: AskUserInput) -> None:
             f"The card's options add {len(ids)} different datasets; a card adds "
             f"at most {MAX_CHECKED_ADDS}: put fewer ids in it."
         )
-    unknown = [
-        item
-        for item, missing in zip(
+    found = dict(
+        zip(
             ids,
-            await asyncio.gather(*(_unknown(env, item) for item in ids)),
+            await asyncio.gather(*(_lookup(env, item) for item in ids)),
             strict=True,
         )
-        if missing
-    ]
+    )
+    unknown = [item for item, (known, _) in found.items() if known is False]
     if not unknown:
-        return
+        return {item: title for item, (_, title) in found.items()}
     named = ", ".join(repr(item) for item in unknown[:_NAMED_ADDS])
     if len(unknown) > _NAMED_ADDS:
         named += f" and {len(unknown) - _NAMED_ADDS} more"
@@ -171,6 +241,19 @@ async def _check_adds(env: ToolEnv, card: AskUserInput) -> None:
     )
 
 
+def _named_adds(card: AskUserInput, titles: dict[str, str | None]) -> list[OptionAdds]:
+    """The options that add datasets, each with the titles of what it adds."""
+    return [
+        OptionAdds(
+            option=option.label,
+            datasets=[titles.get(item) or UNKNOWN_TITLE for item in option.adds],
+        )
+        for question in card.questions
+        for option in question.options
+        if option.adds
+    ]
+
+
 async def _ask(env: ToolEnv, args: AskUserInput) -> AskShown:
     if env.emit_data is None:
         raise ToolFailed(
@@ -179,10 +262,15 @@ async def _ask(env: ToolEnv, args: AskUserInput) -> AskShown:
     repeat = repeated_question(env.asks, args, env.runs.used_cards)
     if repeat is not None:
         raise InputInvalid(repeat)
-    await _check_adds(env, args)
+    unadded = unadded_dataset(args, env.catalog_titles)
+    if unadded is not None:
+        raise InputInvalid(unadded)
+    adds = _named_adds(args, await _check_adds(env, args))
     card_id = CARD_PREFIX + uuid4().hex
     await env.emit_data("ask", card_data(card_id, args), part_id=card_id)
-    return AskShown(card_id=card_id)
+    if not adds:
+        return AskShown(card_id=card_id)
+    return AskShown(card_id=card_id, adds=adds, note=f"{ASKED_NOTE} {ADDS_NAMED}")
 
 
 ASK_USER: ToolSpec[AskUserInput, AskShown] = ToolSpec(

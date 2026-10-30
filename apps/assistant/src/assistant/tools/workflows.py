@@ -26,7 +26,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai.exceptions import ToolFailed
 
-from assistant.asks import RUN_PREFIX, recent_picked_ids
+from assistant.asks import RUN_PREFIX, AskHistory, recent_picked_ids
 from assistant.context import RECORD_ID_PATTERN, project_of
 from assistant.tools.ask import in_catalog, users_dataset
 from assistant.tools.core import ShownItem, ShownItemGroup
@@ -82,7 +82,8 @@ NO_CONSENT = (
 )
 ADDED_NOTE = (
     "Added to the project. Its data is copied in the background: until it is "
-    "ready, the check does not judge the fields of steps that read it."
+    "ready, the check does not judge the fields of steps that read it. Read its "
+    "fields with project_get_fields before you create a workflow that reads it."
 )
 NOT_PICKED_DATASET = (
     "Not added: the user has not picked this dataset in a card. Ask with ask_user, "
@@ -889,6 +890,7 @@ async def _create(env: ToolEnv, args: DraftInput) -> WorkflowCreated:
         project_id=str(row.get("project_id") or project_id),
     )
     env.runs.created.add(workflow.id)
+    env.workflows_created.add(workflow.id)
     labels = prepared.converted.labels
     return WorkflowCreated(
         workflow=workflow,
@@ -1244,9 +1246,24 @@ def _items(value: Any) -> list[dict[str, Any]]:
     )
 
 
+def unchosen_steps(config: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The dataset steps of an editor config without a layer, as processes
+    refuses a run of them (``layer_not_chosen``): no layer id, or an input
+    a template's use left unresolved."""
+    return [
+        node
+        for node in _items(config.get("nodes"))
+        if _node_kind(node) == "dataset"
+        and (
+            _node_data(node).get("unresolved") is True
+            or not _node_data(node).get("layerId")
+        )
+    ]
+
+
 def config_graph(config: Mapping[str, Any], waiting: Iterable[str] = ()) -> Graph:
     """The gate's graph of an editor config: a dataset step without a layer
-    is open, as the check reports it (``layer_not_chosen``), and so is each
+    is open, as the check reports it (``unchosen_steps``), and so is each
     step of ``waiting``, whose layer is not readable yet."""
     nodes = _items(config.get("nodes"))
     connections = tuple(
@@ -1258,18 +1275,7 @@ def config_graph(config: Mapping[str, Any], waiting: Iterable[str] = ()) -> Grap
         for edge in _items(config.get("edges"))
         if edge.get("source") is not None and edge.get("target") is not None
     )
-    unchosen = [
-        *waiting,
-        *(
-            str(node.get("id"))
-            for node in nodes
-            if _node_kind(node) == "dataset"
-            and (
-                _node_data(node).get("unresolved") is True
-                or not _node_data(node).get("layerId")
-            )
-        ),
-    ]
+    unchosen = [*waiting, *(str(node.get("id")) for node in unchosen_steps(config))]
     return Graph(
         open_ids=downstream(
             unchosen, ((source, target) for source, target, _ in connections)
@@ -1522,6 +1528,7 @@ async def _from_template(env: ToolEnv, args: FromTemplateInput) -> WorkflowCreat
         project_id=str(project_id),
     )
     env.runs.created.add(workflow.id)
+    env.workflows_created.add(workflow.id)
     return WorkflowCreated(
         workflow=workflow,
         open_issues=_left_open(preview, still_open, names),
@@ -1575,14 +1582,16 @@ async def dataset_picked(
     *,
     members: Callable[[str], Awaitable[set[str]]],
     candidate: Callable[[str], bool] | None = None,
+    history: AskHistory | None = None,
 ) -> bool:
     """Whether the user picked this dataset in a card: an option's value or
     adds names it, or names a bundle it belongs to. ``members`` lists a
     bundle's datasets (an empty set for an id that is no bundle);
     ``candidate`` tells which ids ``members`` can find a bundle under at all.
     Both filters apply before the lookups are capped, so newer picks of ids
-    that name no bundle do not push an older bundle pick out."""
-    picked = recent_picked_ids(env.asks)
+    that name no bundle do not push an older bundle pick out. ``history``:
+    the cards and answers to read, the conversation's when not given."""
+    picked = recent_picked_ids(history if history is not None else env.asks)
     if dataset_id in picked:
         return True
     candidates = [
@@ -1673,11 +1682,32 @@ def _added_layers(project_id: UUID, rows: Any, note: str) -> AddedLayers:
     )
 
 
+async def catalog_picked(
+    env: ToolEnv, catalog_id: str, history: AskHistory | None = None
+) -> bool:
+    """Whether the user picked this catalog dataset in a card, or a catalog
+    bundle it belongs to (``dataset_picked``), in ``history`` or the
+    conversation's cards. A dataset found picked is remembered for the
+    answer (``ToolEnv.picked_datasets``): ``history`` holds some of the
+    conversation's cards, so a pick found there is one of the conversation's,
+    and the check of the conversation's cards takes it without looking the
+    bundles up again (the step that answers checks the pick that started
+    the answer before the add tool checks the conversation's)."""
+    if history is None and catalog_id in env.picked_datasets:
+        return True
+    picked = await dataset_picked(
+        env, catalog_id, members=_catalog_members(env), history=history
+    )
+    if picked:
+        env.picked_datasets.add(catalog_id)
+    return picked
+
+
 async def _add_catalog_layer(env: ToolEnv, args: AddCatalogLayerInput) -> AddedLayers:
     project_id = open_project(env)
     # The user's pick in a card, read from the stored conversation: never the
     # model's word, never a typed reply (spec §5.3).
-    if not await dataset_picked(env, args.catalog_id, members=_catalog_members(env)):
+    if not await catalog_picked(env, args.catalog_id):
         raise ToolFailed(NO_CONSENT)
     try:
         rows = await env.call(

@@ -470,6 +470,16 @@ async def test_a_create_without_warnings_leaves_them_out() -> None:
     assert "warnings" not in created
 
 
+async def test_a_created_workflow_is_one_this_answer_built() -> None:
+    """The step that answers may still run a workflow the answer created
+    (assistant.tools.toolset); one created in an earlier answer is the
+    conversation's only."""
+    env = _env(*_services())
+    created = await execute(CREATE, env, {"draft": DRAFT})
+    assert env.workflows_created == {created["workflow"]["id"]}
+    assert env.runs.created == {created["workflow"]["id"]}
+
+
 def test_a_warning_after_the_create_is_no_reason_to_create_again() -> None:
     """The warnings come back once the workflow exists, and no tool changes
     or deletes it: a corrected draft created for a warning would be a second

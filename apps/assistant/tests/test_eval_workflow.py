@@ -24,10 +24,11 @@ from pydantic_ai.models.function import (
 
 from assistant.asks import AskUserInput
 from assistant.config import AssistantSettings
+from assistant.prompt import ANSWER_IN_TEXT, ANSWER_NOW_CARD, CARD_AFTER_TEXT
 from assistant.tools.ask import ASK_USER
 from assistant.tools.catalog import NO_SUCH_WORD, NOTHING_FOUND
 from assistant.tools.runtime import InputInvalid, execute
-from assistant.tools.testing import ScriptedModel, TurnModel, tool_env
+from assistant.tools.testing import ScriptedModel, TurnModel, stage_note, tool_env
 from assistant.tools.toolset import FRUITLESS_SEARCHES, SEARCHED_ENOUGH
 from assistant.tools.workflow_tools import clear_description_cache
 from assistant.workflows.draft import Draft, ProjectLayer, to_config
@@ -1439,22 +1440,23 @@ async def test_a_model_that_answers_nothing_after_the_layers_still_asks(
     """wf-04 failed with "Exceeded maximum output retries (3)" after
     skills_load and project_get_layers: four responses in a row held neither
     text nor a tool call, and Pydantic AI asked again each time with every
-    tool offered. After the second, the answer step offers only the card."""
-    offered: list[list[str]] = []
+    tool offered. After the second, the answer step is told to answer or to
+    ask with the card."""
+    notes: list[str | None] = []
 
     async def stream(
         messages: list[ModelMessage], info: AgentInfo
     ) -> AsyncIterator[str | DeltaToolCalls | DeltaThinkingCalls]:
-        tools = sorted(tool.name for tool in info.function_tools)
-        offered.append(tools)
-        step = len(offered) - 1
+        note = stage_note(messages)
+        notes.append(note)
+        step = len(notes) - 1
         if step == 0:
             yield {0: DeltaToolCall("skills_load", '{"name": "build-a-workflow"}')}
         elif step == 1:
             yield {0: DeltaToolCall("project_get_layers", "{}")}
-        elif tools == ["ask_user"]:
+        elif note is not None and ANSWER_NOW_CARD in note:
             yield {0: DeltaToolCall("ask_user", json.dumps(SCHOOLS_CARD))}
-        elif not tools:
+        elif note is not None:
             yield "Pick the school layer in the card."
         else:
             yield {0: DeltaThinkingPart(content="Two school layers: ask which.")}
@@ -1468,9 +1470,10 @@ async def test_a_model_that_answers_nothing_after_the_layers_still_asks(
         "project_get_layers",
         "ask_user",
     ]
-    assert len(offered[2]) > 1 and len(offered[3]) > 1 and offered[4] == ["ask_user"]
+    assert notes[:4] == [None] * 4
+    assert notes[4] == f"{ANSWER_IN_TEXT} {ANSWER_NOW_CARD} {CARD_AFTER_TEXT}"
     # The card ends the answer: no call for text follows it.
-    assert len(offered) == 5 and transcript.answer == ""
+    assert len(notes) == 5 and transcript.answer == ""
     assert [g.passed for g in await grade(task, transcript, backends)] == [True, True]
 
 

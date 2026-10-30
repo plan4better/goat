@@ -223,6 +223,19 @@ def _search_row(collection: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in row.items() if value is not None}
 
 
+def _note_found(env: ToolEnv, records: list[Any]) -> None:
+    """Keeps the title of each catalog dataset a result shows the model, by
+    id (``ToolEnv.catalog_titles``): a card option that names one adds it."""
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        item, title = record.get("id"), record.get("title")
+        if title is None and isinstance(record.get("properties"), dict):
+            title = record["properties"].get("title")
+        if isinstance(item, str) and isinstance(title, str) and title.strip():
+            env.catalog_titles[item] = title
+
+
 def _sortable(queryables: dict[str, Any]) -> list[str]:
     """The names a ``sortby`` may use, from the catalog's queryables document."""
     return sorted(
@@ -411,6 +424,7 @@ async def _search(env: ToolEnv, args: SearchInput) -> SearchResult:
         reserved=_json_size(facets or []),
     )
     matched = int(page.get("numberMatched") or 0)
+    _note_found(env, trimmed)
     return SearchResult(
         number_matched=matched,
         number_returned=len(trimmed),
@@ -680,7 +694,9 @@ async def _get_record(env: ToolEnv, args: GetRecordInput) -> CatalogRecord:
         raise
     base = str(env.services.catalog.base_url).rstrip("/")
     if resolved.get("kind") == "item":
-        return CatalogRecord(_relative(_compact_record(resolved["item"]), base))
+        item = _relative(_compact_record(resolved["item"]), base)
+        _note_found(env, [item])
+        return CatalogRecord(item)
     collection = _relative(_compact_record(dict(resolved["collection"])), base)
     all_members = [m for m in resolved.get("items") or [] if isinstance(m, dict)]
     members = _relative(
@@ -694,6 +710,7 @@ async def _get_record(env: ToolEnv, args: GetRecordInput) -> CatalogRecord:
     collection["goat:items"] = kept
     collection["goat:items_truncated"] = member_count > len(members) or cap_truncated
     collection["goat:member_count"] = member_count
+    _note_found(env, [collection, *kept])
     return CatalogRecord(collection)
 
 

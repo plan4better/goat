@@ -13,6 +13,7 @@ from pygeofilter.util import parse_datetime
 
 from assistant.context import parse_context
 from assistant.login import StaticLogin
+from assistant.tools import project
 from assistant.tools.filters import (
     CONDITION_EXAMPLE,
     FILTER_EXAMPLES,
@@ -612,6 +613,75 @@ async def test_a_layer_being_copied_says_so(status: str) -> None:
         )
     assert caught.value.message == STILL_COPYING
     assert geoapi.requests == []
+
+
+def _copying_then(statuses: list[str | None]) -> Recorder:
+    """A core whose layer 7 is a catalog copy with the next of ``statuses``
+    at each listing of the project's layers (the last one stays)."""
+    core = _core_with([])
+    listed = 0
+
+    def layers(request: httpx.Request) -> httpx.Response:
+        nonlocal listed
+        status = statuses[min(listed, len(statuses) - 1)]
+        listed += 1
+        row = {
+            "id": 7,
+            "layer_id": LINES,
+            "name": "Stops",
+            "type": "feature",
+            "feature_layer_geometry_type": "point",
+            "other_properties": {"catalog_materialize": {"status": status}},
+        }
+        return httpx.Response(200, json=[row])
+
+    core.routes[("GET", f"/api/v2/project/{PROJECT}/layer")] = layers
+    return core
+
+
+def _layer_listings(core: Recorder) -> int:
+    return core.paths().count(f"/api/v2/project/{PROJECT}/layer")
+
+
+async def test_the_fields_of_a_layer_being_copied_are_read_once_it_is_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """project_get_fields waits a little for a copy that is under way: a
+    workflow is written from the fields, and each read the model makes again
+    resends the whole answer."""
+    monkeypatch.setattr(project, "COPY_POLL_SECONDS", 0)
+    core = _copying_then(["pending", "running", "ready"])
+    result = await execute(
+        GET_FIELDS, _env(core, _geoapi(), _processes()), {"layer_project_id": 7}
+    )
+    assert result["fields"]
+    assert _layer_listings(core) == 3
+
+
+async def test_a_copy_that_takes_longer_still_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The wait is bounded: then the read says the layer is still being
+    copied, and the other reads do not wait."""
+    assert project.COPY_POLLS * project.COPY_POLL_SECONDS <= 30
+    monkeypatch.setattr(project, "COPY_POLL_SECONDS", 0)
+    core = _copying_then(["running"])
+    geoapi = _geoapi()
+    with pytest.raises(ToolFailed) as caught:
+        await execute(
+            GET_FIELDS, _env(core, geoapi, _processes()), {"layer_project_id": 7}
+        )
+    assert caught.value.message == STILL_COPYING
+    assert _layer_listings(core) == project.COPY_POLLS + 1
+    assert geoapi.requests == []
+    counting = _copying_then(["running"])
+    with pytest.raises(ToolFailed):
+        await execute(
+            COUNT_FEATURES,
+            _env(counting, _geoapi(), _processes()),
+            {"layer_project_id": 7},
+        )
+    assert _layer_listings(counting) == 1
 
 
 @pytest.mark.parametrize("status", ["ready", "failed", None])

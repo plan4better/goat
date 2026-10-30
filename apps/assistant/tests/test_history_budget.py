@@ -15,6 +15,7 @@ from pydantic_ai import RunContext
 from pydantic_ai.exceptions import ToolFailed, UsageLimitExceeded
 from pydantic_ai.messages import (
     ModelMessage,
+    ModelMessagesTypeAdapter,
     ModelRequest,
     ModelResponse,
     RetryPromptPart,
@@ -32,9 +33,9 @@ from pydantic_ai.models.function import (
     FunctionModel,
 )
 from pydantic_ai.models.test import TestModel
-from pydantic_ai.usage import RequestUsage, RunUsage
+from pydantic_ai.usage import RequestUsage, RunUsage, UsageLimits
 
-from assistant.agent import RunDeps, build_agent
+from assistant.agent import STAGE_KEY, RunDeps, build_agent
 from assistant.budget import (
     MAX_RESULT_READS,
     NextCall,
@@ -45,11 +46,18 @@ from assistant.budget import (
 from assistant.bus import InMemoryEventBus
 from assistant.config import AssistantSettings
 from assistant.context import parse_context
-from assistant.history import SHORTENED, shorten_earlier_results
+from assistant.history import (
+    KEPT_READ_CHARS,
+    KEPT_READS,
+    SHORT_RESULT_CHARS,
+    SHORTENED,
+    shorten_earlier_results,
+)
 from assistant.prompt import (
     ANSWER_IN_TEXT,
     ANSWER_NOW,
     ANSWER_NOW_CARD,
+    CARD_AFTER_TEXT,
     render_note,
     with_note,
 )
@@ -57,7 +65,13 @@ from assistant.repo import Repository
 from assistant.runs.manager import RunManager
 from assistant.tools.http import ServiceClients
 from assistant.tools.registry import BY_WIRE_NAME
-from assistant.tools.testing import Recorder, ScriptedModel, fake_clients, tool_env
+from assistant.tools.testing import (
+    Recorder,
+    ScriptedModel,
+    fake_clients,
+    stage_note,
+    tool_env,
+)
 from assistant.tools.toolset import (
     LOOK_UPS_USED_UP,
     RESULT_TOO_LARGE,
@@ -67,6 +81,9 @@ from assistant.tools.toolset import (
 )
 
 USER = UUID(int=1)
+#: The note of a step that answers with room for a card: in every such step
+#: the card comes after the text, in the same response.
+ANSWER_OR_ASK = f"{ANSWER_NOW} {ANSWER_NOW_CARD} {CARD_AFTER_TEXT}"
 
 WORKFLOWS = {
     "projects": [],
@@ -166,8 +183,8 @@ def test_earlier_reasoning_is_left_out_and_the_current_kept() -> None:
 def test_a_long_text_or_list_result_keeps_its_start_or_its_count() -> None:
     messages: list[ModelMessage] = [
         ModelRequest(parts=[UserPromptPart(content="q")]),
-        _call("catalog_get_record", "c1"),
-        _result("catalog_get_record", "c1", "x" * 5000),
+        _call("catalog_search", "c1"),
+        _result("catalog_search", "c1", "x" * 5000),
         _call("project_sample_features", "c2"),
         _result("project_sample_features", "c2", [{"a": "y" * 100}] * 40),
         ModelResponse(parts=[TextPart(content="a")]),
@@ -177,6 +194,130 @@ def test_a_long_text_or_list_result_keeps_its_start_or_its_count() -> None:
     text = _content(sent[2])
     assert text.startswith("x" * 300) and text.endswith(f"({SHORTENED})")
     assert _content(sent[4]) == {"shortened": SHORTENED, "items": "40 items"}
+
+
+#: A dataset's record as catalog_get_record returns it: longer than a result
+#: kept for its shortness.
+RECORD = {
+    "id": "zensus-2022",
+    "title": "Census 2022: population",
+    "description": "Residents per grid cell. " * 100,
+    "goat:items": [{"id": "zensus-2022-grid", "title": "Grid"}],
+}
+#: A layer's fields as project_get_fields returns them.
+FIELDS = {"fields": [{"name": f"field_{n}", "type": "integer"} for n in range(80)]}
+
+
+def _sent_length(tool: str, content: Any) -> int:
+    """The length of a result as the model is sent it."""
+    part = ToolReturnPart(tool_name=tool, content=content, tool_call_id="c")
+    return len(part.model_response_str())
+
+
+def _earlier_answer(*results: tuple[str, Any]) -> list[ModelMessage]:
+    """An earlier answer that called each tool of ``results`` once, each
+    call with its own arguments, and got its result, then the newest user
+    message."""
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content="which population data?")])
+    ]
+    for n, (tool, content) in enumerate(results):
+        messages += _read(tool, f"c{n}", {"layer_project_id": n}, content)
+    messages += [
+        ModelResponse(parts=[TextPart(content="The census grid fits.")]),
+        ModelRequest(parts=[UserPromptPart(content="and by age?")]),
+    ]
+    return messages
+
+
+def test_earlier_records_and_field_lists_stay_whole_in_later_answers() -> None:
+    """What an earlier answer read about a dataset (its catalog record, a
+    layer's fields) stays whole, so a follow-up does not read it again; the
+    same result of another tool is shortened as before."""
+    assert KEPT_READS == {"catalog_get_record", "project_get_fields"}
+    assert all(BY_WIRE_NAME[name].risk == "read" for name in KEPT_READS)
+    for tool, result in (
+        ("catalog_get_record", RECORD),
+        ("project_get_fields", FIELDS),
+    ):
+        assert SHORT_RESULT_CHARS < _sent_length(tool, result) <= KEPT_READ_CHARS
+    sent = shorten_earlier_results(
+        _earlier_answer(
+            ("catalog_get_record", RECORD),
+            ("project_get_fields", FIELDS),
+            ("catalog_search", RECORD),
+        )
+    )
+    assert _content(sent[2]) == RECORD
+    assert _content(sent[4]) == FIELDS
+    assert _content(sent[6])["shortened"] == SHORTENED
+
+
+def _read(
+    tool: str, call_id: str, args: dict[str, Any], content: Any
+) -> list[ModelMessage]:
+    return [
+        ModelResponse(
+            parts=[ToolCallPart(tool_name=tool, args=args, tool_call_id=call_id)]
+        ),
+        _result(tool, call_id, content),
+    ]
+
+
+def test_a_read_kept_whole_is_kept_once() -> None:
+    """A record read in two earlier answers goes to the model whole once, in
+    the newer answer, and the older copy is shortened: each kept copy costs
+    its length in every later call. The current answer's reads leave the
+    earlier answers as they are, so the run's calls keep their cached
+    prefix."""
+    record = {"item_id": "zensus-2022"}
+    other = {"item_id": "hh-bezirke"}
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content="which population data?")]),
+        *_read("catalog_get_record", "c1", record, RECORD),
+        *_read("catalog_get_record", "c2", other, RECORD),
+        ModelResponse(parts=[TextPart(content="The census grid fits.")]),
+        ModelRequest(parts=[UserPromptPart(content="and by age?")]),
+        *_read("catalog_get_record", "c3", record, RECORD),
+        ModelResponse(parts=[TextPart(content="It has age groups.")]),
+        ModelRequest(parts=[UserPromptPart(content="and the districts?")]),
+        *_read("catalog_get_record", "c4", other, RECORD),
+    ]
+    sent = shorten_earlier_results(messages)
+    # The older read of the census record is shortened, the newer kept.
+    assert _content(sent[2])["shortened"] == SHORTENED
+    assert _content(sent[8]) == RECORD
+    # The district record was read again only in the current answer.
+    assert _content(sent[4]) == RECORD
+    assert _content(sent[12]) == RECORD
+
+
+def test_an_earlier_read_past_its_cap_is_shortened() -> None:
+    """Every call resends the conversation, so a kept result costs its length
+    in every later call: past the cap (a bundle's record that lists its many
+    datasets) it is shortened to its counts as any other result."""
+    bundle = {
+        "id": "districts",
+        "title": "Districts",
+        "goat:items": [{"id": f"d{n}", "title": "District " * 10} for n in range(60)],
+    }
+    assert _sent_length("catalog_get_record", bundle) > KEPT_READ_CHARS
+    at_cap, past_cap = "x" * KEPT_READ_CHARS, "x" * (KEPT_READ_CHARS + 1)
+    sent = shorten_earlier_results(
+        _earlier_answer(
+            ("catalog_get_record", bundle),
+            ("project_get_fields", at_cap),
+            ("project_get_fields", past_cap),
+        )
+    )
+    assert _content(sent[2]) == {
+        "shortened": SHORTENED,
+        "id": "districts",
+        "title": "Districts",
+        "goat:items": "60 items",
+    }
+    assert _content(sent[4]) == at_cap
+    assert _content(sent[6]).endswith(f"({SHORTENED})")
 
 
 async def test_the_model_gets_earlier_results_shortened_in_a_real_run() -> None:
@@ -237,23 +378,29 @@ def _spent_so_far(weighted: int) -> RunUsage:
         (RunUsage(requests=3, tool_calls=24, input_tokens=30), SMALL, False),
         # Five tool calls kept in reserve of 30.
         (RunUsage(requests=3, tool_calls=25, input_tokens=30), SMALL, True),
-        # 47,000 spent; the look-up 12,500 (3,500 uncached, 35,000 read from
-        # the cache, 1,000 output); then the answer and the closing call at
-        # 43,000 plus a step of at least 8,000 each, and 8,000 for answering:
-        # 169,500. Four times the newest call would have spent it.
-        (_spent_so_far(47_000), LONG, False),
-        # 202,000 at 79,500 spent: neither half the step nor half the
-        # allowance for answering would fit it.
-        (_spent_so_far(79_500), LONG, True),
+        # The look-up 12,500 (8,000 uncached, 35,000 read from the cache,
+        # 1,000 output); then the read step and the answer step from 43,000
+        # plus a step of at least 8,000, each reading the newest call's
+        # 35,000 from the cache (19,500 each), and 8,000 for answering:
+        # 59,500 in all. 199,500 at 140,000 spent.
+        (_spent_so_far(140_000), LONG, False),
+        (_spent_so_far(141_000), LONG, True),
         # The run's largest step counts when it is larger than the floor:
-        # 20,000 each, 206,500 at 60,000 spent.
+        # 31,500 each, 200,500 at 117,000 spent.
         (
-            _spent_so_far(60_000),
+            _spent_so_far(116_000),
+            NextCall(newest=CACHED, raw=43_000, growth=20_000),
+            False,
+        ),
+        (
+            _spent_so_far(117_000),
             NextCall(newest=CACHED, raw=43_000, growth=20_000),
             True,
         ),
         # A look-up after a call that read nothing from the cache reads
-        # nothing either: 44,000 for it, 201,000 at 47,000 spent.
+        # nothing either, nor do the calls after it: 44,000 for it, 51,000
+        # each for the read step and the answer step, and 8,000: 201,000 at
+        # 47,000 spent, the reserve of two uncached calls.
         (
             _spent_so_far(47_000),
             NextCall(
@@ -275,16 +422,16 @@ def test_one_more_look_up_only_when_what_follows_it_fits(
 @pytest.mark.parametrize(
     ("usage", "can_ask"),
     [
-        # The answer step and the closing call at 43,000 each, and 8,000 for
-        # answering: 194,000 at 100,000 spent.
-        (_spent_so_far(100_000), True),
-        # 204,000: only the answer step fits, which answers in text.
-        (_spent_so_far(110_000), False),
+        # The answer step at 43,000, 35,000 of it read from the cache
+        # (11,500), and 8,000 for answering: 200,000 at 180,500 spent. A card
+        # ends the answer, so no call after it needs room.
+        (_spent_so_far(180_500), True),
+        (_spent_so_far(181_000), False),
         # No tool call left for the card.
         (RunUsage(requests=6, tool_calls=30, input_tokens=1_000), False),
     ],
 )
-def test_the_card_is_offered_only_when_both_calls_fit(
+def test_the_card_is_offered_only_when_the_answer_step_fits(
     usage: RunUsage, can_ask: bool
 ) -> None:
     budget = RunBudget(max_tokens=200_000, max_tool_calls=30)
@@ -294,21 +441,40 @@ def test_the_card_is_offered_only_when_both_calls_fit(
 @pytest.mark.parametrize(
     ("usage", "fits"),
     [
-        # The read step and the answer step at 43,000 each, and 8,000 for
-        # answering: 200,000 at 106,000 spent.
-        (_spent_so_far(106_000), True),
+        # The read step and the answer step at 43,000 each, 35,000 of it read
+        # from the cache (11,500 each), and 8,000 for answering: 200,000 at
+        # 169,000 spent.
+        (_spent_so_far(169_000), True),
         # 201,000.
-        (_spent_so_far(107_000), False),
+        (_spent_so_far(170_000), False),
     ],
 )
 def test_a_read_past_the_look_ups_needs_room_for_two_calls(
     usage: RunUsage, fits: bool
 ) -> None:
-    """The read step is sized as the answer step and its spare are: a silent
-    answer after a run gets the fixed ending (runs/turn.py), not a retry."""
+    """The read step and the answer step after it, and no call to ask a
+    silent answer again: a silent answer after a run gets the fixed ending
+    (runs/turn.py), not a retry."""
     budget = RunBudget(max_tokens=200_000, max_tool_calls=30)
     assert budget.read_fits(usage, LONG) is fits
-    assert budget.answer_fits(usage, LONG) is fits
+    assert budget.answer_fits(usage, LONG)
+
+
+def test_without_cache_reads_the_calls_that_end_an_answer_cost_their_context() -> None:
+    """A provider that reports no cache reads: each call that ends the answer
+    is sized at its whole context, 43,000 here."""
+    uncached = NextCall(
+        newest=RequestUsage(input_tokens=40_000, output_tokens=1_000),
+        raw=43_000,
+        growth=3_000,
+    )
+    budget = RunBudget(max_tokens=200_000, max_tool_calls=30)
+    # The read step and the answer step, and 8,000: 94,000.
+    assert budget.read_fits(_spent_so_far(106_000), uncached)
+    assert not budget.read_fits(_spent_so_far(107_000), uncached)
+    # The answer step and 8,000: 51,000.
+    assert budget.answer_fits(_spent_so_far(149_000), uncached)
+    assert not budget.answer_fits(_spent_so_far(150_000), uncached)
 
 
 def test_cache_reads_count_at_a_tenth_and_the_rest_fully() -> None:
@@ -348,6 +514,86 @@ def test_the_hard_limit_counts_tokens_as_the_budget_does() -> None:
         limits.check_tokens(uncached)
     with pytest.raises(UsageLimitExceeded, match="1000"):
         limits.check_before_request(uncached)
+
+
+def _requests(calls: list[RequestUsage], limits: UsageLimits | None = None) -> RunUsage:
+    """The run's usage after ``calls``, checked as Pydantic AI checks it
+    against ``limits``: before each request and after its response."""
+    usage = RunUsage()
+    for call in calls:
+        if limits is not None:
+            limits.check_before_request(usage)
+        usage.incr(call)
+        usage.requests += 1
+        if limits is not None:
+            limits.check_tokens(usage)
+    return usage
+
+
+def _after(calls: list[RequestUsage]) -> NextCall:
+    """The call after ``calls``: the newest call's context and 4,300 more."""
+    newest = calls[-1]
+    return NextCall(
+        newest=newest,
+        raw=newest.input_tokens + newest.output_tokens + 4_300,
+        growth=5_000,
+    )
+
+
+def test_the_hard_limit_leaves_room_for_one_answer_call_that_misses_the_cache() -> None:
+    """With production numbers: a first call of 40,000 tokens, then calls
+    5,000 tokens larger each, 90 % read from the cache, while the answer
+    step after them still fits as the budget plans it. The answer step then
+    misses the cache and costs its whole context: past the planned tokens,
+    within the hard limit. A second such call is past it."""
+    budget = RunBudget(max_tokens=200_000, max_tool_calls=30)
+    calls = [RequestUsage(input_tokens=40_000, output_tokens=700)]
+    while True:
+        context = _after(calls).raw
+        call = RequestUsage(
+            input_tokens=context,
+            cache_read_tokens=round(0.9 * context),
+            output_tokens=700,
+        )
+        if not budget.answer_fits(_requests([*calls, call]), _after([*calls, call])):
+            break
+        calls.append(call)
+    assert len(calls) > 5
+    # The planning is unchanged: the answer step fits at the cache's rate.
+    assert budget.answer_fits(_requests(calls), _after(calls))
+    missed = RequestUsage(input_tokens=_after(calls).raw, output_tokens=700)
+    usage = _requests([*calls, missed], budget.usage_limits())
+    assert weighted_tokens(usage) > budget.max_tokens
+    again = RequestUsage(input_tokens=_after([*calls, missed]).raw, output_tokens=700)
+    with pytest.raises(UsageLimitExceeded, match="Exceeded the token limit of 200000"):
+        _requests([*calls, missed, again], budget.usage_limits())
+
+
+def test_without_cache_reads_the_hard_limit_leaves_room_for_one_call_past_the_plan() -> (
+    None
+):
+    """A provider that caches nothing: the plan sizes each call that ends an
+    answer at its whole context, and a call more than planned (a card
+    refused for want of text, a call its stage refused) costs that much
+    again. The hard limit leaves room for one call of the newest call's
+    context beyond the plan; a second one is past it."""
+    budget = RunBudget(max_tokens=200_000, max_tool_calls=30)
+    calls = [
+        RequestUsage(input_tokens=55_000, output_tokens=700),
+        RequestUsage(input_tokens=60_000, output_tokens=700),
+    ]
+    # The answer step still fits as planned: 116,400 spent, 65,000 for it,
+    # and 8,000 for answering.
+    assert budget.answer_fits(_requests(calls), _after(calls))
+    planned = RequestUsage(input_tokens=_after(calls).raw, output_tokens=700)
+    past = RequestUsage(input_tokens=_after([*calls, planned]).raw, output_tokens=700)
+    usage = _requests([*calls, planned, past], budget.usage_limits())
+    assert weighted_tokens(usage) > budget.max_tokens
+    again = RequestUsage(
+        input_tokens=_after([*calls, planned, past]).raw, output_tokens=700
+    )
+    with pytest.raises(UsageLimitExceeded, match="Exceeded the token limit of 200000"):
+        _requests([*calls, planned, past, again], budget.usage_limits())
 
 
 def _response(input_tokens: int, output_tokens: int, run_id: str) -> ModelResponse:
@@ -408,22 +654,20 @@ async def test_near_its_limits_a_run_answers_and_may_only_ask() -> None:
         env=tool_env(fake_clients(), page=page),
         prompt_note=render_note(page, None, "en"),
         # One tool call kept in reserve of six: tools for five.
-        budget=RunBudget(max_tokens=10**9, max_tool_calls=6),
+        budget=RunBudget(max_tokens=200_000, max_tool_calls=6),
     )
     script = ScriptedModel(calls=[("core_page_context", {})] * 5)
     result = await build_agent(script.model).run(
         with_note(deps.prompt_note, "where am I?"), deps=deps
     )
     assert result.output == "done"
-
-    def instructions(index: int) -> str:
-        parts = script.infos[index].model_request_parameters.instruction_parts or []
-        return "\n".join(part.content for part in parts)
-
-    assert script.infos[0].function_tools and ANSWER_NOW not in instructions(0)
-    # After five calls: only the card, and the model is told to answer.
-    assert [tool.name for tool in script.infos[5].function_tools] == ["ask_user"]
-    assert f"{ANSWER_NOW} {ANSWER_NOW_CARD}" in instructions(5)
+    assert script.infos[0].function_tools and script.stage_note(0) is None
+    # After five calls the model is told to answer, or to ask with the card,
+    # with the same tools and instructions (the stage refuses the others as
+    # they run).
+    assert script.stage_note(5) == ANSWER_OR_ASK
+    assert script.infos[5].function_tools == script.infos[0].function_tools
+    assert script.infos[5].instructions == script.infos[0].instructions
 
 
 async def test_a_second_response_without_text_or_a_tool_call_ends_the_look_ups() -> (
@@ -444,15 +688,14 @@ async def test_a_second_response_without_text_or_a_tool_call_ends_the_look_ups()
         emit=emit,
         env=tool_env(fake_clients(), page=page),
         prompt_note=render_note(page, None, "en"),
-        budget=RunBudget(max_tokens=10**9, max_tool_calls=30),
+        budget=RunBudget(max_tokens=200_000, max_tool_calls=30),
     )
     offered: list[list[str]] = []
-    instructions: list[str] = []
+    notes: list[str | None] = []
 
     def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         offered.append(sorted(tool.name for tool in info.function_tools))
-        parts = info.model_request_parameters.instruction_parts or []
-        instructions.append("\n".join(part.content for part in parts))
+        notes.append(stage_note(messages))
         step = len(offered) - 1
         if step == 0:
             call = ToolCallPart(
@@ -468,13 +711,12 @@ async def test_a_second_response_without_text_or_a_tool_call_ends_the_look_ups()
     )
     assert result.output == "Which of the two layers?"
     assert len(offered) == 4
-    # The first such response is asked again with the same tools.
-    assert len(offered[2]) > 1 and offered[2] == offered[1]
-    assert ANSWER_IN_TEXT not in instructions[2]
-    # After the second: only the card, and the model is told to answer.
-    assert offered[3] == ["ask_user"]
-    assert f"{ANSWER_IN_TEXT} {ANSWER_NOW_CARD}" in instructions[3]
-    assert ANSWER_NOW not in instructions[3]
+    # The first such response is asked again as it is.
+    assert notes[2] is None
+    # After the second the model is told why to answer now, or to ask with
+    # the card; its tools stay the same.
+    assert notes[3] == f"{ANSWER_IN_TEXT} {ANSWER_NOW_CARD} {CARD_AFTER_TEXT}"
+    assert len(set(map(tuple, offered))) == 1 and len(offered[0]) > 1
 
 
 def test_a_response_with_a_tool_call_or_text_is_not_silent() -> None:
@@ -515,16 +757,13 @@ async def test_at_its_tool_call_limit_a_run_is_not_offered_the_card() -> None:
         emit=emit,
         env=tool_env(fake_clients()),
         # No tool call kept in reserve of one.
-        budget=RunBudget(max_tokens=10**9, max_tool_calls=1),
+        budget=RunBudget(max_tokens=200_000, max_tool_calls=1),
     )
     script = ScriptedModel(calls=[("core_page_context", {})])
     result = await build_agent(script.model).run("where am I?", deps=deps)
     assert result.output == "done"
-    assert script.infos[1].function_tools == []
-    # Nor told to ask with it.
-    parts = script.infos[1].model_request_parameters.instruction_parts or []
-    [answer_now] = [p.content for p in parts if p.content.startswith(ANSWER_NOW)]
-    assert answer_now == ANSWER_NOW and "ask_user" not in answer_now
+    # Not told to ask with it (a card would be refused as it runs).
+    assert script.stage_note(1) == ANSWER_NOW and "ask_user" not in ANSWER_NOW
 
 
 CARD: dict[str, Any] = {
@@ -564,7 +803,7 @@ async def test_a_run_out_of_budget_still_asks_with_the_card(
 
     run = await repo.get_run(run_id)
     assert run is not None and (run["status"], run["error"]) == ("succeeded", None)
-    assert [tool.name for tool in script.infos[5].function_tools] == ["ask_user"]
+    assert script.stage_note(5) == ANSWER_OR_ASK
     # The card ends the answer: no model call follows it.
     assert len(script.infos) == 6
     [message] = [
@@ -603,14 +842,15 @@ def _sent_chars(message: ModelMessage) -> int:
 class _Provider(FunctionModel):
     """A streamed model that looks things up while it may (in call ``n`` with
     ``parallel[n]`` calls at once of ``tools[n]``, by default one call of
-    ``look_up``), asks with the card when
-    that is the only tool left (``asks``) and answers otherwise. Its usage is
+    ``look_up``), and once a note says to answer, asks with the card where
+    the note offers it (``asks``) and answers otherwise. Its usage is
     a provider's: the first call reads ``start`` input tokens, every call
     writes ``growth`` output tokens (plus ``spikes[n]`` in call ``n``), and
     the next call reads the previous call's input and output and the results
     it sends, so the run's messages show how the context grows. With
     ``cached`` a call reads the previous call's input from the cache when it
-    offers the same tools; a changed tool list misses the cache."""
+    offers the same tools with the same instructions; a changed tool list or
+    system text misses the cache."""
 
     def __init__(
         self,
@@ -630,17 +870,24 @@ class _Provider(FunctionModel):
         self.look_up = look_up
         self.parallel = parallel or {}
         self.tools = tools or {}
-        #: Per call: the tools offered, the instructions, and (input tokens,
-        #: cache reads, output tokens).
+        #: Per call: the tools offered, the instructions, the note on the
+        #: stage (None in a look-up step), and (input tokens, cache reads,
+        #: output tokens).
         self.offered: list[list[str]] = []
         self.instructions: list[str] = []
+        self.notes: list[str | None] = []
         self.usages: list[tuple[int, int, int]] = []
 
     async def _stream(
         self, messages: list[ModelMessage], info: AgentInfo
     ) -> AsyncIterator[str | DeltaToolCalls]:
         names = [tool.name for tool in info.function_tools]
-        hit = self.cached and bool(self.offered) and self.offered[-1] == names
+        hit = (
+            self.cached
+            and bool(self.offered)
+            and self.offered[-1] == names
+            and self.instructions[-1] == (info.instructions or "")
+        )
         n = len(self.usages)
         if self.usages:
             previous_input, _, previous_output = self.usages[-1]
@@ -652,8 +899,13 @@ class _Provider(FunctionModel):
         self.usages.append((input_tokens, previous_input if hit else 0, output))
         self.offered.append(names)
         self.instructions.append(info.instructions or "")
-        if names == ["ask_user"] and self.asks:
-            yield {0: _delta("ask_user", json.dumps(CARD), f"call-{n}")}
+        note = stage_note(messages)
+        self.notes.append(note)
+        if note is not None:
+            if self.asks and ANSWER_NOW_CARD in note:
+                yield {0: _delta("ask_user", json.dumps(CARD), f"call-{n}")}
+            else:
+                yield "Here is what I found."
         elif self.look_up in names:
             tool = self.tools.get(n, self.look_up)
             yield {
@@ -706,16 +958,27 @@ async def _run(
     return dict(run)
 
 
-async def test_the_answer_now_step_fits_although_it_misses_the_cache(
+async def test_the_answer_step_reads_from_the_cache_like_the_look_ups(
     repo: Repository, settings: AssistantSettings
 ) -> None:
-    """The step that answers offers other tools and instructions than the
-    calls before it, so the provider reads none of it from its cache: the
-    budget keeps room for its whole context."""
+    """The step that answers offers the tools and instructions of the calls
+    before it, its note comes after them, and the provider reads the answer
+    so far from its cache."""
     model = _Provider(start=20_000, growth=3_000)
     run = await _run(repo, settings, model)
     assert run["status"] == "succeeded", run["error"]
-    assert model.offered[-1] == ["ask_user"] and model.usages[-1][1] == 0
+    assert model.notes[0] is None and model.notes[-1] is not None
+    assert model.offered[-1] == model.offered[0]
+    assert model.usages[-1][1] == model.usages[-2][0]
+    # The stored history records each request's stage, not the note.
+    stored = ModelMessagesTypeAdapter.validate_python(
+        await repo.history(UUID(str(run["conversation_id"])))
+    )
+    stages = [
+        (m.metadata or {}).get(STAGE_KEY) for m in stored if isinstance(m, ModelRequest)
+    ]
+    assert stages == ["look up"] * (len(model.notes) - 1) + ["answer or ask"]
+    assert all(stage_note([m]) is None for m in stored if isinstance(m, ModelRequest))
 
 
 async def test_a_card_at_the_answer_now_step_ends_the_answer(
@@ -726,8 +989,8 @@ async def test_a_card_at_the_answer_now_step_ends_the_answer(
     model = _Provider(start=20_000, growth=3_000, asks=True)
     run = await _run(repo, settings, model)
     assert run["status"] == "succeeded", run["error"]
-    assert model.offered[-1] == ["ask_user"]
-    assert ANSWER_NOW_CARD in model.instructions[-1]
+    assert ANSWER_NOW_CARD in str(model.notes[-1])
+    assert all(note is None for note in model.notes[:-1])
 
 
 async def test_a_run_reading_from_the_cache_is_not_stopped_at_its_raw_tokens(
@@ -740,7 +1003,7 @@ async def test_a_run_reading_from_the_cache_is_not_stopped_at_its_raw_tokens(
     run = await _run(repo, settings, model, run_max_tokens=80_000)
     assert run["status"] == "succeeded", run["error"]
     # 25 look-ups (five of 30 tool calls kept in reserve), then the answer.
-    assert model.offered.count(model.offered[0]) == 25
+    assert model.notes.count(None) == 25 and len(model.notes) == 26
     assert sum(tokens for tokens, _, _ in model.usages) > 80_000
 
 
@@ -749,7 +1012,7 @@ async def test_a_run_past_the_weighted_limit_fails_on_it(
 ) -> None:
     """Pydantic AI checks the weighted count itself: the run ends at the token
     limit while its raw tokens stay far under the raw backstop."""
-    model = _Provider(start=900, growth=0, cached=False)
+    model = _Provider(start=1_100, growth=0, cached=False)
     run = await _run(repo, settings, model, run_max_tokens=1_000)
     assert run["status"] == "failed"
     assert run["error"].startswith(
@@ -758,17 +1021,17 @@ async def test_a_run_past_the_weighted_limit_fails_on_it(
     assert sum(tokens for tokens, _, _ in model.usages) < 10_000
 
 
-async def test_when_only_the_answer_fits_the_run_answers_in_text(
+async def test_after_a_step_larger_than_any_before_the_answer_step_still_fits(
     repo: Repository, settings: AssistantSettings
 ) -> None:
-    """A look-up whose results are larger than any step before leaves room
-    for the answer step but not for a card and the call that closes it."""
+    """A look-up whose response is larger than any step before ends the
+    look-ups, and the answer step still has its room: with it the card, which
+    ends the answer without another call."""
     model = _Provider(start=20_000, growth=2_000, asks=True, spikes={9: 20_000})
     run = await _run(repo, settings, model)
     assert run["status"] == "succeeded", run["error"]
-    assert model.offered[-1] == [] and ["ask_user"] not in model.offered
-    assert ANSWER_NOW in model.instructions[-1]
-    assert ANSWER_NOW_CARD not in model.instructions[-1]
+    assert model.notes[:10] == [None] * 10
+    assert model.notes[10:] == [ANSWER_OR_ASK]
 
 
 async def _stored_tools(repo: Repository, run: dict[str, Any]) -> list[dict[str, Any]]:
@@ -803,7 +1066,8 @@ async def test_a_step_past_the_tool_call_budget_runs_what_fits_and_answers(
     ]
     assert [p["state"] for p in step].count("output") == 6
     assert [p["error"] for p in step if p["state"] == "error"] == [LOOK_UPS_USED_UP] * 2
-    assert model.offered[-1] == []
+    # At the tool-call limit: no card.
+    assert model.notes[-1] == ANSWER_NOW
     refused = [row for row in await _audited(repo, run) if row[0] != "ok"]
     assert refused == [("error", LOOK_UPS_USED_UP)] * 2
 
@@ -826,11 +1090,11 @@ def _profile(name_chars: int) -> ServiceClients:
 async def test_a_step_whose_results_would_cross_the_reserve_answers(
     repo: Repository, settings: AssistantSettings
 ) -> None:
-    """Six large results at once would leave no room for the answer: the step
-    sends those that leave room for the answer step, and the run answers in
-    text, without room for a card."""
+    """Seven large results at once would leave no room for the answer: the
+    step sends those that leave room for the answer step, and the run
+    answers, with room for a card, which ends the answer."""
     model = _Provider(
-        start=20_000, growth=2_000, parallel={5: 6}, tools={5: "core_whoami"}
+        start=20_000, growth=2_000, parallel={5: 7}, tools={5: "core_whoami"}
     )
     run = await _run(repo, settings, model, _profile(40_000))
     assert run["status"] == "succeeded", run["error"]
@@ -839,13 +1103,14 @@ async def test_a_step_whose_results_would_cross_the_reserve_answers(
         for p in await _stored_tools(repo, run)
         if p["tool_call_id"].startswith("call-5-")
     ]
-    # About 54,600 spent and a context of about 32,500; each result is about
-    # 22,900 tokens: four leave the answer step its room, the fifth would not.
-    assert [p["state"] for p in step].count("output") == 4
+    # About 54,600 spent and a context of about 32,500, of which the step's
+    # call read 28,200 from the cache; each result is about 22,900 tokens:
+    # five leave the answer step its room, the sixth would not.
+    assert [p["state"] for p in step].count("output") == 5
     assert [p["error"] for p in step if p["state"] == "error"] == [RESULT_TOO_LARGE] * 2
     refused = [row[:2] for row in await _audited(repo, run) if row[0] != "ok"]
     assert refused == [("error", RESULT_TOO_LARGE)] * 2
-    assert model.offered[-1] == [] and len(model.offered) == 7
+    assert model.notes == [None] * 6 + [ANSWER_OR_ASK]
 
 
 async def test_a_large_result_makes_the_next_call_the_answer_step(
@@ -856,21 +1121,21 @@ async def test_a_large_result_makes_the_next_call_the_answer_step(
     model = _Provider(start=20_000, growth=1_000, tools={2: "core_whoami"})
     run = await _run(repo, settings, model, _profile(80_000))
     assert run["status"] == "succeeded", run["error"]
-    assert len(model.offered[2]) > 1 and model.offered[3:] == [["ask_user"]]
+    assert model.notes == [None] * 3 + [ANSWER_OR_ASK]
 
 
 async def test_a_large_first_step_still_gets_a_result_it_can_answer_from(
     repo: Repository, settings: AssistantSettings
 ) -> None:
-    """A run that continues a long conversation starts near its limit: a
-    result that leaves room for the answer step is sent though no card fits,
-    and the run answers from it in text."""
+    """A run that continues a long conversation starts near its limit, with
+    nothing read from the cache: a result that leaves room for the answer
+    step is sent, and the run answers from it."""
     model = _Provider(start=76_000, growth=0, tools={0: "core_whoami"})
     run = await _run(repo, settings, model, _profile(16_000))
     assert run["status"] == "succeeded", run["error"]
     [whoami] = await _stored_tools(repo, run)
     assert whoami["state"] == "output"
-    assert len(model.offered) == 2 and model.offered[1] == []
+    assert model.notes == [None, ANSWER_OR_ASK]
 
 
 async def test_a_refused_result_ends_the_look_ups(
@@ -886,7 +1151,8 @@ async def test_a_refused_result_ends_the_look_ups(
     run = await _run(repo, settings, model, fake_clients(core=core))
     assert run["status"] == "succeeded", run["error"]
     assert [p["state"] for p in await _stored_tools(repo, run)][2] == "error"
-    assert len(model.offered) == 4 and model.offered[3] == ["ask_user"]
+    assert model.notes[:3] == [None] * 3
+    assert model.notes[3:] == [ANSWER_OR_ASK]
     assert core.paths().count("/api/v2/users/profile") == 1
 
 
@@ -958,7 +1224,7 @@ async def test_a_repeated_result_over_the_cap_ends_at_the_tool_call_limit(
     assert run["status"] == "succeeded", run["error"]
     assert core.paths().count("/api/v2/users/profile") == 1
     # Five of 30 kept in reserve: 25 calls, then the answer step.
-    assert len(model.offered) == 26 and model.offered[-1] == ["ask_user"]
+    assert model.notes == [None] * 25 + [ANSWER_OR_ASK]
 
 
 async def test_a_repeated_failing_call_ends_at_the_tool_call_limit(
@@ -975,7 +1241,7 @@ async def test_a_repeated_failing_call_ends_at_the_tool_call_limit(
     model = _Provider(start=10_000, growth=0, tools=WHOAMI_FROM_CALL_2)
     run = await _run(repo, settings, model, fake_clients(core=core))
     assert run["status"] == "succeeded", run["error"]
-    assert len(model.offered) == 26 and model.offered[-1] == ["ask_user"]
+    assert model.notes == [None] * 25 + [ANSWER_OR_ASK]
     assert core.paths().count("/api/v2/users/profile") == 2
     errors = [
         p["error"]

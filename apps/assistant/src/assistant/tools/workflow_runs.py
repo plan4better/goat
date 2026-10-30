@@ -25,8 +25,9 @@ from assistant.tools.http import (
 )
 from assistant.tools.runtime import ToolEnv, ToolSpec
 from assistant.tools.workflow_tools import WORKFLOW_SURFACES, description
-from assistant.tools.workflows import open_project
+from assistant.tools.workflows import open_project, unchosen_steps
 from assistant.workflows.draft import TOOL_ID_PATTERN
+from assistant.workflows.edits import step_name
 from assistant.workflows.runs import (
     RUN_PART,
     RUN_VALUE,
@@ -130,6 +131,19 @@ async def _config(env: ToolEnv, project_id: UUID, workflow_id: str) -> dict[str,
         raise
     config = row.get("config") if isinstance(row, dict) else None
     return config if isinstance(config, dict) else {}
+
+
+def _open_steps(config: Mapping[str, Any]) -> str | None:
+    """Why a run of ``config`` is not started: dataset steps without a
+    layer, which processes refuses a run of (``unchosen_steps``), named. The
+    user chooses their layers in the editor. None when every step has one."""
+    names = [f'"{step_name(node)}"' for node in unchosen_steps(config)]
+    if not names:
+        return None
+    if len(names) == 1:
+        return f"Not started: step {names[0]} has no layer; the user chooses it first."
+    listed = f"{', '.join(names[:-1])} and {names[-1]}"
+    return f"Not started: steps {listed} have no layer; the user chooses them first."
 
 
 async def _latest(
@@ -339,6 +353,9 @@ async def _run(env: ToolEnv, args: RunInput) -> RunSummary:
     project_id = open_project(env)
     workflow_id = str(args.workflow_id)
     config = await _config(env, project_id, workflow_id)
+    # Before processes is asked: it refuses such a run anyway.
+    if (open_steps := _open_steps(config)) is not None:
+        raise ToolFailed(open_steps)
     latest = await _latest(env, workflow_id, JOBS_UNAVAILABLE, UNNAMED_RUNNING)
     latest_id = str(latest["jobID"]) if latest is not None else None
     allowed, card_id = run_permission(

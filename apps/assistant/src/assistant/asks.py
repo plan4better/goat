@@ -13,8 +13,9 @@ such as a workflow run's.
 
 import re
 from collections.abc import Collection, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -359,6 +360,15 @@ class AskHistory:
 
     cards: Mapping[str, AskUserInput] = field(default_factory=dict)
     answers: Mapping[str, CardAnswer] = field(default_factory=dict)
+    #: The card whose answer came with the message being answered
+    #: (``with_answer``); None when it came with none. The stored history
+    #: never sets it: an answer read back belongs to an earlier message.
+    answering: str | None = None
+    #: The cards answered since the user's last typed message, the answer
+    #: that came with the message being answered among them: the chain of
+    #: picks that answers one request (``repeated_question``). None: every
+    #: answered card, for a history not read from a conversation.
+    chain: frozenset[str] | None = None
 
     @classmethod
     def from_stored(cls, messages: Sequence[Mapping[str, Any]]) -> "AskHistory":
@@ -373,9 +383,17 @@ class AskHistory:
         answers: dict[str, CardAnswer] = {}
         shown: set[str] = set()
         shared: set[str] = set()
+        chain: set[str] = set()
         for message in messages:
             role = message.get("role")
-            for part in message.get("parts") or []:
+            parts = message.get("parts") or []
+            if role == "user" and not any(
+                isinstance(part, dict) and part.get("type") == "answer"
+                for part in parts
+            ):
+                # A typed message starts a new chain of picks.
+                chain = set()
+            for part in parts:
                 if not isinstance(part, dict):
                     continue
                 if (
@@ -406,15 +424,27 @@ class AskHistory:
                     except ValidationError:
                         continue
                     answers.setdefault(answer.card_id, answer)
+                    chain.add(answer.card_id)
         return cls(
             cards={key: card for key, card in cards.items() if key not in shared},
             answers=answers,
+            chain=frozenset(chain),
         )
 
     def with_answer(self, answer: CardAnswer) -> "AskHistory":
+        """With ``answer``, the answer that came with the message being
+        answered."""
         return AskHistory(
-            cards=self.cards, answers={**self.answers, answer.card_id: answer}
+            cards=self.cards,
+            answers={**self.answers, answer.card_id: answer},
+            answering=answer.card_id,
+            chain=None if self.chain is None else self.chain | {answer.card_id},
         )
+
+    def with_typed_message(self) -> "AskHistory":
+        """As it stands when the message being answered was typed, with no
+        card answer: a new chain of picks starts."""
+        return replace(self, answering=None, chain=frozenset())
 
 
 def _picked_options(history: AskHistory) -> Iterator[tuple[str, AskOption]]:
@@ -434,17 +464,35 @@ def _picked_options(history: AskHistory) -> Iterator[tuple[str, AskOption]]:
                     yield card_id, options[index]
 
 
-def _picks(
-    history: AskHistory, used_cards: Collection[str]
-) -> Iterator[tuple[AskQuestion, AskOption]]:
-    """The options the user picked in this conversation, each with its
-    question. The picks of a question that offers a workflow run
-    (``RUN_PREFIX``) are left out, the decline as well as the run, and so are
-    the picks of a card whose run pick was used (``used_cards``): a run needs
-    a new pick each time, another workflow one of its own, and a user who
-    declined may want it run after all. A pick with neither ``value`` nor
-    ``adds`` beside options that add datasets ("Leave it open") is left out
-    too: it chose no data, and the next dataset card offers it again."""
+@dataclass(frozen=True)
+class _Answered:
+    """A question of an answered card, with what the user gave for it."""
+
+    card_id: str
+    question: AskQuestion
+    #: The options picked that count (``_answers``), in the card's order.
+    picks: list[AskOption]
+    #: The free text written for it, on one line; empty when none.
+    other: str
+
+
+def _offers_run(question: AskQuestion) -> bool:
+    """Whether ``question`` offers a workflow run (``RUN_PREFIX``)."""
+    return any(
+        (option.value or "").startswith(RUN_PREFIX) for option in question.options
+    )
+
+
+def _answers(history: AskHistory, used_cards: Collection[str]) -> Iterator[_Answered]:
+    """The questions of the answered cards of this conversation, each with
+    what the user picked and wrote for it, in the order the cards were
+    answered. A question that offers a workflow run (``RUN_PREFIX``) is left
+    out, the decline as well as the run, and so is every question of a card
+    whose run pick was used (``used_cards``): a run needs a new pick each
+    time, another workflow one of its own, and a user who declined may want
+    it run after all. A pick with neither ``value`` nor ``adds`` beside
+    options that add datasets ("Leave it open") does not count: it chose no
+    data, and the next dataset card offers it again."""
     for card_id, answer in history.answers.items():
         card = history.cards.get(card_id)
         if card is None or card_id in used_cards:
@@ -453,19 +501,24 @@ def _picks(
             if reply.question >= len(card.questions):
                 continue
             question = card.questions[reply.question]
-            if any(
-                (option.value or "").startswith(RUN_PREFIX)
-                for option in question.options
-            ):
+            if _offers_run(question):
                 continue
             adds_data = any(option.adds for option in question.options)
-            for index in reply.options:
-                if index >= len(question.options):
-                    continue
-                option = question.options[index]
-                if adds_data and option.value is None and not option.adds:
-                    continue
-                yield question, option
+            picks = [
+                question.options[index]
+                for index in reply.options
+                if index < len(question.options)
+            ]
+            yield _Answered(
+                card_id=card_id,
+                question=question,
+                picks=[
+                    option
+                    for option in picks
+                    if not (adds_data and option.value is None and not option.adds)
+                ],
+                other=" ".join((reply.other or "").split()),
+            )
 
 
 def _offers_again(option: AskOption, picked: AskOption) -> bool:
@@ -478,28 +531,77 @@ def _offers_again(option: AskOption, picked: AskOption) -> bool:
     )
 
 
+#: The refusal of a card that asks again what the user answered
+#: (``repeated_question``).
+ASKED_AGAIN = (
+    'The user already answered "{question}" ({header}): they {answer}. Use that '
+    "answer. If it did not work or left something open, say so in your text and "
+    "ask only what is still open, under a new header that names it."
+)
+
+
+def _asked_again(earlier: _Answered) -> str:
+    """The refusal naming ``earlier``'s answer: its picks with their values,
+    and the text written for it."""
+    given: list[str] = []
+    if earlier.picks:
+        picked = ", ".join(
+            f'"{option.label}"' + (f" (value {option.value})" if option.value else "")
+            for option in earlier.picks
+        )
+        given.append(f"chose {picked}")
+    if earlier.other:
+        given.append(f'wrote "{earlier.other}"')
+    return ASKED_AGAIN.format(
+        question=earlier.question.question,
+        header=earlier.question.header,
+        answer=" and ".join(given),
+    )
+
+
 def repeated_question(
     history: AskHistory, card: AskUserInput, used_cards: Collection[str] = ()
 ) -> str | None:
-    """Why ``card`` asks again for what the user picked in this conversation,
-    naming the pick, or None when it does not: a question of it under the
-    same header or question as an answered one (case and spaces aside)
-    offers the option picked there again. A question asked again with other
-    options is a new choice, and so is one after the pick did not work that
-    leaves the pick out. ``used_cards``: as ``_picks``."""
-    picks = list(_picks(history, used_cards))
+    """Why ``card`` asks again what the user answered in this conversation,
+    naming the answer, or None when it does not. A header names a topic
+    within the chain of picks that answers one request
+    (``AskHistory.chain``): a question under the header of a question the
+    user picked an option for or wrote an answer to in that chain (case and
+    spaces aside) asks that topic again whatever it offers, and the newest
+    such answer is named. After a typed message, a common header ("Period")
+    may name another topic. A question with the words of an answered one,
+    in any earlier card of the conversation, asks it again when it offers
+    the option picked there again. A question the user left open, in a card
+    they answered or one they replied to in their message instead, may be
+    asked again, and so may a question that offers a workflow run.
+    ``used_cards``: as ``_answers``."""
+    answered = [
+        earlier
+        for earlier in _answers(history, used_cards)
+        if earlier.picks or earlier.other
+    ]
+    chained = [
+        earlier
+        for earlier in answered
+        if history.chain is None or earlier.card_id in history.chain
+    ]
     for question in card.questions:
-        for earlier, picked in picks:
-            if _plain(question.header) != _plain(earlier.header) and _plain(
-                question.question
-            ) != _plain(earlier.question):
-                continue
-            if any(_offers_again(option, picked) for option in question.options):
-                return (
-                    f'The user already chose "{picked.label}" for '
-                    f'"{earlier.question}". Use it; if it did not work, say why in '
-                    "your text and offer only other options."
-                )
+        if _offers_run(question):
+            continue
+        header = [
+            earlier
+            for earlier in chained
+            if _plain(earlier.question.header) == _plain(question.header)
+        ]
+        if header:
+            return _asked_again(header[-1])
+        for earlier in answered:
+            if _plain(earlier.question.question) == _plain(question.question) and any(
+                _offers_again(option, picked)
+                for option in question.options
+                for picked in earlier.picks
+            ):
+                return _asked_again(earlier)
     return None
 
 
@@ -538,3 +640,145 @@ def picked_ids(history: AskHistory) -> set[str]:
     """Every id the user picked in an answered card of this conversation: a
     picked option's ``value`` and each of its ``adds``."""
     return set(recent_picked_ids(history))
+
+
+def answered_pick(history: AskHistory) -> AskHistory:
+    """``history`` with only the answer that came with the message being
+    answered (``AskHistory.answering``): what the tools that act on a pick
+    may read for the pick that started this answer. No answer when the
+    message came without one."""
+    answer = history.answers.get(history.answering) if history.answering else None
+    return replace(
+        history, answers={answer.card_id: answer} if answer is not None else {}
+    )
+
+
+def answered_adds(history: AskHistory) -> list[str]:
+    """The datasets the options picked in the card answer that came with the
+    message being answered add (``AskHistory.answering``), each once; none
+    when the message came without one."""
+    return list(
+        dict.fromkeys(
+            item
+            for card_id, option in _picked_options(history)
+            if card_id == history.answering
+            for item in option.adds
+        )
+    )
+
+
+# -- an option that names a dataset without adding it ------------------------------
+
+#: A word of a label or a title: letters and digits, cut at anything else
+#: (spaces, dashes, punctuation, underscores).
+_WORD = re.compile(r"[^\W_]+")
+#: Where a title splits into parts that can be named on their own: a dash
+#: or a bar between spaces, a colon before one, and brackets.
+_TITLE_PART = re.compile(r"\s[-–—|]\s|:\s|[()\[\]]")
+#: Words that name nothing on their own (German and English).
+_FILLER = frozenset(
+    "der die das den dem des ein eine einer eines einem einen und oder von vom "
+    "zu zur zum im in am an auf aus bei mit für je pro nach über sowie als "
+    "the of for and or on at to by with a an from per".split()
+)
+#: Words of a label that leave something out or for later: such an option
+#: names a dataset it does not use.
+_LEAVES_OUT = frozenset(
+    "ohne kein keine keinen keiner nicht weglassen auslassen statt anstatt "
+    "später offen without no not skip omit instead later open".split()
+)
+
+
+def _words(text: str) -> set[str]:
+    """The words of ``text`` that name something, in lower case, a long
+    word without a final n or s, so a plural or a genitive matches."""
+    words = _WORD.findall(text.casefold())
+    return {
+        word[:-1] if len(word) > 5 and word[-1] in "ns" else word
+        for word in words
+        if word not in _FILLER
+    }
+
+
+def _naming(word: str) -> bool:
+    """A word that names a part of a title on its own: four letters or more,
+    or a number."""
+    return len(word) >= 4 or any(ch.isdigit() for ch in word)
+
+
+def label_names(label: str, title: str) -> bool:
+    """Whether an option's ``label`` names the dataset called ``title``,
+    counted narrowly, so an ordinary choice ("Bezirke", "ÖV-Güteklassen")
+    beside a dataset of such words is not one: the label holds the whole
+    title (two words or more, one of five letters or more), or a part of it
+    of two words or more that each name something (``_naming``), or the label
+    is three words or more, all of the title's, one of them longer than five
+    letters: a list of short words ("Bus, Bahn, Fähre") is a choice of its
+    own. A label that leaves data out names none."""
+    plain = _WORD.findall(label.casefold())
+    if _LEAVES_OUT & set(plain):
+        return False
+    words = _words(label)
+    whole = _words(title)
+    if len(whole) >= 2 and any(len(word) >= 5 for word in whole) and whole <= words:
+        return True
+    for part in _TITLE_PART.split(title):
+        named = _words(part)
+        if len(named) >= 2 and all(_naming(word) for word in named) and named <= words:
+            return True
+    return len(words) >= 3 and words <= whole and any(len(word) > 5 for word in plain)
+
+
+#: Datasets an option's refusal names at most.
+_NAMED_DATASETS = 3
+
+
+def _stands_for_data(option: AskOption, found: Mapping[str, str]) -> bool:
+    """Whether a pick of ``option`` lets the add tools add data: it adds
+    some, or its value is a dataset's id (one the answer found, or a UUID of
+    the user's own) or a layer_project_id of the open project."""
+    value = option.value or ""
+    if option.adds or value.isdigit() or value in found:
+        return True
+    try:
+        UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
+def unadded_dataset(card: AskUserInput, found: Mapping[str, str]) -> str | None:
+    """Why ``card`` cannot be shown: an option's label names a catalog
+    dataset the answer found (``found``: titles by id, ``label_names``)
+    while a pick of it lets no tool add one (``_stands_for_data``). The pick
+    would leave the next answer without the user's consent to add it, and a
+    second card that only asks to add it. A question that offers a workflow
+    run is left out: its options say what the run uses, which the project
+    holds already. None when no option does."""
+    for question in card.questions:
+        if _offers_run(question):
+            continue
+        for option in question.options:
+            if _stands_for_data(option, found):
+                continue
+            named = [
+                (item, title)
+                for item, title in found.items()
+                if label_names(option.label, title)
+            ]
+            if not named:
+                continue
+            listed = ", ".join(
+                f'"{title}" (id {item})' for item, title in named[:_NAMED_DATASETS]
+            )
+            if len(named) > _NAMED_DATASETS:
+                listed += f" and {len(named) - _NAMED_DATASETS} more"
+            kind = "dataset" if len(named) == 1 else "datasets"
+            return (
+                f'The option "{option.label}" names the catalog {kind} {listed}, '
+                "but adds nothing, so picking it would not let you add the "
+                "dataset. Put the id of the dataset it uses in its adds; for a "
+                "layer already in the project, its layer_project_id is the "
+                "value instead."
+            )
+    return None

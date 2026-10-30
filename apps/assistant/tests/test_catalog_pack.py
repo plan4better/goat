@@ -91,6 +91,20 @@ async def test_get_record_bundle(env: ToolEnv) -> None:
     assert record["goat:member_count"] == 4
 
 
+async def test_the_datasets_an_answer_found_are_kept_by_title(env: ToolEnv) -> None:
+    """The search's rows and a record with its members: a card option that
+    names one of them must add it (assistant.tools.ask)."""
+    result = await execute(SEARCH, env, {"q": "Radverkehrsnetz", "limit": 5})
+    rows = {row["id"]: row["title"] for row in result["results"] if row.get("title")}
+    assert rows and env.catalog_titles == rows
+    record = await execute(GET_RECORD, env, {"item_id": "src-1"})
+    assert env.catalog_titles["src-1"] == record["title"]
+    for member in record["goat:items"]:
+        assert env.catalog_titles[member["id"]] == member["title"]
+    item = await execute(GET_RECORD, env, {"item_id": "radverkehrsnetz-dresden-0"})
+    assert env.catalog_titles[item["id"]] == item["properties"]["title"]
+
+
 async def test_get_record_unknown_id_is_a_clean_failure(env: ToolEnv) -> None:
     with pytest.raises(ToolFailed) as caught:
         await execute(GET_RECORD, env, {"item_id": "does-not-exist"})

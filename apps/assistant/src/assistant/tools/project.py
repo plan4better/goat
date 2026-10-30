@@ -76,6 +76,13 @@ STILL_COPYING = (
     "then its data cannot be read."
 )
 _COPYING = frozenset({"pending", "running"})
+#: How often, and how many seconds apart, project_get_fields lists the
+#: project's layers again while a catalog layer is being copied: the copy
+#: starts when the dataset is added, a workflow is written from the fields,
+#: and each read the model makes again resends the whole answer. Bounded, so
+#: a slow copy still ends in ``STILL_COPYING``.
+COPY_POLLS = 5
+COPY_POLL_SECONDS = 5
 
 
 class ProjectInput(BaseModel):
@@ -147,7 +154,23 @@ def _copy_status(row: Mapping[str, Any]) -> str | None:
     return status if isinstance(status, str) else None
 
 
-async def _readable_layer(env: ToolEnv, args: LayerInput) -> _Layer:
+async def _readable_layer(
+    env: ToolEnv, args: LayerInput, *, wait_for_copy: bool = False
+) -> _Layer:
+    """The layer ``args`` names, if its data can be read. ``wait_for_copy``:
+    a catalog layer still being copied is listed again, ``COPY_POLLS`` times
+    ``COPY_POLL_SECONDS`` apart, before the read says so."""
+    for _ in range(COPY_POLLS if wait_for_copy else 0):
+        try:
+            return await _listed_layer(env, args)
+        except ToolFailed as exc:
+            if exc.message != STILL_COPYING:
+                raise
+        await asyncio.sleep(COPY_POLL_SECONDS)
+    return await _listed_layer(env, args)
+
+
+async def _listed_layer(env: ToolEnv, args: LayerInput) -> _Layer:
     project_id = _project_id(env, args.project_id)
     for row in await _core(env, f"/{project_id}/layer"):
         if row.get("id") != args.layer_project_id:
@@ -560,7 +583,7 @@ class LayerFields(BaseModel):
 
 
 async def _get_fields(env: ToolEnv, args: LayerInput) -> LayerFields:
-    layer = await _readable_layer(env, args)
+    layer = await _readable_layer(env, args, wait_for_copy=True)
     fields = await _fields(env, layer)
     return LayerFields(
         layer=layer.name,

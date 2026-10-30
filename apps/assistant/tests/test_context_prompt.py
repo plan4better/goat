@@ -698,6 +698,58 @@ def test_every_card_option_says_what_it_leaves_out() -> None:
     [rule] = [bullet for bullet in bullets if "ask_user" in bullet]
     assert (
         "a narrower one may be offered, never recommended. Each option's "
-        "description says in one clause what it leaves out or how exact it is"
-        in rule
+        "description says in one clause what it leaves out or how exact it is" in rule
+    )
+
+
+def _bullet(words: str) -> str:
+    """The one bullet of the fixed instructions holding ``words``, on one
+    line."""
+    bullets = [" ".join(bullet.split()) for bullet in INSTRUCTIONS.split("\n- ")]
+    [rule] = [bullet for bullet in bullets if words in bullet]
+    return rule
+
+
+def test_german_answers_address_the_user_with_sie() -> None:
+    """Pass 7: answers wrote "du" and "dein" beside the dock's own texts,
+    which say "Sie" ("Stellen Sie eine Frage", "Um Ihre Auswahl gebeten").
+    The rule is in the language bullet; English answers are left as they
+    are."""
+    rule = _bullet("Answer in the language of the user's newest message")
+    assert (
+        'In German, address the user formally with "Sie" (also "Ihr", "Ihnen"), '
+        'as GOAT\'s own texts do, never with "du".' in rule
+    )
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Write about the user's question, not about how you work.",
+        "Never mention your own budget, limits or stages, GOAT's notes, or your "
+        "look-up steps (which tools you called, a call that was refused).",
+        "When you could not check something, say what, not why in those terms.",
+        "Name a field by what it means; give its name only where the user needs it "
+        "(a filter to type, a column to pick).",
+    ],
+)
+def test_answers_leave_out_how_the_assistant_works(phrase: str) -> None:
+    """Pass 7: "Budget für Nachschlagen aufgebraucht", a class label
+    column's name, and that a card's options were refused reached the user.
+    One bullet says what answers leave out."""
+    assert phrase in _bullet("not about how you work")
+
+
+def test_the_note_on_the_answers_stage_is_followed_and_never_quoted() -> None:
+    """The note on the stage comes after the conversation, not at the start
+    of a user message (``agent.StageNote``): the instructions name it as a
+    third kind of note, to follow and never to quote."""
+    flat = " ".join(INSTRUCTIONS.split())
+    assert (
+        "Late in an answer, a third kind may come last, after the conversation: it "
+        "says how this answer goes on (answer now, read a result, or ask). "
+        "Follow it, and never quote or mention it to the user." in flat
+    )
+    assert flat.index("A longer message also ends with") < flat.index(
+        "a third kind may come last"
     )

@@ -346,7 +346,6 @@ async def run_task(
         max_tokens=settings.run_max_tokens,
         max_tool_calls=settings.run_max_tool_calls,
     )
-    limits = budget.usage_limits()
     started = time.monotonic()
     first_text: float | None = None
     output = ""
@@ -421,7 +420,9 @@ async def run_task(
                 deps=deps,
                 on_event=on_event,
                 message_history=history or None,
-                usage_limits=limits,
+                # One per run, as each run of the app has its own: the limit's
+                # margin follows the run's own requests.
+                usage_limits=budget.usage_limits(),
                 usage=usage,
             )
         # A shown card ends the answer: its text is what came before the card.
@@ -447,7 +448,7 @@ async def run_task(
                 text,
                 messages,
                 page,
-                AskHistory(cards={card_id: card}, answers={card_id: answer}),
+                AskHistory(cards={card_id: card}).with_answer(answer),
                 answer_lines(card, answer),
                 _written(first),
             )

@@ -73,15 +73,19 @@ two reasons: at the step that answers, which offered only `ask_user`, a model th
 refused in at most two responses per result (`REPORT_REFUSALS`), a repeat of the card refused before it with a shorter
 note, and the gate lets the next one through. A card that fails validation (a placeholder label, say) gets that error
 instead, which leaves the count alone. Validation refuses test cards and generic option labels ("Test", "Option 1",
-"Erste Option", `asks.LABEL_RULE`): a probe card with such options reached a user. A card that offers again the option
-the user picked in an earlier card (the same label, value or datasets), under the same header or question, is refused
-with that pick named (`asks.repeated_question`): models asked again what had been picked, mostly when an answer's
-look-ups ran out and a card was the way to go on. The refusal lets the model say why a pick did not work and offer
-other options. The same question with other options is a new choice. The picks of a Run card are left out, the
-decline too, since each run and each workflow needs a pick of its own and a user who declined may want the run after
-all; and a card whose Run pick was used counts no more with any of its picks. A pick without a value or datasets beside
-options that add datasets (the skill's "Leave it open") is left out as well: it chose no data, and every dataset card
-offers it. A stopped answer keeps the cards and workflows it showed in the history too, so a later answer to the card
+"Erste Option", `asks.LABEL_RULE`): a probe card with such options reached a user. A header names a topic within the
+chain of picks that answers one request, the cards answered since the user's last typed message (`AskHistory.chain`):
+a card with a question under the header of one the user answered in that chain, with a pick or with text, is refused
+whatever it offers, while after a typed message a common header ("Zeitraum") may name another topic. A card that
+offers again the option picked under the same question is refused across the whole conversation; the refusal names
+the answer (`asks.repeated_question`). Models asked a topic again under new labels, mostly when an
+answer's look-ups ran out and a card was the way to go on. The refusal says to use the answer, or to ask only what it
+left open under a header that names that, so a pick that did not work can still be replaced. A question the user left
+open, in a card they answered or by replying in their message instead, may be asked again. A Run question is left
+out, the decline too, since each run and each workflow needs a pick of its own and a user who declined may want the
+run after all; and a card whose Run pick was used counts no more with any of its questions. A pick without a value or
+datasets beside options that add datasets (the skill's "Leave it open") is left out as well: it chose no data, and
+every dataset card offers it. A stopped answer keeps the cards and workflows it showed in the history too, so a later answer to the card
 finds it. The user's answer is the next run's message (`RunMessage.answer`): it is checked against the stored card
 before anything is stored (a card is answered once), kept with the user message and returned as that message's
 `metadata.answer`, and given to the model with the values the card attached (`asks.answer_lines`, in a block of its own
@@ -93,8 +97,15 @@ pick of the dataset, and the card was asked again. Each id in `adds` is looked u
 catalog and, for a UUID, in core as a dataset or a bundle the user can read, as the add tools check them: an id neither
 knows refuses the card, so a cut-off id is fixed before the user picks it, and a lookup the service fails for lets the
 card through, since the add tools check again. A card names at most `MAX_CHECKED_ADDS` (50) distinct ids in `adds`; one
-with more is refused unchecked. An id the model then passes to another tool is streamed with that call, as any argument
-is. The card is not on `/mcp`: its clients cannot show one.
+with more is refused unchecked. An id that exists may still not be the dataset its label names: an option for a census
+grid once added the user's own export of stops. So the card's result names each option's datasets by the titles those lookups
+found (`AskShown.adds`), and the model sees a wrong id before the user picks it. An option whose label names a catalog
+dataset the answer found (its title, or a part of the title that is a name of its own, `asks.label_names`) while a pick
+of it lets no tool add one is refused with that dataset's id (`asks.unadded_dataset`): such options left the next
+answer without the user's consent to add the data, and a second card asked only for that. The match is narrow, so an
+ordinary choice ("Bezirke", "ÖV-Güteklassen") beside a dataset of such words passes; an option whose value is a
+layer of the project or the dataset's own id needs no `adds`. An id the model then passes to another tool is streamed
+with that call, as any argument is. The card is not on `/mcp`: its clients cannot show one.
 
 **Write tools.** Next to read tools and proposals there is a third risk class, `write` (`ToolSpec.risk` in
 `tools/runtime.py`): tools that create a workflow in the open project, run one, change one or add a dataset to it.
@@ -136,8 +147,9 @@ again after `HEARTBEAT_SECONDS` without a change, `tools/workflow_runs.py`). A r
 results, so it starts without asking only for a workflow this conversation created, with no export set to overwrite and
 whose latest run, if any, this conversation started (`run_permission` in `workflows/runs.py`, read from the
 conversation's stored parts); any other run needs the user's pick of Run in a card, one pick per run, and the refusal
-names the condition that failed, so the card says what a run does. A run processes refuses and a wait on a run already
-going use up the pick as well. A run already going is waited for, never started twice. The answer keeps one clock:
+names the condition that failed, so the card says what a run does. A workflow with a dataset step without a layer is
+not started: processes refuses such a run anyway, and the refusal names the steps whose layer the user chooses first.
+A run processes refuses and a wait on a run already going use up the pick as well. A run already going is waited for, never started twice. The answer keeps one clock:
 `ASSISTANT_RUN_MAX_SECONDS`, which a waiting run moves to `ASSISTANT_RUN_WAIT_MAX_SECONDS` from the answer's start
 (`clock.AnswerClock`); a run is not started when the answer has too little time left to wait for its first status, and
 when the wait has to end first, the run goes on and `workflow_last_run` reads it later. Stopping the answer cancels the
@@ -294,16 +306,21 @@ the service at startup naming its file; the instructions list each skill in one 
 cached prefix, `prompt.static_instructions`), and `skills_load` serves only what was read: a file name is looked up
 among those files, never opened as a path. A loaded skill stays whole in the conversation's history
 (`history.KEPT_TOOLS`), so it is not loaded again each turn. The first skill, `build-a-workflow`, carries GOAT's
-common chains in `recipes.md`; its tests (`tests/test_build_a_workflow_skill.py`) check that every assistant tool it
-names exists and that its example drafts use only tools, inputs, settings and choices found in process descriptions
-captured from processes (`tests/fixtures/process_descriptions.json`).
+common chains in one reference file per kind of question (heatmaps, catchment areas, public transport service, joins
+and distances), and its `SKILL.md` says which file a question needs: every file loaded stays in the history and is
+sent again with every later call, so a conversation loads only the one it uses. Its tests
+(`tests/test_build_a_workflow_skill.py`) check that every assistant tool it names exists, that each recipe sits in
+exactly one file, and that its example drafts use only tools, inputs, settings and choices found in process
+descriptions captured from processes (`tests/fixtures/process_descriptions.json`).
 
 Prompt caching: every model call of an answer resends the instructions, tool definitions and the conversation so
 far. OpenAI, Azure OpenAI, DeepSeek and Mistral cache that prefix by themselves; Claude (direct, Bedrock, Vertex) and
 models behind OpenRouter that need it get explicit cache markers (`llm/providers.py`). The page note (language,
 page, filters) travels in each user message (`prompt.with_note`), not in the instructions: it changes when the user
-moves or filters, and anything that changed ahead of the conversation would make every call read it again. Cached
-tokens are recorded per run and shown in the answer details.
+moves or filters, and anything that changed ahead of the conversation would make every call read it again. For the
+same reason every call of an answer offers the same tools, and the note on the answer's stage near the run's limits
+comes after the conversation (`agent.StageNote`, below). Cached tokens are recorded per run and shown in the answer
+details.
 
 OpenRouter sends one model to many providers, which differ in price, speed and precision (some serve 4-bit weights),
 and picks one per call unless told otherwise. An OpenRouter connection can therefore name its providers in order
@@ -314,30 +331,66 @@ Long conversations: because every call resends the conversation, earlier answers
 up most of each call, and an answer ran into `ASSISTANT_RUN_MAX_TOKENS` after a few searches. So before each call
 earlier answers' long tool results go to the model as their counts and their reasoning is left out
 (`assistant/history.py`); what the answers said and the cards they showed stay, and the stored history keeps everything.
-And before either run limit, the model's next call is told to answer with what it found and keeps only `ask_user`
-(`assistant/budget.py`), so a long search ends in an answer, or in a card when the user has to choose, not only in the
-limit error. A finished workflow run's result the answer has not written about yet is the exception: the answer may
+What an answer read about a dataset, its catalog record or a layer's fields (`history.KEPT_READS`), stays whole up to
+`KEPT_READ_CHARS`: shortened to counts, the next answer read the same records again, most of all after an answer
+that ended on a card with little text. The cap is there because a kept result is resent in every later call; a
+bundle's record, which lists its datasets, grows with them and is shortened as before, and of the same call made in
+several earlier answers only the newest result stays whole. The current answer's reads change none of the earlier
+ones, so its calls keep their cached prefix.
+And before either run limit, the model's next call is told to answer with what it found (`assistant/budget.py`), so a
+long search ends in an answer, or in a card when the user has to choose, not only in the limit error. Every call of an
+answer offers the same tools with the same instructions; the stage of the step (`answer_step` in
+`assistant/tools/toolset.py`) applies as its calls run: a call the stage does not allow is refused with one line on
+what to do instead (`STAGE_REFUSALS`), and counts toward the tool-call limit. After a step whose calls its stage all
+refused, the run answers in text: its calls go out with tool_choice "none" and the same tools (`RunDeps.text_only`),
+since each attempt of a model that insisted was a model call of the whole context. The step that answers with room for a
+card still runs two kinds of calls besides the card, since a card that asks whether to do them takes the user a turn
+for a choice already made: `workflow_run` of a workflow the answer created and has not run, while a read step and the
+answer step still fit and no other result waits to be written about, so its result is read before the answer; and
+`project_add_catalog_layer` of a dataset the user picked in the card that came with the message, as the add tool's
+own check reads that pick (an id in a picked option's value or `adds`, or a member of a bundle one names;
+`asks.answered_pick`). Nothing else: a workflow from an earlier answer, a second run in the step, a workflow whose
+run the answer already started, whatever came of it (`RunDeps.run_attempts`), or a dataset picked in an earlier card
+is refused (`ANSWER_STEP_REFUSALS`). The note offers them only when they apply, and
+the room for the run is decided with the stage (`RunDeps.run_room`), so the note and the call agree.
+The note on the stage is the last content of the call, after the conversation, and goes only into what the model is
+sent, not into the history (`agent.StageNote`); the stored request records its stage in its metadata instead
+(`agent.STAGE_KEY`). An answer step that changed the tools and the instructions made the provider read almost none of
+the answer from its cache, and so had to be sized as a call that misses it. Once an answer's look-ups end, they stay
+ended. A finished workflow run's result the answer has not written about yet is the exception: the answer may
 still read it with the project's read tools and `workflow_describe_tool` (what the result's fields and scales mean),
 one call per layer the run saved and one more, at least `RESULT_READS` and at most `MAX_RESULT_READS` in all
-(`budget.read_allowance`), also past the tool-call limit, while two answer-sized calls fit before each read step: the
-read step and the answer step, the same room a look-up leaves. Room for a third call, to ask a response without text
-again, kept the read step out of reach: once the look-ups were spent, it no longer fitted an answer that had built and
-run a workflow, and the answer step, offered only the card, sent cards without the result. So after a read near the
+(`budget.read_allowance`), also past the tool-call limit, while two calls fit before each read step: the read step and
+the answer step. A look-up keeps the same room after it, so a workflow run in an answer's last look-up still leaves
+room to read its result; with room for the answer step alone it did not. Room for a third call, to ask a response
+without text again, would keep the read step out of reach, so after a read near the
 token limit, asking a response without text again can end the run at the limit (`run_limit`), before the fixed text
 that `runs/turn.py` gives an answer without text once its retries are used up; a model that writes its text always
-gets its answer in. While a result is not yet in the text, the instruction that offers the card asks for the text
-first, in the same response. Reads of the result that reach the
+gets its answer in. The note that allows the card always asks for the text first, in the same response: cards that
+came alone left the user a question with nothing said before it, and while a result is not yet in the text such a
+card is refused. Reads of the result that reach the
 tool-call limit in a step that may still look things up run past it too, from the same allowance: models read a
 result's layers in one batch, and the limit cut such a batch halfway. The answer step keeps its room (`StepGuard`);
-after reading, the run looks nothing else up. Offered only the card, answers could not read more of their results,
-and their attempts to read came out as cards; with three reads, a run that saved four layers left one unread.
+after reading, the run looks nothing else up. Allowed only the card, answers could not read more of their results,
+and their attempts to read came out as cards; with three reads, a run that saved four layers left one unread. The
+note names no budget, and says a card ends the answer: models repeated the word to users, and a note that promised
+the next answer a fresh budget made them ask with a card for permission to go on. The instructions name it as a third
+kind of GOAT note, after the language and page notes, to follow and never to quote, and tell answers to leave out how
+the assistant works (budgets, limits, stages, its look-up steps).
 `ASSISTANT_RUN_MAX_TOKENS` counts tokens read from the provider's cache at a tenth, roughly what they cost: every call
 rereads the cached prefix, and counting it fully stopped answers on cheap rereads. The budget and the
-hard limit count the same way. The step that answers offers other tools and instructions than the calls before it, so
-the provider reads none of it from its cache. So the answer step and one spare call are sized at their whole context,
-read from the run's messages: the newest call's input and output plus the tool results the next call sends. One more
-look-up is allowed only while, after it, both still fit with the run's largest step added; the card only while both fit,
-and otherwise the step answers in text. Within a step, calls past the run's tool-call limit are refused as they run, and
+hard limit count the same way, and the hard limit leaves room beyond the budget for one call that misses the
+provider's cache (`budget.RunLimits`): the calls that end an answer are planned at the newest call's cache reads, a
+miss charges those tokens in full, and such an overshoot costs tokens while a run failed at the limit costs the answer.
+A provider that read nothing from its cache in the run gets room for one call of the newest call's context instead:
+a call more than planned (a card refused until the result is written about, a call its stage refused) costs that
+much.
+The calls that end an answer are sized at their whole context, read from the run's messages (the newest call's input and
+output plus the tool results the next call sends), with what the newest call read from the cache counted as cached
+(`budget.call_cost`); a provider that reports no cache reads pays the whole context for each. One more look-up is
+allowed only while, after it, the read step and the answer step still fit with the run's largest step added; the card
+while the answer step fits, since a card ends the answer, and otherwise the step answers in text. Within a step, calls
+past the run's tool-call limit are refused as they run, and
 every call let run counts toward that limit, failed ones too. A call a service failed twice for (a 429 or 5xx answer, no
 answer in time, or none: `http.service_failed`) is refused on its next repeat without asking the service again
 (`SERVICE_FAILED_TWICE` in `assistant/tools/toolset.py`); the first retry still runs, since a service can fail for a

@@ -405,6 +405,8 @@ class RunManager:
         answer_text = ""
         if answer is not None:
             asks, answer_text = _answered(asks, answer)
+        else:
+            asks = asks.with_typed_message()
         setup = RunSetup(
             page=page,
             locale=locale,

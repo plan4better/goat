@@ -42,12 +42,13 @@ PAGE = parse_context({"surface": "project.workflows", "project_id": PROJECT})
 WF = "0b6f0000-0000-0000-0000-00000000f10f"
 FOLDER = "0f000000-0000-0000-0000-000000000001"
 RESULT_LAYER = "cdba99a2-cc32-4da5-85ef-1d982b9c6dc8"
+PRACTICES = "e2000000-0000-0000-0000-000000000077"
 CONFIG: dict[str, Any] = {
     "nodes": [
         {
             "id": "dataset-a",
             "type": "dataset",
-            "data": {"type": "dataset", "label": "Praxen"},
+            "data": {"type": "dataset", "label": "Praxen", "layerId": PRACTICES},
         },
         {
             "id": "tool-walk",
@@ -519,6 +520,76 @@ async def test_a_refused_run_returns_its_issues() -> None:
         RUN, _env(services, runs=ConversationRuns(created={WF})), {"workflow_id": WF}
     )
     assert out["status"] == "refused" and out["issues"] == ["Walk: bad band edges."]
+
+
+def _with_steps(*data: dict[str, Any]) -> dict[str, Any]:
+    """``CONFIG`` with its dataset step's data replaced by ``data``, one
+    dataset step each."""
+    config = copy.deepcopy(CONFIG)
+    config["nodes"][:1] = [
+        {"id": f"dataset-{n}", "type": "dataset", "data": {"type": "dataset", **step}}
+        for n, step in enumerate(data)
+    ]
+    return config
+
+
+@pytest.mark.parametrize(
+    ("steps", "refusal"),
+    [
+        (
+            [{"label": "On-Demand-Gebiete"}],
+            'Not started: step "On-Demand-Gebiete" has no layer; the user chooses '
+            "it first.",
+        ),
+        # A template's input the use left unbound.
+        (
+            [{"label": "Praxen", "layerId": PRACTICES, "unresolved": True}],
+            'Not started: step "Praxen" has no layer; the user chooses it first.',
+        ),
+        (
+            [{"label": "On-Demand-Gebiete"}, {"label": "Haltestellen"}],
+            'Not started: steps "On-Demand-Gebiete" and "Haltestellen" have no '
+            "layer; the user chooses them first.",
+        ),
+    ],
+)
+async def test_a_workflow_with_a_step_without_a_layer_is_not_started(
+    steps: list[dict[str, Any]], refusal: str
+) -> None:
+    """Pass 7 (Q36): a workflow with a step left open was run, and processes
+    refused it. The run is refused before processes is asked, naming the
+    step the user chooses a layer for first."""
+    services = _services()
+    core, processes, _ = services
+    core.routes[("GET", f"/api/v2/project/{PROJECT}/workflow/{WF}")] = {
+        "id": WF,
+        "project_id": PROJECT,
+        "config": _with_steps(*steps),
+    }
+    with pytest.raises(ToolFailed) as refused:
+        await execute(
+            RUN,
+            _env(services, runs=ConversationRuns(created={WF})),
+            {"workflow_id": WF},
+        )
+    assert refused.value.message == refusal
+    assert processes.requests == []
+
+
+async def test_a_workflow_whose_steps_all_have_a_layer_starts() -> None:
+    services = _services()
+    core, processes, _ = services
+    config = _with_steps({"label": "Praxen", "layerId": PRACTICES}, {"layerId": WF})
+    core.routes[("GET", f"/api/v2/project/{PROJECT}/workflow/{WF}")] = {
+        "id": WF,
+        "project_id": PROJECT,
+        "config": config,
+    }
+    out = await execute(
+        RUN, _env(services, runs=ConversationRuns(created={WF})), {"workflow_id": WF}
+    )
+    assert out["status"] == "succeeded"
+    assert _posts(services) == 1
 
 
 async def test_a_refused_run_uses_up_the_pick_that_allowed_it() -> None:
