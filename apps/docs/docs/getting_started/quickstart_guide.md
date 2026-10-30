@@ -32,7 +32,7 @@ You've landed in the map view of your new project. Now it's time to add some dat
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Click <code>Add layer</code> at the top of the <code>Layers</code> panel on the left. In an empty project, the button sits in the middle of the panel. Under <code>New data</code>, choose <code>Upload dataset</code>, <code>Create layer</code> to start an empty layer, or <code>Connect service</code> for a WMS, WMTS, WFS, XYZ or COG source. Under <code>Existing data</code>, choose <code>My datasets</code> or <code>Catalog</code> to add a dataset that is already in GOAT. For full details on each option, see [Layers](../map/layers).</div>
+  <div class="content">Click <code>Add layer</code> at the top of the <code>Layers</code> panel on the left. In an empty project, the button sits in the middle of the panel. Under <code>New data</code>, choose <code>Upload dataset</code>, <code>Create layer</code> to start an empty layer, or <code>Fetch / Connect data</code> for a WMS, WMTS, WFS, XYZ or COG source. Under <code>Existing data</code>, choose <code>My datasets</code> or <code>Catalog</code> to add a dataset that is already in GOAT. For full details on each option, see [Layers](../map/layers).</div>
 </div>
 
 ## Explore the analysis tools

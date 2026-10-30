@@ -23,7 +23,11 @@ from pydantic import BaseModel
 from goatlib.bundles.artifacts.build_mixin import BundleArtifactBuildMixin
 from goatlib.bundles.artifacts.storage import delete_bundle_artifacts
 from goatlib.bundles.importers import get_importer
-from goatlib.bundles.importers.base import ValidationResult, bound_duckdb
+from goatlib.bundles.importers.base import (
+    ExtractedLayer,
+    ValidationResult,
+    bound_duckdb,
+)
 from goatlib.io.converter import IOConverter
 from goatlib.models.bundle import (
     BundleStatus,
@@ -223,14 +227,17 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         user_id: str,
         folder_id: str,
         bundle_id: str,
+        layers: Optional[List[ExtractedLayer]] = None,
     ) -> List[ImportedLayer]:
         """Extract, ingest to DuckLake, and link each member layer. Assumes the
         bundle row already exists (FK target for the membership links).
 
+        ``layers`` are members a job has already written itself (a cut of GOAT's
+        own network); then nothing is extracted from ``source_path``.
+
         Member creation isn't a single transaction (DuckLake tables + separate
         Postgres rows), so on any failure we roll back the layers created so far
         to avoid orphaned tables/rows, then re-raise."""
-        importer = get_importer(bundle_type)
         converter = IOConverter()
         imported: List[ImportedLayer] = []
         created_layer_ids: List[str] = []
@@ -244,7 +251,8 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
             # worker with everything else the import holds, so both are
             # bounded and spill into the workdir.
             bound_duckdb(converter.con, workdir)
-            layers = importer.extract_layers(source_path, workdir)
+            if layers is None:
+                layers = get_importer(bundle_type).extract_layers(source_path, workdir)
             stages.done("Extract", f"{len(layers)} layer(s)")
             try:
                 for i, extracted in enumerate(layers):

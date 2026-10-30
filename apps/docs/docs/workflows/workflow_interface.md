@@ -103,11 +103,22 @@ This tab contains categorized tools available for workflow construction, similar
 
 - **Data I/O**
   - <code>+ Add dataset</code>: Create dataset nodes
+  - <code>Fetch data</code>: Fetch OpenStreetMap or Overture Maps features from GOAT's copy of them, fresh on every run. The node has no input. Described below under **Fetch data Node**.
   - <code>Save as dataset</code>: Save workflow results as permanent datasets. Configure the **Dataset name**, toggle **Add to project** to automatically add the result to the project layer list, and enable **Overwrite on re-run** to replace the previously exported dataset each time the workflow runs instead of creating a new one.
 
 :::tip Good practice
 Give each **Save as dataset** node a descriptive name and enable **Overwrite on re-run** when running the same workflow repeatedly. This keeps your project clean by avoiding duplicate layers after each run.
 :::
+
+**Fetch data Node**
+
+A <code>Fetch data</code> node needs no input layer. It fetches OpenStreetMap or Overture Maps features and fetches them again on every run, so the result follows the source.
+
+1. Drag <code>Fetch data</code> onto the canvas and click the node. The panel shows a <code>Source</code> section with a <code>Choose data</code> button.
+2. Click <code>Choose data</code>. This opens the same dialog as <code>OpenStreetMap</code> and <code>Overture Maps</code> in Add layer: pick the layer type, the area, and tag or attribute filters or SQL. See [Layers](../map/layers.md#add-layers) for the details.
+3. Click <code>Use in workflow</code> to save the choice in the node. The node takes a suggested name such as "OSM points". <code>Edit</code> reopens the choice.
+
+Nothing is fetched yet, so the nodes after it can be set up before the first run. While nothing is chosen, the node shows an attention icon. At most 1,000,000 features can be fetched, and very large areas are refused.
 
 - **Accessibility Indicators**: All tools available in the [Accessibility Indicators](../category/accessibility-indicators) section of the Toolbox
 - **Geoanalysis**: All tools available in the [Geoanalysis](../category/geoanalysis) section of the Toolbox
@@ -134,6 +145,8 @@ When a tool node is selected, the right panel displays the **Tool Configuration*
 When a **dataset node** is selected, the dataset panel appears with two available tabs:
 
 **Source Tab**: View metadata from the data source and access table and map views. You can also change the dataset assigned to the node from this tab.
+
+An empty dataset node shows <code>Add dataset</code>, with two sources: <code>From Project</code> and <code>My datasets</code>. Once a dataset is set, use <code>Change Dataset</code> to pick another.
 
 **Filter Tab**: Apply filters specific to the workflow without affecting the original layer.
 

@@ -1,5 +1,7 @@
 import * as z from "zod";
 
+import { datasetConnectionSchema } from "@/lib/workflows/datasetConnection";
+
 // ============================================================================
 // Node Status
 // ============================================================================
@@ -55,6 +57,10 @@ export const toolNodeDataSchema = z.object({
   outputLayerId: z.string().uuid().optional(), // Result layer UUID after execution (temporary, not added to project)
   jobId: z.string().optional(), // Windmill job ID during execution
   error: z.string().optional(), // Error message if status is "error"
+  // fetch_data only: what the fetch will write, for the next nodes before a first run
+  outputGeometryType: z.string().optional(),
+  outputFields: datasetConnectionSchema.shape.fields.optional(),
+  areaChoice: datasetConnectionSchema.shape.areaChoice,
 });
 
 export type ToolNodeData = z.infer<typeof toolNodeDataSchema>;

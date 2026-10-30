@@ -10,7 +10,7 @@ analysis algorithms, geospatial I/O, and shared models used by the `core`,
 |--------|---------|
 | `tools/` | Analytics tools (buffer, clip, catchment areas, heatmaps, …). Each tool is a `BaseToolRunner[TParams]` subclass, registered in `tools/registry.py` and executed as a Windmill job. |
 | `analysis/` | Analysis algorithms backing the tools |
-| `io/` | Dataset import/export, format conversion, and remote sources (WFS, …) |
+| `io/` | Dataset import/export, format conversion, remote sources (WFS, …), and the readers for GOAT's base data: the OpenStreetMap/Overture mirror and the street network (`io/fetch/`) |
 | `models/` | Pydantic models shared across services |
 | `services/`, `storage/`, `tasks/` | Service clients, object storage, background task helpers |
 | `computed_columns/`, `i18n/`, `config/`, `utils/` | Supporting modules |

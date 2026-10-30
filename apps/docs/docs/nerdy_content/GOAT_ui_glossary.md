@@ -300,7 +300,8 @@ This glossary lists the English and German labels of the main tools, features an
 | Upload dataset | Datensatz hochladen | Upload a data file as a dataset (Add layer, Add new, Home) |
 | My datasets | Meine Datensätze | Browse your datasets when adding a layer |
 | Create layer | Layer erstellen | Create an empty layer |
-| Connect service | Dienst verbinden | Add a layer from an external web service |
+| Fetch / Connect data | Daten abrufen / verbinden | Add a layer from data GOAT provides (OpenStreetMap, Overture Maps, the street network) or from an external web service |
+| Fetch data | Daten abrufen | Workflow node that fetches OpenStreetMap or Overture Maps data for a study area on every run |
 | **Catalog** | **Katalog** | Data catalog |
 | Metadata | Metadaten | Data information |
 | Data source | Datenquelle | Data source information |

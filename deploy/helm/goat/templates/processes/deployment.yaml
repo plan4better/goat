@@ -102,6 +102,7 @@ spec:
                    core.config. See goat.auth.backendEnv. */}}
             {{- include "goat.auth.backendEnv" (dict "values" .Values.processes "root" $ "fallback" true) | trim | nindent 12 }}
             {{- include "goat.s3.env" (dict "root" $ "values" .Values.processes "assets" false) | trim | nindent 12 }}
+            {{- include "goat.catalogS3.env" (dict "root" $ "values" .Values.processes) | trim | nindent 12 }}
             {{- with .Values.processes.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

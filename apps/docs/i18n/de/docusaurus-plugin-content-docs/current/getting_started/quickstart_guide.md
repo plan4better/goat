@@ -31,7 +31,7 @@ Sie sind in der Kartenansicht Ihres neuen Projekts gelandet. Jetzt ist es Zeit, 
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Klicken Sie oben im Panel <code>Layer</code> auf der linken Seite auf <code>Layer hinzufügen</code>. In einem leeren Projekt befindet sich die Schaltfläche in der Mitte des Panels. Wählen Sie unter <code>Neue Daten</code> <code>Datensatz hochladen</code>, <code>Layer erstellen</code>, um einen leeren Layer anzulegen, oder <code>Dienst verbinden</code> für eine WMS-, WMTS-, WFS-, XYZ- oder COG-Quelle. Wählen Sie unter <code>Vorhandene Daten</code> <code>Meine Datensätze</code> oder <code>Katalog</code>, um einen Datensatz hinzuzufügen, der bereits in GOAT vorhanden ist. Weitere Details zu den einzelnen Optionen finden Sie unter [Layer](../map/layers).</div>
+  <div class="content">Klicken Sie oben im Panel <code>Layer</code> auf der linken Seite auf <code>Layer hinzufügen</code>. In einem leeren Projekt befindet sich die Schaltfläche in der Mitte des Panels. Wählen Sie unter <code>Neue Daten</code> <code>Datensatz hochladen</code>, <code>Layer erstellen</code>, um einen leeren Layer anzulegen, oder <code>Daten abrufen / verbinden</code> für eine WMS-, WMTS-, WFS-, XYZ- oder COG-Quelle. Wählen Sie unter <code>Vorhandene Daten</code> <code>Meine Datensätze</code> oder <code>Katalog</code>, um einen Datensatz hinzuzufügen, der bereits in GOAT vorhanden ist. Weitere Details zu den einzelnen Optionen finden Sie unter [Layer](../map/layers).</div>
 </div>
 
 ## Analysewerkzeuge erkunden

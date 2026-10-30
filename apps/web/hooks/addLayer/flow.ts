@@ -1,3 +1,5 @@
+import type { DatasetConnection } from "@/lib/workflows/datasetConnection";
+
 /**
  * The contract every Add Layer flow exposes, and the only thing a host needs.
  *
@@ -19,4 +21,10 @@ export type FlowController = {
   action: FlowAction;
   isBusy: boolean;
   reset: () => void;
+};
+
+/** A workflow node's use of a flow: its saved connection, and where a new one goes. */
+export type WorkflowUse = {
+  initial?: DatasetConnection;
+  onUse: (connection: DatasetConnection) => void;
 };

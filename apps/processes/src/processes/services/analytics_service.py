@@ -48,6 +48,7 @@ from processes.dependencies import (
 )
 from processes.ducklake import (
     ducklake_manager,
+    mirror_cursor,
     preview_ducklake_manager,
     search_ducklake_manager,
 )
@@ -286,6 +287,41 @@ class AnalyticsService:
             )
 
         return result.model_dump()
+
+    def mirror_values(
+        self,
+        area: dict,
+        feature_type: str = "points",
+        key: str | None = None,
+        limit: int = 100,
+        source: str = "osm",
+        quick: bool = False,
+        size_only: bool = False,
+        columns_only: bool = False,
+    ) -> dict[str, Any]:
+        """Attributes, or one attribute's values, in the mirror for an area."""
+        from goatlib.io.fetch import street_network
+        from goatlib.io.fetch.mirror.values import mirror_values
+
+        if source == "street_network":
+            if not size_only:
+                raise ValueError(
+                    "A street network answers only its size: it has no attributes or columns to list."
+                )
+            with mirror_cursor() as con:
+                return street_network.size(con, area)
+        with mirror_cursor() as con:
+            return mirror_values(
+                con,
+                area=area,
+                feature_type=feature_type,
+                key=key,
+                limit=limit,
+                source_name=source,
+                quick=quick,
+                size_only=size_only,
+                columns_only=columns_only,
+            )
 
     def class_breaks(
         self,

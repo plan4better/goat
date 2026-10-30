@@ -56,9 +56,11 @@ import {
   isSectionEnabled,
   processInputsWithSections,
 } from "@/lib/utils/ogc-utils";
+import { isToolNode } from "@/lib/utils/workflowDatasets";
 import type { ContentItem } from "@/lib/validations/content";
 import type { ProjectLayer } from "@/lib/validations/project";
 import type { ExportNodeData, WorkflowNode } from "@/lib/validations/workflow";
+import { INTEGRATE_PROCESS_ID, integrationColumns } from "@/lib/workflows/datasetConnection";
 
 import type { SelectorItem } from "@/types/map/common";
 import { OPPORTUNITY_LAYER_HANDLES } from "@/types/map/ogc-processes";
@@ -85,6 +87,7 @@ import SaveDatasetDialog from "@/components/workflows/dialogs/SaveDatasetDialog"
 import VariableAwareInput from "@/components/workflows/inputs/VariableAwareInput";
 import DatasetNodeSettings from "@/components/workflows/panels/DatasetNodeSettings";
 import IfNodeSettings from "@/components/workflows/panels/IfNodeSettings";
+import IntegrateDatasetSettings from "@/components/workflows/panels/IntegrateDatasetSettings";
 import SqlToolSettings from "@/components/workflows/panels/SqlToolSettings";
 
 // Map section icons from backend to ICON_NAME
@@ -791,6 +794,13 @@ export default function WorkflowNodeSettings({
           const targetNode = nodes.find((n) => n.id === nodeId);
           if (!targetNode) return {};
 
+          // An integration's columns were read from the mirror when its choice was saved.
+          const integrated = isToolNode(targetNode) ? integrationColumns(targetNode.data) : undefined;
+          if (integrated) {
+            cache[nodeId] = integrated;
+            return integrated;
+          }
+
           // Dataset node: use layer_id for prediction
           if (targetNode.data?.type === "dataset" && targetNode.data.layerId) {
             const layerIdValue = targetNode.data.layerId as string;
@@ -1073,53 +1083,65 @@ export default function WorkflowNodeSettings({
       ...bundleChoiceValues,
     };
 
+    // Its settings are a choice made in Add layer's dialog; status and results are any tool's.
+    const isIntegration = processId === INTEGRATE_PROCESS_ID;
+    const title = isIntegration ? t("fetch_data") : process.title;
+    // Its status says nothing until it has run.
+    const showStatus = !isIntegration || !!nodeStatus;
+
     // Render sections with inputs (matching GenericTool pattern)
     return (
       <>
         <Container
-          header={<ToolsHeader onBack={onBack} title={process.title} />}
+          header={<ToolsHeader onBack={onBack} title={title} />}
           disablePadding={false}
           body={
             <Box sx={{ display: "flex", flexDirection: "column" }}>
               {/* Description */}
               <Typography variant="body2" sx={{ fontStyle: "italic", mb: theme.spacing(4) }}>
-                {process.description}
+                {isIntegration ? t("fetch_data_description") : process.description}
               </Typography>
 
               {/* Execution Status Section */}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
-                  {t("execution_status")}
-                </Typography>
-                <Divider sx={{ mb: 1.5 }} />
-                <Chip
-                  label={nodeStatus ? t(nodeStatus, { defaultValue: nodeStatus }) : t("idle")}
-                  size="small"
-                  icon={nodeStatus === "skipped" ? <BlockIcon sx={{ fontSize: 14 }} /> : undefined}
-                  color={
-                    nodeStatus === "completed"
-                      ? "primary"
-                      : nodeStatus === "failed"
-                        ? "error"
-                        : nodeStatus === "running"
-                          ? "warning"
-                          : "default"
-                  }
-                  variant={nodeStatus ? "filled" : "outlined"}
-                  sx={{ fontWeight: 600, textTransform: "uppercase" }}
-                />
-              </Box>
+              {showStatus && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
+                    {t("execution_status")}
+                  </Typography>
+                  <Divider sx={{ mb: 1.5 }} />
+                  <Chip
+                    label={nodeStatus ? t(nodeStatus, { defaultValue: nodeStatus }) : t("idle")}
+                    size="small"
+                    icon={nodeStatus === "skipped" ? <BlockIcon sx={{ fontSize: 14 }} /> : undefined}
+                    color={
+                      nodeStatus === "completed"
+                        ? "primary"
+                        : nodeStatus === "failed"
+                          ? "error"
+                          : nodeStatus === "running"
+                            ? "warning"
+                            : "default"
+                    }
+                    variant={nodeStatus ? "filled" : "outlined"}
+                    sx={{ fontWeight: 600, textTransform: "uppercase" }}
+                  />
+                </Box>
+              )}
 
               {/* Parameters Section */}
-              <Box sx={{ mt: 3, mb: 2 }}>
-                <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
-                  {t("parameters")}
-                </Typography>
-                <Divider sx={{ mb: 1.5 }} />
-              </Box>
+              {isIntegration ? (
+                <IntegrateDatasetSettings nodeId={node.id} data={node.data} />
+              ) : (
+                <Box sx={{ mt: 3, mb: 2 }}>
+                  <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
+                    {t("parameters")}
+                  </Typography>
+                  <Divider sx={{ mb: 1.5 }} />
+                </Box>
+              )}
 
               {/* Render sections dynamically */}
-              {sections.map((section) => {
+              {(isIntegration ? [] : sections).map((section) => {
                 // In workflows, skip sections that are handled by node connections or not applicable
                 // Result sections are not supported in workflows
                 const workflowHiddenSections = ["result"];
@@ -1455,7 +1477,7 @@ export default function WorkflowNodeSettings({
           open={saveDialogOpen}
           onClose={() => setSaveDialogOpen(false)}
           onSave={handleSaveDataset}
-          defaultName={process.title || node.data.label || ""}
+          defaultName={(isIntegration ? node.data.label : process.title) || node.data.label || ""}
           isSaving={isSaving}
         />
       </>

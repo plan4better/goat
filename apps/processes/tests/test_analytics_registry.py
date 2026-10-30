@@ -114,7 +114,7 @@ class TestAnalyticsRegistry:
     def test_get_all_summaries(self):
         """Test getting all process summaries."""
         summaries = analytics_registry.get_all_summaries("http://localhost:8000")
-        assert len(summaries) == 8
+        assert len(summaries) == 9
         process_ids = [s.id for s in summaries]
         assert "feature-count" in process_ids
         assert "unique-values" in process_ids
@@ -124,6 +124,7 @@ class TestAnalyticsRegistry:
         assert "aggregation-stats" in process_ids
         assert "histogram" in process_ids
         assert "layer-search" in process_ids
+        assert "mirror-values" in process_ids
 
     def test_get_process_summary(self):
         """Test getting process summary."""

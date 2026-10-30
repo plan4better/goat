@@ -31,11 +31,14 @@ import {
 import { isDatasetNode, isToolNode, missingFieldRefs } from "@/lib/utils/workflowDatasets";
 import { edgeDerivedInputHandles } from "@/lib/utils/workflowHandles";
 import type { ToolNodeData } from "@/lib/validations/workflow";
+import { INTEGRATE_PROCESS_ID, integrationNeedsArea } from "@/lib/workflows/datasetConnection";
 
 import { OPPORTUNITY_LAYER_HANDLES } from "@/types/map/ogc-processes";
 
 import { useLayerFieldNames } from "@/hooks/map/useLayerFieldNames";
 import { useProcessDescription } from "@/hooks/map/useOgcProcesses";
+
+import { addLayerSource } from "@/components/addLayer/sources";
 
 import { useNodeExecutionStatus } from "../context/WorkflowExecutionContext";
 import {
@@ -229,7 +232,11 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
     return missingFieldRefs(self, process, edges, nodes, fieldsByLayerId);
   }, [nodes, id, process, edges, fieldsByLayerId]);
 
+  // The area is a hidden field, so the required-field check above never sees it.
+  const needsArea = integrationNeedsArea(data);
+
   const hasWarning =
+    needsArea ||
     missingLayerInputs.length > 0 ||
     missingConfig.length > 0 ||
     missingOpportunities ||
@@ -397,10 +404,14 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
 
   // Calculate handle positions for multiple inputs
   const inputHandleCount = effectiveInputHandles.length || 1; // Default to 1 if no process loaded yet
+  // A tool that takes no layer (e.g. fetch_data) has nothing to connect into.
+  const hasInput = !process || effectiveInputHandles.length > 0;
 
   // Warning message for tooltip - combine missing layers and missing config
   const warningMessage = useMemo(() => {
     const parts: string[] = [];
+
+    if (needsArea) parts.push(t("fetch_data_choose"));
 
     if (missingLayerInputs.length > 0) {
       parts.push(
@@ -425,7 +436,7 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
     }
 
     return parts.join(". ");
-  }, [missingLayerInputs, missingConfig, missingOpportunities, missingFields, t]);
+  }, [needsArea, missingLayerInputs, missingConfig, missingOpportunities, missingFields, t]);
 
   const ToolIconComponent = toolIconMap[data.processId as TOOL_ICON_NAME];
 
@@ -458,7 +469,7 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
         )}
 
         {/* Input handles - positioned vertically based on count */}
-        {inputHandleCount === 1 ? (
+        {!hasInput ? null : inputHandleCount === 1 ? (
           <Tooltip
             title={
               effectiveInputHandles[0]
@@ -505,7 +516,10 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
         <NodeHeader>
           <AnimatedBorderWrapper isRunning={nodeStatus === "running"}>
             <NodeIconWrapper status={nodeStatus}>
-              {ToolIconComponent ? (
+              {/* Integrate dataset looks like Add layer › Connect service, which it opens. */}
+              {data.processId === INTEGRATE_PROCESS_ID ? (
+                <Icon iconName={addLayerSource("connect").icon} sx={{ fontSize: 32 }} />
+              ) : ToolIconComponent ? (
                 <ToolIconComponent sx={{ fontSize: 32 }} />
               ) : (
                 <SettingsIcon
@@ -543,7 +557,10 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
             </NodeIconWrapper>
           </AnimatedBorderWrapper>
           <Typography variant="caption" fontWeight={700} sx={{ flex: 1, wordBreak: "break-word" }}>
-            {process?.title || t(data.processId, { defaultValue: data.label })}
+            {/* An integration is named after what it fetches, e.g. "OSM points". */}
+            {data.processId === INTEGRATE_PROCESS_ID
+              ? data.label
+              : process?.title || t(data.processId, { defaultValue: data.label })}
           </Typography>
           {/* Duration chip - shown when completed */}
           {nodeStatus === "completed" && executionInfo?.durationMs && (

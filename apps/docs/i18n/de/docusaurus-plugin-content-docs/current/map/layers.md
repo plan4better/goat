@@ -1,5 +1,5 @@
 ---
-description: "Fügen Sie Layer per Upload, als neuen Layer, über WFS, WMS, WMTS, XYZ oder COG, aus Ihren Datensätzen oder dem Katalog hinzu und ordnen oder gruppieren Sie sie."
+description: "Fügen Sie Layer per Upload, als neuen Layer, über WFS, WMS, WMTS, XYZ oder COG, mit Daten aus OpenStreetMap oder Overture Maps, aus Ihren Datensätzen oder dem Katalog hinzu und ordnen oder gruppieren Sie sie."
 sidebar_position: 2
 ---
 
@@ -33,7 +33,7 @@ Sie können Layer aus [verschiedenen Quellen](../data/dataset_types) zu Ihrer Ka
 
 - **Datensatz hochladen**: ein Datensatz von Ihrem Gerät (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet sowie [GTFS](https://www.plan4better.de/de/glossar/gtfs)- und [Overture](https://www.plan4better.de/de/glossar/overture-maps)-Archive)
 - **Layer erstellen**: ein neuer, leerer Layer, in den Sie zeichnen
-- **Dienst verbinden**: ein Layer, der über WFS, WMS, WMTS, XYZ-Kacheln oder COG bereitgestellt wird, per URL eingebunden
+- **Daten abrufen / verbinden**: ein Layer, der über WFS, WMS, WMTS, XYZ-Kacheln oder COG bereitgestellt wird, per URL eingebunden, Features aus OpenStreetMap oder Overture Maps für ein Gebiet, oder das Straßennetz von GOAT für ein Gebiet als Datenpaket
 
 **Vorhandene Daten**
 
@@ -105,10 +105,18 @@ Sie können Layer aus [verschiedenen Quellen](../data/dataset_types) zu Ihrer Ka
 </div>
 
   </TabItem>
-  <TabItem value="External" label="Dienst verbinden" className="tabItemBox">
+  <TabItem value="External" label="Daten abrufen / verbinden" className="tabItemBox">
 
 <div class="step">
   <div class="step-number">3</div>
+  <div class="content">Wählen Sie links unter <code>Von GOAT bereitgestellt</code> <code>OpenStreetMap</code> bzw. <code>Overture Maps</code>, um deren Features für ein Gebiet hinzuzufügen, <code>Straßennetz</code>, um das Routing-Netz von GOAT auf ein Gebiet zuzuschneiden, oder unter <code>Dienst verbinden</code> <code>OGC-Dienste</code>, um einen Webdienst über seine Adresse einzubinden.</div>
+</div>
+
+<Tabs>
+  <TabItem value="OGC" label="OGC-Dienste" default className="tabItemBox">
+
+<div class="step">
+  <div class="step-number">4</div>
   <div class="content">Geben Sie die <code>URL</code> des Dienstes ein und folgen Sie den Schritten für die Art der Quelle, die Sie einbinden.</div>
 </div>
 
@@ -141,6 +149,48 @@ Sie können Layer aus [verschiedenen Quellen](../data/dataset_types) zu Ihrer Ka
     <div class="step">
       <div class="content"><p>Ein <strong>Cloud Optimized GeoTIFF (COG)</strong> wird über einen direkten <code>.tif</code>/<code>.tiff</code>-Link eingebunden. Die Datei wird stückweise direkt von ihrem Speicherort gelesen, es wird nichts zu GOAT hochgeladen.</p></div>
     </div>
+  </TabItem>
+</Tabs>
+
+  </TabItem>
+
+  <TabItem value="OpenData" label="OpenStreetMap / Overture Maps" className="tabItemBox">
+
+GOAT hält eine Kopie von [OpenStreetMap](https://www.openstreetmap.org) und [Overture Maps](https://overturemaps.org) vor und kopiert die gewählten Features in einen neuen Layer, den Sie anschließend gestalten, filtern und analysieren können. Der Layer ist eine Momentaufnahme: Spätere Änderungen an der Quelle erscheinen darin nicht.
+
+<div class="step">
+  <div class="step-number">4</div>
+  <div class="content">Wählen Sie, was Sie hinzufügen möchten. Bei OpenStreetMap sind das <code>Punkte</code>, <code>Linien</code> oder <code>Polygone</code>, bei Overture Maps eines der Themen, etwa <code>Orte</code>, <code>Gebäude</code> oder <code>Verwaltungsgebiete</code>. Ein Layer hat eine Geometrie; enthält ein Thema mehrere, wählen Sie eine unter <code>Feature-Typ</code>.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">5</div>
+  <div class="content">Legen Sie das <code>Gebiet</code> fest: den <code>Kartenausschnitt</code>, bei dem Sie die Karte verschieben und zoomen, bis der gestrichelte Rahmen das Gebiet zeigt, oder eine <code>Region</code>, einen <code>Punkt + Umkreis</code> oder ein <code>Polygon</code>, jeweils über <code>Wählen</code>. Hinzugefügt wird jedes Feature, das das Gebiet berührt, auch eines, das über seine Grenze hinausreicht.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">6</div>
+  <div class="content"><p>Um nur einen Teil der Features hinzuzufügen, klicken Sie unter <code>Tag-Filter</code> (OpenStreetMap) bzw. <code>Attributfilter</code> (Overture Maps) auf <code>Filter hinzufügen</code>. Wählen Sie ein <code>Tag</code> bzw. <code>Attribut</code> und einen oder mehrere <code>Werte</code>; ohne Werte bleibt jedes Feature, das das Tag hat. Die Listen zeigen, was im Gebiet vorkommt, und, sobald gezählt, wie viele Features. Bei mehreren Filtern wählen Sie, ob Features <code>alle</code> oder <code>eine</code> der Bedingungen erfüllen müssen. Die Info-Schaltfläche neben einem Filter öffnet die Bedeutung des Tags im OpenStreetMap-Wiki bzw. die Dokumentation von Overture Maps.</p>Für eine Bedingung, die der Baukasten nicht abbildet, wechseln Sie zu <code>SQL</code> und schreiben sie selbst, zum Beispiel <code>tags['amenity'] IN ('school', 'kindergarten')</code>.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">7</div>
+  <div class="content">Prüfen Sie den <code>Layername</code> und den Ort unter <code>Speichern in</code> und klicken Sie auf <code>Layer hinzufügen</code>. Der Layer erscheint, sobald der Job fertig ist.</div>
+</div>
+
+:::info
+
+Ein Layer umfasst bis zu 1.000.000 Features. Liegen im Gebiet mehr, fordert GOAT Sie auf, <code>Werte für einen Filter oder ein kleineres Gebiet</code> zu wählen. Ein sehr großes Gebiet, etwa ein ganzes Land bei Gebäuden, wird auch mit Filtern abgelehnt: Zoomen Sie hinein oder wählen Sie ein kleineres Gebiet. <code>Layer hinzufügen</code> wartet, während GOAT die Größe des Gebiets prüft.
+
+:::
+
+Die Lizenz der Daten steht oben im Bereich: OpenStreetMap steht unter der ODbL, Overture Maps unter der ODbL, Orte unter CDLA-Permissive 2.0. Nennen Sie die Quelle, wenn Sie damit erstellte Karten weitergeben.
+
+  </TabItem>
+  <TabItem value="StreetNetwork" label="Straßennetz" className="tabItemBox">
+
+<code>Straßennetz</code> schneidet das Netz, auf dem GOAT routet, auf ein Gebiet zu und speichert es als Straßennetz-[Datenpaket](../data/dataset_types#datensätze-aus-mehreren-layern) mit Kanten und Knoten. Jede Straße, die das Gebiet berührt, bleibt vollständig und mit ihrer Steigung erhalten, sodass Routing-Werkzeuge das Datenpaket wie jedes andere Straßennetz auswählen und bergauf und bergab wie auf dem GOAT-Netz routen. Wählen Sie das Gebiet wie bei OpenStreetMap, geben Sie unter <code>Name des Datenpakets</code> einen Namen ein und klicken Sie auf <code>Layer hinzufügen</code>. Das Gebiet darf bis etwa 1.000 km² groß sein; bei einem größeren zeigt der Bereich an, dass es zu groß ist.
+
   </TabItem>
 </Tabs>
 

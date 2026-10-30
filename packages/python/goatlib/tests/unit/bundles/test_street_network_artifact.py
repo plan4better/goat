@@ -637,3 +637,41 @@ def test_a_bundle_is_styled_as_a_backdrop_with_one_part_picked_out() -> None:
     other = get_bundle_style(BundleTypeName.pt_network_gtfs, "routes", "point")
     assert other["radius"] == 5  # the generic point default, not the stops rule
     assert other["color"] not in (grey, red)
+
+
+def test_slope_and_surface(tmp_path, artifact, con) -> None:
+    """A layer carrying slope and surface routes on them; one without stays flat."""
+    import zipfile
+
+    segments, connectors = write_geoparquet(tmp_path / "src")
+    archive = tmp_path / "overture.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.write(segments, "segments.geoparquet")
+        zf.write(connectors, "connectors.geoparquet")
+    layers_dir = tmp_path / "layers"
+    layers_dir.mkdir()
+    paths = {
+        la.role: la.file_path
+        for la in OvertureImporter().extract_layers(str(archive), str(layers_dir))
+    }
+    sloped = tmp_path / "sloped_edges.parquet"
+    con.execute(
+        f"COPY (SELECT *, 0.3::DOUBLE AS impedance_slope, -0.2::DOUBLE AS impedance_slope_reverse, 0.7::FLOAT AS impedance_surface "
+        f"FROM read_parquet('{paths['edges']}')) TO '{sloped}' (FORMAT PARQUET)"
+    )
+    paths["edges"] = str(sloped)
+    workdir = tmp_path / "build"
+    workdir.mkdir()
+    built = StreetNetworkArtifactBuilder().build_from_layers(
+        layer_paths=paths, workdir=str(workdir)
+    )
+    with tarfile.open(built[0].local_path) as tar:
+        tar.extractall(tmp_path / "out")
+    assert con.execute(
+        "SELECT bool_and(impedance_slope = 0.3 AND impedance_slope_reverse = -0.2 AND round(impedance_surface, 2) = 0.7) "
+        f"FROM read_parquet('{tmp_path / 'out' / 'edges.parquet'}')"
+    ).fetchone()[0]
+    assert con.execute(
+        "SELECT bool_and(impedance_slope = 0 AND impedance_slope_reverse = 0) "
+        f"FROM read_parquet('{artifact[0]}')"
+    ).fetchone()[0]
