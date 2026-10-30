@@ -6,6 +6,7 @@ from fastapi_pagination import Params as PaginationParams
 
 from core.core.config import settings
 from core.crud.crud_datasets import datasets as crud_datasets
+from core.crud.crud_organization import organization as crud_organization
 from core.db.session import AsyncSession
 from core.deps.auth import auth_z
 from core.endpoints.deps import get_db, get_user_id
@@ -77,11 +78,19 @@ async def read_datasets(
 async def request_upload(
     body: DatasetImportRequest,
     user_id: UUID = Depends(get_user_id),
+    db: AsyncSession = Depends(get_db),
 ) -> PresignedUploadResponse:
     if body.file_size > settings.MAX_UPLOAD_DATASET_FILE_SIZE:
         raise HTTPException(
             400,
             detail=f"Dataset file too large. Limit is {settings.MAX_UPLOAD_DATASET_FILE_SIZE//1024//1024} MB.",
+        )
+
+    # Capacity quota: would this upload exceed the org's storage cap? (MB)
+    org = await crud_organization.get_by_user(db, user_id)
+    if org is not None:
+        crud_organization.check_capacity_quota(
+            organization=org, quota="storage", incoming=body.file_size / 1048576
         )
 
     filename = sanitize_filename(body.filename)

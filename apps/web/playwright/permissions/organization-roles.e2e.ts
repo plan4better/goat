@@ -5,14 +5,15 @@ import { API_URL, type Role, actAs, apiAs, castOf, needsAuth } from "../fixtures
 /**
  * What each organization role may do with the organization itself.
  *
- * Owners and admins manage the organization: its profile, members, white
- * label, usage and billing. Editors and viewers see only their account and
+ * Owners and admins manage the organization: its profile, members and white
+ * label (and its usage where billing runs; the e2e stack runs without it, so
+ * the Usage page is not there). Editors and viewers see only their account and
  * teams in Settings, and the API refuses them the organization's management
  * routes even when called directly.
  */
 needsAuth(test);
 
-const ADMIN_ONLY = ["Organization", "White Label", "Usage & Quotas", "Billing"];
+const ADMIN_ONLY = ["Organization", "White Label"];
 
 for (const role of ["owner", "admin"] as Role[]) {
   test.describe(`${role}`, () => {

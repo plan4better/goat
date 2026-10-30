@@ -47,10 +47,11 @@ interface Zoom {
 const WHOLE: [number, number] = [0, 1];
 
 function useStripData(route: RouteRow) {
-  const { db, complete, window: feedWindow, settings } = useExplorer();
+  const { db, complete, window: feedWindow, dataPeriod, settings } = useExplorer();
   const date = useAppSelector((s) => s.explorer.date);
   const trips = useRouteTrips(complete ? db : undefined, route, date);
-  const summary = useRouteSummary(db, route, date, feedWindow, settings);
+  // As the Overview: the cost period once known, the feed's window until then.
+  const summary = useRouteSummary(db, route, date, dataPeriod ?? feedWindow, settings);
   return { trips, summary };
 }
 

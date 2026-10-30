@@ -61,6 +61,18 @@ interface ExecuteProcessArgs {
   inputs: Record<string, unknown>;
 }
 
+/** A refused run, with the HTTP status so the caller can tell the user why
+ * (402: the organization is out of credits). */
+export class ProcessExecutionError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number
+  ) {
+    super(message);
+    this.name = "ProcessExecutionError";
+  }
+}
+
 async function executeProcess(_url: string, { arg }: { arg: ExecuteProcessArgs }): Promise<OGCJobStatus> {
   const { processId, inputs } = arg;
 
@@ -71,8 +83,11 @@ async function executeProcess(_url: string, { arg }: { arg: ExecuteProcessArgs }
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || `Failed to execute process ${processId}`);
+    const error = await response.json().catch(() => ({}));
+    throw new ProcessExecutionError(
+      error.detail || `Failed to execute process ${processId}`,
+      response.status
+    );
   }
 
   return response.json();

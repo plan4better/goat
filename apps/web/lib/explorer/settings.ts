@@ -35,6 +35,10 @@ export interface ExplorerSettings {
   /** Contiguous, from 0 to SERVICE_DAY_END_S, in PERIOD_KEYS order. */
   periods: Period[];
   layover_s: number;
+  /** The data period as the user set it: the days figures are counted
+   * over, scaled to a year, and the date the Explorer opens on; null, the
+   * optimum period (optimumPeriod). */
+  data_period: [string, string] | null;
 }
 
 export const CURRENCIES = ["EUR", "CHF", "GBP", "USD"];
@@ -57,13 +61,23 @@ export const DEFAULT_SETTINGS: ExplorerSettings = {
   rates: {},
   periods: periodsFrom([7, 9, 15, 18, 22].map((h) => h * 3600)),
   layover_s: 6 * 60,
+  data_period: null,
 };
 
-/** Default rate by kind of vehicle, where none is set. */
+/** Rail-type kinds of vehicle: a trip is a train, so their km are
+ * train-km (an operator's report usually gives car-km). */
+export function perTrain(mode: ModeKey): boolean {
+  return mode === "metro" || mode === "rail" || mode === "monorail";
+}
+
+/** Default rate by kind of vehicle, where none is set: the European average
+ * operating cost per vehicle-km (a train's, for rail), rounded, from the
+ * EMTA Barometer 2025 (2024 data: bus 5.7, tram and light rail 8.4, metro
+ * 24.3, rail 24.9). An estimate until the user sets the operator's own. */
 export function modeRate(mode: ModeKey): Rate {
-  if (mode === "tram" || mode === "cable_tram" || mode === "trolleybus") return { per_km: 7, per_hour: null };
-  if (mode === "metro" || mode === "rail" || mode === "monorail") return { per_km: 12, per_hour: null };
-  return { per_km: 4.5, per_hour: null };
+  if (mode === "tram" || mode === "cable_tram" || mode === "trolleybus") return { per_km: 8, per_hour: null };
+  if (perTrain(mode)) return { per_km: 24, per_hour: null };
+  return { per_km: 5.5, per_hour: null };
 }
 
 /** Default rate by GTFS route type (basic or extended), where none is set. */
@@ -120,6 +134,13 @@ export function settingsKey(settings: ExplorerSettings): string {
   return JSON.stringify([settings.rates, settings.periods.map((p) => p.start_s), settings.layover_s]);
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Days from `a` to `b`, both counted. */
+export function daysBetween(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000) + 1;
+}
+
 /** Problems with a draft, as locale keys: none means it can be saved. */
 export function settingsProblems(settings: ExplorerSettings): string[] {
   const problems: string[] = [];
@@ -137,6 +158,9 @@ export function settingsProblems(settings: ExplorerSettings): string[] {
     problems.push("explorer_settings_periods_order");
   if (!(settings.layover_s >= 0 && settings.layover_s <= 3600))
     problems.push("explorer_settings_layover_range");
+  const p = settings.data_period;
+  if (p && !(DATE_RE.test(p[0]) && DATE_RE.test(p[1]) && p[0] <= p[1]))
+    problems.push("explorer_settings_data_period");
   return problems;
 }
 

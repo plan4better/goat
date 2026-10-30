@@ -42,8 +42,8 @@ S = settings.SCHEMA
 
 @pytest.fixture(autouse=True)
 def no_billing(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Creating an organization reaches Stripe when billing is configured."""
-    monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", None)
+    """Creating an organization starts a trial when billing is on."""
+    monkeypatch.setattr(settings, "BILLING_ENABLED", False)
     yield
 
 

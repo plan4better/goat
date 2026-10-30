@@ -959,7 +959,8 @@
       "sunday": "Sunday"
     },
     "catchment_type": {
-      "buffer": "Buffer"
+      "buffer": "Buffer",
+      "network": "Street network"
     },
     "distance_type": {
       "constant": "Constant",

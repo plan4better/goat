@@ -3,9 +3,9 @@
 import Info from "@mui/icons-material/Info";
 import { Box, Button, Chip, Link, Stack, Typography, useMediaQuery, useTheme } from "@mui/material";
 import Divider from "@mui/material/Divider";
-import { format, formatDistance, parseISO } from "date-fns";
+import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { useMemo, useState } from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 import { useMap } from "react-map-gl/maplibre";
 
 import { GOATLogoIconOnlyGreen } from "@p4b/ui/assets/svg/GOATLogoIconOnlyGreen";
@@ -13,11 +13,12 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { useDateFnsLocale } from "@/i18n/utils";
 
-import { useOrganization, useUserProfile } from "@/lib/api/users";
+import { useFeatures, useOrganization, useUserProfile } from "@/lib/api/users";
 import { CONTACT_URL, privacyPolicyUrl } from "@/lib/constants";
 import { setSelectedLayers } from "@/lib/store/layer/slice";
 import { setMapMode } from "@/lib/store/map/slice";
 import { setActiveRightPanel } from "@/lib/store/map/slice";
+import { parseApiDate } from "@/lib/utils/credits";
 import type { Project } from "@/lib/validations/project";
 
 import { useAuthZ } from "@/hooks/auth/AuthZ";
@@ -58,6 +59,8 @@ export default function Header(props: HeaderProps) {
   const { t, i18n } = useTranslation(["common"]);
   const { onMenuIconClick, showHambugerMenu, height = 52, title, project, onProjectUpdate, viewOnly } = props;
   const { organization } = useOrganization();
+  // trials exist only where billing is on (SaaS); a self-hosted install never shows the chip
+  const { features } = useFeatures();
   const { isOrgAdmin } = useAuthZ();
   const { userProfile } = useUserProfile();
   const isLoggedIn = !!userProfile;
@@ -327,37 +330,44 @@ export default function Header(props: HeaderProps) {
           <>
             {!props.viewOnly && (
               <Stack direction="row" spacing={2} justifyContent="center" alignItems="center">
-                {organization && organization.on_trial && isOrgAdmin && (
-                  <Chip
-                    icon={<Info />}
-                    variant="outlined"
-                    color="warning"
-                    size="small"
-                    label={
-                      <Trans
-                        i18nKey="common:your_trial_will_end_in"
-                        values={{
-                          expire_date: formatDistance(new Date(organization.plan_renewal_date), new Date(), {
-                            locale: dateLocale,
-                          }),
-                        }}
-                      />
-                    }
-                    sx={{
-                      "& .MuiChip-label": {
-                        fontWeight: "bold",
-                        fontStyle: "normal",
-                      },
-                    }}
-                    onClick={
-                      CONTACT_URL
-                        ? () => {
-                            window.open(CONTACT_URL, "_blank");
-                          }
-                        : undefined
-                    }
-                  />
-                )}
+                {features?.billing &&
+                  organization?.on_trial &&
+                  organization.plan_renewal_date &&
+                  isOrgAdmin && (
+                    <Chip
+                      icon={<Info />}
+                      variant="outlined"
+                      color="warning"
+                      size="small"
+                      // Exact days, not "about a month": an extension shows at once.
+                      label={(() => {
+                        const days = differenceInCalendarDays(
+                          parseApiDate(organization.plan_renewal_date),
+                          new Date()
+                        );
+                        if (days < 0) return t("trial_expired");
+                        return days > 0 ? t("trial_days_left", { count: days }) : t("trial_ends_today");
+                      })()}
+                      title={t("trial_ends_on", {
+                        date: format(parseApiDate(organization.plan_renewal_date), "PP", {
+                          locale: dateLocale,
+                        }),
+                      })}
+                      sx={{
+                        "& .MuiChip-label": {
+                          fontWeight: "bold",
+                          fontStyle: "normal",
+                        },
+                      }}
+                      onClick={
+                        CONTACT_URL
+                          ? () => {
+                              window.open(CONTACT_URL, "_blank");
+                            }
+                          : undefined
+                      }
+                    />
+                  )}
                 {props.mapHeader && (
                   <>
                     <Divider orientation="vertical" flexItem />

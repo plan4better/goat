@@ -111,3 +111,29 @@ def test_a_tool_attaches_the_catalog_without_the_password(
     runner._get_duckdb_connection()
 
     _assert_password_only_in_the_secret(con)
+
+
+@pytest.mark.unit
+def test_the_gtfs_typed_storage_migration_attaches_without_the_password() -> None:
+    from goatlib.tasks.gtfs_typed_storage import GtfsTypedStorageTask
+
+    class _NoBundles(_RecordingConnection):
+        def fetchall(self) -> list[Any]:
+            return []
+
+    con = _NoBundles()
+    task = GtfsTypedStorageTask()
+    task.settings = ToolSettings(
+        postgres_server="db",
+        postgres_port=5432,
+        postgres_user="goat",
+        postgres_password=PASSWORD,
+        postgres_db="goat",
+        ducklake_postgres_uri=URI,
+        ducklake_catalog_schema="ducklake",
+        ducklake_data_dir="/data",
+    )
+
+    task._members(con, None)
+
+    _assert_password_only_in_the_secret(con)

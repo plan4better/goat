@@ -62,6 +62,12 @@ async def execute_process(
                 logger.info("Submitted process %s as job %s", process_id, job_id)
                 return job_id
             error_text = await response.text()
+            if response.status == 402:
+                # Out of credits: say so instead of a generic gateway error.
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail="Organization is out of credits for this period.",
+                )
             logger.error(
                 "Failed to submit process %s: %s %s",
                 process_id,

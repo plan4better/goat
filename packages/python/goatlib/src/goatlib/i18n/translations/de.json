@@ -971,7 +971,8 @@
       "sunday": "Sonntag"
     },
     "catchment_type": {
-      "buffer": "Puffer"
+      "buffer": "Puffer",
+      "network": "Wegenetz"
     },
     "distance_type": {
       "constant": "Konstant",

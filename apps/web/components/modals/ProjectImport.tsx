@@ -12,6 +12,7 @@ import { executeProcessAsync } from "@/lib/api/processes";
 import { uploadFileToS3 } from "@/lib/services/s3";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
 import { homeFolderOf, spaceDisplayName } from "@/lib/utils/content";
+import { creditsErrorMessage } from "@/lib/utils/credits";
 import type { Space } from "@/lib/validations/content";
 
 import type { SelectorItem } from "@/types/map/common";
@@ -140,8 +141,8 @@ const ProjectImportModal: React.FC<ProjectImportModalProps> = ({
       toast.success(t("project_import_started"));
       onImportStarted?.();
       handleOnClose();
-    } catch (_error) {
-      toast.error(t("error_importing_project"));
+    } catch (error) {
+      toast.error(creditsErrorMessage(error, t) ?? t("error_importing_project"));
     } finally {
       setIsBusy(false);
     }

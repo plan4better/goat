@@ -6,6 +6,7 @@ import { PROCESSES_BASE_URL } from "@/lib/constants";
 // Temp Layer Data API (for workflow preview)
 // ============================================================================
 import { GEOAPI_BASE_URL } from "@/lib/constants";
+import { OutOfCreditsError } from "@/lib/utils/credits";
 import type { Workflow, WorkflowCreate, WorkflowUpdate } from "@/lib/validations/workflow";
 
 import { PROJECTS_API_BASE_URL } from "./projects";
@@ -231,6 +232,7 @@ export const executeWorkflow = async (
     body: JSON.stringify(request),
   });
   if (!response.ok) {
+    if (response.status === 402) throw new OutOfCreditsError();
     const error = await response.text();
     throw refusal(error) ?? new Error(`Failed to execute workflow: ${error}`);
   }

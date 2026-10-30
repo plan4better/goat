@@ -1,5 +1,8 @@
+import contextlib
+import contextvars
 import datetime
 import gettext
+from collections.abc import Iterator
 from pathlib import Path
 
 from babel.support import Translations
@@ -9,7 +12,10 @@ _BASE_DIR = Path(__file__).resolve().parent
 LOCALES_DIR = str(_BASE_DIR / "locales")
 TEMPLATES_DIR = str(_BASE_DIR / "templates")
 
-_default_lang = None
+# Per task (request), so concurrent requests never see each other's language.
+_lang: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "goat_language", default=None
+)
 DEFAULT_LANGUAGE = "en"
 SUPPORTED_LANGUAGES = ["de", "en"]
 GERMAN_LANGUAGE_MAP = {
@@ -27,13 +33,12 @@ def active_translation(lang: str) -> None:
     :param lang:
     :return:
     """
-    global _default_lang
     lang = lang.lower() if lang else DEFAULT_LANGUAGE
     if "," in lang:
         lang = lang.split(",")[0]
     if lang in GERMAN_LANGUAGE_MAP:
         lang = GERMAN_LANGUAGE_MAP[lang]
-    _default_lang = DEFAULT_LANGUAGE if lang not in SUPPORTED_LANGUAGES else lang
+    _lang.set(DEFAULT_LANGUAGE if lang not in SUPPORTED_LANGUAGES else lang)
 
 
 def current_locale() -> str:
@@ -41,7 +46,7 @@ def current_locale() -> str:
     Get current locale
     :return str:
     """
-    return _default_lang or DEFAULT_LANGUAGE
+    return _lang.get() or DEFAULT_LANGUAGE
 
 
 def trans(message: str) -> str:
@@ -56,8 +61,36 @@ def trans(message: str) -> str:
     ).gettext(message)
 
 
-translations = Translations.load(LOCALES_DIR, SUPPORTED_LANGUAGES)
+@contextlib.contextmanager
+def language(lang: str | None) -> Iterator[None]:
+    """Translate in `lang` (a GOAT language, e.g. the recipient's) inside the block:
+    `trans` and the email templates. The language lives in a context variable, so
+    it stays with this request even across an await."""
+    token = _lang.set(_lang.get())
+    active_translation(lang or DEFAULT_LANGUAGE)
+    try:
+        yield
+    finally:
+        _lang.reset(token)
+
+
 template_loader = FileSystemLoader(searchpath=TEMPLATES_DIR)
-jinja_env = Environment(loader=template_loader, extensions=["jinja2.ext.i18n"])
-jinja_env.install_gettext_translations(translations)
-jinja_env.globals.update(now=datetime.datetime.utcnow, current_locale=current_locale)
+
+
+def _environment(lang: str) -> Environment:
+    # Autoescape: titles and messages carry user input such as organization names.
+    env = Environment(
+        loader=template_loader, extensions=["jinja2.ext.i18n"], autoescape=True
+    )
+    env.install_gettext_translations(Translations.load(LOCALES_DIR, [lang]))
+    env.globals.update(now=datetime.datetime.utcnow, current_locale=current_locale)
+    return env
+
+
+# One environment per language: a template is rendered in the active one.
+jinja_envs = {lang: _environment(lang) for lang in SUPPORTED_LANGUAGES}
+jinja_env = jinja_envs[DEFAULT_LANGUAGE]
+
+
+def active_jinja_env() -> Environment:
+    return jinja_envs[current_locale()]

@@ -412,6 +412,7 @@ export const Container: React.FC<ContainerProps> = ({
                       viewOnly={viewOnly}
                       onWidgetDelete={onWidgetDelete}
                       onWidgetDuplicate={onWidgetDuplicate}
+                      onSelectPanel={onClick}
                       onWidgetUpdate={onWidgetUpdate}
                       panelWidgets={panel.widgets}
                     />

@@ -22,6 +22,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { updateProjectLayer } from "@/lib/api/projects";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
 import { createTheCQLBasedOnExpression, parseCQLQueryToObject } from "@/lib/transformers/filter";
+import { creditsErrorMessage } from "@/lib/utils/credits";
 import { layerType } from "@/lib/validations/common";
 import { type Expression as ExpressionType, FilterType } from "@/lib/validations/filter";
 import type { ProjectLayer } from "@/lib/validations/project";
@@ -203,8 +204,8 @@ const FilterPanel = ({ activeLayer, projectId }: { activeLayer: ProjectLayer; pr
         toast.info(`${t("save_as_new_layer")} - ${t("job_started")}`);
         dispatch(setRunningJobIds([...runningJobIds, result.jobID]));
       }
-    } catch {
-      toast.error(t("save_as_new_layer_error"));
+    } catch (error) {
+      toast.error(creditsErrorMessage(error, t) ?? t("save_as_new_layer_error"));
     } finally {
       setIsSaving(false);
     }

@@ -250,6 +250,12 @@ RESOURCES_PERMISSIONS = [
         "method": ["GET", "POST", "PUT"],
     },
     {
+        # Credit and quota usage of the caller's own organization. No
+        # permissions: any member may see it; the routes read only their org.
+        "url_pattern": "credits",
+        "method": ["GET"],
+    },
+    {
         "url_pattern": "folder",
         "method": ["GET"],
         "permissions": [
@@ -629,13 +635,13 @@ RESOURCES_PERMISSIONS = [
         "url_pattern": "project/{project_id}/public/custom-domain",
         "method": ["POST"],
         "permissions": ["update-project"],
-        "plan_names": ["goat_professional", "goat_enterprise"],
+        "extras": ["white_label"],
     },
     {
         "url_pattern": "project/{project_id}/public/custom-domain",
         "method": ["DELETE"],
         "permissions": ["update-project"],
-        "plan_names": ["goat_professional", "goat_enterprise"],
+        "extras": ["white_label"],
     },
     # ---------------------------------------------------------------
     # White-label: organization analytics instances + per-project tracking
@@ -671,7 +677,7 @@ RESOURCES_PERMISSIONS = [
         "url_pattern": "project/{project_id}/public/tracking",
         "method": ["PUT"],
         "permissions": ["update-project"],
-        "plan_names": ["goat_professional", "goat_enterprise"],
+        "extras": ["white_label"],
     },
     # ---------------------------------------------------------------
     # Templates (T1/T3/T4). No permissions: any authenticated user may call
@@ -767,7 +773,7 @@ async def seed_roles(session: AsyncSession) -> None:
                     url_pattern=resource_dict["url_pattern"],
                     method=resource_dict["method"],
                     quota_types=resource_dict.get("quota_types"),
-                    plan_names=resource_dict.get("plan_names"),
+                    extras=resource_dict.get("extras"),
                 )
                 .returning(Resource.id)
             )

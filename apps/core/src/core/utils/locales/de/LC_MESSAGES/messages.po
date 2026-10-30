@@ -16,7 +16,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.16.0\n"
+"Generated-By: Babel 2.18.0\n"
 
 #: src/crud/organization.py:126
 msgid "Thank you for signing up for the free demo!"
@@ -128,7 +128,7 @@ msgstr "Bitte setzen Sie sich mit uns in Verbindung, um GOAT weiterhin zu nutzen
 #: src/endpoints/v1/webhooks.py:216 src/endpoints/v1/webhooks.py:240
 #: src/templates/email/template.html:170
 msgid "Contact us"
-msgstr "Kontaktiere uns"
+msgstr "Kontaktieren Sie uns"
 
 #: src/endpoints/v1/webhooks.py:222
 msgid "GOAT - Your trial is about to end"
@@ -249,11 +249,11 @@ msgstr "Elite-Support"
 
 #: src/templates/email/template.html:144
 msgid "All Rights Reserved"
-msgstr "All Rights Reserved"
+msgstr "Alle Rechte vorbehalten"
 
 #: src/templates/email/template.html:159
 msgid "Privacy"
-msgstr "Privatsphäre"
+msgstr "Datenschutz"
 
 #: src/templates/email/template.html:181
 msgid "About us"
@@ -266,6 +266,88 @@ msgstr "Test-Email"
 #: src/utils/email.py:40
 msgid "This is a test email"
 msgstr "Dies ist eine Test-Email"
+
+msgid "Your GOAT trial ends soon"
+msgstr "Ihr GOAT-Testzeitraum endet bald"
+
+msgid ""
+"Your organization's projects and data stay as they are. Get in touch with"
+" us to keep using GOAT after the trial."
+msgstr ""
+"Die Projekte und Daten Ihrer Organisation bleiben, wie sie sind. Melden "
+"Sie sich bei uns, um GOAT nach dem Test weiter zu nutzen."
+
+msgid "Get in touch"
+msgstr "Kontakt aufnehmen"
+
+msgid "GOAT - Your trial ends soon"
+msgstr "GOAT - Ihr Testzeitraum endet bald"
+
+msgid "Your GOAT trial has ended"
+msgstr "Ihr GOAT-Testzeitraum ist beendet"
+
+msgid ""
+"Your organization's projects and data are kept. Get in touch with us to "
+"continue with GOAT."
+msgstr ""
+"Die Projekte und Daten Ihrer Organisation bleiben erhalten. Melden Sie "
+"sich bei uns, um mit GOAT weiterzuarbeiten."
+
+msgid "GOAT - Your trial has ended"
+msgstr "GOAT - Ihr Testzeitraum ist beendet"
+
+#, python-format
+msgid "You have been invited to %(organization)s"
+msgstr "Sie wurden zu %(organization)s eingeladen"
+
+#, python-format
+msgid ""
+"You have been invited to work together in %(organization)s on GOAT. "
+"Accept the invitation with the button below."
+msgstr ""
+"Sie wurden eingeladen, in %(organization)s gemeinsam mit GOAT zu "
+"arbeiten. Nehmen Sie die Einladung über den Knopf unten an."
+
+msgid "Accept invitation"
+msgstr "Einladung annehmen"
+
+#, python-format
+msgid "GOAT - Invitation to %(organization)s"
+msgstr "GOAT - Einladung zu %(organization)s"
+
+#, python-format
+msgid "%(organization)s has been deleted"
+msgstr "%(organization)s wurde gelöscht"
+
+msgid ""
+"The organization and all its projects, layers and teams have been deleted"
+" for good."
+msgstr ""
+"Die Organisation und alle ihre Projekte, Layer und Teams wurden endgültig"
+" gelöscht."
+
+msgid "GOAT - Organization deleted"
+msgstr "GOAT - Organisation gelöscht"
+
+#, python-format
+msgid "You have been removed from %(organization)s"
+msgstr "Sie wurden aus %(organization)s entfernt"
+
+#, python-format
+msgid ""
+"You no longer have access to the projects and data of %(organization)s in"
+" GOAT. If you think this is a mistake, contact the administrators of the "
+"organization."
+msgstr ""
+"Sie haben keinen Zugriff mehr auf die Projekte und Daten von "
+"%(organization)s in GOAT. Falls das ein Irrtum ist, wenden Sie sich an "
+"die Administration der Organisation."
+
+msgid "Contact"
+msgstr "Kontakt"
+
+msgid "You receive this email because of your GOAT account."
+msgstr "Sie erhalten diese E-Mail wegen Ihres GOAT-Kontos."
 
 #~ msgid "Activate your GOAT demo"
 #~ msgstr "Aktiviere deine GOAT Demo"

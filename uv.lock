@@ -398,7 +398,6 @@ dependencies = [
     { name = "shapely" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "sqlmodel" },
-    { name = "stripe" },
 ]
 
 [package.dev-dependencies]
@@ -435,7 +434,6 @@ requires-dist = [
     { name = "shapely", specifier = "==2.0.6" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = "==2.0.41" },
     { name = "sqlmodel", specifier = "==0.0.24" },
-    { name = "stripe", specifier = ">=6.7.0,<8.0.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -2722,19 +2720,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/eb/e3/7c1dc7381d9f8ab7d854328ebfa884e62cb3f3d8549ddfd37c7814f42afa/starlette-1.3.1.tar.gz", hash = "sha256:05d0213193f2fbaae60e2ecb593b4add4262ad4e46536b54abe36f11a71724e0", size = 2703240, upload-time = "2026-06-12T09:23:11.602Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/bb/2799cc2ede3ed41131f8975621e7213dfc7ef4acbbaadfa440f32500c370/starlette-1.3.1-py3-none-any.whl", hash = "sha256:c7372aae11c3c3f26a42df7bd626cec2f47d03483d261d369516a615a53714c6", size = 73632, upload-time = "2026-06-12T09:23:10.017Z" },
-]
-
-[[package]]
-name = "stripe"
-version = "7.14.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "requests" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/b2/f0e2f0ff27d852817da0964a1f50796932a0c1fcdb48aecc3bb95ae91701/stripe-7.14.0.tar.gz", hash = "sha256:556bfa86f8b298b666ff2caa0d754ee19ece52159d12a45ed7ddb02daadd1799", size = 793052, upload-time = "2024-01-25T17:14:57.365Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/03/78/48d087bd5d17ee71fb95c8b241e84128ef7a6da62e88fc2435844163b474/stripe-7.14.0-py2.py3-none-any.whl", hash = "sha256:f39def4dec42b374a39b110ab809c8130e14b7027ee40e3111a658e0f46709cb", size = 903446, upload-time = "2024-01-25T17:14:53.241Z" },
 ]
 
 [[package]]

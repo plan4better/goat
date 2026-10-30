@@ -2,9 +2,9 @@ from fastapi import APIRouter
 
 from . import (
     asset,
-    billing,
     bundle,
     content,
+    credits,
     custom_domain_lookup,
     datasets,
     favorite,
@@ -35,13 +35,13 @@ router = APIRouter()
 router.include_router(
     organizations.router, prefix="/organizations", tags=["Organizations"]
 )
+router.include_router(credits.router, prefix="/credits", tags=["Credits"])
 router.include_router(teams.router, prefix="/teams", tags=["Teams"])
 router.include_router(space.router, prefix="/space", tags=["Space"])
 router.include_router(users.router, prefix="/users", tags=["Users"])
 router.include_router(share.router, prefix="/share", tags=["Share"])
 router.include_router(support.summary_router, prefix="/support", tags=["Support"])
 router.include_router(support.router, prefix="/support", tags=["Support"])
-router.include_router(billing.router, prefix="/billing", tags=["Billing"])
 router.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
 
 router.include_router(favorite.router, prefix="/favorite", tags=["Favorite"])

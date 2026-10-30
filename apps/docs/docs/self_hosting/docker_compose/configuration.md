@@ -130,7 +130,7 @@ See [Email](./external_services.md#email) for how these work together.
 | `SMTP_FROM` | empty | Sender address; `SMTP_USER` when empty |
 | `EMAILS_FROM_NAME` | `GOAT` | Sender name |
 | `SMTP_STARTTLS`, `SMTP_SSL` | `true`, `false` | Derived from `SMTP_SECURITY`; set by setup.sh |
-| `EMAIL_BRAND_NAME`, `EMAIL_LOGO_URL`, `EMAIL_CONTACT_URL`, `EMAIL_PRIVACY_URL` | *(commented out)* | Optional branding of GOAT's and Keycloak's emails: name, logo instead of the name, footer links. See [Email branding](./external_services.md#email-branding). |
+| `EMAIL_BRAND_NAME`, `EMAIL_LOGO_URL`, `EMAIL_CONTACT_URL`, `EMAIL_PRIVACY_URL`, `EMAIL_COMPANY_NAME`, `EMAIL_COMPANY_URL` | *(commented out)* | Optional branding of GOAT's and Keycloak's emails: name, logo instead of the name, footer links, who runs your GOAT. See [Email branding](./external_services.md#email-branding). |
 
 ## Backups {#backups}
 

@@ -43,6 +43,7 @@ from goatlib.bundles.importers.pt_network.gtfs_schema import (
 from goatlib.config.postgres import TASKS_APPLICATION_NAME
 from goatlib.storage import BaseDuckLakeManager
 from goatlib.tools.base import ToolSettings
+from goatlib.utils.credentials import postgres_attach_target
 from goatlib.utils.layer import layer_id_to_table_name, resolve_layer_schema
 
 logger = logging.getLogger(__name__)
@@ -116,9 +117,12 @@ class GtfsTypedStorageTask:
     ) -> Dict[str, List[tuple[str, str]]]:
         """bundle id -> [(layer id, role)] for the GTFS bundles' typed roles."""
         assert self.settings is not None
-        uri = self.settings.ducklake_postgres_uri
+        # As every Postgres ATTACH on a lake connection: the password in the
+        # connection's Postgres secret, which DuckDB merges into a libpq
+        # string only (a bare URI fails with 'missing "="').
+        target = postgres_attach_target(con, self.settings.ducklake_postgres_uri)
         schema = self.settings.customer_schema
-        con.execute(f"ATTACH IF NOT EXISTS 'postgres:{uri}' AS pg (READ_ONLY)")
+        con.execute(f"ATTACH IF NOT EXISTS 'postgres:{target}' AS pg (READ_ONLY)")
         rows = con.execute(
             f"""
             SELECT CAST(b.id AS VARCHAR), CAST(bl.layer_id AS VARCHAR), bl.role

@@ -73,6 +73,7 @@ interface WidgetWrapperProps {
   viewOnly?: boolean;
   onWidgetDelete?: (widgetId: string) => void;
   onWidgetDuplicate?: (widgetId: string) => void;
+  onSelectPanel?: () => void;
   onWidgetUpdate?: (updatedWidget: BuilderWidgetSchema) => void;
   panelWidgets?: BuilderWidgetSchema[];
 }
@@ -82,6 +83,7 @@ interface DraggableWidgetContainerProps {
   widget: BuilderWidgetSchema;
   onWidgetDelete?: (widgetId: string) => void;
   onWidgetDuplicate?: (widgetId: string) => void;
+  onSelectPanel?: () => void;
 }
 
 const DraggableWidgetContainer: React.FC<DraggableWidgetContainerProps> = ({
@@ -89,6 +91,7 @@ const DraggableWidgetContainer: React.FC<DraggableWidgetContainerProps> = ({
   widget,
   onWidgetDelete,
   onWidgetDuplicate,
+  onSelectPanel,
 }) => {
   const dispatch = useAppDispatch();
   const selectedWidget = useAppSelector((state) => state.map.selectedBuilderItem);
@@ -116,6 +119,7 @@ const DraggableWidgetContainer: React.FC<DraggableWidgetContainerProps> = ({
         onSelect={() => dispatch(setSelectedBuilderItem(widget))}
         onDelete={() => onWidgetDelete?.(widget.id)}
         onDuplicate={onWidgetDuplicate && (() => onWidgetDuplicate(widget.id))}
+        onSelectParent={onSelectPanel}
         dragAttributes={attributes}
         dragListeners={listeners}
         showDragHandle={true}
@@ -133,6 +137,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   viewOnly,
   onWidgetDelete,
   onWidgetDuplicate,
+  onSelectPanel,
   onWidgetUpdate,
   panelWidgets,
 }) => {
@@ -194,7 +199,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     <DraggableWidgetContainer
       widget={widget}
       onWidgetDelete={onWidgetDelete}
-      onWidgetDuplicate={onWidgetDuplicate}>
+      onWidgetDuplicate={onWidgetDuplicate}
+      onSelectPanel={onSelectPanel}>
       {widgetContent}
     </DraggableWidgetContainer>
   );

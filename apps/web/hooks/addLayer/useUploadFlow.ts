@@ -19,6 +19,7 @@ import {
   type TabularSource,
 } from "@/lib/utils/tabular-preview";
 import type { GetContentQueryParams } from "@/lib/validations/common";
+import { MAX_CONTENT_NAME_LENGTH } from "@/lib/validations/common";
 import type { Folder } from "@/lib/validations/folder";
 import type { LayerMetadata } from "@/lib/validations/layer";
 import { layerMetadataSchema } from "@/lib/validations/layer";
@@ -43,7 +44,7 @@ const ACCEPTED_FILE_TYPES = [".gpkg", ".geojson", ".zip", ".kml", ".csv", ".xlsx
 const TABULAR_EXTENSIONS = ["csv", "xlsx", "xls"];
 
 /** As `contentMetadataSchema` enforces it — kept here so the field can stop at the same point. */
-export const MAX_NAME_LENGTH = 100;
+export const MAX_NAME_LENGTH = MAX_CONTENT_NAME_LENGTH;
 
 /**
  * The selector's value for "no bundle of my own — use the network GOAT ships".
@@ -250,7 +251,7 @@ export const useUploadFlow = ({
       // The suggested name goes into the form, not just onto the screen: with no field
       // registered for it, a name that only existed as display text left the form invalid
       // and the upload button dead.
-      // Trimmed to the limit `contentMetadataSchema` enforces (100): an export named by a
+      // Trimmed to the limit `contentMetadataSchema` enforces (255): an export named by a
       // SQL query is longer than that, and suggesting it verbatim opened the form invalid
       // with an error nobody had caused.
       setValue("name", next.name.replace(/\.[^/.]+$/, "").slice(0, MAX_NAME_LENGTH), {

@@ -100,3 +100,44 @@ export async function networkServiceDays(db: SqlRunner, start: string, end: stri
     FROM served`);
   return row;
 }
+
+/** The trips running on one service day. */
+export interface DailyTrips {
+  date: string;
+  trips: number;
+}
+
+/** How many trips run on each day from `start` to `end`, inclusive, a day
+ * with none included: a trip run by frequency counted once per run. */
+export async function dailyTripCounts(db: SqlRunner, start: string, end: string): Promise<DailyTrips[]> {
+  const rows = await db.all<{ date: string; trips: number }>(`
+    WITH dates AS (
+      SELECT CAST(d AS DATE) AS date
+      FROM range(${sqlDate(start)}, ${sqlDate(end)} + INTERVAL 1 DAY, INTERVAL 1 DAY) r(d)
+    ),
+    regular AS (
+      SELECT s.service_idx, d.date FROM services s
+      JOIN dates d ON d.date BETWEEN s.start_date AND s.end_date
+      WHERE s.days IS NOT NULL AND (CAST(s.days AS INTEGER) >> (isodow(d.date) - 1)) & 1 = 1
+    ),
+    added AS (
+      SELECT service_idx, date FROM calendar_dates
+      WHERE exception_type = 1 AND date BETWEEN ${sqlDate(start)} AND ${sqlDate(end)}
+    ),
+    removed AS (SELECT service_idx, date FROM calendar_dates WHERE exception_type = 2),
+    active AS ((SELECT * FROM regular UNION SELECT * FROM added) EXCEPT SELECT * FROM removed),
+    runs AS (
+      SELECT trip_idx, CAST(sum(len(range(start_s, end_s, headway_s))) AS INTEGER) AS n
+      FROM frequencies GROUP BY trip_idx
+    ),
+    per_service AS (
+      SELECT t.service_idx, sum(COALESCE(r.n, 1)) AS n
+      FROM trips t LEFT JOIN runs r USING (trip_idx)
+      WHERE t.first_dep_s IS NOT NULL GROUP BY t.service_idx
+    )
+    SELECT strftime(d.date, '%Y-%m-%d') AS date, CAST(COALESCE(sum(p.n), 0) AS INTEGER) AS trips
+    FROM dates d LEFT JOIN active a USING (date) LEFT JOIN per_service p USING (service_idx)
+    GROUP BY d.date ORDER BY d.date
+  `);
+  return rows.map((r) => ({ date: r.date, trips: Number(r.trips) }));
+}

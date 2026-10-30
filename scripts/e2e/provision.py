@@ -66,15 +66,10 @@ MEMBERS = {
     "viewer": "organization-viewer",
 }
 ORGANIZATION = {
-    "department": "Planning",
-    "industry": "urban_planning",
-    "location": "Munich",
+    # What the one-step onboarding form sends; the CRM fields (industry,
+    # department, use case, location, phone) are gone with migration 0012.
     "type": "government",
-    "use_case": "site_analysis_and_design_decision_support",
     "region": "EU",
-    # Optional in the API schema but NOT NULL in the table; without it core
-    # answers 409. The onboarding form always sends one.
-    "phone_number": "+49 89 0000000",
 }
 
 
@@ -121,7 +116,15 @@ def ensure_keycloak_user(client: httpx.Client, token: str, role: str) -> str:
     )
     found.raise_for_status()
     if found.json():
-        return str(found.json()[0]["id"])
+        user_id = str(found.json()[0]["id"])
+        # A user left by an earlier run may have another password: reset it,
+        # so a rerun can always log in.
+        client.put(
+            f"{users}/{user_id}/reset-password",
+            headers=headers,
+            json={"type": "password", "value": PASSWORD, "temporary": False},
+        ).raise_for_status()
+        return user_id
     created = client.post(
         users,
         headers=headers,

@@ -2,11 +2,13 @@
  * The open bundle's Explorer data, for every panel of the Explorer: its
  * DuckDB-WASM database and the member layers the map draws from.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { useBundleLayers } from "@/lib/api/bundles";
 import type { SqlRunner } from "@/lib/explorer/db/types";
+import { type DailyTrips, dailyTripCounts } from "@/lib/explorer/derive/calendar";
+import { optimumPeriod } from "@/lib/explorer/derive/cost";
 import { networkShapes, networkStations, networkStops, networkStore } from "@/lib/explorer/network";
 import { DEFAULT_SETTINGS, type ExplorerSettings, loadSettings, saveSettings } from "@/lib/explorer/settings";
 import { setExplorerBounds, setExplorerDate } from "@/lib/store/explorer/slice";
@@ -22,6 +24,14 @@ interface ExplorerData {
   complete: boolean;
   /** The feed's service window, `[first, last]` day. */
   window: [string, string] | null;
+  /** The trips running on each day of the window, once the timetable is in. */
+  daily: DailyTrips[] | null;
+  /** The data period: the days figures are counted over (scaled to a
+   * year), around the date the Explorer opens on. `optimum` is the stretch
+   * the timetable fully covers (optimumPeriod); `dataPeriod` the user's,
+   * where set and in the feed, else that. Null until the timetable is in. */
+  optimum: [string, string] | null;
+  dataPeriod: [string, string] | null;
   /** The bundle's shape_lines layer, which the map draws routes from. */
   shapeLinesLayerId: string | null;
   /** Share of the snapshot's bytes in the browser, 0–1; null before the download. */
@@ -67,9 +77,42 @@ export function ExplorerProvider({ bundleId, children }: { bundleId: string; chi
     return first && last ? [first, last] : null;
   }, [manifest]);
 
+  // The date to open on: today within the feed at first, then within the
+  // data period once it is known, unless the user picked one meanwhile.
+  const opened = useRef<string | null>(null);
   useEffect(() => {
-    if (window && !date) dispatch(setExplorerDate(defaultDate(window)));
+    if (window && !date) {
+      opened.current = defaultDate(window);
+      dispatch(setExplorerDate(opened.current));
+    }
   }, [window, date, dispatch]);
+
+  // The trips running each day, for the period costs are counted over and
+  // the timeline that sets it: once the whole timetable is in.
+  const readyDb = state.status === "ready" ? state.db : undefined;
+  const [daily, setDaily] = useState<{ db: SqlRunner; days: DailyTrips[] } | null>(null);
+  useEffect(() => {
+    if (!readyDb || !window) return;
+    let current = true;
+    dailyTripCounts(readyDb, window[0], window[1])
+      .then((days) => current && setDaily({ db: readyDb, days }))
+      .catch(() => current && setDaily({ db: readyDb, days: [] }));
+    return () => {
+      current = false;
+    };
+  }, [readyDb, window]);
+  const days = daily && daily.db === readyDb ? daily.days : null;
+  const optimum = useMemo(() => (window && days ? optimumPeriod(window, days) : null), [window, days]);
+  // The user's period, where it lies in the feed; else the default.
+  const set = settings.data_period;
+  const dataPeriod = set && window && set[0] >= window[0] && set[1] <= window[1] ? set : optimum;
+  useEffect(() => {
+    if (!dataPeriod || !date || date !== opened.current) return;
+    if (date < dataPeriod[0] || date > dataPeriod[1]) {
+      opened.current = defaultDate(dataPeriod);
+      dispatch(setExplorerDate(opened.current));
+    }
+  }, [dataPeriod, date, dispatch]);
 
   // The network's extent, from its stops as soon as they are in: the map
   // fits it once, on opening.
@@ -142,6 +185,9 @@ export function ExplorerProvider({ bundleId, children }: { bundleId: string; chi
       db: ready && hasTables(state, FIRST_TABLES) ? state.db : undefined,
       complete: state.status === "ready",
       window,
+      daily: days,
+      optimum,
+      dataPeriod,
       shapeLinesLayerId,
       progress:
         state.status === "ready"
@@ -154,7 +200,7 @@ export function ExplorerProvider({ bundleId, children }: { bundleId: string; chi
       settings,
       setSettings,
     };
-  }, [state, window, retry, manifest, settings, setSettings, shapeLinesLayerId]);
+  }, [state, window, days, optimum, dataPeriod, retry, manifest, settings, setSettings, shapeLinesLayerId]);
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

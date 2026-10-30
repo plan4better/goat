@@ -398,7 +398,7 @@ describe("cost", () => {
     const daily = 6.8 + 4 * 0.6769;
     expect(year.window_days).toBe(361);
     expect(year.vehicle_km).toBeCloseTo(daily * 258 * (365 / 361), 0);
-    expect(year.cost).toBeCloseTo(year.vehicle_km * 4.5, 6);
+    expect(year.cost).toBeCloseTo(year.vehicle_km * 5.5, 6);
   });
 
   it("counts this calendar year where the feed covers it, else a year of it", () => {
@@ -428,10 +428,12 @@ describe("cost", () => {
   });
 
   it("prices by route type until rates are set", () => {
-    expect(defaultRate(3).per_km).toBe(4.5);
-    expect(defaultRate(0).per_km).toBe(7);
-    expect(defaultRate(2).per_km).toBe(12);
-    expect(defaultRate(700).per_km).toBe(4.5);
+    expect(defaultRate(3).per_km).toBe(5.5);
+    expect(defaultRate(0).per_km).toBe(8);
+    // Per train-km: a trip of a metro or train is the whole train.
+    expect(defaultRate(1).per_km).toBe(24);
+    expect(defaultRate(2).per_km).toBe(24);
+    expect(defaultRate(700).per_km).toBe(5.5);
     expect(defaultRate(null).per_hour).toBeNull();
   });
 });
