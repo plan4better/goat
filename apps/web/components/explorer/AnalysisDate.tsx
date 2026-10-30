@@ -6,7 +6,7 @@
  * bounded to the feed's service window. The panels show it, as a pill on
  * each section its figures depend on.
  */
-import { Box, ButtonBase, IconButton, Popover, Stack, Typography } from "@mui/material";
+import { Box, ButtonBase, IconButton, Popover, Stack, Tooltip, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -49,7 +49,7 @@ export function AnalysisDate({ compact = false }: { compact?: boolean }) {
   const dispatch = useAppDispatch();
   const locale = useDayjsLocale();
   const date = useAppSelector((s) => s.explorer.date);
-  const { window } = useExplorer();
+  const { window, dataPeriod } = useExplorer();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const widest = useMemo(() => widthSamples(i18n.language), [i18n.language]);
   if (!date || !window) return null;
@@ -58,6 +58,8 @@ export function AnalysisDate({ compact = false }: { compact?: boolean }) {
     if (next >= window[0] && next <= window[1]) dispatch(setExplorerDate(next));
   };
   const stepSx = { width: 24, height: 24, color: "text.secondary" } as const;
+  // A day outside the data period is still shown, said to be outside it.
+  const outside = !!dataPeriod && (date < dataPeriod[0] || date > dataPeriod[1]);
   return (
     <Stack
       direction="row"
@@ -74,38 +76,45 @@ export function AnalysisDate({ compact = false }: { compact?: boolean }) {
           <Icon iconName={ICON_NAME.CHEVRON_LEFT} style={{ fontSize: 10 }} />
         </IconButton>
       )}
-      <ButtonBase
-        onClick={(e) => setAnchor(e.currentTarget)}
-        aria-label={t("explorer_pick_date")}
-        sx={{
-          gap: 0.75,
-          px: 1,
-          height: 28,
-          borderRadius: "14px",
-          color: "text.secondary",
-          "&:hover": { bgcolor: "action.selected" },
-        }}>
-        <Icon iconName={ICON_NAME.CALENDAR} style={{ fontSize: 12 }} htmlColor="inherit" />
-        {/* As wide as the widest date it can show, so stepping a day does not
+      <Tooltip title={outside ? t("explorer_date_outside_period") : ""}>
+        <ButtonBase
+          onClick={(e) => setAnchor(e.currentTarget)}
+          aria-label={t("explorer_pick_date")}
+          sx={{
+            gap: 0.75,
+            px: 1,
+            height: 28,
+            borderRadius: "14px",
+            color: "text.secondary",
+            "&:hover": { bgcolor: "action.selected" },
+          }}>
+          <Icon iconName={ICON_NAME.CALENDAR} style={{ fontSize: 12 }} htmlColor="inherit" />
+          {/* As wide as the widest date it can show, so stepping a day does not
             shift the bar: every weekday-and-month pair laid out unseen in the
             same cell, the date shown over them. */}
-        <Box sx={{ display: "grid", justifyItems: "center", "& > *": { gridArea: "1 / 1" } }}>
-          {widest.map((d) => (
+          <Box sx={{ display: "grid", justifyItems: "center", "& > *": { gridArea: "1 / 1" } }}>
+            {widest.map((d) => (
+              <Typography
+                key={d}
+                aria-hidden
+                variant="body2"
+                fontWeight={700}
+                noWrap
+                sx={{ visibility: "hidden", ...DIGITS }}>
+                {d}
+              </Typography>
+            ))}
             <Typography
-              key={d}
-              aria-hidden
               variant="body2"
               fontWeight={700}
+              color={outside ? "text.disabled" : "text.primary"}
               noWrap
-              sx={{ visibility: "hidden", ...DIGITS }}>
-              {d}
+              sx={DIGITS}>
+              {shortDate(date, i18n.language)}
             </Typography>
-          ))}
-          <Typography variant="body2" fontWeight={700} color="text.primary" noWrap sx={DIGITS}>
-            {shortDate(date, i18n.language)}
-          </Typography>
-        </Box>
-      </ButtonBase>
+          </Box>
+        </ButtonBase>
+      </Tooltip>
       {!compact && (
         <IconButton
           size="small"
@@ -132,6 +141,7 @@ export function AnalysisDate({ compact = false }: { compact?: boolean }) {
           }}
           min={window[0]}
           max={window[1]}
+          highlight={dataPeriod ?? undefined}
         />
       </Popover>
     </Stack>

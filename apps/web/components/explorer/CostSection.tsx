@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { type AnnualFigures, costYear } from "@/lib/explorer/derive/cost";
+import type { AnnualFigures } from "@/lib/explorer/derive/cost";
 import { clock, compact, money, monthYear } from "@/lib/explorer/format";
 import { openExplorerSettings, panelItem } from "@/lib/store/explorer/slice";
 
@@ -155,7 +155,8 @@ function Cost() {
   const { t, i18n } = useTranslation("common");
   const dispatch = useAppDispatch();
   const lang = i18n.language;
-  const { db, complete, window, settings } = useExplorer();
+  // Counted over the cost period, not the feed's whole window.
+  const { db, complete, dataPeriod: window, settings } = useExplorer();
   const selectedRouteId = useAppSelector((s) => s.explorer.selectedRouteId);
   const date = useAppSelector((s) => s.explorer.date);
   const trip = useAppSelector((s) => {
@@ -187,7 +188,8 @@ function Cost() {
     settings
   );
   const pending = useTimetablesPending();
-  const year = window ? costYear(window) : null;
+  // The data period the figures are counted over, scaled to a year.
+  const year = window ? { from: window[0], to: window[1] } : null;
 
   const steps: { mark: ReactNode; name: string; annual: AnnualFigures | undefined }[] = [
     {
@@ -250,16 +252,19 @@ function Cost() {
       ))}
       {/* The deepest step's vehicle-km and -hours, as its branches. */}
       <Box sx={{ mt: "4px" }}>
-        {[
-          ["explorer_cost_km", deepest?.vehicle_km],
-          ["explorer_cost_hours", deepest?.vehicle_hours],
-        ].map(([key, value], i) => (
+        {(
+          [
+            ["explorer_cost_km", "explorer_value_km", deepest?.vehicle_km],
+            ["explorer_cost_hours", "explorer_value_hours", deepest?.vehicle_hours],
+          ] as const
+        ).map(([key, unit, value], i) => (
           <Figure
             key={key}
             depth={steps.length}
             first={i === 0}
-            label={t(key as string)}
-            value={value === undefined ? "–" : compact(value as number, lang)}
+            label={t(key)}
+            // With its unit: a count alone reads as anything.
+            value={value === undefined ? "–" : t(unit, { value: compact(value, lang) })}
           />
         ))}
       </Box>

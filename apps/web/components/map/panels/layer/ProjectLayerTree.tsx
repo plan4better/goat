@@ -160,13 +160,15 @@ const InExplorerChip = () => {
     <Stack
       direction="row"
       alignItems="center"
-      spacing={0.5}
+      spacing={1}
       sx={{
-        px: 0.75,
+        px: "8px",
         py: 0.25,
         mr: 0.5,
-        borderRadius: 1,
+        // A pill, as the Explorer's other small labels.
+        borderRadius: "999px",
         bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+        // The icon in GOAT's darker green; the caption keeps its own grey.
         color: "primary.dark",
         flexShrink: 0,
       }}>

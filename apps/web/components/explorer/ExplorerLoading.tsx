@@ -101,6 +101,7 @@ function ExplorerErrorCard({ failure, onRetry }: { failure: ExplorerFailure; onR
   const { t } = useTranslation("common");
   const bundleName = useAppSelector((s) => s.explorer.bundleName);
   const [showDetails, setShowDetails] = useState(false);
+  const hint = t(`explorer_error_${failure.kind}_hint`, { defaultValue: "" });
   return (
     <Box sx={{ px: 2.5, pt: 4, pb: 3 }}>
       <Stack direction="row" spacing={1.5} alignItems="center">
@@ -115,8 +116,9 @@ function ExplorerErrorCard({ failure, onRetry }: { failure: ExplorerFailure; onR
         </Box>
       </Stack>
       <Box sx={{ mt: 2.5, p: 2, borderRadius: 1.5, bgcolor: "action.hover" }}>
-        <Typography variant="body2">{t(`explorer_error_${failure.kind}_hint`)}</Typography>
-        <Stack direction="row" alignItems="center" spacing={2} sx={{ mt: 1.5 }}>
+        {/* What to do, where there is something more to say than the title. */}
+        {hint && <Typography variant="body2">{hint}</Typography>}
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ mt: hint ? 1.5 : 0 }}>
           {retryable(failure.kind) && (
             <Button
               size="small"

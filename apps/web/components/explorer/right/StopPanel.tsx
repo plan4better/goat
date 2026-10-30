@@ -89,7 +89,7 @@ function ViewSwitch({ value, onChange }: { value: View; onChange: (v: View) => v
 /** A row of choices beside a quiet label. */
 function ChipRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <Stack direction="row" alignItems="flex-start" spacing={1} sx={{ mt: 1.25 }}>
+    <Stack direction="row" alignItems="flex-start" spacing={1} sx={{ mt: "12px" }}>
       <Typography
         variant="caption"
         color="text.secondary"

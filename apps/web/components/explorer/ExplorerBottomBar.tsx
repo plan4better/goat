@@ -406,7 +406,7 @@ function VehicleCount({ ready, route }: { ready: boolean; route: RouteRow | unde
         direction="row"
         alignItems="baseline"
         justifyContent="center"
-        spacing={0.5}
+        spacing={1}
         // Inline, as the play button's: the row's spacing resets margins set in sx.
         style={{ marginRight: COUNT_END }}
         sx={{ flexShrink: 0, width: COUNT_W, visibility: ready ? "visible" : "hidden" }}>
