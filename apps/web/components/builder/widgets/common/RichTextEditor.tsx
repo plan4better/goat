@@ -187,14 +187,16 @@ function RichTextEditor<TState extends BaseToolbarState = BaseToolbarState>({
     if (editor) editor.setEditable(isEditMode);
   }, [editor, isEditMode]);
 
-  // Sync external value changes when not editing
+  // Sync external value changes when not editing. alwaysEdit fields (sidebar
+  // inputs) are always in edit mode, so they sync unless focused, otherwise
+  // they keep showing the previous widget's text after the selection changes.
   useEffect(() => {
-    if (!editor || isEditMode) return;
+    if (!editor || (isEditMode && (!alwaysEdit || editor.isFocused))) return;
     const currentHtml = editor.getHTML();
     if (currentHtml !== (value || "")) {
       editor.commands.setContent(value || "", { emitUpdate: false });
     }
-  }, [editor, value, isEditMode]);
+  }, [editor, value, isEditMode, alwaysEdit]);
 
   // Persist on each change (optionally debounced)
   useEffect(() => {
