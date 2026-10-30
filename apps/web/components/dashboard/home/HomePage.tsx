@@ -4,6 +4,7 @@ import { Box, useMediaQuery, useTheme } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { refreshContentFeed } from "@/lib/api/content";
 import { useTemplates } from "@/lib/api/templates";
 import { useUserProfile } from "@/lib/api/users";
 import type { TemplateKind, TemplateRead, TemplateSourceFilter } from "@/lib/validations/template";
@@ -11,6 +12,7 @@ import type { TemplateKind, TemplateRead, TemplateSourceFilter } from "@/lib/val
 import { useHomeCreate } from "@/hooks/dashboard/home/useHomeCreate";
 import type { SetupStepId } from "@/hooks/dashboard/home/useHomeStage";
 import { runSetupStep, useHomeStage } from "@/hooks/dashboard/home/useHomeStage";
+import { useJobStatus } from "@/hooks/jobs/JobStatus";
 import { templateResultHref } from "@/hooks/templates/useUseTemplate";
 
 import BlogSection from "@/components/dashboard/home/BlogSection";
@@ -42,8 +44,16 @@ const HomePage = () => {
 
   const router = useRouter();
   const { userProfile } = useUserProfile();
-  const { stage, isLoading: stageLoading, facts, done } = useHomeStage();
+  const { stage, isLoading: stageLoading, facts, done, refresh: refreshFacts } = useHomeStage();
   const { homeFolderId, newProject, addDataset, browseCatalog, dialogs } = useHomeCreate();
+
+  // An upload's dialog closes before its background import has written the
+  // layer, so the lists refresh when the job finishes, as the Content page
+  // does. The onboarding facts follow, since they hold "has an uploaded layer".
+  useJobStatus(() => {
+    refreshContentFeed();
+    refreshFacts();
+  });
 
   // T10/§4: one template browser + `UseTemplateFlow` pair for the
   // checklist's "Run your first analysis"/"Build a workflow" steps —
