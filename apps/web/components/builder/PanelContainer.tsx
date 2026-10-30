@@ -43,6 +43,7 @@ interface ContainerProps {
   onClick?: () => void;
   onChangeOrder?: (panelId: string, position: "top" | "bottom" | "left" | "right") => void;
   onWidgetDelete?: (widgetId: string) => void;
+  onWidgetDuplicate?: (widgetId: string) => void;
   onWidgetUpdate?: (updatedWidget: BuilderWidgetSchema) => void;
   viewOnly?: boolean;
 }
@@ -93,6 +94,7 @@ export const Container: React.FC<ContainerProps> = ({
   onClick,
   onChangeOrder,
   onWidgetDelete,
+  onWidgetDuplicate,
   onWidgetUpdate,
   viewOnly,
 }) => {
@@ -409,6 +411,7 @@ export const Container: React.FC<ContainerProps> = ({
                       projectLayerGroups={projectLayerGroups}
                       viewOnly={viewOnly}
                       onWidgetDelete={onWidgetDelete}
+                      onWidgetDuplicate={onWidgetDuplicate}
                       onSelectPanel={onClick}
                       onWidgetUpdate={onWidgetUpdate}
                       panelWidgets={panel.widgets}
