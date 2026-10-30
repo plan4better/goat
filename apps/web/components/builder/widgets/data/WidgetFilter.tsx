@@ -29,6 +29,35 @@ const areFiltersEqual = (a: TemporaryFilter | undefined, b: TemporaryFilter) => 
   return JSON.stringify(cleanA) === JSON.stringify(cleanB);
 };
 
+// Rebuild the local selection from the stored filter, so a widget that remounts
+// (e.g. after switching tabs) shows what is still applied to the map.
+const getValuesFromFilter = (
+  filter: TemporaryFilter | undefined,
+  columnName: string | undefined,
+  multiple: boolean | undefined
+): string[] | string => {
+  const empty = multiple ? [] : "";
+  const f = filter?.filter as any;
+  if (!columnName || f?.op !== "or" || !Array.isArray(f.args)) return empty;
+  const values = f.args
+    .filter((arg: any) => arg?.op === "=" && arg.args?.[0]?.property === columnName)
+    .map((arg: any) => arg.args[1]);
+  if (!values.length) return empty;
+  return multiple ? values : values[0];
+};
+
+const getRangeFromFilter = (
+  filter: TemporaryFilter | undefined,
+  columnName: string | undefined
+): [number, number] | [string, string] | null => {
+  const f = filter?.filter as any;
+  if (!columnName || f?.op !== "and" || f.args?.length !== 2) return null;
+  const [lower, upper] = f.args;
+  if (lower?.op !== ">=" || upper?.op !== "<=") return null;
+  if (lower.args?.[0]?.property !== columnName || upper.args?.[0]?.property !== columnName) return null;
+  return [lower.args[1], upper.args[1]];
+};
+
 interface FilterDataProps {
   id: string;
   config: FilterDataSchema;
@@ -44,25 +73,26 @@ export const FilterDataWidget = ({ id, config: rawConfig, projectLayers }: Filte
     rawConfig?.setup?.layout === filterLayoutTypes.Values.range ||
     rawConfig?.setup?.layout === filterLayoutTypes.Values.picker;
 
-  // Local dropdown state (for select, chips, checkbox)
-  const [selectedValues, setSelectedValues] = useState<string[] | string | undefined>(
-    rawConfig?.setup?.multiple ? [] : ""
+  const existingFilter = useAppSelector((state) =>
+    state.map.temporaryFilters.find((filter) => filter.id === id)
+  );
+
+  // Local dropdown state (for select, chips, checkbox).
+  // Starts from the stored filter so a remount keeps the selection.
+  const [selectedValues, setSelectedValues] = useState<string[] | string | undefined>(() =>
+    getValuesFromFilter(existingFilter, rawConfig?.setup?.column_name, rawConfig?.setup?.multiple)
   );
 
   // Local range state — numbers for numeric range, ISO strings for temporal.
   const [selectedRange, setSelectedRange] = useState<
     [number, number] | [string, string] | null
-  >(null);
+  >(() => getRangeFromFilter(existingFilter, rawConfig?.setup?.column_name));
 
   // Flash animation when filter is updated via map click
   const [isFlashing, setIsFlashing] = useState(false);
 
   // Track previous selection to only zoom when the user actually changes the selection
   const prevSelectedValuesRef = useRef(selectedValues);
-
-  const existingFilter = useAppSelector((state) =>
-    state.map.temporaryFilters.find((filter) => filter.id === id)
-  );
 
   // Get all temporary filters (for cross-filtering options)
   const allTemporaryFilters = useAppSelector((state) => state.map.temporaryFilters);
@@ -234,14 +264,19 @@ export const FilterDataWidget = ({ id, config: rawConfig, projectLayers }: Filte
    * Sync local state with config changes.
    * If user changes column/layer in the config panel, wipe local state + related filter/highlight.
    */
+  const setupKey = `${rawConfig?.setup?.column_name}:${rawConfig?.setup?.layer_project_id}`;
+  const prevSetupKeyRef = useRef(setupKey);
   useEffect(() => {
+    // Not on mount: a remount must keep the existing filter.
+    if (prevSetupKeyRef.current === setupKey) return;
+    prevSetupKeyRef.current = setupKey;
     setSelectedValues(rawConfig?.setup?.multiple ? [] : "");
     setSelectedRange(null);
     if (existingFilter) {
       dispatch(removeTemporaryFilter(id));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawConfig?.setup?.column_name, rawConfig?.setup?.layer_project_id]);
+  }, [setupKey]);
 
   /**
    * Sync local state when filter is removed externally
