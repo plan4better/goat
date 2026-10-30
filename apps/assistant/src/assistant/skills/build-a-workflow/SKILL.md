@@ -11,6 +11,34 @@ a workflow says, and you never delete one. On a page without the workflow tools 
 catalog, home, layouts, dashboards), tell the user to open the project's Map or
 Workflows page to build or change it there.
 
+## Recipe files
+
+GOAT's common analysis chains are in four reference files of this skill, with
+drafts that use real tool ids, inputs and settings. Load the one file the
+question needs with skills_load (name build-a-workflow, file its name), never
+all of them: a file loaded stays in the conversation and is sent again with
+every later call. Load another only when the user picks a method it holds
+(catchment areas in the method card). A question none of them covers (a
+travel-time matrix, a filter on a saved result, a change to a workflow) needs
+none. In the drafts, the layer numbers (12, 13, 14, 15) stand for
+layer_project_ids from project_get_layers, and the field names for fields read
+with project_get_fields; read the settings with workflow_describe_tool before
+you use them.
+
+- `heatmap.md`: residents (or homes, jobs) within N minutes of the nearest of
+  many places, for the whole place or per district, with the heatmap and its
+  reference area; areas or cells counted per district; access to everyday
+  needs everywhere (a 15-minute city check, heatmap_gravity).
+- `catchments.md`: catchment areas: the area reached and the residents inside
+  it, from one or a few start points, in bands, per district or with a
+  departure window by public transport; start points over the limit, run in
+  parts.
+- `transit-service.md`: how well a place is served by public transport: the
+  ÖV-Güteklassen per class and district, and the other measures its card offers.
+- `joins-and-distances.md`: fields of one layer joined to another, by location
+  or by a shared field; what lies within a straight-line distance of places
+  (buffer).
+
 ## Steps
 
 1. **Understand the goal.** What is reached from where, how (walking, bicycle,
@@ -20,15 +48,17 @@ Workflows page to build or change it there.
    For the share or number of residents (or homes, jobs and the like) within N
    minutes of the nearest of many places across the area (stops, schools,
    shops), both methods fit: the heatmap (recommended) and catchment areas
-   (recipes.md). Offer both in the card the answer shows anyway (step 3, the one
-   that picks the data or the measure), never in a card of their own; without
-   one, build the heatmap and say in one sentence that catchment areas are the
-   other way. Catchment areas stay the method, with no card about it, when the
-   answer is an area: the area reached, its km², land use or parcels inside or
-   outside it, shapes per start point; and for one or a few start points (one
-   station), or public transport with a departure window from given stops.
-   How well a place is served by public transport: read recipes.md (Public
-   transport service of a place) before the card that asks for the measure.
+   (heatmap.md, catchments.md). Offer both in the card the answer shows anyway
+   (step 3, the one that picks the data or the measure), never in a card of
+   their own; without one, build the heatmap and say in one sentence that
+   catchment areas are the other way. Catchment areas stay the method, with no
+   card about it, when the answer is an area: the area reached, its km², land
+   use or parcels inside or outside it, shapes per start point; and for one or
+   a few start points (one station), or public transport with a departure
+   window from given stops.
+   Once the goal is clear, load its recipe file (Recipe files) before any card:
+   the card's options follow it. How well a place is served by public
+   transport: read transit-service.md before the card that asks for the measure.
 2. **Look for a template.** Call workflow_find_templates once, with the analysis in
    a few words. German and English words in one query are fine: it searches the
    whole query, then up to four of its words of three or more characters on their
@@ -60,8 +90,20 @@ Workflows page to build or change it there.
    - exactly one layer fits: use it;
    - several fit, or none fits but the searches found fitting datasets of the
      user's own or in the catalog: it is unclear;
-   - nothing fits anywhere: leave the step open (layer null), labelled for what is
-     missing. The user chooses its layer in the editor, so it needs no card.
+   - nothing fits anywhere: the input is missing (Missing inputs, below).
+
+   **Missing inputs.** When an input the question needs is missing, say plainly
+   which input is missing. Then recommend the part that can be computed without
+   it, and run it when the user asked for a result: today's state without the
+   planned change, the scheduled lines alone without a missing on-demand area,
+   or a named stand-in, such as the stations for job centres. The answer names
+   the stand-in and what it stands for. Waiting for the user's data, or a
+   workflow with the step left open (layer null, labelled for what is missing),
+   is a second option, never the recommended one: offer it in the card the
+   answer shows anyway or in one sentence, never in a card of its own. A step
+   left open is the user's to fill in the editor, so it needs no card, and a
+   workflow with a step left open is not run until the user has chosen its
+   layer.
 
    Before recommending a dataset for a role, check that it has what the role
    needs: the field (a population total), the place (its extent or feature
@@ -100,8 +142,13 @@ Workflows page to build or change it there.
    subset as the whole: "buses" only when every bus member is in.
 
    Three roles come up often:
-   - residents: census points with `aggregate_points` are the default. Never
-     spread an area's population by its area share when points exist. Square
+   - residents: census points with `aggregate_points` are the default. For a
+     place in Germany, the first population source to try is the Zensus 2022
+     grid (residents per 100 m cell, as census points): put `zensus` among the
+     words of the catalog search. District or statistical-area tables come
+     after it, since many hold only age groups or shares; read a candidate's
+     fields before a card recommends it. Never spread an area's population by
+     its area share when points exist. Square
      metres are an area result, labelled as area, never as people; residents
      spread by area share (only when no points exist) are people, labelled as
      an estimate;
@@ -128,14 +175,15 @@ Workflows page to build or change it there.
    options, at most four: the fitting project layers (value: the
    layer_project_id as text), fitting catalog datasets and the user's own
    fitting datasets from core_find (description: what it leaves out or how exact
-   it is, then "Adds it to the project"), and "Leave it open" (no value). Every option that uses data not yet in the open
-   project lists it in `adds`, a layer of another project too (its dataset's id
+   it is, then "Adds it to the project"), and "Leave it open" (no value, never
+   recommended). Every option that uses data not yet in the open project lists
+   it in `adds`, a layer of another project too (its dataset's id
    from core_find); `value` is a short key then. The data a step needs rides on
    the `adds` of the card that decides that step, never on a second card that
    only asks to add it: an option that names data without `adds` makes one
    necessary. When both methods fit (step 1), the card asks for the method too,
    with two options: the heatmap, recommended, with a polygon of the place from
-   the catalog in `adds` when the project has none (recipes.md), described "Fast,
+   the catalog in `adds` when the project has none (heatmap.md), described "Fast,
    and one run answers several time limits; it counts a whole block (about
    1.3 ha on foot) as reached when one street in it is, so shares come out a
    little high.", and catchment areas, described "Exact shapes, but slower, and
@@ -146,29 +194,33 @@ Workflows page to build or change it there.
    the question names is in (both kinds of shops it asks about, not one). A
    narrower option (one time window, some of the modes, part of the area or of
    the start points) may be offered, never recommended; when the user picks it,
-   the answer says what was left out. Then end your answer.
+   the answer says what was left out. When an input is missing, no option
+   answers the whole question now: recommend the part that can be computed
+   (Missing inputs). Then end your answer.
 4. **After the answer.** Add each catalog dataset the user picked with
    project_add_catalog_layer and its catalog id, and each of the user's own
    datasets they picked with project_add_dataset and its id from core_find; use
    the layer_project_ids they return (a bundle adds several layers). A dataset
    the user only named in their text, or wrote into the card's free-text field,
    is not picked: ask with the card. "Leave it open" means layer null. A catalog
-   dataset's data is copied in the background; until then the check does not
-   judge its fields, and
-   project_get_fields may not read them either: take them from the columns
-   catalog_get_record lists for that dataset, for a bundle the `columns` of the
-   member you use. It lists at most 60 columns of a layer. When the field you need
-   is not listed and the list may be cut (`columns_truncated` on a member, or 60
-   columns listed), leave that dataset step open, labelled with the dataset's
-   name, so the user chooses the layer once its copy is ready. When the list is
-   complete, the dataset has no such field: tell the user, or offer another
-   dataset.
+   dataset's data is copied in the background, and until the copy is ready the
+   check does not judge the fields of steps that read it. Write the draft from
+   the columns catalog_get_record lists for that dataset (for a bundle, the
+   `columns` of the member you use; it lists at most 60 columns of a layer).
+   Wait for the copy before you create the workflow: read the layer's fields
+   with project_get_fields; while it says the layer is still being copied,
+   read them again. When the field you need is not among the fields read, the
+   dataset has no such field: tell the user, or offer another dataset. Only
+   when the copy failed, leave that dataset step open, labelled with the
+   dataset's name, and say in the answer that the workflow needs the user's
+   choice of that layer before it can run. The copy failed when
+   project_get_fields cannot read the layer for another reason.
 5. **Pick the tools.** workflow_tools lists the tools and their layer inputs. Read
    the settings of the ones you use with one workflow_describe_tool call. Use only
    the tools, inputs and settings these list. A step they do not list, such as a
    custom SQL step, does not go into your draft; the user can add it in the editor
-   later. recipes.md has the common chains: load it with skills_load (name
-   build-a-workflow, file recipes.md).
+   later. The recipe file for the question (Recipe files) holds its common
+   chain; once loaded, it stays in the conversation.
 6. **Write, check, fix.** Write the draft, check it with workflow_check_draft, fix
    every issue you can (Reading issues) and check again, at most three times. Then
    create it with workflow_create. The same draft created again returns the first
@@ -231,7 +283,7 @@ workflow for it.
   not: take the denominator from the numerator's source, or say that the bases
   differ. Per area, both come from one assignment: residents per district are
   the census points counted by the district they lie in, all of them and those
-  in the reached cells or areas (recipes.md, Shares per district), never cells
+  in the reached cells or areas (heatmap.md, Shares per district), never cells
   or areas split over the districts by area share. A share above 100 % is
   never presented: the tool notes it, and you rebuild the share from one
   assignment first.
@@ -239,7 +291,8 @@ workflow for it.
   statistical areas, with their values): grid cells alone do not answer it,
   so aggregate the cells to named areas. Areas (cells, statistical areas,
   gaps) counted or summed per district: give each area one district, by its
-  centroid (recipes.md), or say that areas on a boundary count in both.
+  centroid (heatmap.md, Areas counted or summed per district), or say that
+  areas on a boundary count in both.
 - A catchment far below its nominal size (well under 1 km² for 15 minutes on
   foot) most likely started on a piece of the network that does not reach
   the street, such as a station's platforms. Build it again from the street
@@ -252,7 +305,7 @@ workflow for it.
   walking, cycling or travel time (or a distance) along the network, never a
   straight-line distance; only a buffer is a straight line. Name the method and
   how exact it is, as the note does: counted per hexagon of about 1.3 ha on
-  foot (recipes.md gives the other modes), or areas that end slightly short of
+  foot (heatmap.md gives the other modes), or areas that end slightly short of
   N minutes.
 - Report the numbers first: after a run, its numbers (or what failed and why)
   come before anything else, and ask_user refuses a card while a finished run
@@ -336,7 +389,7 @@ workflow for it.
   layer for the region beyond it (catalog_find_region), merged into one
   (merge). When the margin brings more destinations or start points than a run
   takes, keep the place and say that places just beyond its border are left
-  out. A heatmap with a polygon of the place as its reference area (recipes.md)
+  out. A heatmap with a polygon of the place as its reference area (heatmap.md)
   needs no such fallback: it computes only the place's hexagons, and only the
   destinations within its reach count toward what the run takes.
   `filter.where` keeps the features matching every condition, each
@@ -409,7 +462,8 @@ issue names its steps by your ids (`steps`), and a one-step issue's message star
 with the step's name.
 
 - `layer_not_chosen`: a dataset step without a layer. Fine when you left it open on
-  purpose; otherwise choose its layer.
+  purpose (Missing inputs), but such a workflow is not run; otherwise choose its
+  layer.
 - `input_not_connected`, `opportunity_not_connected`: connect a step to that input.
 - `connection_to_unknown_input`: use an input from layer_inputs.
 - `setting_required`: fill it from the user's request, or ask.
@@ -429,7 +483,7 @@ with the step's name.
 - `too_many_destinations`: the heatmap's opportunity layers without a filter have
   more features than it takes. Give their dataset steps `filter.area`, the
   region one level up (The draft, dataset), or a `where`, or connect a polygon
-  of the place to the heatmap's `reference_area_layer_id` (recipes.md), and
+  of the place to the heatmap's `reference_area_layer_id` (heatmap.md), and
   check again.
   When an If step may skip the heatmap, it is a warning and does not stop
   workflow_create.
@@ -445,7 +499,7 @@ with the step's name.
   bicycle or by car, 800 by public transport. Above that, offer narrowing and
   say why (one workflow holds at most 8 parts); when no field splits the layer,
   two workflows split it by district within those 8 parts. With bands, each
-  part's catchment gives cumulative bands (recipes.md, Start points over the
+  part's catchment gives cumulative bands (catchments.md, Start points over the
   limit). When the parts fit, offer the run in parts in a card,
   recommended, and say that it runs longer; narrowing to part of the start
   points stays an option the user picks, offered as such. Runs in parts are

@@ -19,6 +19,7 @@ from assistant.skills import BUILT_IN
 from assistant.tools.core import FoundLayer
 from assistant.tools.project import ProjectInput, SampleInput
 from assistant.tools.registry import BY_WIRE_NAME
+from assistant.tools.skills import SkillsLoadInput
 from assistant.tools.workflows import CHECK_DRAFT
 from assistant.workflows import issues, tool_info
 from assistant.workflows.draft import DatasetStep, Draft, ExportStep, ToolStep
@@ -32,6 +33,23 @@ SKILL = BUILT_IN["build-a-workflow"]
 TEXTS = {"SKILL.md": SKILL.instructions, **SKILL.files}
 NUMBERED = re.compile(r"^opportunity_[123]_(?P<name>[a-z_]+)$")
 TOOL_NAME = re.compile(r"\b(?:workflow|project|catalog|core|ask|skills)_[a-z_]+\b")
+#: The recipe files, one per kind of question, and the sections each holds,
+#: in order. Every section sits in exactly one file, so a question loads one.
+RECIPE_SECTIONS = {
+    "catchments.md": ["Catchment areas around places", "Start points over the limit"],
+    "heatmap.md": [
+        "Who lives within N minutes of places",
+        "Shares per district",
+        "Access everywhere: a heatmap",
+    ],
+    "joins-and-distances.md": ["Join attributes", "Counting within a distance"],
+    "transit-service.md": ["Public transport service of a place"],
+}
+#: The drafts the recipes held as one file.
+RECIPE_DRAFTS = 8
+MD_FILE = re.compile(r"\b[\w-]+\.md\b")
+#: "(heatmap.md, Shares per district)": a section or bullet of a recipe file.
+SECTION_REFERENCE = re.compile(r"\(([a-z-]+\.md), ([A-Z][^)]*)\)")
 
 
 def _drafts() -> list[tuple[str, dict[str, Any]]]:
@@ -43,9 +61,65 @@ def _drafts() -> list[tuple[str, dict[str, Any]]]:
 
 
 def test_the_skill_loads_and_is_in_the_instructions() -> None:
-    assert set(SKILL.files) == {"recipes.md"}
+    assert set(SKILL.files) == set(RECIPE_SECTIONS)
     assert f"- `build-a-workflow`: {SKILL.description}" in SKILLS_INDEX
     assert static_instructions() == [INSTRUCTIONS, SKILLS_INDEX]
+
+
+def test_each_recipe_sits_in_exactly_one_file() -> None:
+    """Pass 7: the one recipe file was loaded in every conversation and sent
+    again with every later call. Split by question, every section and every
+    draft sits in exactly one file, and no file holds half of the recipes."""
+    headings = {
+        name: re.findall(r"^## (.+)$", text, re.M) for name, text in SKILL.files.items()
+    }
+    assert headings == RECIPE_SECTIONS
+    every = [heading for listed in headings.values() for heading in listed]
+    assert len(every) == len(set(every))
+    names = [draft["name"] for source, draft in _drafts() if source != "SKILL.md"]
+    assert len(names) == RECIPE_DRAFTS and len(set(names)) == RECIPE_DRAFTS
+    total = sum(len(text) for text in SKILL.files.values())
+    for name, text in SKILL.files.items():
+        assert len(text) < total / 2, name
+
+
+def test_skill_md_names_the_one_recipe_file_each_question_loads() -> None:
+    """SKILL.md lists every recipe file with the questions it covers and says
+    to load only the one the question needs."""
+    section = SKILL.instructions.split("## Recipe files")[1].split("\n## ")[0]
+    listed = re.findall(r"^- `([a-z-]+\.md)`: ", section, re.M)
+    assert sorted(listed) == sorted(SKILL.files)
+    flat = _plain(section)
+    for phrase in (
+        "Load the one file the question needs",
+        "never all of them",
+        "Load another only when the user picks a method it holds",
+        "A question none of them covers",
+        "the layer numbers (12, 13, 14, 15) stand for layer_project_ids",
+    ):
+        assert phrase in flat, phrase
+    step_5 = _plain(SKILL.instructions.split("5. **Pick the tools.**")[1])
+    assert "(Recipe files)" in step_5.split("6. **")[0]
+
+
+def test_every_file_a_text_names_exists() -> None:
+    """The former single file is gone and named nowhere, the skills_load tool
+    included; a reference to a section names the file that holds it."""
+    named = {name for text in TEXTS.values() for name in MD_FILE.findall(text)}
+    assert named <= {"SKILL.md", *SKILL.files}, named - {"SKILL.md", *SKILL.files}
+    example = SkillsLoadInput.model_fields["file"].description or ""
+    assert set(MD_FILE.findall(example)) <= set(SKILL.files)
+    assert "recipes.md" not in example
+    references = [
+        (source, file, section)
+        for source, text in TEXTS.items()
+        for file, section in SECTION_REFERENCE.findall(_plain(text))
+    ]
+    assert references
+    for source, file, section in references:
+        # A section's heading, or the bullet that starts with that name.
+        start = re.compile(rf"^(?:## |- ){re.escape(section)}\b", re.M)
+        assert start.search(SKILL.files[file].replace("`", "")), (source, file, section)
 
 
 def test_the_skill_names_only_tools_that_exist() -> None:
@@ -286,7 +360,8 @@ def _plain(text: str) -> str:
 
 
 SKILL_TEXT = _plain(SKILL.instructions)
-RECIPES_TEXT = _plain(SKILL.files["recipes.md"])
+#: Every recipe file on one line, for rules that may sit in any of them.
+RECIPES_TEXT = _plain("\n".join(SKILL.files.values()))
 
 
 @pytest.mark.parametrize(
@@ -445,7 +520,7 @@ def test_the_skill_looks_in_the_users_own_datasets_too() -> None:
 
 def test_no_city_names_in_the_skill_or_the_prompt() -> None:
     """The rules are general: examples name a generic city or district."""
-    for city in ("Hamburg", "München", "Munich", "Berlin", "Bonn"):
+    for city in ("Hamburg", "München", "Munich", "Berlin", "Bonn", "Neuwerk"):
         assert city not in f"{SKILL_TEXT} {RECIPES_TEXT} {INSTRUCTIONS}", city
 
 
@@ -509,7 +584,7 @@ def test_only_a_dissolve_gives_one_row() -> None:
     engine splits what it reaches into areas that do not overlap), so after
     an intersection with districts there is one row per band, district and
     separate area."""
-    bands = RECIPES_TEXT.split("- Bands per district:")[1].split("- Areas counted")[0]
+    bands = _plain(CATCHMENT_AREAS).split("- Bands per district:")[1]
     assert "one row per band, district and separate area" in bands
     assert "then_by the band" in bands
     assert "or a combined catchment" not in SKILL_TEXT
@@ -769,9 +844,12 @@ STEP_1 = _plain(
 )
 CARD = SKILL_TEXT.split("Ask about all unclear datasets in one ask_user card")[1]
 CARD = CARD.split("4. **After the answer.**")[0]
-RECIPES = SKILL.files["recipes.md"]
-WHO_LIVES = RECIPES.split("## Who lives within N minutes of places")[1]
+HEATMAP = SKILL.files["heatmap.md"]
+CATCHMENTS = SKILL.files["catchments.md"]
+WHO_LIVES = HEATMAP.split("## Who lives within N minutes of places")[1]
 WHO_LIVES = WHO_LIVES.split("\n## ")[0]
+CATCHMENT_AREAS = CATCHMENTS.split("## Catchment areas around places")[1]
+CATCHMENT_AREAS = CATCHMENT_AREAS.split("\n## ")[0]
 
 
 def test_both_methods_fit_residents_near_the_nearest_of_many_places() -> None:
@@ -847,10 +925,14 @@ def test_the_recipes_count_residents_per_heatmap_cell_first() -> None:
     catchments: the heatmap draft comes first, the catchment draft stays."""
     text = _plain(WHO_LIVES)
     assert not text.startswith("Catchment areas around the places")
-    heat_draft, catchment_draft = (
+    [heat_draft] = [
         json.loads(block)
         for block in re.findall(r"```json\n(.*?)\n```", WHO_LIVES, re.S)
-    )
+    ]
+    [catchment_draft] = [
+        json.loads(block)
+        for block in re.findall(r"```json\n(.*?)\n```", CATCHMENT_AREAS, re.S)
+    ]
     heat, count = (step for step in heat_draft["steps"] if step["kind"] == "tool")
     assert heat["tool"] == "heatmap_closest_average"
     assert heat["settings"]["opportunity_1_n_destinations"] == 1
@@ -877,7 +959,7 @@ def test_the_recipes_count_residents_per_heatmap_cell_first() -> None:
         "the heatmap averages their times",
     ):
         assert phrase in text, phrase
-    start = _plain(RECIPES.split("## Start points over the limit")[1])
+    start = _plain(CATCHMENTS.split("## Start points over the limit")[1])
     assert start.startswith("When catchment areas are the method")
 
 
@@ -914,7 +996,7 @@ DATASET_STEP = _plain(
 )
 SHARE_BULLET = SKILL.instructions.split("- A share's numerator and denominator")[1]
 SHARE_BULLET = _plain(SHARE_BULLET.split("\n- ")[0])
-SHARES_PER_DISTRICT = RECIPES.partition("## Shares per district")[2]
+SHARES_PER_DISTRICT = HEATMAP.partition("## Shares per district")[2]
 SHARES_PER_DISTRICT = SHARES_PER_DISTRICT.split("\n## ")[0]
 
 
@@ -956,7 +1038,7 @@ def test_a_share_comes_from_one_assignment_and_never_passes_100_percent() -> Non
         "Per area, both come from one assignment",
         "residents per district are the census points counted by the district "
         "they lie in, all of them and those in the reached cells or areas "
-        "(recipes.md, Shares per district)",
+        "(heatmap.md, Shares per district)",
         "never cells or areas split over the districts by area share",
         "A share above 100 % is never presented: the tool notes it, and you "
         "rebuild the share from one assignment first",
@@ -1060,9 +1142,12 @@ def test_the_recipe_keeps_the_minutes_beside_the_residents() -> None:
 
 
 def test_residents_per_district_never_go_through_cells() -> None:
-    bands = RECIPES_TEXT.split("- Bands per district:")[1].split("- Areas counted")[0]
+    bands = _plain(CATCHMENT_AREAS).split("- Bands per district:")[1]
     assert "intersection_<field>" in bands
-    assert "share_of the residents per district (Shares per district)" in bands
+    assert (
+        "share_of the residents per district: all census points summed per "
+        "district (heatmap.md, Shares per district)" in bands
+    )
     areas = RECIPES_TEXT.split("- Areas counted or summed per district")[1]
     areas = areas.split("## ")[0]
     assert (
@@ -1161,7 +1246,7 @@ def test_the_skill_points_a_heatmap_to_its_reference_area() -> None:
     to the run (processes' _trimmed_to_reference_area); a polygon from the
     catalog rides on the heatmap option's adds."""
     assert (
-        "A heatmap with a polygon of the place as its reference area (recipes.md) "
+        "A heatmap with a polygon of the place as its reference area (heatmap.md) "
         "needs no such fallback: it computes only the place's hexagons, and only "
         "the destinations within its reach count toward what the run takes"
         in DATASET_STEP
@@ -1171,16 +1256,18 @@ def test_the_skill_points_a_heatmap_to_its_reference_area() -> None:
     )
     assert (
         "or connect a polygon of the place to the heatmap's "
-        "reference_area_layer_id (recipes.md)" in too_many
+        "reference_area_layer_id (heatmap.md)" in too_many
     )
     assert (
         "the heatmap, recommended, with a polygon of the place from the catalog "
-        "in adds when the project has none (recipes.md)" in CARD
+        "in adds when the project has none (heatmap.md)" in CARD
     )
     assert "two options and no adds" not in CARD
 
 
-PT_SERVICE = RECIPES.partition("## Public transport service of a place")[2]
+PT_SERVICE = SKILL.files["transit-service.md"].partition(
+    "## Public transport service of a place"
+)[2]
 PT_SERVICE = PT_SERVICE.split("\n## ")[0]
 
 
@@ -1274,8 +1361,7 @@ def test_the_quality_class_recipe_reads_residents_and_names_the_trade_offs() -> 
         "pt_class (1 for A) and pt_class_label",
         "a worse class has the better ones cut out, so each census point lies "
         "in one piece and counts once",
-        "a district's area in no class becomes pieces with an empty "
-        "pt_class_label",
+        "a district's area in no class becomes pieces with an empty " "pt_class_label",
         "Residents, never km² per class",
         # reading the shares, none included
         "group_by pt_class_label, share_of the same saved layer without a filter",
@@ -1306,9 +1392,9 @@ def test_the_skill_sends_a_service_question_to_the_recipe_before_its_card() -> N
     that card; the description names the question, so the skill is found."""
     assert "how well a place is served by public transport" in SKILL.description
     for phrase in (
-        "How well a place is served by public transport: read recipes.md "
-        "(Public transport service of a place) before the card that asks for "
-        "the measure",
+        "How well a place is served by public transport: read "
+        "transit-service.md before the card that asks for the measure",
+        "load its recipe file (Recipe files) before any card",
     ):
         assert phrase in STEP_1, phrase
     # The recipe's measures replace the card rule's own example.
@@ -1322,3 +1408,103 @@ def test_a_dataset_option_says_what_it_leaves_out_too() -> None:
         'description: what it leaves out or how exact it is, then "Adds it to '
         'the project"' in CARD
     )
+
+
+FIND = _plain(SKILL.instructions.split("3. **Find the data.**")[1].split("4. **")[0])
+AFTER = _plain(
+    SKILL.instructions.split("4. **After the answer.**")[1].split("5. **")[0]
+)
+
+
+def test_a_catalog_copy_is_waited_for_before_the_workflow_is_created() -> None:
+    """Pass 7: a dataset step whose catalog copy was not ready was left open,
+    and a workflow with a step left open is not run. The answer waits for
+    the copy and reads its fields before it creates the workflow; only a
+    copy that fails leaves the step open, and the answer then says the
+    workflow needs the user's choice before it can run."""
+    for phrase in (
+        "Wait for the copy before you create the workflow",
+        "read the layer's fields with project_get_fields; while it says the "
+        "layer is still being copied, read them again",
+        "Only when the copy failed, leave that dataset step open, labelled with "
+        "the dataset's name",
+        "say in the answer that the workflow needs the user's choice of that "
+        "layer before it can run",
+    ):
+        assert phrase in AFTER, phrase
+    assert "so the user chooses the layer once its copy is ready" not in AFTER
+    assert "leave that dataset step open, labelled with the dataset's name, so" not in (
+        AFTER
+    )
+
+
+def test_a_missing_input_gets_the_computable_part_recommended_and_run() -> None:
+    """Pass 7 (Q29, Q36, Q37): with an input missing, cards recommended
+    leaving the step open or waiting for the user's data, and a workflow
+    with a step left open was run and refused. The computable part is
+    recommended and run; the gap is a second option, never recommended."""
+    missing = FIND.split("Missing inputs.")[1]
+    for phrase in (
+        "say plainly which input is missing",
+        "recommend the part that can be computed without it, and run it when "
+        "the user asked for a result",
+        "today's state without the planned change",
+        "the scheduled lines alone",
+        "a named stand-in, such as the stations for job centres",
+        "The answer names the stand-in and what it stands for",
+        "Waiting for the user's data, or a workflow with the step left open",
+        "is a second option, never the recommended one",
+        "A step left open is the user's to fill in the editor, so it needs no card",
+        "a workflow with a step left open is not run",
+    ):
+        assert phrase in missing, phrase
+    assert "nothing fits anywhere: the input is missing (Missing inputs" in FIND
+    assert "nothing fits anywhere: leave the step open" not in FIND
+    for phrase in (
+        "When an input is missing, no option answers the whole question now: "
+        "recommend the part that can be computed (Missing inputs)",
+        '"Leave it open" (no value, never recommended)',
+    ):
+        assert phrase in CARD, phrase
+    issue = SKILL_TEXT.split("- layer_not_chosen:")[1].split("- ")[0]
+    assert "such a workflow is not run" in issue
+    left_open = _plain(CATCHMENT_AREAS).split("- Residents left open")[1]
+    assert "such a workflow is not run" in left_open.split("- ")[0]
+
+
+def test_the_census_grid_is_the_first_population_source_in_germany() -> None:
+    """Pass 7 (Q25, Q43): cards recommended district tables that held only
+    age groups, unread, before the census grid; a population search without
+    the word zensus did not find it."""
+    role = FIND.split("- residents:")[1].split("- public transport origins:")[0]
+    for phrase in (
+        "For a place in Germany, the first population source to try is the "
+        "Zensus 2022 grid (residents per 100 m cell, as census points)",
+        "put zensus among the words of the catalog search",
+        "District or statistical-area tables come after it, since many hold "
+        "only age groups or shares",
+        "read a candidate's fields before a card recommends it",
+    ):
+        assert phrase in role, phrase
+
+
+def test_a_far_part_of_the_place_is_left_out_of_the_reference_area() -> None:
+    """Pass 7 (Q28): an island far from the rest of the place made a walking
+    heatmap's area too large to run. The recipe leaves such a part out of the
+    reference area and says so."""
+    bullet = _plain(WHO_LIVES).split("- A part of the place far from the rest")[1]
+    bullet = bullet.split("- ")[0]
+    for phrase in (
+        "(an island or an exclave many kilometres off)",
+        "does not belong in the reference area",
+        "a run on foot or by bicycle must cover, and can stop the run",
+        "A reference area whose extent (project_get_layers) is much wider than "
+        "the place shows such a part",
+        "Leave such a part out of the reference area",
+        "a layer that holds it as a feature of its own (the place's quarters or "
+        "statistical areas, when the boundary or a district holds it together "
+        "with the rest)",
+        "a where with != on its code or name field drops it",
+        "Say in the answer which part was left out",
+    ):
+        assert phrase in bullet, phrase

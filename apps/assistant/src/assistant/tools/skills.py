@@ -27,7 +27,7 @@ class SkillsLoadInput(BaseModel):
         min_length=1,
         max_length=100,
         description=(
-            "A reference file the skill's instructions name, e.g. recipes.md; "
+            "A reference file the skill's instructions name, e.g. heatmap.md; "
             "leave it out for the instructions."
         ),
     )

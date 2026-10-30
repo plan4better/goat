@@ -2,6 +2,7 @@
 file, the index lists each skill once, and skills_load serves only what was
 read at startup."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -144,6 +145,14 @@ def test_the_built_in_skills_load_from_the_package() -> None:
     assert load_skills(SKILLS_DIR) == BUILT_IN
     for name, skill in BUILT_IN.items():
         assert skill.name == name == (SKILLS_DIR / name).name
+
+
+def test_a_built_in_skill_names_exactly_the_reference_files_it_has() -> None:
+    """The model learns a reference file from the instructions only: each
+    file is named there, and no file the skill lacks is."""
+    for name, skill in BUILT_IN.items():
+        named = set(re.findall(r"\b[\w-]+\.md\b", skill.instructions)) - {"SKILL.md"}
+        assert named == set(skill.files), name
 
 
 async def test_skills_load_returns_the_instructions_and_names_the_files(
