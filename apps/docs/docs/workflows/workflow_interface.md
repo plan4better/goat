@@ -290,7 +290,7 @@ You can also ask the assistant to change a workflow of the open project, for exa
 ### Run a workflow with the AI assistant
 
 - When you ask for a result, for example <em>How many residents live within a 15-minute walk of a school?</em>, the assistant builds the workflow and runs it. A workflow it created in this conversation runs without asking. Any other workflow, such as one you built yourself, runs only after you agree: the assistant asks in a card whether to run it, and nothing runs until you choose to.
-- While the workflow runs, the answer shows a line such as <code>Workflow running: step 2 of 4, Catchment Area</code> with the time since it started. <code>Open in Workflows</code> opens the workflow, where the canvas shows the run.
+- While the workflow runs, the answer shows a line such as <code>Workflow running: step 2 of 4, Catchment Area</code> with the time since it started. <code>Open in Workflows</code> opens the workflow, where the canvas shows the run. When the answer shows the workflow's card, <code>Open</code> on the card does this instead.
 - The assistant waits for the run and reports the result in its answer, with the layers the run saved. If the run failed (<code>Workflow run failed</code>), it names the step that failed and what to change.
 - If the run takes longer than the answer can wait, the line reads <code>Workflow was running when this answer ended</code>. The run goes on; ask the assistant again later for the result. If you stop the answer, a run it started stops too.
 

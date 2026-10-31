@@ -175,7 +175,7 @@ The images in the emails come from GOAT's public URL (`<public URL>/assets`), or
 
 ## Support tickets {#support}
 
-GOAT can hand problem reports and questions from its users to an Odoo Helpdesk, where they appear as tickets with replies. This is optional and **off by default**. Without it, *Report a problem* in the app shows an email address and the *Documentation* link, and the routes under `/api/v2/support` answer 404, except `/api/v2/support/summary`, which tells the app that support is off. The address defaults to `support@plan4better.de`; set your own with `NEXT_PUBLIC_SUPPORT_EMAIL`, see the [configuration reference](./configuration.md#integrations).
+GOAT can hand problem reports and questions from its users to an Odoo Helpdesk, where they appear as tickets with replies. This is optional and **off by default**. Without it, *Report a problem* in the app shows an email address and the *Documentation* link, and the routes under `/api/v2/support` answer 404, except `/api/v2/support/summary`, which tells the app that support is off. The AI assistant's *Feedback* link opens the same address. It defaults to `support@plan4better.de`; set your own with `NEXT_PUBLIC_SUPPORT_EMAIL`, see the [configuration reference](./configuration.md#integrations).
 
 | Setting | Meaning |
 |---|---|

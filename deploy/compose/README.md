@@ -94,7 +94,7 @@ More in the docs: [External services](https://goat.plan4better.de/docs/self_host
 In `.env`: `NEXT_PUBLIC_MAPTILER_KEY` (satellite basemap), `NEXT_PUBLIC_MAPBOX_TOKEN`
 (place search), `SMTP_*` (email, below), `CATALOG_S3_*` (GOAT data catalog),
 `GEOCODING_URL` / `GEOCODING_AUTHORIZATION`, `ODOO_*` (Odoo connection and support tickets, below),
-`NEXT_PUBLIC_SUPPORT_EMAIL` (address of "Report a problem" without tickets, default `support@plan4better.de`),
+`NEXT_PUBLIC_SUPPORT_EMAIL` (address of "Report a problem" and the AI assistant's "Feedback" link without tickets, default `support@plan4better.de`),
 `OTEL_*` (telemetry export).
 Apply changes with `docker compose up -d`.
 

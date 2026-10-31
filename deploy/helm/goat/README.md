@@ -472,8 +472,8 @@ override the key names via the `existingSecretUserKey` /
 | `assistant.terminationGracePeriodSeconds` | int | `30` | Time before the pod is killed; at least 25 (answer streams drain for 20 s). |
 | `assistant.ingress.*` | map | off | Ingress; its first path becomes `ROOT_PATH` and the suffix of the web app's URL. Disable buffering for SSE (see values.yaml). |
 | `web.publicUrls.api` / `.geoapi` / `.processes` / `.catalog` / `.assistant` | string | `""` | Browser-facing service URLs; each is derived from that service's own ingress (scheme from its TLS, host from its first entry) when empty. |
-| `web.websiteUrl` | string | `""` | Home's blog + changelog feeds; the surfaces hide when empty. |
-| `web.supportEmail` | string | `""` | Address of "Report a problem" (a mailto link while support tickets are off) and of the "support unavailable" messages (`NEXT_PUBLIC_SUPPORT_EMAIL`). Defaults to `support@plan4better.de`; set your own address for a white-label installation. |
+| `web.websiteUrl` | string | `""` | Home's blog + changelog feeds and the privacy link (menu, AI assistant notice); the surfaces hide when empty. |
+| `web.supportEmail` | string | `""` | Address of "Report a problem" and of the AI assistant's "Feedback" link (mailto links while support tickets are off), and of the "support unavailable" messages (`NEXT_PUBLIC_SUPPORT_EMAIL`). Defaults to `support@plan4better.de`; set your own address for a white-label installation. |
 | `redis.external.host` | string | `""` | External Redis host, used when `redis.enabled: false`. |
 | `redis.external.existingSecret` | string | `""` | Secret holding the external Redis password; omit for an unauthenticated Redis. |
 

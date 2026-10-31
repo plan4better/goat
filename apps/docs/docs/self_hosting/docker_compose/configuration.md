@@ -106,9 +106,9 @@ GOAT's services name their database sessions after themselves (`goat-core`, `goa
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | empty | Mapbox token for the place search |
 | `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | empty | The GOAT data catalog (read-only bucket with the harmonised datasets) |
 | `GEOCODING_URL`, `GEOCODING_AUTHORIZATION` | empty | Geocoding service used by analysis tools |
-| `NEXT_PUBLIC_WEBSITE_URL` | empty | A website that publishes GOAT's blog and changelog feeds. It fills the news on the Home page and provides the welcome video and the privacy link in the menu; while empty, none of these are shown. |
+| `NEXT_PUBLIC_WEBSITE_URL` | empty | A website that publishes GOAT's blog and changelog feeds. It fills the news on the Home page and provides the welcome video and the privacy link in the menu and in the AI assistant's notice; while empty, none of these are shown. |
 | `NEXT_PUBLIC_STATUS_FEED_URL` | empty | Status feed shown in the app |
-| `NEXT_PUBLIC_SUPPORT_EMAIL` | empty | Email address behind *Report a problem* while [support tickets](./external_services.md#support) are off, and in the message shown when support is temporarily unavailable. Defaults to `support@plan4better.de`; set your own address for a white-label installation. An invalid address is ignored and the default is used. |
+| `NEXT_PUBLIC_SUPPORT_EMAIL` | empty | Email address behind *Report a problem* and the AI assistant's *Feedback* link while [support tickets](./external_services.md#support) are off, and in the message shown when support is temporarily unavailable. Defaults to `support@plan4better.de`; set your own address for a white-label installation. An invalid address is ignored and the default is used. |
 | `NEXT_PUBLIC_DOCS_URL` | `https://goat.plan4better.de/docs` | Documentation link in the app |
 | `STATIC_ASSETS_URL` | *(commented out)* | A mirror or CDN for the product artwork (icons, default thumbnails, email images). While unset, GOAT serves the artwork itself under `/assets`. |
 | `ODOO_URL`, `ODOO_DB` | *(commented out)* | Plan4Better's Odoo, shared by GOAT's Odoo integrations. Only with access issued by Plan4Better. |

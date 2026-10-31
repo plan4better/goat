@@ -288,7 +288,7 @@ Sie können den Assistenten auch bitten, einen Workflow des geöffneten Projekts
 ### Einen Workflow mit dem KI-Assistenten ausführen
 
 - Fragen Sie nach einem Ergebnis, zum Beispiel <em>Wie viele Einwohner wohnen höchstens 15 Minuten Fußweg von einer Schule entfernt?</em>, erstellt der Assistent den Workflow und führt ihn aus. Einen Workflow, den er in dieser Unterhaltung erstellt hat, führt er ohne Rückfrage aus. Jeden anderen, etwa einen, den Sie selbst erstellt haben, führt er erst aus, wenn Sie zustimmen: Der Assistent fragt Sie in einer Karte, ob er ihn ausführen soll, und nichts läuft, bevor Sie sich dafür entscheiden.
-- Während der Workflow läuft, zeigt die Antwort eine Zeile wie <code>Workflow läuft: Schritt 2 von 4, Einzugsgebiet</code> mit der Zeit seit dem Start. <code>In Workflows öffnen</code> öffnet den Workflow, wo die Leinwand den Lauf zeigt.
+- Während der Workflow läuft, zeigt die Antwort eine Zeile wie <code>Workflow läuft: Schritt 2 von 4, Einzugsgebiet</code> mit der Zeit seit dem Start. <code>In Workflows öffnen</code> öffnet den Workflow, wo die Leinwand den Lauf zeigt. Zeigt die Antwort die Karte des Workflows, öffnen Sie ihn stattdessen mit <code>Öffnen</code> auf der Karte.
 - Der Assistent wartet auf den Lauf und berichtet das Ergebnis in seiner Antwort, mit den Layern, die der Lauf gespeichert hat. Ist der Lauf fehlgeschlagen (<code>Workflow-Lauf fehlgeschlagen</code>), nennt er den Schritt, der fehlgeschlagen ist, und was zu ändern ist.
 - Dauert der Lauf länger, als die Antwort warten kann, lautet die Zeile <code>Der Workflow lief noch, als diese Antwort endete</code>. Der Lauf geht weiter; fragen Sie den Assistenten später nach dem Ergebnis. Stoppen Sie die Antwort, stoppt auch ein Lauf, den sie gestartet hat.
 

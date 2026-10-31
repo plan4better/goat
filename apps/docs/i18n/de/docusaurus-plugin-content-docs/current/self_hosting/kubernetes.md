@@ -85,7 +85,7 @@ Verwenden andere Anwendungen denselben Realm, bestehen deren Tokens ebenfalls di
 
 Optional und **standardmäßig aus**. Support-Tickets reichen Problemmeldungen Ihrer Benutzer an einen Odoo-Helpdesk weiter. Der Block `odoo` enthält die Verbindung (`odoo.url`, `odoo.db`), `odoo.support` das Helpdesk-Team (`odoo.support.teamId`) und den API-Schlüssel aus einem Secret (`odoo.support.existingSecret`). Die Tickets sind nur eingeschaltet, wenn all das gesetzt ist. Den Schlüssel stellt Plan4Better für sein eigenes Odoo aus; lassen Sie den Block auf Ihrer eigenen Installation leer, es sei denn, Sie haben einen erhalten.
 
-Ohne Tickets öffnet *Problem melden* eine E-Mail an die Adresse in `web.supportEmail`; sie steht auch in der Meldung, wenn der Support vorübergehend nicht erreichbar ist. Standard ist `support@plan4better.de`; tragen Sie für eine White-Label-Installation Ihre eigene Adresse ein.
+Ohne Tickets öffnen *Problem melden* und der Link *Feedback* des KI-Assistenten eine E-Mail an die Adresse in `web.supportEmail`; sie steht auch in der Meldung, wenn der Support vorübergehend nicht erreichbar ist. Standard ist `support@plan4better.de`; tragen Sie für eine White-Label-Installation Ihre eigene Adresse ein.
 
 Nachrichten zu einem Ticket können Anhänge von bis zu 55 MiB in einer Anfrage enthalten. Das Ingress vor core muss für `/api/v2/support` Anfragekörper von mindestens 56 MB annehmen und großzügige Lese-Timeouts erlauben. ingress-nginx begrenzt Anfragekörper standardmäßig auf 1 MB; erhöhen Sie das mit `nginx.ingress.kubernetes.io/proxy-body-size: "56m"` und `proxy-read-timeout` in `core.ingress.annotations`.
 

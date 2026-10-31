@@ -418,9 +418,10 @@ web:
   # plan4better's own feeds.
   websiteUrl: ""                   # NEXT_PUBLIC_WEBSITE_URL
   statusFeedUrl: ""                # NEXT_PUBLIC_STATUS_FEED_URL
-  # Address of "Report a problem" (a mailto link while support tickets are off)
-  # and of the "support unavailable" messages. Empty = support@plan4better.de;
-  # set your own address for a white-label installation.
+  # Address of "Report a problem" and of the AI assistant's "Feedback" link
+  # (mailto links while support tickets are off), and of the "support
+  # unavailable" messages. Empty = support@plan4better.de; set your own
+  # address for a white-label installation.
   supportEmail: ""                 # NEXT_PUBLIC_SUPPORT_EMAIL
   extraEnv: []
   # Mount extra volumes (e.g. CA bundles for NextAuth to trust self-signed
