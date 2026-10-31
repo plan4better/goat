@@ -6,11 +6,14 @@ import functools
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from typing import Any
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, CallToolsNode, ModelRequestNode, RunContext
 from pydantic_ai.capabilities import (
     AbstractCapability,
+    AgentNode,
+    NodeResult,
     ProcessHistory,
     WrapModelRequestHandler,
 )
@@ -20,6 +23,7 @@ from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
     RetryPromptPart,
+    TextPart,
     ToolReturnPart,
     UserPromptPart,
 )
@@ -32,7 +36,8 @@ from pydantic_ai.models.function import (
 )
 from pydantic_ai.models.instrumented import InstrumentationSettings
 from pydantic_ai.models.test import TestModel
-from pydantic_ai.settings import ModelSettings, merge_model_settings
+from pydantic_ai.result import FinalResult
+from pydantic_graph import End
 
 from assistant.budget import RunBudget, StepGuard
 from assistant.events import DataPart, RunEvent
@@ -51,21 +56,27 @@ from assistant.prompt import (
     read_the_result,
     static_instructions,
 )
+from assistant.surfaces import Locale
 from assistant.tools.runtime import ToolEnv
 from assistant.tools.toolset import (
     SILENT_RESPONSES,
     TOOL_RETRIES,
     Stage,
     answer_step,
+    card_failed,
     goat_toolset,
     pickable_datasets,
     prepared_stage,
     read_allowance_of,
+    response_text,
     runnable_workflows,
     silent_responses,
+    step_refused,
+    written_so_far,
 )
 
 __all__ = [
+    "CLOSING_TEXT",
     "INSTRUCTIONS",
     "STAGE_KEY",
     "PartIds",
@@ -176,13 +187,27 @@ class RunDeps:
     #: step, whatever came of the run (``assistant.tools.toolset._note_run``).
     run_attempts: dict[str | None, dict[str, int]] = field(default_factory=dict)
     #: By run id: the newest step past the look-ups that made calls, and
-    #: whether its stage let one of them run
-    #: (``assistant.tools.toolset._note_stage_call``).
+    #: whether one of them ran: not refused by its stage, by the tool-call
+    #: limit or by the reads its result has left, and for a display tool,
+    #: showed its cards (``assistant.tools.toolset._note_stage_call``).
     stage_calls: dict[str | None, tuple[int, bool]] = field(default_factory=dict)
-    #: The runs (their ids) that answer in text from their next call on: a
-    #: step's calls were all refused by its stage. Their calls go out with
-    #: tool_choice "none" (``StageNote``).
-    text_only: set[str | None] = field(default_factory=set)
+    #: By run id: the step past the look-ups whose calls were all refused
+    #: and whose response held no text (``StageNote.after_node_run``). The
+    #: run's later steps answer (``assistant.tools.toolset.answer_step``),
+    #: and a second such step ends the run.
+    insisted: dict[str | None, int] = field(default_factory=dict)
+    #: The runs (their ids) whose next model call is not made: it ends the
+    #: run with ``CLOSING_TEXT`` (``StageNote``).
+    closing: set[str | None] = field(default_factory=set)
+    #: By run id: the step past the look-ups in which a call of a display
+    #: tool returned (``assistant.tools.toolset.DISPLAY_TOOLS``); their calls
+    #: in a later step are refused.
+    shown_steps: dict[str | None, int] = field(default_factory=dict)
+    #: By run id: the newest step past the look-ups in which a display
+    #: tool's call failed (invalid arguments, a service that failed): a step
+    #: of failed or refused calls that wrote text still gets one more step,
+    #: for the corrected call (``StageNote.after_node_run``).
+    failed_cards: dict[str | None, int] = field(default_factory=dict)
     #: The step (run id, step number) prepared for reading a finished run's
     #: result past the look-up budget: its reads count as such
     #: (``assistant.tools.toolset.RESULT_READ_TOOLS``). Matched by the step
@@ -281,6 +306,14 @@ def stage_note(ctx: RunContext[RunDeps]) -> str:
 #: run's history: the note is not stored, and the metadata is not sent.
 STAGE_KEY = "goat_stage"
 
+#: The answer's text when its run ends on calls that did not run and the
+#: model wrote none in the whole answer (``StageNote``), in the interface
+#: language (``ToolEnv.locale``).
+CLOSING_TEXT: dict[Locale, str] = {
+    "en": "This answer could not be completed. Please ask again.",
+    "de": "Diese Antwort konnte nicht abgeschlossen werden. Bitte fragen Sie noch einmal.",
+}
+
 
 @dataclass
 class StageNote(AbstractCapability[RunDeps]):
@@ -295,12 +328,16 @@ class StageNote(AbstractCapability[RunDeps]):
     returns as the run's history; ``wrap_model_request`` comes after that.
     The note is a GOAT note (``prompt.as_note``) in a user message, after the
     results of the newest call's tools. The request in the history records
-    the stage in its metadata instead (``STAGE_KEY``).
+    the stage in its metadata instead (``STAGE_KEY``). Nothing else of a call
+    changes with the stage: not the tools, not the tool choice.
 
-    A run that answers in text (``RunDeps.text_only``) sends its call with
-    tool_choice "none" and the same tools: the tools stay in the cached
-    prefix, and the model cannot call one. Pydantic AI maps it for each
-    provider (one that misbehaves with it gets no tools instead)."""
+    A model that keeps calling what its stage refuses would make a model
+    call of the whole context for each attempt, so such a run ends
+    (``after_node_run``): the calls of a step past the look-ups were all
+    refused, and the step wrote text (its answer, which the user has seen),
+    or it is the second such step without text. The run then ends with the
+    text written so far, or without any, with ``CLOSING_TEXT`` in place of
+    the next model call."""
 
     async def wrap_model_request(
         self,
@@ -310,20 +347,64 @@ class StageNote(AbstractCapability[RunDeps]):
         handler: WrapModelRequestHandler,
     ) -> ModelResponse:
         note = stage_note(ctx)
-        if ctx.run_id in ctx.deps.text_only:
-            request_context.model_settings = merge_model_settings(
-                request_context.model_settings, ModelSettings(tool_choice="none")
-            )
         stage = prepared_stage(ctx)
         stored = ctx.messages[-1] if ctx.messages else None
         if stage is not None and isinstance(stored, ModelRequest):
             stored.metadata = {**(stored.metadata or {}), STAGE_KEY: stage}
+        if ctx.run_id in ctx.deps.closing:
+            # Returned in place of the model's response: Pydantic AI streams
+            # it as one and stores it, and it ends the run as text does.
+            env = ctx.deps.env
+            locale: Locale = env.locale if env is not None else "en"
+            return ModelResponse(parts=[TextPart(CLOSING_TEXT[locale])])
         messages = request_context.messages
         if note and messages and isinstance(messages[-1], ModelRequest):
             last = messages[-1]
             noted = replace(last, parts=[*last.parts, UserPromptPart(as_note(note))])
             request_context.messages = [*messages[:-1], noted]
         return await handler(request_context)
+
+    async def after_node_run(
+        self,
+        ctx: RunContext[RunDeps],
+        *,
+        node: "AgentNode[RunDeps]",
+        result: "NodeResult[RunDeps]",
+    ) -> "NodeResult[RunDeps]":
+        """Ends a run whose step past the look-ups had none of its calls run:
+        with the step's text, or at a second such step with the text written
+        so far; without any, the next call ends it (``RunDeps.closing``).
+        After a first such step without text, or with a card that failed
+        (one more step for the corrected call), the run answers
+        (``RunDeps.insisted``)."""
+        if not isinstance(node, CallToolsNode) or not isinstance(
+            result, ModelRequestNode
+        ):
+            return result
+        if not step_refused(ctx):
+            return result
+        text = response_text(node.model_response)
+        if (not text or card_failed(ctx)) and ctx.run_id not in ctx.deps.insisted:
+            ctx.deps.insisted[ctx.run_id] = ctx.run_step
+            return result
+        text = text or written_so_far(ctx)
+        if not text:
+            ctx.deps.closing.add(ctx.run_id)
+            return result
+        # As Pydantic AI ends a run on an output tool: the results of the
+        # step's calls join the history, so no call is left without one. The
+        # request records the stage of the step it ends (``STAGE_KEY``).
+        stage = prepared_stage(ctx)
+        ctx.messages.append(
+            ModelRequest(
+                parts=result.request.parts,
+                timestamp=datetime.now(UTC),
+                run_id=ctx.run_id,
+                conversation_id=ctx.conversation_id,
+                metadata={STAGE_KEY: stage} if stage is not None else None,
+            )
+        )
+        return End(FinalResult(text))
 
 
 def ends_with_text(ctx: RunContext[RunDeps], output: str) -> str:

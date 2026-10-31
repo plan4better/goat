@@ -685,27 +685,56 @@ async def test_find_region_knows_countries_by_their_english_and_german_names(
     assert result["regions"][0]["level"] == 0
 
 
+#: A slice of the NUTS hierarchy: two same-named districts in different states
+#: and a city-state, whose state, government region and district share its name.
+NUTS_ROWS = [
+    ("DE", "Deutschland", 0),
+    ("DE2", "Bayern", 1),
+    ("DE21", "Oberbayern", 2),
+    ("DE212", "München, Kreisfreie Stadt", 3),
+    ("DE21H", "München, Landkreis", 3),
+    ("DE6", "Hamburg", 1),
+    ("DE60", "Hamburg", 2),
+    ("DE600", "Hamburg", 3),
+    ("DE9", "Niedersachsen", 1),
+    ("DE93", "Lüneburg", 2),
+    ("DE933", "Harburg", 3),
+    ("DEA", "Nordrhein-Westfalen", 1),
+    ("DEA5", "Arnsberg", 2),
+    ("DEA5C", "Harburg-Süd", 3),
+    ("NL", "Nederland", 0),
+]
+
+
+def _nuts_route(
+    rows: list[tuple[str, str, int]] = NUTS_ROWS,
+) -> Any:
+    """The catalog's /nuts as it answers: a case-insensitive substring of the
+    name or the id, an exact level, by id, at most ``limit`` rows."""
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        q = params.get("q", "").casefold()
+        level = params.get("level")
+        found = [
+            {
+                "nuts_id": nuts_id,
+                "nuts_name": name,
+                "level": row_level,
+                "country": nuts_id[:2],
+                "bbox": [0.0, 0.0, 1.0, 1.0],
+            }
+            for nuts_id, name, row_level in sorted(rows)
+            if (q in name.casefold() or q in nuts_id.casefold())
+            and (level is None or int(level) == row_level)
+        ]
+        return httpx.Response(200, json=found[: int(params.get("limit", 20))])
+
+    return respond
+
+
 async def test_find_region_returns_the_catalogs_nuts_regions() -> None:
-    recorder = Recorder(
-        {
-            ("GET", "/stac/nuts"): [
-                {
-                    "nuts_id": "DE212",
-                    "nuts_name": "München, Kreisfreie Stadt",
-                    "level": 3,
-                    "country": "DE",
-                    "bbox": [11.3, 48.0, 11.7, 48.2],
-                },
-                {
-                    "nuts_id": "DE21H",
-                    "nuts_name": "München, Landkreis",
-                    "level": 3,
-                    "country": "DE",
-                    "bbox": [11.2, 47.9, 11.9, 48.3],
-                },
-            ]
-        }
-    )
+    recorder = Recorder({("GET", "/stac/nuts"): _nuts_route()})
     result = await execute(
         FIND_REGION, tool_env(fake_clients(catalog=recorder)), {"name": " München "}
     )
@@ -717,15 +746,147 @@ async def test_find_region_returns_the_catalogs_nuts_regions() -> None:
                 "name": "München, Kreisfreie Stadt",
                 "level": 3,
                 "country": "DE",
+                "parents": ["Bayern", "Deutschland"],
             },
             {
                 "nuts_id": "DE21H",
                 "name": "München, Landkreis",
                 "level": 3,
                 "country": "DE",
+                "parents": ["Bayern", "Deutschland"],
             },
         ]
     }
+
+
+async def test_find_region_names_the_state_and_country_of_each_region() -> None:
+    """Live pass 8 (Q32): a district of a city-state matched a same-named
+    district in another state, and nothing in the result said so. Each
+    region names its parents, looked up once each by their exact ids."""
+    recorder = Recorder({("GET", "/stac/nuts"): _nuts_route()})
+    result = await execute(
+        FIND_REGION, tool_env(fake_clients(catalog=recorder)), {"name": "Harburg"}
+    )
+    assert [(r["nuts_id"], r["parents"]) for r in result["regions"]] == [
+        ("DE933", ["Niedersachsen", "Deutschland"]),
+        ("DEA5C", ["Nordrhein-Westfalen", "Deutschland"]),
+    ]
+    lookups = sorted(
+        (r.url.params["q"], r.url.params["level"]) for r in recorder.requests[1:]
+    )
+    assert lookups == [("DE", "0"), ("DE9", "1"), ("DEA", "1")]
+
+
+async def test_a_parent_among_the_regions_found_is_not_looked_up_again() -> None:
+    recorder = Recorder({("GET", "/stac/nuts"): _nuts_route()})
+    result = await execute(
+        FIND_REGION, tool_env(fake_clients(catalog=recorder)), {"name": "Hamburg"}
+    )
+    assert [(r["nuts_id"], r.get("parents")) for r in result["regions"]] == [
+        ("DE6", ["Deutschland"]),
+        ("DE60", ["Hamburg", "Deutschland"]),
+        ("DE600", ["Hamburg", "Deutschland"]),
+    ]
+    assert [r.url.params["q"] for r in recorder.requests] == ["Hamburg", "DE"]
+
+
+async def test_a_parent_the_catalog_does_not_have_is_not_claimed() -> None:
+    """A region names only the parents the catalog returned by their exact
+    ids: a match on another id or name is not one."""
+    rows = [row for row in NUTS_ROWS if row[0] not in ("DE", "DE9")]
+    recorder = Recorder({("GET", "/stac/nuts"): _nuts_route(rows)})
+    result = await execute(
+        FIND_REGION, tool_env(fake_clients(catalog=recorder)), {"name": "Lüneburg"}
+    )
+    assert result == {
+        "regions": [
+            {"nuts_id": "DE93", "name": "Lüneburg", "level": 2, "country": "DE"}
+        ]
+    }
+
+
+async def test_a_failed_parent_lookup_leaves_the_parent_out_and_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The regions are the answer; a parent the catalog cannot be asked for
+    now is left out, as one it does not have, never the whole lookup."""
+    route = _nuts_route()
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.params["q"] == "DE9":
+            return httpx.Response(503, json={"detail": "unavailable"})
+        response: httpx.Response = route(request)
+        return response
+
+    recorder = Recorder({("GET", "/stac/nuts"): respond})
+    with caplog.at_level("WARNING", logger="assistant.tools.catalog"):
+        result = await execute(
+            FIND_REGION, tool_env(fake_clients(catalog=recorder)), {"name": "Lüneburg"}
+        )
+    assert result == {
+        "regions": [
+            {
+                "nuts_id": "DE93",
+                "name": "Lüneburg",
+                "level": 2,
+                "country": "DE",
+                "parents": ["Deutschland"],
+            }
+        ]
+    }
+    assert "Looking up the NUTS region 'DE9' failed" in caplog.text
+
+
+async def test_find_region_answers_without_parents_when_none_can_be_looked_up() -> None:
+    route = _nuts_route()
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.params["q"] != "Harburg":
+            return httpx.Response(503, json={"detail": "unavailable"})
+        response: httpx.Response = route(request)
+        return response
+
+    recorder = Recorder({("GET", "/stac/nuts"): respond})
+    result = await execute(
+        FIND_REGION, tool_env(fake_clients(catalog=recorder)), {"name": "Harburg"}
+    )
+    assert [region.get("parents") for region in result["regions"]] == [None, None]
+
+
+def test_find_region_says_its_parents_tell_same_named_regions_apart() -> None:
+    text = " ".join(FIND_REGION.description.split())
+    for phrase in (
+        "Each region names its parents (state, country)",
+        "a region of the same name in another state is not the place asked about",
+        "A part of a city (one of its districts or quarters) is not a NUTS region",
+        "filter the part by name or geometry in the city's own boundary layer",
+        "never with a region of the same name",
+    ):
+        assert phrase in text, phrase
+
+
+@pytest.mark.parametrize("spec", CATALOG_TOOLS, ids=lambda spec: spec.wire_name)
+def test_the_catalog_tools_name_no_place(spec: Any) -> None:
+    """The rules are general: no city, state or place is named in the
+    tools' texts."""
+    texts = " ".join(
+        [spec.description, *_strings(spec.input_model.model_json_schema())]
+    )
+    for place in (
+        "München",
+        "Munich",
+        "Köln",
+        "Wien",
+        "Allach",
+        "Hamburg",
+        "Harburg",
+        "Berlin",
+        "Saxony",
+        "Sachsen",
+        "Bayern",
+        "Bavaria",
+    ):
+        assert place not in texts, place
 
 
 def _resolve(record_id: str, title: str) -> dict[str, Any]:

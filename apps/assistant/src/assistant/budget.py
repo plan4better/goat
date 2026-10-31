@@ -384,8 +384,10 @@ class StepGuard:
 
     def admit_call(self, *, past_limit: bool = False) -> bool:
         """``past_limit``: a read of a finished run's result
-        (``read_allowance``), or the card allowed with the reads, let run
-        although the limit is reached; it counts all the same."""
+        (``read_allowance``), the card allowed with the reads, or the cards
+        that show what the answer found past the look-ups
+        (``assistant.tools.toolset.DISPLAY_TOOLS``), let run although the
+        limit is reached; it counts all the same."""
         if self.at_limit() and not past_limit:
             return False
         run_id = self.step[0]

@@ -23,7 +23,10 @@ as which district a quarter belongs to, is marked as general knowledge that was 
 
 Catalog searches filter places by NUTS region (`catalog_find_region`, then `nuts` on `catalog_search`), not by
 the place name in the search text, which only matches datasets whose text names the place. NUTS names places in
-their own languages, so `catalog_find_region` also knows each NUTS country by its English and German name. The dock shows a
+their own languages, so `catalog_find_region` also knows each NUTS country by its English and German name. Each region
+it finds names its parents (state and country, the prefixes of its id, looked up by their exact ids), so a region of
+the same name in another state shows where it lies; a part of a city that is not a NUTS region is filtered in the
+city's own boundary layer instead (build-a-workflow skill). The dock shows a
 dataset card only for what the answer recommends, named with `catalog_show_records`: an answer searches several
 times, and its first hits are rarely the datasets it ends up recommending. The cards come in groups with a one-line
 note each, so the answer's text keeps to the purpose, caveats and gaps instead of listing the datasets again.
@@ -211,7 +214,9 @@ The check is
 the editor's own (`POST /workflows/check` on processes) plus the assistant's check of filter fields
 (`filter_field_issues` in `workflows/issues.py`, which does not judge a layer geoapi lists no fields for yet, such as
 a catalog dataset just added), a warning for catchments split by budget where one with bands would do
-(`band_issues`), and an error for a catchment whose dataset steps give more start points than one run takes and
+(`band_issues`), a warning for a dataset step whose `filter.area` lies mostly outside the layers it is combined with
+and does not hold most of them either (`area_issues`: bounding boxes of the regions and of the layers' extents core
+lists, never judged while one of those extents is unknown), and an error for a catchment whose dataset steps give more start points than one run takes and
 for a travel cost matrix with more origin and destination pairs than one run takes (`starting_point_issues`,
 `matrix_pair_issues`: each dataset step's layer counted once with its filter through processes' `feature-count`,
 against the limits in goatlib's `tools/limits.py`), which the run would otherwise fail on only once it reaches that
@@ -246,7 +251,7 @@ handle, and the opportunities as a whole while every connected one reads such a 
 say which one an error belongs to). A rejection of such a step as a whole, naming no setting, stays open too,
 whatever its cause, since the check does not name one. Everything else blocks, a rejected setting that reads no such
 layer among them (`split_issues`, fed by `layer_settings`). The create also answers with the assistant's own warnings
-(bands, notes), apart from the issues left open, since a model may create a draft without checking it first and would
+(bands, notes, areas), apart from the issues left open, since a model may create a draft without checking it first and would
 not hear them otherwise. Creating starts no run: `workflow_run` does (Running workflows, above), or the user with Run.
 
 **Changing workflows.** `workflow_get` shows the model a stored workflow by its node ids, and `workflow_update` changes
@@ -341,18 +346,26 @@ And before either run limit, the model's next call is told to answer with what i
 long search ends in an answer, or in a card when the user has to choose, not only in the limit error. Every call of an
 answer offers the same tools with the same instructions; the stage of the step (`answer_step` in
 `assistant/tools/toolset.py`) applies as its calls run: a call the stage does not allow is refused with one line on
-what to do instead (`STAGE_REFUSALS`), and counts toward the tool-call limit. After a step whose calls its stage all
-refused, the run answers in text: its calls go out with tool_choice "none" and the same tools (`RunDeps.text_only`),
-since each attempt of a model that insisted was a model call of the whole context. The step that answers with room for a
-card still runs two kinds of calls besides the card, since a card that asks whether to do them takes the user a turn
-for a choice already made: `workflow_run` of a workflow the answer created and has not run, while a read step and the
-answer step still fit and no other result waits to be written about, so its result is read before the answer; and
+what to do instead (`STAGE_REFUSALS`), and counts toward the tool-call limit. The cards that show what the answer
+found (`toolset.DISPLAY_TOOLS`) run in every stage, also past the tool-call limit, since an answer ends with them;
+past the look-ups in one step only, since each such call is followed by a model call of the whole context, and one
+that fails there counts as a call that did not run. A model that keeps calling what is refused or fails spends such a
+call on each attempt, and no call may change the tools or the tool choice to stop it: a call sent with tool_choice
+"none" read almost none of its prefix from the provider's cache, as if the tool definitions had been dropped on the
+way. So the run ends instead (`agent.StageNote.after_node_run`): after a step none of whose calls ran, with the text
+that step wrote, which the user has already seen; after a first such step without text, or with a card call that
+failed (one more step for the corrected call), the run answers (`RunDeps.insisted`), and a second ends it with the
+text written so far, or, when there is none, with a short closing text in the interface language
+(`agent.CLOSING_TEXT`) in place of the model call. The step that answers with room for a card still runs two kinds
+of calls besides the card, since a card that asks whether to do them takes the user a turn for a choice already
+made: `workflow_run` of a workflow the answer created and has not run, while a read step and the answer step still
+fit and no other result waits to be written about, so its result is read before the answer; and
 `project_add_catalog_layer` of a dataset the user picked in the card that came with the message, as the add tool's
 own check reads that pick (an id in a picked option's value or `adds`, or a member of a bundle one names;
 `asks.answered_pick`). Nothing else: a workflow from an earlier answer, a second run in the step, a workflow whose
 run the answer already started, whatever came of it (`RunDeps.run_attempts`), or a dataset picked in an earlier card
-is refused (`ANSWER_STEP_REFUSALS`). The note offers them only when they apply, and
-the room for the run is decided with the stage (`RunDeps.run_room`), so the note and the call agree.
+is refused (`ANSWER_STEP_REFUSALS`). The note offers them only when they apply, and the room for the run is decided
+with the stage (`RunDeps.run_room`), so the note and the call agree.
 The note on the stage is the last content of the call, after the conversation, and goes only into what the model is
 sent, not into the history (`agent.StageNote`); the stored request records its stage in its metadata instead
 (`agent.STAGE_KEY`). An answer step that changed the tools and the instructions made the provider read almost none of

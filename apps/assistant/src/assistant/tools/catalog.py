@@ -11,6 +11,7 @@ the sense of the data policy, so none of these is flagged ``returns_data``.
 
 import asyncio
 import json
+import logging
 from datetime import date
 from typing import Annotated, Any
 from urllib.parse import quote
@@ -39,6 +40,8 @@ from assistant.tools.proposals import (
     show,
 )
 from assistant.tools.runtime import MAX_RESULT_BYTES, InputInvalid, ToolEnv, ToolSpec
+
+logger = logging.getLogger(__name__)
 
 #: Every surface: the public catalog is searchable from any page, and a filter
 #: suggestion opens the catalog from pages other than the catalog itself.
@@ -323,8 +326,8 @@ class SearchInput(BaseModel):
         default_factory=list,
         max_length=20,
         description=(
-            "Region ids from catalog_find_region, e.g. ['DE212'] (Munich), ['DE3'] "
-            "(Berlin); datasets whose area intersects them."
+            "Region ids from catalog_find_region: a state, a district or a "
+            "district-free city; datasets whose area intersects them."
         ),
     )
     geometry_type: str | None = Field(
@@ -764,7 +767,10 @@ class ProposeFiltersInput(BaseModel):
     nuts: list[Annotated[str, Field(pattern=NUTS_ID_PATTERN)]] = Field(
         default_factory=list,
         max_length=20,
-        description="NUTS region ids such as 'DED' (Saxony).",
+        description=(
+            "NUTS region ids from catalog_find_region, such as a state's or a "
+            "district's."
+        ),
     )
     sortby: str | None = Field(
         default=None,
@@ -989,7 +995,7 @@ class FindRegionInput(BaseModel):
         min_length=2,
         max_length=80,
         description=(
-            "The place in its local spelling, e.g. 'München', 'Köln', 'Wien'; a "
+            "The place in its local spelling, as its own country writes it; a "
             "country also in English or German. Part of the name is enough."
         ),
     )
@@ -1002,10 +1008,66 @@ class Region(BaseModel):
     #: district-free city.
     level: int
     country: str | None = None
+    #: The names of the state and the country the region lies in, nearest
+    #: first; only those the catalog returned by their ids, None for neither.
+    parents: list[str] | None = None
 
 
 class FindRegionResult(BaseModel):
     regions: list[Region]
+
+
+#: A region's parents: its state (level 1) and its country (level 0).
+_PARENT_LEVELS = (1, 0)
+#: The catalog's largest page. A parent is looked up by its id, which also
+#: matches as part of other ids and names, so every match is asked for and
+#: the exact one picked.
+_ALL_MATCHES = 100
+
+
+def _parent_ids(nuts_id: str, level: int) -> list[str]:
+    """The ids of a region's state and country, nearest first: a NUTS id is
+    its country's two letters and one character more per level, so its
+    parents are its prefixes."""
+    return [nuts_id[: 2 + parent] for parent in _PARENT_LEVELS if parent < level]
+
+
+async def _parent_rows(env: ToolEnv, parent: str) -> Any:
+    """The catalog's matches of a parent's id; None when it cannot be asked
+    now, so the parent is left out as one it does not have and the regions
+    found are still the answer."""
+    try:
+        return await _get(
+            env, "/nuts", {"q": parent, "level": len(parent) - 2, "limit": _ALL_MATCHES}
+        )
+    except ToolFailed:
+        logger.warning("Looking up the NUTS region %r failed", parent, exc_info=True)
+        return None
+
+
+async def _parent_names(env: ToolEnv, regions: list[Region]) -> dict[str, str]:
+    """The names of the regions' parents by id, each looked up once, side
+    by side; a parent among the regions found needs no lookup, and one the
+    catalog does not return by its exact id is left out."""
+    names = {region.nuts_id: region.name for region in regions}
+    wanted = sorted(
+        {
+            parent
+            for region in regions
+            for parent in _parent_ids(region.nuts_id, region.level)
+        }
+        - names.keys()
+    )
+    answers = await asyncio.gather(*(_parent_rows(env, parent) for parent in wanted))
+    for parent, rows in zip(wanted, answers, strict=True):
+        for row in rows or []:
+            if (
+                isinstance(row, dict)
+                and row.get("nuts_id") == parent
+                and row.get("nuts_name")
+            ):
+                names[parent] = str(row["nuts_name"])
+    return names
 
 
 async def _find_region(env: ToolEnv, args: FindRegionInput) -> FindRegionResult:
@@ -1046,7 +1108,16 @@ async def _find_region(env: ToolEnv, args: FindRegionInput) -> FindRegionResult:
                     country=row.get("country"),
                 ),
             )
-    return FindRegionResult(regions=list(regions.values())[:_MAX_REGIONS])
+    found = list(regions.values())[:_MAX_REGIONS]
+    names = await _parent_names(env, found)
+    for region in found:
+        parents = [
+            names[parent]
+            for parent in _parent_ids(region.nuts_id, region.level)
+            if parent in names
+        ]
+        region.parents = parents or None
+    return FindRegionResult(regions=found)
 
 
 FIND_REGION: ToolSpec[FindRegionInput, FindRegionResult] = ToolSpec(
@@ -1054,11 +1125,15 @@ FIND_REGION: ToolSpec[FindRegionInput, FindRegionResult] = ToolSpec(
     description=(
         "Look up a place's NUTS region ids to filter catalog_search (nuts) or a "
         "filter suggestion by area. Levels: 0 country, 1 state, 2 government "
-        "region, 3 district or district-free city ('München, Kreisfreie Stadt' "
-        "DE212); names in the local language, countries also in English or "
-        "German. A part of a city (a Munich district like "
-        "Allach) is not a region: use the city's and say the data can be clipped "
-        "afterwards. Nothing matches: try the containing city or district."
+        "region, 3 district or district-free city ('<city>, Kreisfreie "
+        "Stadt'); names in the local language, countries also in English or "
+        "German. Each region names its parents (state, country): a "
+        "region of the same name in another state is not the place asked "
+        "about. A part of a city (one of its districts or quarters) is not a "
+        "NUTS region: search the catalog with the city's region, and in a "
+        "workflow filter the part by name or geometry in the city's own "
+        "boundary layer, never with a region of the same name. Nothing "
+        "matches: try the containing city or district."
     ),
     input_model=FindRegionInput,
     output_model=FindRegionResult,

@@ -373,7 +373,13 @@ workflow for it.
   left open; an open step needs a `label` naming what is missing and takes no
   filter. `filter.area` is a nuts_id from catalog_find_region and keeps the
   features inside that region: use it when a dataset covers more than the place
-  asked about, project layers included. project_get_layers shows a layer's
+  asked about, project layers included. catalog_find_region names each region's
+  parents (state, country): check them against the place the user named. A
+  district or quarter of a city that is not a NUTS region is filtered by name or
+  geometry in the city's own boundary layer (its districts or quarters layer),
+  never with a NUTS region of the same name: a `where` on that layer's name
+  field gives its polygon, which cuts or counts the other datasets, and they
+  keep the city's region in `filter.area`. project_get_layers shows a layer's
   `extent` (west, south, east, north) and its `feature_count` when known: a
   layer whose extent or feature count is far larger than the place gets
   `filter.area`. A layer of a whole country (census points, stops) always

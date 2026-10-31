@@ -33,6 +33,7 @@ from assistant.tools.core import ShownItem, ShownItemGroup
 from assistant.tools.filters import FeatureFilter, field_kind, to_cql2
 from assistant.tools.http import SIGN_IN_EXPIRED, ServiceError, sign_in_expired
 from assistant.tools.policy import MIN_RESTRICTED_GROUP
+from assistant.tools.project import layer_extent
 from assistant.tools.runtime import InputInvalid, ToolEnv, ToolSpec
 from assistant.tools.workflow_tools import (
     WORKFLOW_SURFACES,
@@ -59,6 +60,7 @@ from assistant.workflows.draft import (
 from assistant.workflows.edits import step_name
 from assistant.workflows.issues import (
     DraftIssue,
+    area_issues,
     band_issues,
     counted_steps,
     draft_issues,
@@ -217,12 +219,16 @@ async def project_layers(
         if row.get("locked"):
             locked[row["id"]] = name
         elif row.get("layer_id"):
+            extent = layer_extent(row)
             layers[row["id"]] = ProjectLayer(
                 layer_project_id=row["id"],
                 layer_id=str(row["layer_id"]),
                 name=name,
                 type=row.get("type"),
                 geometry_type=row.get("feature_layer_geometry_type"),
+                extent=None
+                if extent is None
+                else (extent[0], extent[1], extent[2], extent[3]),
             )
     return layers, locked
 
@@ -751,10 +757,15 @@ class DraftCheck(BaseModel):
     note: str | None = None
 
 
-def _advice(draft: Draft) -> list[DraftIssue]:
+def _advice(prepared: Prepared) -> list[DraftIssue]:
     """The assistant's own advice on top of the editor's check: warnings,
     which neither stop workflow_create nor are the user's to resolve."""
-    return [*band_issues(draft), *note_issues(draft)]
+    draft = prepared.draft
+    return [
+        *band_issues(draft),
+        *note_issues(draft),
+        *area_issues(draft, prepared.converted, prepared.layers, prepared.regions),
+    ]
 
 
 async def _check_draft(env: ToolEnv, args: DraftInput) -> DraftCheck:
@@ -764,7 +775,7 @@ async def _check_draft(env: ToolEnv, args: DraftInput) -> DraftCheck:
     issues = await check(env, project_id, prepared)
     if issues is None:
         return DraftCheck(checked=False, notes=notes, note=NOT_CHECKED)
-    issues = [*issues, *_advice(prepared.draft)]
+    issues = [*issues, *_advice(prepared)]
     blocking, still_open = split_blocking(
         draft_graph(prepared.draft), prepared.descriptions, issues
     )
@@ -897,7 +908,7 @@ async def _create(env: ToolEnv, args: DraftInput) -> WorkflowCreated:
         open_issues=[_open_issue(issue, labels) for issue in still_open],
         groups=workflow_card(workflow),
         notes=area_notes(prepared) or None,
-        warnings=[_warning(i, labels) for i in _advice(prepared.draft)] or None,
+        warnings=[_warning(i, labels) for i in _advice(prepared)] or None,
     )
 
 

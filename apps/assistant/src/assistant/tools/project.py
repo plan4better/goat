@@ -484,7 +484,7 @@ def _recorded_feature_count(row: Mapping[str, Any]) -> int | None:
     return None
 
 
-def _extent(row: Mapping[str, Any]) -> list[float] | None:
+def layer_extent(row: Mapping[str, Any]) -> list[float] | None:
     """The bounding box of the extent core sends as WKT (a multipolygon in
     WGS84), rounded to EXTENT_DECIMALS; None without one, or for anything
     that is not a box in degrees."""
@@ -530,7 +530,7 @@ async def _get_layers(env: ToolEnv, args: ProjectInput) -> ProjectLayers:
                 # Withheld for a locked layer, as core withholds its other
                 # details.
                 feature_count=None if locked else _recorded_feature_count(row),
-                extent=None if locked else _extent(row),
+                extent=None if locked else layer_extent(row),
                 filter=(row.get("query") or {}).get("cql"),
                 selected=True
                 if selected is not None and row["id"] == selected

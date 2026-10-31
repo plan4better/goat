@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+import httpx
 import httpx2
 import pytest
 from pydantic_ai import RunContext
@@ -27,6 +28,7 @@ from pydantic_ai.messages import (
     ModelMessagesTypeAdapter,
     ModelRequest,
     ModelResponse,
+    TextPart,
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
@@ -41,7 +43,7 @@ from pydantic_ai.models.function import (
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.usage import RequestUsage, RunUsage
 
-from assistant.agent import STAGE_KEY, RunDeps, build_agent
+from assistant.agent import CLOSING_TEXT, STAGE_KEY, RunDeps, build_agent
 from assistant.asks import AskHistory, AskUserInput, CardAnswer
 from assistant.budget import (
     CACHE_READ_WEIGHT,
@@ -67,10 +69,14 @@ from assistant.prompt import (
     with_note,
 )
 from assistant.runs.turn import Turn, run_turn
+from assistant.surfaces import Locale
 from assistant.tools.ask import REPEATED_CARD, REPORT_FIRST
+from assistant.tools.registry import BY_WIRE_NAME
 from assistant.tools.testing import Recorder, fake_clients, stage_note, tool_env
 from assistant.tools.toolset import (
     ANSWER_STEP_REFUSALS,
+    CARDS_SHOWN,
+    DISPLAY_TOOLS,
     STAGE_REFUSALS,
     Stage,
     _tool,
@@ -153,22 +159,14 @@ class _Production(FunctionModel):
     and output of the call before it and the results it sends (at
     ``PROVIDER_CHARS_PER_TOKEN``), and every call writes ``OUTPUT``. A call
     reads ``share(n)`` of its input from the cache while its prefix holds:
-    it offers the same tools with the same instructions as the call before
-    it and starts with the messages that call was sent; the first call reads
-    it from the conversation before the answer. What it does is ``act``'s
-    choice; a request with tool_choice "none" gets text only, as a provider
-    gives it, unless the model ignores that (``honors_tool_choice``)."""
+    it offers the same tools with the same instructions and tool choice as
+    the call before it and starts with the messages that call was sent; the
+    first call reads it from the conversation before the answer. What it
+    does is ``act``'s choice."""
 
-    def __init__(
-        self,
-        act: Act,
-        *,
-        share: Callable[[int], float],
-        honors_tool_choice: bool = True,
-    ) -> None:
+    def __init__(self, act: Act, *, share: Callable[[int], float]) -> None:
         super().__init__(stream_function=self._stream)
         self.act, self.share = act, share
-        self.honors_tool_choice = honors_tool_choice
         self.calls: list[_Call] = []
 
     async def _stream(
@@ -178,10 +176,12 @@ class _Production(FunctionModel):
         tools = [tool.name for tool in info.function_tools]
         note = stage_note(messages)
         prefix = _sent_again(messages, note)
+        tool_choice = (info.model_settings or {}).get("tool_choice")
         previous_call = self.calls[-1] if self.calls else None
         held = previous_call is None or (
             tools == previous_call.tools
             and info.instructions == previous_call.instructions
+            and tool_choice == previous_call.tool_choice
             and prefix[: len(previous_call.prefix)] == previous_call.prefix
         )
         if self.calls:
@@ -194,13 +194,10 @@ class _Production(FunctionModel):
         usage = RequestUsage(
             input_tokens=input_tokens, cache_read_tokens=cached, output_tokens=OUTPUT
         )
-        tool_choice = (info.model_settings or {}).get("tool_choice")
         self.calls.append(
             _Call(tools, info.instructions, note, usage, tool_choice, prefix)
         )
         response = self.act(n, note)
-        if tool_choice == "none" and self.honors_tool_choice:
-            response = [item for item in response if isinstance(item, str)] or [ANSWER]
         for index, item in enumerate(response):
             if isinstance(item, str):
                 yield item
@@ -255,12 +252,15 @@ async def _answer(
     share: float | Callable[[int], float] = CACHED_SHARE,
     budget: RunBudget = PRODUCTION,
     created: Sequence[str] = (),
-    honors_tool_choice: bool = True,
+    locale: Locale = "en",
+    core_routes: dict[tuple[str, str], Any] | None = None,
 ) -> _Answered:
     """One answer on a workflow page under ``budget``, as the run manager runs
-    it. The open project's workflow has a finished run that saved a layer, and
-    a look-up (``SIZED_LOOK_UP``) grows the next call by about ``growth``
-    tokens. The workflows in ``created`` were created in this answer."""
+    it, in the interface language ``locale``. The open project's workflow has
+    a finished run that saved a layer, and a look-up (``SIZED_LOOK_UP``)
+    grows the next call by about ``growth`` tokens. The workflows in
+    ``created`` were created in this answer; ``core_routes`` replace core's
+    answers."""
     job, nodes = _finished_run(1)
     padding = PROVIDER_CHARS_PER_TOKEN * (growth - OUTPUT)
     core = Recorder(
@@ -273,6 +273,7 @@ async def _answer(
             ("GET", f"/api/v2/project/{RUN_PROJECT}"): {"name": "Run project"},
             ("GET", f"/api/v2/project/{RUN_PROJECT}/layer"): [],
             ("GET", f"/api/v2/project/{RUN_PROJECT}/group"): [],
+            **(core_routes or {}),
         }
     )
     processes = Recorder(
@@ -292,13 +293,14 @@ async def _answer(
     deps = RunDeps(
         message_id="m1",
         emit=emit,
-        prompt_note=render_note(page, None, "en"),
+        prompt_note=render_note(page, None, locale),
         budget=budget,
     )
     deps.env = tool_env(
         fake_clients(core=core, processes=processes),
         page=page,
         emit_data=deps.emit_data,
+        locale=locale,
     )
     deps.env.workflows_created.update(created)
     deps.env.runs.created.update(created)
@@ -306,11 +308,7 @@ async def _answer(
     async def on_event(event: Any) -> None:
         return None
 
-    model = _Production(
-        act,
-        share=share if callable(share) else lambda n: share,
-        honors_tool_choice=honors_tool_choice,
-    )
+    model = _Production(act, share=share if callable(share) else lambda n: share)
     usage = RunUsage()
     turn = await run_turn(
         build_agent(model),
@@ -363,12 +361,14 @@ FOUND = "Here is what I found."
 
 async def _through_openrouter(
     reply: Callable[[int, dict[str, Any]], dict[str, Any]],
+    history: list[ModelMessage] | None = None,
 ) -> tuple[Any, list[dict[str, Any]]]:
     """A run on the production model's route (DeepSeek through OpenRouter)
     against a fake endpoint: call ``n`` with request body ``body`` gets the
     assistant message ``reply(n, body)``, with a provider's usage (a first
     call of ``FIRST_CALL`` tokens, 6,000 more each call, ``CACHED_SHARE``
-    read from the cache). The run's result and the request bodies."""
+    read from the cache), after the conversation ``history``. The run's
+    result and the request bodies."""
     bodies: list[dict[str, Any]] = []
 
     def endpoint(request: httpx2.Request) -> httpx2.Response:
@@ -437,7 +437,9 @@ async def _through_openrouter(
     )
     try:
         result = await build_agent(models.main).run(
-            with_note(deps.prompt_note, "where am I?"), deps=deps
+            with_note(deps.prompt_note, "where am I?"),
+            deps=deps,
+            message_history=history,
         )
     finally:
         await models.aclose()
@@ -498,26 +500,56 @@ async def test_the_provider_gets_one_tool_list_and_one_system_text_and_the_note_
     ]
 
 
-async def test_after_a_refused_step_the_provider_gets_tool_choice_none() -> None:
-    """The step after one whose calls were all refused answers in text: the
-    request sends tool_choice "none" with the same tools, so the provider
-    still reads its prefix from the cache."""
+def _answered_calls(body: dict[str, Any]) -> bool:
+    """Whether every tool call in a request body is followed by its result,
+    as the provider requires of a conversation."""
+    messages = body["messages"]
+    for index, message in enumerate(messages):
+        calls = {call["id"] for call in message.get("tool_calls") or []}
+        results = set()
+        for later in messages[index + 1 :]:
+            if later["role"] != "tool":
+                break
+            results.add(later["tool_call_id"])
+        if not calls <= results:
+            return False
+    return True
+
+
+@pytest.mark.parametrize("text", [FOUND, None])
+async def test_a_model_insisting_on_refused_calls_gets_the_same_requests_and_an_end(
+    text: str | None,
+) -> None:
+    """Through the production mapping: past the look-ups the model keeps
+    calling a tool the stage refuses, with its answer's text or without.
+    Every request sends the same tools, no tool choice and the same system
+    text, so the provider reads each prefix from its cache. The run ends with
+    the text the refused step wrote, or, when no step wrote any, after a
+    second refused step with the closing text, which is no model call. The
+    next answer's request answers every call."""
 
     def reply(n: int, body: dict[str, Any]) -> dict[str, Any]:
-        if _noted(body) and body.get("tool_choice") != "none":
-            return LOOK_UP_MESSAGE
         if _noted(body):
-            return {"role": "assistant", "content": FOUND}
+            return {**LOOK_UP_MESSAGE, "content": text}
         return LOOK_UP_MESSAGE
 
     result, bodies = await _through_openrouter(reply)
-    assert result.output == FOUND
-    *before, refused, answering = bodies
-    assert refused.get("tool_choice") in (None, "auto")
-    assert answering["tool_choice"] == "none"
-    assert answering["tools"] == bodies[0]["tools"]
-    sent = _without_cache_markers(refused["messages"][:-1])
-    assert _without_cache_markers(answering["messages"][: len(sent)]) == sent
+    assert result.output == (text or CLOSING_TEXT["en"])
+    assert sum(_noted(body) for body in bodies) == (1 if text else 2)
+    assert all(body.get("tool_choice") in (None, "auto") for body in bodies)
+    tools = {json.dumps(body["tools"], sort_keys=True) for body in bodies}
+    assert len(tools) == 1
+    systems = [
+        [m for m in body["messages"] if m["role"] == "system"] for body in bodies
+    ]
+    assert all(system == systems[0] for system in systems)
+
+    def answer(n: int, body: dict[str, Any]) -> dict[str, Any]:
+        return {"role": "assistant", "content": FOUND}
+
+    later, [next_body] = await _through_openrouter(answer, result.all_messages())
+    assert later.output == FOUND
+    assert _answered_calls(next_body)
 
 
 async def test_every_stage_offers_the_same_tools_and_instructions() -> None:
@@ -588,6 +620,171 @@ def test_each_refusal_says_what_to_do_instead() -> None:
         assert "budget" not in refusal.lower()
         assert ("ask_user" in refusal) is stage.endswith("ask")
         assert ("workflow_describe_tool" in refusal) is stage.startswith("read")
+    assert CARDS_SHOWN.startswith("This call did not run")
+    assert "\n" not in CARDS_SHOWN and "budget" not in CARDS_SHOWN.lower()
+
+
+#: The cards of what the answer points to: the open project.
+SHOW: tuple[str, dict[str, Any]] = (
+    "core_show_items",
+    {"items": [{"kind": "project", "id": RUN_PROJECT, "note": "Where it ran"}]},
+)
+#: The responses before a step in the stage, and the run's tool-call limit:
+#: as ``REFUSED``. In "read" and "answer" the run's tool calls are used up.
+SHOWN_IN: dict[Stage, tuple[list[Response], int]] = {
+    stage: (case.before, case.max_tool_calls) for stage, case in REFUSED.items()
+}
+
+
+def test_the_display_tools_are_the_card_tools() -> None:
+    assert DISPLAY_TOOLS == {
+        "core_show_items",
+        "catalog_show_records",
+        "map_propose_view",
+    }
+    assert DISPLAY_TOOLS <= set(BY_WIRE_NAME)
+
+
+@pytest.mark.parametrize("stage", list(SHOWN_IN))
+async def test_the_answers_cards_are_shown_in_every_stage(stage: Stage) -> None:
+    """The cards of what the answer found run in every stage, also once the
+    run's tool calls are used up: an answer ends with its cards."""
+    before, max_tool_calls = SHOWN_IN[stage]
+    answered = await _answer_run(
+        *before,
+        ["Here is the project.", SHOW],
+        budget=RunBudget(
+            max_tokens=PRODUCTION.max_tokens, max_tool_calls=max_tool_calls
+        ),
+    )
+    assert _stage(answered.notes[len(before)]) == stage
+    [shown] = _results(answered.turn, "core_show_items")
+    assert shown.outcome != "failed"
+    assert isinstance(shown.content, dict)
+    assert shown.content["groups"][0]["items"][0]["name"] == "Run project"
+    # A step whose call ran goes on to the model's answer.
+    assert answered.turn.output == ANSWER
+
+
+async def test_past_the_look_ups_the_cards_are_shown_in_one_step() -> None:
+    """A model that keeps showing cards would make a model call of the whole
+    context each time: past the look-ups, cards shown in a later step than
+    the first are refused, which counts as a refused step."""
+    answered = await _answer_run(*SPENT, [SHOW], [SHOW], budget=PRODUCTION)
+    first, again = _results(answered.turn, "core_show_items")
+    assert first.outcome != "failed"
+    assert again.outcome == "failed" and again.content == CARDS_SHOWN
+    # The refused step wrote no text: the run answers next.
+    assert _stage(answered.notes[len(SPENT) + 2]) == "answer"
+    assert answered.turn.output == ANSWER
+
+
+def _showing_cards() -> Act:
+    """Looks things up while it may; then writes the answer and shows its
+    cards in one step, and closes the answer in the next."""
+    shown = False
+
+    def act(n: int, note: str | None) -> Response:
+        nonlocal shown
+        if note is None:
+            return SIZED_LOOK_UP
+        if not shown:
+            shown = True
+            return [ANSWER, SHOW]
+        return ["The cards above open the project."]
+
+    return act
+
+
+@pytest.mark.parametrize("share", [CACHED_SHARE, 0.0])
+@pytest.mark.parametrize("growth", GROWTHS)
+async def test_an_answer_that_shows_its_cards_ends_within_the_limit(
+    growth: int, share: float
+) -> None:
+    """With production numbers: the step that answers writes its text and
+    shows its cards, and the model call after the cards closes the answer,
+    with the same request but for the conversation."""
+    answered = await _answer(_showing_cards(), growth=growth, share=share)
+    [shown] = _results(answered.turn, SHOW[0])
+    assert shown.outcome != "failed"
+    first = _first_note(answered)
+    assert len(answered.model.calls) == first + 2
+    _same_requests(answered.model.calls)
+    assert answered.turn.output == "The cards above open the project."
+    assert weighted_tokens(answered.usage) <= PRODUCTION.max_tokens
+
+
+#: A card call whose arguments never validate: a model that cannot get them
+#: right.
+BAD_SHOW: tuple[str, dict[str, Any]] = ("core_show_items", {"items": "not a list"})
+#: Core failing for the project the cards name.
+CORE_DOWN = {
+    ("GET", f"/api/v2/project/{RUN_PROJECT}"): httpx.Response(
+        503, json={"detail": "down"}
+    )
+}
+
+
+def _failing_cards(call: tuple[str, dict[str, Any]], text: str | None) -> Act:
+    """Looks things up while it may; after the look-ups, shows cards every
+    time, after ``text``."""
+
+    def act(n: int, note: str | None) -> Response:
+        if note is None:
+            return SIZED_LOOK_UP
+        return [text, call] if text else [call]
+
+    return act
+
+
+@pytest.mark.parametrize("text", [None, ANSWER])
+@pytest.mark.parametrize(
+    ("call", "core_routes"),
+    [(BAD_SHOW, None), (SHOW, CORE_DOWN)],
+    ids=["invalid", "down"],
+)
+@pytest.mark.parametrize("share", [CACHED_SHARE, 0.0])
+@pytest.mark.parametrize("growth", GROWTHS)
+async def test_cards_that_keep_failing_end_the_answer_within_the_limit(
+    growth: int,
+    share: float,
+    call: tuple[str, dict[str, Any]],
+    core_routes: dict[tuple[str, str], Any] | None,
+    text: str | None,
+) -> None:
+    """Cards run past the tool-call limit and in every stage, so a card call
+    that fails each time (arguments the model cannot get right, a service
+    that is down) counts as a call that did not run: after a step of them the
+    run answers, with one more step for a corrected call even when the step
+    wrote text, and the second ends it with text, within the limit."""
+    answered = await _answer(
+        _failing_cards(call, text),
+        growth=growth,
+        share=share,
+        core_routes=core_routes,
+    )
+    assert answered.turn.output == (text or CLOSING_TEXT["en"])
+    first = _first_note(answered)
+    assert len(answered.model.calls) == first + 2
+    failed = _results(answered.turn, SHOW[0]) or _retries(answered.turn, SHOW[0])
+    assert len(failed) == 2
+    if call is SHOW:
+        assert all("HTTP 503" in str(part.content) for part in failed)
+    _same_requests(answered.model.calls)
+    assert weighted_tokens(answered.usage) <= PRODUCTION.max_tokens
+
+
+async def test_a_card_call_that_failed_gets_its_corrected_call() -> None:
+    """A card call with invalid arguments in the step that wrote the answer:
+    the next step's corrected call shows the cards."""
+    answered = await _answer_run(
+        *SPENT, ["Here is the project.", BAD_SHOW], [SHOW], budget=PRODUCTION
+    )
+    [retry] = _retries(answered.turn, SHOW[0])
+    assert "Invalid arguments" in str(retry.content)
+    [shown] = _results(answered.turn, SHOW[0])
+    assert shown.outcome != "failed"
+    assert answered.turn.output == ANSWER
 
 
 # -- the budget with production numbers --------------------------------------------
@@ -703,51 +900,104 @@ async def test_no_stage_flips_back_to_look_ups() -> None:
 # -- calls past the plan ------------------------------------------------------------
 
 
-def _insisting(tries: int | None = None) -> Act:
-    """Looks things up while it may; after the look-ups, calls
-    core_page_context again, ``tries`` times or every time, then writes its
-    answer."""
-    made = 0
+def _insisting(text: str | None = None, *, before: str | None = None) -> Act:
+    """Looks things up while it may, writing ``before`` with the first
+    look-up; after the look-ups, calls core_page_context again every time,
+    after ``text``."""
 
     def act(n: int, note: str | None) -> Response:
-        nonlocal made
         if note is None:
-            return SIZED_LOOK_UP
-        if tries is None or made < tries:
-            made += 1
-            return [("core_page_context", {})]
-        return [ANSWER]
+            return [before, *SIZED_LOOK_UP] if before and n == 0 else SIZED_LOOK_UP
+        return (
+            [text, ("core_page_context", {})] if text else [("core_page_context", {})]
+        )
 
     return act
 
 
+def _same_requests(calls: Sequence[_Call]) -> None:
+    """Every call of the answer offers the same tools with the same
+    instructions, and none sets a tool choice."""
+    first = calls[0]
+    for call in calls:
+        assert (call.tools, call.instructions) == (first.tools, first.instructions)
+        assert call.tool_choice is None
+
+
 @pytest.mark.parametrize("share", [CACHED_SHARE, 0.0])
 @pytest.mark.parametrize("growth", GROWTHS)
-async def test_after_a_step_of_refused_calls_the_answer_comes_in_text(
+async def test_a_model_that_keeps_calling_refused_tools_ends_after_two_steps(
     growth: int, share: float
 ) -> None:
-    """A model that keeps calling what the step that answers refuses: each
-    attempt is a model call of the whole context. After a step whose calls
-    were all refused, the next call is sent with tool_choice "none" and the
-    same tools, so the provider still reads its prefix from the cache, and
-    the answer comes in text."""
+    """A model that keeps calling what the step that answers refuses, without
+    a word: each attempt is a model call of the whole context. After the
+    first refused step the run answers; the second ends it with the closing
+    text in place of a model call, within the limit, and every call sent the
+    same request but for the conversation."""
     answered = await _answer(_insisting(), growth=growth, share=share)
-    assert answered.turn.output == ANSWER
+    assert answered.turn.output == CLOSING_TEXT["en"]
     first = _first_note(answered)
     calls = answered.model.calls
     assert len(calls) == first + 2
-    [refused] = _results(answered.turn, "core_page_context")
-    assert refused.content == STAGE_REFUSALS[_stage(calls[first].note)]
-    assert [call.tool_choice for call in calls] == [None] * (first + 1) + ["none"]
-    assert calls[-1].tools == calls[0].tools
+    refused = _results(answered.turn, "core_page_context")
+    assert [part.content for part in refused] == [
+        STAGE_REFUSALS[_stage(calls[first].note)],
+        STAGE_REFUSALS["answer"],
+    ]
     assert _stage(calls[-1].note) == "answer"
+    _same_requests(calls)
     assert (calls[-1].usage.cache_read_tokens > 0) is (share > 0)
     assert weighted_tokens(answered.usage) <= PRODUCTION.max_tokens
+    # The closing text is the answer's last response, as the user saw it.
+    last = answered.turn.messages[-1]
+    assert isinstance(last, ModelResponse)
+    assert last.parts == [TextPart(CLOSING_TEXT["en"])]
+
+
+@pytest.mark.parametrize("share", [CACHED_SHARE, 0.0])
+@pytest.mark.parametrize("growth", GROWTHS)
+async def test_a_refused_step_that_wrote_the_answer_ends_the_run_with_it(
+    growth: int, share: float
+) -> None:
+    """The step that answers writes its answer and calls a tool its stage
+    refuses: the run ends with that text, without another model call, and
+    the history holds the refused call's result."""
+    answered = await _answer(_insisting(ANSWER), growth=growth, share=share)
+    assert answered.turn.output == ANSWER
+    first = _first_note(answered)
+    calls = answered.model.calls
+    assert len(calls) == first + 1
+    _same_requests(calls)
+    assert weighted_tokens(answered.usage) <= PRODUCTION.max_tokens
+    last = answered.turn.messages[-1]
+    assert isinstance(last, ModelRequest)
+    [refused] = last.parts
+    assert isinstance(refused, ToolReturnPart)
+    assert refused.tool_name == "core_page_context"
+    # Recorded with the stage of the step it ends, as a request that is sent.
+    assert last.metadata == {STAGE_KEY: _stage(calls[first].note)}
+
+
+async def test_two_refused_steps_end_with_the_text_written_before() -> None:
+    """The user has seen the text the answer wrote before: the run ends with
+    it, and no closing text is added."""
+    answered = await _answer(_insisting(before="Looking at the page."), growth=4_000)
+    assert answered.turn.output == "Looking at the page."
+    assert len(answered.model.calls) == _first_note(answered) + 2
+    assert isinstance(answered.turn.messages[-1], ModelRequest)
+
+
+async def test_the_closing_text_is_in_the_interface_language() -> None:
+    answered = await _answer(_insisting(), growth=4_000, locale="de")
+    assert answered.turn.output == CLOSING_TEXT["de"]
+    assert set(CLOSING_TEXT) == {"en", "de"}
+    for text in CLOSING_TEXT.values():
+        assert "budget" not in text.lower() and "—" not in text and "–" not in text
 
 
 async def test_a_step_with_a_call_that_ran_is_not_cut_short() -> None:
-    """Only a step whose calls were all refused ends in text: one that ran
-    a workflow beside a refused second run still reads its result."""
+    """Only a step whose calls were all refused counts: one that ran a
+    workflow beside a refused second run still reads its result."""
     answered = await _answer_run(
         *SPENT,
         [RUN_CALL, OTHER_RUN_CALL],
@@ -755,21 +1005,6 @@ async def test_a_step_with_a_call_that_ran_is_not_cut_short() -> None:
         created=[RUN_WORKFLOW, OTHER_WORKFLOW],
     )
     assert _stage(answered.notes[26]) == "read or ask"
-
-
-@pytest.mark.parametrize("growth", GROWTHS)
-async def test_without_cache_reads_two_refused_look_ups_still_end_in_an_answer(
-    growth: int,
-) -> None:
-    """A provider that caches nothing, and a model that calls a refused tool
-    in two steps (its provider ignores tool_choice): two calls of the whole
-    context past the plan. The hard limit leaves room for one such call
-    beyond the plan's, so the run answers."""
-    answered = await _answer(
-        _insisting(2), growth=growth, share=0.0, honors_tool_choice=False
-    )
-    assert len(_results(answered.turn, "core_page_context")) == 2
-    assert answered.turn.output == ANSWER
 
 
 @pytest.mark.parametrize("growth", GROWTHS)

@@ -19,12 +19,27 @@ from goatlib.tools.limits import (
 )
 from pydantic import BaseModel, Field
 
-from assistant.workflows.draft import Converted, DatasetStep, Draft, ToolStep
+from assistant.workflows.draft import (
+    BBox,
+    Converted,
+    DatasetStep,
+    Draft,
+    ProjectLayer,
+    Region,
+    ToolStep,
+    bbox,
+)
 
 #: Levels that stop a run (``goatlib.workflows.checks``).
 BLOCKING_LEVELS = frozenset({"damaged", "error"})
 #: The assistant's own code: a ``where`` field the step's layer does not have.
 FILTER_FIELD_CODE = "filter_field_not_in_layer"
+#: The assistant's own code: a dataset step's ``filter.area`` lies mostly
+#: outside the layers the step is combined with.
+AREA_OUTSIDE_CODE = "filter_area_outside"
+#: The share of an area's box inside the box of the layers it is combined
+#: with, and of theirs inside its own, below which both count as mostly apart.
+_MOSTLY = 0.5
 _LISTED_FIELDS = 30
 
 
@@ -452,3 +467,117 @@ def note_issues(draft: Draft) -> list[DraftIssue]:
             ),
         )
     ]
+
+
+def _joined(draft: Draft) -> dict[str, str]:
+    """Each step's group of steps joined by connections, named by one of
+    them: the steps a step is combined with share its group."""
+    root = {step.id: step.id for step in draft.steps}
+
+    def find(step_id: str) -> str:
+        while root[step_id] != step_id:
+            root[step_id] = root[root[step_id]]
+            step_id = root[step_id]
+        return step_id
+
+    for connection in draft.connections:
+        root[find(connection.source)] = find(connection.target)
+    return {step.id: find(step.id) for step in draft.steps}
+
+
+def _box_area(box: BBox) -> float:
+    west, south, east, north = box
+    return max(east - west, 0.0) * max(north - south, 0.0)
+
+
+def _overlap(a: BBox, b: BBox) -> float:
+    return _box_area(
+        (max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3]))
+    )
+
+
+def _around(boxes: Iterable[BBox]) -> BBox:
+    listed = list(boxes)
+    return (
+        min(box[0] for box in listed),
+        min(box[1] for box in listed),
+        max(box[2] for box in listed),
+        max(box[3] for box in listed),
+    )
+
+
+def area_issues(
+    draft: Draft,
+    converted: Converted,
+    layers: Mapping[int, ProjectLayer],
+    regions: Mapping[str, Region],
+) -> list[DraftIssue]:
+    """A warning for a dataset step whose area (``filter.area``) lies mostly
+    outside the layers it is combined with (the dataset steps joined to it by
+    connections), and does not hold most of them either: the bounding box of
+    its region against the box around theirs, each the box of its region
+    when it has an area, else the extent core lists for its layer. The steps
+    of one layer with an area are judged as one, so the place and the region
+    beyond its border merged are not apart. Not judged while one of the
+    layers combined with it has no extent, or is still to be chosen."""
+    joined = _joined(draft)
+    datasets = [step for step in draft.steps if isinstance(step, DatasetStep)]
+
+    def area_box(step: DatasetStep) -> BBox | None:
+        area = step.filter.area if step.filter is not None else None
+        region = regions.get(area) if area is not None else None
+        return None if region is None else bbox(region.geometry)
+
+    def footprint(step: DatasetStep) -> BBox | None:
+        if step.filter is not None and step.filter.area is not None:
+            return area_box(step)
+        layer = layers.get(step.layer) if step.layer is not None else None
+        return None if layer is None else layer.extent
+
+    groups: dict[tuple[str, int], list[DatasetStep]] = {}
+    for step in datasets:
+        if step.layer is not None and step.filter is not None and step.filter.area:
+            groups.setdefault((joined[step.id], step.layer), []).append(step)
+    issues: list[DraftIssue] = []
+    for (group, _), steps in groups.items():
+        judged = {step.id for step in steps}
+        others = [
+            step
+            for step in datasets
+            if joined[step.id] == group and step.id not in judged
+        ]
+        boxes = [area_box(step) for step in steps]
+        around = [footprint(step) for step in others]
+        if not others or None in boxes or None in around:
+            continue
+        own = _around(box for box in boxes if box is not None)
+        theirs = _around(box for box in around if box is not None)
+        if _box_area(own) <= 0 or _box_area(theirs) <= 0:
+            continue
+        shared = _overlap(own, theirs)
+        if shared >= _MOSTLY * _box_area(own) or shared >= _MOSTLY * _box_area(theirs):
+            continue
+        names = ", ".join(converted.labels.get(step.id, step.id) for step in steps)
+        areas = ", ".join(
+            f"{regions[area].name}, {area}"
+            for step in steps
+            if step.filter is not None and (area := step.filter.area) is not None
+        )
+        combined = ", ".join(converted.labels.get(step.id, step.id) for step in others)
+        issues.append(
+            DraftIssue(
+                code=AREA_OUTSIDE_CODE,
+                level="warning",
+                steps=[step.id for step in steps],
+                message=(
+                    f"{names}: the area of filter.area ({areas}) lies mostly outside "
+                    "the extent of the layers it is combined with "
+                    f"({combined}). A region found by name can be a same-named one "
+                    "elsewhere: check its parents (catalog_find_region) against the "
+                    "place the user named. A district or quarter of a city that is "
+                    "not a NUTS region is filtered by name or geometry in the city's "
+                    "own boundary layer instead."
+                ),
+            )
+        )
+    return issues

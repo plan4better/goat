@@ -2,6 +2,7 @@
 and which issues may stay open when the workflow is created (spec §4.3, §4.4)."""
 
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -11,13 +12,16 @@ from assistant.workflows.draft import (
     MAX_STEPS,
     Draft,
     ProjectLayer,
+    Region,
     ToolStep,
     open_steps,
     to_config,
 )
 from assistant.workflows.issues import (
+    AREA_OUTSIDE_CODE,
     FILTER_FIELD_CODE,
     DraftIssue,
+    area_issues,
     band_issues,
     counted_steps,
     draft_issues,
@@ -729,3 +733,184 @@ def test_more_than_one_note_is_a_warning() -> None:
 def test_one_note_or_none_is_fine() -> None:
     assert note_issues(_with_notes(1)) == []
     assert note_issues(_with_notes(0)) == []
+
+
+#: A city's boundary layers, a country's census points, and NUTS regions: one
+#: of the same name as a part of the city that lies mostly beyond it, the
+#: city itself, its state, and the region beyond the city's border.
+CITY = (8.41, 53.40, 10.33, 53.96)
+COUNTRY = (5.87, 47.27, 15.04, 55.06)
+AREA_LAYERS = {
+    81: ProjectLayer(
+        81,
+        "e2000000-0000-0000-0000-000000000081",
+        "City districts",
+        "feature",
+        "polygon",
+        CITY,
+    ),
+    82: ProjectLayer(
+        82,
+        "e2000000-0000-0000-0000-000000000082",
+        "City quarters",
+        "feature",
+        "polygon",
+        CITY,
+    ),
+    83: ProjectLayer(
+        83,
+        "e2000000-0000-0000-0000-000000000083",
+        "Census points",
+        "feature",
+        "point",
+        COUNTRY,
+    ),
+}
+
+
+def _region(
+    nuts_id: str, name: str, west: float, south: float, east: float, north: float
+) -> Region:
+    ring = [[west, south], [east, south], [east, north], [west, north], [west, south]]
+    return Region(nuts_id, name, {"type": "Polygon", "coordinates": [ring]})
+
+
+REGIONS = {
+    region.nuts_id: region
+    for region in (
+        _region("DE933", "Harburg", 9.56, 53.13, 10.47, 53.50),
+        _region("DE600", "Hamburg", 8.42, 53.40, 10.32, 53.96),
+        _region("DE9", "Niedersachsen", 6.65, 51.29, 11.60, 53.89),
+        _region("DE93", "Lüneburg", 8.61, 52.61, 11.60, 53.60),
+    )
+}
+
+
+def _area_draft(*areas: str, residents_where: bool = False) -> Draft:
+    """Residents counted per district of the city: the residents' dataset
+    steps take ``areas`` (several on the same layer are merged first)."""
+    residents = [
+        {
+            "id": f"residents{index}",
+            "kind": "dataset",
+            "label": f"Residents {index}",
+            "layer": 83,
+            "filter": {"area": area},
+        }
+        for index, area in enumerate(areas)
+    ]
+    merged = len(residents) > 1
+    return Draft.model_validate(
+        {
+            "name": "Residents per district",
+            "steps": [
+                {
+                    "id": "district",
+                    "kind": "dataset",
+                    "label": "District",
+                    "layer": 81,
+                    "filter": {"where": [{"field": "name", "op": "=", "value": "x"}]},
+                },
+                {"id": "quarters", "kind": "dataset", "layer": 82},
+                *residents,
+                *([{"id": "merge", "kind": "tool", "tool": "merge"}] if merged else []),
+                {"id": "clip", "kind": "tool", "tool": "clip"},
+                {"id": "count", "kind": "tool", "tool": "aggregate_points"},
+                {"id": "save", "kind": "export", "name": "Residents per quarter"},
+            ],
+            "connections": [
+                {"from": "quarters", "to": "clip", "input": "input_layer_id"},
+                {"from": "district", "to": "clip", "input": "overlay_layer_id"},
+                {"from": "clip", "to": "count", "input": "area_layer_id"},
+                *(
+                    [
+                        *(
+                            {"from": r["id"], "to": "merge", "input": f"input_path_{n}"}
+                            for n, r in enumerate(residents, start=1)
+                        ),
+                        {"from": "merge", "to": "count", "input": "source_layer_id"},
+                    ]
+                    if merged
+                    else [
+                        {
+                            "from": residents[0]["id"],
+                            "to": "count",
+                            "input": "source_layer_id",
+                        }
+                    ]
+                ),
+                {"from": "count", "to": "save"},
+            ],
+        }
+    )
+
+
+def _area_issues(
+    draft: Draft, layers: dict[int, ProjectLayer] = AREA_LAYERS
+) -> list[DraftIssue]:
+    converted = to_config(draft, layers=layers, regions=REGIONS, titles={})
+    return area_issues(draft, converted, layers, REGIONS)
+
+
+def test_an_area_mostly_outside_the_layers_it_is_combined_with_is_a_warning() -> None:
+    """Live pass 8 (Q32): a part of a city filtered the census points with a
+    same-named NUTS district of another state, which barely overlaps the city.
+    The check compares the region's box with the extents of the layers the
+    step is combined with, and warns."""
+    [issue] = _area_issues(_area_draft("DE933"))
+    assert (issue.code, issue.level, issue.steps) == (
+        AREA_OUTSIDE_CODE,
+        "warning",
+        ["residents0"],
+    )
+    message = issue.message
+    assert message.startswith("Residents 0: the area of filter.area (Harburg, DE933)")
+    assert "lies mostly outside the extent of the layers it is combined with" in message
+    assert "(District, City quarters)" in message
+    assert "check its parents (catalog_find_region) against the place" in message
+    assert "in the city's own boundary layer" in message
+
+
+@pytest.mark.parametrize(
+    "areas",
+    [("DE600",), ("DE9",), ("DE600", "DE93")],
+    ids=["inside", "containing-it", "with-the-margin-beyond-the-border"],
+)
+def test_an_area_inside_or_around_the_layers_is_fine(areas: tuple[str, ...]) -> None:
+    """A region inside the area, the region one level up around it, or the
+    place and the region beyond its border merged (the skill's destinations)
+    are no reason to warn."""
+    assert _area_issues(_area_draft(*areas)) == []
+
+
+def test_an_area_is_not_judged_without_every_extent_it_is_combined_with() -> None:
+    unknown = {**AREA_LAYERS, 82: replace(AREA_LAYERS[82], extent=None)}
+    assert _area_issues(_area_draft("DE933"), unknown) == []
+    alone = Draft.model_validate(
+        {
+            "name": "Residents",
+            "steps": [
+                {
+                    "id": "residents",
+                    "kind": "dataset",
+                    "layer": 83,
+                    "filter": {"area": "DE933"},
+                },
+                {"id": "district", "kind": "dataset", "layer": 81},
+                {"id": "save", "kind": "export", "name": "Residents"},
+            ],
+            "connections": [{"from": "residents", "to": "save"}],
+        }
+    )
+    assert _area_issues(alone) == []
+
+
+def test_an_area_beside_a_step_left_open_is_not_judged() -> None:
+    draft = _area_draft("DE933").model_dump(by_alias=True)
+    draft["steps"][1] = {
+        "id": "quarters",
+        "kind": "dataset",
+        "label": "Quarters",
+        "layer": None,
+    }
+    assert _area_issues(Draft.model_validate(draft)) == []

@@ -224,10 +224,11 @@ class ToolSpec(Generic[In, Out]):
     #: result, and a repeated call within one answer gets the first result
     #: with this note (``assistant.tools.toolset``).
     repeatable: str | None = None
-    #: Set on a write tool: the read tools (wire names) whose results in the
-    #: answer it can make stale (a workflow it edits). A call of it, however
-    #: it ends, lets a later call of these run again instead of getting its
-    #: earlier result (``assistant.tools.toolset``).
+    #: Set on a write tool: the tools (wire names) whose results in the
+    #: answer it can make stale (a read of a workflow it edits, or a run of
+    #: it). A later call of these that names what its call named runs again
+    #: instead of getting its earlier result: a read's whatever the call
+    #: answered, a write's once it landed (``assistant.tools.toolset``).
     invalidates: frozenset[str] = frozenset()
     #: Set on a tool whose result the answer reports before it asks: whether
     #: its result (as ``execute`` returns it) is one to report (a finished

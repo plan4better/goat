@@ -7,7 +7,8 @@ the run's surface, in registry order, the same in every step of an answer: a
 provider reads the tool definitions as part of the cached prefix. Near the
 run's limits the stage of the step (``answer_step``) decides which calls run,
 as they run, by tool and, in the step that answers, by what a call names
-(``_answer_step_allows``). A run without a tool environment (the run
+(``_answer_step_allows``); the cards that show what the answer found run in
+every stage (``DISPLAY_TOOLS``). A run without a tool environment (the run
 machinery's own tests) is offered none.
 """
 
@@ -33,8 +34,10 @@ from assistant.budget import (
 )
 from assistant.history import SHOWN_TOOLS
 from assistant.tools.ask import REPEATED_CARD, REPORT_FIRST
+from assistant.tools.catalog import SHOW_RECORDS
+from assistant.tools.core import SHOW_ITEMS
 from assistant.tools.http import service_failed
-from assistant.tools.project import PROJECT_TOOLS
+from assistant.tools.project import PROJECT_TOOLS, PROPOSE_VIEW
 from assistant.tools.registry import ALL_TOOLS, BY_WIRE_NAME, tools_for
 from assistant.tools.runtime import (
     InputInvalid,
@@ -135,6 +138,15 @@ RESULT_READ_TOOLS = frozenset(
     ]
 )
 
+#: The tools that show the user what the answer found as cards (a map view
+#: as a card to apply): small results, no look-up. They run in every stage
+#: and past the tool-call limit, so an answer ends with its cards; past the
+#: look-ups in one step only, since each call is followed by a model call of
+#: the whole context (``_stage_allows``, ``RunDeps.shown_steps``).
+DISPLAY_TOOLS = frozenset(
+    {SHOW_ITEMS.wire_name, SHOW_RECORDS.wire_name, PROPOSE_VIEW.wire_name}
+)
+
 #: Responses of a run with neither text nor a tool call (only reasoning, only
 #: whitespace, or nothing) that end its look-ups: the next call is the answer
 #: step. Each is asked again with the same tools (by Pydantic AI, or for only
@@ -207,10 +219,49 @@ def earlier_writes(messages: Sequence[Mapping[str, Any]]) -> dict[str, dict[str,
     return found
 
 
-def _forget_reads(results: dict[str, dict[str, Any]], tools: frozenset[str]) -> None:
-    """Drops the earlier results of ``tools`` (wire names) from an answer's."""
-    for key in [key for key in results if key.split(" ", 1)[0] in tools]:
-        del results[key]
+def _arguments(
+    spec: ToolSpec[Any, Any], arguments: dict[str, Any]
+) -> dict[str, Any] | None:
+    """A call's arguments as the tool reads them, defaults included, as JSON
+    values (as ``_call_key`` holds them); None for arguments that do not
+    validate."""
+    try:
+        validated = spec.input_model.model_validate(arguments)
+    except ValidationError:
+        return None
+    named: dict[str, Any] = validated.model_dump(mode="json")
+    return named
+
+
+def _forget_results(
+    results: dict[str, dict[str, Any]],
+    spec: ToolSpec[Any, Any],
+    arguments: dict[str, Any],
+    *,
+    landed: bool,
+) -> None:
+    """Drops from an answer's earlier results those a call of ``spec`` with
+    ``arguments`` may have made stale (``ToolSpec.invalidates``): of the tools
+    it names, the calls that name what it names, with the same values for
+    the arguments both take (a call that shares none, a listing, always). A
+    read's, whatever the write answered: a write that failed can still have
+    found what the read shows changed elsewhere. A write's (the summary a
+    repeated run returns) only once the write landed: a new run then runs
+    what the write changed, and any other would run the same again. Nothing
+    when the arguments do not validate: nothing ran."""
+    written = _arguments(spec, arguments) if spec.invalidates else None
+    if written is None:
+        return
+    for key in list(results):
+        tool, _, stored = key.partition(" ")
+        if tool not in spec.invalidates:
+            continue
+        invalidated = BY_WIRE_NAME.get(tool)
+        if not landed and invalidated is not None and invalidated.risk != "read":
+            continue
+        named = json.loads(stored) if stored else {}
+        if all(named[name] == written[name] for name in named.keys() & written.keys()):
+            del results[key]
 
 
 def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
@@ -232,10 +283,12 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                 tool_call_id=ctx.tool_call_id,
             )
         stage = prepared_stage(ctx)
-        if stage is not None and stage != "look up":
-            allowed = await _stage_allows(ctx, stage, spec, arguments)
-            _note_stage_call(ctx, allowed)
-            if not allowed:
+        # Past the look-ups, each call is noted with whether it ran: a step
+        # whose calls all did not ends the run (``assistant.agent.StageNote``).
+        past = stage is not None and stage != "look up"
+        if stage is not None and past:
+            if not await _stage_allows(ctx, stage, spec, arguments):
+                _note_stage_call(ctx, ran=False)
                 # Counted like a call that ran: a model that keeps calling
                 # what its stage refuses still reaches the tool-call limit.
                 refusing = _step_guard(ctx)
@@ -249,6 +302,10 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                     tool_call_id=ctx.tool_call_id,
                 )
         if spec.wire_name == ASK_TOOL and _unreported(ctx):
+            # A card held back until the result is written about waits for
+            # the text: the model was told what to do, and did not insist.
+            if past:
+                _note_stage_call(ctx, ran=True)
             await _report_first(ctx, spec, env, arguments)
         guard = _step_guard(ctx)
         reading = ctx.deps.reading_step == (ctx.run_id, ctx.run_step)
@@ -267,6 +324,8 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
         if reads_result:
             reads = ctx.deps.result_reads.get(ctx.run_id, 0)
             if reads >= read_allowance_of(ctx):
+                if past:
+                    _note_stage_call(ctx, ran=False)
                 await refuse(
                     spec,
                     env,
@@ -275,22 +334,36 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                     tool_call_id=ctx.tool_call_id,
                 )
             ctx.deps.result_reads[ctx.run_id] = reads + 1
-        # The reads of a run's result, and the card in a step that allows it,
-        # run although a call took the last of the limit: the step was
-        # prepared with room for the card.
-        past_limit = reads_result or (
-            spec.wire_name == ASK_TOOL and stage in ("read or ask", "answer or ask")
+        # The reads of a run's result, the card in a step that allows it, and
+        # the cards past the look-ups run although a call took the last of
+        # the limit: the step was prepared with room for the card, and the
+        # display tools run in one step past the look-ups.
+        past_limit = (
+            reads_result
+            or (
+                spec.wire_name == ASK_TOOL and stage in ("read or ask", "answer or ask")
+            )
+            or (spec.wire_name in DISPLAY_TOOLS and past)
         )
         if guard is not None and not guard.admit_call(past_limit=past_limit):
+            if past:
+                _note_stage_call(ctx, ran=False)
             await refuse(
                 spec, env, arguments, LOOK_UPS_USED_UP, tool_call_id=ctx.tool_call_id
             )
+        # A card past the look-ups counts as run only once it is shown: one
+        # that fails runs past the limit and in every stage, so only the
+        # steps that end a run bound a model that keeps failing at it.
+        showing = spec.wire_name in DISPLAY_TOOLS and past
+        if past and not showing:
+            _note_stage_call(ctx, ran=True)
         if spec.found_nothing is not None and (
             ctx.deps.fruitless_searches.get(ctx.run_id, 0) >= FRUITLESS_SEARCHES
         ):
             await refuse(
                 spec, env, arguments, SEARCHED_ENOUGH, tool_call_id=ctx.tool_call_id
             )
+        shown = False
         try:
             if _NOT_AN_OBJECT in arguments:
                 raise InputInvalid("The arguments must be a JSON object.")
@@ -331,6 +404,7 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                 return again
             if spec.wire_name == RUN.wire_name:
                 _note_run(ctx, arguments)
+            landed = False
             try:
                 result = await execute(
                     spec,
@@ -339,6 +413,7 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                     tool_call_id=ctx.tool_call_id,
                     check_result=check,
                 )
+                landed = True
             except ResultOverCap as exc:
                 # Its text asks for a narrower call, and the look-ups go on:
                 # only the same call is refused again without running.
@@ -357,11 +432,14 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                         ctx.deps.refused_results[key] = (0, SERVICE_FAILED_TWICE)
                 raise
             finally:
-                # Whatever it answered, the write may have changed what these
-                # read: their next call runs again.
-                _forget_reads(ctx.deps.earlier_results, spec.invalidates)
+                _forget_results(
+                    ctx.deps.earlier_results, spec, arguments, landed=landed
+                )
             if spec.wire_name == ASK_TOOL:
                 ctx.deps.asked = True
+            if showing:
+                ctx.deps.shown_steps.setdefault(ctx.run_id, ctx.run_step)
+                shown = True
             if key:
                 ctx.deps.earlier_results[key] = result
             _count_search(ctx, spec, result)
@@ -374,6 +452,9 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                     f"Gave up after {ctx.retry + 1} invalid calls. {exc.message}"
                 ) from exc
             raise ModelRetry(exc.message) from exc
+        finally:
+            if showing:
+                _note_card_call(ctx, shown=shown)
 
     tool: Tool[RunDeps] = Tool.from_schema(
         call,
@@ -578,6 +659,12 @@ STAGE_REFUSALS: dict[Stage, str] = {
 _ANSWER_OR_ASK = (
     "Answer from what you found, or ask with ask_user if the user has to choose."
 )
+#: The failure of a display tool's call past the look-ups in a step after the
+#: one that showed this answer's cards (``DISPLAY_TOOLS``).
+CARDS_SHOWN = (
+    "This call did not run: this answer has shown its cards already. Answer "
+    "from what you found."
+)
 #: In place of ``STAGE_REFUSALS["answer or ask"]`` for the tools that step
 #: still runs for some calls (``_answer_step_allows``).
 ANSWER_STEP_REFUSALS: dict[str, str] = {
@@ -595,6 +682,8 @@ ANSWER_STEP_REFUSALS: dict[str, str] = {
 
 def _stage_refusal(stage: Stage, spec: ToolSpec[Any, Any]) -> str:
     """The failure of a call of ``spec`` that ``stage`` does not allow."""
+    if spec.wire_name in DISPLAY_TOOLS:
+        return CARDS_SHOWN
     if stage == "answer or ask":
         return ANSWER_STEP_REFUSALS.get(spec.wire_name, STAGE_REFUSALS[stage])
     return STAGE_REFUSALS[stage]
@@ -610,9 +699,15 @@ async def _stage_allows(
     run: a look-up step every tool, a read step the reads of a finished
     run's result (``RESULT_READ_TOOLS``), the card where the stage allows it,
     and the step that answers with room for a card what it may still do
-    (``_answer_step_allows``)."""
+    (``_answer_step_allows``). The display tools run in every stage, past the
+    look-ups in the step that first showed cards (``RunDeps.shown_steps``):
+    a model that keeps showing them would make a model call of the whole
+    context each time."""
     if stage == "look up":
         return True
+    if spec.wire_name in DISPLAY_TOOLS:
+        shown = ctx.deps.shown_steps.get(ctx.run_id)
+        return shown is None or shown == ctx.run_step
     if spec.wire_name == ASK_TOOL:
         return stage in ("read or ask", "answer or ask")
     if stage == "answer or ask":
@@ -677,12 +772,47 @@ def _note_run(ctx: "RunContext[RunDeps]", arguments: dict[str, Any]) -> None:
         ctx.deps.run_attempts.setdefault(ctx.run_id, {})[workflow] = ctx.run_step
 
 
-def _note_stage_call(ctx: "RunContext[RunDeps]", allowed: bool) -> None:
-    """Notes a call of a step past the look-ups and whether its stage let it
-    run (``RunDeps.stage_calls``)."""
-    step, ran = ctx.deps.stage_calls.get(ctx.run_id, (None, False))
-    ran = ran if step == ctx.run_step else False
-    ctx.deps.stage_calls[ctx.run_id] = (ctx.run_step, ran or allowed)
+def _note_stage_call(ctx: "RunContext[RunDeps]", *, ran: bool) -> None:
+    """Notes a call of a step past the look-ups and whether it ran
+    (``RunDeps.stage_calls``): a step counts as run once one of its calls
+    did."""
+    step, any_ran = ctx.deps.stage_calls.get(ctx.run_id, (None, False))
+    any_ran = any_ran if step == ctx.run_step else False
+    ctx.deps.stage_calls[ctx.run_id] = (ctx.run_step, any_ran or ran)
+
+
+def _note_card_call(ctx: "RunContext[RunDeps]", *, shown: bool) -> None:
+    """Notes a display tool's call past the look-ups as it ended: as run when
+    its cards were shown, else as one that did not run, in a step whose run
+    gets one more step for a corrected call (``RunDeps.failed_cards``)."""
+    _note_stage_call(ctx, ran=shown)
+    if not shown:
+        ctx.deps.failed_cards[ctx.run_id] = ctx.run_step
+
+
+def card_failed(ctx: "RunContext[RunDeps]") -> bool:
+    """Whether a display tool's call failed in the step whose calls just ran
+    (``RunDeps.failed_cards``)."""
+    return ctx.deps.failed_cards.get(ctx.run_id) == ctx.run_step
+
+
+def step_refused(ctx: "RunContext[RunDeps]") -> bool:
+    """Whether the calls of the step past the look-ups whose calls just ran
+    were all refused (``RunDeps.stage_calls``)."""
+    return ctx.deps.stage_calls.get(ctx.run_id) == (ctx.run_step, False)
+
+
+def response_text(response: ModelResponse) -> str:
+    """The text of a response, without the whitespace around it."""
+    return "".join(
+        part.content for part in response.parts if isinstance(part, TextPart)
+    ).strip()
+
+
+def written_so_far(ctx: "RunContext[RunDeps]") -> str:
+    """The text of the run's responses so far, in order."""
+    texts = [response_text(r) for r in _run_responses(ctx.messages, ctx.run_id)]
+    return "\n\n".join(text for text in texts if text)
 
 
 def runnable_workflows(ctx: "RunContext[RunDeps]") -> list[str]:
@@ -774,12 +904,10 @@ def _stage(ctx: "RunContext[RunDeps]", budget: RunBudget, *, looked_up: bool) ->
     look-ups. A result refused for its size has ended the run's look-ups
     (``_result_check``), and so have ``SILENT_RESPONSES`` responses without
     text or a tool call; then the result is not read either. After a step
-    whose calls its stage all refused, the run answers in text
-    (``RunDeps.text_only``): each attempt is a model call of the whole
+    whose calls were all refused and that wrote no text, the run answers
+    (``RunDeps.insisted``): each attempt is a model call of the whole
     context, and a model that insisted would spend the answer's room."""
-    if ctx.deps.stage_calls.get(ctx.run_id) == (ctx.run_step - 1, False):
-        ctx.deps.text_only.add(ctx.run_id)
-    if ctx.run_id in ctx.deps.text_only:
+    if ctx.run_id in ctx.deps.insisted:
         return "answer"
     call = next_call(ctx.messages, ctx.run_id)
     # Every call let run counts, failed ones too (StepGuard); pydantic_ai's

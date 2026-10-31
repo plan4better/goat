@@ -406,6 +406,10 @@ class Draft(_Model):
         return self
 
 
+#: A bounding box: west, south, east, north, in degrees.
+BBox = tuple[float, float, float, float]
+
+
 @dataclass(frozen=True)
 class ProjectLayer:
     """A layer of the project, as core's layer list gives it."""
@@ -415,6 +419,9 @@ class ProjectLayer:
     name: str
     type: str | None = None
     geometry_type: str | None = None
+    #: The bounding box of its data (west, south, east, north) in degrees,
+    #: when core has one.
+    extent: BBox | None = None
 
 
 @dataclass(frozen=True)
@@ -468,15 +475,22 @@ def _coordinates(value: Any) -> Iterator[tuple[float, float]]:
             yield from _coordinates(item)
 
 
-def bbox_polygon(geometry: Mapping[str, Any]) -> dict[str, Any]:
-    """The bounding box of a GeoJSON geometry, as a polygon."""
+def bbox(geometry: Mapping[str, Any]) -> BBox:
+    """The bounding box of a GeoJSON geometry."""
     points = list(_coordinates(geometry.get("coordinates")))
     if not points:
         raise DraftError("the region has no coordinates")
-    west = min(x for x, _ in points)
-    east = max(x for x, _ in points)
-    south = min(y for _, y in points)
-    north = max(y for _, y in points)
+    return (
+        min(x for x, _ in points),
+        min(y for _, y in points),
+        max(x for x, _ in points),
+        max(y for _, y in points),
+    )
+
+
+def bbox_polygon(geometry: Mapping[str, Any]) -> dict[str, Any]:
+    """The bounding box of a GeoJSON geometry, as a polygon."""
+    west, south, east, north = bbox(geometry)
     ring = [[west, south], [east, south], [east, north], [west, north], [west, south]]
     return {"type": "Polygon", "coordinates": [ring]}
 

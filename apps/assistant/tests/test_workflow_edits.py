@@ -9,6 +9,7 @@ import json
 import re
 import threading
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -721,6 +722,169 @@ async def test_a_read_after_an_edit_in_the_same_answer_reads_the_edit() -> None:
     assert fresh["steps"][1]["settings"]["max_cost"] == 10
     assert repeated["repeated_call"] == UPDATE.repeatable
     assert len(_puts(core)) == 1
+
+
+#: A second workflow of the project, which the edits leave as it is.
+OTHER_WF = "0b6f0000-0000-0000-0000-00000000f11f"
+
+
+@dataclass
+class _Ran:
+    #: Each workflow_run's workflow and result, in order.
+    runs: list[tuple[str, dict[str, Any]]]
+    #: The runs started, by workflow: the bodies processes was sent.
+    starts: dict[str, list[dict[str, Any]]]
+
+
+async def _runs_and_edits(
+    calls: list[tuple[str, dict[str, Any]]], *, conflict: bool = False
+) -> _Ran:
+    """One answer whose model makes ``calls`` on two workflows it created, the
+    edited one (``WF``, its saves raising the revision as core does; with
+    ``conflict`` refused as changed elsewhere) and ``OTHER_WF``."""
+    from pydantic_ai.messages import ToolReturnPart
+
+    from assistant.agent import RunDeps, build_agent
+    from assistant.tools.testing import ScriptedModel
+
+    if conflict:
+        core, _, _ = _services(
+            put=httpx.Response(409, json={"detail": "changed_elsewhere"})
+        )
+    else:
+        core = _stateful_core()
+    core.routes.update(
+        {
+            ("GET", f"/api/v2/project/{PROJECT}"): {
+                "id": PROJECT,
+                "folder_id": "0f000000-0000-0000-0000-000000000001",
+            },
+            ("GET", f"/api/v2/project/{PROJECT}/workflow/{OTHER_WF}"): {
+                **ROW,
+                "id": OTHER_WF,
+                "name": "Andere",
+            },
+        }
+    )
+    _, processes, geoapi = _services()
+    jobs = iter(f"j{n}" for n in range(1, 10))
+
+    def start(request: httpx.Request) -> httpx.Response:
+        workflow = request.url.path.split("/")[2]
+        return httpx.Response(
+            200,
+            json={"job_id": next(jobs), "workflow_id": workflow, "status": "submitted"},
+        )
+
+    def finished(job_id: str) -> dict[str, Any]:
+        return {
+            "jobID": job_id,
+            "processID": "workflow_runner",
+            "status": "successful",
+            "created": "2026-10-23T08:41:30Z",
+            "result": {
+                "status": "success",
+                "node_results": {
+                    "tool-walk": {"status": "success", "feature_count": 3}
+                },
+            },
+        }
+
+    processes.routes.update(
+        {
+            ("GET", "/jobs"): {"jobs": []},
+            ("POST", f"/workflows/{WF}/execute"): start,
+            ("POST", f"/workflows/{OTHER_WF}/execute"): start,
+            **{("GET", f"/jobs/j{n}"): finished(f"j{n}") for n in range(1, 10)},
+        }
+    )
+    script = ScriptedModel(calls)
+
+    async def emit(event: Any) -> None:
+        return None
+
+    deps = RunDeps(message_id="m1", emit=emit, env=_env(core, processes, geoapi))
+    assert deps.env is not None
+    deps.env.runs.created.update({WF, OTHER_WF})
+    await build_agent(script.model).run("run them", deps=deps)
+    workflows = iter(
+        args["workflow_id"] for name, args in calls if name == "workflow_run"
+    )
+    runs = [
+        (next(workflows), part.content)
+        for message in script.requests[-1]
+        for part in getattr(message, "parts", [])
+        if isinstance(part, ToolReturnPart) and part.tool_name == "workflow_run"
+    ]
+    starts: dict[str, list[dict[str, Any]]] = {}
+    for request in processes.requests:
+        if request.method == "POST" and request.url.path.endswith("/execute"):
+            workflow = request.url.path.split("/")[2]
+            starts.setdefault(workflow, []).append(json.loads(request.content))
+    return _Ran(runs=runs, starts=starts)
+
+
+def _run(workflow: str) -> tuple[str, dict[str, Any]]:
+    return ("workflow_run", {"workflow_id": workflow})
+
+
+EDIT = ("workflow_update", {"workflow_id": WF, "operations": [SET_TEN]})
+
+
+def _minutes_run(body: dict[str, Any]) -> Any:
+    """The walking time of a run's catchment step, as processes was sent it."""
+    walk = next(node for node in body["nodes"] if node["id"] == "tool-walk")
+    return walk["data"]["config"]["max_cost"]
+
+
+@pytest.fixture
+def _quick_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    from assistant.tools import workflow_runs
+
+    monkeypatch.setattr(workflow_runs, "POLL_SECONDS", 0.0)
+
+
+@pytest.mark.usefixtures("_quick_runs")
+async def test_a_run_after_an_edit_in_the_same_answer_starts_the_edited_workflow() -> (
+    None
+):
+    """A repeated run in an answer returns the earlier run's summary and
+    starts nothing; after an edit of the workflow its run starts again, on
+    the edited workflow."""
+    from assistant.tools.workflow_runs import REPEATED_RUN
+
+    ran = await _runs_and_edits([_run(WF), _run(WF), EDIT, _run(WF)])
+    (_, first), (_, repeated), (_, edited) = ran.runs
+    assert first["status"] == "succeeded" and "repeated_call" not in first
+    assert repeated["repeated_call"] == REPEATED_RUN
+    assert edited["status"] == "succeeded" and "repeated_call" not in edited
+    assert [_minutes_run(body) for body in ran.starts[WF]] == [15, 10]
+
+
+@pytest.mark.usefixtures("_quick_runs")
+async def test_an_edit_lets_only_the_edited_workflow_run_again() -> None:
+    """The run of a workflow the edit did not touch is the same run: it
+    starts once, also when it is called again after the edit."""
+    from assistant.tools.workflow_runs import REPEATED_RUN
+
+    ran = await _runs_and_edits(
+        [_run(WF), _run(OTHER_WF), EDIT, _run(OTHER_WF), _run(WF)]
+    )
+    assert len(ran.starts[OTHER_WF]) == 1
+    assert [_minutes_run(body) for body in ran.starts[WF]] == [15, 10]
+    repeated = [result for workflow, result in ran.runs if "repeated_call" in result]
+    assert [result["repeated_call"] for result in repeated] == [REPEATED_RUN]
+
+
+@pytest.mark.usefixtures("_quick_runs")
+async def test_an_edit_that_was_not_saved_lets_no_run_start_again() -> None:
+    from assistant.tools.workflow_runs import REPEATED_RUN
+
+    ran = await _runs_and_edits([_run(WF), EDIT, _run(WF)], conflict=True)
+    assert len(ran.starts[WF]) == 1
+    (_, first), (_, again) = ran.runs
+    assert "repeated_call" not in first
+    assert again["repeated_call"] == REPEATED_RUN
 
 
 # -- fix round 1: only the blocking issues an edit adds refuse it -----------------------

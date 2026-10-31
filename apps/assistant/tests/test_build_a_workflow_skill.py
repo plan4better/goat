@@ -520,7 +520,15 @@ def test_the_skill_looks_in_the_users_own_datasets_too() -> None:
 
 def test_no_city_names_in_the_skill_or_the_prompt() -> None:
     """The rules are general: examples name a generic city or district."""
-    for city in ("Hamburg", "München", "Munich", "Berlin", "Bonn", "Neuwerk"):
+    for city in (
+        "Hamburg",
+        "Harburg",
+        "München",
+        "Munich",
+        "Berlin",
+        "Bonn",
+        "Neuwerk",
+    ):
         assert city not in f"{SKILL_TEXT} {RECIPES_TEXT} {INSTRUCTIONS}", city
 
 
@@ -1508,3 +1516,19 @@ def test_a_far_part_of_the_place_is_left_out_of_the_reference_area() -> None:
         "Say in the answer which part was left out",
     ):
         assert phrase in bullet, phrase
+
+
+def test_a_part_of_a_city_is_filtered_with_the_citys_own_layer() -> None:
+    """Live pass 8 (Q32): a district of a city that is not a NUTS region was
+    filtered with a same-named NUTS district in another state, so the
+    residents counted were not the district's. Such a part is filtered in the
+    city's own boundary layer, and a region found by name is checked by its
+    parents."""
+    for phrase in (
+        "A district or quarter of a city that is not a NUTS region is filtered "
+        "by name or geometry in the city's own boundary layer (its districts or "
+        "quarters layer), never with a NUTS region of the same name",
+        "catalog_find_region names each region's parents (state, country): "
+        "check them against the place the user named",
+    ):
+        assert phrase in DATASET_STEP, phrase

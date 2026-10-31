@@ -34,7 +34,7 @@ from pydantic_ai.exceptions import ToolFailed
 from assistant.tools.http import SIGN_IN_EXPIRED, ServiceError, sign_in_expired
 from assistant.tools.project import GET_WORKFLOWS
 from assistant.tools.runtime import InputInvalid, ToolEnv, ToolSpec
-from assistant.tools.workflow_runs import NOT_IN_PROJECT
+from assistant.tools.workflow_runs import LAST_RUN, NOT_IN_PROJECT, RUN
 from assistant.tools.workflow_tools import WORKFLOW_SURFACES
 from assistant.tools.workflows import (
     MAX_LISTED_ISSUES,
@@ -647,7 +647,11 @@ UPDATE: ToolSpec[UpdateInput, WorkflowUpdated] = ToolSpec(
     risk="write",
     scope="goat:write",
     repeatable=REPEATED_EDIT,
-    invalidates=frozenset({GET.wire_name, GET_WORKFLOWS.wire_name}),
+    # A run after the edit runs the edited workflow: a repeated call would
+    # return the earlier run's summary and start nothing.
+    invalidates=frozenset(
+        {GET.wire_name, GET_WORKFLOWS.wire_name, RUN.wire_name, LAST_RUN.wire_name}
+    ),
 )
 
 WORKFLOW_EDIT_TOOLS: tuple[ToolSpec[Any, Any], ...] = (GET, UPDATE)

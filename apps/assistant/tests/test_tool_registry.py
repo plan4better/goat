@@ -167,13 +167,21 @@ def test_write_tools_take_no_project_id() -> None:
         assert "project_id" not in names, spec.wire_name
 
 
-def test_what_a_write_makes_stale_are_read_tools() -> None:
-    """A name in ``ToolSpec.invalidates`` that names no read tool would
-    silently keep a stale result."""
+def test_what_a_write_makes_stale_are_tools_whose_results_repeat() -> None:
+    """A name in ``ToolSpec.invalidates`` that names no tool, or one whose
+    repeated call runs again anyway, would silently keep a stale result: the
+    reads of a workflow, and its run, whose repeat in an answer returns the
+    earlier summary (``ToolSpec.repeatable``)."""
     named = {name for spec in ALL_TOOLS for name in spec.invalidates}
-    assert named == {"workflow_get", "project_get_workflows"}
+    assert named == {
+        "workflow_get",
+        "project_get_workflows",
+        "workflow_run",
+        "workflow_last_run",
+    }
     for name in named:
-        assert BY_WIRE_NAME[name].risk == "read", name
+        spec = BY_WIRE_NAME[name]
+        assert spec.risk == "read" or spec.repeatable is not None, name
 
 
 def test_every_data_tool_has_a_restricted_form() -> None:

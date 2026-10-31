@@ -465,6 +465,48 @@ async def test_a_create_without_a_check_still_gives_the_assistants_warnings() ->
     assert "one note per workflow unless the user asked for more" in notes["message"]
 
 
+def _box_wkt(west: float, south: float, east: float, north: float) -> str:
+    """A layer's extent as core sends it."""
+    ring = f"{west} {south},{east} {south},{east} {north},{west} {north},{west} {south}"
+    return f"SRID=4326;MULTIPOLYGON((({ring})))"
+
+
+def _with_extents(core: Recorder, extents: Mapping[int, str]) -> None:
+    core.routes[("GET", f"/api/v2/project/{PROJECT}/layer")] = [
+        {**row, "extent": extents[row["id"]]} if row["id"] in extents else row
+        for row in LAYERS
+    ]
+
+
+async def test_an_area_far_from_the_layers_it_is_combined_with_is_a_warning() -> None:
+    """Live pass 8 (Q32): a dataset step's area lay mostly outside the area
+    of the layers it fed into. The check and the create warn, from the
+    layers' extents core lists and the region's boundary; nothing blocks."""
+    core, processes, geoapi, catalog = _services()
+    _with_extents(core, {33: _box_wkt(9.7, 53.4, 10.3, 53.7)})
+    env = _env(core, processes, geoapi, catalog)
+    result = await execute(CHECK_DRAFT, env, {"draft": DRAFT})
+    [issue] = [i for i in result["issues"] if i["code"] == "filter_area_outside"]
+    assert issue["level"] == "warning" and issue["steps"] == ["schools"]
+    assert issue["message"].startswith(
+        "Schools: the area of filter.area (München, Kreisfreie Stadt, DE212)"
+    )
+    assert result["blocking"] == 0
+    created = await execute(CREATE, env, {"draft": DRAFT})
+    [warning] = created["warnings"]
+    assert warning["code"] == "filter_area_outside"
+    assert warning["step"] == "Schools"
+
+
+async def test_an_area_inside_the_layers_it_is_combined_with_is_fine() -> None:
+    core, processes, geoapi, catalog = _services()
+    _with_extents(core, {33: _box_wkt(11.0, 47.9, 12.0, 48.5)})
+    result = await execute(
+        CHECK_DRAFT, _env(core, processes, geoapi, catalog), {"draft": DRAFT}
+    )
+    assert result["issues"] == []
+
+
 async def test_a_create_without_warnings_leaves_them_out() -> None:
     created = await execute(CREATE, _env(*_services()), {"draft": DRAFT})
     assert "warnings" not in created
