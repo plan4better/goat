@@ -1258,3 +1258,14 @@ def test_an_unknown_or_unclear_value_is_the_models_to_fix(
 
     with pytest.raises(InputInvalid, match=message):
         _canonical_facets({"license": [value]}, _VALUES)
+
+
+async def test_show_records_group_title_uses_goats_terms_and_may_be_left_out() -> None:
+    title = SHOW_RECORDS.json_schema()["$defs"]["ShownGroupInput"]["properties"][
+        "title"
+    ]
+    assert title["description"] == (
+        "A short heading for the group in the user's language, with GOAT's terms "
+        "(Layer, Workflow, Datensatz in German). Leave it out when the group's "
+        "cards say it already."
+    )

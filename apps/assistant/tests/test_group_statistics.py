@@ -925,3 +925,337 @@ async def test_a_total_above_its_whole_says_so_too() -> None:
         "different features. Rebuild the share from one assignment before you "
         "answer; never present a share above 100 %."
     ) in out["note"]
+
+
+#: Districts by residents in the worst classes (the numerator, by value) and
+#: by all their residents: the smallest district lies wholly in them, and
+#: processes lists it last of 150.
+RANKED = {
+    BANDS: [
+        _district("Gross", 5000),
+        _district("Mittel", 1000),
+        *(_district(f"D{n:03d}", 900 - n) for n in range(147)),
+        _district("Klein", 126),
+    ],
+    DISTRICTS: [
+        _district("Gross", 20000),
+        _district("Mittel", 2000),
+        *(_district(f"D{n:03d}", 10 * (900 - n)) for n in range(147)),
+        _district("Klein", 126),
+    ],
+}
+RANK_BY_SHARE = {
+    "layer_project_id": 90,
+    "operation": "sum",
+    "field": "einwohner",
+    "group_by": "name",
+    "share_of": SHARE_OF,
+    "order_by": "share",
+}
+
+
+async def test_ranked_by_share_a_small_group_of_100_percent_comes_first() -> None:
+    """Live pass 8 (Q42): the top three by share left out a district of 126
+    residents, all in the worst classes, which came last of the rows sorted
+    by value. Ranked by share, it comes first, also from beyond the first
+    100 groups by value."""
+    services = _services(rows=RANKED)
+    out = await execute(GROUP_STATISTICS, _env(services), {**RANK_BY_SHARE, "limit": 3})
+    assert [(r["group"], r["value"], r["share"]) for r in out["rows"]] == [
+        ("Klein", 126.0, 1.0),
+        ("Mittel", 1000.0, 0.5),
+        ("Gross", 5000.0, 0.25),
+    ]
+    assert out["groups"] == 150
+    numerator, denominator = (body["inputs"] for body in services[2].bodies())
+    assert numerator["limit"] == 1000 and numerator["order"] == "descendent"
+    assert denominator["limit"] == 1000
+
+
+async def test_ranked_by_share_the_lowest_first() -> None:
+    out = await execute(
+        GROUP_STATISTICS,
+        _env(_services(rows=RANKED)),
+        {**RANK_BY_SHARE, "lowest_first": True, "limit": 2},
+    )
+    assert [(r["group"], r["share"]) for r in out["rows"]] == [
+        ("D000", 0.1),
+        ("D001", 0.1),
+    ]
+
+
+@pytest.mark.parametrize("lowest_first", [False, True])
+async def test_groups_without_a_share_come_last(lowest_first: bool) -> None:
+    """A group the other layer has no value for, and one with a denominator
+    of 0, have no share: they come last in either order, however large
+    their value."""
+    rows = {
+        BANDS: [
+            _district("Fehlt", 9000),
+            _district("Null", 8000),
+            _district("Mitte", 1200),
+            _district("Nord", 600),
+        ],
+        DISTRICTS: [
+            _district("Mitte", 12000),
+            _district("Nord", 3000),
+            _district("Null", 0),
+        ],
+    }
+    out = await execute(
+        GROUP_STATISTICS,
+        _env(_services(rows=rows)),
+        {**RANK_BY_SHARE, "lowest_first": lowest_first},
+    )
+    ranked = [(r["group"], r.get("share")) for r in out["rows"]]
+    shared = [("Nord", 0.2), ("Mitte", 0.1)]
+    assert ranked == [
+        *(shared[::-1] if lowest_first else shared),
+        ("Fehlt", None),
+        ("Null", None),
+    ]
+    assert out["unmatched"] == 1
+    # Counted over the groups read, which the limit may cut.
+    assert "1 group(s) of the 4 read have no matching value of 'name'" in (out["note"])
+    assert (
+        "1 group(s) of the 4 read have no value or a denominator of 0" in (out["note"])
+    )
+
+
+#: Residents in reach per district over all residents per district: no one
+#: in Sued is in reach, so the filtered numerator has no row for it.
+IN_REACH = {
+    BANDS: [_district("Mitte", 1200), _district("Nord", 600)],
+    DISTRICTS: [
+        _district("Mitte", 12000),
+        _district("Sued", 5000),
+        _district("Nord", 3000),
+    ],
+}
+
+
+@pytest.mark.parametrize("lowest_first", [False, True])
+async def test_a_group_with_no_features_ranks_with_a_share_of_0(
+    lowest_first: bool,
+) -> None:
+    """A sum or count over no features is 0: a district the numerator's
+    filter leaves without a row gets one, 0 of its residents, and ranks
+    first among the lowest shares and last among the highest."""
+    out = await execute(
+        GROUP_STATISTICS,
+        _env(_services(rows=IN_REACH)),
+        {**RANK_BY_SHARE, "lowest_first": lowest_first, "limit": 3},
+    )
+    ranked = [
+        (r["group"], r["value"], r["denominator"], r["share"]) for r in out["rows"]
+    ]
+    by_share = [
+        ("Nord", 600.0, 3000.0, 0.2),
+        ("Mitte", 1200.0, 12000.0, 0.1),
+        ("Sued", 0.0, 5000.0, 0.0),
+    ]
+    assert ranked == (by_share[::-1] if lowest_first else by_share)
+    assert out["groups"] == 3 and out["unmatched"] == 0
+    assert (
+        "1 group(s) of 'Bezirke' have no features in 'Einwohner je Bezirk und "
+        "Band': their rows hold 0 and a share of 0."
+    ) in out["note"]
+
+
+async def test_groups_with_no_features_are_added_only_where_0_is_their_value() -> None:
+    """No row is made up for a mean (no features have no mean), in value
+    order, with then_by (no band to give it), or for a denominator of 0;
+    unmatched names are named beside them."""
+    mean = await execute(
+        GROUP_STATISTICS,
+        _env(_services(rows=IN_REACH)),
+        {**RANK_BY_SHARE, "operation": "mean"},
+    )
+    by_value = await execute(
+        GROUP_STATISTICS,
+        _env(_services(rows=IN_REACH)),
+        {**RANK_BY_SHARE, "order_by": "value"},
+    )
+    assert [r["group"] for r in mean["rows"]] == ["Nord", "Mitte"]
+    assert [r["group"] for r in by_value["rows"]] == ["Mitte", "Nord"]
+    for out in (mean, by_value):
+        assert "no features" not in (out.get("note") or "")
+    bands = await execute(
+        GROUP_STATISTICS,
+        _env(_services(rows=IN_REACH)),
+        {**RANK_BY_SHARE, "then_by": "band"},
+    )
+    assert [r["group"] for r in bands["rows"]] == ["Nord", "Mitte"]
+    assert (
+        "1 group(s) of 'Bezirke' have no features in 'Einwohner je Bezirk und "
+        "Band', so a share of 0, but no row: then_by has no value for them."
+    ) in bands["note"]
+    rows = {
+        BANDS: [_district("Mitte", 1200), _district("Nordx", 600)],
+        DISTRICTS: [*IN_REACH[DISTRICTS], _district("Leer", 0)],
+    }
+    misspelt = await execute(
+        GROUP_STATISTICS, _env(_services(rows=rows)), RANK_BY_SHARE
+    )
+    assert [r["group"] for r in misspelt["rows"]] == ["Mitte", "Sued", "Nord", "Nordx"]
+    assert (
+        "2 group(s) of 'Bezirke' have no features in 'Einwohner je Bezirk und "
+        "Band': their rows hold 0 and a share of 0. Check their names against "
+        "the 1 group(s) without a match first."
+    ) in misspelt["note"]
+
+
+async def test_groups_with_no_features_beyond_a_cut_list_are_not_ranked() -> None:
+    """The other layer's groups tell which have no features: beyond its
+    first 1000, the note says those are not ranked."""
+    out = await execute(
+        GROUP_STATISTICS,
+        _env(_services(rows=IN_REACH, groups={DISTRICTS: 1500})),
+        RANK_BY_SHARE,
+    )
+    assert [r["group"] for r in out["rows"]] == ["Nord", "Mitte", "Sued"]
+    assert (
+        "Groups with no features among the values of 'name' in 'Bezirke' beyond "
+        "its first 1000 are not ranked."
+    ) in out["note"]
+
+
+async def test_a_ranking_beyond_the_groups_read_says_so() -> None:
+    """Rows ranked by share are read with up to 1000 groups; with more, the
+    note says the others are not ranked."""
+    rows = {
+        BANDS: [_district(f"D{n:04d}", 2000 - n) for n in range(1000)],
+        DISTRICTS: [_district(f"D{n:04d}", 4000) for n in range(1000)],
+    }
+    out = await execute(
+        GROUP_STATISTICS,
+        _env(_services(rows=rows, groups={BANDS: 1200})),
+        {**RANK_BY_SHARE, "limit": 1},
+    )
+    assert [r["group"] for r in out["rows"]] == ["D0000"]
+    assert (
+        "'Einwohner je Bezirk und Band' has more than 1000 groups: the ranking "
+        "by share covers the 1000 with the largest values, not the others, nor "
+        "the groups with no features."
+    ) in out["note"]
+    # A group missing from a cut list may lie beyond it: none is made up.
+    assert "their rows hold 0" not in out["note"]
+    complete = await execute(
+        GROUP_STATISTICS, _env(_services(rows=RANKED)), RANK_BY_SHARE
+    )
+    assert "ranking" not in (complete.get("note") or "")
+
+
+async def test_the_rows_ranked_by_share_stop_at_100() -> None:
+    out = await execute(GROUP_STATISTICS, _env(_services(rows=RANKED)), RANK_BY_SHARE)
+    assert len(out["rows"]) == 100 and out["rows"][0]["group"] == "Klein"
+
+
+async def test_limit_keeps_the_first_rows_by_value() -> None:
+    services = _services()
+    out = await execute(
+        GROUP_STATISTICS,
+        _env(services),
+        {
+            "layer_project_id": 90,
+            "operation": "sum",
+            "field": "einwohner",
+            "group_by": "name",
+            "limit": 2,
+        },
+    )
+    assert [r["group"] for r in out["rows"]] == ["Mitte", "Nord"]
+    assert out["groups"] == 3
+    [body] = services[2].bodies()
+    assert body["inputs"]["limit"] == 2 and body["inputs"]["order"] == "descendent"
+
+
+async def test_the_lowest_value_first_is_asked_of_processes() -> None:
+    """By value, processes sorts: the lowest of more groups than are read
+    only come from its own order."""
+    services = _services()
+    await execute(
+        GROUP_STATISTICS,
+        _env(services),
+        {
+            "layer_project_id": 90,
+            "operation": "count",
+            "group_by": "name",
+            "lowest_first": True,
+        },
+    )
+    [body] = services[2].bodies()
+    assert body["inputs"]["order"] == "ascendent"
+
+
+@pytest.mark.parametrize(
+    ("limit", "bound"),
+    [(0, "greater than or equal to 1"), (101, "less than or equal to 100")],
+)
+async def test_limit_is_bounded(limit: int, bound: str) -> None:
+    with pytest.raises(InputInvalid, match=f"limit: Input should be {bound}"):
+        await execute(
+            GROUP_STATISTICS,
+            _env(_services()),
+            {
+                "layer_project_id": 90,
+                "operation": "count",
+                "group_by": "name",
+                "limit": limit,
+            },
+        )
+
+
+async def test_order_by_share_needs_share_of() -> None:
+    with pytest.raises(InputInvalid, match="order_by share needs share_of"):
+        await execute(
+            GROUP_STATISTICS,
+            _env(_services()),
+            {
+                "layer_project_id": 90,
+                "operation": "count",
+                "group_by": "name",
+                "order_by": "share",
+            },
+        )
+
+
+async def test_restricted_withholds_a_ranking_by_share_and_limits_counts() -> None:
+    """Restricted sends counts only: a ranking by share has a share_of and
+    is withheld; a limit on counts keeps the masking of small groups."""
+    ranked = await execute(
+        GROUP_STATISTICS,
+        _env(_services(rows=RANKED, groups={BANDS: 3}), "restricted"),
+        {**RANK_BY_SHARE, "operation": "count", "field": None, "limit": 3},
+    )
+    assert set(ranked) == {"withheld", "reason"}
+    counts = await execute(
+        GROUP_STATISTICS,
+        _env(_services(), "restricted"),
+        {
+            "layer_project_id": 90,
+            "operation": "count",
+            "group_by": "name",
+            "limit": 2,
+        },
+    )
+    assert [(r["group"], r.get("value")) for r in counts["rows"]] == [
+        ("Mitte", 1200.0),
+        ("Nord", 300.0),
+    ]
+    assert not {"denominator", "share", "note"} & _keys(counts)
+    # The fake ignores the order: the rows as processes lists them, the
+    # group under 5 masked as without a limit.
+    lowest = await execute(
+        GROUP_STATISTICS,
+        _env(_services(), "restricted"),
+        {
+            "layer_project_id": 90,
+            "operation": "count",
+            "group_by": "name",
+            "lowest_first": True,
+            "limit": 3,
+        },
+    )
+    assert [r.get("value") for r in lowest["rows"]] == [1200.0, 300.0, None]
+    assert "fewer than 5" in lowest["note"]

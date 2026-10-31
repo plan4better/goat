@@ -91,7 +91,8 @@ AgentFactory = Callable[[Model], Agent[RunDeps, str]]
 #: Shown in the conversation when GOAT AI answers instead of the organization's
 #: provider (spec §4.6: fallback only when the admin enabled it, never silent).
 FALLBACK_CAVEAT = (
-    "Your organization's AI provider is unavailable. This answer uses GOAT AI."
+    "Your organization's AI provider is unavailable. This answer uses GOAT AI, "
+    "so this request was processed by GOAT AI's model provider."
 )
 
 #: A title is a nicety; a slow model must not hold the task open.

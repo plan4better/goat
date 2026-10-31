@@ -33,6 +33,7 @@ from assistant.context import parse_context
 from assistant.repo import Repository
 from assistant.runs.manager import RunManager
 from assistant.skills import BUILT_IN
+from assistant.surfaces import Locale
 from assistant.tools.http import SIGN_IN_EXPIRED
 from assistant.tools.runtime import InputInvalid, ToolEnv, execute
 from assistant.tools.testing import (
@@ -48,6 +49,7 @@ from assistant.tools.workflow_tools import clear_description_cache
 from assistant.tools.workflows import (
     ADD_CATALOG_LAYER,
     CREATE_FROM_TEMPLATE,
+    CREATED_DESCRIPTION,
     FIND_TEMPLATES,
     MAX_BUNDLE_LOOKUPS,
     MAX_LISTED_TEMPLATES,
@@ -740,7 +742,13 @@ async def test_a_template_becomes_a_workflow_of_the_open_project() -> None:
     assert [preview.url.path, use.url.path] == [PREVIEW, USE]
     bindings = {"node:dataset-1": "e2000000-0000-0000-0000-000000000031"}
     assert json.loads(preview.content) == {"project_id": PROJECT, "bindings": bindings}
-    assert json.loads(use.content) == {"project_id": PROJECT, "bindings": bindings}
+    assert json.loads(use.content) == {
+        "project_id": PROJECT,
+        "bindings": bindings,
+        "description": CREATED_DESCRIPTION["en"]
+        + "\n\n"
+        + TEMPLATE_ROW["description"].strip(),
+    }
     [check] = [r for r in processes.requests if r.url.path == "/workflows/check"]
     body = json.loads(check.content)
     assert body["project_id"] == PROJECT
@@ -1239,6 +1247,54 @@ async def test_the_workflow_is_named_without_a_call_after_the_write(
     assert result["workflow"]["name"] == (name or "Schools within walking distance")
     body = json.loads(core.requests[-1].content)
     assert body.get("name") == name
+
+
+CREATED_TEXTS = [
+    (
+        "en",
+        "Created with the GOAT AI assistant. Check the steps and settings before "
+        "you use the results.",
+    ),
+    (
+        "de",
+        "Mit dem GOAT KI-Assistenten erstellt. Prüfen Sie Schritte und "
+        "Einstellungen, bevor Sie die Ergebnisse verwenden.",
+    ),
+]
+
+
+@pytest.mark.parametrize(("locale", "notice"), CREATED_TEXTS)
+async def test_the_workflow_says_the_assistant_made_it_before_the_templates_text(
+    locale: Locale, notice: str
+) -> None:
+    """The notice in the interface language comes first; the template's
+    own description stays, after a blank line."""
+    own = "Schools within 15 minutes on foot.\nThe districts ship with it."
+    core = _core(
+        **{f"GET /api/v2/template/{TEMPLATE}": {**TEMPLATE_ROW, "description": own}}
+    )
+    env = tool_env(
+        fake_clients(core=core, processes=_processes()), page=PAGE, locale=locale
+    )
+    await execute(CREATE_FROM_TEMPLATE, env, {"template_id": TEMPLATE})
+    body = json.loads(core.requests[-1].content)
+    assert core.requests[-1].url.path == USE
+    assert body["description"] == f"{notice}\n\n{own}"
+
+
+@pytest.mark.parametrize(("locale", "notice"), CREATED_TEXTS)
+@pytest.mark.parametrize("own", [None, "", "  \n "])
+async def test_a_template_without_a_description_gets_the_notice_alone(
+    locale: Locale, notice: str, own: str | None
+) -> None:
+    core = _core(
+        **{f"GET /api/v2/template/{TEMPLATE}": {**TEMPLATE_ROW, "description": own}}
+    )
+    env = tool_env(
+        fake_clients(core=core, processes=_processes()), page=PAGE, locale=locale
+    )
+    await execute(CREATE_FROM_TEMPLATE, env, {"template_id": TEMPLATE})
+    assert json.loads(core.requests[-1].content)["description"] == notice
 
 
 @pytest.mark.parametrize("kind", ["layout", "project"])

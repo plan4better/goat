@@ -62,6 +62,7 @@ from assistant.tools.ask import (
     ADDS_NAMED,
     ASK_USER,
     ASKED_NOTE,
+    FOUND_TITLE_CHARS,
     MAX_NAMED_FOUND,
     ONE_CARD,
     REPEATED_CARD,
@@ -899,6 +900,22 @@ async def test_the_datasets_a_refusal_names_are_capped() -> None:
     assert f'found, the closest ids first: "Population" (id {POPULATION}), ' in message
     assert message.count("(id ") == MAX_NAMED_FOUND
     assert message.endswith(" and 1 more.")
+
+
+async def test_each_title_a_refusal_names_is_cut_short() -> None:
+    """The refusal names up to ten datasets: a title of a sentence or more
+    is cut with an ellipsis, so the refusal stays short; the id stays whole."""
+    catalog = Recorder({("GET", f"/stac/resolve/{SHORTENED_ID}"): _not_found})
+    env, _ = _adds_env(catalog)
+    long_title = "Population per 100 m grid cell " * 6
+    env.catalog_titles.update({POPULATION: long_title, "stops": "Stops"})
+    with pytest.raises(InputInvalid) as refused:
+        await execute(ASK_USER, env, _adding(SHORTENED_ID), tool_call_id="c1")
+    message = refused.value.message
+    cut = long_title[: FOUND_TITLE_CHARS - 1].rstrip() + "…"
+    assert FOUND_TITLE_CHARS == 80 and len(cut) <= FOUND_TITLE_CHARS
+    assert f'"{cut}" (id {POPULATION}), "Stops" (id stops).' in message
+    assert long_title.strip() not in message
 
 
 async def test_a_card_adding_known_datasets_is_shown_after_one_lookup_each() -> None:

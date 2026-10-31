@@ -17,6 +17,7 @@ from assistant.db import Database
 from assistant.llm.types import DataPolicy
 from assistant.login import Login
 from assistant.repo import Repository
+from assistant.surfaces import Locale
 from assistant.tools.http import SIGN_IN_EXPIRED
 from assistant.tools.policy import MIN_RESTRICTED_GROUP
 from assistant.tools.runtime import InputInvalid, execute
@@ -32,6 +33,7 @@ from assistant.tools.workflows import (
     CHECK_DRAFT,
     CHECK_UNAVAILABLE,
     CREATE,
+    CREATED_DESCRIPTION,
     NOT_CHECKED,
     NOT_READABLE,
     VIEWER_WORKFLOWS,
@@ -286,12 +288,14 @@ def _env(
     catalog: Recorder,
     login: Login | None = None,
     data_policy: DataPolicy = "standard",
+    locale: Locale = "en",
 ) -> Any:
     return tool_env(
         fake_clients(core=core, processes=processes, geoapi=geoapi, catalog=catalog),
         page=PAGE,
         login=login,
         data_policy=data_policy,
+        locale=locale,
     )
 
 
@@ -1012,7 +1016,10 @@ async def test_create_saves_the_config_the_check_checked() -> None:
     )
     posted = json.loads(next(r for r in core.requests if r.method == "POST").content)
     assert posted["name"] == "Schools: 15-minute walk"
-    assert (posted["is_default"], posted["description"]) == (False, None)
+    assert (posted["is_default"], posted["description"]) == (
+        False,
+        CREATED_DESCRIPTION["en"],
+    )
     assert posted["config"]["nodes"] == checked["nodes"]
     assert posted["config"]["edges"] == checked["edges"]
     assert result == {
@@ -1042,6 +1049,32 @@ async def test_create_saves_the_config_the_check_checked() -> None:
             }
         ],
     }
+
+
+@pytest.mark.parametrize(
+    ("locale", "notice"),
+    [
+        (
+            "en",
+            "Created with the GOAT AI assistant. Check the steps and settings "
+            "before you use the results.",
+        ),
+        (
+            "de",
+            "Mit dem GOAT KI-Assistenten erstellt. Prüfen Sie Schritte und "
+            "Einstellungen, bevor Sie die Ergebnisse verwenden.",
+        ),
+    ],
+)
+async def test_a_created_workflow_says_the_assistant_made_it(
+    locale: Locale, notice: str
+) -> None:
+    """In the interface language, where the workflow list shows it."""
+    core, processes, geoapi, catalog = _services()
+    env = _env(core, processes, geoapi, catalog, locale=locale)
+    await execute(CREATE, env, {"draft": DRAFT}, tool_call_id="c1")
+    posted = json.loads(next(r for r in core.requests if r.method == "POST").content)
+    assert posted["description"] == notice
 
 
 async def test_create_saves_the_notes_after_the_steps() -> None:

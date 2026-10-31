@@ -1499,11 +1499,14 @@ GET_LAYOUTS: ToolSpec[ProjectInput, ProjectLayouts] = ToolSpec(
 # -- project.group_statistics --------------------------------------------------
 
 GroupOperation = Literal["count", "sum", "mean", "min", "max"]
+GroupOrder = Literal["value", "share"]
 #: The groups a result lists at most, as its rows.
 MAX_GROUPS = 100
 #: The groups of a share's denominator read at most (processes' aggregation-stats
 #: takes a limit of up to 1000): a row's group may come anywhere in the other
-#: layer's list, and only the rows go to the model.
+#: layer's list, and only the rows go to the model. Rows ranked by share read
+#: as many of the first layer's groups: processes sorts by value, and a small
+#: group with the highest share comes last in that order.
 DENOMINATOR_GROUPS = 1000
 SHARE_DECIMALS = 6
 
@@ -1567,9 +1570,29 @@ class GroupStatisticsInput(FilteredLayerInput):
             "district); without, its total."
         ),
     )
+    order_by: GroupOrder = Field(
+        default="value",
+        description=(
+            "value: the rows by their value; share (needs share_of): by their "
+            "share, the rows without a share last. Rank by share for the groups "
+            "with the highest or lowest share: a small group can hold the "
+            "highest share."
+        ),
+    )
+    lowest_first: bool = Field(
+        default=False, description="The lowest value or share first."
+    )
+    limit: int = Field(
+        default=MAX_GROUPS,
+        ge=1,
+        le=MAX_GROUPS,
+        description=f"The rows to return, the first in order_by (1-{MAX_GROUPS}).",
+    )
 
     @model_validator(mode="after")
     def _groups_need_group_by(self) -> "GroupStatisticsInput":
+        if self.order_by == "share" and self.share_of is None:
+            raise ValueError("order_by share needs share_of: the shares it ranks by")
         if self.group_by is None:
             if self.then_by is not None:
                 raise ValueError("then_by needs group_by: it groups inside group_by")
@@ -1597,7 +1620,7 @@ class GroupStatistics(BaseModel):
     then_by: str | None = None
     filter: str
     rows: list[GroupRow]
-    #: Groups before the limit of MAX_GROUPS.
+    #: Groups before the limit (the input's, at most MAX_GROUPS).
     groups: int
     features: int
     #: With share_of.group_by: distinct group values the other layer has no
@@ -1730,6 +1753,7 @@ def _aggregation(
     then_by: str | None,
     cql: str | None,
     limit: int = MAX_GROUPS,
+    lowest_first: bool = False,
 ) -> dict[str, Any]:
     return {
         "collection": layer.layer_id,
@@ -1738,7 +1762,7 @@ def _aggregation(
         "group_by_column": group_by,
         "group_by_secondary_column": then_by,
         "filter": cql,
-        "order": "descendent",
+        "order": "ascendent" if lowest_first else "descendent",
         "limit": limit,
     }
 
@@ -1757,6 +1781,18 @@ def _lists_every_group(answer: Any, listed: int, limit: int) -> bool:
     if isinstance(total, int) and not isinstance(total, bool):
         return total <= listed
     return len(_items(answer)) < limit
+
+
+def _ranked_by_share(rows: list[GroupRow], lowest_first: bool) -> list[GroupRow]:
+    """The rows by share, the highest first unless ``lowest_first``, and the
+    rows without a share last in either order. The sort is stable, so rows of
+    the same share keep processes' order, the largest value first."""
+    shared = sorted(
+        (row for row in rows if row.share is not None),
+        key=lambda row: row.share or 0.0,
+        reverse=not lowest_first,
+    )
+    return shared + [row for row in rows if row.share is None]
 
 
 async def _group_statistics(
@@ -1796,10 +1832,22 @@ async def _group_statistics(
         low_cardinality = all(
             _distinct_total(whole) <= LOW_CARDINALITY_LIMIT for whole in wholes
         )
+    by_share = args.order_by == "share"
+    # Ranked by share, the groups are read in processes' order (by value),
+    # as many as a denominator, and sorted here once the shares exist.
     answer = await _analytics(
         env,
         "aggregation-stats",
-        _aggregation(layer, args.operation, field, group_by, then_by, cql),
+        _aggregation(
+            layer,
+            args.operation,
+            field,
+            group_by,
+            then_by,
+            cql,
+            limit=DENOMINATOR_GROUPS if by_share else args.limit,
+            lowest_first=args.lowest_first and not by_share,
+        ),
     )
     rows = [
         GroupRow(
@@ -1809,8 +1857,24 @@ async def _group_statistics(
         )
         for item in _items(answer)
     ]
+    read = len(rows)
+    listed = sum(1 for row in rows if row.group is not None)
+    read_cut = (
+        by_share
+        and read >= DENOMINATOR_GROUPS
+        and not _lists_every_group(answer, listed, DENOMINATOR_GROUPS)
+    )
+
+    def counted(count: int, kind: str = "group") -> str:
+        # Ranked by share, the notes count every group read, while the limit
+        # keeps fewer rows.
+        if by_share:
+            return f"{count} {kind}(s) of the {read} read"
+        return f"{count} {kind}(s)"
+
     notes: list[str] = []
     unmatched: int | None = None
+    zeros: list[str] = []
     if args.share_of is not None:
         share = args.share_of
         other = await _readable_layer(
@@ -1869,8 +1933,8 @@ async def _group_statistics(
                     undivided_rows += 1
             if undivided_rows:
                 notes.append(
-                    f"{undivided_rows} row(s) have no value or a denominator of 0, "
-                    "so they have no share."
+                    f"{counted(undivided_rows, 'row')} have no value or a "
+                    "denominator of 0, so they have no share."
                 )
         else:
             # The null group is no value to match: its features have none, in
@@ -1898,20 +1962,67 @@ async def _group_statistics(
             unmatched = len(missing) if complete else None
             if missing and complete:
                 notes.append(
-                    f"{len(missing)} group(s) have no matching value of "
+                    f"{counted(len(missing))} have no matching value of "
                     f"{share_group_by!r} in {other.name!r}, so they have no share."
                 )
             elif missing:
                 notes.append(
-                    f"{len(missing)} group(s) have no share: {other.name!r} has more "
-                    f"than {DENOMINATOR_GROUPS} values of {share_group_by!r}, and only "
-                    f"its first {DENOMINATOR_GROUPS} (largest first) are matched."
+                    f"{counted(len(missing))} have no share: {other.name!r} has "
+                    f"more than {DENOMINATOR_GROUPS} values of {share_group_by!r}, "
+                    f"and only its first {DENOMINATOR_GROUPS} (largest first) are "
+                    "matched."
                 )
             if undivided:
                 notes.append(
-                    f"{len(undivided)} group(s) have no value or a denominator of 0, "
-                    "so they have no share."
+                    f"{counted(len(undivided))} have no value or a denominator of "
+                    "0, so they have no share."
                 )
+            if by_share and args.operation in ("sum", "count") and not read_cut:
+                # A group with no features in the first layer has no row, but
+                # its count or sum is 0, and so is its share: a filtered
+                # numerator (residents in reach) leaves such groups out, and
+                # the lowest shares would miss them. Only the other layer's
+                # groups tell which; a cut list of them may hold more.
+                seen = {row.group for row in rows}
+                zeros = [
+                    key
+                    for key, denominator in denominators.items()
+                    if key not in seen and denominator
+                ]
+                unchecked = (
+                    f" Check their names against the {len(missing)} group(s) "
+                    "without a match first."
+                    if missing
+                    else ""
+                )
+                if zeros and then_by is None:
+                    rows += [
+                        GroupRow(
+                            group=key,
+                            value=0.0,
+                            denominator=denominators[key],
+                            share=0.0,
+                        )
+                        for key in zeros
+                    ]
+                    notes.append(
+                        f"{len(zeros)} group(s) of {other.name!r} have no features "
+                        f"in {layer.name!r}: their rows hold 0 and a share of 0."
+                        + unchecked
+                    )
+                elif zeros:
+                    notes.append(
+                        f"{len(zeros)} group(s) of {other.name!r} have no features "
+                        f"in {layer.name!r}, so a share of 0, but no row: then_by "
+                        "has no value for them." + unchecked
+                    )
+                    zeros = []
+                if not complete:
+                    notes.append(
+                        f"Groups with no features among the values of "
+                        f"{share_group_by!r} in {other.name!r} beyond its first "
+                        f"{DENOMINATOR_GROUPS} are not ranked."
+                    )
         # A sum or count over the same statistic of its whole never passes
         # 100 %: a share above it comes from a numerator and a denominator
         # assigned in different ways. The note counts those rows and names
@@ -1927,12 +2038,22 @@ async def _group_statistics(
                 )
             elif above:
                 notes.append(
-                    f"{above} group(s) have a share above 100 %: numerator and "
+                    f"{counted(above)} have a share above 100 %: numerator and "
                     "denominator were assigned to the groups differently. Rebuild "
                     "the share from one assignment, both counted per group the "
                     "same way, before you answer; never present a share above "
                     "100 %."
                 )
+    if by_share:
+        if read_cut:
+            notes.append(
+                f"{layer.name!r} has more than {DENOMINATOR_GROUPS} groups: the "
+                f"ranking by share covers the {DENOMINATOR_GROUPS} with the "
+                "largest values, not the others, nor the groups with no "
+                "features."
+            )
+        rows = _ranked_by_share(rows, args.lowest_first)
+    rows = rows[: args.limit]
     notes += _null_notes(rows, group_by, then_by)
     total_items = answer.get("total_items") if isinstance(answer, dict) else None
     total_count = answer.get("total_count") if isinstance(answer, dict) else None
@@ -1944,7 +2065,8 @@ async def _group_statistics(
         then_by=then_by,
         filter=describe_filter(feature_filter),
         rows=rows,
-        groups=int(total_items) if isinstance(total_items, int) else len(rows),
+        groups=(int(total_items) if isinstance(total_items, int) else read)
+        + len(zeros),
         features=int(total_count) if isinstance(total_count, int) else 0,
         unmatched=unmatched,
         note=_note(*read_as, *notes),
@@ -1960,7 +2082,8 @@ GROUP_STATISTICS: ToolSpec[GroupStatisticsInput, GroupStatistics] = ToolSpec(
     description=(
         "A statistic of a layer per group: sum, mean, min or max of a numeric "
         "field, or the count of features, per value of group_by and optionally per "
-        "value of then_by inside each (up to 100 groups, largest first). Without "
+        "value of then_by inside each (up to 100 groups, largest value first; "
+        "lowest_first turns the order, limit keeps the first N). Without "
         "group_by, one row for the whole (filtered) layer. With share_of, each "
         "row's value is divided on the server by a statistic of another layer "
         "with its own operation (sum by default): its value for the same group "
@@ -1969,8 +2092,12 @@ GROUP_STATISTICS: ToolSpec[GroupStatisticsInput, GroupStatistics] = ToolSpec(
         "filter for the denominator, e.g. residents in a catchment over all "
         "residents. Use those shares, never compute them yourself. Groups "
         "without a share, and shares above 100 %, are counted in the note. "
-        "Under the Restricted data "
-        "policy only counts are sent."
+        "For the groups with the highest or lowest share, set order_by share "
+        "(with lowest_first for the lowest) and limit to the N asked for: the "
+        "rows then come by share, a group of share_of.group_by with no features "
+        "at 0 (count or sum), the groups without a share last, so a small group "
+        "with the highest share comes first, not far down a list sorted by "
+        "value. Under the Restricted data policy only counts are sent."
     ),
     input_model=GroupStatisticsInput,
     output_model=GroupStatistics,

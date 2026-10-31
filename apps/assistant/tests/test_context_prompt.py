@@ -722,6 +722,21 @@ def test_german_answers_address_the_user_with_sie() -> None:
     )
 
 
+def test_german_answers_use_goats_terms_and_no_dashes_in_sentences() -> None:
+    """The dock's button reads "Rückgängig" and layers are "Layer" in GOAT's
+    German; answers wrote "Undo" and "Ebene". The rule sits in the language
+    bullet, so it is read with the "Sie" rule, and the dash rule holds for
+    every language. Nothing else in the instructions leads German answers to
+    the English button label."""
+    rule = _bullet("Answer in the language of the user's newest message")
+    assert (
+        "In German, use GOAT's own words: the dock's undo button is \"Rückgängig\" "
+        'and layers are "Layer", never "Ebene".' in rule
+    )
+    assert "In every language, no en or em dashes inside sentences." in rule
+    assert "Undo in the dock" not in " ".join(INSTRUCTIONS.split())
+
+
 @pytest.mark.parametrize(
     "phrase",
     [

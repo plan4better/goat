@@ -617,6 +617,15 @@ async def test_show_items_takes_records_for_items() -> None:
     assert "items" in group and "records" not in group
 
 
+async def test_show_items_group_title_uses_goats_terms_and_may_be_left_out() -> None:
+    title = SHOW_ITEMS.json_schema()["$defs"]["ItemGroupInput"]["properties"]["title"]
+    assert title["description"] == (
+        "A short heading for the group in the user's language, with GOAT's terms "
+        "(Layer, Workflow, Datensatz in German). Leave it out when the group's "
+        "cards say it already."
+    )
+
+
 async def test_show_items_is_offered_everywhere_and_returns_no_data_values() -> None:
     assert SHOW_ITEMS.surfaces == frozenset(SURFACES)
     assert SHOW_ITEMS.returns_data is False and SHOW_ITEMS.mcp is False

@@ -189,13 +189,17 @@ catchment over all residents: the denominator needs another filter than the nume
 the other layer's for the same group, or by its total, in this service, so shares and totals in an answer never come
 from the model's arithmetic, and its note says how many groups have no share and why. The rows stop at 100 groups, but
 the denominator is read with up to `DENOMINATOR_GROUPS`, since a row's group may come anywhere in the other layer's
-list. A denominator from another layer gets a note: if the layers come from different sources, check that both count the
-same population (source and year). Under Restricted it sends counts only, for few groups (judged over the whole layer,
-also with a filter), no count of a group under `MIN_RESTRICTED_GROUP` features, nothing for a filter that matches fewer
-features than that, and nothing at all with `share_of`. A join names the fields it adds `join_<name>`, and models often
-leave the prefix out, so the statistics tools and the count's filter read `join_x` for a field `x` the layer lacks and
-say so in the result's note. The name is resolved before anything else, so the Restricted checks judge `join_x` exactly
-as when the model names it.
+list. Rows ranked by share (`order_by`) are sorted here once the shares exist, and the first layer is then read with up
+to `DENOMINATOR_GROUPS` groups too: processes sorts by value, so a small group with the highest share (all of its few
+residents in reach) comes last in its order, where a model reading a long list misses it. A filtered numerator has no
+row for a group with no features in it (no resident in reach), so a ranked count or sum gets a row of 0 for each group
+the denominator lists: the lowest shares would miss them otherwise. A denominator from another layer gets a note: if the
+layers come from different sources, check that both count the same population (source and year). Under Restricted it
+sends counts only, for few groups (judged over the whole layer, also with a filter), no count of a group under
+`MIN_RESTRICTED_GROUP` features, nothing for a filter that matches fewer features than that, and nothing at all with
+`share_of`. A join names the fields it adds `join_<name>`, and models often leave the prefix out, so the statistics
+tools and the count's filter read `join_x` for a field `x` the layer lacks and say so in the result's note. The name is
+resolved before anything else, so the Restricted checks judge `join_x` exactly as when the model names it.
 
 **Building a workflow.** The model is shown only the tools of the user's toolbox (`offered` in
 `tools/workflow_tools.py`: `GET /processes` for the user, without the tools hidden from the toolbox, such as custom
@@ -231,6 +235,9 @@ Each setting reaches the model with what it means, its description and the tool'
 (`workflows/tool_info.py`): a name and a type do not tell a band edge from the width of a band.
 Processes' 400 or 422 on a draft goes back to the model as an error to fix; only when processes cannot be reached or
 fails is a draft left unchecked.
+A workflow the assistant creates (`workflow_create`, `workflow_create_from_template`) gets a fixed description in the
+interface language that says so (`created_description`), with a template's own description after it: the
+workflow list shows which workflows an AI built, in GOAT's words, whatever the model writes.
 The model can tell a dataset that covers far more than the place asked about, which then gets an area filter:
 `project_get_layers` gives each layer's extent, rounded, and, for a catalog dataset, the feature count its copy
 recorded (core keeps no count for other layers, and counting each layer on every call would read whole tables). A

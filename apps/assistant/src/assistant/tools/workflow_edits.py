@@ -636,7 +636,7 @@ UPDATE: ToolSpec[UpdateInput, WorkflowUpdated] = ToolSpec(
         "the issues come back; issues the workflow had before do not stop it. "
         "Answers with the revisions before and after, the changed steps (an "
         "added one with its new id) and the issues left. The user can take the "
-        "edit back with Undo in the dock. A rename shows on the canvas only on "
+        "edit back with the dock's undo button. A rename shows on the canvas only on "
         "If steps; tool, dataset and export steps show it in their settings and "
         "in issue texts."
     ),

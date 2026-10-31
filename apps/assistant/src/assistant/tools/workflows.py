@@ -28,6 +28,7 @@ from pydantic_ai.exceptions import ToolFailed
 
 from assistant.asks import RUN_PREFIX, AskHistory, recent_picked_ids
 from assistant.context import RECORD_ID_PATTERN, project_of
+from assistant.surfaces import Locale
 from assistant.tools.ask import in_catalog, users_dataset
 from assistant.tools.core import ShownItem, ShownItemGroup
 from assistant.tools.filters import FeatureFilter, field_kind, to_cql2
@@ -71,6 +72,18 @@ from assistant.workflows.issues import (
     starting_point_issues,
 )
 
+#: The description of each workflow the assistant creates, in the interface
+#: language (``ToolEnv.locale``): the workflow list and the runner show it.
+CREATED_DESCRIPTION: dict[Locale, str] = {
+    "en": (
+        "Created with the GOAT AI assistant. Check the steps and settings before "
+        "you use the results."
+    ),
+    "de": (
+        "Mit dem GOAT KI-Assistenten erstellt. Prüfen Sie Schritte und "
+        "Einstellungen, bevor Sie die Ergebnisse verwenden."
+    ),
+}
 VIEWER_WORKFLOWS = "You can view this project but not create workflows in it."
 VIEWER_LAYERS = "You can view this project but not add datasets to it."
 TEMPLATE_REFUSED = (
@@ -867,6 +880,16 @@ def _warning(issue: DraftIssue, labels: Mapping[str, str]) -> OpenIssue:
     return OpenIssue(step=step, code=issue.code, message=issue.message)
 
 
+def created_description(env: ToolEnv, own: Any = None) -> str:
+    """The description of a workflow the assistant creates: that it did, in the
+    interface language like GOAT's own texts, then a template's own description
+    (``own``) after a blank line."""
+    notice = CREATED_DESCRIPTION[env.locale]
+    if isinstance(own, str) and own.strip():
+        return f"{notice}\n\n{own.strip()}"
+    return notice
+
+
 async def _create(env: ToolEnv, args: DraftInput) -> WorkflowCreated:
     project_id = open_project(env)
     prepared = await prepare(env, project_id, args.draft)
@@ -889,7 +912,7 @@ async def _create(env: ToolEnv, args: DraftInput) -> WorkflowCreated:
             f"/api/v2/project/{project_id}/workflow",
             json_body={
                 "name": args.draft.name,
-                "description": None,
+                "description": created_description(env),
                 "is_default": False,
                 "config": prepared.converted.config,
             },
@@ -1536,6 +1559,7 @@ async def _from_template(env: ToolEnv, args: FromTemplateInput) -> WorkflowCreat
         raise _refusal(blocking, config, args.bindings)
     if args.name is not None:
         body["name"] = args.name
+    body["description"] = created_description(env, template.get("description"))
     used = await _post_use(env, use, body)
     workflow_id = used.get("workflow_id") if isinstance(used, dict) else None
     if not workflow_id:

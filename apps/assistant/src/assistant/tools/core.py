@@ -482,7 +482,11 @@ class ItemGroupInput(BaseModel):
     title: str | None = Field(
         default=None,
         max_length=60,
-        description="A short heading for the group, in the user's language.",
+        description=(
+            "A short heading for the group in the user's language, with GOAT's "
+            "terms (Layer, Workflow, Datensatz in German). Leave it out when the "
+            "group's cards say it already."
+        ),
     )
     # ``records``, as catalog_show_records names its list, is taken too.
     items: list[ItemRef] = Field(

@@ -88,6 +88,9 @@ MAX_CHECKED_ADDS = 50
 _NAMED_ADDS = 5
 #: The catalog datasets the answer found that such a refusal names at most.
 MAX_NAMED_FOUND = 10
+#: The characters of each of their titles it keeps: the id is what the model
+#: copies, and catalog titles can run to a sentence each.
+FOUND_TITLE_CHARS = 80
 
 
 class OptionAdds(BaseModel):
@@ -206,13 +209,20 @@ async def _lookup(env: ToolEnv, item: str) -> Found:
     return known, catalog_title or own_title
 
 
+def _clip(title: str) -> str:
+    if len(title) <= FOUND_TITLE_CHARS:
+        return title
+    return title[: FOUND_TITLE_CHARS - 1].rstrip() + "…"
+
+
 def _found_datasets(found: Mapping[str, str], refused: Sequence[str]) -> str:
     """The catalog datasets the answer found (``found``: titles by id,
     ``ToolEnv.catalog_titles``) as the refusal of the ``refused`` ids names
     them, by their exact ids, so the model corrects the card in one call:
     the ids most like a refused one first, since a model that shortened or
     garbled an id finds the right one there, then in the order found; at
-    most ``MAX_NAMED_FOUND``. Empty when the answer found none."""
+    most ``MAX_NAMED_FOUND``, each title cut at ``FOUND_TITLE_CHARS``. Empty
+    when the answer found none."""
     if not found:
         return ""
 
@@ -222,7 +232,7 @@ def _found_datasets(found: Mapping[str, str], refused: Sequence[str]) -> str:
     # sorted is stable: ids alike in closeness stay in the order found.
     ranked = sorted(found, key=closeness, reverse=True)
     listed = ", ".join(
-        f'"{found[item]}" (id {item})' for item in ranked[:MAX_NAMED_FOUND]
+        f'"{_clip(found[item])}" (id {item})' for item in ranked[:MAX_NAMED_FOUND]
     )
     if len(ranked) > MAX_NAMED_FOUND:
         listed += f" and {len(ranked) - MAX_NAMED_FOUND} more"

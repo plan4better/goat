@@ -264,7 +264,8 @@ def test_the_prompt_says_what_the_assistant_creates_and_how_it_asks() -> None:
         "You change nothing that exists in GOAT, except that a workflow run "
         "replaces that workflow's previous results and, on the Map and "
         "Workflows pages, workflow_update changes a workflow of the open "
-        "project, which the user can take back with Undo in the dock." in INSTRUCTIONS
+        "project, which the user can take back with the dock's undo button."
+        in INSTRUCTIONS
     )
     for name in (
         "workflow_create",
@@ -826,14 +827,14 @@ def test_the_skill_is_loaded_for_a_change_of_a_workflow_too() -> None:
         "Keep the user's step names, notes and layout",
         "workflow_update checks the changed workflow",
         "say what changed",
-        "Undo in the dock",
+        "the dock's undo button",
         "only on If steps",
     ],
 )
 def test_the_skill_says_how_to_change_a_workflow(phrase: str) -> None:
     """Changing a workflow (Task 6): read first, change the fewest steps,
     keep the user's names and notes, check, and say what changed and that
-    Undo in the dock takes it back."""
+    the dock's undo button takes it back."""
     assert phrase in " ".join(SKILL_TEXT.split())
 
 
@@ -1532,3 +1533,99 @@ def test_a_part_of_a_city_is_filtered_with_the_citys_own_layer() -> None:
         "check them against the place the user named",
     ):
         assert phrase in DATASET_STEP, phrase
+
+
+#: The rules of live pass 8, each with the part of the skill it sits in.
+PASS_8_RULES = {
+    "card": [
+        # 6.6: options that cannot be computed, or that drop part of the question
+        "Every option that promises a result is one you can compute with the "
+        "tools workflow_tools lists and data this answer has found, its fields "
+        "read when the option relies on one",
+        "never offer what no tool can do (a changed timetable or network), nor "
+        "data no search found as if it were there",
+        "An option that needs the user's own upload is never recommended, and "
+        "its description says that it needs their upload (Missing inputs)",
+        "The recommended scope is the one the question names: both parts of a "
+        "question in two parts, and a corridor, a line or a district it names "
+        "rather than the whole city",
+        "both time windows, all the modes, the whole area it names",
+    ],
+    "find": [
+        # 6.6: a field said to be missing from a record cut at 60 columns
+        "Never say that a dataset lacks a field (an income, a car count, a "
+        "capacity) before you have read its field list: project_get_fields for "
+        "a project layer, and for a catalog dataset once it is added",
+        "A catalog record lists at most 60 columns of a layer, so a field "
+        "missing from a list of 60 may still exist",
+        "say that the field is still to be checked, never that it is missing",
+    ],
+    "running": [
+        # 6.5 (Q33): classes that left features out
+        "Classes you build yourself (A, B and C from thresholds, with filters or "
+        "If steps) partition the features: each feature in exactly one class",
+        "let the last class take every feature the others leave",
+        "check that the class counts add up to the total, as a check and not a "
+        "number to cite",
+        "whose row without group holds the features in no class",
+        "When they do not add up, fix the classes before you answer",
+    ],
+    "draft": [
+        # 6.5 (Q43): union and dissolve rebuilt the whole districts
+        "To cut one area by another (the reached area per district, the part of "
+        "a district inside a catchment), use intersection: it keeps only what "
+        "lies in both",
+        "union keeps the parts outside the other area too, and a dissolve by the "
+        "district's name then rebuilds the whole districts",
+        # 6.5 (Q28): pieces counted in every cell they touch
+        "To count or sum into cells (an H3 grid, the heatmap's hexagons, a grid "
+        "layer), aggregate points",
+        "The pieces of an intersection or a union never go into a layer of "
+        "cells unweighted: aggregate_polygon with polygons as its areas counts a "
+        "piece in every cell it touches",
+        "With area_type h3_grid it puts each polygon whole into the cell of its "
+        "centroid",
+        "Residents held only as polygons, when no points exist, take "
+        "weighted_by_intersecting_area (catchments.md), labelled as an estimate",
+    ],
+}
+RUNNING = _plain(
+    SKILL.instructions.split("## Running and explaining")[1].split("\n## ")[0]
+)
+THE_DRAFT = _plain(SKILL.instructions.split("## The draft")[1].split("\n## ")[0])
+
+
+@pytest.mark.parametrize(
+    ("part", "phrase"),
+    [(part, phrase) for part, phrases in PASS_8_RULES.items() for phrase in phrases],
+)
+def test_the_skill_holds_the_rule_of_the_eighth_pass(part: str, phrase: str) -> None:
+    """Live pass 8 (6.5, 6.6): recommended options that could not be
+    computed or dropped half of the question, fields called missing from a
+    record cut at 60 columns, classes that left features out, a union and
+    dissolve that rebuilt whole districts, and pieces counted in every cell
+    they touched. Each rule sits where the step it governs is read: the
+    card, the data check, the reading of results, the draft."""
+    text = {"card": CARD, "find": FIND, "running": RUNNING, "draft": THE_DRAFT}
+    assert phrase in _plain(text[part]), phrase
+
+
+def test_the_union_rule_keeps_the_service_recipes_union() -> None:
+    """The quality-class recipe cuts the classes by the districts with union
+    on purpose: a district's area in no class becomes pieces of its own. The
+    intersection rule names that exception, so the two never contradict."""
+    assert (
+        "Use union only when the parts outside count as well (the area in no "
+        "class, transit-service.md)" in THE_DRAFT
+    )
+    assert '"tool": "union"' in PT_SERVICE
+
+
+def test_nothing_the_model_reads_names_the_english_undo_label() -> None:
+    """German answers call the button "Rückgängig"; the skill and the
+    workflow_update description name it without its English label, so neither
+    leads an answer back to "Undo"."""
+    from assistant.tools.workflow_edits import UPDATE
+
+    assert "Undo in the dock" not in SKILL_TEXT
+    assert "Undo in the dock" not in UPDATE.description
