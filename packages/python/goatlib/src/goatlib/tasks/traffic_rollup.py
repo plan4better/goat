@@ -46,10 +46,6 @@ def parse_meter_key(key: str) -> tuple[str, str, str]:
     return parts[2], parts[3], parts[4]
 
 
-def decide_over_budget(used: float, total: float | None) -> bool:
-    return total is not None and used >= total
-
-
 def _dec(v: bytes | str) -> str:
     return v.decode() if isinstance(v, bytes) else v
 
@@ -242,21 +238,14 @@ async def refresh_over_budget_flags(
             flagged.add(org_id)
         else:
             redis_client.delete(_dec(raw_key))
+    # credits_exhausted is core's one rule for "out of credits".
     rows = await core.fetch(
-        f"""SELECT id::text AS id, used_credits, total_credits
+        f"""SELECT id::text AS id, {schema}.credits_exhausted(id) AS exhausted
             FROM {schema}.organization
-            WHERE id = ANY($1::uuid[])
-               OR (total_credits IS NOT NULL
-                   AND COALESCE(used_credits, 0) >= total_credits)""",
+            WHERE id = ANY($1::uuid[]) OR {schema}.credits_exhausted(id)""",
         sorted(flagged),
     )
-    over_orgs: set[str] = set()
-    for row in rows:
-        if decide_over_budget(
-            float(row["used_credits"] or 0),
-            None if row["total_credits"] is None else float(row["total_credits"]),
-        ):
-            over_orgs.add(row["id"])
+    over_orgs = {row["id"] for row in rows if row["exhausted"]}
     for org_id in over_orgs:
         redis_client.set(f"{_FLAG_PREFIX}{org_id}", "1")
     # Flagged but no longer over budget (or the org is gone): lift the flag.

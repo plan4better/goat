@@ -1,8 +1,13 @@
-"""Pre-submission credit gate. Fail-open: never block on a check failure."""
+"""Pre-submission credit gate. Fail-open: never block on a check failure.
+
+Reads core's database directly, on the connection the access check already
+uses, through `customer.credits_exhausted` (core's one rule for "out of
+credits"). processes does not call the core service.
+"""
 
 import logging
+from uuid import UUID
 
-import httpx
 from fastapi import HTTPException, status
 
 from processes.config import settings
@@ -11,43 +16,35 @@ logger = logging.getLogger(__name__)
 
 
 async def assert_credits_available(
-    access_token: str | None, process_id: str | None = None
+    user_id: UUID | str | None, process_id: str | None = None
 ) -> None:
-    """Raise 402 only when core clearly reports the org is over budget.
+    """Raise 402 only when the user's organization has clearly used up its
+    credits.
 
-    Fail-open on timeout / network / unexpected response — charging is post-hoc
-    anyway, so a failed gate must never block tool execution. Nothing to
-    check with billing off (self-hosted).
+    Fail-open on any database error: charging is post-hoc anyway, so a failed
+    gate must never block tool execution. Nothing to check with billing off
+    (self-hosted).
     """
-    if not settings.BILLING_ENABLED:
+    if not settings.BILLING_ENABLED or user_id is None:
         return
     from goatlib.tasks.compute_rollup import FREE_TOOLS
 
     if process_id in FREE_TOOLS:  # deleting data is always allowed
         return
-    headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
-    url = f"{settings.CORE_URL}/api/v2/credits/balance"
+    from processes.services.access import _get_pool
+
+    schema = settings.CUSTOMER_SCHEMA
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(url, headers=headers)
+        pool = await _get_pool()
+        exhausted = await pool.fetchval(
+            f"SELECT {schema}.credits_exhausted(u.organization_id) "
+            f'FROM {schema}."user" u WHERE u.id = $1::uuid',
+            str(user_id),
+        )
     except Exception as exc:  # noqa: BLE001 — fail-open by design
         logger.warning("credit gate: balance check failed, allowing (%s)", exc)
         return
-    if resp.status_code != 200:
-        # Allowed for availability, but loud: a 401/500 from core means the
-        # gate is blind, and nobody notices unless it is in the logs.
-        logger.warning(
-            "credit gate: balance returned %s, allowing (process %s)",
-            resp.status_code,
-            process_id,
-        )
-        return
-    try:
-        over_budget = resp.json().get("over_budget") is True
-    except Exception as exc:  # noqa: BLE001 — non-JSON / non-object answer
-        logger.warning("credit gate: balance answer unreadable, allowing (%s)", exc)
-        return
-    if over_budget:
+    if exhausted:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="Organization is out of credits for this period.",
