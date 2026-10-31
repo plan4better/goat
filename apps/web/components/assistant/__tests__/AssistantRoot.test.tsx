@@ -5,6 +5,7 @@ import { getDockState, registerSurface, resetAssistantStore, setDockState } from
 
 import AskAiButton from "@/components/assistant/AskAiButton";
 import AssistantRoot from "@/components/assistant/AssistantRoot";
+import { resetDockLoader } from "@/components/assistant/dockLoader";
 
 const { statusMock, pathnameMock } = vi.hoisted(() => ({ statusMock: vi.fn(), pathnameMock: vi.fn() }));
 
@@ -43,6 +44,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   window.sessionStorage.clear();
   resetAssistantStore();
+  resetDockLoader();
   pathnameMock.mockReturnValue("/home");
   statusMock.mockReturnValue({ status: available, isLoading: false, isError: undefined });
 });
@@ -56,7 +58,7 @@ describe("AssistantRoot", () => {
       </AssistantRoot>
     );
     expect(screen.getByText("page")).toBeTruthy();
-    // Loaded on demand (next/dynamic): it lands a tick after the first render.
+    // Loaded on demand (dockLoader): it lands a tick after the first render.
     expect((await screen.findByTestId("dock")).getAttribute("data-variant")).toBe("docked");
     expect(getDockState().enabled).toBe(true);
   });

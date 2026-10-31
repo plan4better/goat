@@ -8,7 +8,13 @@ import { useTranslation } from "react-i18next";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { plainTranslate } from "@/lib/assistant/chips";
-import { groupSummary, staysVisible, stepRows, stepRunning } from "@/lib/assistant/stepLabels";
+import {
+  type StepNames,
+  groupSummary,
+  staysVisible,
+  stepRows,
+  stepRunning,
+} from "@/lib/assistant/stepLabels";
 
 import StepList, { REDUCED_MOTION, StepSpinner, rowSx } from "@/components/assistant/messages/StepList";
 import { focusRing, mutedText, shimmerSx } from "@/components/assistant/styles";
@@ -26,6 +32,7 @@ export default function StepGroup({
   open,
   running,
   openProject = null,
+  names,
 }: {
   steps: DynamicToolUIPart[];
   /** Still receiving steps: the newest group of a running answer. */
@@ -34,6 +41,8 @@ export default function StepGroup({
   running: boolean;
   /** The project the answer's tools read when a call names none (`groupSummary`). */
   openProject?: string | null;
+  /** The names the whole answer's steps returned (`stepNames`): a step names what an earlier group read. */
+  names?: StepNames;
 }) {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -43,7 +52,7 @@ export default function StepGroup({
   const rows = stepRows(steps);
   const visible = rows.filter((row) => staysVisible(row, running));
   if (open || rows.length - visible.length < 2) {
-    return <StepList steps={steps} rows={rows} running={running} />;
+    return <StepList steps={steps} rows={rows} running={running} names={names} />;
   }
 
   const failed = rows.filter((row) => row.step.state === "output-error").length;
@@ -85,9 +94,11 @@ export default function StepGroup({
         id={listId}
         hidden={!expanded}
         sx={{ ml: "10px", pl: "6px", borderLeft: 1, borderColor: "divider" }}>
-        {expanded && <StepList steps={steps} rows={rows} running={running} />}
+        {expanded && <StepList steps={steps} rows={rows} running={running} names={names} />}
       </Box>
-      {!expanded && visible.length > 0 && <StepList steps={steps} rows={visible} running={running} />}
+      {!expanded && visible.length > 0 && (
+        <StepList steps={steps} rows={visible} running={running} names={names} />
+      )}
     </Stack>
   );
 }

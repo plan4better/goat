@@ -60,31 +60,66 @@ const filterCount = (input: Fields): number => SEARCH_FILTERS.filter((name) => i
 const layerKey = (project: unknown, layerProjectId: number): string =>
   `${typeof project === "string" ? project : ""}:${layerProjectId}`;
 
-/**
- * The layer names an answer's `project_get_layers` calls returned, by project
- * and layer ID. A layer call that has not returned yet (or failed) names its
- * layer from here. A call without `project_id` stands for the open project.
- */
-export type LayerNames = ReadonlyMap<string, string>;
+const workflowKey = (id: unknown): string | undefined => {
+  const value = text(id);
+  return value ? `workflow:${value.toLowerCase()}` : undefined;
+};
 
-export function layerNames(steps: DynamicToolUIPart[]): LayerNames {
+/**
+ * The names an answer's steps returned: layers from `project_get_layers`, by
+ * project and layer ID (a call without `project_id` stands for the open
+ * project), and workflows from the steps that read, list or create them, by
+ * ID. A call whose own result names nothing (a layer call that has not
+ * returned yet or failed, a workflow change) names its layer or workflow from
+ * here.
+ */
+export type StepNames = ReadonlyMap<string, string>;
+
+export function stepNames(steps: DynamicToolUIPart[]): StepNames {
   const names = new Map<string, string>();
+  const nameWorkflow = (id: unknown, name: unknown) => {
+    const key = workflowKey(id);
+    const label = text(name);
+    if (key && label) names.set(key, label);
+  };
   for (const step of steps) {
-    if (step.toolName !== "project_get_layers" || step.state !== "output-available") continue;
+    if (step.state !== "output-available") continue;
     const output = outputOf(step);
-    const projects = [fields(step.input).project_id, output.project_id];
-    for (const layer of Array.isArray(output.layers) ? output.layers : []) {
-      const { layer_project_id: id, name } = fields(layer);
-      const label = text(name);
-      if (typeof id !== "number" || !label) continue;
-      projects.forEach((project) => names.set(layerKey(project, id), label));
+    switch (step.toolName) {
+      case "project_get_layers": {
+        const projects = [fields(step.input).project_id, output.project_id];
+        for (const layer of Array.isArray(output.layers) ? output.layers : []) {
+          const { layer_project_id: id, name } = fields(layer);
+          const label = text(name);
+          if (typeof id !== "number" || !label) continue;
+          projects.forEach((project) => names.set(layerKey(project, id), label));
+        }
+        break;
+      }
+      case "workflow_get":
+        nameWorkflow(output.workflow_id, output.name);
+        break;
+      case "workflow_create":
+      case "workflow_create_from_template": {
+        const workflow = fields(output.workflow);
+        nameWorkflow(workflow.id, workflow.name);
+        break;
+      }
+      case "project_get_workflows":
+        for (const workflow of Array.isArray(output.workflows) ? output.workflows : []) {
+          const { id, name } = fields(workflow);
+          nameWorkflow(id, name);
+        }
+        break;
+      default:
+        break;
     }
   }
   return names;
 }
 
 /** The layer a tool call reads, quoted by name, or "layer 87152" when no name is known. */
-function layerOf(step: DynamicToolUIPart, names: LayerNames, t: Translate): string | undefined {
+function layerOf(step: DynamicToolUIPart, names: StepNames, t: Translate): string | undefined {
   const input = fields(step.input);
   const id = typeof input.layer_project_id === "number" ? input.layer_project_id : undefined;
   const name =
@@ -99,7 +134,7 @@ interface LabelKey {
   values?: TranslateOptions;
 }
 
-function labelKey(step: DynamicToolUIPart, names: LayerNames, t: Translate): LabelKey {
+function labelKey(step: DynamicToolUIPart, names: StepNames, t: Translate): LabelKey {
   const input = fields(step.input);
   const output = outputOf(step);
   const quoted = (value: string) => t("assistant_step_quoted", { value: clip(value) });
@@ -217,6 +252,21 @@ function labelKey(step: DynamicToolUIPart, names: LayerNames, t: Translate): Lab
       if (name) return { key: "assistant_tool_workflow_create_name", values: { name: quoted(name) } };
       break;
     }
+    // The changed workflow, named by the steps that read or made it: its result names none.
+    // This text and the added dataset's quote the name themselves, so it goes in unquoted.
+    case "workflow_update": {
+      const key = workflowKey(input.workflow_id);
+      const name = key && names.get(key);
+      if (name) return { key: "assistant_tool_workflow_update_name", values: { name: clip(name) } };
+      break;
+    }
+    // The dataset the add put into the project, by its layer's name; a bundle's several layers keep the plain label.
+    case "project_add_catalog_layer": {
+      const layers = Array.isArray(output.layers) ? output.layers : [];
+      const name = layers.length === 1 ? text(fields(layers[0]).name) : undefined;
+      if (name) return { key: "assistant_tool_project_add_catalog_layer_name", values: { name: clip(name) } };
+      break;
+    }
     default:
       break;
   }
@@ -233,7 +283,7 @@ function labelKey(step: DynamicToolUIPart, names: LayerNames, t: Translate): Lab
  * translator that does not escape them (`plainTranslate`), because React
  * renders them as text.
  */
-export function stepLabel(step: DynamicToolUIPart, names: LayerNames, t: Translate, running = false): string {
+export function stepLabel(step: DynamicToolUIPart, names: StepNames, t: Translate, running = false): string {
   const { key, values } = labelKey(step, names, t);
   if (running) return t(`${key}_running`, { ...values, defaultValue: t("assistant_step_working") });
   return t(key, { ...values, defaultValue: step.toolName });

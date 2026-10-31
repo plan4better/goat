@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Stack, Typography } from "@mui/material";
+import { Button, Stack, Typography, useTheme } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -8,7 +8,7 @@ import { plain } from "@/lib/assistant/chips";
 import type { WorkflowRunData } from "@/lib/assistant/types";
 
 import { useDockActions } from "@/components/assistant/DockActions";
-import { mutedText } from "@/components/assistant/styles";
+import { mutedText, neutralPillSx, pillButtonSx } from "@/components/assistant/styles";
 
 const secondsSince = (startedAt: string | null, now: number): number | null => {
   const started = startedAt ? Date.parse(startedAt) : Number.NaN;
@@ -22,11 +22,21 @@ const minutes = (seconds: number): string =>
  * One line for a workflow run of an answer: the running step while it runs (with the
  * time since it started, ticking only in the running answer), how it ended after, and
  * a button that opens the workflow in the Workflows view, where the canvas shows the run.
- * A part that still says running in an answer that is over (stopped, or ended while the
- * run went on) was the last the answer saw, so its line is in the past tense.
+ * The button is left out (`open` false) where the answer shows the workflow's card, whose
+ * Open does the same. A part that still says running in an answer that is over (stopped,
+ * or ended while the run went on) was the last the answer saw, so its line is in the past tense.
  */
-export default function WorkflowRunNote({ data, live }: { data: WorkflowRunData; live: boolean }) {
+export default function WorkflowRunNote({
+  data,
+  live,
+  open = true,
+}: {
+  data: WorkflowRunData;
+  live: boolean;
+  open?: boolean;
+}) {
   const { t } = useTranslation("common");
+  const theme = useTheme();
   const actions = useDockActions();
   const running = data.status === "running";
   const [now, setNow] = useState(() => Date.now());
@@ -52,12 +62,16 @@ export default function WorkflowRunNote({ data, live }: { data: WorkflowRunData;
         <span role="status">{text}</span>
         {seconds !== null && <span aria-hidden="true">{` · ${minutes(seconds)}`}</span>}
       </Typography>
-      <Button
-        size="small"
-        variant="text"
-        onClick={() => actions.openInProjectMode(data.project_id, "workflows", data.workflow_id)}>
-        {t("assistant_workflow_run_open")}
-      </Button>
+      {open && (
+        <Button
+          size="small"
+          variant="outlined"
+          color="inherit"
+          onClick={() => actions.openInProjectMode(data.project_id, "workflows", data.workflow_id)}
+          sx={{ ...neutralPillSx(theme), "&&": { ...pillButtonSx["&&"], px: "11px", py: "3px" } }}>
+          {t("assistant_workflow_run_open")}
+        </Button>
+      )}
     </Stack>
   );
 }

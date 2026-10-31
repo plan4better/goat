@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { deleteConversation, listConversations, updateConversation } from "@/lib/assistant/conversations";
+import {
+  deleteConversation,
+  listConversations,
+  updateConversation,
+  warmConversations,
+} from "@/lib/assistant/conversations";
 
 vi.mock("@/lib/api/fetcher", () => ({
   getAccessToken: vi.fn(async () => "tok"),
@@ -23,6 +28,16 @@ describe("conversation requests", () => {
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "http://assistant.test/conversations?project_id=p1&q=rad&limit=100",
       "http://assistant.test/conversations?limit=100",
+    ]);
+  });
+
+  it("reads the full history ahead, or one project's conversations", async () => {
+    warmConversations();
+    warmConversations("p1");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "http://assistant.test/conversations?limit=100",
+      "http://assistant.test/conversations?project_id=p1&limit=100",
     ]);
   });
 

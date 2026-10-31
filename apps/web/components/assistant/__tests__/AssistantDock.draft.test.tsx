@@ -23,9 +23,20 @@ vi.mock("@/lib/assistant/transport", () => ({
   fetchConversation: vi.fn(),
   createConversation: vi.fn(),
 }));
-vi.mock("@/lib/api/projects", () => ({ useProjects: () => ({ projects: { items: [] }, isLoading: false }) }));
+vi.mock("@/lib/api/projects", () => ({
+  useProjects: () => ({ projects: { items: [] }, isLoading: false }),
+  useProjectLayers: () => ({ layers: undefined }),
+}));
 vi.mock("@/components/assistant/ConversationHistory", () => ({
   default: () => <div data-testid="history" />,
+}));
+// The composer's Feedback link reads the support summary; not under test here.
+vi.mock("@/components/support/SupportMenu", () => ({ useReportProblemHref: () => null }));
+// The start page's AI notice links the privacy policy only with NEXT_PUBLIC_WEBSITE_URL, through
+// `Trans`, which this i18n mock has not: without the link, these tests do not depend on that variable.
+vi.mock("@/lib/constants", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  privacyPolicyUrl: () => undefined,
 }));
 vi.mock("@/components/addLayer/AddLayerDialog", () => ({ default: () => null }));
 

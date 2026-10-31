@@ -69,7 +69,11 @@ export default function WhatsNewPopper() {
         </HeaderPopoverPaper>
       }>
       <Tooltip title={t("whats_new")}>
-        <IconButton size="small" onClick={handleToggle} sx={open ? { color: "primary.main" } : undefined}>
+        <IconButton
+          size="small"
+          onClick={handleToggle}
+          // The count badge reaches past the icon: a little room before the next header item.
+          sx={{ mr: "4px", ...(open && { color: "primary.main" }) }}>
           <Badge color="warning" badgeContent={unread} max={9} invisible={unread === 0}>
             <Icon iconName={ICON_NAME.ROCKET} fontSize="inherit" />
           </Badge>

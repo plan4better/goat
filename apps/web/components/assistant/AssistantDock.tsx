@@ -10,12 +10,12 @@ import {
   Stack,
   Tooltip,
   Typography,
-  alpha,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
 import { visuallyHidden } from "@mui/utils";
 import type { TextUIPart } from "ai";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { type DragEvent, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -33,11 +33,12 @@ import {
 } from "@/lib/assistant/conversations";
 import { openCreatedWorkflow, workflowHref } from "@/lib/assistant/createdWorkflows";
 import { assistantErrorKey } from "@/lib/assistant/errors";
-import { conversationTitle } from "@/lib/assistant/history";
+import { conversationTitle, provisionalTitle } from "@/lib/assistant/history";
 import {
   getActiveSurface,
   getDockState,
   openConversation,
+  peekFirstMessage,
   setDockState,
   useActiveSurface,
   useDockState,
@@ -51,23 +52,41 @@ import { DROP_FILE_EXTENSIONS, NEEDS_SETUP, carriesFiles, extensionOf } from "@/
 
 import { useAppDispatch } from "@/hooks/store/ContextHooks";
 
-import AddLayerDialog from "@/components/addLayer/AddLayerDialog";
 import ConversationHistory from "@/components/assistant/ConversationHistory";
 import ConversationPane from "@/components/assistant/ConversationPane";
 import { type DockActions, DockActionsContext } from "@/components/assistant/DockActions";
 import DockPanel from "@/components/assistant/DockPanel";
+import { DialogLoadFailed, DockErrorBoundary, orLoadFailed } from "@/components/assistant/LoadFailed";
 import NewConversation from "@/components/assistant/NewConversation";
 import {
   CARD_RADIUS,
   accentSoft,
   accentText,
+  dockBackdropSx,
+  dockHeaderSx,
+  dockInsetPaperSx,
+  dockSidebarSx,
   focusRing,
   headerIconButtonSx,
 } from "@/components/assistant/styles";
-import BundlePreviewDialog from "@/components/dashboard/bundle/BundlePreviewDialog";
 import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
-import ContentPreviewDialog from "@/components/dashboard/content/ContentPreviewDialog";
-import { TOOLBAR_HEIGHT, toolbarBorder } from "@/components/header/Toolbar";
+import { TOOLBAR_HEIGHT } from "@/components/header/Toolbar";
+
+// What a dropped file, a card's "All details" or a bundle opens: each carries the
+// catalog, content or map stack with it, so the dock loads it only when it opens.
+// Code that does not load (gone after a deploy) shows a notice with a reload instead.
+const AddLayerDialog = dynamic(
+  () => orLoadFailed(import("@/components/addLayer/AddLayerDialog"), DialogLoadFailed),
+  { ssr: false }
+);
+const ContentPreviewDialog = dynamic(
+  () => orLoadFailed(import("@/components/dashboard/content/ContentPreviewDialog"), DialogLoadFailed),
+  { ssr: false }
+);
+const BundlePreviewDialog = dynamic(
+  () => orLoadFailed(import("@/components/dashboard/bundle/BundlePreviewDialog"), DialogLoadFailed),
+  { ssr: false }
+);
 
 /** The text of the first user message, as the history shows it for an untitled conversation. */
 function firstUserText(messages: AssistantMessage[]): string | null {
@@ -80,12 +99,65 @@ function firstUserText(messages: AssistantMessage[]): string | null {
   return text || null;
 }
 
+/** The assistant's mark before its name: the sparkle on a 28px tinted square. */
+function AssistantMark() {
+  const theme = useTheme();
+  return (
+    <Box
+      aria-hidden
+      sx={{
+        width: 28,
+        height: 28,
+        borderRadius: "8px",
+        flex: "none",
+        bgcolor: accentSoft(theme),
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}>
+      <Icon iconName={ICON_NAME.SPARKLES} style={{ fontSize: 15, color: accentText(theme) }} />
+    </Box>
+  );
+}
+
+/** "Beta" after the assistant's name, in the accent shade that keeps its contrast in both modes. */
+function BetaChip() {
+  const { t } = useTranslation("common");
+  const theme = useTheme();
+  return (
+    <Typography
+      component="span"
+      sx={{
+        flex: "none",
+        px: "6px",
+        py: "1px",
+        border: `1px solid ${accentText(theme)}`,
+        borderRadius: "6px",
+        fontSize: 11,
+        fontWeight: 800,
+        letterSpacing: "0.04em",
+        lineHeight: 1.4,
+        textTransform: "uppercase",
+        color: accentText(theme),
+      }}>
+      {t("assistant_beta")}
+    </Typography>
+  );
+}
+
 /**
  * The assistant (spec §10): a panel docked on the right, or a near full-screen
  * view with the history beside it. A data file dropped here opens the existing
- * upload dialog; files are never chat attachments.
+ * upload dialog; files are never chat attachments. `framed`: it replaces its
+ * loading frame (DockSkeleton), which came in already, so it shows at once.
  */
-export default function AssistantDock({ variant }: { variant: "docked" | "fullscreen" }) {
+export default function AssistantDock({
+  variant,
+  framed = false,
+}: {
+  variant: "docked" | "fullscreen";
+  framed?: boolean;
+}) {
   const { t } = useTranslation("common");
   const router = useRouter();
   const theme = useTheme();
@@ -109,11 +181,19 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
   } | null>(null);
   const active = conversations.find((conversation) => conversation.id === dock.conversationId);
   const own = loaded?.id === dock.conversationId ? loaded : null;
+  // A conversation just started: the message it was started with names it until the history
+  // or its load knows its first message. Read once it opens, since its chat forgets it on sending.
+  const sentFirst = (id: string | null) => ({
+    id,
+    text: id ? provisionalTitle(peekFirstMessage(id)?.text) : null,
+  });
+  const [provisional, setProvisional] = useState(() => sentFirst(dock.conversationId));
+  if (provisional.id !== dock.conversationId) setProvisional(sentFirst(dock.conversationId));
   const title = dock.conversationId
     ? conversationTitle(
         {
           title: active?.title ?? own?.title ?? null,
-          first_message: active?.first_message ?? own?.firstMessage ?? null,
+          first_message: active?.first_message ?? own?.firstMessage ?? provisional.text,
         },
         plainTranslate(t)
       )
@@ -263,7 +343,7 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
     <Typography
       noWrap
       sx={{
-        flex: sidebar ? undefined : 1,
+        flex: sidebar ? undefined : "0 1 auto",
         minWidth: 0,
         textAlign: sidebar ? "center" : "left",
         fontSize: sidebar ? 13.5 : 14,
@@ -275,25 +355,14 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
     </Typography>
   );
   const header = (
-    <Stack
-      direction="row"
-      alignItems="center"
-      gap="4px"
-      sx={{
-        // The app's top bar: same height and bottom border, so the two read as one bar.
-        boxSizing: "content-box",
-        height: TOOLBAR_HEIGHT,
-        flexShrink: 0,
-        borderBottom: toolbarBorder(theme),
-        pl: sidebar ? "16px" : "12px",
-        pr: "10px",
-      }}>
+    <Stack direction="row" alignItems="center" gap="4px" sx={dockHeaderSx(theme, sidebar)}>
       {sidebar ? (
         <Box sx={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "center", pl: "64px" }}>
           {titleText}
         </Box>
       ) : (
         <>
+          <AssistantMark />
           <ButtonBase
             onClick={() => setHistoryOpen((value) => !value)}
             aria-expanded={historyOpen}
@@ -302,7 +371,7 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
             sx={{
               // A button does not inherit the page font by itself.
               fontFamily: "inherit",
-              flex: 1,
+              flex: "0 1 auto",
               minWidth: 0,
               justifyContent: "flex-start",
               gap: "8px",
@@ -313,19 +382,6 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
               "&:hover": { bgcolor: "action.hover" },
               ...focusRing(theme),
             }}>
-            <Box
-              sx={{
-                width: 26,
-                height: 26,
-                borderRadius: "50%",
-                flexShrink: 0,
-                bgcolor: accentSoft(theme),
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}>
-              <Icon iconName={ICON_NAME.SPARKLES} style={{ fontSize: 16, color: accentText(theme) }} />
-            </Box>
             {titleText}
             <Icon
               iconName={ICON_NAME.CHEVRON_DOWN}
@@ -338,6 +394,8 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
               }}
             />
           </ButtonBase>
+          <BetaChip />
+          <Box sx={{ flex: 1 }} />
           {/* Outside the button, so it describes it without becoming part of its name. */}
           <Box component="span" id={historyHintId} sx={visuallyHidden}>
             {t("assistant_history")}
@@ -403,7 +461,7 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
     </ClickAwayListener>
   );
 
-  const pane = dock.conversationId ? (
+  const conversation = dock.conversationId ? (
     <ConversationPane
       key={dock.conversationId}
       conversationId={dock.conversationId}
@@ -419,6 +477,7 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
   ) : (
     <NewConversation big={sidebar} />
   );
+  const pane = <DockErrorBoundary resetKey={dock.conversationId}>{conversation}</DockErrorBoundary>;
 
   const dialogs = (
     <>
@@ -442,7 +501,7 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
   if (variant === "docked") {
     return (
       <DockActionsContext.Provider value={actions}>
-        <DockPanel label={t("assistant_ask_ai")} onDragOver={onDragOver} onDrop={onDrop}>
+        <DockPanel label={t("assistant_ask_ai")} entrance={!framed} onDragOver={onDragOver} onDrop={onDrop}>
           {header}
           {historyMenu}
           {pane}
@@ -452,6 +511,7 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
     );
   }
 
+  const enterAtOnce = framed ? { enter: 0, exit: theme.transitions.duration.leavingScreen } : undefined;
   return (
     <DockActionsContext.Provider value={actions}>
       <Dialog
@@ -460,39 +520,13 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
         maxWidth={false}
         onClose={() => setDockState({ expanded: false })}
         aria-label={t("assistant_ask_ai")}
-        // A darker, blurred scrim: the page around the inset reads as background, not as content.
-        slotProps={{
-          backdrop: { sx: { bgcolor: alpha(theme.palette.common.black, 0.55), backdropFilter: "blur(4px)" } },
-        }}
-        PaperProps={{
-          sx: isPhone
-            ? undefined
-            : {
-                position: "fixed",
-                inset: 16,
-                m: 0,
-                width: "auto",
-                maxWidth: "none",
-                height: "auto",
-                maxHeight: "none",
-                overflow: "hidden",
-                borderRadius: "16px",
-                boxShadow: surfaceShadows(theme).hover,
-              },
-        }}>
+        transitionDuration={enterAtOnce}
+        // The backdrop's own props replace the ones the dialog passes it, its duration too.
+        slotProps={{ backdrop: { sx: dockBackdropSx(theme), transitionDuration: enterAtOnce } }}
+        PaperProps={{ sx: isPhone ? undefined : dockInsetPaperSx(theme) }}>
         <Stack direction="row" sx={{ height: "100%", minHeight: 0 }} onDragOver={onDragOver} onDrop={onDrop}>
           {sidebar && (
-            <Box
-              sx={{
-                width: 272,
-                flexShrink: 0,
-                borderRight: 1,
-                borderColor: "divider",
-                bgcolor: "background.default",
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 0,
-              }}>
+            <Box sx={dockSidebarSx}>
               <Stack
                 direction="row"
                 alignItems="center"
@@ -505,22 +539,11 @@ export default function AssistantDock({ variant }: { variant: "docked" | "fullsc
                   flexShrink: 0,
                   px: "18px",
                 }}>
-                <Box
-                  sx={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: "50%",
-                    flexShrink: 0,
-                    bgcolor: accentSoft(theme),
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}>
-                  <Icon iconName={ICON_NAME.SPARKLES} style={{ fontSize: 16, color: accentText(theme) }} />
-                </Box>
+                <AssistantMark />
                 <Typography sx={{ fontSize: 15, fontWeight: 700, color: "text.primary" }}>
                   {t("assistant_ask_ai")}
                 </Typography>
+                <BetaChip />
               </Stack>
               <Box sx={{ px: "10px", pb: "4px" }}>
                 <ButtonBase

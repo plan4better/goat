@@ -69,6 +69,8 @@ describe("WhatsNewPopper", () => {
     render(<WhatsNewPopper />);
 
     expect(screen.getByText("1")).toBeInTheDocument();
+    // The badge reaches past the icon: the button keeps a little room before Ask AI.
+    expect(getComputedStyle(screen.getByRole("button", { name: "whats_new" })).marginRight).toBe("4px");
   });
 
   it("shows no badge while the preferences are still loading", () => {

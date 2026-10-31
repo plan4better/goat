@@ -218,3 +218,46 @@ describe("DockPanel", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe("900");
   });
 });
+
+describe("DockPanel entrance", () => {
+  const renderWith = (entrance?: boolean) =>
+    render(
+      <DockPanel label="assistant_ask_ai" entrance={entrance} onDragOver={vi.fn()} onDrop={vi.fn()}>
+        <p>conversation</p>
+      </DockPanel>
+    );
+  const content = () => screen.getByText("conversation").parentElement as HTMLElement;
+  const panel = () => document.querySelector("[data-assistant-dock]") as HTMLElement;
+  /** The style rules emitted for the page, as text. */
+  const styles = () => [...document.querySelectorAll("style")].map((style) => style.textContent).join("\n");
+
+  it("brings its content in from the right as it opens, the panel at its full width at once", () => {
+    renderWith(true);
+    const { animation } = getComputedStyle(content());
+    expect(animation).toMatch(/180ms ease-out/);
+    const name = animation.split(" ")[0];
+    // Opacity and a short slide: never the width, so the map beside it resizes once.
+    const frames = styles().match(new RegExp(`@keyframes ${name}\\s*{[^}]*}[^}]*}`))?.[0] ?? "";
+    expect(frames).toMatch(/opacity:\s*0/);
+    expect(frames).toMatch(/translateX\(12px\)/);
+    expect(frames).not.toMatch(/width/);
+    expect(getComputedStyle(panel()).animation).toBe("");
+    expect(getComputedStyle(panel()).transition).toBe("");
+    expect(getComputedStyle(panel()).width).toBe(`${DOCK_DEFAULT_WIDTH}px`);
+  });
+
+  it("leaves the motion out where the system asks for reduced motion", () => {
+    renderWith(true);
+    const className = [...content().classList].find((name) => name.startsWith("css-"));
+    expect(styles()).toMatch(
+      new RegExp(
+        `@media \\(prefers-reduced-motion: reduce\\)\\s*{\\s*\\.${className}\\s*{[^}]*[;{]animation:\\s*none`
+      )
+    );
+  });
+
+  it("shows its content at once without the entrance (the dock replacing its loading frame)", () => {
+    renderWith(false);
+    expect(getComputedStyle(content()).animation).toBe("");
+  });
+});

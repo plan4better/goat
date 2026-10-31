@@ -136,6 +136,17 @@ export function shownGroups(part: DynamicToolUIPart): CardGroup[] {
   return toGroups([{ records: output.shown }], "records", catalogItem);
 }
 
+/**
+ * GOAT's default artwork for a dataset or project without a picture of its own
+ * (core's DEFAULT_LAYER_THUMBNAIL and DEFAULT_PROJECT_THUMBNAIL), wherever the
+ * web app's assets are served from.
+ */
+const DEFAULT_ARTWORK = /\/img\/goat_new_(?:dataset_thumbnail|project_artwork)\.png(?:[?#]|$)/;
+
+/** An item's own thumbnail; none for the default artwork, which the card replaces with its placeholder. */
+export const ownThumbnail = (url: string | null | undefined): string | undefined =>
+  url && !DEFAULT_ARTWORK.test(url) ? url : undefined;
+
 /** One item's identity: a layer's id is only unique within its project. */
 export const itemKey = (item: ResultItem): string => [item.kind, item.projectId ?? "", item.id].join(":");
 

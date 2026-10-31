@@ -47,6 +47,7 @@ import {
   pillButtonSx,
 } from "@/components/assistant/styles";
 import { useComposerContext } from "@/components/assistant/useComposerContext";
+import { useFitRunResults } from "@/components/assistant/useFitRunResults";
 import { useFollowWorkflowEdits } from "@/components/assistant/useFollowWorkflowEdits";
 import { useLayerAddRefresh } from "@/components/assistant/useLayerAddRefresh";
 import { useWorkflowRunRefresh } from "@/components/assistant/useWorkflowRunRefresh";
@@ -372,6 +373,8 @@ export default function ChatView(props: ChatViewProps) {
   useFollowWorkflowEdits(messages, props.initialMessages);
   // The page reads the job lists (the Workflows canvas) and layers that a run changes.
   useWorkflowRunRefresh(messages, props.initialMessages);
+  // The map shows the result of a run the answer started when it shows none of it yet.
+  useFitRunResults(messages, props.initialMessages, props.projectId);
   // The page reads the project's layers again when an answer adds a dataset to it.
   useLayerAddRefresh(messages, props.initialMessages);
   useEffect(() => {
@@ -594,16 +597,24 @@ export default function ChatView(props: ChatViewProps) {
     const element = scrollRef.current;
     if (element) element.scrollTop = element.scrollHeight;
   }, [messages, status, queued, panelOpen]);
-  /** The transcript shows its end: a footer that grows (a taller question in the panel) keeps it there. */
+  /**
+   * The transcript shows its end: a footer that grows (a taller question in the panel) and
+   * a transcript that grows after it rendered (a card whose details load later) keep it there.
+   * Growth the person caused (a step group they opened) leaves the view alone: a click or a
+   * key in the transcript ends the follow until the next scroll decides again.
+   */
   const atEnd = useRef(true);
+  const contentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const footer = footerRef.current;
+    const content = contentRef.current;
     const element = scrollRef.current;
-    if (!footer || !element || typeof ResizeObserver === "undefined") return;
+    if (!footer || !content || !element || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
       if (atEnd.current) element.scrollTop = element.scrollHeight;
     });
     observer.observe(footer);
+    observer.observe(content);
     return () => observer.disconnect();
   }, []);
 
@@ -747,8 +758,14 @@ export default function ChatView(props: ChatViewProps) {
           const element = event.currentTarget;
           atEnd.current = element.scrollHeight - element.scrollTop - element.clientHeight < 8;
         }}
+        onPointerDown={() => {
+          atEnd.current = false;
+        }}
+        onKeyDown={() => {
+          atEnd.current = false;
+        }}
         sx={{ flex: 1, overflowY: "auto", px: props.big ? "24px" : "16px", py: props.big ? "24px" : "18px" }}>
-        <Stack gap="14px" sx={{ maxWidth: props.big ? 720 : "none", mx: "auto" }}>
+        <Stack ref={contentRef} gap="14px" sx={{ maxWidth: props.big ? 720 : "none", mx: "auto" }}>
           <MessageList
             messages={messages}
             busy={busy}

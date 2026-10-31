@@ -84,9 +84,9 @@ export function useProjectAssistantSurface({
           },
           zoomToLayer:
             surface === "project.map"
-              ? async (layerProjectId) => {
+              ? async (layerProjectId, { select = true } = {}) => {
                   // Selecting (not toggling) shows it in the layer list.
-                  dispatch(setSelectedLayers([layerProjectId]));
+                  if (select) dispatch(setSelectedLayers([layerProjectId]));
                   const layer = layersRef.current?.find((candidate) => candidate.id === layerProjectId);
                   // The page's ref holds a react-map-gl MapRef; the surface types it as MapLike.
                   const map = mapRef.current as MapRef | null;

@@ -274,6 +274,9 @@ export interface AssistantSurfaceAdapter {
   clearPreview?: () => void;
   apply?: (proposal: Proposal) => UndoFn | void | Promise<UndoFn | void>;
   uploadTo?: { projectId?: string; folderId?: string };
-  /** Selects a layer of the open project and fits the map to it (Map mode only). */
-  zoomToLayer?: (layerProjectId: number) => void | Promise<void>;
+  /**
+   * Fits the map to a layer of the open project and selects it in the layer list
+   * (Map mode only). `select: false` leaves the user's selection as it is.
+   */
+  zoomToLayer?: (layerProjectId: number, options?: { select?: boolean }) => void | Promise<void>;
 }

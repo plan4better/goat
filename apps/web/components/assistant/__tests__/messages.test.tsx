@@ -1,6 +1,9 @@
+import { createTheme } from "@mui/material/styles";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { DynamicToolUIPart } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { fullTime, resetArrivals } from "@/lib/assistant/messageTimes";
 import { registerSurface, resetAssistantStore } from "@/lib/assistant/store";
@@ -15,12 +18,14 @@ import RunStatusNote from "@/components/assistant/messages/RunStatusNote";
 import SafeMarkdown, { safeHref } from "@/components/assistant/messages/SafeMarkdown";
 import StepList from "@/components/assistant/messages/StepList";
 
+const { language } = vi.hoisted(() => ({ language: { value: "en" } }));
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: language.value } }),
 }));
 
 // What a card loads when shown (thumbnail, owner, date) and its preview fetch nothing here.
-vi.mock("@/hooks/assistant/useItemDetails", () => ({ useItemDetails: () => ({}) }));
+const { itemDetails } = vi.hoisted(() => ({ itemDetails: { value: {} as Record<string, unknown> } }));
+vi.mock("@/hooks/assistant/useItemDetails", () => ({ useItemDetails: () => itemDetails.value }));
 vi.mock("@/components/assistant/messages/ItemPreview", () => ({
   default: ({ item }: { item: { title: string } }) => <div data-testid="item-preview">{item.title}</div>,
 }));
@@ -144,6 +149,61 @@ describe("assistant messages", () => {
       "_blank"
     );
     expect(container.textContent).not.toContain("|");
+  });
+
+  it("right-aligns the numbers of a table in tabular figures, and lets the headers wrap", () => {
+    const { container } = render(
+      <SafeMarkdown>
+        {[
+          "| Bezirk | Bushaltestellen | Anteil A an den Haltestellen |",
+          "|---|---|---|",
+          "| Hamburg-Nord | 1.450 | 9,8 % |",
+          "| Altona | 547 | – |",
+        ].join("\n")}
+      </SafeMarkdown>
+    );
+    const column = (index: number) =>
+      [...container.querySelectorAll(`tr > :nth-child(${index})`)].map((cell) => getComputedStyle(cell));
+    for (const style of [...column(2), ...column(3)]) {
+      expect(style.textAlign).toBe("right");
+      expect(style.fontVariantNumeric).toBe("tabular-nums");
+    }
+    for (const style of column(1)) expect(style.textAlign).toBe("left");
+    expect(getComputedStyle(container.querySelector("th") as Element).whiteSpace).not.toBe("nowrap");
+  });
+
+  it("fades the side of a wide table that can still scroll, only while it can", () => {
+    const descriptors = ["scrollWidth", "clientWidth"].map(
+      (name) => [name, Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)] as const
+    );
+    let width = 600;
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => width });
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 300 });
+    try {
+      const table = ["| A | B |", "|---|---|", "| x | y |"].join("\n");
+      const { container, unmount } = render(<SafeMarkdown>{table}</SafeMarkdown>);
+      const scroller = container.querySelector("table")?.parentElement as HTMLElement;
+      const edges = () => [scroller.dataset.fadeStart ?? null, scroller.dataset.fadeEnd ?? null];
+      // At the start: more to the right.
+      expect(edges()).toEqual([null, "true"]);
+      scroller.scrollLeft = 150;
+      fireEvent.scroll(scroller);
+      expect(edges()).toEqual(["true", "true"]);
+      scroller.scrollLeft = 300;
+      fireEvent.scroll(scroller);
+      expect(edges()).toEqual(["true", null]);
+      unmount();
+      // A table that fits shows no fade.
+      width = 300;
+      const fits = render(<SafeMarkdown>{table}</SafeMarkdown>).container.querySelector("table")
+        ?.parentElement as HTMLElement;
+      expect([fits.dataset.fadeStart, fits.dataset.fadeEnd]).toEqual([undefined, undefined]);
+    } finally {
+      for (const [name, descriptor] of descriptors) {
+        if (descriptor) Object.defineProperty(HTMLElement.prototype, name, descriptor);
+        else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
+      }
+    }
   });
 
   it("drops javascript: and data: links, HTML and images in every spelling", () => {
@@ -386,6 +446,7 @@ describe("assistant messages", () => {
       project: { id: "p1", name: "Eins" },
       uploadTo: { projectId: "p1" },
       getContext: () => ({ surface: "project.map", project_id: "p1" }),
+      zoomToLayer: vi.fn(),
     });
     render(
       <DockActionsContext.Provider value={actions}>
@@ -414,7 +475,8 @@ describe("assistant messages", () => {
     const previews = screen.getAllByRole("button", { name: "assistant_item_preview" });
     expect(previews).toHaveLength(2);
     fireEvent.click(previews[0]);
-    expect(screen.getByTestId("item-preview").textContent).toBe("Abstellanlagen");
+    // The preview is loaded on demand (next/dynamic): the first lands a tick after the click.
+    expect((await screen.findByTestId("item-preview")).textContent).toBe("Abstellanlagen");
     fireEvent.click(screen.getAllByRole("button", { name: "assistant_item_preview" })[0]);
     expect(screen.getAllByTestId("item-preview").map((node) => node.textContent)).toEqual(["Fahrradständer"]);
     const adds = screen.getAllByRole("button", { name: "assistant_result_add" });
@@ -424,6 +486,108 @@ describe("assistant messages", () => {
     expect(await screen.findByText("assistant_item_added")).toBeTruthy();
     expect(actions.addToProject).toHaveBeenCalledWith(expect.objectContaining({ id: "d1" }), undefined);
     expect(screen.getAllByRole("button", { name: "assistant_result_add" })).toHaveLength(1);
+  });
+
+  it("offers no Zoom on a page of the project without its map, also for a dataset just added", async () => {
+    const own = {
+      type: "dynamic-tool",
+      toolName: "core_show_items",
+      toolCallId: "o2",
+      state: "output-available",
+      input: {},
+      output: {
+        groups: [
+          {
+            title: null,
+            items: [
+              { kind: "layer", id: "11", project_id: "p1", project_name: "Eins", name: "Radwege" },
+              { kind: "dataset", id: "d1", dataset_id: "d1", name: "Fahrradständer" },
+            ],
+          },
+        ],
+        not_found: [],
+        left_out: [],
+      },
+    } as DynamicToolUIPart;
+    // Workflows mode: the project is open and editable, its map is not on the page.
+    registerSurface({
+      surface: "project.workflows",
+      project: { id: "p1", name: "Eins" },
+      uploadTo: { projectId: "p1" },
+      getContext: () => ({ surface: "project.workflows", project_id: "p1" }),
+    });
+    render(
+      <DockActionsContext.Provider value={actions}>
+        <MessageList
+          messages={[{ id: "o", role: "assistant", parts: [own, { type: "text", text: "Treffer." }] }]}
+          busy={false}
+          conversationId="c1"
+          conversationProjectId={null}
+          projectName={null}
+          readOnly={false}
+        />
+      </DockActionsContext.Provider>
+    );
+    expect(screen.queryByRole("button", { name: "assistant_item_zoom_to_layer" })).toBeNull();
+    // The layer is still the project's own.
+    expect(screen.getAllByText("assistant_item_layer_in_this_project")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "assistant_result_add" }));
+    expect(await screen.findByText("assistant_item_added")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "assistant_item_zoom_to_layer" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "assistant_result_add" })).toBeNull();
+    expect(screen.getAllByText("assistant_item_layer_in_this_project")).toHaveLength(2);
+  });
+
+  it("shows a placeholder in the theme's colours for an item without a picture of its own", () => {
+    const shown = {
+      type: "dynamic-tool",
+      toolName: "core_show_items",
+      toolCallId: "o3",
+      state: "output-available",
+      input: {},
+      output: {
+        groups: [
+          { title: null, items: [{ kind: "dataset", id: "d1", dataset_id: "d1", name: "Fahrradständer" }] },
+        ],
+        not_found: [],
+        left_out: [],
+      },
+    } as DynamicToolUIPart;
+    const cards = () =>
+      render(
+        <DockActionsContext.Provider value={actions}>
+          <MessageList
+            messages={[{ id: "o", role: "assistant", parts: [shown] }]}
+            busy={false}
+            conversationId="c1"
+            conversationProjectId={null}
+            projectName={null}
+            readOnly={false}
+          />
+        </DockActionsContext.Provider>
+      ).container;
+    try {
+      // GOAT's default artwork is a light grey picture: the card draws its own placeholder instead.
+      itemDetails.value = { thumbnail: "https://assets.example/img/goat_new_dataset_thumbnail.png" };
+      let container = cards();
+      expect(container.querySelector("img")).toBeNull();
+      const theme = createTheme();
+      // The thumbnail is the mouse's way to the preview, out of the accessibility tree.
+      const icon = container.querySelector('button[aria-hidden="true"] svg') as SVGElement;
+      expect(getComputedStyle(icon).color).toBe(theme.palette.text.secondary);
+      expect(getComputedStyle(icon.parentElement as Element).backgroundColor).toBe(
+        theme.palette.action.hover
+      );
+      cleanup();
+      // An item's own picture shows.
+      itemDetails.value = { thumbnail: "https://s3.example/thumbnails/d1.png" };
+      container = cards();
+      expect(container.querySelector("img")?.getAttribute("src")).toBe(
+        "https://s3.example/thumbnails/d1.png"
+      );
+    } finally {
+      itemDetails.value = {};
+    }
   });
 
   it("does not show the server's text of a failed step", () => {
@@ -445,7 +609,7 @@ describe("assistant messages", () => {
         usage={{
           model: "claude-x",
           provider: "bedrock",
-          input_tokens: 15,
+          input_tokens: 606244,
           output_tokens: 5,
           cache_read_tokens: 2,
         }}
@@ -453,14 +617,72 @@ describe("assistant messages", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "assistant_details" }));
     expect(screen.getByText("claude-x")).toBeTruthy();
-    expect(screen.getByText("bedrock")).toBeTruthy();
-    expect(screen.getByText("15")).toBeTruthy();
+    // The provider by its name, and the numbers as the UI language writes them.
+    expect(screen.getByText("Amazon Bedrock")).toBeTruthy();
+    expect(screen.getByText("606,244")).toBeTruthy();
+    expect(screen.getByText("5")).toBeTruthy();
     // The popover stays open across the rerender: an answer without recorded usage says so.
     rerender(<AnswerDetails usage={undefined} />);
     expect(screen.getByText("assistant_details_none")).toBeTruthy();
   });
 
-  it("renders a conversation: context chips, text, steps, results, caveats and the run status", () => {
+  it("names an OpenAI-compatible endpoint in the UI language, and an unknown provider as it is", () => {
+    const usage = { model: "m", input_tokens: 1, output_tokens: 1, cache_read_tokens: 0 };
+    const { rerender } = render(<AnswerDetails usage={{ ...usage, provider: "openai_compatible" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "assistant_details" }));
+    expect(screen.getByText("assistant_details_provider_openai_compatible")).toBeTruthy();
+    rerender(<AnswerDetails usage={{ ...usage, provider: "constructor" }} />);
+    expect(screen.getByText("constructor")).toBeTruthy();
+  });
+
+  it("opens the answer details with the info icon", () => {
+    const { container } = render(<Icon iconName={ICON_NAME.CIRCLEINFO} />);
+    const info = container.querySelector("path")?.getAttribute("d");
+    cleanup();
+    render(<AnswerDetails usage={undefined} />);
+    const button = screen.getByRole("button", { name: "assistant_details" });
+    expect(button.querySelector("path")?.getAttribute("d")).toBe(info);
+  });
+
+  it("writes the details' numbers with the German separators in German", () => {
+    language.value = "de";
+    try {
+      render(
+        <AnswerDetails
+          usage={{
+            model: "m",
+            provider: "openai",
+            input_tokens: 606244,
+            output_tokens: 4411,
+            cache_read_tokens: 593536,
+          }}
+        />
+      );
+      fireEvent.click(screen.getByRole("button", { name: "assistant_details" }));
+      for (const text of ["606.244", "4.411", "593.536", "OpenAI"])
+        expect(screen.getByText(text)).toBeTruthy();
+    } finally {
+      language.value = "en";
+    }
+  });
+
+  it("writes the user's message in the text colour, at regular weight", () => {
+    render(
+      <MessageList
+        messages={[{ id: "u1", role: "user", parts: [{ type: "text", text: "Wie viele Radwege gibt es?" }] }]}
+        busy={false}
+        conversationId="c1"
+        conversationProjectId={null}
+        projectName={null}
+        readOnly={false}
+      />
+    );
+    const style = getComputedStyle(screen.getByText("Wie viele Radwege gibt es?"));
+    expect(style.color).toBe(createTheme().palette.text.primary);
+    expect(style.fontWeight).toBe("400");
+  });
+
+  it("renders a conversation: context chips, text, steps, results, caveats and the run status", async () => {
     const messages: AssistantMessage[] = [
       {
         id: "u1",
@@ -504,7 +726,7 @@ describe("assistant messages", () => {
     expect(screen.queryByText("English text")).toBeNull();
     expect(screen.getByText("assistant_run_cancelled")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "assistant_item_preview" }));
-    expect(screen.getByTestId("item-preview").textContent).toBe("Radverkehrsnetz");
+    expect((await screen.findByTestId("item-preview")).textContent).toBe("Radverkehrsnetz");
   });
 });
 
@@ -1192,6 +1414,21 @@ describe("whole answers in the transcript", () => {
       Node.DOCUMENT_POSITION_FOLLOWING
     );
 
+  it("names a changed workflow from a read in an earlier run of steps", () => {
+    const read = step(
+      "workflow_get",
+      { workflow_id: "w1" },
+      { workflow_id: "w1", name: "Kitas", revision: 2 }
+    );
+    const edit = step(
+      "workflow_update",
+      { workflow_id: "w1", operations: [] },
+      { workflow_id: "w1", revision_before: 2, revision_after: 3, changed_steps: [] }
+    );
+    render(answer([read, say("Ich ändere den Puffer."), edit, say("Fertig.")], false));
+    expect(screen.getByText("assistant_tool_workflow_update_name")).toBeTruthy();
+  });
+
   it("folds each run of steps between texts on its own, and keeps the last one open while it runs", () => {
     const parts = [
       say("Ich suche."),
@@ -1360,6 +1597,58 @@ describe("workflow runs", () => {
   it("says how the run ended", () => {
     renderRunning([run({ status: "failed", step: null })]);
     expect(screen.getByText("assistant_workflow_run_failed")).toBeTruthy();
+  });
+
+  it("leaves opening the workflow to its card when the answer shows one", () => {
+    const created = (id: string) =>
+      ({
+        type: "dynamic-tool",
+        toolName: "workflow_create",
+        toolCallId: `wc-${id}`,
+        state: "output-available",
+        input: { draft: {} },
+        output: {
+          workflow: { id, name: `Kitas ${id}`, project_id: "p1" },
+          open_issues: [],
+          groups: [{ title: null, items: [{ kind: "workflow", id, project_id: "p1", name: `Kitas ${id}` }] }],
+        },
+      }) as DynamicToolUIPart;
+    renderRunning([created("w1"), run({ status: "succeeded", step: null })]);
+    expect(screen.getByText("assistant_workflow_run_succeeded")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "assistant_workflow_run_open" })).toBeNull();
+    expect(screen.getByRole("button", { name: "assistant_item_open_workflow" })).toBeTruthy();
+    cleanup();
+    // The card of another workflow is no way to this run's.
+    renderRunning([created("w2"), run({ status: "succeeded", step: null })]);
+    expect(screen.getByRole("button", { name: "assistant_workflow_run_open" })).toBeTruthy();
+    cleanup();
+    // Named past the cards one result shows: no card, so the line keeps its Open.
+    const items = [
+      ...Array.from({ length: 10 }, (_, index) => ({
+        kind: "project",
+        id: `p${index + 2}`,
+        name: `P${index}`,
+      })),
+      { kind: "workflow", id: "w1", project_id: "p1", name: "Kitas" },
+    ];
+    const listed = {
+      type: "dynamic-tool",
+      toolName: "core_show_items",
+      toolCallId: "o-many",
+      state: "output-available",
+      input: {},
+      output: { groups: [{ title: null, items }], not_found: [], left_out: [] },
+    } as DynamicToolUIPart;
+    renderRunning([listed, run({ status: "succeeded", step: null })]);
+    expect(screen.queryByRole("button", { name: "assistant_item_open_workflow" })).toBeNull();
+    expect(screen.getByRole("button", { name: "assistant_workflow_run_open" })).toBeTruthy();
+  });
+
+  it("offers Open as the dock's outlined pill", () => {
+    renderRunning([run({})]);
+    const open = screen.getByRole("button", { name: "assistant_workflow_run_open" });
+    expect(open.className).toContain("MuiButton-outlined");
+    expect(getComputedStyle(open).borderRadius).toBe("999px");
   });
 
   it("says in the past tense that a run was still going when a stored answer ended", () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, useTheme } from "@mui/material";
+import { keyframes } from "@mui/material/styles";
 import {
   type DragEvent,
   type KeyboardEvent,
@@ -23,18 +24,31 @@ import {
   useViewportWidth,
 } from "@/lib/assistant/dockWidth";
 
+/** The panel's content arriving: it fades in from a little to the right. */
+const enter = keyframes`
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: none; }
+`;
+
 /**
  * The docked panel: an aside on the right of the page, as wide as the user
  * dragged it. Only this frame re-renders while the width changes; the
  * conversation inside is passed in as children and stays as it is.
+ * `entrance`: the content comes in as the panel opens (not where the dock
+ * replaces its loading frame, which came in already). Closing is instant.
  */
 export default function DockPanel({
   label,
+  busy = false,
+  entrance = false,
   onDragOver,
   onDrop,
   children,
 }: {
   label: string;
+  /** Its content is still loading. */
+  busy?: boolean;
+  entrance?: boolean;
   onDragOver: (event: DragEvent) => void;
   onDrop: (event: DragEvent) => void;
   children: ReactNode;
@@ -45,9 +59,12 @@ export default function DockPanel({
       component="aside"
       data-assistant-dock=""
       aria-label={label}
+      aria-busy={busy || undefined}
       onDragOver={onDragOver}
       onDrop={onDrop}
       sx={{
+        // The panel takes its width at once and only its content moves: a growing width
+        // would resize the map beside it on every frame.
         width,
         flexShrink: 0,
         height: "100%",
@@ -60,7 +77,19 @@ export default function DockPanel({
         bgcolor: "background.paper",
       }}>
       <ResizeHandle width={width} />
-      {children}
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          ...(entrance && {
+            animation: `${enter} 180ms ease-out`,
+            "@media (prefers-reduced-motion: reduce)": { animation: "none" },
+          }),
+        }}>
+        {children}
+      </Box>
     </Box>
   );
 }

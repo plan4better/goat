@@ -60,7 +60,9 @@ export function useAssistantSurface(adapter: AssistantSurfaceAdapter | null): Su
         apply: hasApply ? (proposal) => latest.current?.apply?.(proposal) : undefined,
         preview: hasPreview ? (proposal) => latest.current?.preview?.(proposal) : undefined,
         clearPreview: hasClear ? () => latest.current?.clearPreview?.() : undefined,
-        zoomToLayer: hasZoom ? (layerProjectId) => latest.current?.zoomToLayer?.(layerProjectId) : undefined,
+        zoomToLayer: hasZoom
+          ? (layerProjectId, options) => latest.current?.zoomToLayer?.(layerProjectId, options)
+          : undefined,
       },
       owner
     );

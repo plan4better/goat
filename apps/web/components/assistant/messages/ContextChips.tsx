@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip, Stack, type Theme, alpha } from "@mui/material";
+import { Chip, type Theme, alpha } from "@mui/material";
 
 import type { ContextChip } from "@/lib/assistant/chips";
 
@@ -24,7 +24,10 @@ export const chipSx = (theme: Theme) => ({
   ...focusRing(theme),
 });
 
-/** What a message carried about its page (spec §6.3); removable in the composer only. */
+/**
+ * What a message carried about its page (spec §6.3); removable in the composer only.
+ * The chips go into the caller's row, so they wrap together with what else it holds.
+ */
 export default function ContextChips({
   chips,
   onRemove,
@@ -32,9 +35,8 @@ export default function ContextChips({
   chips: ContextChip[];
   onRemove?: (key: string) => void;
 }) {
-  if (!chips.length) return null;
   return (
-    <Stack direction="row" flexWrap="wrap" gap="6px">
+    <>
       {chips.map((chip) => (
         <Chip
           key={chip.key}
@@ -54,6 +56,6 @@ export default function ContextChips({
           })}
         />
       ))}
-    </Stack>
+    </>
   );
 }

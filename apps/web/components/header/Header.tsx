@@ -14,8 +14,9 @@ import {
   useTheme,
 } from "@mui/material";
 import Divider from "@mui/material/Divider";
+import { visuallyHidden } from "@mui/utils";
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMap } from "react-map-gl/maplibre";
 
@@ -64,18 +65,23 @@ export type HeaderProps = {
   viewOnly?: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onProjectUpdate?: (key: string, value: any, refresh?: boolean) => void;
+  /** false: no Ask AI (the dashboard builder's preview, below the project header that has one). */
+  askAi?: boolean;
 };
 
 export default function Header(props: HeaderProps) {
   const theme = useTheme();
-  // Icon only in the project editor (its centred mode toggle leaves little width) and on small screens.
   const isSmallScreen = useMediaQuery(theme.breakpoints.down("md"));
-  const compactAskAi = !!props.mapHeader || isSmallScreen;
+  const belowXl = useMediaQuery(theme.breakpoints.down("xl"));
   // The docked dock takes width from the page (below md it opens full screen): the project
   // header's right-hand buttons show their icons alone, so they stay clear of the mode toggle.
   const dock = useDockState();
   const dockDocked = dock.enabled && dock.open && !dock.expanded && !isSmallScreen;
   const compactProjectActions = !!props.mapHeader && dockDocked;
+  // Labelled as on Home where there is room; the icon alone on small screens, and in a project
+  // header (with its centred mode toggle) beside the docked dock or in a window narrower than xl.
+  const compactAskAi = isSmallScreen || (!!props.mapHeader && (dockDocked || belowXl));
+  const askAi = props.askAi !== false && <AskAiButton compact={compactAskAi} />;
   const { map } = useMap();
   const { t, i18n } = useTranslation(["common"]);
   const {
@@ -101,6 +107,13 @@ export default function Header(props: HeaderProps) {
     return days > 0 ? t("trial_days_left", { count: days }) : t("trial_ends_today");
   };
   const lng = i18n.language === "de" ? "/de" : "";
+  const lastSaved = project?.updated_at
+    ? `${t("common:last_saved")}: ${format(parseISO(project.updated_at), "Pp", { locale: dateLocale })}`
+    : null;
+  // Beside the docked dock the last save is the title's tooltip, and the description of the
+  // title's input for keyboard and screen reader users (the tooltip describes only its wrapper).
+  const lastSavedInTitle = compactProjectActions && !!lastSaved;
+  const lastSavedId = useId();
   const dispatch = useAppDispatch();
   // Below `md` (`isSmallScreen`) the header has no room for another icon: the support entry moves
   // into the user menu. The header icon is hidden there by CSS, so the server-rendered first paint
@@ -311,22 +324,34 @@ export default function Header(props: HeaderProps) {
                 <Divider orientation="vertical" flexItem />
               </>
             )}
-            <EditableTypography
-              variant="body1"
-              fontWeight="bold"
-              value={title || project?.name}
-              readOnly={!props.mapHeader || !!title || viewOnly}
-              isEditing={isEditingProjectName}
-              onBlur={async (value) => {
-                setIsEditingProjectName(false);
-                if (value === project?.name || !project) return;
-                await onProjectUpdate?.("name", value);
-              }}
-            />
-            {props.mapHeader && <Divider orientation="vertical" flexItem />}
-            {project?.updated_at && (
-              <Typography variant="caption" noWrap>
-                {`${t("common:last_saved")}: ${format(parseISO(project.updated_at), "Pp", { locale: dateLocale })}`}
+            {/* The title shrinks to an ellipsis inside the column; the last save beside it gives
+                way first. Beside the docked dock the last save moves into the title's tooltip. */}
+            <Tooltip title={lastSavedInTitle ? lastSaved : ""} describeChild>
+              <Box sx={{ display: "flex", minWidth: 0 }}>
+                <EditableTypography
+                  variant="body1"
+                  fontWeight="bold"
+                  aria-describedby={lastSavedInTitle ? lastSavedId : undefined}
+                  value={title || project?.name}
+                  readOnly={!props.mapHeader || !!title || viewOnly}
+                  isEditing={isEditingProjectName}
+                  onBlur={async (value) => {
+                    setIsEditingProjectName(false);
+                    if (value === project?.name || !project) return;
+                    await onProjectUpdate?.("name", value);
+                  }}
+                />
+              </Box>
+            </Tooltip>
+            {lastSavedInTitle && (
+              <Box component="span" id={lastSavedId} sx={visuallyHidden}>
+                {lastSaved}
+              </Box>
+            )}
+            {props.mapHeader && !compactProjectActions && <Divider orientation="vertical" flexItem />}
+            {lastSaved && !compactProjectActions && (
+              <Typography variant="caption" noWrap sx={{ flexShrink: 100 }}>
+                {lastSaved}
               </Typography>
             )}
             {project?.tags &&
@@ -446,7 +471,7 @@ export default function Header(props: HeaderProps) {
                 {!props.mapHeader && <OnboardingTray />}
                 {!props.mapHeader && <StatusDot />}
                 {!props.mapHeader && <WhatsNewPopper />}
-                <AskAiButton compact={compactAskAi} />
+                {askAi}
                 {supportEntry}
                 <JobsPopper />
                 <Divider orientation="vertical" flexItem />
@@ -455,7 +480,7 @@ export default function Header(props: HeaderProps) {
             )}
             {props.viewOnly && isLoggedIn && (
               <Stack direction="row" spacing={2} justifyContent="center" alignItems="center">
-                <AskAiButton compact={compactAskAi} />
+                {askAi}
                 {supportEntry}
                 <Divider orientation="vertical" flexItem />
                 <UserInfoMenu withSupport={isSmallScreen} />

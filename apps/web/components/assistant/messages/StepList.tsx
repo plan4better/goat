@@ -10,9 +10,10 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { plainTranslate } from "@/lib/assistant/chips";
 import {
+  type StepNames,
   type StepRow,
-  layerNames,
   stepLabel,
+  stepNames,
   stepResult,
   stepRows,
   stepRunning,
@@ -110,19 +111,22 @@ export default function StepList({
   steps,
   rows: only,
   running = false,
+  names: known,
 }: {
   /** The group's steps: they name the layers, also those of rows not shown here. */
   steps: DynamicToolUIPart[];
   /** The rows to show, in their order; all of the group's when absent. */
   rows?: StepRow[];
   running?: boolean;
+  /** The names the whole answer's steps returned; the group's own when absent. */
+  names?: StepNames;
 }) {
   const { t } = useTranslation("common");
   const theme = useTheme();
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
   const [open, setOpen] = useState<string | null>(null);
   const rows = only ?? stepRows(steps);
-  const names = layerNames(steps);
+  const names = known ?? stepNames(steps);
   // The labels carry the call's arguments (search words, layer names): React escapes them as text.
   const translate = plainTranslate(t);
 

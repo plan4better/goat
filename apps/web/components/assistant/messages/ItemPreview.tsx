@@ -16,18 +16,15 @@ import type { Layer } from "@/lib/validations/layer";
 import useFeaturePage from "@/hooks/useFeaturePage";
 
 import { useDockActions } from "@/components/assistant/DockActions";
-import { focusRing, mutedText } from "@/components/assistant/styles";
+import { ITEM_PREVIEW_HEIGHT, focusRing, mutedText } from "@/components/assistant/styles";
 import BundleMapPreview from "@/components/dashboard/bundle/BundleMapPreview";
 import CatalogFeatureTable from "@/components/dashboard/catalog/CatalogFeatureTable";
 import CatalogFootprintMap from "@/components/dashboard/catalog/CatalogFootprintMap";
 import FeatureTableFrame from "@/components/dashboard/common/FeatureTableFrame";
 import DatasetMapPreview from "@/components/dashboard/dataset/DatasetMapPreview";
 
-/** The preview's map height in the dock. */
-const MAP_HEIGHT = 280;
-
 const Loading = () => (
-  <Box sx={{ height: MAP_HEIGHT, display: "flex", alignItems: "center", justifyContent: "center" }}>
+  <Box sx={{ height: ITEM_PREVIEW_HEIGHT, display: "flex", alignItems: "center", justifyContent: "center" }}>
     <CircularProgress size={18} />
   </Box>
 );
@@ -40,7 +37,7 @@ function TableRows({ dataset }: { dataset: Layer }) {
       fields={fields}
       data={data}
       isLoading={areFieldsLoading || isLoading}
-      maxHeight={MAP_HEIGHT}
+      maxHeight={ITEM_PREVIEW_HEIGHT}
     />
   );
 }
@@ -50,7 +47,7 @@ function DatasetPreview({ datasetId }: { datasetId: string }) {
   if (!dataset) return <Loading />;
   if (dataset.type === "table") return <TableRows dataset={dataset} />;
   return (
-    <Box sx={{ position: "relative", height: MAP_HEIGHT }}>
+    <Box sx={{ position: "relative", height: ITEM_PREVIEW_HEIGHT }}>
       <DatasetMapPreview dataset={dataset} />
     </Box>
   );
@@ -70,7 +67,7 @@ function CatalogRows({ item }: { item: CatalogItem }) {
       features={features}
       columns={item.properties["table:columns"] ?? []}
       rows={5}
-      maxHeight={MAP_HEIGHT}
+      maxHeight={ITEM_PREVIEW_HEIGHT}
     />
   );
 }
@@ -85,7 +82,7 @@ function CatalogPreview({ id }: { id: string }) {
   // catalog's own page does: it draws a map only for a dataset with geometry.
   if (!shown.geometry) return <CatalogRows item={shown} />;
   return (
-    <Box sx={{ position: "relative", height: MAP_HEIGHT }}>
+    <Box sx={{ position: "relative", height: ITEM_PREVIEW_HEIGHT }}>
       <CatalogFootprintMap item={shown} fill />
     </Box>
   );
@@ -100,7 +97,7 @@ function BundlePreview({ id }: { id: string }) {
   }
   if (!memberLayers) return <Loading />;
   return (
-    <Box sx={{ position: "relative", height: MAP_HEIGHT }}>
+    <Box sx={{ position: "relative", height: ITEM_PREVIEW_HEIGHT }}>
       <BundleMapPreview layers={memberLayers} />
     </Box>
   );

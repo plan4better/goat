@@ -503,6 +503,22 @@ function PickedRow({ multi, text }: { multi: boolean; text: string }) {
   );
 }
 
+/** A question of a card a typed reply passed over: what it offered, muted, with nothing to pick. */
+export function PassedQuestion({ question }: { question: AskQuestion }) {
+  return (
+    <Stack gap="6px">
+      <Box>
+        <QuestionLegend question={question} />
+      </Box>
+      <Typography sx={{ fontSize: 13, lineHeight: 1.45, color: mutedText, overflowWrap: "anywhere" }}>
+        {displayOrder(question)
+          .map((index) => question.options[index].label)
+          .join(" · ")}
+      </Typography>
+    </Stack>
+  );
+}
+
 /** A question with what its answer picked: a row per label and for the free text, or "No answer". */
 export function AnsweredQuestion({ question, parts }: { question: AskQuestion; parts: string[] }) {
   const { t } = useTranslation("common");

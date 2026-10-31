@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AskAnswer, AskCardData } from "@/lib/assistant/types";
 
 import AskCard, { type AskCardProps } from "@/components/assistant/messages/AskCard";
+import { mutedText } from "@/components/assistant/styles";
 
 vi.mock("react-i18next", async () => {
   const { commonT } = await import("@/i18n/__tests__/commonI18n");
@@ -136,13 +137,23 @@ describe("AskCard in the transcript", () => {
     expect(screen.queryByRole("form")).toBeNull();
   });
 
-  it("shows its questions without Send once a typed reply passed it over, or where it is not open", async () => {
+  it("shows a card a typed reply passed over as its questions with their options muted, without fields", () => {
     renderCard({ superseded: true });
     expect(screen.getByText("Not answered")).toBeTruthy();
-    await expect(screen.getByRole("radio", { name: "Walking" })).toBeDisabled();
+    for (const role of ["radio", "checkbox", "textbox", "radiogroup", "group"]) {
+      expect(screen.queryByRole(role), role).toBeNull();
+    }
     expect(screen.queryByRole("button", { name: "Send answer" })).toBeNull();
-    cleanup();
+    // Each question with its header, then what it offered, in the order the panel showed it.
+    expect(screen.getByText("How do people get there?")).toBeTruthy();
+    expect(screen.getByText("Mode")).toBeTruthy();
+    const offered = screen.getByText("Cycling · Walking");
+    expect(screen.getByText("Supermarkets · Schools · Pharmacies")).toBeTruthy();
+    expect(getComputedStyle(offered).color).toBe(mutedText(createTheme()));
+    expect(screen.queryByText("At walking speed")).toBeNull();
+  });
 
+  it("shows its questions disabled and without Send where it is not open", async () => {
     // A read-only conversation, or a card its ask step did not return.
     renderCard();
     await expect(screen.getByRole("checkbox", { name: "Schools" })).toBeDisabled();

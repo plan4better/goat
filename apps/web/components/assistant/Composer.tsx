@@ -7,6 +7,7 @@ import {
   Chip,
   IconButton,
   InputBase,
+  Link,
   Stack,
   type Theme,
   Tooltip,
@@ -14,7 +15,7 @@ import {
   alpha,
   useTheme,
 } from "@mui/material";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ContextChip } from "@/lib/assistant/chips";
@@ -25,6 +26,7 @@ import ContextChips, { chipSx } from "@/components/assistant/messages/ContextChi
 import { focusRing, mutedText } from "@/components/assistant/styles";
 import { MAX_SOURCES } from "@/components/assistant/useComposerContext";
 import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
+import { useReportProblemHref } from "@/components/support/SupportMenu";
 
 export interface ComposerProps {
   draft: string;
@@ -46,6 +48,8 @@ export interface ComposerProps {
   big?: boolean;
   /** The text takes the focus when the composer mounts (it takes an ask card's place again). */
   autoFocus?: boolean;
+  /** A new value focuses the text with the caret at its end (a starter filled it). */
+  focusRequest?: number;
 }
 
 /** The longest message the assistant service accepts (its MAX_MESSAGE_CHARS). */
@@ -70,7 +74,7 @@ const roundButtonSx = (theme: Theme) => ({
 /**
  * Stops the running answer, in the composer and in the ask panel that takes
  * its place. Next to Send it steps back to a neutral outline (`neutral`):
- * Send keeps its place and its accent.
+ * Send keeps the accent.
  */
 export function StopButton({ onStop, neutral = false }: { onStop: () => void; neutral?: boolean }) {
   const { t } = useTranslation("common");
@@ -92,6 +96,33 @@ export function StopButton({ onStop, neutral = false }: { onStop: () => void; ne
   );
 }
 
+/**
+ * The line above the composer: that answers can be wrong, and where to report
+ * one (the support entry's "Report a problem"; left out where there is none).
+ */
+function ComposerNote() {
+  const { t } = useTranslation("common");
+  const href = useReportProblemHref();
+  const text = { fontSize: 12, lineHeight: 1.45, color: mutedText };
+  return (
+    <Stack direction="row" alignItems="baseline" gap="8px" sx={{ mb: "8px", px: "2px" }}>
+      <Typography sx={{ ...text, flex: 1, minWidth: 0 }}>{t("assistant_scope_note")}</Typography>
+      {href && (
+        <Link
+          // The ticket form opens in a new tab: support pages have no dock, so in this tab the
+          // answer being reported would leave the screen. The email opens the mail client.
+          {...(href.startsWith("/") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+          href={href}
+          color="inherit"
+          underline="always"
+          sx={{ ...text, flexShrink: 0 }}>
+          {t("assistant_feedback_link")}
+        </Link>
+      )}
+    </Stack>
+  );
+}
+
 export default function Composer(props: ComposerProps) {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -110,11 +141,11 @@ export default function Composer(props: ComposerProps) {
     setChipAnchor(null);
     if (mention) props.onDraftChange(withoutMention());
   };
+  // While an answer runs, Stop stands alone until there is something to queue; then Send joins it.
   const canStop = props.busy && !!props.onStop;
-  const stopButton = canStop && props.onStop && (
-    <StopButton onStop={props.onStop} neutral={props.queueWhileBusy} />
-  );
-  const sendButton = (!canStop || props.queueWhileBusy) && (
+  const queueing = canStop && !!props.queueWhileBusy && props.draft.trim().length > 0;
+  const stopButton = canStop && props.onStop && <StopButton onStop={props.onStop} neutral={queueing} />;
+  const sendButton = (!canStop || queueing) && (
     <IconButton
       aria-label={t("assistant_send")}
       disabled={!canSend}
@@ -124,8 +155,15 @@ export default function Composer(props: ComposerProps) {
     </IconButton>
   );
   const hasContext = props.chips.length > 0 || props.mentionsEnabled;
+  useEffect(() => {
+    const text = input.current;
+    if (!props.focusRequest || !text) return;
+    text.focus();
+    text.setSelectionRange(text.value.length, text.value.length);
+  }, [props.focusRequest]);
   return (
     <Box>
+      <ComposerNote />
       {/* One box: the text on top, the message's context and Send in a row at its foot. */}
       <Box
         ref={setBox}
@@ -163,11 +201,7 @@ export default function Composer(props: ComposerProps) {
           autoFocus={props.autoFocus}
           value={props.draft}
           disabled={props.disabled}
-          placeholder={t(
-            props.mentionsEnabled
-              ? "assistant_composer_placeholder_mentions"
-              : "assistant_composer_placeholder"
-          )}
+          placeholder={t("assistant_composer_placeholder")}
           inputProps={{ "aria-label": t("assistant_composer_placeholder"), maxLength: MAX_MESSAGE_CHARS }}
           onChange={(event) => props.onDraftChange(event.target.value)}
           onKeyDown={(event) => {
@@ -215,9 +249,6 @@ export default function Composer(props: ComposerProps) {
           {sendButton}
         </Stack>
       </Box>
-      <Typography sx={{ mt: "8px", px: "2px", fontSize: 11.5, lineHeight: 1.45, color: mutedText }}>
-        {t("assistant_scope_note")}
-      </Typography>
       {canPick && pickerAnchor && (
         <SourcePicker
           anchorEl={pickerAnchor}

@@ -22,6 +22,8 @@ export interface ItemActionContext {
   projectId: string | null;
   /** Layers can be added to that project: it is open and the user may edit it. */
   canAddToProject: boolean;
+  /** The page shows the project's map, which can zoom to a layer (Map mode, not Workflows, Layouts or Dashboard). */
+  canZoom: boolean;
   /** The open project's layer showing this dataset, if it has one. */
   layerOfDataset: (datasetId: string) => number | null;
 }
@@ -66,8 +68,15 @@ const ADD_ELSEWHERE: ItemAction = {
   titleKey: "assistant_item_add_to_project_choose",
 };
 
-/** In the open project: the real map is beside the dock, so no preview, only Zoom. */
-const inProject = (layer: number): CardBehaviour => ({ action: ZOOM, preview: false, layer });
+/**
+ * In the open project: no preview, the project shows it already. Zoom where its
+ * map is on the page; elsewhere no button, the card still knows its layer.
+ */
+export const inProject = (layer: number, context: Pick<ItemActionContext, "canZoom">): CardBehaviour => ({
+  action: context.canZoom ? ZOOM : null,
+  preview: false,
+  layer,
+});
 
 /**
  * A result card's button and preview, by the item's kind and the page it is
@@ -83,15 +92,15 @@ export function cardBehaviour(item: ResultItem, context: ItemActionContext): Car
       // the page shows needs no button either.
       return { action: item.id === context.projectId ? null : OPEN_PROJECT, preview: false };
     case "layer": {
-      if (item.projectId === context.projectId) return inProject(Number(item.id));
+      if (item.projectId === context.projectId) return inProject(Number(item.id), context);
       // A locked layer's dataset is not the user's to read or add.
       if (item.locked || !item.datasetId) return { action: null, preview: false };
       const layer = context.layerOfDataset(item.datasetId);
-      return layer === null ? { action: add, preview: true } : inProject(layer);
+      return layer === null ? { action: add, preview: true } : inProject(layer, context);
     }
     case "dataset": {
       const layer = context.layerOfDataset(item.datasetId ?? item.id);
-      return layer === null ? { action: add, preview: true } : inProject(layer);
+      return layer === null ? { action: add, preview: true } : inProject(layer, context);
     }
     case "catalog":
     case "bundle":

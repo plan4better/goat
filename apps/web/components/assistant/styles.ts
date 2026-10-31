@@ -1,6 +1,9 @@
 import { type Theme, alpha } from "@mui/material";
 import { keyframes } from "@mui/material/styles";
 
+import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
+import { TOOLBAR_HEIGHT, toolbarBorder } from "@/components/header/Toolbar";
+
 /**
  * The dock's shared look, in theme tokens. It follows the dashboard pages (12px
  * cards on a divider border, 999px pills, small uppercase labels) and the AI
@@ -68,6 +71,9 @@ export const focusRing = (theme: Theme) => ({
 /** The 12px card every dock block sits in, like the dashboard's `SurfaceCard`. */
 export const CARD_RADIUS = "12px";
 
+/** The height of a result card's preview (a map, or a table's first rows). */
+export const ITEM_PREVIEW_HEIGHT = 280;
+
 /** Small uppercase labels: CONTEXT, proposal tags and row names. */
 export const eyebrowSx = {
   fontSize: 10.5,
@@ -117,6 +123,51 @@ export const headerIconButtonSx = (theme: Theme) => ({
   color: theme.palette.text.secondary,
   "&:hover": { backgroundColor: theme.palette.action.hover },
   ...focusRing(theme),
+});
+
+/**
+ * The dock's header bar: the app's top bar's height and bottom border, so the
+ * two read as one bar. `sidebar`: full screen, beside the history.
+ */
+export const dockHeaderSx = (theme: Theme, sidebar?: boolean) => ({
+  boxSizing: "content-box" as const,
+  height: TOOLBAR_HEIGHT,
+  flexShrink: 0,
+  borderBottom: toolbarBorder(theme),
+  pl: sidebar ? "16px" : "12px",
+  pr: "10px",
+});
+
+/** The full-screen dock's history column. */
+export const dockSidebarSx = {
+  width: 272,
+  flexShrink: 0,
+  borderRight: 1,
+  borderColor: "divider",
+  bgcolor: "background.default",
+  display: "flex",
+  flexDirection: "column",
+  minHeight: 0,
+} as const;
+
+/** A darker, blurred scrim: the page around the full-screen dock reads as background, not as content. */
+export const dockBackdropSx = (theme: Theme) => ({
+  bgcolor: alpha(theme.palette.common.black, 0.55),
+  backdropFilter: "blur(4px)",
+});
+
+/** The full-screen dock inset from the window's edges (a phone shows it over the whole screen). */
+export const dockInsetPaperSx = (theme: Theme) => ({
+  position: "fixed" as const,
+  inset: 16,
+  m: 0,
+  width: "auto",
+  maxWidth: "none",
+  height: "auto",
+  maxHeight: "none",
+  overflow: "hidden",
+  borderRadius: "16px",
+  boxShadow: surfaceShadows(theme).hover,
 });
 
 /** The footer the composer sits in, below the transcript. */

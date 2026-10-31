@@ -12,9 +12,9 @@ import { useDateFnsLocale } from "@/i18n/utils";
 
 import { refreshSupportTickets, useSupportSummary } from "@/lib/api/support";
 import { useUserProfile } from "@/lib/api/users";
-import { DOCS_URL, SUPPORT_MAILTO } from "@/lib/constants";
+import { DOCS_URL } from "@/lib/constants";
 import { supportReplyAgent } from "@/lib/support/agent";
-import { newTicketPath, supportTicketPath } from "@/lib/support/paths";
+import { reportProblemHref, supportTicketPath } from "@/lib/support/paths";
 import { isRecentlyClosed } from "@/lib/support/unread";
 import type { SupportTicket } from "@/lib/validations/support";
 
@@ -111,6 +111,7 @@ const SupportActionRows = ({
     router.push(path);
   };
   const countLabel = counts ? supportCountLabel(t, counts) : undefined;
+  const report = reportProblemHref(!!counts, pathname);
   return (
     <>
       {counts && (
@@ -121,21 +122,13 @@ const SupportActionRows = ({
           onClick={() => go("/support")}
         />
       )}
-      {counts ? (
+      {report && (
         <HeaderPopoverRow
           icon={ICON_NAME.BUG}
           label={t("support_report_problem")}
-          onClick={() => go(newTicketPath(pathname))}
+          // The ticket form opens in the app; the email in the mail client.
+          {...(counts ? { onClick: () => go(report) } : { href: report, onClick: onNavigate })}
         />
-      ) : (
-        !!SUPPORT_MAILTO && (
-          <HeaderPopoverRow
-            icon={ICON_NAME.BUG}
-            label={t("support_report_problem")}
-            href={SUPPORT_MAILTO}
-            onClick={onNavigate}
-          />
-        )
       )}
       <HeaderPopoverRow
         icon={ICON_NAME.BOOK}
@@ -258,6 +251,15 @@ export const useSupportCounts = (active: boolean): SupportCounts | null => {
   const { userProfile } = useUserProfile();
   const { summary, enabled } = useSupportSummary({ enabled: active && !!userProfile });
   return enabled ? { needsReply: summary?.needs_reply ?? 0, unread: summary?.unread ?? 0 } : null;
+};
+
+/**
+ * Where "Report a problem" leads from the current page, as the support entry decides it (see
+ * `reportProblemHref`); `null` where there is neither a ticket form nor a support email.
+ */
+export const useReportProblemHref = (): string | null => {
+  const pathname = usePathname();
+  return reportProblemHref(useSupportCounts(true) !== null, pathname);
 };
 
 /** The support entries as rows of the user menu: the phone's place for what `SupportMenu` offers on desktop.

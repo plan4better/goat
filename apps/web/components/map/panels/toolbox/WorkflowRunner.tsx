@@ -375,7 +375,7 @@ export default function WorkflowRunner({ workflowId, onBack, onClose }: Workflow
           {workflow.description && (
             <Typography
               variant="body2"
-              sx={{ fontStyle: "italic", mb: theme.spacing(4) }}
+              sx={{ fontStyle: "italic", whiteSpace: "pre-line", mb: theme.spacing(4) }}
               color="text.secondary">
               {workflow.description}
             </Typography>

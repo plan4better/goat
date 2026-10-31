@@ -37,6 +37,13 @@ export default function NewConversation({ big }: { big?: boolean }) {
     setDraft(value);
     saveDraft(NEW_CONVERSATION_DRAFT, { text: value });
   };
+  // A starter that is a sentence start goes into the composer in front of what the user typed
+  // there already, and the composer takes the focus.
+  const [focusRequest, setFocusRequest] = useState(0);
+  const prependDraft = (start: string) => {
+    changeDraft(`${start}${draft.trimStart()}`);
+    setFocusRequest((n) => n + 1);
+  };
   const [creating, setCreating] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
   // On a project page before its project registered, a conversation would start without it.
@@ -62,14 +69,28 @@ export default function NewConversation({ big }: { big?: boolean }) {
 
   return (
     <Stack sx={{ flex: 1, minHeight: 0 }}>
-      <Box sx={{ flex: 1, overflowY: "auto", px: big ? "24px" : "16px", py: big ? "24px" : "18px" }}>
-        <Box sx={{ maxWidth: big ? 720 : "none", mx: "auto" }}>
+      <Box
+        sx={{
+          flex: 1,
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          px: big ? "24px" : "20px",
+          py: "24px",
+        }}>
+        {/* Centred in the free space by its auto margins; a taller start page scrolls from its top. */}
+        <Box sx={{ width: "100%", maxWidth: big ? 720 : "none", mx: "auto", my: "auto" }}>
           {waiting ? (
             <Box sx={{ display: "flex", justifyContent: "center", pt: "16px" }}>
               <CircularProgress size={20} />
             </Box>
           ) : (
-            <EmptyState big={big} onPick={(text) => void start(text)} />
+            <EmptyState
+              big={big}
+              context={composer.context}
+              onPick={(text) => void start(text)}
+              onDraft={prependDraft}
+            />
           )}
           {errorKey && (
             <Alert severity="error" sx={{ mt: "16px" }}>
@@ -92,6 +113,7 @@ export default function NewConversation({ big }: { big?: boolean }) {
             sourcesFull={composer.sourcesFull}
             excludeProjectId={composer.projectId}
             big={big}
+            focusRequest={focusRequest}
           />
         </Box>
       </Box>

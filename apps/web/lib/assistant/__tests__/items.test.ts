@@ -1,8 +1,15 @@
 import type { DynamicToolUIPart } from "ai";
 import { describe, expect, it } from "vitest";
 
-import { type ItemActionContext, cardBehaviour } from "@/lib/assistant/itemActions";
-import { MAX_CARDS, type ResultItem, SHOW_TOOLS, shownGroups, uniqueGroups } from "@/lib/assistant/items";
+import { type ItemActionContext, cardBehaviour, inProject } from "@/lib/assistant/itemActions";
+import {
+  MAX_CARDS,
+  type ResultItem,
+  SHOW_TOOLS,
+  ownThumbnail,
+  shownGroups,
+  uniqueGroups,
+} from "@/lib/assistant/items";
 
 const part = (toolName: string, output: unknown): DynamicToolUIPart => ({
   type: "dynamic-tool",
@@ -15,8 +22,19 @@ const part = (toolName: string, output: unknown): DynamicToolUIPart => ({
 
 const ids = (item: ResultItem) => `${item.kind}:${item.id}`;
 const NONE = () => null;
-const NOWHERE: ItemActionContext = { projectId: null, canAddToProject: false, layerOfDataset: NONE };
-const IN_P1: ItemActionContext = { projectId: "p1", canAddToProject: true, layerOfDataset: NONE };
+const NOWHERE: ItemActionContext = {
+  projectId: null,
+  canAddToProject: false,
+  canZoom: false,
+  layerOfDataset: NONE,
+};
+/** The open project's Map page: its map can zoom. */
+const IN_P1: ItemActionContext = {
+  projectId: "p1",
+  canAddToProject: true,
+  canZoom: true,
+  layerOfDataset: NONE,
+};
 
 describe("result items", () => {
   it("reads the user's own items, dropping kinds and rows it does not know", () => {
@@ -115,6 +133,19 @@ describe("card behaviour", () => {
     expect(of(dataset, showing)).toEqual({ action: "zoom_to_layer", preview: false, layer: 77 });
   });
 
+  it("offers no Zoom where the page has no map, and still knows the layer is in the project", () => {
+    // Workflows, Layouts and Dashboard show the project without its map.
+    const noMap: ItemActionContext = { ...IN_P1, canZoom: false };
+    expect(of(layer, noMap)).toEqual({ action: null, preview: false, layer: 11 });
+    const showing: ItemActionContext = { ...noMap, layerOfDataset: (id) => (id === "d1" ? 77 : null) };
+    expect(of(dataset, showing)).toEqual({ action: null, preview: false, layer: 77 });
+    expect(inProject(5, noMap)).toEqual({ action: null, preview: false, layer: 5 });
+    expect(inProject(5, IN_P1)).toEqual(expect.objectContaining({ preview: false, layer: 5 }));
+    expect(inProject(5, IN_P1).action?.id).toBe("zoom_to_layer");
+    // Anything else is offered as on the map.
+    expect(of(catalog, noMap)).toEqual({ action: "add_to_project", preview: true, layer: undefined });
+  });
+
   it("adds other data to an editable open project, with a preview", () => {
     for (const item of [dataset, elsewhere, catalog, bundle]) {
       expect(of(item, IN_P1)).toEqual({ action: "add_to_project", preview: true, layer: undefined });
@@ -189,5 +220,21 @@ describe("created workflows", () => {
   it("open in their project's workflow editor", () => {
     const [item] = shownGroups(part("workflow_create", output))[0].items;
     expect(cardBehaviour(item, IN_P1).action?.id).toBe("open_workflow");
+  });
+});
+
+describe("card thumbnails", () => {
+  it("leave out GOAT's default artwork, wherever it is served from, and keep an item's own picture", () => {
+    for (const url of [
+      "/assets/img/goat_new_dataset_thumbnail.png",
+      "https://assets.example/img/goat_new_dataset_thumbnail.png",
+      "https://assets.example/img/goat_new_project_artwork.png?v=2",
+    ]) {
+      expect(ownThumbnail(url), url).toBeUndefined();
+    }
+    const own = "https://s3.example/thumbnails/layer/abc.png?X-Amz-Signature=1";
+    expect(ownThumbnail(own)).toBe(own);
+    expect(ownThumbnail(null)).toBeUndefined();
+    expect(ownThumbnail(undefined)).toBeUndefined();
   });
 });

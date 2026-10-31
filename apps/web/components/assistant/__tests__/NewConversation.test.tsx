@@ -26,8 +26,21 @@ vi.mock("@/lib/assistant/transport", () => ({
   fetchConversation: vi.fn(),
   createConversation: createMock,
 }));
-vi.mock("@/lib/assistant/conversations", () => ({ refreshConversationLists: vi.fn() }));
-vi.mock("@/lib/api/projects", () => ({ useProjects: () => ({ projects: { items: [] }, isLoading: false }) }));
+vi.mock("@/lib/assistant/conversations", () => ({
+  refreshConversationLists: vi.fn(),
+  useConversations: () => ({ conversations: [] }),
+}));
+vi.mock("@/lib/api/projects", () => ({
+  useProjects: () => ({ projects: { items: [] }, isLoading: false }),
+  useProjectLayers: () => ({ layers: undefined }),
+}));
+vi.mock("@/components/support/SupportMenu", () => ({ useReportProblemHref: () => null }));
+// The start page's AI notice links the privacy policy only with NEXT_PUBLIC_WEBSITE_URL, through
+// `Trans`, which this i18n mock has not: without the link, these tests do not depend on that variable.
+vi.mock("@/lib/constants", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  privacyPolicyUrl: () => undefined,
+}));
 vi.mock("next/navigation", () => ({ usePathname: pathnameMock }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
@@ -127,10 +140,33 @@ describe("NewConversation", () => {
   it("records the page as the origin where no surface is registered", async () => {
     createMock.mockResolvedValue({ id: "c8", project_id: null, origin_surface: "home", title: null });
     render(<NewConversation />);
-    fireEvent.click(screen.getByText("assistant_suggestion_none_1"));
+    fireEvent.click(screen.getByText("assistant_starter_help"));
     await waitFor(() => expect(getDockState().conversationId).toBe("c8"));
     expect(createMock).toHaveBeenCalledWith("home");
-    expect(peekFirstMessage("c8")?.text).toBe("assistant_suggestion_none_1");
+    expect(peekFirstMessage("c8")?.text).toBe("assistant_starter_help");
+  });
+
+  it("puts a sentence start into the composer, focused, without sending it", () => {
+    render(<NewConversation />);
+    fireEvent.click(screen.getByText("assistant_starter_datasets…"));
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(box.value).toBe("assistant_starter_datasets ");
+    expect(document.activeElement).toBe(box);
+    expect(box.selectionStart).toBe(box.value.length);
+    expect(createMock).not.toHaveBeenCalled();
+    expect(getDraft(NEW_CONVERSATION_DRAFT)?.text).toBe("assistant_starter_datasets ");
+  });
+
+  it("puts a sentence start in front of what the user already typed", () => {
+    render(<NewConversation />);
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "Berlin Hauptbahnhof" } });
+    fireEvent.click(screen.getByText("assistant_starter_datasets…"));
+    expect(box.value).toBe("assistant_starter_datasets Berlin Hauptbahnhof");
+    expect(document.activeElement).toBe(box);
+    expect(box.selectionStart).toBe(box.value.length);
+    expect(getDraft(NEW_CONVERSATION_DRAFT)?.text).toBe("assistant_starter_datasets Berlin Hauptbahnhof");
+    expect(createMock).not.toHaveBeenCalled();
   });
 
   it("shows a refused creation translated and keeps the draft", async () => {

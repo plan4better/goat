@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import de from "@/i18n/locales/de/common.json";
 import en from "@/i18n/locales/en/common.json";
 
+import { STARTER_KEYS } from "@/lib/assistant/starters";
 import { STEP_KIND_NAMES } from "@/lib/assistant/stepLabels";
 import { RUN_ERROR_CODES } from "@/lib/assistant/types";
 
@@ -102,7 +103,9 @@ describe("assistant texts", () => {
   it("exist in English and German with the same keys and placeholders", () => {
     expect(assistantKeys(DE)).toEqual(assistantKeys(EN));
     for (const key of assistantKeys(EN)) {
-      const placeholders = (text: string) => [...text.matchAll(/{{\s*(\w+)\s*}}/g)].map((m) => m[1]).sort();
+      // With its format, if any: `{{count, number}}` in one language needs it in the other.
+      const placeholders = (text: string) =>
+        [...text.matchAll(/{{\s*(\w+)\s*(?:,\s*(\w+)\s*)?}}/g)].map((m) => `${m[1]},${m[2] ?? ""}`).sort();
       expect(placeholders(DE[key]), key).toEqual(placeholders(EN[key]));
     }
   });
@@ -126,11 +129,63 @@ describe("assistant texts", () => {
     }
   });
 
-  it("never say the assistant leaves what exists alone, now that it changes workflows", () => {
-    expect(EN.assistant_empty_sub_project).not.toMatch(/never changes/);
-    expect(DE.assistant_empty_sub_project).not.toMatch(/ändert er nie/);
-    expect(EN.assistant_empty_sub_project).toMatch(/Undo/);
-    expect(DE.assistant_empty_sub_project).toMatch(/Rückgängig/);
+  it("keep the start page to one sentence of what it is for, without Undo or the @ hint", () => {
+    // The answers carry Undo themselves and the composer's chip teaches the @.
+    for (const group of GROUPS) {
+      expect(EN[`assistant_empty_sub_${group}`], group).not.toMatch(/Undo|@|never changes/);
+      expect(DE[`assistant_empty_sub_${group}`], group).not.toMatch(/Rückgängig|@|ändert er nie/);
+    }
+  });
+
+  it("name the map view chip briefly, so the composer's chips fit a narrow dock", () => {
+    expect(EN.assistant_chip_map_view).toBe("Map view");
+    expect(DE.assistant_chip_map_view).toBe("Kartenansicht");
+  });
+
+  it("write the German starters as questions or infinitives, never as an order to the assistant", () => {
+    for (const key of STARTER_KEYS) expect(DE[`assistant_starter_${key}`], key).not.toMatch(/\bSie\b/);
+  });
+
+  it("state the AI notices word for word, as approved", () => {
+    const notice = {
+      en: "You are writing with an AI assistant. Your messages and the data it reads are sent to the AI model your organization uses.",
+      de: "Sie schreiben mit einem KI-Assistenten. Ihre Nachrichten und die Daten, die er liest, werden an das KI-Modell übermittelt, das Ihre Organisation nutzt.",
+    };
+    expect(EN.assistant_scope_note).toBe("AI answers can be wrong. Check results before you use them.");
+    expect(DE.assistant_scope_note).toBe(
+      "KI-Antworten können fehlerhaft sein. Prüfen Sie Ergebnisse, bevor Sie sie verwenden."
+    );
+    expect(EN.assistant_proposal_apply_hint).toBe("The page changes only when you apply this suggestion.");
+    expect(DE.assistant_proposal_apply_hint).toBe(
+      "Die Seite ändert sich erst, wenn Sie diesen Vorschlag anwenden."
+    );
+    // Without a privacy policy to link, the notice ends before its last sentence.
+    expect(EN.assistant_ai_notice_no_policy).toBe(notice.en);
+    expect(DE.assistant_ai_notice_no_policy).toBe(notice.de);
+    expect(EN.assistant_ai_notice).toBe(`${notice.en} Details are in the <policy>privacy policy</policy>.`);
+    expect(DE.assistant_ai_notice).toBe(
+      `${notice.de} Details finden Sie in der <policy>Datenschutzerklärung</policy>.`
+    );
+    expect(EN.assistant_caveat_fallback).toBe(
+      "Your organization's AI provider is unavailable. This answer uses GOAT AI, so this request was processed by GOAT AI's model provider."
+    );
+    expect(DE.assistant_caveat_fallback).toBe(
+      "Der KI-Anbieter Ihrer Organisation ist nicht erreichbar. Diese Antwort verwendet GOAT AI, die Anfrage wurde daher vom Modell-Anbieter von GOAT AI verarbeitet."
+    );
+    expect(EN.ai_settings_description).toMatch(
+      / When AI is on, members' messages and the data the assistant reads are processed by the selected model provider\. Make sure your organization may share this data with it\.$/
+    );
+    expect(DE.ai_settings_description).toMatch(
+      / Ist KI aktiviert, verarbeitet der gewählte Modell-Anbieter die Nachrichten der Mitglieder und die Daten, die der Assistent liest\. Stellen Sie sicher, dass Ihre Organisation diese Daten mit ihm teilen darf\.$/
+    );
+  });
+
+  it("say Features and Layouts in German, as the cards and the mode toggle do", () => {
+    for (const key of assistantKeys(DE)) {
+      expect(DE[key], key).not.toMatch(/objekt/i);
+      expect(DE[key], key).not.toMatch(/Drucklayout/);
+    }
+    for (const key of assistantKeys(EN)) expect(EN[key], key).not.toMatch(/print layout/i);
   });
 
   it("use no dashes inside sentences", () => {
@@ -151,8 +206,8 @@ describe("assistant texts", () => {
     for (const group of GROUPS) {
       expect(EN).toHaveProperty(`assistant_empty_heading_${group}`);
       expect(EN).toHaveProperty(`assistant_empty_sub_${group}`);
-      for (const n of [1, 2, 3]) expect(EN).toHaveProperty(`assistant_suggestion_${group}_${n}`);
     }
+    for (const key of STARTER_KEYS) expect(EN, key).toHaveProperty(`assistant_starter_${key}`);
   });
 
   it("give every step label a running form, and every summary kind its plural forms", () => {

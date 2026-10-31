@@ -9,9 +9,9 @@ import { GOATLogoIconOnlyGreen } from "@p4b/ui/assets/svg/GOATLogoIconOnlyGreen"
 
 import { type AskCardState, askCardOf, askCardState, askStepReturned } from "@/lib/assistant/ask";
 import { contextChips, plainTranslate } from "@/lib/assistant/chips";
-import { CREATE_WORKFLOW_TOOLS, SHOW_TOOLS, shownGroups, uniqueGroups } from "@/lib/assistant/items";
+import { CREATE_WORKFLOW_TOOLS, SHOW_TOOLS, itemKey, shownGroups, uniqueGroups } from "@/lib/assistant/items";
 import { messageTime } from "@/lib/assistant/messageTimes";
-import { stepRunning } from "@/lib/assistant/stepLabels";
+import { stepNames, stepRunning } from "@/lib/assistant/stepLabels";
 import type { AnswerFeedback, AssistantMessage, PageContext } from "@/lib/assistant/types";
 import { answerEdits } from "@/lib/assistant/workflowEdits";
 
@@ -29,7 +29,7 @@ import SafeMarkdown from "@/components/assistant/messages/SafeMarkdown";
 import StepGroup from "@/components/assistant/messages/StepGroup";
 import UndoAnswer from "@/components/assistant/messages/UndoAnswer";
 import WorkflowRunNote from "@/components/assistant/messages/WorkflowRunNote";
-import { accentSoft, accentText, shimmerSx } from "@/components/assistant/styles";
+import { accentSoft, shimmerSx } from "@/components/assistant/styles";
 
 export interface MessageListProps {
   messages: AssistantMessage[];
@@ -119,12 +119,15 @@ function UserMessage({
           overflowWrap: "anywhere",
         })}>
         {/* The colour goes on the text itself: the theme's body variants carry their own. */}
-        <Typography
-          sx={(theme) => ({ fontSize: 13.5, fontWeight: 600, lineHeight: 1.45, color: accentText(theme) })}>
+        <Typography sx={{ fontSize: 13.5, fontWeight: 400, lineHeight: 1.45, color: "text.primary" }}>
           {text}
         </Typography>
       </Box>
-      <ContextChips chips={chips} />
+      {chips.length > 0 && (
+        <Stack direction="row" flexWrap="wrap" gap="6px">
+          <ContextChips chips={chips} />
+        </Stack>
+      )}
       {/* Out of the flow, in the gap below the message: it reserves no space. */}
       {time !== null && (
         <Box className="message-time" sx={{ position: "absolute", top: "100%", right: 0, mt: "2px" }}>
@@ -195,6 +198,10 @@ function Answer({
 }) {
   const blocks: ReactNode[] = [];
   let tools: DynamicToolUIPart[] = [];
+  // What the answer's steps named, for every group: a change names the workflow an earlier group read.
+  const names = stepNames(
+    message.parts.filter((part): part is DynamicToolUIPart => part.type === "dynamic-tool")
+  );
   // Only the answer's last list of each show tool becomes cards: a model that
   // names them more than once has refined what it points to. Every workflow
   // the answer created gets its card.
@@ -207,6 +214,13 @@ function Answer({
     )
     .filter((part): part is DynamicToolUIPart => part !== undefined);
   const showsCards = (part: DynamicToolUIPart) => lastShown.includes(part) || CREATES.has(part.toolName);
+  // The items the answer shows a card of (each result's first cards only): a workflow's card
+  // opens it, its run's line need not.
+  const carded = new Set(
+    message.parts
+      .filter((part): part is DynamicToolUIPart => part.type === "dynamic-tool" && showsCards(part))
+      .flatMap((part) => uniqueGroups(shownGroups(part)).flatMap((group) => group.items.map(itemKey)))
+  );
   // Each item once in the answer: a repeated create, or a workflow that
   // core_show_items names again, draws no second card.
   const seen = new Set<string>();
@@ -222,6 +236,7 @@ function Answer({
         open={running && key === "end"}
         running={running}
         openProject={openProject}
+        names={names}
       />
     );
     // In the answer's order, when it shows several kinds of cards.
@@ -280,7 +295,15 @@ function Answer({
     } else if (part.type === "data-run-status") {
       blocks.push(<RunStatusNote key={index} data={part.data} />);
     } else if (part.type === "data-workflow-run") {
-      blocks.push(<WorkflowRunNote key={part.id ?? index} data={part.data} live={running} />);
+      const card = itemKey({
+        kind: "workflow",
+        id: part.data.workflow_id,
+        projectId: part.data.project_id,
+        title: "",
+      });
+      blocks.push(
+        <WorkflowRunNote key={part.id ?? index} data={part.data} live={running} open={!carded.has(card)} />
+      );
     }
   });
   flush("end");

@@ -19,7 +19,6 @@ import {
   alpha,
   useTheme,
 } from "@mui/material";
-import { format, isSameDay, parseISO } from "date-fns";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
@@ -36,7 +35,7 @@ import {
   useConversations,
 } from "@/lib/assistant/conversations";
 import { assistantErrorKey } from "@/lib/assistant/errors";
-import { conversationTitle, groupByDay, originLabel } from "@/lib/assistant/history";
+import { conversationTitle, groupByDay, historyDate, originLabel } from "@/lib/assistant/history";
 import {
   clearDraft,
   getDockState,
@@ -98,12 +97,7 @@ export default function ConversationHistory({
   const [deleting, setDeleting] = useState<ConversationSummary | null>(null);
   const groups = groupByDay(conversations);
 
-  const when = (conversation: ConversationSummary) => {
-    const date = parseISO(conversation.updated_at);
-    return isSameDay(date, new Date())
-      ? format(date, "HH:mm")
-      : format(date, "d MMM", { locale: dateLocale });
-  };
+  const when = (conversation: ConversationSummary) => historyDate(conversation.updated_at, dateLocale);
 
   /** Rejects with the reason, which the rename dialog shows under its field. */
   const rename = async (conversation: ConversationSummary, name: string) => {

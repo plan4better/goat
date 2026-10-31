@@ -87,6 +87,13 @@ const next = () => fireEvent.click(screen.getByRole("button", { name: "Next" }))
 beforeEach(() => resetAssistantStore());
 
 describe("AskPanel with one question", () => {
+  it("offers Reply in text instead as the dock's outlined pill", () => {
+    renderPanel({ card: ONE });
+    const reply = screen.getByRole("button", { name: "Reply in text instead" });
+    expect(reply.className).toContain("MuiButton-outlined");
+    expect(getComputedStyle(reply).borderRadius).toBe("999px");
+  });
+
   it("shows the options and Send answer at once, without tabs, Review, Back or Next", async () => {
     const { onSend } = renderPanel({ card: ONE });
     expect(screen.queryByRole("tablist")).toBeNull();
@@ -752,8 +759,11 @@ describe("AskPanel with several questions", () => {
     }
   });
 
-  it("scrolls a long question inside itself", () => {
+  it("scrolls a long question inside itself, the panel kept under half the dock's height", () => {
     renderPanel();
-    expect(getComputedStyle(screen.getByRole("tabpanel")).overflowY).toBe("auto");
+    const body = getComputedStyle(screen.getByRole("tabpanel"));
+    expect(body.overflowY).toBe("auto");
+    expect(body.minHeight).toBe("0px");
+    expect(getComputedStyle(screen.getByRole("form")).maxHeight).toBe("45vh");
   });
 });

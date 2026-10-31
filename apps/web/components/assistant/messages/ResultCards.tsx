@@ -13,6 +13,7 @@ import {
   useTheme,
 } from "@mui/material";
 import { format, formatDistanceToNowStrict } from "date-fns";
+import dynamic from "next/dynamic";
 import { type MouseEvent, type ReactNode, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
@@ -23,24 +24,70 @@ import { useDateFnsLocale } from "@/i18n/utils";
 
 import { useProjectLayers } from "@/lib/api/projects";
 import type { AddedToProject } from "@/lib/assistant/addToProject";
-import { type CardBehaviour, type ItemActionContext, cardBehaviour } from "@/lib/assistant/itemActions";
-import { type CardGroup, type ResultItem, itemKey, uniqueGroups } from "@/lib/assistant/items";
+import {
+  type CardBehaviour,
+  type ItemActionContext,
+  cardBehaviour,
+  inProject as inProjectBehaviour,
+} from "@/lib/assistant/itemActions";
+import { type CardGroup, type ResultItem, itemKey, ownThumbnail, uniqueGroups } from "@/lib/assistant/items";
 import { useActiveSurface } from "@/lib/assistant/store";
 
 import { type ItemDetails, useItemDetails } from "@/hooks/assistant/useItemDetails";
 
 import { useDockActions } from "@/components/assistant/DockActions";
-import ItemPreview from "@/components/assistant/messages/ItemPreview";
+import { PartLoadFailed, orLoadFailed } from "@/components/assistant/LoadFailed";
 import ProjectPickerMenu from "@/components/assistant/messages/ProjectPickerMenu";
 import {
   CARD_RADIUS,
-  accentSoft,
+  ITEM_PREVIEW_HEIGHT,
   accentText,
   focusRing,
   mutedText,
   neutralPillSx,
   pillButtonSx,
 } from "@/components/assistant/styles";
+
+/** A frame of the preview's size, for what shows before it or in its place. */
+const PreviewFrame = ({ children }: { children: ReactNode }) => (
+  <Box
+    sx={{
+      mt: "10px",
+      height: ITEM_PREVIEW_HEIGHT,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: "10px",
+      border: 1,
+      borderColor: "divider",
+    }}>
+    {children}
+  </Box>
+);
+
+function PreviewLoadFailed() {
+  return (
+    <PreviewFrame>
+      <PartLoadFailed />
+    </PreviewFrame>
+  );
+}
+
+function PreviewLoading() {
+  return (
+    <PreviewFrame>
+      <CircularProgress size={18} />
+    </PreviewFrame>
+  );
+}
+
+// The preview draws the item with the map and table components of the catalog and
+// dataset pages: loaded when an eye button first opens one, in a frame of its size
+// meanwhile, and with a reload offered in it when its code does not load.
+const ItemPreview = dynamic(
+  () => orLoadFailed(import("@/components/assistant/messages/ItemPreview"), PreviewLoadFailed),
+  { ssr: false, loading: PreviewLoading }
+);
 
 const THUMB = 72;
 
@@ -266,10 +313,14 @@ function MetaLine({
   );
 }
 
-/** The thumbnail, or the kind's icon when there is none; a catalog record carries the catalog's mark. */
+/**
+ * The thumbnail, or a placeholder with the kind's icon when there is none (GOAT's
+ * default artwork counts as none: a light grey picture glares in dark mode); a
+ * catalog record carries the catalog's mark.
+ */
 function Thumbnail({
   item,
-  src,
+  src: given,
   onClick,
   title,
 }: {
@@ -280,6 +331,7 @@ function Thumbnail({
 }) {
   const theme = useTheme();
   const { t } = useTranslation("common");
+  const src = ownThumbnail(given);
   // The image shows only once it has loaded: a slow or failed one never flashes
   // the browser's broken-image mark, the kind's icon stays until then.
   const [state, setState] = useState<"loading" | "loaded" | "failed">("loading");
@@ -292,7 +344,7 @@ function Thumbnail({
   const picture = (
     <>
       {state !== "loaded" && (
-        <Icon iconName={KIND_ICON[item.kind]} style={{ fontSize: 22, color: accentText(theme) }} />
+        <Icon iconName={KIND_ICON[item.kind]} style={{ fontSize: 22, color: theme.palette.text.secondary }} />
       )}
       {src && state !== "failed" && (
         // eslint-disable-next-line @next/next/no-img-element -- a presigned link of any host, not a static asset
@@ -325,7 +377,8 @@ function Thumbnail({
         overflow: "hidden",
         border: 1,
         borderColor: "divider",
-        bgcolor: accentSoft(theme),
+        // On the card's paper: a tint that follows the theme, light or dark.
+        bgcolor: "action.hover",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -395,20 +448,12 @@ function ResultCard({
   const [added, setAdded] = useState<AddedToProject | null>(null);
   const [pickerAnchor, setPickerAnchor] = useState<HTMLElement | null>(null);
   const base = cardBehaviour(item, context);
-  // Once added to the open project it is in it: Zoom instead of Add, and no
-  // preview. Added elsewhere it stays as it was, marked, and may go to another.
+  // Once added to the open project it is in it: Zoom instead of Add where its map is
+  // on the page, and no preview. Added elsewhere it stays as it was, marked, and may go to another.
   const behaviour: CardBehaviour =
     added && base.action?.id === "add_to_project"
       ? added.layers.length
-        ? {
-            action: {
-              id: "zoom_to_layer",
-              labelKey: "assistant_item_zoom",
-              titleKey: "assistant_item_zoom_to_layer",
-            },
-            preview: false,
-            layer: added.layers[0],
-          }
+        ? inProjectBehaviour(added.layers[0], context)
         : { action: null, preview: false }
       : base;
   const inProject = behaviour.layer !== undefined;
@@ -620,9 +665,11 @@ export default function ResultCards({ groups }: { groups: CardGroup[] }) {
     return {
       projectId,
       canAddToProject: !!surface?.uploadTo?.projectId,
+      // Only the Map page registers a zoom; a mode switch registers the surface again.
+      canZoom: !!surface?.zoomToLayer,
       layerOfDataset: (datasetId) => byDataset.get(datasetId) ?? null,
     };
-  }, [layers, projectId, surface?.uploadTo?.projectId]);
+  }, [layers, projectId, surface?.uploadTo?.projectId, surface?.zoomToLayer]);
   const [open, setOpen] = useState<string | null>(null);
   return (
     <Stack gap="14px">

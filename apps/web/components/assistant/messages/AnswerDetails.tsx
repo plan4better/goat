@@ -1,28 +1,42 @@
 "use client";
 
 import { Box, IconButton, Popover, Stack, Tooltip, Typography, useTheme } from "@mui/material";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { UsageMetadata } from "@/lib/assistant/types";
+import { ASSISTANT_PROVIDERS, type AssistantProvider, PROVIDER_NAMES } from "@/lib/validations/assistant";
 
 import { CARD_RADIUS, eyebrowSx, headerIconButtonSx, mutedText } from "@/components/assistant/styles";
 import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
 
+const KNOWN: ReadonlySet<string> = new Set(ASSISTANT_PROVIDERS);
+
+/** A provider by its product name, an OpenAI-compatible endpoint by `compatible`, an unknown id as it is. */
+const providerName = (provider: string, compatible: string): string =>
+  KNOWN.has(provider) ? (PROVIDER_NAMES[provider as AssistantProvider] ?? compatible) : provider;
+
 /** Per-answer details (spec §10, D3): the model is never hidden. */
 export default function AnswerDetails({ usage }: { usage: UsageMetadata | undefined }) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const theme = useTheme();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  // Every answer has its details: built once per language, not on every render.
+  const number = useMemo(() => new Intl.NumberFormat(i18n.language), [i18n.language]);
   const rows: [string, string][] = usage
     ? [
         ["assistant_details_model", usage.model],
-        ["assistant_details_provider", usage.provider ?? ""],
-        ["assistant_details_input_tokens", String(usage.input_tokens)],
-        ["assistant_details_output_tokens", String(usage.output_tokens)],
-        ["assistant_details_cached_tokens", String(usage.cache_read_tokens ?? 0)],
+        [
+          "assistant_details_provider",
+          usage.provider
+            ? providerName(usage.provider, t("assistant_details_provider_openai_compatible"))
+            : "",
+        ],
+        ["assistant_details_input_tokens", number.format(usage.input_tokens)],
+        ["assistant_details_output_tokens", number.format(usage.output_tokens)],
+        ["assistant_details_cached_tokens", number.format(usage.cache_read_tokens ?? 0)],
       ]
     : [];
   return (
@@ -32,7 +46,7 @@ export default function AnswerDetails({ usage }: { usage: UsageMetadata | undefi
           aria-label={t("assistant_details")}
           onClick={(event) => setAnchor(event.currentTarget)}
           sx={headerIconButtonSx(theme)}>
-          <Icon iconName={ICON_NAME.CHART_PIE} style={{ fontSize: 15, color: "inherit" }} />
+          <Icon iconName={ICON_NAME.CIRCLEINFO} style={{ fontSize: 15, color: "inherit" }} />
         </IconButton>
       </Tooltip>
       <Popover

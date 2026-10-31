@@ -1,7 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getDockState, registerSurface, resetAssistantStore, setDockState } from "@/lib/assistant/store";
+import {
+  clearFirstMessage,
+  getDockState,
+  registerSurface,
+  resetAssistantStore,
+  setDockState,
+  setFirstMessage,
+} from "@/lib/assistant/store";
 import appStore from "@/lib/store";
 import { addPendingFeature, stopEditing } from "@/lib/store/featureEditor/slice";
 import { setMapMode } from "@/lib/store/map/slice";
@@ -50,6 +57,8 @@ vi.mock("@/components/assistant/ConversationPane", async () => {
           </button>
           <button onClick={() => actions.openInProjectMode("p1", "workflows", "w9")}>open workflow</button>
           <button onClick={() => void actions.openCreatedWorkflow("p1", "w9")}>created workflow</button>
+          <button onClick={() => actions.previewDataset("d1")}>preview dataset</button>
+          <button onClick={() => actions.previewBundle("b1")}>preview bundle</button>
           <button
             onClick={() =>
               onLoaded?.({
@@ -86,6 +95,21 @@ vi.mock("@/components/addLayer/AddLayerDialog", () => ({
   ),
 }));
 
+vi.mock("@/components/dashboard/content/ContentPreviewDialog", () => ({
+  default: (props: { layerId: string; onClose: () => void }) => (
+    <button data-testid="dataset-preview" onClick={props.onClose}>
+      {props.layerId}
+    </button>
+  ),
+}));
+vi.mock("@/components/dashboard/bundle/BundlePreviewDialog", () => ({
+  default: (props: { bundleId: string; onClose: () => void }) => (
+    <button data-testid="bundle-preview" onClick={props.onClose}>
+      {props.bundleId}
+    </button>
+  ),
+}));
+
 const drop = (files: File[]) =>
   fireEvent.drop(document.querySelector("[data-assistant-dock]") as Element, {
     dataTransfer: { types: ["Files"], files },
@@ -99,7 +123,7 @@ beforeEach(() => {
 });
 
 describe("AssistantDock", () => {
-  it("opens the upload dialog for one dropped data file, into the page's upload target", () => {
+  it("opens the upload dialog for one dropped data file, into the page's upload target", async () => {
     registerSurface({
       surface: "project.map",
       project: { id: "p1", name: "Eins" },
@@ -108,7 +132,8 @@ describe("AssistantDock", () => {
     });
     render(<AssistantDock variant="docked" />);
     drop([new File(["{}"], "netz.geojson")]);
-    const dialog = screen.getByTestId("add-layer");
+    // Loaded on demand (next/dynamic): it lands a tick after the drop.
+    const dialog = await screen.findByTestId("add-layer");
     expect(dialog.getAttribute("data-source")).toBe("upload");
     expect(dialog.getAttribute("data-project")).toBe("p1");
     expect(dialog.textContent).toBe("netz.geojson");
@@ -132,6 +157,17 @@ describe("AssistantDock", () => {
     render(<AssistantDock variant="fullscreen" />);
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(screen.queryByRole("separator")).toBeNull();
+  });
+
+  it("brings the docked content in as it opens, but not where it replaces its loading frame", () => {
+    // The content column: the panel's child next to its resize handle.
+    const content = () =>
+      screen.getByRole("separator", { name: "assistant_resize" }).nextElementSibling as HTMLElement;
+    const { unmount } = render(<AssistantDock variant="docked" />);
+    expect(getComputedStyle(content()).animation).toMatch(/180ms ease-out/);
+    unmount();
+    render(<AssistantDock variant="docked" framed />);
+    expect(getComputedStyle(content()).animation).toBe("");
   });
 
   it("starts a new conversation, expands and closes", () => {
@@ -165,6 +201,55 @@ describe("AssistantDock", () => {
     expect(screen.getByRole("button", { name: "assistant_untitled" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "loaded" }));
     expect(screen.getByRole("button", { name: "Wie viele Radwege?" })).toBeTruthy();
+  });
+
+  it("titles a conversation just sent by its first message until the server has one", () => {
+    // What the start page sent: its chat sends it and forgets it right away.
+    setFirstMessage({ conversationId: "c1", text: "Wie viele\nRadwege gibt es?", context: null });
+    setDockState({ conversationId: "c1" });
+    render(<AssistantDock variant="docked" />);
+    expect(screen.getByRole("button", { name: "Wie viele Radwege gibt es?" })).toBeTruthy();
+    clearFirstMessage("c1");
+    act(() => setDockState({ open: true, review: null }));
+    expect(screen.getByRole("button", { name: "Wie viele Radwege gibt es?" })).toBeTruthy();
+    // Once loaded, the conversation's own first message.
+    fireEvent.click(screen.getByRole("button", { name: "loaded" }));
+    expect(screen.getByRole("button", { name: "Wie viele Radwege?" })).toBeTruthy();
+    // Another conversation does not take it over.
+    act(() => setDockState({ conversationId: "c2" }));
+    expect(screen.getByRole("button", { name: "assistant_untitled" })).toBeTruthy();
+  });
+
+  it("opens a dataset's and a bundle's preview, loaded when first asked for", async () => {
+    setDockState({ conversationId: "c1" });
+    render(<AssistantDock variant="docked" />);
+    fireEvent.click(screen.getByRole("button", { name: "preview dataset" }));
+    const dataset = await screen.findByTestId("dataset-preview");
+    expect(dataset.textContent).toBe("d1");
+    fireEvent.click(dataset);
+    expect(screen.queryByTestId("dataset-preview")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "preview bundle" }));
+    expect((await screen.findByTestId("bundle-preview")).textContent).toBe("b1");
+  });
+
+  it("marks the assistant as Beta after the title, outside the history button", () => {
+    setDockState({ conversationId: "c1" });
+    render(<AssistantDock variant="docked" />);
+    const title = screen.getByRole("button", { name: "assistant_untitled" });
+    const beta = screen.getByText("assistant_beta");
+    expect(title.contains(beta)).toBe(false);
+    expect(title.compareDocumentPosition(beta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The sparkle mark stands before the title, as decoration.
+    expect(title.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
+    expect(title.previousElementSibling?.querySelector("svg")).not.toBeNull();
+  });
+
+  it("marks the assistant as Beta full screen, after its name above the history", () => {
+    render(<AssistantDock variant="fullscreen" />);
+    const name = screen.getByText("assistant_ask_ai");
+    const beta = screen.getByText("assistant_beta");
+    expect(name.compareDocumentPosition(beta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(name.parentElement).toBe(beta.parentElement);
   });
 
   it("names the history button by the visible conversation title", () => {

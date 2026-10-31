@@ -9,7 +9,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { answerItem, answerParts, emptyChoice } from "@/lib/assistant/ask";
 import type { AskAnswer, AskCardData } from "@/lib/assistant/types";
 
-import { AnsweredQuestion, QuestionField } from "@/components/assistant/messages/AskQuestion";
+import { AnsweredQuestion, PassedQuestion, QuestionField } from "@/components/assistant/messages/AskQuestion";
 import { CARD_RADIUS, accentText, focusRing, mutedText } from "@/components/assistant/styles";
 
 export interface AskCardProps {
@@ -67,9 +67,10 @@ function WaitingLine({ headers, onShow }: { headers: string[]; onShow?: () => vo
  * transcript. While the panel in the composer's place asks them, a line here
  * holds their place (it lists the headers, and moves the focus into the
  * panel); once answered, the card shows the chosen labels and free
- * text, live and after a reload alike. Otherwise the card shows its questions,
- * disabled: while the composer holds the open card (to read what a typed reply
- * answers), passed over by a typed reply, its ask step not returned in a
+ * text, live and after a reload alike. Passed over by a typed reply, it shows
+ * its questions with what they offered, muted, and nothing to pick. Otherwise
+ * the card shows its questions, disabled: while the composer holds the open
+ * card (to read what a typed reply answers), its ask step not returned in a
  * stored answer, or in a read-only conversation.
  */
 export default function AskCard({
@@ -107,6 +108,8 @@ export default function AskCard({
     ));
   } else if (waiting) {
     body = <WaitingLine headers={headers} onShow={onShow} />;
+  } else if (superseded) {
+    body = card.questions.map((question, index) => <PassedQuestion key={index} question={question} />);
   } else {
     body = [
       ...card.questions.map((question, index) => (
@@ -120,7 +123,7 @@ export default function AskCard({
         />
       )),
       // Held by the composer: the way to the panel, under the questions the reply answers.
-      held && !superseded && <WaitingLine key="waiting" headers={headers} onShow={onShow} />,
+      held && <WaitingLine key="waiting" headers={headers} onShow={onShow} />,
     ];
   }
   const notAnswered = superseded && !answer;

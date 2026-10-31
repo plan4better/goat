@@ -675,7 +675,8 @@ const PublicProjectLayout = ({
   return (
     <Box sx={{ height: "100%", width: "100%", display: "flex", flexDirection: "column", fontFamily: dashboardFont }}>
       {project && builderConfig?.settings?.toolbar && (
-        <Header showHambugerMenu={false} mapHeader={true} project={project} viewOnly />
+        // In the dashboard builder's preview (not view only) the project header above has Ask AI already.
+        <Header showHambugerMenu={false} mapHeader={true} project={project} viewOnly askAi={!!viewOnly} />
       )}
       <Box
         display="flex"

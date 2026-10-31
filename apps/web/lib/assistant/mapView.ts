@@ -63,6 +63,26 @@ export function projectMapContext({
   return context;
 }
 
+/** Whether two [west, south, east, north] boxes share any area or edge. */
+export const boxesOverlap = (a: readonly number[], b: readonly number[]): boolean =>
+  a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
+
+/**
+ * Whether two views of the map show the same area: each side moved by less
+ * than 1% of the view's width or height. Any move counts, the user's or one a
+ * map control made (search, zoom buttons, zoom to layer).
+ */
+export const sameView = (a: readonly number[], b: readonly number[]): boolean => {
+  const dx = (a[2] - a[0]) / 100;
+  const dy = (a[3] - a[1]) / 100;
+  return (
+    Math.abs(a[0] - b[0]) <= dx &&
+    Math.abs(a[2] - b[2]) <= dx &&
+    Math.abs(a[1] - b[1]) <= dy &&
+    Math.abs(a[3] - b[3]) <= dy
+  );
+};
+
 /** Move the map to a proposed view (page state only, spec §10); the returned function flies back. */
 export function applyMapView(map: MapLike, payload: MapViewPayload): () => void {
   const center = map.getCenter();

@@ -21,6 +21,8 @@ const { useProjectsMock } = vi.hoisted(() => ({
   })),
 }));
 vi.mock("@/lib/api/projects", () => ({ useProjects: (params: unknown) => useProjectsMock(params) }));
+const { feedback } = vi.hoisted(() => ({ feedback: { href: null as string | null } }));
+vi.mock("@/components/support/SupportMenu", () => ({ useReportProblemHref: () => feedback.href }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
 }));
@@ -37,6 +39,7 @@ const base = {
 afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
+  feedback.href = null;
 });
 
 describe("Composer", () => {
@@ -119,6 +122,114 @@ describe("Composer", () => {
     expect(onSend).toHaveBeenCalledTimes(2);
     fireEvent.click(screen.getByRole("button", { name: "stop" }));
     expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for a question in one short placeholder, with or without mentions", () => {
+    for (const mentionsEnabled of [true, false]) {
+      const { unmount } = render(
+        <Composer
+          {...base}
+          mentionsEnabled={mentionsEnabled}
+          draft=""
+          onDraftChange={vi.fn()}
+          onAddSource={vi.fn()}
+        />
+      );
+      expect(screen.getByRole("textbox").getAttribute("placeholder"), String(mentionsEnabled)).toBe(
+        "assistant_composer_placeholder"
+      );
+      unmount();
+    }
+  });
+
+  it("puts the note above the box, with Feedback where a problem can be reported", () => {
+    feedback.href = "/support/new?from=%2Fhome";
+    render(<Composer {...base} draft="" onDraftChange={vi.fn()} onAddSource={vi.fn()} />);
+    const note = screen.getByText("assistant_scope_note");
+    const box = screen.getByRole("textbox");
+    expect(note.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const link = screen.getByRole("link", { name: "assistant_feedback_link" });
+    expect(link.getAttribute("href")).toBe("/support/new?from=%2Fhome");
+    // On the same line as the note.
+    expect(link.parentElement).toBe(note.parentElement);
+  });
+
+  it("opens the ticket form in a new tab, so the dock stays beside the answer being reported", () => {
+    feedback.href = "/support/new?from=%2Fmap%2Fp1";
+    render(<Composer {...base} draft="" onDraftChange={vi.fn()} onAddSource={vi.fn()} />);
+    const link = screen.getByRole("link", { name: "assistant_feedback_link" });
+    expect(link.getAttribute("href")).toBe("/support/new?from=%2Fmap%2Fp1");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("hands the support email to the mail client without opening a tab", () => {
+    feedback.href = "mailto:support@example.com";
+    render(<Composer {...base} draft="" onDraftChange={vi.fn()} onAddSource={vi.fn()} />);
+    const link = screen.getByRole("link", { name: "assistant_feedback_link" });
+    expect(link.getAttribute("href")).toBe("mailto:support@example.com");
+    expect(link.getAttribute("target")).toBeNull();
+  });
+
+  it("leaves Feedback out where there is no ticket form and no support email", () => {
+    feedback.href = null;
+    render(<Composer {...base} draft="" onDraftChange={vi.fn()} onAddSource={vi.fn()} />);
+    expect(screen.getByText("assistant_scope_note")).toBeTruthy();
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("puts the context chips and the source chip in one wrapping row", () => {
+    render(
+      <Composer
+        {...base}
+        chips={[
+          { key: "target", label: "Radnetz", kind: "target", removable: false },
+          { key: "viewport", label: "Map view", kind: "page", removable: true },
+        ]}
+        draft=""
+        onDraftChange={vi.fn()}
+        onAddSource={vi.fn()}
+      />
+    );
+    const group = screen.getByRole("group", { name: "assistant_context_label" });
+    const chip = (label: string) => screen.getByText(label).closest(".MuiChip-root");
+    expect(chip("Radnetz")?.parentElement).toBe(group);
+    expect(chip("Map view")?.parentElement).toBe(group);
+  });
+
+  it("shows Stop alone while an answer runs and nothing is typed", () => {
+    render(
+      <Composer
+        {...base}
+        busy
+        queueWhileBusy
+        onStop={vi.fn()}
+        draft="  "
+        onDraftChange={vi.fn()}
+        onAddSource={vi.fn()}
+      />
+    );
+    expect(screen.getByRole("button", { name: "stop" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "assistant_send" })).toBeNull();
+  });
+
+  it("takes the focus when asked, with the caret after the text", () => {
+    const { rerender } = render(
+      <Composer {...base} draft="Build a workflow that " onDraftChange={vi.fn()} onAddSource={vi.fn()} />
+    );
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(document.activeElement).not.toBe(box);
+    rerender(
+      <Composer
+        {...base}
+        draft="Build a workflow that "
+        focusRequest={1}
+        onDraftChange={vi.fn()}
+        onAddSource={vi.fn()}
+      />
+    );
+    expect(document.activeElement).toBe(box);
+    expect(box.selectionStart).toBe("Build a workflow that ".length);
   });
 
   it("sends nothing while busy otherwise", () => {

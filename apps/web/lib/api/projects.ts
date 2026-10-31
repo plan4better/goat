@@ -1,4 +1,4 @@
-import useSWR from "swr";
+import useSWR, { type SWRConfiguration } from "swr";
 
 import { SAVE_TIMEOUT_MS, changedElsewhere } from "@/lib/api/changedElsewhere";
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
@@ -55,10 +55,11 @@ export const useProject = (projectId?: string) => {
 export const getProject = async (projectId: string): Promise<Project> =>
   (await fetcher([`${PROJECTS_API_BASE_URL}/${projectId}`])) as Project;
 
-export const useProjectLayers = (projectId?: string) => {
+export const useProjectLayers = (projectId?: string, config?: SWRConfiguration<ProjectLayer[]>) => {
   const { data, isLoading, error, mutate, isValidating } = useAuthedSWR<ProjectLayer[]>(
     () => (projectId ? [`${PROJECTS_API_BASE_URL}/${projectId}/layer`] : null),
-    fetcher
+    fetcher,
+    config
   );
 
   return {

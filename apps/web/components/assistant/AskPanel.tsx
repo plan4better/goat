@@ -378,6 +378,9 @@ export default function AskPanel({
         bgcolor: "background.paper",
         boxShadow: surfaceShadows(theme).rest,
         overflow: "hidden",
+        // The transcript above keeps the larger part of the dock; the docked and the
+        // full-screen dock are about as tall as the window.
+        maxHeight: "45vh",
       }}>
       {tabRow}
       <Box
@@ -385,8 +388,8 @@ export default function AskPanel({
         role={tabbed ? "tabpanel" : undefined}
         id={`${id}-panel`}
         aria-labelledby={tabbed ? `${id}-tab${tab}` : undefined}
-        // A long question scrolls here: the transcript above keeps its room.
-        sx={{ px: "12px", pt: "12px", pb: "10px", overflowY: "auto", maxHeight: "min(46vh, 420px)" }}>
+        // A long question scrolls here, between the tabs and the actions.
+        sx={{ px: "12px", pt: "12px", pb: "10px", overflowY: "auto", flex: "1 1 auto", minHeight: 0 }}>
         {review ? (
           reviewList
         ) : (
@@ -412,16 +415,11 @@ export default function AskPanel({
         sx={{ mx: "12px", pt: "10px", pb: "12px", borderTop: 1, borderColor: "divider" }}>
         <Button
           type="button"
-          variant="text"
+          variant="outlined"
           color="inherit"
           size="small"
           onClick={onReplyInText}
-          sx={{
-            ...pillButtonSx,
-            "&&": { ...pillButtonSx["&&"], px: "8px" },
-            color: mutedText(theme),
-            ...focusRing(theme),
-          }}>
+          sx={{ ...neutralPillSx(theme), ...focusRing(theme) }}>
           {t("assistant_ask_reply_in_text")}
         </Button>
         <Stack direction="row" gap="8px" sx={{ ml: "auto" }}>

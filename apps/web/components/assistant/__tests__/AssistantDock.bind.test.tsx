@@ -32,10 +32,15 @@ vi.mock("@/lib/assistant/transport", () => ({
   fetchConversation: fetchMock,
   createConversation: vi.fn(),
 }));
-vi.mock("@/lib/api/projects", () => ({ useProjects: () => ({ projects: { items: [] }, isLoading: false }) }));
+vi.mock("@/lib/api/projects", () => ({
+  useProjects: () => ({ projects: { items: [] }, isLoading: false }),
+  useProjectLayers: () => ({ layers: undefined }),
+}));
 vi.mock("@/components/assistant/ConversationHistory", () => ({
   default: () => <div data-testid="history" />,
 }));
+// The composer's Feedback link reads the support summary; not under test here.
+vi.mock("@/components/support/SupportMenu", () => ({ useReportProblemHref: () => null }));
 vi.mock("@/components/addLayer/AddLayerDialog", () => ({ default: () => null }));
 
 const view: Proposal = {

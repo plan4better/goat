@@ -50,7 +50,10 @@ vi.mock("react-toastify", () => ({
   toast: { info: toastInfo, warning: vi.fn(), success: vi.fn(), error: vi.fn() },
 }));
 vi.mock("@/lib/api/fetcher", () => ({ getAccessToken: vi.fn(), fetcher: vi.fn(), apiRequestAuth: vi.fn() }));
-vi.mock("@/lib/api/projects", () => ({ useProjects: () => ({ projects: { items: [] }, isLoading: false }) }));
+vi.mock("@/lib/api/projects", () => ({
+  useProjects: () => ({ projects: { items: [] }, isLoading: false }),
+  useProjectLayers: () => ({ layers: undefined }),
+}));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
 }));
@@ -124,10 +127,11 @@ describe("ChatView", () => {
       context: { surface: "catalog", q: "rad", facets: { themes: ["transportation"] } },
     });
     expect(options.messages[0].parts.map((part) => part.type)).toEqual(["text", "data-context"]);
-    // Send stays next to Stop; with no text it has nothing to send.
+    // Stop stands alone while nothing is typed; Send joins it once there is something to queue.
     expect(screen.getByRole("button", { name: "stop" })).toBeTruthy();
-    expect((screen.getByRole("button", { name: "assistant_send" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "assistant_send" })).toBeNull();
     type("noch eine");
+    expect(screen.getByRole("button", { name: "assistant_send" })).toBeTruthy();
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
     expect(sendMessages).toHaveBeenCalledTimes(1);
     expect(within(queuedItem()).getByText("noch eine")).toBeTruthy();
@@ -413,6 +417,77 @@ describe("ChatView", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.getByText("assistant_lost_access")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "assistant_open_in_project" })).toBeNull();
+  });
+
+  it("keeps a reopened conversation at its end while cards load later and make it taller", () => {
+    /** Each observer's callback and what it watches. */
+    const observers: { callback: () => void; targets: Element[] }[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        entry: { callback: () => void; targets: Element[] };
+        constructor(callback: () => void) {
+          this.entry = { callback, targets: [] };
+          observers.push(this.entry);
+        }
+        observe(target: Element) {
+          this.entry.targets.push(target);
+        }
+        disconnect() {}
+      }
+    );
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    let height = 500;
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => height });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 200 });
+    try {
+      const stored: AssistantMessage[] = [
+        { id: "u1", role: "user", parts: [{ type: "text", text: "Wie viele Radwege?" }] },
+        { id: "a1", role: "assistant", parts: [{ type: "text", text: "Drei." }] },
+      ];
+      renderChat({ initialMessages: stored });
+      const answer = screen.getByText("Drei.");
+      let transcript = answer.parentElement as HTMLElement;
+      while (transcript.scrollTop !== 500) transcript = transcript.parentElement as HTMLElement;
+      // Its content is watched, not only the footer.
+      const content = observers.find((observer) =>
+        observer.targets.some((target) => target !== transcript && target.contains(answer))
+      );
+      expect(content).toBeTruthy();
+      const grow = (to: number) => {
+        height = to;
+        act(() => content?.callback());
+      };
+      // A card's details arrive: the end stays in view.
+      grow(640);
+      expect(transcript.scrollTop).toBe(640);
+      // Scrolled up to read: it stays where the person is.
+      transcript.scrollTop = 40;
+      fireEvent.scroll(transcript);
+      grow(700);
+      expect(transcript.scrollTop).toBe(40);
+      // Back at the end, the person opens a step group: what they opened stays where it is.
+      transcript.scrollTop = 700;
+      fireEvent.scroll(transcript);
+      fireEvent.pointerDown(answer);
+      grow(900);
+      expect(transcript.scrollTop).toBe(700);
+      // The next scroll (by the person or a new message) decides again.
+      transcript.scrollTop = 900;
+      fireEvent.scroll(transcript);
+      grow(960);
+      expect(transcript.scrollTop).toBe(960);
+    } finally {
+      vi.unstubAllGlobals();
+      for (const [name, descriptor] of [
+        ["scrollHeight", original],
+        ["clientHeight", client],
+      ] as const) {
+        if (descriptor) Object.defineProperty(HTMLElement.prototype, name, descriptor);
+        else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
+      }
+    }
   });
 
   it("sends the first message of a new conversation once, also under StrictMode", async () => {
@@ -1354,16 +1429,16 @@ describe("ChatView ask cards", () => {
 
   it("stops watching the footer's size when the chat closes", () => {
     /** Each observer, what it watches, and whether it stopped (descriptions measure themselves too). */
-    const observers: { target?: Element; disconnected: boolean }[] = [];
+    const observers: { targets: Element[]; disconnected: boolean }[] = [];
     vi.stubGlobal(
       "ResizeObserver",
       class {
-        entry = { target: undefined as Element | undefined, disconnected: false };
+        entry = { targets: [] as Element[], disconnected: false };
         constructor() {
           observers.push(this.entry);
         }
         observe(target: Element) {
-          this.entry.target = target;
+          this.entry.targets.push(target);
         }
         disconnect() {
           this.entry.disconnected = true;
@@ -1373,7 +1448,7 @@ describe("ChatView ask cards", () => {
     try {
       const { unmount } = renderChat({ initialMessages: asked });
       const panel = screen.getByRole("form", { name: "assistant_ask_label" });
-      const footer = observers.find((observer) => observer.target?.contains(panel));
+      const footer = observers.find((observer) => observer.targets.some((target) => target.contains(panel)));
       expect(footer?.disconnected).toBe(false);
       unmount();
       expect(footer?.disconnected).toBe(true);

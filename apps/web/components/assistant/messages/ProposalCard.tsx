@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Button, Stack, Typography, alpha, useTheme } from "@mui/material";
+import { Box, Button, Stack, Tooltip, Typography, alpha, useTheme } from "@mui/material";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
@@ -182,14 +182,17 @@ export default function ProposalCard({
   } else if (applicable) {
     footer = (
       <Stack direction="row" gap="8px" alignItems="center">
-        <Button
-          variant="contained"
-          size="small"
-          disabled={working}
-          onClick={() => void apply()}
-          sx={{ ...pillButtonSx, "&&": { ...pillButtonSx["&&"], px: "18px" } }}>
-          {t(applyKey)}
-        </Button>
+        {/* No hint while applying: a disabled button shows no tooltip. */}
+        <Tooltip title={working ? "" : t("assistant_proposal_apply_hint")} describeChild>
+          <Button
+            variant="contained"
+            size="small"
+            disabled={working}
+            onClick={() => void apply()}
+            sx={{ ...pillButtonSx, "&&": { ...pillButtonSx["&&"], px: "18px" } }}>
+            {t(applyKey)}
+          </Button>
+        </Tooltip>
         <Button
           variant="outlined"
           color="inherit"

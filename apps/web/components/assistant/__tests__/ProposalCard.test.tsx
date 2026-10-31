@@ -112,6 +112,13 @@ describe("ProposalCard", () => {
     expect(screen.getByRole("button", { name: "assistant_proposal_apply_page" })).toBeTruthy();
   });
 
+  it("says on its apply button that the page changes only once applied", async () => {
+    register({ surface: "catalog", getContext: () => ({ surface: "catalog" }), apply: vi.fn() });
+    card(filters);
+    fireEvent.mouseOver(screen.getByRole("button", { name: "assistant_proposal_apply_page" }));
+    expect((await screen.findByRole("tooltip")).textContent).toBe("assistant_proposal_apply_hint");
+  });
+
   it("keeps Undo on the newest applied card of a page only", async () => {
     // The page's own state: each apply returns an undo that restores what was there before it.
     let q = "";

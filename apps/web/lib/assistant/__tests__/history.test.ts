@@ -1,6 +1,13 @@
+import { de, enGB } from "date-fns/locale";
 import { describe, expect, it } from "vitest";
 
-import { conversationTitle, groupByDay, originLabel } from "@/lib/assistant/history";
+import {
+  conversationTitle,
+  groupByDay,
+  historyDate,
+  originLabel,
+  provisionalTitle,
+} from "@/lib/assistant/history";
 import type { ConversationSummary } from "@/lib/assistant/types";
 
 const t = (key: string) => key;
@@ -50,6 +57,24 @@ describe("history labels", () => {
     expect(originLabel(row({ origin_surface: "catalog" }), t)).toBe("catalog");
     expect(originLabel(row({ origin_surface: "home" }), t)).toBe("home");
     expect(originLabel(row({ origin_surface: "spike" }), t)).toBe("assistant_origin_other");
+  });
+
+  it("dates a row by its time today, else by its day, in German with a dot after the day", () => {
+    const now = new Date(2026, 9, 31, 12, 0);
+    const at = (day: number, hour: number, minute: number) =>
+      new Date(2026, 9, day, hour, minute).toISOString();
+    expect(historyDate(at(31, 9, 5), de, now)).toBe("09:05");
+    expect(historyDate(at(30, 9, 5), de, now)).toBe("30. Okt.");
+    expect(historyDate(at(30, 9, 5), enGB, now)).toBe("30 Oct");
+    expect(historyDate(new Date(2026, 4, 3).toISOString(), de, now)).toBe("3. Mai");
+  });
+
+  it("titles a conversation just sent by its first message on one line, cut as the history cuts it", () => {
+    expect(provisionalTitle("  Wie viele\nRadwege  gibt es? ")).toBe("Wie viele Radwege gibt es?");
+    const long = "x".repeat(250);
+    expect(provisionalTitle(long)).toBe(`${"x".repeat(199)}…`);
+    expect(provisionalTitle("   ")).toBeNull();
+    expect(provisionalTitle(undefined)).toBeNull();
   });
 
   it("groups by today and earlier", () => {

@@ -40,7 +40,10 @@ vi.mock("@/lib/assistant/transport", () => ({
 }));
 vi.mock("@/lib/assistant/conversations", () => ({ refreshConversationLists: vi.fn() }));
 vi.mock("@/lib/api/fetcher", () => ({ getAccessToken: vi.fn(), fetcher: vi.fn(), apiRequestAuth: vi.fn() }));
-vi.mock("@/lib/api/projects", () => ({ useProjects: () => ({ projects: { items: [] }, isLoading: false }) }));
+vi.mock("@/lib/api/projects", () => ({
+  useProjects: () => ({ projects: { items: [] }, isLoading: false }),
+  useProjectLayers: () => ({ layers: undefined }),
+}));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
 }));

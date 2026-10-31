@@ -3,7 +3,7 @@
 import { Box, useMediaQuery, useTheme } from "@mui/material";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { useAssistantStatus } from "@/lib/api/assistant";
 import { useUserProfile } from "@/lib/api/users";
@@ -11,10 +11,24 @@ import { claimDock, getDockState, setDockState, useActiveSurface, useDockState }
 import { assistantRouteAllowed } from "@/lib/assistant/surface";
 import { ASSISTANT_BASE_URL } from "@/lib/constants";
 
-// Loaded on demand: the root layout carries this frame on every page, the dock
-// (AI SDK, Markdown, the Add Layer dialog) only where AI is available.
-const AssistantDock = dynamic(() => import("@/components/assistant/AssistantDock"), { ssr: false });
+import DockSkeleton from "@/components/assistant/DockSkeleton";
+import { prefetchAssistant, useAssistantDock, whenIdle } from "@/components/assistant/dockLoader";
+
+// The root layout carries this frame on every page: the dock (AI SDK, Markdown) and the
+// run watcher load only where AI is available, the dock ahead of the first click (dockLoader).
 const RunWatcher = dynamic(() => import("@/components/assistant/RunWatcher"), { ssr: false });
+
+/** The dock, or its frame while the dock's code loads. */
+function Dock({ variant }: { variant: "docked" | "fullscreen" }) {
+  const AssistantDock = useAssistantDock();
+  // Whether this dock showed its frame first, decided as it mounts.
+  const [framed] = useState(() => !AssistantDock);
+  return AssistantDock ? (
+    <AssistantDock variant={variant} framed={framed} />
+  ) : (
+    <DockSkeleton variant={variant} />
+  );
+}
 
 /**
  * Mounted once in the root layout (spec §10), so the dock survives switching
@@ -42,6 +56,14 @@ function AssistantFrame({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (getDockState().enabled !== enabled) setDockState({ enabled });
   }, [enabled]);
+  // The dock's code and history load while the page is idle, so the first Ask AI click
+  // waits for neither; a project that registers later gets its own list read then. A phone,
+  // where data may be metered, loads them as the button is touched instead (AskAiButton).
+  const projectId = surface?.project?.id;
+  useEffect(() => {
+    if (!enabled || isPhone) return;
+    return whenIdle(prefetchAssistant);
+  }, [enabled, isPhone, projectId]);
   // The tab keeps the dock's state across a sign-out: the next user starts without
   // the previous user's conversation.
   const { userProfile } = useUserProfile();
@@ -68,9 +90,9 @@ function AssistantFrame({ children }: { children: ReactNode }) {
         <Box sx={{ position: "relative", flex: 1, minWidth: 0, height: "100%", overflow: "hidden" }}>
           {children}
         </Box>
-        {showPanel && !fullscreen && <AssistantDock variant="docked" />}
+        {showPanel && !fullscreen && <Dock variant="docked" />}
       </Box>
-      {showPanel && fullscreen && <AssistantDock variant="fullscreen" />}
+      {showPanel && fullscreen && <Dock variant="fullscreen" />}
       {enabled && <RunWatcher />}
     </>
   );

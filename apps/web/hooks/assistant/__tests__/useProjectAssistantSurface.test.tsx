@@ -85,6 +85,12 @@ describe("useProjectAssistantSurface", () => {
     await getActiveSurface()?.zoomToLayer?.(77);
     expect(redux.dispatch).toHaveBeenCalledWith(expect.objectContaining({ payload: [77] }));
     expect(navigate.zoomToProjectLayer).toHaveBeenCalledWith(map, layer);
+    // A fit the user did not ask for leaves the selection as it is.
+    redux.dispatch.mockClear();
+    navigate.zoomToProjectLayer.mockClear();
+    await getActiveSurface()?.zoomToLayer?.(77, { select: false });
+    expect(redux.dispatch).not.toHaveBeenCalled();
+    expect(navigate.zoomToProjectLayer).toHaveBeenCalledWith(map, layer);
     rerender({ mapMode: "workflows" });
     expect(getActiveSurface()?.zoomToLayer).toBeUndefined();
   });

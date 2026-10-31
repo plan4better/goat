@@ -8,9 +8,10 @@ import {
   ARGUMENT_CHARS,
   clip,
   groupSummary,
-  layerNames,
   staysVisible,
   stepLabel,
+  stepNames,
+  stepResult,
   stepRows,
 } from "@/lib/assistant/stepLabels";
 
@@ -40,7 +41,7 @@ const call = (
 const failed = (toolName: string, input: unknown) => call(toolName, input, undefined, "output-error");
 
 const label = (step: DynamicToolUIPart, steps: DynamicToolUIPart[] = [step]) =>
-  stepLabel(step, layerNames(steps), enTranslate);
+  stepLabel(step, stepNames(steps), enTranslate);
 
 describe("step labels", () => {
   it("name what core_find searched for, and fall back to the plain label", () => {
@@ -49,7 +50,7 @@ describe("step labels", () => {
     expect(label(call("core_find", { query: "Anna", kind: "workflow" }))).toBe(
       "Searched workflows for “Anna”"
     );
-    expect(label(call("core_find", { query: "A3", kind: "layout" }))).toBe("Searched print layouts for “A3”");
+    expect(label(call("core_find", { query: "A3", kind: "layout" }))).toBe("Searched layouts for “A3”");
     expect(label(call("core_find", { query: "rad", kind: "dataset" }))).toBe("Searched datasets for “rad”");
     expect(label(call("core_find", { query: "rad", kind: "project" }))).toBe("Searched projects for “rad”");
     expect(label(call("core_find", { query: "rad", kind: "nonsense" }))).toBe(
@@ -89,7 +90,7 @@ describe("step labels", () => {
       "Listed the workflows of “Tool 4 V2”"
     );
     expect(label(call("project_get_layouts", {}, { project_name: "Tool 3", layouts: [] }))).toBe(
-      "Listed the print layouts of “Tool 3”"
+      "Listed the layouts of “Tool 3”"
     );
     expect(label(call("core_show_items", { groups: [] }))).toBe("Listed the matching items");
   });
@@ -234,7 +235,7 @@ describe("step labels", () => {
 
   it("leave the values unescaped for the React text they end up in", () => {
     const step = call("core_find", { query: "a & <b> / 'c'" });
-    expect(stepLabel(step, layerNames([step]), plainTranslate(enTranslate))).toBe(
+    expect(stepLabel(step, stepNames([step]), plainTranslate(enTranslate))).toBe(
       "Searched your content for “a & <b> / 'c'”"
     );
   });
@@ -332,7 +333,7 @@ describe("workflow step labels", () => {
 
 describe("running step labels", () => {
   const running = (step: DynamicToolUIPart, t: Translate = enTranslate) =>
-    stepLabel(step, layerNames([step]), t, true);
+    stepLabel(step, stepNames([step]), t, true);
 
   it("say in the present tense what the step is doing, with its argument", () => {
     expect(running(call("catalog_search", { q: "Schule" }))).toBe("Searching the catalog for “Schule”…");
@@ -356,14 +357,14 @@ describe("running step labels", () => {
     expect(running(call("catalog_search", { q: "Schule" }), deTranslate)).toBe(
       "Durchsucht den Katalog nach „Schule“…"
     );
-    expect(running(call("project_count_features", {}), deTranslate)).toBe("Zählt Objekte…");
+    expect(running(call("project_count_features", {}), deTranslate)).toBe("Zählt Features…");
     expect(running(call("some_new_tool", {}))).toBe("Working…");
     expect(running(call("some_new_tool", {}), deTranslate)).toBe("Arbeitet…");
   });
 
   it("keep the past tense for a finished step", () => {
     const step = call("catalog_search", { q: "Schule" }, { numberMatched: 2 });
-    expect(stepLabel(step, layerNames([step]), enTranslate)).toBe("Searched the catalog for “Schule”");
+    expect(stepLabel(step, stepNames([step]), enTranslate)).toBe("Searched the catalog for “Schule”");
   });
 });
 
@@ -578,7 +579,7 @@ describe("workflow edit steps", () => {
     expect(label(read("w1", "Schools: walk"))).toBe("Read the workflow “Schools: walk”");
     expect(label(call("workflow_get", { workflow_id: "w1" }))).toBe("Read a workflow");
     expect(label(edit)).toBe("Changed the workflow");
-    expect(stepLabel(edit, layerNames([edit]), deTranslate)).toBe("Workflow geändert");
+    expect(stepLabel(edit, stepNames([edit]), deTranslate)).toBe("Workflow geändert");
   });
 
   it("keep a change visible as a line of its own, and count reads by workflow", () => {
@@ -586,5 +587,75 @@ describe("workflow edit steps", () => {
     expect(rows.filter((row) => staysVisible(row, false)).map((row) => row.step)).toEqual([edit]);
     expect(summary([read("w1", "A"), read("w1", "A"), read("w2", "B")])).toBe("Read 2 workflows");
     expect(summary([read("w1", "A")], deTranslate)).toBe("Einen Workflow gelesen");
+  });
+
+  it("name the changed workflow by what the answer's other steps read or made of it", () => {
+    const de = (step: DynamicToolUIPart, steps: DynamicToolUIPart[]) =>
+      stepLabel(step, stepNames(steps), deTranslate);
+    // Its result carries no name: the read before it does.
+    expect(label(edit, [read("W1", "Schools: walk"), edit])).toBe("Changed the workflow “Schools: walk”");
+    expect(de(edit, [read("w1", "Schools: walk"), edit])).toBe("Workflow „Schools: walk“ geändert");
+    // A workflow the answer created, or one the project's list named.
+    const created = call(
+      "workflow_create",
+      { draft: {} },
+      { workflow: { id: "w1", name: "Kitas", project_id: "p1" }, groups: [] }
+    );
+    expect(label(edit, [created, edit])).toBe("Changed the workflow “Kitas”");
+    const listed = call(
+      "project_get_workflows",
+      {},
+      { project_name: "P", workflows: [{ id: "w1", name: "Radnetz" }] }
+    );
+    expect(label(edit, [listed, edit])).toBe("Changed the workflow “Radnetz”");
+    // Under way, and failed: the same name.
+    const changing = call("workflow_update", { workflow_id: "w1", operations: [] });
+    expect(stepLabel(changing, stepNames([read("w1", "Kitas"), changing]), enTranslate, true)).toBe(
+      "Changing the workflow “Kitas”…"
+    );
+    const broken = failed("workflow_update", { workflow_id: "w1", operations: [] });
+    expect(label(broken, [read("w1", "Kitas"), broken])).toBe("Changed the workflow “Kitas”");
+    // Another workflow's name is not this one's.
+    expect(label(edit, [read("w2", "Other"), edit])).toBe("Changed the workflow");
+  });
+});
+
+describe("added datasets", () => {
+  const added = (...names: string[]) =>
+    call(
+      "project_add_catalog_layer",
+      { catalog_id: "c1" },
+      { project_id: "p1", layers: names.map((name, index) => ({ layer_project_id: index + 1, name })) }
+    );
+
+  it("name the dataset an add put into the project", () => {
+    expect(label(added("Zensus 2022 population"))).toBe("Added “Zensus 2022 population” to the project");
+    expect(stepLabel(added("Supermärkte"), stepNames([]), deTranslate)).toBe(
+      "„Supermärkte“ zum Projekt hinzugefügt"
+    );
+    // A long name is cut, as every argument of a label is.
+    const long = "x".repeat(60);
+    expect(label(added(long))).toBe(`Added “${clip(long)}” to the project`);
+  });
+
+  it("fall back to the plain label without one name: a failed add, or a bundle's several layers", () => {
+    expect(label(failed("project_add_catalog_layer", { catalog_id: "c1" }))).toBe(
+      "Added a catalog dataset to the project"
+    );
+    expect(label(added("Stops", "Routes"))).toBe("Added a catalog dataset to the project");
+    expect(label(added())).toBe("Added a catalog dataset to the project");
+    expect(
+      stepLabel(call("project_add_catalog_layer", { catalog_id: "c1" }), stepNames([]), enTranslate, true)
+    ).toBe("Adding a catalog dataset to the project…");
+  });
+});
+
+describe("step results", () => {
+  it("write counts with the UI language's thousands separator", () => {
+    const counted = call("project_count_features", { layer_project_id: 1 }, { layer: "A", count: 4766 });
+    expect(stepResult(counted, enTranslate)).toBe("4,766 features");
+    expect(stepResult(counted, deTranslate)).toBe("4.766 Features");
+    const found = call("catalog_search", { q: "a" }, { numberMatched: 12500 });
+    expect(stepResult(found, deTranslate)).toBe("12.500 Datensätze");
   });
 });

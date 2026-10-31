@@ -53,14 +53,17 @@ export default function WorkflowList({ onSelectWorkflow }: WorkflowListProps) {
           </ListItemIcon>
           <ListItemText
             primary={workflow.name}
-            secondary={
-              workflow.description && workflow.description.length > 60
-                ? `${workflow.description.substring(0, 60)}...`
-                : workflow.description
-            }
+            secondary={workflow.description}
             secondaryTypographyProps={{
               variant: "caption",
-              sx: { opacity: 0.7 },
+              // Two lines at most, cut at a word; a blank line in the text stays a space.
+              sx: {
+                opacity: 0.7,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              },
             }}
           />
           <ListItemSecondaryAction>
