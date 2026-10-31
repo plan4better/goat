@@ -31,6 +31,7 @@ import {
   useWorkflow,
 } from "@/lib/api/workflows";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
+import { creditsErrorMessage } from "@/lib/utils/credits";
 import { claimJobAnnouncement } from "@/lib/utils/jobAnnouncement";
 import { refusalSummary } from "@/lib/utils/workflowIssueText";
 import { workflowRunsSomething } from "@/lib/utils/workflowRuns";
@@ -174,9 +175,7 @@ export default function WorkflowRunner({ workflowId, onBack, onClose }: Workflow
       const message =
         error instanceof WorkflowIssuesError
           ? refusalSummary(t, error.issues, workflow.config.nodes)
-          : error instanceof Error
-            ? error.message
-            : t("execution_failed");
+          : (creditsErrorMessage(error, t) ?? (error instanceof Error ? error.message : t("execution_failed")));
       setExecState((s) => ({
         ...s,
         isExecuting: false,

@@ -126,8 +126,9 @@ Run `./setup.sh` after changing `SMTP_SECURITY`: it sets `SMTP_STARTTLS` and
 `SMTP_SSL`, which Keycloak needs. Keycloak gets the same settings: on every
 `docker compose up -d` the `keycloak-sync` step copies them, the public URL and
 the client secret from `.env` into the realm. GOAT's emails show the name `GOAT` and no
-links by default; `EMAIL_BRAND_NAME`, `EMAIL_LOGO_URL`, `EMAIL_CONTACT_URL` and
-`EMAIL_PRIVACY_URL` add your own name, logo and footer links.
+links by default; `EMAIL_BRAND_NAME`, `EMAIL_LOGO_URL`, `EMAIL_CONTACT_URL`,
+`EMAIL_PRIVACY_URL`, `EMAIL_COMPANY_NAME` and `EMAIL_COMPANY_URL` add your own
+name, logo, footer links and a footer line naming who runs your GOAT.
 
 **Support tickets.** Optional and off by default. GOAT can hand problem reports to an
 Odoo Helpdesk; without it the app shows "Report a problem" as an email address plus the

@@ -14,9 +14,9 @@ import {
   useTheme,
 } from "@mui/material";
 import Divider from "@mui/material/Divider";
-import { format, formatDistance, parseISO } from "date-fns";
+import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import { useMemo, useState } from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 import { useMap } from "react-map-gl/maplibre";
 
 import { GOATLogoIconOnlyGreen } from "@p4b/ui/assets/svg/GOATLogoIconOnlyGreen";
@@ -24,12 +24,13 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { useDateFnsLocale } from "@/i18n/utils";
 
-import { useOrganization, useUserProfile } from "@/lib/api/users";
+import { useFeatures, useOrganization, useUserProfile } from "@/lib/api/users";
 import { useDockState } from "@/lib/assistant/store";
 import { CONTACT_URL, privacyPolicyUrl } from "@/lib/constants";
 import { setSelectedLayers } from "@/lib/store/layer/slice";
 import { setMapMode } from "@/lib/store/map/slice";
 import { setActiveRightPanel } from "@/lib/store/map/slice";
+import { parseApiDate } from "@/lib/utils/credits";
 import type { Project } from "@/lib/validations/project";
 
 import { useAuthZ } from "@/hooks/auth/AuthZ";
@@ -87,15 +88,18 @@ export default function Header(props: HeaderProps) {
     viewOnly,
   } = props;
   const { organization } = useOrganization();
+  // trials exist only where billing is on (SaaS); a self-hosted install never shows the chip
+  const { features } = useFeatures();
   const { isOrgAdmin } = useAuthZ();
   const { userProfile } = useUserProfile();
   const isLoggedIn = !!userProfile;
   const dateLocale = useDateFnsLocale();
-  /** The trial notice as plain text: the compact header names it on its icon. */
-  const trialEndsLabel = (renewal: string) =>
-    t("common:your_trial_will_end_in", {
-      expire_date: formatDistance(new Date(renewal), new Date(), { locale: dateLocale }),
-    });
+  /** The trial notice in exact days (an extension shows at once); the compact header names it on its icon. */
+  const trialEndsLabel = (renewal: string) => {
+    const days = differenceInCalendarDays(parseApiDate(renewal), new Date());
+    if (days < 0) return t("trial_expired");
+    return days > 0 ? t("trial_days_left", { count: days }) : t("trial_ends_today");
+  };
   const lng = i18n.language === "de" ? "/de" : "";
   const dispatch = useAppDispatch();
   // Below `md` (`isSmallScreen`) the header has no room for another icon: the support entry moves
@@ -362,48 +366,47 @@ export default function Header(props: HeaderProps) {
           <>
             {!props.viewOnly && (
               <Stack direction="row" spacing={2} justifyContent="center" alignItems="center">
-                {organization && organization.on_trial && isOrgAdmin && compactProjectActions && (
-                  <Tooltip title={trialEndsLabel(organization.plan_renewal_date)}>
-                    <IconButton
-                      size="small"
+                {features?.billing &&
+                  organization?.on_trial &&
+                  organization.plan_renewal_date &&
+                  isOrgAdmin &&
+                  (compactProjectActions ? (
+                    <Tooltip title={trialEndsLabel(organization.plan_renewal_date)}>
+                      <IconButton
+                        size="small"
+                        color="warning"
+                        aria-label={trialEndsLabel(organization.plan_renewal_date)}
+                        onClick={CONTACT_URL ? () => window.open(CONTACT_URL, "_blank") : undefined}>
+                        <Info fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  ) : (
+                    <Chip
+                      icon={<Info />}
+                      variant="outlined"
                       color="warning"
-                      aria-label={trialEndsLabel(organization.plan_renewal_date)}
-                      onClick={CONTACT_URL ? () => window.open(CONTACT_URL, "_blank") : undefined}>
-                      <Info fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                )}
-                {organization && organization.on_trial && isOrgAdmin && !compactProjectActions && (
-                  <Chip
-                    icon={<Info />}
-                    variant="outlined"
-                    color="warning"
-                    size="small"
-                    label={
-                      <Trans
-                        i18nKey="common:your_trial_will_end_in"
-                        values={{
-                          expire_date: formatDistance(new Date(organization.plan_renewal_date), new Date(), {
-                            locale: dateLocale,
-                          }),
-                        }}
-                      />
-                    }
-                    sx={{
-                      "& .MuiChip-label": {
-                        fontWeight: "bold",
-                        fontStyle: "normal",
-                      },
-                    }}
-                    onClick={
-                      CONTACT_URL
-                        ? () => {
-                            window.open(CONTACT_URL, "_blank");
-                          }
-                        : undefined
-                    }
-                  />
-                )}
+                      size="small"
+                      label={trialEndsLabel(organization.plan_renewal_date)}
+                      title={t("trial_ends_on", {
+                        date: format(parseApiDate(organization.plan_renewal_date), "PP", {
+                          locale: dateLocale,
+                        }),
+                      })}
+                      sx={{
+                        "& .MuiChip-label": {
+                          fontWeight: "bold",
+                          fontStyle: "normal",
+                        },
+                      }}
+                      onClick={
+                        CONTACT_URL
+                          ? () => {
+                              window.open(CONTACT_URL, "_blank");
+                            }
+                          : undefined
+                      }
+                    />
+                  ))}
                 {props.mapHeader && (
                   <>
                     <Divider orientation="vertical" flexItem />

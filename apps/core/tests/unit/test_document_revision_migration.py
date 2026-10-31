@@ -21,7 +21,7 @@ MIGRATION = (
     Path(__file__).resolve().parents[2]
     / "alembic"
     / "versions"
-    / "0013_document_revision.py"
+    / "0018_document_revision.py"
 )
 
 #: (table, column) the revision adds, by schema.

@@ -22,9 +22,10 @@ from .assistant import (
     AssistantToolCall,
     AssistantUsage,
 )
+from .billing_terms import BillingTerms  # noqa: F401
 from .bundle import Bundle
 from .bundle_artifact import BundleArtifact
-from .cost import Cost
+from .credit_rate import CreditRate  # noqa: F401
 from .credit_usage import CreditUsage
 from .favorite import Favorite
 from .folder import Folder

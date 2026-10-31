@@ -132,7 +132,7 @@ Wie diese Einstellungen zusammenwirken, lesen Sie unter [E-Mail](./external_serv
 | `SMTP_FROM` | leer | Absenderadresse; `SMTP_USER`, wenn leer |
 | `EMAILS_FROM_NAME` | `GOAT` | Absendername |
 | `SMTP_STARTTLS`, `SMTP_SSL` | `true`, `false` | Aus `SMTP_SECURITY` abgeleitet; von setup.sh gesetzt |
-| `EMAIL_BRAND_NAME`, `EMAIL_LOGO_URL`, `EMAIL_CONTACT_URL`, `EMAIL_PRIVACY_URL` | *(auskommentiert)* | Optionales Branding der E-Mails von GOAT und Keycloak: Name, Logo statt des Namens, Links in der Fußzeile. Siehe [E-Mail-Branding](./external_services.md#email-branding). |
+| `EMAIL_BRAND_NAME`, `EMAIL_LOGO_URL`, `EMAIL_CONTACT_URL`, `EMAIL_PRIVACY_URL`, `EMAIL_COMPANY_NAME`, `EMAIL_COMPANY_URL` | *(auskommentiert)* | Optionales Branding der E-Mails von GOAT und Keycloak: Name, Logo statt des Namens, Links in der Fußzeile, wer Ihr GOAT betreibt. Siehe [E-Mail-Branding](./external_services.md#email-branding). |
 
 ## KI-Assistent {#assistant}
 

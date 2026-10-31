@@ -16,6 +16,8 @@ const { org } = vi.hoisted(() => ({
   org: { organization: undefined as { on_trial: boolean; plan_renewal_date: string } | undefined },
 }));
 vi.mock("@/lib/api/users", () => ({
+  // Trials show only where billing is on.
+  useFeatures: () => ({ features: { billing: true } }),
   useOrganization: () => org,
   useUserProfile: () => ({ userProfile: { id: "u1" } }),
 }));
@@ -101,13 +103,17 @@ describe("Project header beside the docked dock", () => {
   it("shows Share and the trial notice as icons while the dock is docked open", () => {
     viewport(false);
     authz.isOrgAdmin = true;
-    org.organization = { on_trial: true, plan_renewal_date: "2026-11-01T00:00:00Z" };
+    // Ten days ahead, so the notice counts days whatever day the test runs.
+    org.organization = {
+      on_trial: true,
+      plan_renewal_date: new Date(Date.now() + 10 * 86_400_000).toISOString(),
+    };
     setDockState({ open: true });
     projectHeader();
     const share = screen.getByRole("button", { name: "common:share" });
     expect(share.className).toContain("MuiIconButton-root");
     expect(share.textContent).toBe("");
-    const trial = screen.getByRole("button", { name: "common:your_trial_will_end_in" });
+    const trial = screen.getByRole("button", { name: "trial_days_left" });
     expect(trial.className).toContain("MuiIconButton-root");
     expect(trial.textContent).toBe("");
   });

@@ -32,7 +32,7 @@ def _created_tables() -> dict[str, set[str]]:
     def create_table(name: str, *items: Any, **_: Any) -> None:
         tables[name] = {i.name for i in items if isinstance(i, sa.Column)}
 
-    created = _load("0012_assistant")
+    created = _load("0017_assistant")
     created.op = SimpleNamespace(execute=lambda *_: None, create_table=create_table)
     created.h = SimpleNamespace(
         table_exists=lambda *_: False, create_index_if_missing=lambda *_, **__: None
@@ -44,7 +44,7 @@ def _created_tables() -> dict[str, set[str]]:
         if schema == settings.ASSISTANT_SCHEMA:
             tables[table].add(column.name)
 
-    added = _load("0013_document_revision")
+    added = _load("0018_document_revision")
     added.h = SimpleNamespace(
         add_column_if_missing=add_column, ensure_fk=lambda *_, **__: None
     )

@@ -11,6 +11,7 @@ import useSWR, { mutate } from "swr";
 
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import { PROCESSES_BASE_URL } from "@/lib/constants";
+import { OutOfCreditsError } from "@/lib/utils/credits";
 
 // OGC API Processes base URLs
 export const PROCESSES_API_BASE_URL = `${PROCESSES_BASE_URL}/processes`;
@@ -300,6 +301,7 @@ async function executeProcess<TInput, TOutput>(processId: string, inputs: TInput
   });
 
   if (!response.ok) {
+    if (response.status === 402) throw new OutOfCreditsError();
     const error = await response.json();
     throw new Error(error.detail?.detail || error.detail || `Process execution failed: ${processId}`);
   }
@@ -320,6 +322,7 @@ export async function executeProcessAsync<TInput>(processId: string, inputs: TIn
   });
 
   if (!response.ok) {
+    if (response.status === 402) throw new OutOfCreditsError();
     const error = await response.json();
     throw new Error(error.detail?.detail || error.detail || `Process execution failed: ${processId}`);
   }

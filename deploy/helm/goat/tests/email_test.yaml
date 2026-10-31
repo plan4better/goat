@@ -26,6 +26,8 @@ tests:
       email.fromName: GOAT Bonn
       email.brandName: GOAT Bonn
       email.contactUrl: https://example.org/contact
+      email.companyName: Stadt Bonn · Altes Rathaus · 53111 Bonn
+      email.companyUrl: https://www.bonn.de
     asserts:
       - equal:
           path: data.SMTP_HOST
@@ -48,6 +50,12 @@ tests:
       - equal:
           path: data.EMAIL_CONTACT_URL
           value: https://example.org/contact
+      - equal:
+          path: data.EMAIL_COMPANY_NAME
+          value: Stadt Bonn · Altes Rathaus · 53111 Bonn
+      - equal:
+          path: data.EMAIL_COMPANY_URL
+          value: https://www.bonn.de
       - notExists:
           path: data.SMTP_USER
       - notExists:

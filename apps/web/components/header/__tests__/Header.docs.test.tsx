@@ -1,12 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import Header from "@/components/header/Header";
 
-const { support, profile } = vi.hoisted(() => ({
+const { support, profile, org, features, admin } = vi.hoisted(() => ({
   support: { value: { summary: undefined, enabled: false } as { summary: unknown; enabled: boolean } },
   profile: { value: { id: "u1" } as { id: string } | undefined },
+  org: { value: undefined as { on_trial: boolean; plan_renewal_date: string } | undefined },
+  features: { value: { billing: false, support: false } },
+  admin: { value: false },
 }));
 
 vi.mock("react-i18next", () => ({
@@ -17,7 +20,8 @@ vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({ map: undefined }) }))
 vi.mock("@/i18n/utils", () => ({ useDateFnsLocale: () => undefined }));
 vi.mock("@/lib/api/support", () => ({ useSupportSummary: () => support.value }));
 vi.mock("@/lib/api/users", () => ({
-  useOrganization: () => ({ organization: undefined }),
+  useOrganization: () => ({ organization: org.value }),
+  useFeatures: () => ({ features: features.value }),
   useUserProfile: () => ({ userProfile: profile.value }),
 }));
 vi.mock("@/lib/constants", () => ({
@@ -26,7 +30,7 @@ vi.mock("@/lib/constants", () => ({
   SUPPORT_MAILTO: "",
   privacyPolicyUrl: () => "",
 }));
-vi.mock("@/hooks/auth/AuthZ", () => ({ useAuthZ: () => ({ isOrgAdmin: false }) }));
+vi.mock("@/hooks/auth/AuthZ", () => ({ useAuthZ: () => ({ isOrgAdmin: admin.value }) }));
 vi.mock("@/hooks/store/ContextHooks", () => ({
   useAppDispatch: () => vi.fn(),
   useAppSelector: () => undefined,
@@ -116,5 +120,63 @@ describe("Header support entry for read-only viewers", () => {
   it("shows it in the normal header as well", () => {
     render(<Header />);
     expect(screen.getByTestId("support-menu")).toBeTruthy();
+  });
+});
+
+// Trials exist only where billing is on: a self-hosted install never shows the chip,
+// even for an organization that still carries a trial from earlier.
+describe("Header trial chip", () => {
+  beforeEach(() => {
+    support.value = { summary: undefined, enabled: false };
+    profile.value = { id: "u1" };
+    admin.value = true;
+    org.value = { on_trial: true, plan_renewal_date: new Date(Date.now() + 10 * 86_400_000).toISOString() };
+  });
+
+  it("shows the days left to an admin when billing is on", () => {
+    features.value = { billing: true, support: false };
+    render(<Header />);
+    expect(screen.getByText("trial_days_left")).toBeTruthy();
+  });
+
+  it("is not shown without billing", () => {
+    features.value = { billing: false, support: false };
+    render(<Header />);
+    expect(screen.queryByText("trial_days_left")).toBeNull();
+  });
+});
+
+// The API sends naive UTC datetimes; the chip counts calendar days from "now".
+describe("Header trial chip by date", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-20T12:00:00Z"));
+    support.value = { summary: undefined, enabled: false };
+    profile.value = { id: "u1" };
+    admin.value = true;
+    features.value = { billing: true, support: false };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const chip = (renewal: string) => {
+    org.value = { on_trial: true, plan_renewal_date: renewal };
+    render(<Header />);
+  };
+
+  it("shows the days left for a future end date", () => {
+    chip("2026-10-25T12:00:00");
+    expect(screen.getByText("trial_days_left")).toBeTruthy();
+    expect(screen.queryByText("trial_expired")).toBeNull();
+  });
+
+  it("says the trial ends today on the last day", () => {
+    chip("2026-10-20T18:00:00");
+    expect(screen.getByText("trial_ends_today")).toBeTruthy();
+  });
+
+  it("says the trial expired once the end date is past", () => {
+    chip("2026-10-18T12:00:00");
+    expect(screen.getByText("trial_expired")).toBeTruthy();
+    expect(screen.queryByText("trial_ends_today")).toBeNull();
   });
 });

@@ -332,6 +332,9 @@ services:
       KEYCLOAK_PRODUCTION: "false"
       KEYCLOAK_ENABLE_HEALTH_ENDPOINTS: "true"
       KC_HOSTNAME_STRICT: "false"
+      # As on our clusters: the sign-up fields come from the realm's declarative
+      # user profile (packages/js/keycloak-theme/realm/user-profile.json).
+      KC_FEATURES: declarative-user-profile
       GOAT_PUBLIC_URL: ${CLIENT_URL:-http://localhost:3000}
       GOAT_REALM: ${REALM_NAME:-goat}
       GOAT_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-goat}

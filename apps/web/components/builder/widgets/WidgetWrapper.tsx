@@ -73,6 +73,8 @@ interface WidgetWrapperProps {
   projectLayerGroups: ProjectLayerGroup[];
   viewOnly?: boolean;
   onWidgetDelete?: (widgetId: string) => void;
+  onWidgetDuplicate?: (widgetId: string) => void;
+  onSelectPanel?: () => void;
   onWidgetUpdate?: (updatedWidget: BuilderWidgetSchema) => void;
   panelWidgets?: BuilderWidgetSchema[];
 }
@@ -81,12 +83,16 @@ interface DraggableWidgetContainerProps {
   children: React.ReactNode;
   widget: BuilderWidgetSchema;
   onWidgetDelete?: (widgetId: string) => void;
+  onWidgetDuplicate?: (widgetId: string) => void;
+  onSelectPanel?: () => void;
 }
 
 const DraggableWidgetContainer: React.FC<DraggableWidgetContainerProps> = ({
   children,
   widget,
   onWidgetDelete,
+  onWidgetDuplicate,
+  onSelectPanel,
 }) => {
   const dispatch = useAppDispatch();
   const selectedWidget = useAppSelector((state) => state.map.selectedBuilderItem);
@@ -113,6 +119,8 @@ const DraggableWidgetContainer: React.FC<DraggableWidgetContainerProps> = ({
         isSelected={isSelected}
         onSelect={() => dispatch(setSelectedBuilderItem(widget))}
         onDelete={() => onWidgetDelete?.(widget.id)}
+        onDuplicate={onWidgetDuplicate && (() => onWidgetDuplicate(widget.id))}
+        onSelectParent={onSelectPanel}
         dragAttributes={attributes}
         dragListeners={listeners}
         showDragHandle={true}
@@ -129,6 +137,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   projectLayerGroups,
   viewOnly,
   onWidgetDelete,
+  onWidgetDuplicate,
+  onSelectPanel,
   onWidgetUpdate,
   panelWidgets,
 }) => {
@@ -192,7 +202,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       </Box>
     </WidgetErrorBoundary>
   ) : (
-    <DraggableWidgetContainer widget={widget} onWidgetDelete={onWidgetDelete}>
+    <DraggableWidgetContainer
+      widget={widget}
+      onWidgetDelete={onWidgetDelete}
+      onWidgetDuplicate={onWidgetDuplicate}
+      onSelectPanel={onSelectPanel}>
       <WidgetErrorBoundary widgetId={widget.id} resetKey={configKey} showNotice>
         {widgetContent}
       </WidgetErrorBoundary>

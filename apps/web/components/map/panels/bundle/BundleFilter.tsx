@@ -29,6 +29,7 @@ import type { BundleRead } from "@/lib/api/bundles";
 import { useProject } from "@/lib/api/projects";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
 import { createTheCQLBasedOnExpression } from "@/lib/transformers/filter";
+import { creditsErrorMessage } from "@/lib/utils/credits";
 import { type Expression as ExpressionType, FilterType } from "@/lib/validations/filter";
 
 import useLayerFields from "@/hooks/map/CommonHooks";
@@ -83,8 +84,8 @@ const BundleFilter = ({ bundle, projectId, memberLayerId }: BundleFilterProps) =
         dispatch(setRunningJobIds([...runningJobIds, result.jobID]));
         setExpression(null);
       }
-    } catch {
-      toast.error(t("save_as_new_bundle_error"));
+    } catch (error) {
+      toast.error(creditsErrorMessage(error, t) ?? t("save_as_new_bundle_error"));
     } finally {
       setIsSaving(false);
     }

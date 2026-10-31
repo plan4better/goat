@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, Request
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.accounts import report_sign_up
 from core.core.config import settings
 from core.crud.crud_folder import folder as crud_folder
 from core.db.session import session_manager
@@ -99,6 +100,8 @@ async def ensure_home_folder(
 
     user = await crud_user.upsert_from_token(token=claims, db_session=async_session)
     assert user.id is not None
+    # SaaS: a verified user the accounts provider does not know yet is reported.
+    report_sign_up(user, claims)
 
     existing = await crud_folder.get_by_multi_keys(
         async_session, keys={"user_id": user.id, "name": "home"}

@@ -104,19 +104,17 @@ export default function PopperMenu(props: PopperMenuProps) {
                       ...(item.color && {
                         color: item.color,
                       }),
-                      // Tinted, inset from the menu's edges.
+                      // Tinted, edge to edge as the menu's other rows.
                       ...(item.featured && {
-                        mx: 0.5,
                         mb: 0.5,
-                        borderRadius: 1.5,
                         bgcolor: alpha(theme.palette.primary.main, 0.08),
                         "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.14) },
                       }),
                     }}>
                     {/* The tile is centred on the plain icons' column and its label
-                        starts where theirs do, the row's inset taken back. */}
+                        starts where theirs do. */}
                     {item.featured && item.icon && (
-                      <ListItemIcon sx={{ minWidth: 0, ml: "-5.5px", pr: "12.5px" }}>
+                      <ListItemIcon sx={{ minWidth: 0, ml: "-3.5px", pr: "12.5px" }}>
                         <Box
                           sx={{
                             width: 22,
@@ -149,7 +147,6 @@ export default function PopperMenu(props: PopperMenuProps) {
                     <ListItemText
                       primary={item.label}
                       sx={{
-                        ...(item.featured && { mr: -0.5 }),
                         "& .MuiTypography-root": {
                           ...(item.color && {
                             color: item.color,

@@ -36,6 +36,8 @@ SMTP_ENV = [
     "EMAIL_LOGO_URL",
     "EMAIL_CONTACT_URL",
     "EMAIL_PRIVACY_URL",
+    "EMAIL_COMPANY_NAME",
+    "EMAIL_COMPANY_URL",
 ]
 
 SAAS_LOGO_URL = "https://assets.plan4better.de/img/logo/plan4better_standard.png"
@@ -207,6 +209,8 @@ def _configure(monkeypatch: pytest.MonkeyPatch, **values: Any) -> None:
         "EMAIL_LOGO_URL": None,
         "EMAIL_CONTACT_URL": None,
         "EMAIL_PRIVACY_URL": None,
+        "EMAIL_COMPANY_NAME": None,
+        "EMAIL_COMPANY_URL": None,
         "GOAT_CA_BUNDLE": None,
     }
     defaults.update(values)
@@ -470,3 +474,39 @@ def test_a_failed_send_is_logged_not_raised(
     _send()
     assert smtp.data == []
     assert "Sending email to someone@example.org failed" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Language
+# ---------------------------------------------------------------------------
+
+
+def test_a_mail_is_built_in_the_recipients_language() -> None:
+    from core.utils.i18n import current_locale, language
+    from core.utils.i18n import trans as _
+
+    before = current_locale()
+    with language("de"):
+        title = _("Your GOAT trial has ended")
+        html = render_email_html({**_CONTENT, "title": title})
+    assert title == "Ihr GOAT-Testzeitraum ist beendet"
+    assert (
+        "Sie erhalten diese E-Mail wegen Ihres GOAT-Kontos." in html
+        and 'lang="de"' in html
+    )
+    with language("en"):
+        html = render_email_html(_CONTENT)
+    assert (
+        "You receive this email because of your GOAT account." in html
+        and 'lang="en"' in html
+    )
+    assert current_locale() == before
+
+
+def test_user_input_in_a_mail_is_escaped() -> None:
+    """Titles and messages carry organization names: markup in one stays text."""
+    html = render_email_html(
+        {**_CONTENT, "title": '<a href="https://evil.example">Confirm</a>'}
+    )
+    assert '<a href="https://evil.example">' not in html
+    assert "&lt;a href=&#34;https://evil.example&#34;&gt;Confirm&lt;/a&gt;" in html

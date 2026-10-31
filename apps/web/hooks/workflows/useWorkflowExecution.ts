@@ -15,6 +15,7 @@ import {
 import type { AppDispatch } from "@/lib/store";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
 import { selectEdges, selectNodes, selectVariables } from "@/lib/store/workflow/selectors";
+import { creditsErrorMessage } from "@/lib/utils/credits";
 import { claimJobAnnouncement } from "@/lib/utils/jobAnnouncement";
 import { workflowRunsSomething } from "@/lib/utils/workflowRuns";
 import type { WorkflowIssue } from "@/lib/validations/workflowIssues";
@@ -379,7 +380,8 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
         setState((s) => ({ ...s, isExecuting: false, nodeStatuses: {}, nodeExecutionInfo: {} }));
         return error.issues;
       }
-      const message = error instanceof Error ? error.message : t("execution_failed");
+      const message =
+        creditsErrorMessage(error, t) ?? (error instanceof Error ? error.message : t("execution_failed"));
       setState((s) => ({
         ...s,
         isExecuting: false,
@@ -441,7 +443,9 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       const runningErrors = job.node_errors;
       if (runningErrors && Object.keys(runningErrors).length > 0) {
         setState((prev) =>
-          sameNodeErrors(prev.nodeErrors, runningErrors) ? prev : { ...prev, nodeErrors: { ...runningErrors } }
+          sameNodeErrors(prev.nodeErrors, runningErrors)
+            ? prev
+            : { ...prev, nodeErrors: { ...runningErrors } }
         );
       }
       // If we have node_status from flow_user_state, use it for accurate per-node tracking

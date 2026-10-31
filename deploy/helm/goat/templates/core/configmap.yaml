@@ -66,7 +66,7 @@ data:
   {{- /* Email (the `email` block). Empty values are left out: core treats
          an unset SMTP_HOST as email off. */}}
   {{- $email := .Values.email | default dict }}
-  {{- range $pair := list (list "SMTP_HOST" $email.host) (list "SMTP_PORT" $email.port) (list "SMTP_SECURITY" $email.security) (list "SMTP_USER" $email.user) (list "SMTP_FROM" $email.from) (list "EMAILS_FROM_NAME" $email.fromName) (list "EMAIL_BRAND_NAME" $email.brandName) (list "EMAIL_LOGO_URL" $email.logoUrl) (list "EMAIL_CONTACT_URL" $email.contactUrl) (list "EMAIL_PRIVACY_URL" $email.privacyUrl) }}
+  {{- range $pair := list (list "SMTP_HOST" $email.host) (list "SMTP_PORT" $email.port) (list "SMTP_SECURITY" $email.security) (list "SMTP_USER" $email.user) (list "SMTP_FROM" $email.from) (list "EMAILS_FROM_NAME" $email.fromName) (list "EMAIL_BRAND_NAME" $email.brandName) (list "EMAIL_LOGO_URL" $email.logoUrl) (list "EMAIL_CONTACT_URL" $email.contactUrl) (list "EMAIL_PRIVACY_URL" $email.privacyUrl) (list "EMAIL_COMPANY_NAME" $email.companyName) (list "EMAIL_COMPANY_URL" $email.companyUrl) }}
   {{- $key := index $pair 0 }}
   {{- $value := toString (index $pair 1 | default "") }}
   {{- if and $value $email.host (not (include "goat.env.userSet" (dict "values" $.Values.core "key" $key))) }}

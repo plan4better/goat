@@ -16,7 +16,7 @@ from goatlib.tools.cleanup_temp import cleanup_workflow_temp
 from goatlib.workflows.checks import Issue, shape_issues
 from pydantic import BaseModel, Field
 
-from processes.deps.auth import get_user_id
+from processes.deps.auth import get_user_id, oauth2_scheme
 from processes.ducklake import ducklake_manager
 from processes.routers.processes import get_language_from_request
 from processes.services.access import (
@@ -294,6 +294,7 @@ async def execute_workflow(
     request: WorkflowExecuteRequest,
     user_id: UUID = Depends(get_user_id),
     language: str = Depends(get_language_from_request),
+    access_token: str | None = Depends(oauth2_scheme),
 ) -> WorkflowExecuteResponse:
     """Execute a workflow via Windmill.
 
@@ -358,6 +359,11 @@ async def execute_workflow(
     await asyncio.to_thread(
         cleanup_workflow_temp, user_id=str(user_id), workflow_id=workflow_id
     )
+
+    # Out of credits: a workflow runs tools too, so it is refused like one (402).
+    from processes.services.credit_gate import assert_credits_available
+
+    await assert_credits_available(access_token)
 
     # Build job inputs
     job_inputs: dict[str, Any] = {
@@ -431,6 +437,10 @@ async def finalize_workflow_layer(
         refs = References()
         refs.add("project", request.project_id, "write")
         await ensure_allowed(user_id, refs)
+
+    # Deliberately not credit-gated: finalize_layer only saves the result of a
+    # workflow that already ran (and was gated), so refusing it would throw
+    # that work away. Its compute is still charged post-hoc by compute_rollup.
 
     # Build job inputs for finalize_layer tool
     job_inputs = {

@@ -156,6 +156,9 @@ email:
   logoUrl: ""                      # EMAIL_LOGO_URL
   contactUrl: ""                   # EMAIL_CONTACT_URL
   privacyUrl: ""                   # EMAIL_PRIVACY_URL
+  # Who runs this GOAT: a footer line (name, address), linked to the URL.
+  companyName: ""                  # EMAIL_COMPANY_NAME
+  companyUrl: ""                   # EMAIL_COMPANY_URL
 
 # ─── Plan4Better's Odoo ────────────────────────────────────────────────────
 # Optional, off by default, SaaS only. GOAT's Odoo integrations share the

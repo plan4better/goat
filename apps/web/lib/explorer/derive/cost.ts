@@ -5,12 +5,12 @@
  *   annual cost = vehicle-km a year × € per km (+ vehicle-hours × € per hour)
  *
  * A year's vehicle-km come from the timetable and the calendar: each service's
- * daily km times the days it runs in the year counted (yearOf), scaled to 365
- * days when the feed's window is shorter. Rates are per operator and route type and set by
+ * daily km times the days it runs in the data period (optimumPeriod, or the
+ * user's), scaled to 365 days from the period's length. Rates are per operator and route type and set by
  * the user (settings.ts); a type without one is priced at its default.
  */
 import type { SqlRunner } from "@/lib/explorer/db/types";
-import { serviceDayCounts } from "@/lib/explorer/derive/calendar";
+import { type DailyTrips, serviceDayCounts } from "@/lib/explorer/derive/calendar";
 import type { TripRange } from "@/lib/explorer/derive/runs";
 import { type Rate, defaultRate } from "@/lib/explorer/settings";
 
@@ -33,7 +33,7 @@ async function annualFor(
   rate: Rate,
   days?: Map<number, number>
 ): Promise<AnnualFigures> {
-  window = yearOf(window);
+  // Counted over the data period as given, scaled to a year.
   days ??= await serviceDayCounts(db, window[0], window[1]);
   const perService = await db.all<{ service_idx: number; km: number; hours: number }>(`
     WITH t AS (
@@ -54,7 +54,7 @@ async function annualFor(
   `);
   const windowDays =
     (Date.parse(`${window[1]}T00:00:00Z`) - Date.parse(`${window[0]}T00:00:00Z`)) / 86_400_000 + 1;
-  const scale = windowDays < 365 ? 365 / windowDays : 1;
+  const scale = 365 / windowDays;
   let km = 0;
   let hours = 0;
   for (const s of perService) {
@@ -125,8 +125,7 @@ export async function networkAnnualFigures(
   window: [string, string],
   rateFor: (agencyId: string | null, routeType: number | null) => Rate = (_a, type) => defaultRate(type)
 ): Promise<AnnualFigures> {
-  const year = yearOf(window);
-  const days = await serviceDayCounts(db, year[0], year[1]);
+  const days = await serviceDayCounts(db, window[0], window[1]);
   const groups = await db.all<{
     agency_idx: number | null;
     agency_id: string | null;
@@ -139,11 +138,57 @@ export async function networkAnnualFigures(
   for (const g of groups) {
     const where = `route_idx IN (SELECT route_idx FROM routes WHERE ${is("agency_idx", g.agency_idx)}
                    AND ${is("route_type", g.route_type)})`;
-    const f = await annualFor(db, where, year, rateFor(g.agency_id, g.route_type), days);
+    const f = await annualFor(db, where, window, rateFor(g.agency_id, g.route_type), days);
     total.vehicle_km += f.vehicle_km;
     total.vehicle_hours += f.vehicle_hours;
     total.cost += f.cost;
     total.window_days = f.window_days;
   }
   return total;
+}
+
+/** The stretch of a feed its timetable fully covers: the longest run of days
+ * whose week around them runs at least half the trips of the feed's busiest
+ * week. A feed often runs on past a timetable change with only the few
+ * services that carry over (Munich's MVG: from 20,900 trips a weekday to
+ * 2,800); counting those months as service would put its year at a quarter
+ * of what runs. Null for a feed with no trips. */
+export function fullServiceRange(days: DailyTrips[]): [string, string] | null {
+  const n = days.length;
+  if (!n) return null;
+  const sum = [0];
+  for (const d of days) sum.push(sum[sum.length - 1] + d.trips);
+  // A day's week: the 7 days around it, fewer at the feed's ends.
+  const week = (i: number) => {
+    const a = Math.max(0, i - 3);
+    const b = Math.min(n - 1, i + 3);
+    return (sum[b + 1] - sum[a]) / (b - a + 1);
+  };
+  let level = 0;
+  for (let i = 0; i < n; i++) level = Math.max(level, week(i));
+  if (!level) return null;
+  let best: [number, number] | null = null;
+  let start = -1;
+  for (let i = 0; i <= n; i++) {
+    if (i < n && week(i) >= level / 2) {
+      if (start < 0) start = i;
+    } else if (start >= 0) {
+      if (!best || i - 1 - start > best[1] - best[0]) best = [start, i - 1];
+      start = -1;
+    }
+  }
+  if (!best) return null;
+  // The week around a day blurs the stretch's ends by up to three days:
+  // trimmed back past days running under half of the same weekday a week
+  // inside the stretch (a weekend's own lighter service kept).
+  let [a, b] = best;
+  while (a + 7 <= b && days[a].trips < days[a + 7].trips / 2) a++;
+  while (b - 7 >= a && days[b].trips < days[b - 7].trips / 2) b--;
+  return [days[a].date, days[b].date];
+}
+
+/** The optimum data period, unless the user sets one: the year (costYear)
+ * of the stretch the timetable fully covers, else of the window. */
+export function optimumPeriod(window: [string, string], days: DailyTrips[] | null): [string, string] {
+  return yearOf((days && fullServiceRange(days)) ?? window);
 }

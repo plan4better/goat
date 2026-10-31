@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { useFeatures } from "@/lib/api/users";
 import { ASSISTANT_BASE_URL } from "@/lib/constants";
 
 import { useAuthZ } from "@/hooks/auth/AuthZ";
@@ -37,6 +38,7 @@ const SettingsLayout = (props: SettingsLayoutProps) => {
   const theme = useTheme();
   const { t } = useTranslation("common");
   const { isOrgAdmin, isLoading: isUserProfileLoading } = useAuthZ();
+  const { features } = useFeatures();
   const navigation = useMemo(() => {
     return [
       {
@@ -84,17 +86,11 @@ const SettingsLayout = (props: SettingsLayoutProps) => {
         icon: ICON_NAME.CHART_PIE,
         label: t("usage_and_quotas"),
         current: pathname?.includes("/usage"),
-        auth: isOrgAdmin,
-      },
-      {
-        link: "/settings/billing",
-        icon: ICON_NAME.CREDIT_CARD,
-        label: t("billing"),
-        current: pathname?.includes("/billing"),
-        auth: isOrgAdmin,
+        // Credits and quotas exist only where billing runs (not self-hosted).
+        auth: isOrgAdmin && features?.billing === true,
       },
     ];
-  }, [pathname, t, isOrgAdmin]);
+  }, [pathname, t, isOrgAdmin, features?.billing]);
 
   return (
     <Container sx={{ py: 10, px: 10 }} maxWidth="xl">
