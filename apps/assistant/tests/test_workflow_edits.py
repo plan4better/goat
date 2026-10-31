@@ -35,6 +35,10 @@ from assistant.tools.workflow_edits import (
 )
 from assistant.tools.workflow_runs import NOT_IN_PROJECT
 from assistant.tools.workflow_tools import clear_description_cache
+from assistant.tools.workflows import CREATE
+from assistant.workflows.runs import ConversationRuns
+from tests.test_workflow_create import DRAFT
+from tests.test_workflow_create import _services as create_services
 
 PROCESSES: dict[str, Any] = json.loads(
     (Path(__file__).parent / "fixtures" / "process_descriptions.json").read_text(
@@ -1237,3 +1241,120 @@ async def test_a_save_whose_revision_cannot_be_known_says_so() -> None:
         )
     assert failed.value.message == SAVED_REVISION_UNKNOWN
     assert len(_puts(core)) == 1
+
+
+# -- a workflow this conversation created, by its draft's ids ----------------------------
+
+
+async def test_a_workflow_created_here_is_edited_by_its_drafts_ids() -> None:
+    """Its node ids are derived with a salt of the create's own: the create's
+    result maps the draft's ids to them, and an edit takes either."""
+    core, processes, geoapi, catalog = create_services()
+    env = tool_env(
+        fake_clients(core=core, processes=processes, geoapi=geoapi, catalog=catalog),
+        page=PAGE,
+    )
+    created = await execute(CREATE, env, {"draft": DRAFT}, tool_call_id="c1")
+    posted = json.loads(next(r for r in core.requests if r.method == "POST").content)
+    ids = created["step_ids"]
+    assert list(ids) == [step["id"] for step in DRAFT["steps"]]
+    assert list(ids.values()) == [node["id"] for node in posted["config"]["nodes"]]
+    row = {**ROW, "id": created["workflow"]["id"], "config": posted["config"]}
+    core.routes[("GET", WF_PATH)] = row
+    core.routes[("PUT", WF_PATH)] = lambda request: httpx.Response(
+        200, json={**row, "config": json.loads(request.content)["config"]}
+    )
+
+    async def rename(step: str, label: str) -> dict[str, Any]:
+        return await execute(
+            UPDATE,
+            env,
+            {
+                "workflow_id": WF,
+                "operations": [{"op": "rename", "id": step, "label": label}],
+            },
+        )
+
+    by_draft = await rename("walk", "On foot")
+    by_node = await rename(ids["count"], "Residents")
+    renamed = [
+        {node["id"]: node["data"].get("label") for node in put["config"]["nodes"]}
+        for put in _puts(core)
+    ]
+    assert renamed[0][ids["walk"]] == "On foot"
+    assert renamed[1][ids["count"]] == "Residents"
+    assert [step["id"] for step in by_draft["changed_steps"]] == [ids["walk"]]
+    assert [step["id"] for step in by_node["changed_steps"]] == [ids["count"]]
+
+    with pytest.raises(InputInvalid) as refused:
+        await rename("start", "x")
+    assert refused.value.message == (
+        "operation 0 (rename): there is no step or note with the id 'start'. "
+        f"The ids are: {', '.join(ids.values())}. The ids of its draft name them "
+        f"too: {', '.join(ids)}."
+    )
+    assert len(_puts(core)) == 2
+
+
+async def test_a_created_workflows_draft_ids_include_its_notes() -> None:
+    note = {"id": "about", "text": "Counts the residents near a school."}
+    core, processes, geoapi, catalog = create_services()
+    env = tool_env(
+        fake_clients(core=core, processes=processes, geoapi=geoapi, catalog=catalog),
+        page=PAGE,
+    )
+    created = await execute(CREATE, env, {"draft": {**DRAFT, "notes": [note]}})
+    posted = json.loads(next(r for r in core.requests if r.method == "POST").content)
+    assert created["step_ids"]["about"] == posted["config"]["nodes"][-1]["id"]
+    assert env.runs.step_ids == {created["workflow"]["id"]: created["step_ids"]}
+
+
+async def test_a_later_answer_edits_by_the_drafts_ids_it_reads_back() -> None:
+    """A later answer gets the map from the create's stored result."""
+    runs = ConversationRuns.from_stored(
+        [
+            {
+                "role": "assistant",
+                "parts": [
+                    {
+                        "type": "tool",
+                        "tool_name": "workflow_create",
+                        "state": "output",
+                        "output": {
+                            "workflow": {"id": WF},
+                            "step_ids": {"schools": "dataset-a", "walk": "tool-walk"},
+                        },
+                    }
+                ],
+            }
+        ]
+    )
+    assert runs.step_ids == {WF: {"schools": "dataset-a", "walk": "tool-walk"}}
+    core, processes, geoapi = _services()
+    env = _env(core, processes, geoapi)
+    env.runs = runs
+    await execute(
+        UPDATE,
+        env,
+        {"workflow_id": WF, "operations": [{**SET_TEN, "id": "walk"}]},
+    )
+    [put] = _puts(core)
+    assert put["config"] == apply(
+        CONFIG,
+        [{"op": "set_settings", "node_id": "tool-walk", "settings": {"max_cost": 10}}],
+    )
+
+
+async def test_the_draft_ids_of_another_workflow_name_nothing() -> None:
+    core, processes, geoapi = _services()
+    env = _env(core, processes, geoapi)
+    env.runs = ConversationRuns(step_ids={"another": {"walk": "tool-walk"}})
+    with pytest.raises(InputInvalid) as refused:
+        await execute(
+            UPDATE,
+            env,
+            {"workflow_id": WF, "operations": [{**SET_TEN, "id": "walk"}]},
+        )
+    assert "there is no step or note with the id 'walk'" in refused.value.message
+    assert "draft" not in refused.value.message
+    assert _puts(core) == []

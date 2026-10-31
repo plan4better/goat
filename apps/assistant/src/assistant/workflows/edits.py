@@ -12,11 +12,13 @@ A new step's node is built by the draft converter (``draft.step_data``,
 layer, a layer input set as a setting) is refused here too.
 
 The model names a step by its stored node id, the id ``workflow_view``
-shows; a step or note added in the same call by the id it gave it. A new
-node's id is derived from that id and the call's salt, as ``to_config``
-derives one: an export's node id names its result layer, so no two
-workflows share one. Pure: the caller looks up the project's layers, the
-regions' boundaries and the tools' titles and layer inputs.
+shows; a step or note added in the same call by the id it gave it; and one
+of a workflow it created from a draft in the conversation also by its id in
+the draft (``EditContext.draft_ids``), which it knows from writing the
+draft. A new node's id is derived from that id and the call's salt, as
+``to_config`` derives one: an export's node id names its result layer, so
+no two workflows share one. Pure: the caller looks up the project's layers,
+the regions' boundaries and the tools' titles and layer inputs.
 """
 
 import json
@@ -315,8 +317,9 @@ class UpdateInput(_Model):
         max_length=MAX_OPERATIONS,
         description=(
             "Applied in order, all or none. id, from and to name a step or note "
-            "by the id workflow_get gives, or one added earlier in this call by "
-            "the id you gave it."
+            "by the id workflow_get gives, in a workflow you created in this "
+            "conversation also by its id in your draft, or one added earlier in "
+            "this call by the id you gave it."
         ),
     )
 
@@ -326,8 +329,10 @@ class EditContext:
     """What ``plan`` looks up: the project's readable layers and the names of
     its locked ones (by layer_project_id), the regions' boundaries (by
     nuts_id), the tools' titles, each tool's layer inputs (tool id -> their
-    names, ``tool_info.layer_inputs``), the tools of the user's toolbox and
-    the call's salt."""
+    names, ``tool_info.layer_inputs``), the tools of the user's toolbox, the
+    call's salt, and for a workflow created from a draft in the conversation
+    its draft's step and note ids -> their node ids
+    (``ConversationRuns.step_ids``)."""
 
     layers: Mapping[int, ProjectLayer]
     locked: Mapping[int, str]
@@ -336,6 +341,7 @@ class EditContext:
     layer_inputs: Mapping[str, frozenset[str]]
     toolbox: frozenset[str]
     salt: str
+    draft_ids: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -413,12 +419,37 @@ class _Planner:
         }
         self.new_ids: dict[str, str] = {}
 
+    def _drafts(self) -> dict[str, str]:
+        """The draft's ids whose node the workflow still has, each with its
+        node id."""
+        return {
+            given: node
+            for given, node in self.context.draft_ids.items()
+            if node in self.kinds
+        }
+
     def ref(self, given: str) -> str:
-        return self.new_ids.get(given, given)
+        """The node ``given`` names: a step or note added earlier in the call
+        by the id the model gave it, a node by its id, or one by its draft's
+        id. Refuses an id that names none, with the ids that do."""
+        if given in self.new_ids:
+            return self.new_ids[given]
+        if given in self.kinds:
+            return given
+        drafts = self._drafts()
+        if given in drafts:
+            return drafts[given]
+        named = {node: model for model, node in self.new_ids.items()}
+        known = ", ".join(named.get(node, node) for node in self.kinds) or "none"
+        message = (
+            f"there is no step or note with the id {given!r}. The ids are: {known}."
+        )
+        if drafts:
+            message += f" The ids of its draft name them too: {', '.join(drafts)}."
+        raise EditError(message)
 
     def _is(self, node: str, kind: str, op: str, given: str) -> None:
-        """Refuses ``op`` on a node of another kind; an unknown id is left to
-        goatlib, whose refusal lists the ids."""
+        """Refuses ``op`` on a node of another kind."""
         found = self.kinds.get(node)
         if found is not None and found != kind:
             raise EditError(
@@ -427,7 +458,12 @@ class _Planner:
             )
 
     def _new_id(self, given: str, node: str) -> None:
-        if given in self.kinds or given in self.new_ids or node in self.kinds:
+        if (
+            given in self.kinds
+            or given in self.new_ids
+            or given in self._drafts()
+            or node in self.kinds
+        ):
             raise EditError(
                 f"{given!r} already names a step or note; give the new one an id "
                 "of its own."
@@ -647,9 +683,10 @@ def plan(
     config: Mapping[str, Any], operations: Sequence[Operation], context: EditContext
 ) -> Planned:
     """goatlib's operations for the model's ``operations`` on the stored
-    ``config``. Raises ``EditError`` for an operation that names a layer, a
-    region or a tool it may not use, or a new id already in use; goatlib
-    refuses the rest when it applies them (``Planned.explain``)."""
+    ``config``. Raises ``EditError`` for an operation that names a step or
+    note the workflow does not have, a layer, a region or a tool it may not
+    use, or a new id already in use; goatlib refuses the rest when it
+    applies them (``Planned.explain``)."""
     planner = _Planner(config, context)
     out: list[dict[str, Any]] = []
     origin: list[tuple[int, str]] = []

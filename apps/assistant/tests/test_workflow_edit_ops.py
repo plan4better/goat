@@ -713,10 +713,106 @@ def test_a_refusal_names_a_new_step_by_its_own_id() -> None:
     )
 
 
+STORED_IDS = "text-n1, dataset-a, tool-walk, if-big, export-save"
+#: The draft ids of a workflow this conversation created -> its node ids.
+DRAFT_IDS = {"about": "text-n1", "schools": "dataset-a", "walk": "tool-walk"}
+
+
 def test_an_unknown_id_lists_the_ids() -> None:
-    message = _refusal(_ops({"op": "rename", "id": "tool-gone", "label": "x"}))
-    assert message.startswith("operation 0 (rename): there is no step or note")
-    assert "tool-walk" in message
+    """A step added earlier in the call is listed by the id the model gave it."""
+    with pytest.raises(EditError) as refused:
+        plan(
+            STORED,
+            _ops(
+                {
+                    "op": "add_step",
+                    "step": {"id": "grid", "kind": "dataset", "layer": 33},
+                },
+                {"op": "rename", "id": "tool-gone", "label": "x"},
+            ),
+            _context(),
+        )
+    assert str(refused.value) == (
+        "operation 1 (rename): there is no step or note with the id 'tool-gone'. "
+        f"The ids are: {STORED_IDS}, grid."
+    )
+
+
+def test_a_step_is_named_by_its_drafts_id_or_its_node_id() -> None:
+    """The node ids of a created workflow are derived with a salt of the
+    create's own, so the model may name its steps and notes by their draft
+    ids too."""
+    planned = plan(
+        STORED,
+        _ops(
+            {"op": "rename", "id": "walk", "label": "Walk"},
+            {"op": "set_note_text", "id": "about", "text": "Walk."},
+            {"op": "rename", "id": "dataset-a", "label": "Schools"},
+            {"op": "connect", "from": "schools", "to": "walk", "input": "x"},
+        ),
+        _context(draft_ids=DRAFT_IDS),
+    )
+    assert [op.get("node_id") or op.get("source") for op in planned.operations] == [
+        "tool-walk",
+        "text-n1",
+        "dataset-a",
+        "dataset-a",
+    ]
+    assert planned.operations[3]["target"] == "tool-walk"
+    # A draft id names a node that exists: nothing counts as added.
+    assert planned.new_ids == {}
+
+
+def test_an_unknown_id_lists_the_drafts_ids_too() -> None:
+    with pytest.raises(EditError) as refused:
+        plan(
+            STORED,
+            _ops({"op": "rename", "id": "start", "label": "x"}),
+            _context(draft_ids=DRAFT_IDS),
+        )
+    assert str(refused.value) == (
+        "operation 0 (rename): there is no step or note with the id 'start'. "
+        f"The ids are: {STORED_IDS}. The ids of its draft name them too: "
+        "about, schools, walk."
+    )
+
+
+def test_a_draft_id_of_a_removed_step_is_unknown() -> None:
+    """The user may have removed the step in the editor, or an earlier
+    operation of the call removed it."""
+    context = _context(draft_ids={**DRAFT_IDS, "gone": "tool-gone"})
+    with pytest.raises(EditError) as refused:
+        plan(STORED, _ops({"op": "rename", "id": "gone", "label": "x"}), context)
+    message = str(refused.value)
+    assert "there is no step or note with the id 'gone'" in message
+    assert message.endswith("name them too: about, schools, walk.")
+    with pytest.raises(EditError) as removed:
+        plan(
+            STORED,
+            _ops(
+                {"op": "remove", "id": "walk"},
+                {"op": "rename", "id": "walk", "label": "x"},
+            ),
+            context,
+        )
+    assert str(removed.value).startswith(
+        "operation 1 (rename): there is no step or note with the id 'walk'"
+    )
+    assert str(removed.value).endswith("name them too: about, schools.")
+
+
+def test_a_new_step_cannot_take_a_drafts_id() -> None:
+    with pytest.raises(EditError, match="'walk' already names a step or note"):
+        plan(
+            STORED,
+            _ops(
+                {
+                    "op": "add_step",
+                    "step": {"id": "walk", "kind": "dataset", "layer": 33},
+                }
+            ),
+            _context(draft_ids=DRAFT_IDS),
+        )
 
 
 # -- the workflow as the model reads it ------------------------------------------------

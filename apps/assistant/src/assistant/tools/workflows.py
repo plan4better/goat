@@ -819,6 +819,10 @@ class OpenIssue(BaseModel):
 
 class WorkflowCreated(BaseModel):
     workflow: CreatedWorkflow
+    #: Each of the draft's step and note ids -> its id in the workflow, which
+    #: ``workflow_update`` takes either of; left out for a workflow made from
+    #: a template.
+    step_ids: dict[str, str] | None = None
     #: What the user still has to choose in the editor.
     open_issues: list[OpenIssue]
     #: The card the dock shows, in the shape of core_show_items' result.
@@ -900,11 +904,15 @@ async def _create(env: ToolEnv, args: DraftInput) -> WorkflowCreated:
         name=str(row.get("name") or args.draft.name),
         project_id=str(row.get("project_id") or project_id),
     )
+    converted = prepared.converted
+    step_ids = {**converted.node_ids, **converted.note_ids}
     env.runs.created.add(workflow.id)
+    env.runs.step_ids[workflow.id] = step_ids
     env.workflows_created.add(workflow.id)
-    labels = prepared.converted.labels
+    labels = converted.labels
     return WorkflowCreated(
         workflow=workflow,
+        step_ids=step_ids,
         open_issues=[_open_issue(issue, labels) for issue in still_open],
         groups=workflow_card(workflow),
         notes=area_notes(prepared) or None,
@@ -919,10 +927,11 @@ CREATE: ToolSpec[DraftInput, WorkflowCreated] = ToolSpec(
         "again first and refused while an issue remains that the user cannot "
         "resolve by choosing the layers of the steps left open. It does not start "
         "the workflow: workflow_run does, or the user with Run. Answers with the "
-        "workflow, the issues left open for the user, and warnings on the draft "
-        "for you. When it answers, the workflow exists: never create it again "
-        "for a warning, and mention a warning in your answer when it matters. "
-        + NOTE_RULE
+        "workflow, step_ids (each of the draft's ids with the workflow's id for "
+        "it; workflow_update takes either), the issues left open for the user, "
+        "and warnings on the draft for you. When it answers, the workflow exists: "
+        "never create it again for a warning, and mention a warning in your "
+        "answer when it matters. " + NOTE_RULE
     ),
     input_model=DraftInput,
     output_model=WorkflowCreated,

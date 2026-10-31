@@ -257,7 +257,10 @@ not hear them otherwise. Creating starts no run: `workflow_run` does (Running wo
 **Changing workflows.** `workflow_get` shows the model a stored workflow by its node ids, and `workflow_update` changes
 it with step-level operations (`workflows/edits.py`, applied by `goatlib.workflows.ops`), not with a whole new config, so
 the model cannot drop or garble what it did not mean to touch; an added step is built by the draft converter, so an edit
-writes what a create writes. A create's rules hold for an edit, and the stored config is checked together with the
+writes what a create writes. A workflow the conversation created from a draft can also be named by the draft's step and
+note ids, which the model knows from writing the draft: its node ids carry the create's own salt and cannot be derived
+again, so the create returns the map (`step_ids`) and `ConversationRuns` keeps it, read back from the stored create
+results in later answers. A create's rules hold for an edit, and the stored config is checked together with the
 edited one: only a blocking issue the edit adds refuses it (issues are compared by code, steps and field, never the
 message), so a workflow with an unrelated error stays editable. The save goes through core's PUT on the revision the
 edit read (`base_revision`), so no edit silently overwrites another; a damaged stored config is refused, never repaired

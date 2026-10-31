@@ -24,7 +24,7 @@ import json
 import math
 import uuid
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -442,6 +442,8 @@ class Converted:
     step_of: dict[str, str]
     #: Draft step id -> the step's name in the config (its label).
     labels: dict[str, str]
+    #: Draft note id -> node id.
+    note_ids: dict[str, str] = field(default_factory=dict)
 
 
 def _namespace(salt: str) -> uuid.UUID:
@@ -895,8 +897,8 @@ def to_config(
     ``titles`` (the tools' titles in the user's language) by tool id;
     ``salt`` enters every derived id (node, edge, filter condition,
     variable). Raises ``DraftError`` for a layer or a region that is not
-    given. The ``Converted`` maps name the steps only: the check skips
-    notes."""
+    given. The ``Converted`` maps name the steps only, the check skips
+    notes; ``note_ids`` names the notes."""
     by_id: dict[str, Step] = {step.id: step for step in draft.steps}
     positions = layout(draft)
     nodes: list[dict[str, Any]] = []
@@ -935,6 +937,7 @@ def to_config(
             step.id: str(node["data"]["label"])
             for step, node in zip(draft.steps, nodes, strict=True)
         },
+        note_ids={note.id: note_node_id(note, salt) for note in draft.notes},
     )
 
 

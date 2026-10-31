@@ -626,12 +626,18 @@ class ConversationRuns:
     started: set[str] = field(default_factory=set)
     #: Cards whose Run pick allowed a run already.
     used_cards: set[str] = field(default_factory=set)
+    #: For each workflow created from a draft in this conversation, its
+    #: draft's step and note ids -> their node ids: the node ids are derived
+    #: with a salt of the create's own, so they cannot be derived again, and
+    #: ``workflow_update`` takes either.
+    step_ids: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @classmethod
     def from_stored(cls, messages: Sequence[Mapping[str, Any]]) -> "ConversationRuns":
         """From ``Repository.list_messages`` rows: a create tool's part that
-        returned names a created workflow; a ``workflow-run`` data part names a
-        run, also for an answer stopped or interrupted while it waited."""
+        returned names a created workflow, with its draft's ids when it was
+        made from a draft; a ``workflow-run`` data part names a run, also for
+        an answer stopped or interrupted while it waited."""
         runs = cls()
         for message in messages:
             if message.get("role") != "assistant":
@@ -644,9 +650,17 @@ class ConversationRuns:
                     and part.get("tool_name") in CREATE_TOOLS
                     and part.get("state") == "output"
                 ):
-                    workflow = _mapping(_mapping(part.get("output")).get("workflow"))
+                    output = _mapping(part.get("output"))
+                    workflow = _mapping(output.get("workflow"))
                     if isinstance(workflow.get("id"), str):
                         runs.created.add(workflow["id"])
+                        ids = {
+                            given: node
+                            for given, node in _mapping(output.get("step_ids")).items()
+                            if isinstance(given, str) and isinstance(node, str)
+                        }
+                        if ids:
+                            runs.step_ids[workflow["id"]] = ids
                 elif part.get("type") == "data" and part.get("name") == RUN_PART:
                     data = _mapping(part.get("data"))
                     if data.get("started") is True and isinstance(

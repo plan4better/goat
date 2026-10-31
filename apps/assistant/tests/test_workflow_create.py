@@ -1021,6 +1021,13 @@ async def test_create_saves_the_config_the_check_checked() -> None:
             "name": "Schools: 15-minute walk",
             "project_id": PROJECT,
         },
+        # The draft's ids, which an edit takes too, by the saved node ids.
+        "step_ids": {
+            step["id"]: node["id"]
+            for step, node in zip(
+                DRAFT["steps"], posted["config"]["nodes"], strict=True
+            )
+        },
         "open_issues": [],
         "groups": [
             {

@@ -573,6 +573,7 @@ async def _update(env: ToolEnv, args: UpdateInput) -> WorkflowUpdated:
                 toolbox=toolbox,
                 # A fresh salt: two workflows edited alike share no node id.
                 salt=uuid4().hex,
+                draft_ids=env.runs.step_ids.get(workflow_id, {}),
             ),
         )
     except EditError as exc:
