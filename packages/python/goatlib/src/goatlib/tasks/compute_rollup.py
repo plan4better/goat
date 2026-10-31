@@ -1,6 +1,8 @@
 """compute_rollup: charge compute credits from Windmill's completed-job log.
 
-Post-hoc, idempotent, leaf-jobs-only. See spec §4."""
+Post-hoc, idempotent, leaf-jobs-only. See spec §4. The jobs come from
+Windmill's API, not its database tables, so a Windmill upgrade that changes
+its schema cannot break the charging."""
 
 from __future__ import annotations
 
@@ -8,6 +10,7 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -16,6 +19,7 @@ from goatlib.tasks._db import core_dsn, customer_schema
 
 if TYPE_CHECKING:
     import asyncpg
+    import httpx
 
 WORKFLOW_RUNNER_PATH = "f/goat/tools/workflow_runner"
 
@@ -31,14 +35,10 @@ EXPORT_SIZE_FIELDS = {
     "f/goat/tools/layer_export": "file_size_bytes",
     "f/goat/tools/project_export": "file_size",
 }
-_EXPORT_SIZE_SQL = (
-    "CASE j.runnable_path "
-    + " ".join(
-        f"WHEN '{path}' THEN c.result->>'{field}'"
-        for path, field in EXPORT_SIZE_FIELDS.items()
-    )
-    + " END"
-)
+# Windmill's job list: at most 100 per page; 100 pages are 10,000 tool jobs
+# a day, far above what runs.
+_PAGE_SIZE = 100
+_MAX_PAGES = 100
 
 logger = logging.getLogger(__name__)
 
@@ -131,49 +131,111 @@ def _export_bytes(job: dict) -> int:
         return 0
 
 
-def _windmill_dsn() -> str:
-    dsn = os.environ.get("WINDMILL_DATABASE_URL")
-    if not dsn:
-        raise RuntimeError("WINDMILL_DATABASE_URL not set")
-    return dsn.split("?", 1)[0]
+def _windmill_client() -> "httpx.AsyncClient":
+    """Windmill's API, as the job's own user: Windmill sets BASE_INTERNAL_URL,
+    WM_TOKEN and WM_WORKSPACE for every job it runs, so there is nothing to
+    configure (the schedule runs as the admin that synced it, who sees every
+    job of the workspace). Outside Windmill, set the three by hand."""
+    import httpx
+
+    url = os.environ.get("BASE_INTERNAL_URL")
+    token = os.environ.get("WM_TOKEN")
+    workspace = os.environ.get("WM_WORKSPACE")
+    if not url or not token or not workspace:
+        raise RuntimeError(
+            "not running in Windmill (BASE_INTERNAL_URL, WM_TOKEN, WM_WORKSPACE)"
+        )
+    return httpx.AsyncClient(
+        base_url=f"{url.rstrip('/')}/api/w/{workspace}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30,
+    )
+
+
+def _job_row(job: dict) -> dict:
+    """One job of Windmill's list, in the shape select_chargeable reads. The
+    list holds only finished, successful, non-scheduled tool jobs, and only
+    workflow_runner starts child jobs (it is excluded by its path). The list
+    carries no arguments: _add_details reads them (and the user) per job."""
+    return {
+        "job_id": job["id"],
+        "user_id": None,
+        "args": {},
+        "runnable_path": job.get("script_path"),
+        "trigger_kind": None,
+        "parent_job": job.get("parent_job"),
+        "status": "success" if job.get("success") else "failure",
+        "duration_ms": job.get("duration_ms"),
+        "export_size": None,
+        "has_children": False,
+    }
 
 
 async def _fetch_completed_jobs(
-    wm_conn: "asyncpg.Connection", lookback_minutes: int
+    wm: "httpx.AsyncClient", lookback_minutes: int
 ) -> list[dict]:
-    rows = await wm_conn.fetch(
-        f"""
-        SELECT
-            j.id::text                                   AS job_id,
-            j.args->>'user_id'                           AS user_id,
-            j.args                                       AS args,
-            j.runnable_path                              AS runnable_path,
-            j.trigger_kind                               AS trigger_kind,
-            j.parent_job::text                           AS parent_job,
-            c.status::text                               AS status,
-            c.duration_ms                                AS duration_ms,
-            {_EXPORT_SIZE_SQL}                           AS export_size,
-            EXISTS (SELECT 1 FROM v2_job ch WHERE ch.parent_job = j.id) AS has_children
-        FROM v2_job_completed c
-        JOIN v2_job j ON j.id = c.id
-        WHERE c.completed_at >= now() - ($1 || ' minutes')::interval
-          AND j.runnable_path LIKE 'f/goat/tools/%'
-        """,
-        str(lookback_minutes),
-    )
-    out = []
-    for r in rows:
-        d = dict(r)
-        # args arrives as a JSON string from asyncpg; normalize to dict
-        import json
+    """Tool jobs that completed successfully within the window, by completion
+    time, so a job that ran long is not missed."""
+    after = datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)
+    params = {
+        "script_path_start": "f/goat/tools/",
+        "success": "true",
+        "is_not_schedule": "true",
+        "completed_after": after.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "per_page": _PAGE_SIZE,
+    }
+    jobs: dict[str, dict] = {}
+    for page in range(1, _MAX_PAGES + 1):
+        resp = await wm.get("/jobs/list", params={**params, "page": page})
+        resp.raise_for_status()
+        batch = resp.json()
+        # Newest first: a job finishing meanwhile shifts the pages, so one
+        # can show up twice; keyed by id it is counted once.
+        for job in batch:
+            jobs[job["id"]] = _job_row(job)
+        if len(batch) < _PAGE_SIZE:
+            break
+    else:
+        logger.warning("compute_rollup: more than %d pages of jobs", _MAX_PAGES)
+    return list(jobs.values())
 
-        if isinstance(d.get("args"), str):
-            try:
-                d["args"] = json.loads(d["args"])
-            except (ValueError, TypeError):
-                d["args"] = {}
-        out.append(d)
-    return out
+
+def _needs_details(job: dict) -> bool:
+    """Whether a job may be charged at all, before its details are read."""
+    path = job["runnable_path"]
+    return path != WORKFLOW_RUNNER_PATH and tool_from_path(path) not in FREE_TOOLS
+
+
+async def _add_details(wm: "httpx.AsyncClient", jobs: list[dict]) -> list[dict]:
+    """Read each job's arguments (every job runs as the same Windmill user, so
+    who ran it is only in its user_id argument) and each export's file size
+    from its result. A job whose details cannot be read is left for the next
+    run rather than charged without them."""
+    kept = []
+    for job in jobs:
+        if not _needs_details(job):
+            continue
+        job_id = job["job_id"]
+        try:
+            resp = await wm.get(f"/jobs_u/get_args/{job_id}")
+            resp.raise_for_status()
+            args = resp.json()
+            field = EXPORT_SIZE_FIELDS.get(job["runnable_path"])
+            if field:
+                resp = await wm.get(f"/jobs_u/completed/get_result/{job_id}")
+                resp.raise_for_status()
+                result = resp.json()
+                job["export_size"] = (
+                    result.get(field) if isinstance(result, dict) else None
+                )
+        except Exception:  # noqa: BLE001 — retried next run
+            logger.warning("compute_rollup: details of job %s not read", job_id)
+            continue
+        if isinstance(args, dict):
+            job["args"] = args
+            job["user_id"] = args.get("user_id")
+        kept.append(job)
+    return kept
 
 
 async def _already_charged(
@@ -220,11 +282,13 @@ async def _run(params: ComputeRollupParams) -> dict:
     import asyncpg
 
     schema = customer_schema()
-    wm = await asyncpg.connect(dsn=_windmill_dsn(), timeout=10)
+    wm = _windmill_client()
     core = await asyncpg.connect(dsn=core_dsn(), timeout=10)
     try:
-        jobs = await _fetch_completed_jobs(wm, params.lookback_minutes)
-        already = await _already_charged(core, schema, [j["job_id"] for j in jobs])
+        found = await _fetch_completed_jobs(wm, params.lookback_minutes)
+        already = await _already_charged(core, schema, [j["job_id"] for j in found])
+        # Only the jobs still to charge need their details.
+        jobs = await _add_details(wm, [j for j in found if j["job_id"] not in already])
         items = select_chargeable(jobs, already)
         orgs = await _resolve_orgs(core, schema, list({it.user_id for it in items}))
 
@@ -251,15 +315,15 @@ async def _run(params: ComputeRollupParams) -> dict:
                 continue
             charged += 1
         summary = {
-            "considered": len(jobs),
+            "considered": len(found),
             "charged": 0 if params.dry_run else charged,
-            "skipped": len(jobs) - (0 if params.dry_run else charged) - failed,
+            "skipped": len(found) - (0 if params.dry_run else charged) - failed,
             "failed": failed,
         }
         logger.info("compute_rollup: %s", summary)
         return summary
     finally:
-        await wm.close()
+        await wm.aclose()
         await core.close()
 
 

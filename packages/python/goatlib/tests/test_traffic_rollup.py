@@ -4,7 +4,6 @@ import time
 from goatlib.tasks import traffic_rollup as tr
 from goatlib.tasks.traffic_rollup import (
     claim_egress,
-    decide_over_budget,
     parse_meter_key,
     recover_inflight,
     refresh_over_budget_flags,
@@ -18,12 +17,6 @@ def test_parse_meter_key():
         "lyr9",
         "features",
     )
-
-
-def test_decide_over_budget():
-    assert decide_over_budget(100, 100) is True
-    assert decide_over_budget(99, 100) is False
-    assert decide_over_budget(10_000, None) is False  # unlimited never over
 
 
 class _FakePipeline:
@@ -154,12 +147,14 @@ class _FakeCore:
         return {"?column?": 1} if claim in self.claims else None
 
     async def fetch(self, sql, flagged):
+        # Stands in for customer.credits_exhausted (core's SQL function).
         self.flagged_arg = flagged
-        return [
-            {"id": o, "used_credits": u, "total_credits": t}
-            for o, u, t in self.orgs
-            if t is not None and (u or 0) >= t or o in flagged
-        ]
+        rows = []
+        for o, u, t in self.orgs:
+            exhausted = t is not None and (u or 0) >= t
+            if exhausted or o in flagged:
+                rows.append({"id": o, "exhausted": exhausted})
+        return rows
 
     async def close(self):
         pass
