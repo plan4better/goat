@@ -1591,7 +1591,7 @@ async def test_without_a_feature_count_lookup_nothing_is_looked_up(
         raise AssertionError("a feature count was looked up")
 
     monkeypatch.setattr(workflow_checks, "recorded_feature_count", never)
-    monkeypatch.setattr(workflow_checks, "_get_pool", never)
+    monkeypatch.setattr(workflow_checks, "get_pool", never)
 
     issues = await check_workflow(
         [dataset(), heatmap()],

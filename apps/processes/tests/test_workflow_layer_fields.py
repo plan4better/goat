@@ -117,7 +117,7 @@ def use_pool(monkeypatch: pytest.MonkeyPatch, value: Any) -> FakePool:
     async def get_pool() -> FakePool:
         return pool
 
-    monkeypatch.setattr(workflow_checks, "_get_pool", get_pool)
+    monkeypatch.setattr(workflow_checks, "get_pool", get_pool)
     return pool
 
 

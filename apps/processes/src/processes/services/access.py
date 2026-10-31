@@ -463,7 +463,7 @@ _pool: asyncpg.Pool | None = None
 _pool_lock = asyncio.Lock()
 
 
-async def _get_pool() -> asyncpg.Pool:
+async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is not None:
         return _pool
@@ -503,7 +503,7 @@ async def denied_references(
     user_id: UUID | None, entries: list[dict[str, str]]
 ) -> list[dict[str, str]]:
     """The entries the caller may not use, from one database round trip."""
-    pool = await _get_pool()
+    pool = await get_pool()
     rows = await pool.fetch(
         access_check_sql(settings.CUSTOMER_SCHEMA),
         str(user_id) if user_id else None,
@@ -517,7 +517,7 @@ async def ensure_empty_copy_of_template(template_id: str, layer_id: str) -> None
     input without its rows: the only case in which `tool_references` lets a
     `layer_copy` job read the template instead of the dataset."""
     try:
-        pool = await _get_pool()
+        pool = await get_pool()
         found = await pool.fetchval(
             f"""
             SELECT EXISTS (

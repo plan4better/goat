@@ -363,7 +363,7 @@ async def execute_workflow(
     # Out of credits: a workflow runs tools too, so it is refused like one (402).
     from processes.services.credit_gate import assert_credits_available
 
-    await assert_credits_available(access_token)
+    await assert_credits_available(user_id)
 
     # Build job inputs
     job_inputs: dict[str, Any] = {

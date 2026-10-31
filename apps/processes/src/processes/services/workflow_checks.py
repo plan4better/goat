@@ -56,7 +56,7 @@ from pydantic import BaseModel, ValidationError
 
 from processes.config import settings
 from processes.models.processes import InputDescription, ProcessDescription
-from processes.services.access import _get_pool, refused_workflow_nodes
+from processes.services.access import get_pool, refused_workflow_nodes
 from processes.services.analytics_service import analytics_service
 from processes.services.tool_registry import tool_registry
 
@@ -1359,7 +1359,7 @@ _field_cache: LRUCache[tuple[str, datetime], tuple[str, ...]] = LRUCache(maxsize
 
 async def _last_change(layer_id: str) -> datetime | None:
     """When the layer last changed; None when there is no such layer."""
-    pool = await _get_pool()
+    pool = await get_pool()
     changed: datetime | None = await pool.fetchval(
         f"SELECT updated_at FROM {settings.CUSTOMER_SCHEMA}.layer WHERE id = $1::uuid",
         layer_id,
@@ -1434,7 +1434,7 @@ async def recorded_feature_count(layer_id: str) -> int | None:
     except InvalidLayerIdError:
         return None
     try:
-        pool = await _get_pool()
+        pool = await get_pool()
         stored: str | None = await pool.fetchval(
             "SELECT other_properties #>> '{catalog_materialize,feature_count}' "
             f"FROM {settings.CUSTOMER_SCHEMA}.layer WHERE id = $1::uuid",

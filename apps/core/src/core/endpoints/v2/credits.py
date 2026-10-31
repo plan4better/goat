@@ -76,7 +76,13 @@ async def get_balance(
     )
     used_credits = _num(org.used_credits)
     total_credits = None if org.total_credits is None else float(org.total_credits)
-    over_budget = total_credits is not None and used_credits >= total_credits
+    # The rule lives in the database, shared with processes and traffic_rollup.
+    over_budget = bool(
+        await db.scalar(
+            text(f"SELECT {core_settings.SCHEMA}.credits_exhausted(:org)"),
+            {"org": org.id},
+        )
+    )
     period_start = _period_start(org)
 
     return {
