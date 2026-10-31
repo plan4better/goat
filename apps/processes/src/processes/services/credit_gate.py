@@ -14,6 +14,9 @@ from processes.config import settings
 
 logger = logging.getLogger(__name__)
 
+# A slow database fails open after this, not after the pool's command_timeout.
+CHECK_TIMEOUT_SECONDS = 3.0
+
 
 async def assert_credits_available(
     user_id: UUID | str | None, process_id: str | None = None
@@ -31,15 +34,16 @@ async def assert_credits_available(
 
     if process_id in FREE_TOOLS:  # deleting data is always allowed
         return
-    from processes.services.access import _get_pool
+    from processes.services.access import get_pool
 
     schema = settings.CUSTOMER_SCHEMA
     try:
-        pool = await _get_pool()
+        pool = await get_pool()
         exhausted = await pool.fetchval(
             f"SELECT {schema}.credits_exhausted(u.organization_id) "
             f'FROM {schema}."user" u WHERE u.id = $1::uuid',
             str(user_id),
+            timeout=CHECK_TIMEOUT_SECONDS,
         )
     except Exception as exc:  # noqa: BLE001 — fail-open by design
         logger.warning("credit gate: balance check failed, allowing (%s)", exc)

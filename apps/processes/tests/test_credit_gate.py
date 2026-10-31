@@ -18,18 +18,19 @@ class _Pool:
         self.exhausted, self.exc = exhausted, exc
         self.queries: list[tuple] = []
 
-    async def fetchval(self, sql, *args):
+    async def fetchval(self, sql, *args, timeout=None):
         self.queries.append((sql, args))
+        self.timeout = timeout
         if self.exc:
             raise self.exc
         return self.exhausted
 
 
 def _use(monkeypatch, pool):
-    async def _get_pool():
+    async def get_pool():
         return pool
 
-    monkeypatch.setattr(access, "_get_pool", _get_pool)
+    monkeypatch.setattr(access, "get_pool", get_pool)
     return pool
 
 
@@ -41,6 +42,8 @@ async def test_blocks_when_credits_are_exhausted(monkeypatch):
     assert ei.value.status_code == 402
     sql, args = pool.queries[0]
     assert "credits_exhausted" in sql and args == (USER,)
+    # A hanging database must not hold a tool start up for the pool's 10 s.
+    assert pool.timeout == credit_gate.CHECK_TIMEOUT_SECONDS
 
 
 @pytest.mark.asyncio

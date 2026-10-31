@@ -617,7 +617,7 @@ def test_an_empty_copy_runs_only_for_a_copy_input_of_that_template(
         submitted.append(args)
         return "job-1"
 
-    monkeypatch.setattr(access, "_get_pool", get_pool)
+    monkeypatch.setattr(access, "get_pool", get_pool)
     monkeypatch.setattr(processes_router.windmill_client, "run_script_async", submit)
     # The credit gate shares this pool; this test is about the template only.
     monkeypatch.setattr(access.settings, "BILLING_ENABLED", False)
