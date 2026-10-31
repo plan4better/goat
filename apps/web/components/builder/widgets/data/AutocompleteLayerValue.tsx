@@ -8,7 +8,7 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useDatasetValueSelectorMethods } from "@/hooks/map/DatasetHooks";
@@ -45,6 +45,8 @@ const AutocompleteLayerValue = (props: AutocompleteLayerValueProps) => {
   const getLabel = (value: string) => labelMapLookup.get(value) || value;
 
   const [open, setOpen] = useState(false);
+  // Enter pressed in single mode before the matching values had arrived from the server
+  const [pendingEnter, setPendingEnter] = useState(false);
 
   const { data, isLoading, searchText, setSearchText, debouncedSetSearchText } =
     useDatasetValueSelectorMethods({
@@ -66,7 +68,30 @@ const AutocompleteLayerValue = (props: AutocompleteLayerValueProps) => {
 
   const selectedValuesSet = new Set(selectedValuesArray);
 
+  const search = searchText.trim().toLowerCase();
+  const isSearching = !props.multiple && search !== "";
+
   const options: OptionItem[] = useMemo(() => {
+    // While typing a new value in single mode, the current value only shows up if it matches,
+    // otherwise it would stay on top of the list and Enter would pick it again
+    if (isSearching) {
+      const matches = (data?.items || []).filter(
+        (item) =>
+          item.value.toLowerCase().includes(search) ||
+          getLabel(item.value).toLowerCase().includes(search)
+      );
+      // Exact match first, then values starting with the text, then the rest in server order
+      const rank = (item: OptionItem) => {
+        const label = getLabel(item.value).toLowerCase();
+        if (label === search || item.value.toLowerCase() === search) return 0;
+        if (label.startsWith(search) || item.value.toLowerCase().startsWith(search)) return 1;
+        return 2;
+      };
+      return matches
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => rank(a.item) - rank(b.item) || a.index - b.index)
+        .map(({ item }) => item);
+    }
     const selectedItems = selectedValuesArray.map((val) => {
       const existing = data?.items?.find((item) => item.value === val);
       return existing || { value: val };
@@ -75,7 +100,25 @@ const AutocompleteLayerValue = (props: AutocompleteLayerValueProps) => {
     return [...selectedItems, ...otherItems];
     // selectedValuesArray is re-derived each render; join produces a stable string dependency
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data?.items, selectedValuesArray.join(",")]);
+  }, [data?.items, selectedValuesArray.join(","), isSearching, search, labelMapLookup]);
+
+  const selectValue = (value: string | null) => {
+    setOpen(false);
+    setSearchText("");
+    debouncedSetSearchText("");
+    props.onSelectedValuesChange(value);
+  };
+
+  // Enter came before the results: take the best match as soon as it arrives
+  useEffect(() => {
+    if (!pendingEnter || isLoading) return;
+    if (options.length > 0) {
+      setPendingEnter(false);
+      selectValue(options[0].value);
+    }
+    // selectValue is recreated each render and only closes over stable setters and props
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingEnter, isLoading, options]);
 
   // Compute the Autocomplete value from props
   const autocompleteValue = props.multiple
@@ -105,6 +148,7 @@ const AutocompleteLayerValue = (props: AutocompleteLayerValueProps) => {
           option.value === value.value
         }
         open={open}
+        autoHighlight={isSearching}
         onOpen={() => setOpen(true)}
         onClose={() => {
           setOpen(false);
@@ -116,6 +160,7 @@ const AutocompleteLayerValue = (props: AutocompleteLayerValueProps) => {
         inputValue={open ? searchText : (autocompleteValue && !props.multiple ? getLabel((autocompleteValue as OptionItem).value) : searchText)}
         onInputChange={(_event, newInputValue, reason) => {
           if (reason === "input") {
+            setPendingEnter(false);
             setSearchText(newInputValue);
             debouncedSetSearchText(newInputValue);
           } else if (reason === "clear") {
@@ -130,6 +175,16 @@ const AutocompleteLayerValue = (props: AutocompleteLayerValueProps) => {
           } else {
             const value = newValue as OptionItem | null;
             props.onSelectedValuesChange(value ? value.value : null);
+          }
+        }}
+        onKeyDown={(event) => {
+          // Single mode: Enter takes the best match. If the matches for the typed text are not
+          // there yet, wait for them instead of picking a stale entry.
+          if (event.key !== "Enter" || !isSearching) return;
+          if (isLoading || options.length === 0) {
+            event.preventDefault();
+            (event as any).defaultMuiPrevented = true;
+            setPendingEnter(true);
           }
         }}
         onFocus={props.onFocus}
