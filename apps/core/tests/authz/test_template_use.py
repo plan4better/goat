@@ -136,6 +136,57 @@ async def test_workflow_template_used_into_an_existing_project_links_and_binds(
 
 
 @pytest.mark.asyncio
+async def test_a_workflow_template_use_writes_the_description_it_is_given(
+    client: AsyncClient,
+    fixture_create_user: UUID,
+    fixture_get_home_folder: dict[str, object],
+) -> None:
+    """The created workflow carries the use's description; a use without one
+    leaves it empty."""
+    home = str(fixture_get_home_folder["id"])
+    source_project_id = await _create_project(client, home, name="source")
+    workflow_id = await _create_workflow(
+        client,
+        source_project_id,
+        {
+            "nodes": [],
+            "edges": [],
+            "viewport": {"x": 0, "y": 0, "zoom": 1},
+            "variables": [],
+        },
+    )
+    create_resp = await client.post(
+        f"{settings.API_V2_STR}/template",
+        json={
+            "name": "Empty workflow",
+            "folder_id": home,
+            "source": {
+                "kind": "workflow",
+                "project_id": source_project_id,
+                "workflow_id": workflow_id,
+            },
+            "inputs": [],
+        },
+    )
+    assert create_resp.status_code == 201, create_resp.text
+    tid = create_resp.json()["id"]
+    target_project_id = await _create_project(client, home, name="target")
+
+    for description in ("Made by the assistant.\n\nThe template's own text.", None):
+        use_resp = await client.post(
+            f"{settings.API_V2_STR}/template/{tid}/use",
+            json={"project_id": target_project_id, "description": description},
+        )
+        assert use_resp.status_code == 200, use_resp.text
+        wf_resp = await client.get(
+            f"{settings.API_V2_STR}/project/{target_project_id}"
+            f"/workflow/{use_resp.json()['workflow_id']}"
+        )
+        assert wf_resp.status_code == 200, wf_resp.text
+        assert wf_resp.json()["description"] == description
+
+
+@pytest.mark.asyncio
 async def test_stranger_who_cannot_read_the_shipped_dataset_gets_an_unresolved_input(
     client: AsyncClient,
     db_session: AsyncSession,

@@ -1991,7 +1991,10 @@ class CRUDTemplate:
                 db,
                 project_id=target_project_id,
                 obj_in=WorkflowCreate(
-                    name=name, description=None, is_default=False, config=bound_config
+                    name=name,
+                    description=req.description,
+                    is_default=False,
+                    config=bound_config,
                 ),
             )
             assert wf.id is not None

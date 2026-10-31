@@ -301,6 +301,11 @@ class TemplateUseRequest(BaseModel):
     project_id: UUID | None = None
     target_folder_id: UUID | None = None
     name: str | None = None
+    description: str | None = Field(
+        None,
+        description="For a workflow payload: the created workflow's description. "
+        "None leaves it empty.",
+    )
     bindings: dict[str, UUID] = {}
 
 
