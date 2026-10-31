@@ -15,7 +15,7 @@ from assistant.db import Database
 def test_defaults_match_the_spec(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AUTH", "false")
     settings = AssistantSettings()
-    assert settings.run_max_tool_calls == 30
+    assert settings.run_max_tool_calls == 40
     assert settings.run_max_tokens == 200_000
     assert settings.run_max_seconds == 900
     assert settings.user_max_concurrent_runs == 3

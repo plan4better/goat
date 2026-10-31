@@ -102,6 +102,7 @@ from tests.test_history_budget import (
     PROVIDER_CHARS_PER_TOKEN,
     _profile_core,
     _sent_chars,
+    look_ups,
 )
 
 DEFAULTS = AssistantSettings.model_fields
@@ -1004,7 +1005,7 @@ async def test_a_step_with_a_call_that_ran_is_not_cut_short() -> None:
         budget=PRODUCTION,
         created=[RUN_WORKFLOW, OTHER_WORKFLOW],
     )
-    assert _stage(answered.notes[26]) == "read or ask"
+    assert _stage(answered.notes[LOOKED_UP + 1]) == "read or ask"
 
 
 @pytest.mark.parametrize("growth", GROWTHS)
@@ -1045,11 +1046,11 @@ async def test_a_run_the_answer_step_started_is_not_offered_again() -> None:
         budget=PRODUCTION,
         created=[OTHER_WORKFLOW],
     )
-    assert RUN_WHAT_YOU_BUILT in str(answered.notes[25])
+    assert RUN_WHAT_YOU_BUILT in str(answered.notes[LOOKED_UP])
     failed, again = _results(answered.turn, "workflow_run")
     assert failed.outcome == "failed"
     assert failed.content != ANSWER_STEP_REFUSALS["workflow_run"]
-    assert RUN_WHAT_YOU_BUILT not in str(answered.notes[26])
+    assert RUN_WHAT_YOU_BUILT not in str(answered.notes[LOOKED_UP + 1])
     assert again.content == ANSWER_STEP_REFUSALS["workflow_run"]
 
 
@@ -1101,9 +1102,10 @@ OTHER_RUN_CALL: tuple[str, dict[str, Any]] = (
     "workflow_run",
     {"workflow_id": OTHER_WORKFLOW},
 )
-#: Look-ups that spend the run's tool calls (five of 30 kept in reserve): the
-#: step after them, number 25, answers, with room for a card.
-SPENT: list[Response] = [LOOK_UP] * 25
+#: The look-ups that spend the run's tool calls but its reserve: the step
+#: after them, number ``LOOKED_UP``, answers, with room for a card.
+LOOKED_UP = look_ups(PRODUCTION.max_tool_calls)
+SPENT: list[Response] = [LOOK_UP] * LOOKED_UP
 
 
 async def test_the_answer_step_runs_the_workflow_this_answer_built() -> None:
@@ -1114,13 +1116,13 @@ async def test_the_answer_step_runs_the_workflow_this_answer_built() -> None:
     answered = await _answer_run(
         *SPENT, [RUN_CALL], budget=PRODUCTION, created=[RUN_WORKFLOW]
     )
-    note = answered.notes[25]
+    note = answered.notes[LOOKED_UP]
     assert _stage(note) == "answer or ask"
     assert RUN_WHAT_YOU_BUILT in str(note)
     [run] = _results(answered.turn, "workflow_run")
     assert run.outcome != "failed"
     assert isinstance(run.content, dict) and run.content["status"] == "succeeded"
-    assert _stage(answered.notes[26]) == "read or ask"
+    assert _stage(answered.notes[LOOKED_UP + 1]) == "read or ask"
     assert answered.turn.output == ANSWER
 
 
@@ -1133,7 +1135,7 @@ async def test_the_answer_step_runs_the_workflow_this_answer_built() -> None:
         (SPENT, RUN_CALL, [], False),
         # The answer ran it already and wrote about its result.
         (
-            [[RUN_CALL], [ANSWER, *LOOK_UP], *[LOOK_UP] * 23],
+            [[RUN_CALL], [ANSWER, *LOOK_UP], *[LOOK_UP] * (LOOKED_UP - 2)],
             RUN_CALL,
             [RUN_WORKFLOW],
             False,
@@ -1147,7 +1149,7 @@ async def test_the_answer_step_runs_no_other_workflow(
     offered: bool,
 ) -> None:
     answered = await _answer_run(*before, [call], budget=PRODUCTION, created=created)
-    note = answered.notes[25]
+    note = answered.notes[LOOKED_UP]
     assert _stage(note) == "answer or ask"
     assert (RUN_WHAT_YOU_BUILT in str(note)) is offered
     refused = _results(answered.turn, "workflow_run")[-1]
@@ -1169,7 +1171,7 @@ async def test_the_answer_step_runs_one_workflow_before_its_result_is_read() -> 
     assert first.outcome != "failed"
     assert second.outcome == "failed"
     assert second.content == ANSWER_STEP_REFUSALS["workflow_run"]
-    assert _stage(answered.notes[26]) == "read or ask"
+    assert _stage(answered.notes[LOOKED_UP + 1]) == "read or ask"
 
 
 #: The newest call of a run near its limits: a context of 100,000 tokens,
@@ -1358,13 +1360,13 @@ async def test_the_answer_step_adds_the_datasets_the_user_just_picked() -> None:
         asks=_picks(answering=True),
         core_routes=ADDED,
     )
-    assert ADD_WHAT_WAS_PICKED in str(answered.notes[25])
+    assert ADD_WHAT_WAS_PICKED in str(answered.notes[LOOKED_UP])
     [added] = _results(answered.turn, "project_add_catalog_layer")
     assert added.outcome != "failed"
     assert isinstance(added.content, dict)
     assert added.content["layers"][0]["layer_project_id"] == 501
     # Added, it is not offered again.
-    assert ADD_WHAT_WAS_PICKED not in str(answered.notes[26])
+    assert ADD_WHAT_WAS_PICKED not in str(answered.notes[LOOKED_UP + 1])
 
 
 @pytest.mark.parametrize(
@@ -1387,7 +1389,7 @@ async def test_the_answer_step_adds_nothing_else(
         asks=_picks(answering=answering),
         core_routes=ADDED,
     )
-    assert (ADD_WHAT_WAS_PICKED in str(answered.notes[25])) is answering
+    assert (ADD_WHAT_WAS_PICKED in str(answered.notes[LOOKED_UP])) is answering
     refused = _results(answered.turn, "project_add_catalog_layer")[-1]
     assert refused.outcome == "failed"
     assert refused.content == ANSWER_STEP_REFUSALS["project_add_catalog_layer"]

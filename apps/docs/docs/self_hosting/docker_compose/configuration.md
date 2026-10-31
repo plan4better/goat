@@ -149,7 +149,7 @@ See [AI assistant](./external_services.md#assistant) for how these work together
 | `ASSISTANT_ALLOWED_PROVIDERS` | all seven types | Provider types organizations may use, comma-separated |
 | `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS` | `false` | Lets organizations' connections reach private and internal addresses and plain `http` |
 | `ASSISTANT_SECRETS_KEY` | set by setup.sh | Encrypts the credentials organizations store. Keep it with your backups; see [The assistant's key](./operations.md#assistant-key). |
-| `ASSISTANT_RUN_MAX_TOOL_CALLS`, `ASSISTANT_RUN_MAX_TOKENS`, `ASSISTANT_RUN_MAX_SECONDS` | *(commented out)*: `30`, `200000`, `900` | Limits per answer. Tokens read from the model provider's cache count at a tenth toward `ASSISTANT_RUN_MAX_TOKENS`. Reading a finished workflow run's result may take up to 7 tool calls beyond `ASSISTANT_RUN_MAX_TOOL_CALLS`. |
+| `ASSISTANT_RUN_MAX_TOOL_CALLS`, `ASSISTANT_RUN_MAX_TOKENS`, `ASSISTANT_RUN_MAX_SECONDS` | *(commented out)*: `40`, `200000`, `900` | Limits per answer. Tokens read from the model provider's cache count at a tenth toward `ASSISTANT_RUN_MAX_TOKENS`. Reading a finished workflow run's result may take up to 7 tool calls beyond `ASSISTANT_RUN_MAX_TOOL_CALLS`. |
 | `ASSISTANT_RUN_WAIT_MAX_SECONDS` | *(commented out)*: `1800` | How long in all an answer may take that waits for a workflow run; the run itself goes on after it. Takes effect only above `ASSISTANT_RUN_MAX_SECONDS` |
 | `ASSISTANT_USER_MAX_CONCURRENT_RUNS` | *(commented out)*: `3` | Answers one user may have running at once |
 | `ASSISTANT_TOOL_TIMEOUT_SECONDS` | *(commented out)*: `30` | Seconds per request the assistant makes to the other services |

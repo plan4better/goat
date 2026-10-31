@@ -156,7 +156,7 @@ class AssistantSettings(BaseSettings):
 
     #: Tool calls per answer. Reading a finished workflow run's result may
     #: take up to ``MAX_RESULT_READS`` + 1 more (``assistant.budget``).
-    run_max_tool_calls: int = 30
+    run_max_tool_calls: int = 40
     #: Tokens per answer, input and output; tokens read from the provider's
     #: cache count at a tenth (``assistant.budget.CACHE_READ_WEIGHT``).
     run_max_tokens: int = 200_000

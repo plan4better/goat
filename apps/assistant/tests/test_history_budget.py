@@ -38,6 +38,7 @@ from pydantic_ai.usage import RequestUsage, RunUsage, UsageLimits
 from assistant.agent import STAGE_KEY, RunDeps, build_agent
 from assistant.budget import (
     MAX_RESULT_READS,
+    TOOL_CALL_RESERVE,
     NextCall,
     RunBudget,
     next_call,
@@ -931,6 +932,13 @@ class _Provider(FunctionModel):
             yield response
 
 
+def look_ups(max_tool_calls: int) -> int:
+    """The look-ups a run whose tool-call limit is ``max_tool_calls`` makes
+    before it answers, one call each: the limit but its reserve
+    (``RunBudget.spent``)."""
+    return max_tool_calls - min(TOOL_CALL_RESERVE, max_tool_calls // 6)
+
+
 async def _run(
     repo: Repository,
     settings: AssistantSettings,
@@ -1002,8 +1010,9 @@ async def test_a_run_reading_from_the_cache_is_not_stopped_at_its_raw_tokens(
     model = _Provider(start=5_000, growth=0)
     run = await _run(repo, settings, model, run_max_tokens=80_000)
     assert run["status"] == "succeeded", run["error"]
-    # 25 look-ups (five of 30 tool calls kept in reserve), then the answer.
-    assert model.notes.count(None) == 25 and len(model.notes) == 26
+    # The look-ups until the tool calls kept in reserve, then the answer.
+    looked_up = look_ups(settings.run_max_tool_calls)
+    assert model.notes.count(None) == looked_up and len(model.notes) == looked_up + 1
     assert sum(tokens for tokens, _, _ in model.usages) > 80_000
 
 
@@ -1054,15 +1063,16 @@ async def _audited(repo: Repository, run: dict[str, Any]) -> list[tuple[str, str
 async def test_a_step_past_the_tool_call_budget_runs_what_fits_and_answers(
     repo: Repository, settings: AssistantSettings
 ) -> None:
-    """24 of 30 tool calls pass the check, and the next step makes eight at
-    once: six run, two are refused, and the run answers."""
-    model = _Provider(start=5_000, growth=0, parallel={24: 8})
+    """All but six of the run's tool calls pass the check, and the next step
+    makes eight at once: six run, two are refused, and the run answers."""
+    at = settings.run_max_tool_calls - 6
+    model = _Provider(start=5_000, growth=0, parallel={at: 8})
     run = await _run(repo, settings, model)
     assert run["status"] == "succeeded", run["error"]
     step = [
         p
         for p in await _stored_tools(repo, run)
-        if p["tool_call_id"].startswith("call-24-")
+        if p["tool_call_id"].startswith(f"call-{at}-")
     ]
     assert [p["state"] for p in step].count("output") == 6
     assert [p["error"] for p in step if p["state"] == "error"] == [LOOK_UPS_USED_UP] * 2
@@ -1223,8 +1233,10 @@ async def test_a_repeated_result_over_the_cap_ends_at_the_tool_call_limit(
     run = await _run(repo, settings, model, fake_clients(core=core))
     assert run["status"] == "succeeded", run["error"]
     assert core.paths().count("/api/v2/users/profile") == 1
-    # Five of 30 kept in reserve: 25 calls, then the answer step.
-    assert model.notes == [None] * 25 + [ANSWER_OR_ASK]
+    # The calls until the tool calls kept in reserve, then the answer step.
+    assert model.notes == [None] * look_ups(settings.run_max_tool_calls) + [
+        ANSWER_OR_ASK
+    ]
 
 
 async def test_a_repeated_failing_call_ends_at_the_tool_call_limit(
@@ -1241,19 +1253,21 @@ async def test_a_repeated_failing_call_ends_at_the_tool_call_limit(
     model = _Provider(start=10_000, growth=0, tools=WHOAMI_FROM_CALL_2)
     run = await _run(repo, settings, model, fake_clients(core=core))
     assert run["status"] == "succeeded", run["error"]
-    assert model.notes == [None] * 25 + [ANSWER_OR_ASK]
+    looked_up = look_ups(settings.run_max_tool_calls)
+    assert model.notes == [None] * looked_up + [ANSWER_OR_ASK]
     assert core.paths().count("/api/v2/users/profile") == 2
     errors = [
         p["error"]
         for p in await _stored_tools(repo, run)
         if p["tool_name"] == "core_whoami"
     ]
-    assert len(errors) == 23 and SERVICE_FAILED_TWICE not in errors[:2]
-    assert errors[2:] == [SERVICE_FAILED_TWICE] * 21
+    # core_whoami from the third call on: the first two ask the service.
+    assert len(errors) == looked_up - 2 and SERVICE_FAILED_TWICE not in errors[:2]
+    assert errors[2:] == [SERVICE_FAILED_TWICE] * (looked_up - 4)
     refused = [
         row for row in await _audited(repo, run) if row[1] == SERVICE_FAILED_TWICE
     ]
-    assert len(refused) == 21
+    assert len(refused) == looked_up - 4
 
 
 def _raises(exc: Exception) -> Any:
