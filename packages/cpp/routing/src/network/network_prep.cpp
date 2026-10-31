@@ -106,10 +106,14 @@ RadialNetworkPrep prepare_radial_network(
     double const buffer_m = input::buffer_distance(cfg);
     auto const classes = input::valid_classes(cfg.mode);
 
+    // Kept with the network so a later geometry read uses the same cells.
+    auto filter = data::compute_spatial_filter(con, cfg.starting_points, buffer_m);
     auto edges = data::load_edges(
         con, cfg.edge_dir, cfg.node_dir,
-        cfg.starting_points, buffer_m, classes, cfg.mode, load_geometry);
-    return finish_radial_network(std::move(edges), cfg);
+        filter, classes, cfg.mode, load_geometry);
+    auto out = finish_radial_network(std::move(edges), cfg);
+    out.filter = std::move(filter);
+    return out;
 }
 
 StreetMatrixPrep prepare_street_matrix_network(

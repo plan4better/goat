@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../types.h"
+#include "../data/h3_util.h"
 
 #include <string>
 #include <vector>
@@ -27,6 +28,7 @@ struct RadialNetworkPrep
 {
     SubNetwork net;
     std::vector<int32_t> snapped_nodes;  // parallel to cfg.starting_points
+    data::SpatialFilter filter;          // the cells the edges were loaded from
 };
 
 // Load edges in H3 cells touching buffers around cfg.starting_points, compute

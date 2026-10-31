@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace routing::data
 {
@@ -453,6 +454,127 @@ namespace routing::data
     {
         return load_edges_impl(con, edge_dir, node_dir, filter,
                                valid_classes, mode, load_geometry);
+    }
+
+
+    std::unordered_map<int64_t, std::vector<Point3857>> load_edge_geometry(
+        duckdb::Connection &con,
+        std::string const &edge_dir,
+        SpatialFilter const &filter,
+        std::vector<int64_t> const &edge_ids)
+    {
+        std::unordered_map<int64_t, std::vector<Point3857>> out;
+        if (edge_ids.empty())
+            return out;
+        out.reserve(edge_ids.size());
+
+        std::string const scan = scan_relation(edge_dir, filter.h3_3_cells);
+        bool has_h3_3 = false;
+        bool has_h3_6 = false;
+        auto schema = con.Query("DESCRIBE SELECT * FROM " + scan + " LIMIT 0");
+        if (schema->HasError())
+        {
+            throw std::runtime_error(
+                "Failed to read edge dataset schema: " + schema->GetError());
+        }
+        for (size_t row = 0; row < schema->RowCount(); ++row)
+        {
+            auto col = schema->GetValue(0, row).GetValue<std::string>();
+            has_h3_3 = has_h3_3 || col == "h3_3";
+            has_h3_6 = has_h3_6 || col == "h3_6";
+        }
+
+        // Temp table rather than a huge IN list.
+        auto created = con.Query(
+            "CREATE OR REPLACE TEMP TABLE _routing_geometry_ids (id BIGINT)");
+        if (created->HasError())
+        {
+            throw std::runtime_error("Failed to create geometry id table: " +
+                                     created->GetError());
+        }
+        // Dropped on every exit, including a throw.
+        struct DropIds
+        {
+            duckdb::Connection &con;
+            ~DropIds() { con.Query("DROP TABLE IF EXISTS _routing_geometry_ids"); }
+        } drop_ids{con};
+        {
+            duckdb::Appender appender(con, "_routing_geometry_ids");
+            for (auto id : edge_ids)
+                appender.AppendRow(id);
+        }
+
+        std::ostringstream sql;
+        sql << "SELECT e.id, e.coordinates_3857 FROM " << scan << " e "
+            << "SEMI JOIN _routing_geometry_ids g ON g.id = e.id";
+        // Same pruning as load_edges.
+        bool where = false;
+        if (has_h3_3 && !filter.h3_3_cells.empty())
+        {
+            sql << " WHERE h3_3 IN " << sql_int_list(filter.h3_3_cells);
+            where = true;
+        }
+        if (has_h3_6 && !filter.h3_6_cells.empty())
+            sql << (where ? " AND" : " WHERE") << " h3_6 IN " << sql_int_list(filter.h3_6_cells);
+
+        auto result = con.Query(sql.str());
+        if (result->HasError())
+        {
+            throw std::runtime_error("DuckDB geometry query failed: " +
+                                     result->GetError());
+        }
+        while (true)
+        {
+            auto chunk = result->Fetch();
+            if (!chunk || chunk->size() == 0)
+                break;
+            auto const count = chunk->size();
+            duckdb::UnifiedVectorFormat id_f, outer_f, inner_f, xy_f;
+            chunk->data[0].ToUnifiedFormat(count, id_f);
+            auto const *ids = duckdb::UnifiedVectorFormat::GetData<int64_t>(id_f);
+            auto &gv = chunk->data[1];
+            gv.ToUnifiedFormat(count, outer_f);
+            auto const *outer = duckdb::UnifiedVectorFormat::GetData<duckdb::list_entry_t>(outer_f);
+            auto &inner_vec = duckdb::ListVector::GetEntry(gv);
+            inner_vec.ToUnifiedFormat(duckdb::ListVector::GetListSize(gv), inner_f);
+            auto const *inner = duckdb::UnifiedVectorFormat::GetData<duckdb::list_entry_t>(inner_f);
+            auto &xy_vec = duckdb::ListVector::GetEntry(inner_vec);
+            xy_vec.ToUnifiedFormat(duckdb::ListVector::GetListSize(inner_vec), xy_f);
+            auto const *xy = duckdb::UnifiedVectorFormat::GetData<double>(xy_f);
+
+            for (duckdb::idx_t i = 0; i < count; ++i)
+            {
+                auto const ri = id_f.sel->get_index(i);
+                auto const oi = outer_f.sel->get_index(i);
+                if (!id_f.validity.RowIsValid(ri) || !outer_f.validity.RowIsValid(oi))
+                    continue;
+                // Same point rules as load_edges.
+                std::vector<Point3857> geom;
+                auto const &line = outer[oi];
+                geom.reserve(line.length);
+                for (duckdb::idx_t k = line.offset; k < line.offset + line.length; ++k)
+                {
+                    auto const ki = inner_f.sel->get_index(k);
+                    if (!inner_f.validity.RowIsValid(ki))
+                        continue;
+                    auto const &pt = inner[ki];
+                    if (pt.length < 2)
+                        continue;
+                    auto const xi = xy_f.sel->get_index(pt.offset);
+                    auto const yi = xy_f.sel->get_index(pt.offset + 1);
+                    if (!xy_f.validity.RowIsValid(xi) || !xy_f.validity.RowIsValid(yi))
+                        continue;
+                    auto const x = xy[xi];
+                    auto const y = xy[yi];
+                    if (!std::isfinite(x) || !std::isfinite(y))
+                        continue;
+                    geom.push_back({x, y});
+                }
+                if (geom.size() >= 2)
+                    out[ids[ri]] = std::move(geom);
+            }
+        }
+        return out;
     }
 
 } // namespace routing::data
