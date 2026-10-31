@@ -18,10 +18,15 @@ catalog dataset the answer found but adds nothing
 (``assistant.asks.unadded_dataset``). The ids an option adds are looked up
 before the card is shown, and the result names each option's datasets by
 the titles found, so an id that is not the data its label names shows
-before the user picks. Not on MCP: its clients cannot show it.
+before the user picks. A card adding an id no dataset has is refused with
+the catalog datasets the answer found, by their exact ids, so the model
+corrects a shortened or invented id in one call. Not on MCP: its clients
+cannot show it.
 """
 
 import asyncio
+from collections.abc import Mapping, Sequence
+from difflib import SequenceMatcher
 from typing import Any, Literal
 from urllib.parse import quote
 from uuid import UUID, uuid4
@@ -81,6 +86,8 @@ REPEATED_CARD = (
 MAX_CHECKED_ADDS = 50
 #: Unknown ids of a card's ``adds`` its refusal names at most.
 _NAMED_ADDS = 5
+#: The catalog datasets the answer found that such a refusal names at most.
+MAX_NAMED_FOUND = 10
 
 
 class OptionAdds(BaseModel):
@@ -199,6 +206,29 @@ async def _lookup(env: ToolEnv, item: str) -> Found:
     return known, catalog_title or own_title
 
 
+def _found_datasets(found: Mapping[str, str], refused: Sequence[str]) -> str:
+    """The catalog datasets the answer found (``found``: titles by id,
+    ``ToolEnv.catalog_titles``) as the refusal of the ``refused`` ids names
+    them, by their exact ids, so the model corrects the card in one call:
+    the ids most like a refused one first, since a model that shortened or
+    garbled an id finds the right one there, then in the order found; at
+    most ``MAX_NAMED_FOUND``. Empty when the answer found none."""
+    if not found:
+        return ""
+
+    def closeness(item: str) -> float:
+        return max(SequenceMatcher(None, item, given).ratio() for given in refused)
+
+    # sorted is stable: ids alike in closeness stay in the order found.
+    ranked = sorted(found, key=closeness, reverse=True)
+    listed = ", ".join(
+        f'"{found[item]}" (id {item})' for item in ranked[:MAX_NAMED_FOUND]
+    )
+    if len(ranked) > MAX_NAMED_FOUND:
+        listed += f" and {len(ranked) - MAX_NAMED_FOUND} more"
+    return f" The catalog datasets this answer found, the closest ids first: {listed}."
+
+
 async def _check_adds(env: ToolEnv, card: AskUserInput) -> dict[str, str | None]:
     """Refuses a card whose options add ids no dataset has, each id looked up
     once, all at the same time, and one with more ids than
@@ -230,14 +260,15 @@ async def _check_adds(env: ToolEnv, card: AskUserInput) -> dict[str, str | None]
     named = ", ".join(repr(item) for item in unknown[:_NAMED_ADDS])
     if len(unknown) > _NAMED_ADDS:
         named += f" and {len(unknown) - _NAMED_ADDS} more"
+    listed = _found_datasets(env.catalog_titles, unknown[:_NAMED_ADDS])
     if len(unknown) == 1:
         raise InputInvalid(
             f"adds names {named}, which is no catalog dataset and no dataset you "
-            "can read: take the id from catalog_search or core_find."
+            f"can read: take the id from catalog_search or core_find.{listed}"
         )
     raise InputInvalid(
         f"adds names {named}, which are no catalog datasets and no datasets you "
-        "can read: take the ids from catalog_search or core_find."
+        f"can read: take the ids from catalog_search or core_find.{listed}"
     )
 
 

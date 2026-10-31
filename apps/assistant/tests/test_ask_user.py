@@ -62,6 +62,7 @@ from assistant.tools.ask import (
     ADDS_NAMED,
     ASK_USER,
     ASKED_NOTE,
+    MAX_NAMED_FOUND,
     ONE_CARD,
     REPEATED_CARD,
     REPORT_FIRST,
@@ -857,6 +858,47 @@ async def test_a_card_adding_a_truncated_catalog_id_is_refused() -> None:
         "you can read: take the id from catalog_search or core_find."
     )
     assert shown == []
+
+
+#: A catalog dataset's id and one the model shortened from it.
+POPULATION = "52ec5eb6-46f7-4d1c-aab3-28a063207aeb"
+SHORTENED_ID = "52ec5eb6-46f7-aab3-28a063207aeb"
+
+
+async def test_a_refused_id_comes_back_with_the_datasets_the_answer_found() -> None:
+    """The model corrects the id in one call: the refusal names the catalog
+    datasets the answer found by their exact ids, the closest ids first."""
+    catalog = Recorder({("GET", f"/stac/resolve/{SHORTENED_ID}"): _not_found})
+    env, shown = _adds_env(catalog)
+    env.catalog_titles.update(
+        {"stop_classes": "Public transport stop classes", POPULATION: "Population"}
+    )
+    with pytest.raises(InputInvalid) as refused:
+        await execute(ASK_USER, env, _adding(SHORTENED_ID), tool_call_id="c1")
+    assert refused.value.message == (
+        f"adds names '{SHORTENED_ID}', which is no catalog dataset and no dataset "
+        "you can read: take the id from catalog_search or core_find. The catalog "
+        "datasets this answer found, the closest ids first: "
+        f'"Population" (id {POPULATION}), '
+        '"Public transport stop classes" (id stop_classes).'
+    )
+    assert shown == []
+
+
+async def test_the_datasets_a_refusal_names_are_capped() -> None:
+    catalog = Recorder({("GET", f"/stac/resolve/{SHORTENED_ID}"): _not_found})
+    env, _ = _adds_env(catalog)
+    env.catalog_titles.update(
+        {f"layer_{index}": f"Layer {index}" for index in range(MAX_NAMED_FOUND)}
+    )
+    # Found last, it is named first.
+    env.catalog_titles[POPULATION] = "Population"
+    with pytest.raises(InputInvalid) as refused:
+        await execute(ASK_USER, env, _adding(SHORTENED_ID), tool_call_id="c1")
+    message = refused.value.message
+    assert f'found, the closest ids first: "Population" (id {POPULATION}), ' in message
+    assert message.count("(id ") == MAX_NAMED_FOUND
+    assert message.endswith(" and 1 more.")
 
 
 async def test_a_card_adding_known_datasets_is_shown_after_one_lookup_each() -> None:
