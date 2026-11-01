@@ -90,17 +90,17 @@ beforeEach(() => {
 });
 
 describe("AI settings page", () => {
-  it("shows GOAT AI as the active connection with its model, provider and where it is hosted", () => {
+  it("shows GOAT AI as the active connection with where it is hosted, not its model", () => {
     render(<AiSettingsPage />);
     expect(screen.getAllByText("ai_settings_goat_ai").length).toBeGreaterThan(0);
     expect(
-      screen.getAllByText(
-        "eu.anthropic.claude-sonnet-4-5 · Amazon Bedrock · ai_settings_goat_ai_hosted_in:assistant_hosted_place_eu"
-      ).length
+      screen.getAllByText("ai_settings_goat_ai_hosted_in:assistant_hosted_place_eu").length
     ).toBeGreaterThan(0);
+    expect(screen.queryByText(/claude-sonnet/)).toBeNull();
+    expect(screen.queryByText(/Amazon Bedrock/)).toBeNull();
   });
 
-  it("names GOAT AI's model alone where the instance names nothing else", () => {
+  it("shows no model either where the instance names no hosting place", () => {
     given(
       {
         ...SETTINGS,
@@ -112,7 +112,8 @@ describe("AI settings page", () => {
       []
     );
     render(<AiSettingsPage />);
-    expect(screen.getAllByText("eu.anthropic.claude-sonnet-4-5").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("ai_settings_goat_ai").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/claude-sonnet/)).toBeNull();
   });
 
   it("warns when the active connection failed its last check", () => {
