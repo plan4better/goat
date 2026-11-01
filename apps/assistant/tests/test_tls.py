@@ -179,6 +179,7 @@ def _serve(cert: Path, key: Path) -> Iterator[str]:
     """An HTTPS server on 127.0.0.1, addressed as localhost."""
     server = _QuietServer(("127.0.0.1", 0), _Handler)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(str(cert), str(key))
     server.socket = context.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -216,15 +217,40 @@ def test_without_a_bundle_the_library_default_applies() -> None:
     assert ssl_context("") is True
 
 
-def test_the_bundle_is_added_to_the_system_cas(company_ca: CompanyCa) -> None:
+def test_the_bundle_is_added_to_the_system_cas(
+    monkeypatch: pytest.MonkeyPatch, company_ca: CompanyCa
+) -> None:
     system = ssl.create_default_context().get_ca_certs()
+    default_context = ssl.create_default_context
+    started: list[ssl.SSLContext] = []
+
+    def record(*args: Any, **kwargs: Any) -> ssl.SSLContext:
+        # No cafile, capath or cadata: only then does it load the defaults.
+        assert not args and not kwargs, "ssl_context starts from the defaults"
+        started.append(default_context())
+        return started[-1]
+
+    monkeypatch.setattr(ssl, "create_default_context", record)
     context = ssl_context(str(company_ca.bundle))
     assert isinstance(context, ssl.SSLContext)
+    # The system CAs stay: the bundle adds to them, never replaces them. The
+    # context is the default one, which loads OpenSSL's default verify paths
+    # (the system store), with the bundle loaded on top.
+    assert started == [context]
     trusted = context.get_ca_certs()
-    # The system CAs stay: the bundle adds to them, never replaces them.
-    assert system, "the test needs a system CA store"
-    assert len(trusted) == len(system) + 1
-    assert all(entry in trusted for entry in system)
+    if system:
+        # A system store read from a file is listed, so every entry shows.
+        assert len(trusted) == len(system) + 1
+        assert all(entry in trusted for entry in system)
+    else:
+        # Builds without a default CA file (uv's CPython on Ubuntu) read the
+        # system store from a hashed directory, which OpenSSL consults during
+        # verification and never lists; only the bundle shows.
+        paths = ssl.get_default_verify_paths()
+        assert paths.cafile is None
+        assert paths.capath, "the test needs a system CA store"
+        assert any(Path(paths.capath).iterdir())
+        assert len(trusted) == 1
     assert any("GOAT Company Test CA" in str(entry["subject"]) for entry in trusted)
     assert context.verify_mode == ssl.CERT_REQUIRED
     assert context.check_hostname is True

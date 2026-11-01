@@ -50,8 +50,22 @@ async def test_the_active_connection_cannot_be_deleted(db: Database) -> None:
         ORG,
         connection_id,
     )
-    # ON DELETE RESTRICT raises 23001, not the 23503 of NO ACTION.
-    with pytest.raises(asyncpg.RestrictViolationError):
+    # The foreign key is ON DELETE RESTRICT, read from the catalog: the error
+    # alone cannot tell it from NO ACTION, as PostgreSQL 16 reports a RESTRICT
+    # violation as 23503 (ForeignKeyViolationError) and newer servers as 23001
+    # (RestrictViolationError). Both are integrity constraint violations.
+    delete_rule = await db.pool.fetchval(
+        "SELECT c.confdeltype::text FROM pg_constraint c "
+        "JOIN pg_class t ON t.oid = c.conrelid "
+        "JOIN pg_namespace n ON n.oid = t.relnamespace "
+        "JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY (c.conkey) "
+        "WHERE c.contype = 'f' AND n.nspname = $1 "
+        "AND t.relname = 'organization_settings' "
+        "AND a.attname = 'active_connection_id'",
+        db.settings.db_schema,
+    )
+    assert delete_rule == "r"
+    with pytest.raises(asyncpg.IntegrityConstraintViolationError):
         await db.pool.execute(
             f"DELETE FROM {db.t('connection')} WHERE id = $1", connection_id
         )
