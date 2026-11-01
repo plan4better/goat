@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any, List, Literal, Optional, Self
 
+import duckdb
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from goatlib.analysis.data_management.join import JoinTool
@@ -421,11 +422,36 @@ class JoinToolParams(ToolInputBase, BaseModel):
     )
 
 
+def _is_geometry(name: str, data_type: str) -> bool:
+    return "GEOMETRY" in data_type.upper() or name in ("geometry", "bbox")
+
+
+def _join_fields(params: JoinToolParams, join_path: Path) -> list[str]:
+    """The join layer's fields a run adds. With join fields on and no list
+    given, every field but the geometry: the form ticks them all
+    (`default_all`), so a join drafted without it adds what the form would
+    have. A list given, the empty one included, is what the user ticked."""
+    if not params.add_join_fields:
+        return []
+    if "join_fields" in params.model_fields_set:
+        return params.join_fields
+    con = duckdb.connect()
+    try:
+        con.execute("INSTALL spatial; LOAD spatial;")
+        rows = con.execute(
+            f"DESCRIBE SELECT * FROM read_parquet('{join_path}')"
+        ).fetchall()
+    finally:
+        con.close()
+    return [name for name, data_type, *_ in rows if not _is_geometry(name, data_type)]
+
+
 class JoinToolRunner(BaseToolRunner[JoinToolParams]):
     """Join tool runner for Windmill."""
 
     tool_class = JoinTool
     output_geometry_type = None  # Same as target layer
+    output_geometry_follows_input = True
     default_output_name = get_default_layer_name("join", "en")
 
     @classmethod
@@ -446,7 +472,8 @@ class JoinToolRunner(BaseToolRunner[JoinToolParams]):
         - otherwise (one-to-many, or one-to-one keeping the first match): the
           target columns, then each picked join field as ``join_<field>``, in
           the join layer's order. Nothing is added while "add join fields" is
-          off, which a left join forces on.
+          off, which a left join forces on; with it on and no list given,
+          every join field but the geometry is (see ``_join_fields``).
         """
         columns = dict(input_schemas.get("target_layer_id", {}))
         join_layer = input_schemas.get("join_layer_id", {})
@@ -483,7 +510,12 @@ class JoinToolRunner(BaseToolRunner[JoinToolParams]):
             return columns
 
         add_fields = params.get("add_join_fields") or params.get("join_type") == "left"
-        picked = set(params.get("join_fields") or []) if add_fields else set()
+        if not add_fields:
+            return columns
+        if "join_fields" in params:
+            picked = set(params.get("join_fields") or [])
+        else:
+            picked = {c for c, t in join_layer.items() if not _is_geometry(c, t)}
         for col, dtype in join_layer.items():
             if col in picked:
                 add(f"join_{col}", dtype)
@@ -552,7 +584,7 @@ class JoinToolRunner(BaseToolRunner[JoinToolParams]):
             field_statistics=params.field_statistics
             if params.calculate_statistics
             else None,
-            join_fields=params.join_fields if params.add_join_fields else [],
+            join_fields=_join_fields(params, join_path),
         )
 
 

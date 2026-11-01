@@ -1,9 +1,23 @@
 "use client";
 
-import { AppBar, Divider, IconButton, Toolbar as MUIToolbar, Stack, useTheme } from "@mui/material";
+import {
+  AppBar,
+  Divider,
+  IconButton,
+  Toolbar as MUIToolbar,
+  Stack,
+  type Theme,
+  useTheme,
+} from "@mui/material";
 import React from "react";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+
+/** The top bar's height, without its bottom border. The assistant dock's header uses it too, so the two line up. */
+export const TOOLBAR_HEIGHT = 52;
+
+/** The top bar's bottom border; shared with the assistant dock's header. */
+export const toolbarBorder = (theme: Theme): string => `1px solid ${theme.palette.divider}`;
 
 export type MapToolbarProps = {
   LeftToolbarChild?: React.ReactNode;
@@ -12,6 +26,8 @@ export type MapToolbarProps = {
   height: number;
   showHambugerMenu?: boolean;
   onMenuIconClick?: () => void;
+  /** What of the left column always stays visible (its first control), in px. */
+  leftMinWidth?: number;
 };
 
 export function Toolbar(props: MapToolbarProps) {
@@ -22,6 +38,7 @@ export function Toolbar(props: MapToolbarProps) {
     height,
     showHambugerMenu,
     onMenuIconClick,
+    leftMinWidth = 0,
   } = props;
 
   const theme = useTheme();
@@ -33,7 +50,7 @@ export function Toolbar(props: MapToolbarProps) {
       color="primary"
       sx={{
         zIndex: (theme) => theme.zIndex.drawer + 2,
-        borderBottom: "1px solid rgba(58, 53, 65, 0.12)",
+        borderBottom: toolbarBorder,
       }}>
       <MUIToolbar
         variant="dense"
@@ -59,14 +76,16 @@ export function Toolbar(props: MapToolbarProps) {
 
         {/* Three columns rather than an absolutely-centred middle: the side columns
             share the leftover space equally, which keeps the centre child centred
-            while letting the sides shrink and truncate instead of sliding underneath it. */}
+            while there is room. When there is not (a narrow window, or the assistant
+            dock beside the page), the right column keeps its buttons, the left one
+            truncates down to `leftMinWidth`, and only then the centre child shrinks. */}
         <Stack
           direction="row"
           alignItems="center"
           sx={{
             gap: theme.spacing(2),
             flex: "1 1 0",
-            minWidth: 0,
+            minWidth: leftMinWidth,
             overflow: "hidden",
             whiteSpace: "nowrap",
           }}>
@@ -79,7 +98,8 @@ export function Toolbar(props: MapToolbarProps) {
             alignItems="center"
             justifyContent="center"
             sx={{
-              flex: "0 0 auto",
+              flex: "0 1 auto",
+              minWidth: 0,
               mx: theme.spacing(2),
             }}>
             {CenterToolbarChild}
@@ -92,7 +112,7 @@ export function Toolbar(props: MapToolbarProps) {
           justifyContent="flex-end"
           sx={{
             flex: "1 1 0",
-            minWidth: 0,
+            minWidth: "max-content",
           }}>
           {RightToolbarChild}
         </Stack>

@@ -11,6 +11,17 @@ from ._link_model import (
     UserRoleLink,
 )
 from .asset import UploadedAsset
+from .assistant import (
+    ASSISTANT_TABLES,
+    AssistantConnection,
+    AssistantConversation,
+    AssistantMessage,
+    AssistantOrganizationSettings,
+    AssistantRun,
+    AssistantRunEvent,
+    AssistantToolCall,
+    AssistantUsage,
+)
 from .billing_terms import BillingTerms  # noqa: F401
 from .bundle import Bundle
 from .bundle_artifact import BundleArtifact

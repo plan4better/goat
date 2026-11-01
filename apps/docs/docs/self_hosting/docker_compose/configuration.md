@@ -29,7 +29,7 @@ Apply changes with `docker compose up -d`.
 | `GOAT_ACME_EMAIL` | empty | Optional contact for Let's Encrypt expiry notices (`auto` only) |
 | `GOAT_TRUSTED_PROXIES` | `private_ranges` | Addresses allowed to set `X-Forwarded-*` headers (your load balancer), as CIDRs separated by spaces |
 | `GOAT_ADMIN_ALLOW_CIDRS` | `0.0.0.0/0 ::/0` | Networks allowed to open the Keycloak admin console under `/keycloak/admin` |
-| `GOAT_CA_BUNDLE` | empty | Path inside the containers of extra CA certificates (PEM) in `./certs`, e.g. your company CA for your load balancer, Keycloak or SMTP relay; set by setup.sh in `internal` mode. See [Company CA](./https.md#company-ca). |
+| `GOAT_CA_BUNDLE` | empty | Path inside the containers of extra CA certificates (PEM) in `./certs`, e.g. your company CA for your load balancer, Keycloak, SMTP relay or the model server of the AI assistant; set by setup.sh in `internal` mode. See [Company CA](./https.md#company-ca). |
 | `GOAT_HTTP_PORT` | `80` | Port for HTTP; set by setup.sh from the URL or `--http-port` |
 | `GOAT_HTTPS_PORT` | `443` | Port for HTTPS; set by setup.sh from the URL |
 | `GOAT_HOSTNAME`, `GOAT_NETWORK_ALIAS`, `GOAT_SITE_ADDRESS`, `GOAT_HTTPS_PUBLISH`, `GOAT_KEYCLOAK_SSL_REQUIRED` | | Derived; set by setup.sh |
@@ -106,9 +106,9 @@ GOAT's services name their database sessions after themselves (`goat-core`, `goa
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | empty | Mapbox token for the place search |
 | `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | empty | The GOAT data catalog (read-only bucket with the harmonised datasets) |
 | `GEOCODING_URL`, `GEOCODING_AUTHORIZATION` | empty | Geocoding service used by analysis tools |
-| `NEXT_PUBLIC_WEBSITE_URL` | empty | A website that publishes GOAT's blog and changelog feeds. It fills the news on the Home page and provides the welcome video and the privacy link in the menu; while empty, none of these are shown. |
+| `NEXT_PUBLIC_WEBSITE_URL` | empty | A website that publishes GOAT's blog and changelog feeds. It fills the news on the Home page and provides the welcome video and the privacy link in the menu and in the AI assistant's notice; while empty, none of these are shown. |
 | `NEXT_PUBLIC_STATUS_FEED_URL` | empty | Status feed shown in the app |
-| `NEXT_PUBLIC_SUPPORT_EMAIL` | empty | Email address behind *Report a problem* while [support tickets](./external_services.md#support) are off, and in the message shown when support is temporarily unavailable. Defaults to `support@plan4better.de`; set your own address for a white-label installation. An invalid address is ignored and the default is used. |
+| `NEXT_PUBLIC_SUPPORT_EMAIL` | empty | Email address behind *Report a problem* and the AI assistant's *Feedback* link while [support tickets](./external_services.md#support) are off, and in the message shown when support is temporarily unavailable. Defaults to `support@plan4better.de`; set your own address for a white-label installation. An invalid address is ignored and the default is used. |
 | `NEXT_PUBLIC_DOCS_URL` | `https://goat.plan4better.de/docs` | Documentation link in the app |
 | `STATIC_ASSETS_URL` | *(commented out)* | A mirror or CDN for the product artwork (icons, default thumbnails, email images). While unset, GOAT serves the artwork itself under `/assets`. |
 | `ODOO_URL`, `ODOO_DB` | *(commented out)* | Plan4Better's Odoo, shared by GOAT's Odoo integrations. Only with access issued by Plan4Better. |
@@ -116,6 +116,8 @@ GOAT's services name their database sessions after themselves (`goat-core`, `goa
 | `ODOO_SUPPORT_POST_ACTION` | `GOAT: post message as ticket participant` | Odoo server action that posts a message as the ticket participant |
 | `OTEL_ENABLED` | `false` | Export traces, metrics and logs through OpenTelemetry |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Your OpenTelemetry (OTLP) endpoint |
+
+If you add `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` to a service, never include `Authorization`: the login tokens of users and external agents would land in your traces.
 
 ## Email {#email}
 
@@ -131,6 +133,33 @@ See [Email](./external_services.md#email) for how these work together.
 | `EMAILS_FROM_NAME` | `GOAT` | Sender name |
 | `SMTP_STARTTLS`, `SMTP_SSL` | `true`, `false` | Derived from `SMTP_SECURITY`; set by setup.sh |
 | `EMAIL_BRAND_NAME`, `EMAIL_LOGO_URL`, `EMAIL_CONTACT_URL`, `EMAIL_PRIVACY_URL`, `EMAIL_COMPANY_NAME`, `EMAIL_COMPANY_URL` | *(commented out)* | Optional branding of GOAT's and Keycloak's emails: name, logo instead of the name, footer links, who runs your GOAT. See [Email branding](./external_services.md#email-branding). |
+
+## AI assistant {#assistant}
+
+See [AI assistant](./external_services.md#assistant) for how these work together.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `ASSISTANT_DEFAULT_PROVIDER` | `none` | Provider of "GOAT AI", the built-in model every organization may use: `anthropic`, `bedrock`, `vertex`, `azure_openai`, `openai`, `mistral`, `openai_compatible`, or `none` (no built-in model) |
+| `ASSISTANT_DEFAULT_MODEL` | empty | The provider's model ID, which answers and also writes the conversation titles; required unless the provider is `none` |
+| `ASSISTANT_DEFAULT_BASE_URL` | empty | Required for `openai_compatible` and `azure_openai` (the Azure v1 endpoint, ending in `/openai/v1`); an optional gateway for `anthropic`, `openai` and `mistral` |
+| `ASSISTANT_DEFAULT_API_KEY` | empty | Required for `anthropic`, `openai`, `mistral` and `azure_openai`; optional for `openai_compatible`; for `bedrock` an optional Bedrock API key |
+| `ASSISTANT_DEFAULT_REGION` | empty | AWS region (`bedrock`) or Google Cloud location (`vertex`) |
+| `ASSISTANT_DEFAULT_HOSTED_IN` | empty | Where GOAT AI's model is hosted, a region such as `EU`. The details of GOAT AI's answers name it, and organization admins see it on the AI settings page. Saved with each answer, so a later change leaves earlier answers as they were; empty names no place. |
+| `ASSISTANT_ALLOW_ORG_CONNECTIONS` | `true` | Organizations may add connections of their own |
+| `ASSISTANT_ALLOWED_PROVIDERS` | all seven types | Provider types organizations may use, comma-separated |
+| `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS` | `false` | Lets organizations' connections reach private and internal addresses and plain `http` |
+| `ASSISTANT_SECRETS_KEY` | set by setup.sh | Encrypts the credentials organizations store. Keep it with your backups; see [The assistant's key](./operations.md#assistant-key). |
+| `ASSISTANT_RUN_MAX_TOOL_CALLS`, `ASSISTANT_RUN_MAX_TOKENS`, `ASSISTANT_RUN_MAX_SECONDS` | *(commented out)*: `40`, `200000`, `900` | Limits per answer. Tokens read from the model provider's cache count at a tenth toward `ASSISTANT_RUN_MAX_TOKENS`. Reading a finished workflow run's result may take up to 7 tool calls beyond `ASSISTANT_RUN_MAX_TOOL_CALLS`. |
+| `ASSISTANT_RUN_WAIT_MAX_SECONDS` | *(commented out)*: `1800` | How long in all an answer may take that waits for a workflow run; the run itself goes on after it. Takes effect only above `ASSISTANT_RUN_MAX_SECONDS` |
+| `ASSISTANT_USER_MAX_CONCURRENT_RUNS` | *(commented out)*: `3` | Answers one user may have running at once |
+| `ASSISTANT_TOOL_TIMEOUT_SECONDS` | *(commented out)*: `30` | Seconds per request the assistant makes to the other services |
+| `ASSISTANT_DISABLED_SURFACES` | *(commented out)* | Pages where the assistant is off, comma-separated: `catalog`, `project.map`, `project.workflows`, `project.layouts`, `project.dashboard`, `none` (all other pages) |
+| `ASSISTANT_ENABLE_MCP` | *(commented out)*: `true` | The MCP endpoint for external agents at `<GOAT_PUBLIC_URL>/assistant/mcp` |
+| `ASSISTANT_MCP_AUDIT_RETENTION_DAYS` | *(commented out)*: `30` | Days the records of tool calls made over MCP are kept (at least 1) |
+| `ASSISTANT_TOKEN_EXCHANGE_ENABLED`, `ASSISTANT_KEYCLOAK_CLIENT_ID`, `ASSISTANT_KEYCLOAK_CLIENT_SECRET` | *(commented out)*: `false` | Keycloak token exchange for long answers instead of refreshing the login with the web client. Needs Keycloak 26.2 or later; the bundled Keycloak is version 22. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_BEARER_TOKEN_BEDROCK`, `GOOGLE_APPLICATION_CREDENTIALS`, `ANTHROPIC_VERTEX_PROJECT_ID`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`, `OPENAI_ADMIN_KEY`, `OPENAI_CUSTOM_HEADERS`, `ANTHROPIC_CUSTOM_HEADERS` | not set; in `assistant.env` | The model SDKs' own settings. They apply to GOAT AI only, never to organizations' own connections. |
+| `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` | see [Authentication](#authentication) | The assistant renews the login of long answers with this client of the web app. Its own names, `ASSISTANT_WEB_CLIENT_ID` and `ASSISTANT_WEB_CLIENT_SECRET`, override them; the bundle needs neither. |
 
 ## Backups {#backups}
 

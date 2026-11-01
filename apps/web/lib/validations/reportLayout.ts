@@ -313,6 +313,9 @@ export const reportLayoutSchema = z.object({
   is_predefined: z.boolean().default(false),
   config: reportLayoutConfigSchema,
   thumbnail_url: z.string().nullable().optional(),
+  /** Counts the stored layout's changes; a save sends it back as
+   * `base_revision`. Absent from a template's layout. */
+  revision: z.number().int().optional(),
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
 });
@@ -331,6 +334,9 @@ export const reportLayoutUpdateSchema = z.object({
   description: z.string().nullable().optional(),
   is_default: z.boolean().optional(),
   config: reportLayoutConfigSchema.optional(),
+  /** The revision the change was made on: core refuses the save (409) when
+   * the stored layout has moved on since. */
+  base_revision: z.number().int().nullable().optional(),
 });
 
 // Infer TypeScript types

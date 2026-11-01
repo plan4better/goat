@@ -115,6 +115,9 @@ async def session_fixture(event_loop):
     session_manager._engine.update_execution_options(
         schema_translate_map={
             "customer": settings.SCHEMA,
+            # The assistant tables (core.db.models.assistant) go into the same
+            # per-process schema, so parallel test runs never share them.
+            "assistant": settings.SCHEMA,
         }
     )
     # xdist workers run this setup at the same time, and parts of it touch

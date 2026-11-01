@@ -3,13 +3,13 @@ existing" (``destination: "existing"``).
 
 They write only when the whole run succeeded, after the export nodes that
 create new datasets, through ``finalize_layer`` with a ``target_layer_id``. Windmill, the temp store and the
-tools themselves are replaced at ``run_tool_node``.
+tools themselves are replaced at ``run_tool_node``. A failed step is returned
+as {"node_id", "message"} with the run's status "failed", not raised.
 """
 
 from typing import Any
 from unittest.mock import patch
 
-import pytest
 from goatlib.tools import workflow_runner
 from goatlib.tools.workflow_runner import run_append_nodes
 
@@ -107,15 +107,16 @@ def test_append_inputs() -> None:
 
 def test_append_not_run_when_tool_failed() -> None:
     tools = _Tools(fail="buffer")
-    with pytest.raises(RuntimeError):
-        _run(tools, [TOOL, APPEND])
+    result = _run(tools, [TOOL, APPEND])
+    assert result["status"] == "failed"
     assert all(not c[2].get("target_layer_id") for c in tools.calls)
 
 
 def test_failed_append_fails_the_run() -> None:
     tools = _Tools(fail="append")
-    with pytest.raises(RuntimeError, match="a1"):
-        _run(tools, [TOOL, APPEND])
+    result = _run(tools, [TOOL, APPEND])
+    assert result["status"] == "failed"
+    assert result["errors"] == [{"node_id": "a1", "message": "append failed"}]
 
 
 def test_append_skipped_on_rejected_branch() -> None:
@@ -139,7 +140,7 @@ def test_append_without_target_is_error() -> None:
     with patch.object(workflow_runner, "run_tool_node", side_effect=tools):
         run_append_nodes(_params(), [TOOL, node], EDGES, results, {}, errors)
     assert tools.calls == []
-    assert errors == [{"node_id": "a1", "error": "Choose a target layer."}]
+    assert errors == [{"node_id": "a1", "message": "Choose a target layer."}]
 
 
 def _params() -> workflow_runner.WorkflowRunnerParams:
@@ -166,7 +167,7 @@ def test_append_without_a_tool_result_is_error() -> None:
     assert errors == [
         {
             "node_id": "a1",
-            "error": "Connect the result of a tool to this node; a dataset "
+            "message": "Connect the result of a tool to this node; a dataset "
             "cannot be appended directly.",
         }
     ]
@@ -177,7 +178,8 @@ def test_failed_append_keeps_what_the_exports_saved() -> None:
     # failed and names the append node, and the exports that ran before it
     # stay saved (they committed on their own).
     tools = _Tools(fail="append")
-    with pytest.raises(RuntimeError, match="a1") as failure:
-        _run(tools, [TOOL, EXPORT, APPEND])
+    result = _run(tools, [TOOL, EXPORT, APPEND])
     assert [c[1] for c in tools.calls] == ["buffer", "finalize_layer", "finalize_layer"]
-    assert "e1" not in str(failure.value)
+    assert result["status"] == "failed"
+    assert [e["node_id"] for e in result["errors"]] == ["a1"]
+    assert result["node_results"]["e1"] == {"layer_id": "new-layer"}

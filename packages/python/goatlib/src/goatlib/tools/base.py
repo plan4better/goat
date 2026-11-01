@@ -63,6 +63,7 @@ from goatlib.io.config import (
     PARQUET_COMPRESSION,
     PARQUET_ROW_GROUP_SIZE,
     PARQUET_VERSION,
+    parquet_copy_options,
 )
 from goatlib.models.bundle import BundleArtifactState, artifact_state
 from goatlib.models.io import DatasetMetadata
@@ -72,7 +73,7 @@ from goatlib.storage.ducklake import (
     uri_with_application_name,
 )
 from goatlib.storage.s3_config import apply_duckdb_s3_settings, boto_client_kwargs
-from goatlib.tools.db import ToolDatabaseService
+from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase
 from goatlib.utils.container_memory import JOB_DUCKLAKE_MEMORY_SHARE, set_memory_share
 from goatlib.utils.credentials import postgres_attach_target, postgres_uri
@@ -87,6 +88,18 @@ logger = logging.getLogger(__name__)
 
 # Catalog connections a tool run's DuckLake attach keeps between reads.
 TOOLS_CATALOG_CONNECTIONS = 3
+
+#: How ST_GeometryType names each geometry family: the form a result with
+#: rows reports its geometry type in.
+_GEOMETRY_TYPE_NAMES = {"point": "POINT", "line": "LINESTRING", "polygon": "POLYGON"}
+
+
+def _geometry_type_name(declared: str | None) -> str | None:
+    """A declared geometry type in any spelling ("Point", "line",
+    "MultiPoint") as ST_GeometryType names the type of a result with rows."""
+    family = normalize_geometry_type(declared)
+    return _GEOMETRY_TYPE_NAMES[family] if family else None
+
 
 TParams = TypeVar("TParams", bound=ToolInputBase)
 TRun = TypeVar("TRun", bound=Callable[..., Any])
@@ -732,7 +745,7 @@ class SimpleToolRunner:
         self._execute_with_retry(
             "export filtered catalog layer",
             f"COPY (SELECT * FROM read_parquet('{catalog_path}') {where}) "
-            f"TO '{tmp.name}' (FORMAT PARQUET, COMPRESSION ZSTD)",
+            f"TO '{tmp.name}' {parquet_copy_options('COMPRESSION ZSTD')}",
             filters.params,
         )
         return tmp.name
@@ -1011,6 +1024,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         """Initialize tool runner."""
         super().__init__()
         self.db_service: ToolDatabaseService | None = None
+        # The layers the run read, in order (`export_layer_to_parquet`).
+        self._read_layer_ids: list[str] = []
 
     @abstractmethod
     def process(
@@ -1031,6 +1046,10 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
 
     # Subclasses should set these
     output_geometry_type: str | None = None
+    #: The result keeps the geometry of the first layer the tool reads (clip,
+    #: erase, ...), so a result without rows has that layer's geometry type
+    #: (`result_geometry_type`).
+    output_geometry_follows_input: bool = False
     default_output_name: str = "Tool Output"
     tool_type: str | None = None  # e.g., "catchment_area", "buffer", "join"
 
@@ -1229,7 +1248,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         import tempfile
 
         from goatlib.storage.query_builder import build_cql_filter
-        from goatlib.tools.temp_writer import TEMP_DATA_ROOT
+        from goatlib.tools.temp_writer import temp_step_folder
 
         # Parse temp_layer_id - can be "workflow_id:node_id" or "workflow_id:node_id:uuid"
         parts = temp_layer_id.split(":")
@@ -1243,16 +1262,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         # Third part (uuid) is optional - if provided, use it to find specific file
         temp_file_uuid = parts[2] if len(parts) > 2 else None
 
-        # Build path matching TempLayerWriter structure:
-        # /data/temporary/user_{user_id}/w_{workflow_id}/n_{node_id}/
-        user_id_clean = user_id.replace("-", "")
-        workflow_id_clean = workflow_id.replace("-", "")
-        base_path = (
-            TEMP_DATA_ROOT
-            / f"user_{user_id_clean}"
-            / f"w_{workflow_id_clean}"
-            / f"n_{node_id}"
-        )
+        base_path = temp_step_folder(user_id, workflow_id, node_id)
 
         # Find the parquet file
         if temp_file_uuid:
@@ -1263,7 +1273,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             parquet_files = list(base_path.glob("t_*.parquet"))
             if not parquet_files:
                 raise FileNotFoundError(
-                    f"No parquet files found in: {base_path}. "
+                    f"The result of step {node_id} was not found. "
                     f"The upstream tool may not have completed successfully."
                 )
             # Use the first (and typically only) parquet file
@@ -1271,7 +1281,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
 
         if not temp_parquet_path.exists():
             raise FileNotFoundError(
-                f"Temporary layer not found: {temp_parquet_path}. "
+                f"The result of step {node_id} was not found. "
                 f"The upstream tool may not have completed successfully."
             )
 
@@ -1282,9 +1292,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             return str(temp_parquet_path)
 
         # Apply CQL filter via DuckDB and write to a new temp file
-        # Get column names from parquet
         columns_result = self.duckdb_con.execute(
-            f"SELECT column_name FROM parquet_schema('{temp_parquet_path}')"
+            f"DESCRIBE SELECT * FROM read_parquet('{temp_parquet_path}')"
         )
         column_names = [row[0] for row in columns_result.fetchall()]
 
@@ -1306,7 +1315,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             COPY (
                 SELECT * FROM read_parquet('{temp_parquet_path}')
                 {where_clause}
-            ) TO '{temp_path}' (FORMAT PARQUET)
+            ) TO '{temp_path}' {parquet_copy_options('COMPRESSION ZSTD')}
         """
         self.duckdb_con.execute(query, cql_filters.params if cql_filters.params else [])
 
@@ -1415,6 +1424,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
 
         from goatlib.storage.query_builder import build_cql_filter
 
+        self._read_layer_ids.append(layer_id)
+
         # Check if this is a temp layer ID (format: workflow_id:node_id)
         if ":" in layer_id:
             return self._export_temp_layer_to_parquet(layer_id, user_id, cql_filter)
@@ -1500,17 +1511,87 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             query = f"SELECT * FROM {table_name} {where_clause}"
             self._execute_with_retry(
                 "export layer with filter",
-                f"COPY ({query}) TO '{temp_path}' (FORMAT PARQUET, COMPRESSION ZSTD)",
+                f"COPY ({query}) TO '{temp_path}' {parquet_copy_options('COMPRESSION ZSTD')}",
                 params,
             )
         else:
             self._execute_with_retry(
                 "export layer",
-                f"COPY {table_name} TO '{temp_path}' (FORMAT PARQUET, COMPRESSION ZSTD)",
+                f"COPY {table_name} TO '{temp_path}' {parquet_copy_options('COMPRESSION ZSTD')}",
             )
 
         logger.info("Exported layer %s to %s", layer_id, temp_path)
         return temp_path
+
+    def result_geometry_type(
+        self: Self, user_id: str, metadata: DatasetMetadata | None
+    ) -> str | None:
+        """The geometry type of this run's result for when its rows give none
+        (a result without rows), as ST_GeometryType names it.
+
+        The type the analysis reports, else the tool's
+        `output_geometry_type`, else, for a tool whose result keeps its
+        input's geometry (`output_geometry_follows_input`), the type of the
+        first layer it read. None when none of them says.
+        """
+        declared = (metadata.geometry_type if metadata else None) or (
+            self.output_geometry_type
+        )
+        if not declared and self.output_geometry_follows_input and self._read_layer_ids:
+            declared = self._layer_geometry_type(self._read_layer_ids[0], user_id)
+        return _geometry_type_name(declared)
+
+    def _fill_result_geometry_type(
+        self: Self,
+        table_info: dict[str, Any],
+        user_id: str,
+        metadata: DatasetMetadata | None,
+    ) -> None:
+        """A result table without rows gives no geometry type; with a
+        geometry column it is a layer of the type the tool gives its result
+        (`result_geometry_type`). For a runner's own `run()` as for this
+        one's."""
+        if table_info.get("geometry_column") and not table_info.get("geometry_type"):
+            table_info["geometry_type"] = self.result_geometry_type(user_id, metadata)
+
+    def _fill_second_layer_geometry_type(
+        self: Self,
+        table_info: dict[str, Any],
+        metadata: DatasetMetadata,
+    ) -> None:
+        """A second layer a runner's own `run()` saves beside its result:
+        without rows but with a geometry column, it is a layer of the type
+        that layer's metadata names. Not `result_geometry_type`, whose
+        `output_geometry_type` and input layers describe the first layer, so
+        a second layer whose metadata names no type stays a table."""
+        if table_info.get("geometry_column") and not table_info.get("geometry_type"):
+            table_info["geometry_type"] = _geometry_type_name(metadata.geometry_type)
+
+    def _layer_geometry_type(self: Self, layer_id: str, user_id: str) -> str | None:
+        """The geometry type of a layer the run read: of an earlier step's
+        result, what its temp folder's metadata.json says; of a layer, its
+        record."""
+        import json
+
+        from goatlib.tools.temp_writer import temp_step_folder
+
+        try:
+            if ":" in layer_id:
+                workflow_id, node_id = layer_id.split(":")[:2]
+                folder = temp_step_folder(user_id, workflow_id, node_id)
+                stored = json.loads((folder / "metadata.json").read_text())
+                return stored.get("geometry_type")
+            if self.db_service is None:
+                return None
+            info = _get_or_create_event_loop().run_until_complete(
+                self.db_service.get_layer_info(layer_id)
+            )
+            return info.get("geometry_type") if info else None
+        except Exception as e:  # noqa: BLE001 - a type is a fallback, not a must
+            logger.warning(
+                "Could not read the geometry type of layer %s: %s", layer_id, e
+            )
+            return None
 
     def is_layer_id(self: Self, value: str | None) -> bool:
         """Check if a string value looks like a layer UUID or temp layer reference.
@@ -1682,6 +1763,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                     output_name=output_name,
                     output_layer_id=output_layer_id,
                     properties=custom_properties,
+                    geometry_type=self.result_geometry_type(params.user_id, metadata),
                 )
 
                 # Close the database pool
@@ -1708,6 +1790,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 )
                 if pmtiles_path:
                     table_info["pmtiles_path"] = str(pmtiles_path)
+
+            self._fill_result_geometry_type(table_info, params.user_id, metadata)
 
             # Refresh database pool - connections may have gone stale during long analysis
             loop.run_until_complete(self._close_db_service())
@@ -1768,6 +1852,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         output_name: str,
         output_layer_id: str,
         properties: dict[str, Any] | None = None,
+        geometry_type: str | None = None,
     ) -> dict[str, Any]:
         """Write result to temporary storage for workflow preview.
 
@@ -1781,6 +1866,9 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             output_name: Display name for the layer
             output_layer_id: UUID for the layer (for identification)
             properties: Optional layer style properties from the tool
+            geometry_type: The geometry type of a result whose rows give
+                none; when not given, `result_geometry_type` without the
+                analysis's metadata (a runner's own `run()` passes none)
 
         Returns:
             Dict with temp layer info (TempToolOutput format)
@@ -1792,6 +1880,9 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
 
         if not workflow_id or not node_id:
             raise ValueError("workflow_id and node_id are required for temp_mode")
+
+        if geometry_type is None:
+            geometry_type = self.result_geometry_type(params.user_id, None)
 
         # Create temp layer writer
         writer = TempLayerWriter(
@@ -1809,6 +1900,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             process_id=self.get_tool_type(),
             duckdb_con=self.duckdb_con,
             properties=properties,
+            geometry_type=geometry_type,
         )
 
         logger.info(

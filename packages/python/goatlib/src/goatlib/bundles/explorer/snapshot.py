@@ -32,6 +32,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from goatlib.bundles.importers.pt_network.stop_chains import STOP_CHAIN_PREFIX
+from goatlib.io.config import parquet_copy_options
 
 #: Bumped when a file's columns or meaning change; part of the files' URLs,
 #: so a browser never mixes files of two versions.
@@ -42,9 +43,7 @@ SCHEMA_VERSION = 3
 #: distances suggest.
 _DIST_UNITS = {"m": 1.0, "km": 1000.0, "ft": 0.3048, "mi": 1609.344}
 
-_PARQUET = (
-    "FORMAT parquet, COMPRESSION zstd, COMPRESSION_LEVEL 3, ROW_GROUP_SIZE 122880"
-)
+_PARQUET_OPTIONS = ("COMPRESSION zstd", "COMPRESSION_LEVEL 3", "ROW_GROUP_SIZE 122880")
 
 #: The tables written, in the order a browser should load them: what lists the
 #: routes first, the large stop times last.
@@ -195,7 +194,9 @@ def build_snapshot(
         for name in FILES:
             path = os.path.join(out_dir, f"{name}.parquet")
             query = _QUERIES.get(name) or _OPTIONAL[name](rel, present)
-            con.execute(f"COPY ({query}) TO '{path}' ({_PARQUET})")
+            con.execute(
+                f"COPY ({query}) TO '{path}' {parquet_copy_options(*_PARQUET_OPTIONS)}"
+            )
             rows = con.execute(
                 f"SELECT count(*) FROM read_parquet('{path}')"
             ).fetchone()

@@ -1,0 +1,20 @@
+data: {"type":"start","messageId":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c","messageMetadata":{"run_id":"5d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a"}}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1"}
+
+data: {"type":"text-delta","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1","delta":"Three datasets "}
+
+data: {"type":"text-delta","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1","delta":"match."}
+
+data: {"type":"text-end","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1"}
+
+data: {"type":"message-metadata","messageMetadata":{"usage":{"model":"test","input_tokens":10,"output_tokens":4,"cache_read_tokens":0,"cache_write_tokens":0,"provider":null}}}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish"}
+
+data: [DONE]
+

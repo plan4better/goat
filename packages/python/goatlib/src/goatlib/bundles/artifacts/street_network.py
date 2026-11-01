@@ -43,6 +43,7 @@ from goatlib.bundles.artifacts.base import (
     ArtifactSource,
     BuiltArtifact,
 )
+from goatlib.io.config import parquet_copy_options
 from goatlib.models.bundle import (
     ROUTING_CLASSES,
     BundleArtifactKind,
@@ -271,7 +272,7 @@ def _transform(
         FROM read_parquet('{nodes_layer}')
     """)
 
-    con.execute(f"COPY ({_node_query()}) TO '{nodes_out}' (FORMAT PARQUET)")
+    con.execute(f"COPY ({_node_query()}) TO '{nodes_out}' {parquet_copy_options()}")
     con.execute(f"""
         CREATE TABLE edge_src AS
         SELECT * FROM read_parquet('{edges_layer}')
@@ -303,7 +304,7 @@ def _transform(
             "recompute it."
         )
 
-    con.execute(f"COPY ({_edge_query()}) TO '{edges_out}' (FORMAT PARQUET)")
+    con.execute(f"COPY ({_edge_query()}) TO '{edges_out}' {parquet_copy_options()}")
 
     edge_count = con.execute(
         f"SELECT count(*) FROM read_parquet('{edges_out}')"

@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from core.core.config import settings
 from core.db.models.organization import Organization
+from core.db.models.user import User
 from httpx import AsyncClient
 
 
@@ -33,6 +34,31 @@ def make_organization(**overrides) -> Organization:
     }
     values.update(overrides)
     return Organization(**values)
+
+
+async def org_with_default_user(db_session, **overrides) -> tuple[Organization, User]:
+    """A new organization (make_organization(**overrides)) with the default
+    user, the identity of every request with AUTH=False, as its member."""
+    org = make_organization(**overrides)
+    db_session.add(org)
+    await db_session.commit()
+    await db_session.refresh(org)
+    user = await db_session.get(User, settings.DEFAULT_USER_ID)
+    if user is None:
+        user = User(
+            id=settings.DEFAULT_USER_ID,
+            email="r@t.local",
+            firstname="Rep",
+            lastname="Orter",
+            organization_id=org.id,
+        )
+        db_session.add(user)
+    else:
+        user.organization_id = org.id
+        user.firstname = "Rep"
+        user.lastname = "Orter"
+    await db_session.commit()
+    return org, user
 
 
 #: Canonical target the custom-domain tests run with.

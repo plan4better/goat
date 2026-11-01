@@ -58,6 +58,10 @@ apps/catalog/tests
 apps/core/tests
 apps/geoapi/tests
 apps/processes/tests
+apps/assistant/tests
+# The eval set and the end-to-end fake run from a source checkout only.
+apps/assistant/evals
+apps/assistant/e2e
 
 # The worker image definition. The processes image copies apps/processes, so
 # without this every change to the worker Dockerfile rebuilt the processes

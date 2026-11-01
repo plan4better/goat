@@ -6,7 +6,6 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DuplicateIcon from "@mui/icons-material/ContentCopy";
 import SettingsIcon from "@mui/icons-material/Settings";
-import WarningIcon from "@mui/icons-material/Warning";
 import { Box, Chip, Stack, Tooltip, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { type NodeProps, NodeToolbar, Position, useEdges } from "@xyflow/react";
@@ -26,16 +25,16 @@ import {
   extractInputDataType,
   extractOutputDataType,
   formatDataType,
-  hasOpportunityHandles,
 } from "@/lib/utils/ogc-utils";
-import { isDatasetNode, isToolNode, missingFieldRefs } from "@/lib/utils/workflowDatasets";
 import { edgeDerivedInputHandles } from "@/lib/utils/workflowHandles";
 import type { ToolNodeData } from "@/lib/validations/workflow";
 
 import { OPPORTUNITY_LAYER_HANDLES } from "@/types/map/ogc-processes";
 
-import { useLayerFieldNames } from "@/hooks/map/useLayerFieldNames";
 import { useProcessDescription } from "@/hooks/map/useOgcProcesses";
+
+import StepIssueBadge from "@/components/workflows/issues/StepIssueBadge";
+import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
 
 import { useNodeExecutionStatus } from "../context/WorkflowExecutionContext";
 import {
@@ -73,21 +72,6 @@ const ParamRow = styled(Box)({
   alignItems: "flex-start",
   gap: 16,
 });
-
-const WarningBadge = styled(Box)(({ theme }) => ({
-  position: "absolute",
-  bottom: -14,
-  right: -8,
-  width: 24,
-  height: 24,
-  borderRadius: "50%",
-  backgroundColor: theme.palette.warning.main,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: theme.palette.warning.contrastText,
-  zIndex: 1,
-}));
 
 interface ToolNodeProps extends NodeProps {
   data: ToolNodeData;
@@ -140,100 +124,20 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
     return extractOutputDataType(process.outputs.result);
   }, [process]);
 
-  // Check which inputs are missing connections
-  const missingLayerInputs = useMemo(() => {
-    if (layerInputs.length === 0) return [];
-
-    // Get edges targeting this node
-    const incomingEdges = edges.filter((e) => e.target === id);
-
-    return layerInputs.filter((input) => {
-      // Check if there's an edge connected to this input handle
-      const isConnected = incomingEdges.some(
-        (e) => e.targetHandle === input.name || (!e.targetHandle && layerInputs.length === 1)
-      );
-      return !isConnected && input.required;
-    });
-  }, [layerInputs, edges, id]);
-
-  // Check which required config fields are missing values
-  const missingConfig = useMemo(() => {
-    if (!process?.inputs) return [];
-    const config = data.config || {};
-
-    const missing: { name: string; label: string }[] = [];
-
-    for (const [name, input] of Object.entries(process.inputs)) {
-      const uiMeta = input.schema?.["x-ui"];
-
-      // Skip hidden fields and layer-related inputs
-      if (uiMeta?.hidden) continue;
-      if (uiMeta?.widget === "layer-selector") continue;
-      if (uiMeta?.widget === "layer-name-input") continue;
-      if (uiMeta?.widget === "starting-points") continue;
-      if (uiMeta?.section === "output") continue;
-      if (uiMeta?.section === "result") continue;
-      if (uiMeta?.section === "opportunities") continue;
-
-      // Check visible_when - skip if not visible
-      if (uiMeta?.visible_when && !evaluateCondition(uiMeta.visible_when, config)) {
-        continue;
-      }
-      // Check hidden_when - skip if hidden
-      if (uiMeta?.hidden_when && evaluateCondition(uiMeta.hidden_when, config)) {
-        continue;
-      }
-
-      // Check if required and missing
-      const isRequired = input.minOccurs > 0;
-      const value = config[name];
-      const isEmpty =
-        value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
-
-      if (isRequired && isEmpty) {
-        const label = uiMeta?.label ? t(uiMeta.label) : input.title;
-        missing.push({ name, label });
+  // Inputs the workflow check found unconnected get a ring on their handle:
+  // the named input of `input_not_connected`, or every numbered opportunity
+  // handle while an opportunity tool has none connected.
+  const stepIssues = useStepIssues(id);
+  const unconnectedHandles = useMemo(() => {
+    const names = new Set<string>();
+    for (const issue of stepIssues) {
+      if (issue.code === "input_not_connected" && issue.field) names.add(issue.field);
+      if (issue.code === "opportunity_not_connected") {
+        for (const handle of OPPORTUNITY_LAYER_HANDLES) names.add(handle);
       }
     }
-
-    return missing;
-  }, [process, data.config, t]);
-
-  // For tools taking opportunity layers from numbered canvas handles, check
-  // that at least one is connected.
-  const takesOpportunityHandles = hasOpportunityHandles(process);
-  const missingOpportunities = useMemo(() => {
-    if (!takesOpportunityHandles) return false;
-    const incomingEdges = edges.filter((e) => e.target === id);
-    return !incomingEdges.some((e) => e.targetHandle && OPPORTUNITY_LAYER_HANDLES.includes(e.targetHandle));
-  }, [takesOpportunityHandles, edges, id]);
-
-  // Field names this tool's config points at must exist on the dataset
-  // wired into the matching input; a dataset swapped for another layer is
-  // what usually breaks this, so the node keeps flagging it until fixed.
-  const upstreamLayerIds = useMemo(
-    () =>
-      edges
-        .filter((e) => e.target === id)
-        .map((e) => nodes.find((n) => n.id === e.source))
-        .flatMap((n) => {
-          const layerId = n && isDatasetNode(n) ? n.data.layerId : undefined;
-          return layerId ? [layerId] : [];
-        }),
-    [edges, id, nodes]
-  );
-  const { fieldsByLayerId } = useLayerFieldNames(upstreamLayerIds);
-  const missingFields = useMemo(() => {
-    const self = nodes.find((n) => n.id === id);
-    if (!self || !isToolNode(self)) return [];
-    return missingFieldRefs(self, process, edges, nodes, fieldsByLayerId);
-  }, [nodes, id, process, edges, fieldsByLayerId]);
-
-  const hasWarning =
-    missingLayerInputs.length > 0 ||
-    missingConfig.length > 0 ||
-    missingOpportunities ||
-    missingFields.length > 0;
+    return names;
+  }, [stepIssues]);
 
   // Get display parameters (non-layer, non-hidden parameters with values)
   const displayParams = useMemo(() => {
@@ -398,35 +302,6 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
   // Calculate handle positions for multiple inputs
   const inputHandleCount = effectiveInputHandles.length || 1; // Default to 1 if no process loaded yet
 
-  // Warning message for tooltip - combine missing layers and missing config
-  const warningMessage = useMemo(() => {
-    const parts: string[] = [];
-
-    if (missingLayerInputs.length > 0) {
-      parts.push(
-        t("missing_layer_connections") + ": " + missingLayerInputs.map((input) => input.title).join(", ")
-      );
-    }
-
-    if (missingConfig.length > 0) {
-      parts.push(t("missing_required_config") + ": " + missingConfig.map((c) => c.label).join(", "));
-    }
-
-    if (missingOpportunities) {
-      parts.push(t("missing_layer_connections") + ": " + t("opportunities"));
-    }
-
-    if (missingFields.length > 0) {
-      parts.push(
-        t("fields_not_in_input_layer") +
-          ": " +
-          missingFields.map((m) => `${m.field} (${m.paramLabel})`).join(", ")
-      );
-    }
-
-    return parts.join(". ");
-  }, [missingLayerInputs, missingConfig, missingOpportunities, missingFields, t]);
-
   const ToolIconComponent = toolIconMap[data.processId as TOOL_ICON_NAME];
 
   return (
@@ -448,14 +323,8 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
       </NodeToolbar>
 
       <NodeContainer selected={selected}>
-        {/* Warning badge for missing inputs/config */}
-        {hasWarning && !nodeStatus && (
-          <Tooltip title={warningMessage} arrow>
-            <WarningBadge>
-              <WarningIcon sx={{ fontSize: 16 }} />
-            </WarningBadge>
-          </Tooltip>
-        )}
+        {/* The step's issues; stays after a run, next to the run status */}
+        <StepIssueBadge nodeId={id} />
 
         {/* Input handles - positioned vertically based on count */}
         {inputHandleCount === 1 ? (
@@ -472,6 +341,7 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
               position={Position.Left}
               id={effectiveInputHandles[0]?.name || "input"}
               selected={selected}
+              data-issue={unconnectedHandles.has(effectiveInputHandles[0]?.name || "input") ? "true" : undefined}
             />
           </Tooltip>
         ) : (
@@ -486,6 +356,7 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
                 position={Position.Left}
                 id={input.name}
                 selected={selected}
+                data-issue={unconnectedHandles.has(input.name) ? "true" : undefined}
                 style={{
                   top: `${((index + 1) / (inputHandleCount + 1)) * 100}%`,
                 }}

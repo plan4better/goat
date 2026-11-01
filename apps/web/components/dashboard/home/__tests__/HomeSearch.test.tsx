@@ -1,13 +1,26 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
+import { AssistantRequestError } from "@/lib/assistant/errors";
+import { getDockState, peekFirstMessage, resetAssistantStore, setDockState } from "@/lib/assistant/store";
+
 import HomeSearch from "@/components/dashboard/home/HomeSearch";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { q?: string }) => (key === "search_quoted_query" ? `“${options?.q}”` : key),
+  }),
 }));
+
+const { createMock, toastMock } = vi.hoisted(() => ({
+  createMock: vi.fn(),
+  toastMock: { error: vi.fn() },
+}));
+vi.mock("@/lib/assistant/transport", () => ({ createConversation: createMock }));
+vi.mock("@/lib/assistant/conversations", () => ({ refreshConversationLists: vi.fn() }));
+vi.mock("react-toastify", () => ({ toast: toastMock }));
 
 const goMock = vi.fn();
 const closePreviewMock = vi.fn();
@@ -30,6 +43,10 @@ const placeholder = "search_placeholder_short";
 
 describe("HomeSearch", () => {
   beforeEach(() => {
+    window.sessionStorage.clear();
+    resetAssistantStore();
+    createMock.mockReset();
+    toastMock.error.mockReset();
     goMock.mockReset();
     useHomeSearchMock.mockReset();
     useHomeSearchMock.mockReturnValue({
@@ -328,5 +345,179 @@ describe("HomeSearch", () => {
     render(<HomeSearch />);
 
     expect(screen.queryByTestId("preview-dialog")).not.toBeInTheDocument();
+  });
+  describe("Ask AI", () => {
+    const busRows = [
+      { kind: "head", label: "projects" },
+      { kind: "item", id: "p1", icon: ICON_NAME.MAP, label: "Bus network", meta: "project", go: goMock },
+    ];
+
+    /** The assistant is available: AssistantRoot sets this from the URL, the status and the kill switch. */
+    const enableAssistant = () => setDockState({ enabled: true });
+
+    const typeQuery = (value: string) => {
+      render(<HomeSearch />);
+      const input = screen.getByPlaceholderText(placeholder) as HTMLInputElement;
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value } });
+      return input;
+    };
+
+    const askRow = () => screen.queryByText("“bus stops”")?.closest('[role="option"]') ?? null;
+
+    it("is not offered while the assistant is unavailable", () => {
+      useHomeSearchMock.mockReturnValue({ rows: busRows, isLoading: false });
+      const input = typeQuery("ask: bus");
+
+      expect(screen.queryByText("assistant_ask_ai")).toBeNull();
+      expect(screen.queryByText("kbd_to_ask_ai")).toBeNull();
+      // `ask:` is plain text then: the hook searches it like any query.
+      expect(useHomeSearchMock).toHaveBeenLastCalledWith("ask: bus");
+      fireEvent.keyDown(input, { key: "Tab" });
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it("adds an Ask AI group with the quoted query after the results", () => {
+      enableAssistant();
+      useHomeSearchMock.mockReturnValue({ rows: busRows, isLoading: false });
+      typeQuery("bus stops");
+
+      const options = screen.getAllByRole("option");
+      expect(options).toHaveLength(2);
+      expect(options[1]).toBe(askRow());
+      expect(options[1].textContent).toContain("assistant_ask_ai");
+      // The results come first and stay the default row.
+      expect(options[0].getAttribute("aria-selected")).toBe("true");
+      expect(screen.getByText("kbd_to_ask_ai")).toBeTruthy();
+    });
+
+    it("scrolls the row the arrow keys reach into view, Ask AI below the results too", () => {
+      enableAssistant();
+      useHomeSearchMock.mockReturnValue({ rows: busRows, isLoading: false });
+      const scrolled: Element[] = [];
+      const scrollIntoView = vi.fn(function (this: Element) {
+        scrolled.push(this);
+      });
+      const original = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
+      Object.defineProperty(Element.prototype, "scrollIntoView", {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      try {
+        const input = typeQuery("bus stops");
+
+        fireEvent.keyDown(input, { key: "ArrowUp" });
+
+        expect(scrolled).toEqual([askRow()]);
+        expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+      } finally {
+        if (original) Object.defineProperty(Element.prototype, "scrollIntoView", original);
+        else delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+      }
+    });
+
+    it("lists ask: among the search tips", () => {
+      enableAssistant();
+      useHomeSearchMock.mockReturnValue({ rows: [], isLoading: false });
+      render(<HomeSearch />);
+      fireEvent.focus(screen.getByPlaceholderText(placeholder));
+
+      expect(screen.getByText("ask:")).toBeTruthy();
+      expect(screen.getByText("— assistant_ask_ai")).toBeTruthy();
+      expect(screen.getByText("kbd_to_ask_ai")).toBeTruthy();
+      // No query, nothing to ask yet.
+      expect(screen.getAllByRole("option")).toHaveLength(4);
+    });
+
+    it("with ask: shows only the Ask AI row and asks the stores nothing", () => {
+      enableAssistant();
+      useHomeSearchMock.mockReturnValue({ rows: busRows, isLoading: false });
+      typeQuery("ask: bus stops");
+
+      expect(useHomeSearchMock).toHaveBeenLastCalledWith("");
+      expect(screen.queryByText("Bus network")).toBeNull();
+      expect(screen.getAllByRole("option")).toEqual([askRow()]);
+    });
+
+    it("with a bare ask: keeps the tips up, the ask tip marked", () => {
+      enableAssistant();
+      useHomeSearchMock.mockReturnValue({ rows: [], isLoading: false });
+      typeQuery("ask:");
+
+      expect(screen.getByText("search_type_to_ask_ai")).toBeTruthy();
+      const tip = screen.getByText("ask:").closest('[role="option"]');
+      expect(tip?.getAttribute("aria-selected")).toBe("true");
+      expect(screen.getByText("project:").closest('[role="option"]')?.getAttribute("aria-selected")).toBe(
+        "false"
+      );
+    });
+
+    it("keeps the no-results line and offers Ask AI below it", () => {
+      enableAssistant();
+      useHomeSearchMock.mockReturnValue({ rows: [], isLoading: false });
+      typeQuery("bus stops");
+
+      expect(screen.getByText("no_results_for")).toBeTruthy();
+      expect(screen.getAllByRole("option")).toEqual([askRow()]);
+    });
+
+    it("Tab opens the dock on a new conversation that sends the query first", async () => {
+      enableAssistant();
+      createMock.mockResolvedValue({ id: "c7", project_id: null, origin_surface: "home", title: null });
+      useHomeSearchMock.mockReturnValue({ rows: busRows, isLoading: false });
+      const input = typeQuery("  bus stops ");
+
+      const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+      input.dispatchEvent(tab);
+
+      expect(tab.defaultPrevented).toBe(true);
+      expect(createMock).toHaveBeenCalledWith("home");
+      await waitFor(() => expect(getDockState()).toMatchObject({ open: true, conversationId: "c7" }));
+      expect(peekFirstMessage("c7")).toEqual({ conversationId: "c7", text: "bus stops", context: null });
+      expect(goMock).not.toHaveBeenCalled();
+      // The palette closes with an empty field.
+      expect(input.value).toBe("");
+      expect(document.activeElement).not.toBe(input);
+    });
+
+    it("Shift+Tab leaves the field instead of asking", () => {
+      enableAssistant();
+      useHomeSearchMock.mockReturnValue({ rows: busRows, isLoading: false });
+      const input = typeQuery("bus");
+
+      fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+
+      expect(createMock).not.toHaveBeenCalled();
+    });
+
+    it("Enter and a click on the row ask too", async () => {
+      enableAssistant();
+      createMock.mockResolvedValue({ id: "c8", project_id: null, origin_surface: "home", title: null });
+      useHomeSearchMock.mockReturnValue({ rows: [], isLoading: false });
+      const input = typeQuery("ask: bus stops");
+
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(getDockState().conversationId).toBe("c8"));
+      expect(peekFirstMessage("c8")?.text).toBe("bus stops");
+
+      createMock.mockResolvedValue({ id: "c9", project_id: null, origin_surface: "home", title: null });
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: "bus stops" } });
+      fireEvent.click(askRow() as Element);
+      await waitFor(() => expect(getDockState().conversationId).toBe("c9"));
+      expect(createMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("reports a conversation that could not be created, and opens nothing", async () => {
+      enableAssistant();
+      createMock.mockRejectedValue(new AssistantRequestError(503, "assistant_unavailable"));
+      useHomeSearchMock.mockReturnValue({ rows: [], isLoading: false });
+      const input = typeQuery("bus stops");
+
+      fireEvent.keyDown(input, { key: "Tab" });
+
+      await waitFor(() => expect(toastMock.error).toHaveBeenCalledTimes(1));
+      expect(getDockState().open).toBe(false);
+    });
   });
 });

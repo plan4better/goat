@@ -31,6 +31,28 @@ describe("CATALOG_BASE_URL", () => {
   });
 });
 
+describe("ASSISTANT_BASE_URL", () => {
+  it("is undefined without NEXT_PUBLIC_ASSISTANT_URL", async () => {
+    vi.stubEnv("NEXT_PUBLIC_ASSISTANT_URL", "");
+    const { ASSISTANT_BASE_URL } = await loadConstants();
+    expect(ASSISTANT_BASE_URL).toBeUndefined();
+  });
+
+  it("is undefined while still the Docker placeholder", async () => {
+    // A deployment that never sets the variable keeps the placeholder in the
+    // bundle; the dock must stay hidden instead of fetching it as a path.
+    vi.stubEnv("NEXT_PUBLIC_ASSISTANT_URL", "APP_NEXT_PUBLIC_ASSISTANT_URL");
+    const { ASSISTANT_BASE_URL } = await loadConstants();
+    expect(ASSISTANT_BASE_URL).toBeUndefined();
+  });
+
+  it("uses the configured url without a trailing slash", async () => {
+    vi.stubEnv("NEXT_PUBLIC_ASSISTANT_URL", "https://goat.example.org/assistant/");
+    const { ASSISTANT_BASE_URL } = await loadConstants();
+    expect(ASSISTANT_BASE_URL).toBe("https://goat.example.org/assistant");
+  });
+});
+
 describe("MAPTILER_KEY", () => {
   it("is undefined without NEXT_PUBLIC_MAPTILER_KEY, and no basemap points at MapTiler", async () => {
     vi.stubEnv("NEXT_PUBLIC_MAPTILER_KEY", "");

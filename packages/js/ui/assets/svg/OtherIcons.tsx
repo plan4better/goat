@@ -463,3 +463,17 @@ export const variableIcon: IconDefinition = {
   iconName: "variable" as IconName,
   prefix: "fas" as IconPrefix,
 };
+
+/** The AI mark: a four-point sparkle with two small ones, drawn on Font Awesome's 512 grid.
+ * Font Awesome's own "sparkles" is a Pro icon. */
+export const sparklesIcon: IconDefinition = {
+  icon: [
+    512,
+    512,
+    [],
+    "",
+    "M216 80Q257 255 432 296Q257 337 216 512Q175 337 0 296Q175 255 216 80Z M408 16Q423 81 488 96Q423 111 408 176Q393 111 328 96Q393 81 408 16Z M476 204Q482 230 508 236Q482 242 476 268Q470 242 444 236Q470 230 476 204Z",
+  ],
+  iconName: "goat-sparkles" as IconName,
+  prefix: "fas" as IconPrefix,
+};

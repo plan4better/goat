@@ -1,0 +1,472 @@
+suite: assistant Deployment
+templates:
+  - assistant/deployment.yaml
+  - assistant/configmap.yaml
+tests:
+  - it: renders a Deployment on port 8500 with liveness and readiness probes
+    template: assistant/deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-goat-assistant
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/plan4better/goat/assistant:v3.1.0
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8500
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /healthz
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /readyz
+  - it: gives the pod more time than uvicorn's graceful shutdown
+    # The image drains open answer streams for 20 s (UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN);
+    # the lifespan shutdown needs the rest.
+    template: assistant/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.terminationGracePeriodSeconds
+          value: 30
+  - it: refuses a grace period that would cut the shutdown short
+    template: assistant/deployment.yaml
+    set:
+      assistant.terminationGracePeriodSeconds: 20
+    asserts:
+      # The schema refuses it first (minimum 25); the template's own check
+      # covers renders that skip schema validation.
+      - failedTemplate:
+          errorPattern: "terminationGracePeriodSeconds"
+  - it: not rendered when assistant.enabled false
+    template: assistant/deployment.yaml
+    set:
+      assistant.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: connects as GOAT's database role and to Redis with its password
+    template: assistant/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POSTGRES_USER
+            valueFrom:
+              secretKeyRef:
+                name: RELEASE-NAME-goat-pg-app
+                key: username
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REDIS_URL
+            value: "redis://:$(REDIS_PASSWORD)@RELEASE-NAME-goat-redis:6379/0"
+  - it: uses the same database Secret and key as core (the role that owns the database)
+    # customer.can runs with the caller's privileges over core's tables; the
+    # owner role has them all (apps/assistant/sql/grants.sql for split roles).
+    template: assistant/deployment.yaml
+    set:
+      postgresql.cluster.enabled: false
+      postgresql.external.host: pg.example.com
+      postgresql.external.existingSecret: goat-db
+      postgresql.external.existingSecretUserKey: user
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POSTGRES_USER
+            valueFrom:
+              secretKeyRef:
+                name: goat-db
+                key: user
+  - it: points the tools at the in-cluster services
+    template: assistant/configmap.yaml
+    asserts:
+      - equal:
+          path: data.ASSISTANT_CORE_URL
+          value: http://RELEASE-NAME-goat-core
+      - equal:
+          path: data.ASSISTANT_GEOAPI_URL
+          value: http://RELEASE-NAME-goat-geoapi
+      - equal:
+          path: data.ASSISTANT_CATALOG_URL
+          value: http://RELEASE-NAME-goat-catalog
+      - equal:
+          path: data.GOAT_PROCESSES_URL
+          value: http://RELEASE-NAME-goat-processes
+      - equal:
+          path: data.NEXT_PUBLIC_APP_URL
+          value: http://localhost:3000
+  - it: keeps GOAT AI and token exchange off by default and fixes the schema
+    template: assistant/configmap.yaml
+    asserts:
+      - equal:
+          path: data.ASSISTANT_DEFAULT_PROVIDER
+          value: none
+      - equal:
+          path: data.ASSISTANT_TOKEN_EXCHANGE_ENABLED
+          value: "false"
+      - notExists:
+          path: data.ASSISTANT_DB_SCHEMA
+      - notExists:
+          path: data.ROOT_PATH
+      - notExists:
+          path: data.ASSISTANT_DEFAULT_HOSTED_IN
+  - it: passes where GOAT AI's model is hosted to the assistant
+    template: assistant/configmap.yaml
+    set:
+      assistant.config.ASSISTANT_DEFAULT_HOSTED_IN: EU
+    asserts:
+      - equal:
+          path: data.ASSISTANT_DEFAULT_HOSTED_IN
+          value: EU
+  - it: refreshes logins with the web client from the Keycloak Secret
+    template: assistant/deployment.yaml
+    set:
+      global.auth.enabled: true
+      global.auth.existingSecret: goat-oidc
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: AUTH
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: goat-oidc
+                key: client-id
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: goat-oidc
+                key: client-secret
+  - it: reads the secrets key and GOAT AI's API key from Secrets, never from values
+    template: assistant/deployment.yaml
+    set:
+      assistant.secretsKey.existingSecret: goat-assistant
+      assistant.defaultConnection.existingSecret: goat-ai
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ASSISTANT_SECRETS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: goat-assistant
+                key: secrets-key
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ASSISTANT_DEFAULT_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: goat-ai
+                key: api-key
+  - it: sets no secrets key without a Secret (own connections stay unavailable)
+    template: assistant/deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ASSISTANT_SECRETS_KEY
+          any: true
+  - it: takes ROOT_PATH from a path-routing ingress
+    template: assistant/configmap.yaml
+    set:
+      assistant.ingress.enabled: true
+      assistant.ingress.hosts:
+        - host: goat.example.com
+          paths: [{ path: /assistant, pathType: Prefix }]
+    asserts:
+      - equal:
+          path: data.ROOT_PATH
+          value: /assistant
+  - it: an explicit ROOT_PATH wins
+    template: assistant/configmap.yaml
+    set:
+      assistant.config.ROOT_PATH: /ai
+      assistant.ingress.enabled: true
+      assistant.ingress.hosts:
+        - host: goat.example.com
+          paths: [{ path: /assistant, pathType: Prefix }]
+    asserts:
+      - equal:
+          path: data.ROOT_PATH
+          value: /ai
+  - it: gives the readiness probe longer than the two parallel 2 s checks of /readyz
+    template: assistant/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 5
+  - it: keeps MCP audit rows for 30 days by default
+    template: assistant/configmap.yaml
+    asserts:
+      - equal:
+          path: data.ASSISTANT_MCP_AUDIT_RETENTION_DAYS
+          value: "30"
+  - it: takes the MCP audit retention from assistant.mcp.auditRetentionDays
+    template: assistant/configmap.yaml
+    set:
+      assistant.mcp.auditRetentionDays: 90
+    asserts:
+      - equal:
+          path: data.ASSISTANT_MCP_AUDIT_RETENTION_DAYS
+          value: "90"
+  - it: refuses an MCP audit retention below one day
+    template: assistant/configmap.yaml
+    set:
+      assistant.mcp.auditRetentionDays: 0
+    asserts:
+      - failedTemplate:
+          errorPattern: "auditRetentionDays"
+  - it: switches the MCP Host check off without an ingress host
+    template: assistant/configmap.yaml
+    asserts:
+      - equal:
+          path: data.ASSISTANT_MCP_ALLOWED_HOSTS
+          value: '["*"]'
+  - it: allows the ingress hosts on /mcp, bare and with any port
+    template: assistant/configmap.yaml
+    set:
+      assistant.ingress.enabled: true
+      assistant.ingress.hosts:
+        - host: assistant.goat.example.com
+          paths: [{ path: /, pathType: Prefix }]
+        - host: ai.goat.example.com
+          paths: [{ path: /, pathType: Prefix }]
+    asserts:
+      - equal:
+          path: data.ASSISTANT_MCP_ALLOWED_HOSTS
+          value: '["assistant.goat.example.com","assistant.goat.example.com:*","ai.goat.example.com","ai.goat.example.com:*"]'
+  - it: an explicit MCP host list wins over the ingress hosts
+    template: assistant/configmap.yaml
+    set:
+      assistant.config.ASSISTANT_MCP_ALLOWED_HOSTS: '["goat.example.com"]'
+      assistant.ingress.enabled: true
+      assistant.ingress.hosts:
+        - host: assistant.goat.example.com
+          paths: [{ path: /, pathType: Prefix }]
+    asserts:
+      - equal:
+          path: data.ASSISTANT_MCP_ALLOWED_HOSTS
+          value: '["goat.example.com"]'
+  # Bearer and MCP tokens would land in traces. Nothing in the chart sets the
+  # variable today; this catches a later default that does.
+  - it: never captures request headers into traces (the Authorization header carries tokens)
+    template: assistant/configmap.yaml
+    set:
+      global.auth.enabled: true
+      global.auth.existingSecret: goat-oidc
+      global.caBundle.existingConfigMap: corp-ca
+    asserts:
+      - notExists:
+          path: data.OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST
+  - it: never sets request header capture in the container env either
+    template: assistant/deployment.yaml
+    set:
+      global.auth.enabled: true
+      global.auth.existingSecret: goat-oidc
+      assistant.secretsKey.existingSecret: goat-assistant
+      assistant.defaultConnection.existingSecret: goat-ai
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST
+          any: true
+  - it: sets no CA bundle and mounts no volume without global.caBundle
+    template: assistant/deployment.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.volumes
+      - notExists:
+          path: spec.template.spec.containers[0].volumeMounts
+  - it: points GOAT_CA_BUNDLE at the company CA, like core
+    template: assistant/configmap.yaml
+    set:
+      global.caBundle.existingConfigMap: corp-ca
+    asserts:
+      - equal:
+          path: data.GOAT_CA_BUNDLE
+          value: /etc/goat/ca/ca.pem
+  - it: mounts the company CA into the assistant
+    template: assistant/deployment.yaml
+    set:
+      global.caBundle.existingSecret: corp-ca
+      global.caBundle.key: root.pem
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: goat-ca-bundle
+            secret:
+              secretName: corp-ca
+              items:
+                - key: root.pem
+                  path: ca.pem
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: goat-ca-bundle
+            mountPath: /etc/goat/ca
+            readOnly: true
+  - it: keeps the operator's volumes next to the company CA
+    template: assistant/deployment.yaml
+    set:
+      global.caBundle.existingConfigMap: corp-ca
+      assistant.extraVolumes:
+        - name: gcp
+          secret:
+            secretName: gcp-sa
+      assistant.extraVolumeMounts:
+        - name: gcp
+          mountPath: /var/run/gcp
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.volumes
+          count: 2
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: gcp
+            mountPath: /var/run/gcp
+  # Ruling 27: auth on without a Secret. The assistant refreshes logins with
+  # the web app's client, from the same source the web app reads it.
+  - it: takes the web client from web.config when auth is on without a Secret
+    template: assistant/configmap.yaml
+    set:
+      global.auth.enabled: true
+      web.config.KEYCLOAK_CLIENT_ID: goat-web-prod
+      web.config.KEYCLOAK_CLIENT_SECRET: web-secret
+    asserts:
+      - equal:
+          path: data.KEYCLOAK_CLIENT_ID
+          value: goat-web-prod
+      - equal:
+          path: data.KEYCLOAK_CLIENT_SECRET
+          value: web-secret
+  - it: sets no web client with auth off
+    template: assistant/configmap.yaml
+    asserts:
+      - notExists:
+          path: data.KEYCLOAK_CLIENT_ID
+      - notExists:
+          path: data.KEYCLOAK_CLIENT_SECRET
+  - it: follows the web app's extraEnv for its client
+    templates:
+      - assistant/configmap.yaml
+      - assistant/deployment.yaml
+    set:
+      global.auth.enabled: true
+      web.extraEnv:
+        - name: KEYCLOAK_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: web-kc
+              key: secret
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: web-kc
+                key: secret
+        template: assistant/deployment.yaml
+      - notExists:
+          path: data.KEYCLOAK_CLIENT_SECRET
+        template: assistant/configmap.yaml
+      - equal:
+          path: data.KEYCLOAK_CLIENT_ID
+          value: goat-web
+        template: assistant/configmap.yaml
+  - it: follows the web app's own Keycloak Secret when only web is wired
+    templates:
+      - assistant/configmap.yaml
+      - assistant/deployment.yaml
+    set:
+      global.auth.enabled: true
+      web.auth.existingSecret: web-kc
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: web-kc
+                key: client-id
+        template: assistant/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: web-kc
+                key: client-secret
+        template: assistant/deployment.yaml
+      - notExists:
+          path: data.KEYCLOAK_CLIENT_ID
+        template: assistant/configmap.yaml
+  - it: an explicit client in assistant.extraEnv wins
+    templates:
+      - assistant/configmap.yaml
+      - assistant/deployment.yaml
+    set:
+      global.auth.enabled: true
+      web.auth.existingSecret: web-kc
+      assistant.extraEnv:
+        - name: KEYCLOAK_CLIENT_ID
+          value: goat-assistant-web
+    asserts:
+      - notExists:
+          path: data.KEYCLOAK_CLIENT_ID
+        template: assistant/configmap.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_ID
+            value: goat-assistant-web
+        template: assistant/deployment.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: web-kc
+                key: client-id
+        template: assistant/deployment.yaml
+  - it: assistant.auth wins over the web app's source
+    templates:
+      - assistant/configmap.yaml
+      - assistant/deployment.yaml
+    set:
+      global.auth.enabled: true
+      web.auth.existingSecret: web-kc
+      assistant.auth.existingSecret: assistant-kc
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: assistant-kc
+                key: client-id
+        template: assistant/deployment.yaml
+      - notExists:
+          path: data.KEYCLOAK_CLIENT_ID
+        template: assistant/configmap.yaml

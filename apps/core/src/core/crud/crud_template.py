@@ -76,6 +76,8 @@ from core.schemas.template import (
     TemplateSource,
     TemplateSourceInfo,
     TemplateUpdate,
+    TemplateUsePreview,
+    TemplateUsePreviewRequest,
     TemplateUseRequest,
     TemplateUseResult,
 )
@@ -83,6 +85,7 @@ from core.schemas.workflow import WorkflowCreate
 from core.services.initial_view_state import resolve_initial_view_state
 from core.services.processes import execute_process
 from core.templates.snapshot import (
+    _rewrite_tool_configs,
     bind_workflow_config,
     detect_workflow_inputs,
     freeze_workflow_config,
@@ -1554,6 +1557,7 @@ class CRUDTemplate:
         user_id: UUID,
         bindings_in: dict[str, UUID],
         group_name: str,
+        link: bool = True,
     ) -> tuple[dict[str, tuple[UUID | None, int | None]], list[int], list[_CopyPlan]]:
         """Resolve a workflow template's declared inputs into the target
         project (T7, step 2 of "Using a template").
@@ -1587,6 +1591,10 @@ class CRUDTemplate:
         unresolved; ``added_link_ids`` lists only the NEWLY created links
         (a reused, already-existing link was not "added" by this call);
         ``copy_plans`` the copies to start, one per copied dataset.
+
+        With ``link=False`` nothing is written: a layer that would get a new
+        link resolves to ``(layer_id, None)``, and no link or copy plan is
+        returned (``preview_use``).
         """
         bindings: dict[str, tuple[UUID | None, int | None]] = {}
         added_ids: list[int] = []
@@ -1673,6 +1681,12 @@ class CRUDTemplate:
                     # Copied by an earlier use: bind to the copy, nothing to do.
                     bindings[i.key] = (earlier.layer_id, earlier.id)
                     continue
+                if not link:
+                    bindings[i.key] = (
+                        layer_id,
+                        cast(int, earlier.id) if earlier is not None else None,
+                    )
+                    continue
                 plan = copy_plans.get(layer_id)
                 if plan is None:
                     if earlier is not None:
@@ -1703,11 +1717,11 @@ class CRUDTemplate:
                 plan.copy_content = plan.copy_content or i.copy_content
                 bindings[i.key] = (layer_id, plan.link_ids[0])
                 continue
-            link_id = existing_by_layer.get(layer_id)
-            if link_id is None:
-                link_id = await new_link(layer_id)
-                existing_by_layer[layer_id] = link_id
-            bindings[i.key] = (layer_id, link_id)
+            existing = existing_by_layer.get(layer_id)
+            if existing is None and link:
+                existing = await new_link(layer_id)
+                existing_by_layer[layer_id] = existing
+            bindings[i.key] = (layer_id, existing)
 
         return bindings, added_ids, list(copy_plans.values())
 
@@ -1977,7 +1991,10 @@ class CRUDTemplate:
                 db,
                 project_id=target_project_id,
                 obj_in=WorkflowCreate(
-                    name=name, description=None, is_default=False, config=bound_config
+                    name=name,
+                    description=req.description,
+                    is_default=False,
+                    config=bound_config,
                 ),
             )
             assert wf.id is not None
@@ -2013,6 +2030,70 @@ class CRUDTemplate:
         )
         assert layout.id is not None
         return TemplateUseResult(project_id=target_project_id, layout_id=layout.id)
+
+    async def preview_use(
+        self,
+        db: AsyncSession,
+        *,
+        template_id: UUID,
+        user_id: UUID,
+        req: TemplateUsePreviewRequest,
+    ) -> TemplateUsePreview:
+        """The workflow config ``use`` would write into ``req.project_id``
+        with ``req.bindings``, and the inputs it would leave unresolved,
+        without writing anything (``_resolve_workflow_inputs`` with
+        ``link=False``), so a caller can check the workflow before it exists.
+        Requires what ``use`` requires there: read on the template, write on
+        the project, both checked before anything about the payload is
+        answered. A workflow payload only: 422 for any other."""
+        await authz.require(db, "template", template_id, user_id, "read")
+        await authz.require(db, "project", req.project_id, user_id, "write")
+        row = await self._get_live(db, template_id)
+        if row.payload_kind != "workflow":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Only a workflow template can be previewed",
+            )
+        inputs = [TemplateInput(**i) for i in (row.inputs or [])]
+        bindings, _, _ = await self._resolve_workflow_inputs(
+            db,
+            inputs,
+            target_project_id=req.project_id,
+            user_id=user_id,
+            bindings_in=req.bindings,
+            group_name=row.name,
+            link=False,
+        )
+        frozen = dict(row.config or {})
+        config, unresolved_keys = bind_workflow_config(frozen, bindings)
+        # An empty copy that still reads the template's dataset gets an entry
+        # of its own from the use, and the use points the tool settings
+        # naming the dataset by entry at it. That entry does not exist yet:
+        # the settings name the author's entry, or one that shows the
+        # dataset until its copy arrives, and the user may read neither. So
+        # they are cleared, as an input still to be chosen has them.
+        waiting: list[tuple[int | str, int | str | None]] = []
+        for i in inputs:
+            layer_id, entry = bindings.get(i.key, (None, None))
+            if not i.empty_copy or i.key in req.bindings or layer_id != i.layer_id:
+                continue
+            if entry is not None:
+                waiting.append((entry, None))
+                continue
+            for node in frozen.get("nodes") or []:
+                data = node.get("data") if isinstance(node, dict) else None
+                if isinstance(data, dict) and data.get("templateInput") == i.key:
+                    authors = data.get("templateSourceProjectLayerId")
+                    if isinstance(authors, int):
+                        waiting.append((authors, None))
+        _rewrite_tool_configs(config.get("nodes") or [], waiting)
+        inputs_by_key = {i.key: i for i in inputs}
+        return TemplateUsePreview(
+            config=config,
+            unresolved_inputs=[
+                inputs_by_key[k] for k in unresolved_keys if k in inputs_by_key
+            ],
+        )
 
     # ------------------------------------------------------------------
     # Publish / unpublish (T4)

@@ -8,8 +8,7 @@ import { toast } from "react-toastify";
 import { dismissJob, useJobs } from "@/lib/api/processes";
 import {
   type WorkflowExecuteRequest,
-  WorkflowRefusedError,
-  cleanupWorkflowTemp,
+  WorkflowIssuesError,
   executeWorkflow,
   finalizeWorkflowLayer,
 } from "@/lib/api/workflows";
@@ -18,6 +17,8 @@ import { setRunningJobIds } from "@/lib/store/jobs/slice";
 import { selectEdges, selectNodes, selectVariables } from "@/lib/store/workflow/selectors";
 import { creditsErrorMessage } from "@/lib/utils/credits";
 import { claimJobAnnouncement } from "@/lib/utils/jobAnnouncement";
+import { workflowRunsSomething } from "@/lib/utils/workflowRuns";
+import type { WorkflowIssue } from "@/lib/validations/workflowIssues";
 
 import { useAppSelector } from "@/hooks/store/ContextHooks";
 
@@ -46,6 +47,15 @@ interface WorkflowExecutionState {
   exportedLayerIds: Record<string, string>;
   /** Layer style properties by node ID (from tool results) */
   tempLayerProperties: Record<string, Record<string, unknown>>;
+  /** Error text of each step that failed in the current or last run, by node ID */
+  nodeErrors: Record<string, string>;
+}
+
+/** Whether two step error maps hold the same errors, so a poll that brings
+ * nothing new leaves the state as it is. */
+function sameNodeErrors(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 }
 
 /**
@@ -130,7 +140,9 @@ function inferSkippedIfBranches(
  * Hook for managing workflow execution via Windmill
  */
 export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkflowExecutionProps) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
+  // The UI language, sent with a run: processes names steps in it when it refuses one
+  const language = i18n?.language;
   const dispatch = useDispatch<AppDispatch>();
 
   // Derive workflowId from prop
@@ -165,6 +177,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
     tempLayerIds: {},
     exportedLayerIds: {},
     tempLayerProperties: {},
+    nodeErrors: {},
   });
 
   // Reset local execution state when the active workflow changes.
@@ -184,6 +197,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       tempLayerIds: {},
       exportedLayerIds: {},
       tempLayerProperties: {},
+      nodeErrors: {},
     });
   }, [workflowId]);
 
@@ -274,6 +288,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       tempLayerIds: initialTempLayerIds,
       exportedLayerIds: {},
       tempLayerProperties: {},
+      nodeErrors: activeJob.node_errors ? { ...activeJob.node_errors } : {},
     });
 
     // Ensure the job is in the Redux running jobs list for polling
@@ -283,40 +298,25 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
   }, [workflowId, jobs, state.isExecuting, nodes, dispatch]);
 
   /**
-   * True when a dataset node still has an unresolved template "ask" input
-   * (`data.unresolved === true`, set outside datasetNodeDataSchema — see
-   * components/workflows/nodes/DatasetNode.tsx). Running with an unbound
-   * input would fail node-by-node with no clear cause, so the run button is
-   * gated on this instead.
-   */
-  const hasUnresolvedInputs = useMemo(
-    () =>
-      nodes.some(
-        (n) => n.data?.type === "dataset" && (n.data as { unresolved?: boolean }).unresolved === true
-      ),
-    [nodes]
-  );
-
-  /**
-   * Check if workflow can be executed
+   * Check if workflow can be executed. Whether its steps are ready is the
+   * issue list's call (useWorkflowIssues): an unresolved template input is its
+   * `layer_not_chosen` issue, which keeps Run disabled in the toolbar.
    */
   const canExecute = useMemo(() => {
     if (!projectId || !workflowId) return false;
     if (state.isExecuting) return false;
-    if (hasUnresolvedInputs) return false;
 
-    // Must have at least one tool node
-    const hasToolNodes = nodes.some((n) => n.data?.type === "tool");
-    return hasToolNodes;
-  }, [projectId, workflowId, state.isExecuting, hasUnresolvedInputs, nodes]);
+    return workflowRunsSomething(nodes, edges);
+  }, [projectId, workflowId, state.isExecuting, nodes, edges]);
 
   /**
-   * Execute the workflow
+   * Execute the workflow. Resolves to the issues of a run processes refused
+   * (422), for the issue list, and to null otherwise.
    */
-  const execute = useCallback(async () => {
+  const execute = useCallback(async (): Promise<WorkflowIssue[] | null> => {
     if (!projectId || !workflowId || !folderId) {
       toast.error(t("workflow_missing_context"));
-      return;
+      return null;
     }
 
     // Clear processed job IDs for new execution
@@ -341,13 +341,12 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       tempLayerIds: {},
       exportedLayerIds: {},
       tempLayerProperties: {},
+      nodeErrors: {},
     }));
 
     try {
-      // Cleanup previous temp files
-      await cleanupWorkflowTemp(workflowId);
-
-      // Build execution request
+      // Build execution request. Processes removes the last run's temp results
+      // itself once the run passes its check.
       const request: WorkflowExecuteRequest = {
         project_id: projectId,
         folder_id: folderId,
@@ -363,7 +362,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       };
 
       // Submit to Windmill
-      const response = await executeWorkflow(workflowId, request);
+      const response = await executeWorkflow(workflowId, request, language);
       setState((s) => ({ ...s, jobId: response.job_id }));
 
       // Add to running jobs for polling (use ref to avoid stale closure)
@@ -374,34 +373,27 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
 
       toast.dismiss();
       toast.success(t("workflow_started"));
+      return null;
     } catch (error) {
-      let message =
-        creditsErrorMessage(error, t) ?? (error instanceof Error ? error.message : t("execution_failed"));
-      let refusedStatuses: Record<string, NodeExecutionStatus> = {};
-      if (error instanceof WorkflowRefusedError) {
-        // Name the nodes as the canvas shows them, and mark them there.
-        const names = error.refusedNodes
-          .map((id) => nodes.find((node) => node.id === id)?.data as { label?: string } | undefined)
-          .map((data) => data?.label)
-          .filter((label): label is string => !!label);
-        message =
-          names.length > 0
-            ? t("workflow_datasets_refused", { names: names.join(", ") })
-            : error.destinationRefused
-              ? t("workflow_destination_refused")
-              : message;
-        refusedStatuses = Object.fromEntries(error.refusedNodes.map((id) => [id, "failed" as const]));
+      if (error instanceof WorkflowIssuesError) {
+        // The issue list says why; the caller puts these issues in it.
+        setState((s) => ({ ...s, isExecuting: false, nodeStatuses: {}, nodeExecutionInfo: {} }));
+        return error.issues;
       }
+      const message =
+        creditsErrorMessage(error, t) ?? (error instanceof Error ? error.message : t("execution_failed"));
       setState((s) => ({
         ...s,
         isExecuting: false,
         error: message,
-        nodeStatuses: refusedStatuses,
+        nodeStatuses: {},
+        nodeExecutionInfo: {},
       }));
       toast.dismiss();
       toast.error(`${t("workflow_failed")}: ${message}`);
+      return null;
     }
-  }, [projectId, workflowId, folderId, nodes, edges, variables, dispatch, mutateJobs, t]);
+  }, [projectId, workflowId, folderId, nodes, edges, variables, language, dispatch, mutateJobs, t]);
 
   /**
    * Finalize a node's temp layer to permanent storage
@@ -447,6 +439,15 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
 
     // When job is running, show first pending node as running
     if (job.status === "running" || job.status === "accepted") {
+      // Steps that already failed while the run goes on
+      const runningErrors = job.node_errors;
+      if (runningErrors && Object.keys(runningErrors).length > 0) {
+        setState((prev) =>
+          sameNodeErrors(prev.nodeErrors, runningErrors)
+            ? prev
+            : { ...prev, nodeErrors: { ...runningErrors } }
+        );
+      }
       // If we have node_status from flow_user_state, use it for accurate per-node tracking
       if (job.node_status) {
         setState((prev) => {
@@ -649,6 +650,11 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
           }
         });
 
+        // A step with an error failed, whatever status the last poll left it in.
+        Object.keys(job.node_errors ?? {}).forEach((nodeId) => {
+          if (nodeId in newStatuses) newStatuses[nodeId] = "failed";
+        });
+
         // Extract temp_layer_ids from node_status for completed nodes (so we can view their data)
         if (job.node_status) {
           Object.entries(job.node_status).forEach(([nodeId, statusData]) => {
@@ -665,6 +671,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
           error: job.message || "Workflow failed",
           nodeStatuses: newStatuses,
           tempLayerIds: newTempLayerIds,
+          nodeErrors: job.node_errors ? { ...job.node_errors } : s.nodeErrors,
         };
       });
 
@@ -756,6 +763,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       tempLayerIds: {},
       exportedLayerIds: {},
       tempLayerProperties: {},
+      nodeErrors: {},
     });
   }, []);
 
@@ -769,6 +777,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
     tempLayerIds: state.tempLayerIds,
     exportedLayerIds: state.exportedLayerIds,
     tempLayerProperties: state.tempLayerProperties,
+    nodeErrors: state.nodeErrors,
 
     // Actions
     execute,
@@ -776,6 +785,5 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
     finalizeNode,
     reset,
     canExecute,
-    hasUnresolvedInputs,
   };
 }

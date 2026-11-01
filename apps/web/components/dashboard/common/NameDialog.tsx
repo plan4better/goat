@@ -18,12 +18,15 @@ interface NameDialogProps {
   placeholder?: string;
   /** The primary button's label ("Create folder"). */
   cta: string;
-  /** Pre-fills the field, for a rename. */
+  /** Pre-fills the field, for a rename: the name starts selected, and the
+   * button stays disabled until it differs from this one. */
   initialName?: string;
   onClose: () => void;
   /** Rejecting keeps the dialog open and shows the reason under the field;
    * resolving leaves closing to the caller. */
   onSubmit: (name: string) => Promise<void>;
+  /** The longest name the server accepts. */
+  maxLength?: number;
   /** Whether the caller has everything a submit needs — a project's
    * destination folder, say. The button stays disabled until it does, so a
    * fast typist cannot submit into a location that is still loading. */
@@ -42,6 +45,7 @@ const NameDialog = ({
   placeholder,
   cta,
   initialName,
+  maxLength,
   onClose,
   onSubmit,
   ready = true,
@@ -52,7 +56,8 @@ const NameDialog = ({
   const [error, setError] = useState<string | null>(null);
 
   const trimmed = name.trim();
-  const canSubmit = trimmed.length > 0 && !busy && ready;
+  const unchanged = initialName !== undefined && trimmed === initialName.trim();
+  const canSubmit = trimmed.length > 0 && !unchanged && !busy && ready;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -98,7 +103,10 @@ const NameDialog = ({
           placeholder={placeholder}
           error={!!error}
           helperText={error}
-          inputProps={{ "aria-label": title, autoComplete: "off" }}
+          inputProps={{ "aria-label": title, autoComplete: "off", maxLength }}
+          onFocus={(event) => {
+            if (initialName !== undefined) event.target.select();
+          }}
           onChange={(event) => setName(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") void submit();

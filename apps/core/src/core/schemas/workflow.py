@@ -39,6 +39,14 @@ class WorkflowUpdate(BaseModel):
         None,
         description="Workflow configuration (nodes, edges, viewport)",
     )
+    base_revision: int | None = Field(
+        None,
+        description=(
+            "The revision the change was made on. A save that changes the "
+            "workflow on another revision answers 409 changed_elsewhere; without "
+            "it the save lands anyway."
+        ),
+    )
 
 
 class WorkflowRead(WorkflowBase):
@@ -51,6 +59,7 @@ class WorkflowRead(WorkflowBase):
     thumbnail_url: str | None = Field(
         None, description="Workflow preview thumbnail URL"
     )
+    revision: int = Field(..., description="Revision to send as base_revision")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
 
@@ -69,6 +78,7 @@ request_examples = {
     },
     "update": {
         "name": "Updated Workflow Name",
+        "base_revision": 1,
         "config": {
             "nodes": [
                 {

@@ -1,9 +1,10 @@
 """credit_reset: the monthly credit period of subscribed organizations.
 
-An organization with a subscription gets its credits every month, whatever the
-subscription's term (a yearly contract too): when credits_reset_at has passed,
-used_credits goes back to 0 and credits_reset_at moves on by whole months.
-Core sets the first date when a subscription arrives from the billing system.
+An organization with a subscription gets its credits and its AI credits every
+month, whatever the subscription's term (a yearly contract too): when
+credits_reset_at has passed, used_credits and used_ai_credits go back to 0 and
+credits_reset_at moves on by whole months. Core sets the first date when a
+subscription arrives from the billing system.
 
 Trials are left alone: a trial's credits last the whole trial, and its end
 (plan_renewal_date) belongs to trial_expiry. Organizations without a reset date
@@ -64,6 +65,11 @@ DUE_SQL = (
     "WHERE credits_reset_at IS NOT NULL AND credits_reset_at <= $1 "
     "AND on_trial IS NOT TRUE"
 )
+# Both pools start again: the credits and the AI credits.
+RESET_SQL = (
+    "UPDATE {schema}.organization "
+    "SET used_credits = 0, used_ai_credits = 0, credits_reset_at = $2 WHERE id = $1"
+)
 
 
 def main(params: CreditResetParams = CreditResetParams()) -> dict:
@@ -93,8 +99,7 @@ async def _run(params: CreditResetParams) -> dict:
                 continue
             try:
                 await core.execute(
-                    f"UPDATE {schema}.organization "
-                    f"SET used_credits = 0, credits_reset_at = $2 WHERE id = $1",
+                    RESET_SQL.format(schema=schema),
                     r["id"],
                     advance_renewal(r["credits_reset_at"], now),
                 )

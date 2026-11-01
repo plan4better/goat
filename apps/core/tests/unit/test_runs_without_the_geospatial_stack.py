@@ -92,3 +92,17 @@ def test_the_bundle_endpoints_import(without_geospatial_stack: None) -> None:
     # the stack this test hides — and a refusal raised here reaches nobody,
     # while a failed job is reported to whoever uploaded the file.
     assert not hasattr(module, "get_importer")
+
+
+def test_the_workflow_endpoints_import(
+    without_geospatial_stack: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Saving a workflow checks its shape with `goatlib.workflows.checks`,
+    which core's image loads from goatlib's base install."""
+    for name in list(sys.modules):
+        if name.startswith("goatlib.workflows"):
+            monkeypatch.delitem(sys.modules, name)
+    module = importlib.import_module("core.endpoints.v2.workflow")
+    importlib.reload(module)
+
+    assert module.shape_issues({"nodes": [], "edges": []}) == []

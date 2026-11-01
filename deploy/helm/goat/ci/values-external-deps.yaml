@@ -71,11 +71,21 @@ redis:
 catalog:
   enabled: true
 
+assistant:
+  enabled: true
+  # Path-routed by the consumer's gateway on the shared host (no chart ingress).
+  config:
+    ROOT_PATH: "/assistant"
+    ASSISTANT_MCP_ALLOWED_HOSTS: '["goat.example.com","goat.example.com:*"]'
+  secretsKey:
+    existingSecret: goat-assistant
+
 web:
   auth:
     publicUrl: https://goat.example.com
   publicUrls:
     api: https://goat.example.com
+    assistant: https://goat.example.com/assistant
 
 data:
   enabled: true

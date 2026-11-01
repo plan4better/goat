@@ -144,6 +144,7 @@ export default function EnumInput({ input, value, onChange, disabled, formValues
       setSelectedItems={handleChange}
       items={enumItems}
       label={label}
+      required={input.required}
       tooltip={description}
       // Sharing a row is what makes a wrapped label a problem: it pushes the
       // field beside it out of shape. A field on its own row wraps as before.

@@ -341,6 +341,52 @@ class TestAttributeJoin:
         con.close()
         tool.cleanup()
 
+    def test_result_names_with_spaces_and_quotes_are_kept_exactly(
+        self, tmp_path: Path
+    ) -> None:
+        """A result name becomes the output column name exactly as given."""
+        sum_name = "Gehälter gesamt"
+        count_name = 'Anzahl "Stufen"'
+        params = JoinParams(
+            target_path=str(TEST_DATA_DIR / "employees.parquet"),
+            join_path=str(TEST_DATA_DIR / "salary_bands.parquet"),
+            output_path=str(tmp_path / "out.parquet"),
+            use_spatial_relationship=False,
+            use_attribute_relationship=True,
+            attribute_relationships=[
+                AttributeRelationship(
+                    target_field="department", join_field="department"
+                ),
+            ],
+            join_operation=JoinOperationType.one_to_one,
+            multiple_matching_records=MultipleMatchingRecordsType.calculate_statistics,
+            join_type=JoinType.left,
+            field_statistics=[
+                FieldStatistic(
+                    field="min_salary",
+                    operation=StatisticOperation.sum,
+                    result_name=sum_name,
+                ),
+                FieldStatistic(
+                    operation=StatisticOperation.count, result_name=count_name
+                ),
+            ],
+        )
+
+        tool = JoinTool()
+        result_path, _ = tool.run(params)[0]
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        df = con.execute(f"SELECT * FROM read_parquet('{result_path}')").fetchdf()
+        con.close()
+        tool.cleanup()
+
+        assert {sum_name, count_name} <= set(df.columns)
+        assert not any(c.startswith('"') for c in df.columns)
+        engineering = df[df["department"] == "Engineering"].iloc[0]
+        assert engineering[sum_name] == 70000 + 85000 + 110000
+        assert engineering[count_name] == 3
+
 
 class TestSpatialJoin:
     """Tests for spatial-based joins."""

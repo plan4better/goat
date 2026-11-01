@@ -16,10 +16,25 @@ from core.core.config import settings
 
 Action = Literal["read", "write", "share", "delete"]
 
-# The only resource types ``customer.effective_role`` knows about. ``require``
-# formats a validated member of this tuple into a table name for its existence
-# check, so it must never take an unvalidated (user-controlled) string.
-_RESOURCE_TYPES = ("layer", "project", "folder", "bundle", "template")
+# The only resource types ``customer.effective_role`` knows about, each with
+# its table. SQL that names a resource's table takes the name from here, never
+# the caller's string: an unknown type has no entry, so it never reaches SQL.
+_TABLES: dict[str, str] = {
+    "layer": "layer",
+    "project": "project",
+    "folder": "folder",
+    "bundle": "bundle",
+    "template": "template",
+}
+
+
+def table_of(resource_type: str) -> str:
+    """The table of a resource type; ValueError for a type
+    ``customer.effective_role`` does not know."""
+    table = _TABLES.get(resource_type)
+    if table is None:
+        raise ValueError(f"unknown resource_type {resource_type!r}")
+    return table
 
 
 async def effective_role(
@@ -67,14 +82,13 @@ async def require(
     only checked once ``can`` has already come back False, so the common case
     (allowed) costs a single round trip.
     """
-    if resource_type not in _RESOURCE_TYPES:
-        raise ValueError(f"authz.require: unknown resource_type {resource_type!r}")
+    table = table_of(resource_type)
 
     if await can(db, resource_type, resource_id, user_id, action):
         return
 
     exists = await db.execute(
-        text(f"SELECT 1 FROM {settings.SCHEMA}.{resource_type} WHERE id = :id"),
+        text(f"SELECT 1 FROM {settings.SCHEMA}.{table} WHERE id = :id"),
         {"id": resource_id},
     )
     if exists.scalar() is None:

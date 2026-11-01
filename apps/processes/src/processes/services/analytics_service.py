@@ -130,6 +130,12 @@ class AnalyticsService:
             result = con.execute(f"DESCRIBE {table_name}").fetchall()
             return [row[0] for row in result]
 
+    def column_names(self, layer_id: str) -> list[str]:
+        """The column names of a layer, whichever home it has: a DuckLake
+        table or a promoted catalog file. Raises HTTPException 404 when it has
+        neither."""
+        return self._get_column_names(self._get_table_name(layer_id))
+
     def _detect_geometry_column(self, table_name: str) -> str:
         """Detect the geometry column name for a table.
 
@@ -339,6 +345,7 @@ class AnalyticsService:
         collection: str,
         operation: str = "sum",
         filter_expr: str | None = None,
+        group_by_column: str | None = None,
     ) -> dict[str, Any]:
         """Calculate area statistics for polygon features.
 
@@ -346,9 +353,12 @@ class AnalyticsService:
             collection: Layer ID
             operation: Statistical operation (sum, mean, min, max)
             filter_expr: Optional CQL2 filter
+            group_by_column: Optional field whose values each get their own
+                area statistics
 
         Returns:
-            Dict with result, total_area, feature_count, unit
+            Dict with result, total_area, feature_count, unit, and the groups
+            (largest total area first) with total_groups when grouped
         """
         table_name = self._get_table_name(collection)
         geometry_column = self._detect_geometry_column(table_name)
@@ -369,6 +379,7 @@ class AnalyticsService:
                 operation=area_op,
                 where_clause=where_clause,
                 params=params if params else None,
+                group_by_column=group_by_column,
             )
 
         return result.model_dump()

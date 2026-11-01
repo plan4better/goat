@@ -18,7 +18,7 @@ This file is the short version. The full guide is in the GOAT documentation:
 |---|---|---|
 | CPU / RAM | 4 vCPU / 8 GB | 8 vCPU / 16 GB |
 | Disk | 50 GB | 200 GB+ (grows with your data) |
-| OS | any Linux with Docker Engine 24+ and Docker Compose 2.23+ | Ubuntu 24.04 LTS |
+| OS | any Linux with Docker Engine 24+ and Docker Compose 2.24+ | Ubuntu 24.04 LTS |
 
 - Open ports: **443**, plus 80 for the redirect from `http://` (or the one port you
   choose for plain HTTP). Nothing else needs to be reachable.
@@ -56,12 +56,13 @@ Set with `./setup.sh --public-url <url> --tls <mode>` (or interactively).
 | `off` behind your load balancer | TLS ends at your LB | `./setup.sh --public-url https://goat.example.org --tls off --http-port 8080`; point the LB at port 8080 and list its addresses in `GOAT_TRUSTED_PROXIES` |
 
 The public URL must be a bare origin (no path). All services live under it:
-`/` web app, `/api` core, `/geoapi`, `/processes`, `/catalog`, `/keycloak`.
+`/` web app, `/api` core, `/geoapi`, `/processes`, `/catalog`, `/assistant`, `/keycloak`.
 
 **Company CA.** If your servers use a certificate from a private CA, put the CA
 certificate into `./certs` and set `GOAT_CA_BUNDLE=/certs/<file>.pem` in `.env`.
 This also covers an SMTP relay whose certificate comes from that CA: GOAT and
 Keycloak verify the relay's certificate against the public CAs and this file.
+The assistant trusts `GOAT_CA_BUNDLE` like the other services.
 
 More in the docs: [HTTPS and addresses](https://goat.plan4better.de/docs/self_hosting/docker_compose/https)
 
@@ -93,9 +94,24 @@ More in the docs: [External services](https://goat.plan4better.de/docs/self_host
 In `.env`: `NEXT_PUBLIC_MAPTILER_KEY` (satellite basemap), `NEXT_PUBLIC_MAPBOX_TOKEN`
 (place search), `SMTP_*` (email, below), `CATALOG_S3_*` (GOAT data catalog),
 `GEOCODING_URL` / `GEOCODING_AUTHORIZATION`, `ODOO_*` (Odoo connection and support tickets, below),
-`NEXT_PUBLIC_SUPPORT_EMAIL` (address of "Report a problem" without tickets, default `support@plan4better.de`),
+`NEXT_PUBLIC_SUPPORT_EMAIL` (address of "Report a problem" and the AI assistant's "Feedback" link without tickets, default `support@plan4better.de`),
 `OTEL_*` (telemetry export).
 Apply changes with `docker compose up -d`.
+
+**AI assistant.** It runs from the start and stays hidden until a model is
+configured. Either set the built-in "GOAT AI" connection for every organization
+(`ASSISTANT_DEFAULT_PROVIDER`, `ASSISTANT_DEFAULT_MODEL` and, depending on the
+provider, `ASSISTANT_DEFAULT_API_KEY`, `ASSISTANT_DEFAULT_BASE_URL` or
+`ASSISTANT_DEFAULT_REGION`), or let organization admins add their own
+connection under **Settings** → **AI**. `ASSISTANT_DEFAULT_HOSTED_IN` names
+where GOAT AI's model is hosted (a region such as `EU`); its answers and the
+AI settings page show it. `setup.sh` creates
+`ASSISTANT_SECRETS_KEY`, which encrypts the credentials organizations store:
+keep it with your backups. Credentials for Amazon Bedrock or Google Vertex AI
+go into `./assistant.env` (see `.env.example`). External agents reach the MCP
+endpoint at `<GOAT_PUBLIC_URL>/assistant/mcp`.
+
+More in the docs: [External services → AI assistant](https://goat.plan4better.de/docs/self_hosting/docker_compose/external_services#assistant)
 
 **Email.** GOAT sends invitations and Keycloak sends password resets through one
 SMTP server. Email is off while `SMTP_HOST` is empty.

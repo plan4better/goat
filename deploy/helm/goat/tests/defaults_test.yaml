@@ -7,6 +7,8 @@ templates:
   - catalog/configmap.yaml          # read by the pod checksum
   - geoapi/configmap.yaml          # read by the pod checksum
   - processes/configmap.yaml          # read by the pod checksum
+  - assistant/deployment.yaml
+  - assistant/configmap.yaml          # read by the pod checksum
 tests:
   - it: a bare install deploys the catalog
     template: catalog/deployment.yaml
@@ -34,6 +36,14 @@ tests:
           count: 1
   - it: a bare install deploys the shared data PVC
     template: data/pvc.yaml
+    set:
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - hasDocuments:
+          count: 1
+  - it: a bare install deploys the assistant
+    template: assistant/deployment.yaml
     set:
       postgresql.external.host: "pg.example.com"
       postgresql.external.existingSecret: "pg-secret"

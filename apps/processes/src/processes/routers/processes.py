@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from goatlib.tools.registry import TOOL_REGISTRY
 from goatlib.utils.credentials import redact_credentials
+from goatlib.workflows.run_errors import error_message, step_errors
 from pydantic import ValidationError
 
 from processes.config import settings
@@ -271,6 +272,7 @@ def _execute_analytics_sync(
                 collection=inputs.get("collection", ""),
                 operation=inputs.get("operation", "sum"),
                 filter_expr=inputs.get("filter"),
+                group_by_column=inputs.get("group_by_column"),
             )
         elif process_id == "extent":
             return analytics_service.extent(
@@ -899,13 +901,14 @@ def _windmill_status_to_ogc(job: dict[str, Any]) -> StatusCode:
     if job.get("running"):
         return StatusCode.running
     elif job.get("success") is True:
-        # For workflow_runner jobs, check if the result indicates errors
-        # Windmill marks the job as success even if the workflow had partial failures
+        # A workflow run whose steps failed returns their errors instead of
+        # raising (goatlib workflow_runner.main), so Windmill records it as a
+        # success: its result says it failed.
         result = job.get("result")
-        if isinstance(result, dict):
-            # Check for workflow errors (status="partial" or errors list)
-            if result.get("status") == "partial" or result.get("errors"):
-                return StatusCode.failed
+        if isinstance(result, dict) and (
+            result.get("status") == "failed" or result.get("errors")
+        ):
+            return StatusCode.failed
         return StatusCode.successful
     elif job.get("canceled"):
         # Check canceled BEFORE failed, as canceled jobs may also have success=false
@@ -920,6 +923,40 @@ def _windmill_status_to_ogc(job: dict[str, Any]) -> StatusCode:
 _JOB_HIDDEN_PROCESS_IDS = frozenset(
     tool.name for tool in TOOL_REGISTRY if getattr(tool, "job_hidden", False)
 )
+
+
+def _failure_message(result: Any) -> str:
+    """What a failed job says, never its stack: a workflow run's first failed
+    step, else Windmill's `{"error": {"name", "message", "stack"}}` as
+    "name: message"."""
+    message = ""
+    if isinstance(result, dict):
+        steps = step_errors(result.get("errors"))
+        error_info = result.get("error")
+        if steps:
+            message = next(iter(steps.values()))
+        elif isinstance(error_info, dict):
+            error_name = str(error_info.get("name") or "Error")
+            error_text = str(error_info.get("message") or "")
+            message = f"{error_name}: {error_text}" if error_text else error_name
+    return _sanitize_error_msg(message) if message else "Unknown error"
+
+
+def _node_errors(job: dict[str, Any]) -> dict[str, str]:
+    """A workflow run's failed steps -> their messages: from its failed child
+    jobs while it runs (`node_status`, see
+    WindmillClient._get_child_jobs_status), then from the finished run's
+    `errors`, which win."""
+    found: dict[str, str] = {}
+    node_status = job.get("node_status")
+    if isinstance(node_status, dict):
+        for node_id, state in node_status.items():
+            if isinstance(state, dict) and state.get("status") == "failed":
+                found[str(node_id)] = error_message(state.get("error"))
+    result = job.get("result")
+    if isinstance(result, dict):
+        found.update(step_errors(result.get("errors")))
+    return found
 
 
 def _windmill_job_to_status_info(job: dict[str, Any], base_url: str) -> StatusInfo:
@@ -981,49 +1018,9 @@ def _windmill_job_to_status_info(job: dict[str, Any], base_url: str) -> StatusIn
             )
         )
 
-    # Extract error message for failed jobs
-    # Windmill returns: {"error": {"name": "ErrorName", "message": "Error message", "stack": "..."}}
-    # Workflow runner returns: {"status": "partial", "errors": [{"node_id": "...", "error": {...}}]}
-    message = None
-    if ogc_status == StatusCode.failed:
-        result = job.get("result")
-        if isinstance(result, dict):
-            # Check for workflow errors first
-            workflow_errors = result.get("errors", [])
-            if (
-                workflow_errors
-                and isinstance(workflow_errors, list)
-                and len(workflow_errors) > 0
-            ):
-                first_error = workflow_errors[0]
-                error_info = first_error.get("error", {})
-                if isinstance(error_info, dict):
-                    error_name = error_info.get("name", "Error")
-                    error_message = error_info.get("message", "")
-                    node_id = first_error.get("node_id", "unknown")
-                    message = (
-                        f"Node {node_id}: {error_name}: {error_message}"
-                        if error_message
-                        else f"Node {node_id}: {error_name}"
-                    )
-                else:
-                    message = f"Workflow error: {error_info}"
-            # Fallback to direct error format
-            elif "error" in result:
-                error_info = result["error"]
-                if isinstance(error_info, dict):
-                    error_name = error_info.get("name", "Error")
-                    error_message = error_info.get("message", "")
-                    message = (
-                        f"{error_name}: {error_message}"
-                        if error_message
-                        else error_name
-                    )
-        # Fallback to generic message if no structured error (avoid exposing raw logs)
-        if not message:
-            message = "Unknown error"
-        else:
-            message = _sanitize_error_msg(message)
+    message = (
+        _failure_message(job.get("result")) if ogc_status == StatusCode.failed else None
+    )
 
     return StatusInfo(
         processID=process_id if process_id else None,
@@ -1041,6 +1038,7 @@ def _windmill_job_to_status_info(job: dict[str, Any], base_url: str) -> StatusIn
             "workflow_as_code_status"
         ),
         node_status=job.get("node_status"),
+        node_errors=_node_errors(job) or None,
     )
 
 
@@ -1063,13 +1061,14 @@ async def list_jobs(
     base_url = get_base_url(request)
 
     try:
-        # Map OGC status to Windmill filters
+        # Map OGC status to Windmill filters. "failed" is not passed on: a
+        # workflow run whose steps failed returns their errors, which
+        # Windmill records as a success. Each job's reported status decides
+        # below, among the most recent `limit` jobs Windmill returns.
         success_filter: bool | None = None
         running_filter: bool | None = None
         if status_filter == "successful":
             success_filter = True
-        elif status_filter == "failed":
-            success_filter = False
         elif status_filter == "running":
             running_filter = True
 
@@ -1088,8 +1087,11 @@ async def list_jobs(
         jobs = []
         for wm_job in windmill_jobs:
             status_info = _windmill_job_to_status_info(wm_job, base_url)
-            # Include result for successful jobs
-            if wm_job.get("success") is True and wm_job.get("result"):
+            if status_filter and status_info.status.value != status_filter:
+                continue
+            # Only a successful job's result: a failed workflow run's result
+            # holds its steps' raw errors, stacks included.
+            if status_info.status == StatusCode.successful and wm_job.get("result"):
                 status_info.result = wm_job.get("result")
             jobs.append(status_info)
 
@@ -1170,8 +1172,8 @@ async def get_job_status(
         # Convert to StatusInfo
         status_info = _windmill_job_to_status_info(windmill_job, base_url)
 
-        # Include result for successful jobs
-        if windmill_job.get("success") is True and windmill_job.get("result"):
+        # Only a successful job's result (see list_jobs)
+        if status_info.status == StatusCode.successful and windmill_job.get("result"):
             status_info.result = windmill_job.get("result")
 
         return status_info
@@ -1249,14 +1251,13 @@ async def get_job_results(
             )
 
         if ogc_status == StatusCode.failed:
-            error_msg = job.get("result", {})
             raise HTTPException(
                 status_code=500,
                 detail={
                     "type": "http://www.opengis.net/def/exceptions/ogcapi-processes-1/1.0/job-failed",
                     "title": "Job failed",
                     "status": 500,
-                    "detail": _sanitize_error_msg(str(error_msg)),
+                    "detail": _failure_message(job.get("result")),
                 },
             )
 

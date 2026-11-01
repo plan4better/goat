@@ -238,6 +238,8 @@ async def test_schemas(postgres_pool: asyncpg.Pool) -> None:
                 data_type TEXT,
                 tool_type TEXT,
                 job_id UUID,
+                field_config JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+                deleted_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -253,10 +255,51 @@ async def test_schemas(postgres_pool: asyncpg.Pool) -> None:
                 "order" INTEGER NOT NULL DEFAULT 0,
                 properties JSONB,
                 other_properties JSONB,
+                layer_project_group_id INTEGER,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
                 UNIQUE(layer_id, project_id)
             )
+        """)
+
+        # What finalize and the workflow runner read besides the tables
+        # above, with core's columns (core/db/models/_link_model.py and
+        # workflow.py): the layer group a project entry can sit in, the
+        # workflow a result belongs to (finalize's overwrite reads its
+        # config), and core's authorization functions (`customer.can`, and
+        # `customer.layer_write_allowed`, which finalize asks before it
+        # overwrites a layer). The stubs allow everything: these tests run
+        # tools, core's suite proves the authorization.
+        await conn.execute(f"""
+            CREATE TABLE {TEST_CUSTOMER_SCHEMA}.layer_project_group (
+                id SERIAL PRIMARY KEY,
+                project_id UUID NOT NULL REFERENCES {TEST_CUSTOMER_SCHEMA}.project(id) ON DELETE CASCADE,
+                name TEXT NOT NULL DEFAULT '',
+                "order" INTEGER NOT NULL DEFAULT 0,
+                properties JSONB,
+                parent_id INTEGER REFERENCES {TEST_CUSTOMER_SCHEMA}.layer_project_group(id) ON DELETE CASCADE
+            )
+        """)
+        await conn.execute(f"""
+            CREATE TABLE {TEST_CUSTOMER_SCHEMA}.workflow (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id UUID NOT NULL REFERENCES {TEST_CUSTOMER_SCHEMA}.project(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                description TEXT,
+                is_default BOOLEAN NOT NULL DEFAULT FALSE,
+                config JSONB NOT NULL,
+                thumbnail_url TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        await conn.execute(f"""
+            CREATE FUNCTION {TEST_CUSTOMER_SCHEMA}.can(text, uuid, uuid, text)
+            RETURNS boolean LANGUAGE sql STABLE AS 'SELECT true'
+        """)
+        await conn.execute(f"""
+            CREATE FUNCTION {TEST_CUSTOMER_SCHEMA}.layer_write_allowed(uuid, uuid)
+            RETURNS boolean LANGUAGE sql STABLE AS 'SELECT true'
         """)
 
         logger.info("Created all test tables")

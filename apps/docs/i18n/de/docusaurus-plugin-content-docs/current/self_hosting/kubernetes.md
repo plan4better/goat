@@ -12,7 +12,7 @@ Für Kubernetes-Cluster gibt es ein Helm-Chart für GOAT, veröffentlicht unter 
 Für einen einzelnen Server ist das [Docker-Compose-Paket](./docker_compose/installation.md) der empfohlene Weg. Es enthält den Anmeldeserver, den Objektspeicher und HTTPS, die das Helm-Chart Ihnen überlässt.
 :::
 
-Diese Seite beschreibt die Chart-Version **0.7.0**, die standardmäßig GOAT **v3.0.3** installiert.
+Diese Seite beschreibt die Chart-Version **0.8.0**, die standardmäßig GOAT **v3.1.0** installiert.
 
 ## Installation {#install}
 
@@ -30,7 +30,7 @@ Eine erste Installation lädt mehrere große Images, daher der lange Timeout. Ei
 
 | Komponente | Vorgabe |
 |---|---|
-| core, web, geoapi, processes, catalog | an |
+| core, web, geoapi, processes, catalog, assistant | an |
 | Windmill-Server und der Standard-Worker | an |
 | Windmill-Worker `tools`, `workflows` und `print` | **aus** |
 | PostgreSQL über CloudNativePG (Operator und Cluster) | an, optionales Sub-Chart |
@@ -51,10 +51,10 @@ Jeder Dienst hat standardmäßig Speicher-Requests und -Limits sowie einen CPU-R
 
 ### Öffentliche URLs {#public-urls}
 
-Der Browser ruft core, geoapi, processes und catalog direkt auf, deshalb benötigt die Web-App deren öffentliche Adressen. Geben Sie jedem Dienst ein Ingress mit Host (`<service>.ingress.*`), dann werden die URLs daraus abgeleitet, oder setzen Sie sie ausdrücklich in `web.publicUrls.api`, `.geoapi`, `.processes` und `.catalog`.
+Der Browser ruft core, geoapi, processes, catalog und den Assistenten direkt auf, deshalb benötigt die Web-App deren öffentliche Adressen. Geben Sie jedem Dienst ein Ingress mit Host (`<service>.ingress.*`), dann werden die URLs daraus abgeleitet, oder setzen Sie sie ausdrücklich in `web.publicUrls.api`, `.geoapi`, `.processes`, `.catalog` und `.assistant`.
 
 :::warning
-Ohne diese URLs zeigt die Web-App eine leere Seite.
+Ohne die URLs von core, geoapi, processes und catalog zeigt die Web-App eine leere Seite. Ohne die URL des Assistenten blendet sie nur den Assistenten aus.
 :::
 
 ### Objektspeicher {#storage}
@@ -69,9 +69,9 @@ Ohne eigenen Speicher setzen Sie `garage.enabled: true`: Das Chart betreibt dann
 
 ### Anmeldung {#auth}
 
-Die Anmeldung ist standardmäßig **aus** (`global.auth.enabled: false`): Alle Dienste handeln dann als ein Standardbenutzer, stellen Sie eine solche Installation also hinter Ihre eigene Zugriffskontrolle. Um die Anmeldung einzuschalten, setzen Sie `global.auth.enabled: true` und `global.auth.existingSecret` auf ein Secret mit den Schlüsseln `server-url`, `realm`, `client-id`, `client-secret` und `nextauth-secret`. Ein Secret versorgt alle fünf Dienste.
+Die Anmeldung ist standardmäßig **aus** (`global.auth.enabled: false`): Alle Dienste handeln dann als ein Standardbenutzer, stellen Sie eine solche Installation also hinter Ihre eigene Zugriffskontrolle. Um die Anmeldung einzuschalten, setzen Sie `global.auth.enabled: true` und `global.auth.existingSecret` auf ein Secret mit den Schlüsseln `server-url`, `realm`, `client-id`, `client-secret` und `nextauth-secret`. Ein Secret versorgt alle sechs Dienste.
 
-Verwenden andere Anwendungen denselben Realm, bestehen deren Tokens ebenfalls die Signaturprüfung von GOAT. Setzen Sie `global.auth.allowedClients` auf die Clients, deren Tokens GOAT annimmt, zum Beispiel `[goat-web]`; core, geoapi, processes und catalog beantworten dann ein Token jedes anderen Clients mit `401`. Die Liste muss den Client von GOAT selbst enthalten (`client-id` im Secret): Die Web-App meldet Benutzer mit ihm an, und der Druck-Worker und die Dienste reichen diese Tokens weiter. Ohne ihn startet core nicht. Die Liste prüft, welcher Client ein Token ausgestellt hat, nicht, wer der Benutzer ist: Dürfen nur bestimmte Benutzer GOAT verwenden, setzen Sie das am Client von GOAT für jeden Ablauf durch, den er erlaubt, oder schalten Sie seine *Direct access grants* aus. Siehe [Ein Realm, den sich GOAT mit anderen Anwendungen teilt](./docker_compose/external_services.md#keycloak-shared-realm).
+Verwenden andere Anwendungen denselben Realm, bestehen deren Tokens ebenfalls die Signaturprüfung von GOAT. Setzen Sie `global.auth.allowedClients` auf die Clients, deren Tokens GOAT annimmt, zum Beispiel `[goat-web]`; core, geoapi, processes, catalog und der Assistent beantworten dann ein Token jedes anderen Clients mit `401`. Die Liste muss den Client von GOAT selbst enthalten (`client-id` im Secret): Die Web-App meldet Benutzer mit ihm an, und der Druck-Worker und die Dienste reichen diese Tokens weiter. Ohne ihn startet core nicht. Die Liste prüft, welcher Client ein Token ausgestellt hat, nicht, wer der Benutzer ist: Dürfen nur bestimmte Benutzer GOAT verwenden, setzen Sie das am Client von GOAT für jeden Ablauf durch, den er erlaubt, oder schalten Sie seine *Direct access grants* aus. Siehe [Ein Realm, den sich GOAT mit anderen Anwendungen teilt](./docker_compose/external_services.md#keycloak-shared-realm).
 
 ### E-Mail und Einladungen {#email}
 
@@ -79,13 +79,13 @@ Verwenden andere Anwendungen denselben Realm, bestehen deren Tokens ebenfalls di
 - **Keycloak** verschickt seine eigenen E-Mails, etwa zum Zurücksetzen des Passworts, mit den SMTP-Einstellungen seines Realms. Tragen Sie dort denselben Server ein.
 - **`global.auth.provisionInvitedUsers: true`** lässt eine Einladung das Keycloak-Konto anlegen, und Keycloak schickt einen Link zum Setzen des Passworts. Nutzen Sie es, wenn Ihr Realm keine Selbstregistrierung erlaubt. Der Keycloak-Client von core braucht dann die realm-management-Rollen `view-users` und `manage-users`.
 - **`global.auth.allowOrganizationCreation: false`** lässt nur Konten mit der Keycloak-Realm-Rolle `superuser` Organisationen anlegen; alle anderen sehen <code>Warten auf eine Einladung</code>, bis sie eingeladen werden. So richtet niemand, der sich vor seiner Einladung anmeldet, eine eigene Organisation ein, nach der er nicht mehr eingeladen werden könnte. Richten Sie Ihre Organisation ein oder geben Sie einem Konto diese Rolle, bevor Sie es abschalten. Ein Superuser kann eine Organisation mit höchstens einem Mitglied und ohne Inhalt mit `DELETE /api/v2/organizations/{organization_id}/permanent` endgültig löschen, damit ihr Mitglied eingeladen werden kann; ist die Abrechnung über Stripe eingeschaltet, kündigen Sie den Stripe-Kunden aus `stripe_id` in der Antwort in Stripe.
-- **`global.caBundle`** nennt eine ConfigMap oder ein Secret mit dem Zertifikat einer eigenen CA, für ein SMTP-Relay, ein Keycloak oder Seiten, die der Druck-Worker öffnet, deren Zertifikat von einer privaten CA stammt. Das Chart bindet es in core, die Web-App und die Worker `print`, `tools` und `workflows` ein.
+- **`global.caBundle`** nennt eine ConfigMap oder ein Secret mit dem Zertifikat einer eigenen CA, für ein SMTP-Relay, ein Keycloak oder Seiten, die der Druck-Worker öffnet, deren Zertifikat von einer privaten CA stammt. Das Chart bindet es in core, die Web-App, den Assistenten und die Worker `print`, `tools` und `workflows` ein.
 
 ### Support-Tickets {#support}
 
 Optional und **standardmäßig aus**. Support-Tickets reichen Problemmeldungen Ihrer Benutzer an einen Odoo-Helpdesk weiter. Der Block `odoo` enthält die Verbindung (`odoo.url`, `odoo.db`), `odoo.support` das Helpdesk-Team (`odoo.support.teamId`) und den API-Schlüssel aus einem Secret (`odoo.support.existingSecret`). Die Tickets sind nur eingeschaltet, wenn all das gesetzt ist. Den Schlüssel stellt Plan4Better für sein eigenes Odoo aus; lassen Sie den Block auf Ihrer eigenen Installation leer, es sei denn, Sie haben einen erhalten.
 
-Ohne Tickets öffnet *Problem melden* eine E-Mail an die Adresse in `web.supportEmail`; sie steht auch in der Meldung, wenn der Support vorübergehend nicht erreichbar ist. Standard ist `support@plan4better.de`; tragen Sie für eine White-Label-Installation Ihre eigene Adresse ein.
+Ohne Tickets öffnen *Problem melden* und der Link *Feedback* des KI-Assistenten eine E-Mail an die Adresse in `web.supportEmail`; sie steht auch in der Meldung, wenn der Support vorübergehend nicht erreichbar ist. Standard ist `support@plan4better.de`; tragen Sie für eine White-Label-Installation Ihre eigene Adresse ein.
 
 Nachrichten zu einem Ticket können Anhänge von bis zu 55 MiB in einer Anfrage enthalten. Das Ingress vor core muss für `/api/v2/support` Anfragekörper von mindestens 56 MB annehmen und großzügige Lese-Timeouts erlauben. ingress-nginx begrenzt Anfragekörper standardmäßig auf 1 MB; erhöhen Sie das mit `nginx.ingress.kubernetes.io/proxy-body-size: "56m"` und `proxy-read-timeout` in `core.ingress.annotations`.
 
@@ -95,7 +95,7 @@ Der Standard-Worker von Windmill übernimmt nur kleine Jobs. **Analyse-Werkzeuge
 
 - Schalten Sie sie mit `windmill.workers.tools.enabled`, `windmill.workers.workflows.enabled` und `windmill.workers.print.enabled` ein.
 - Die Worker `tools` und `workflows` sind an Nodes mit dem Label `node.kubernetes.io/server-usage: geodata` und der Toleration `geodata=true:NoSchedule` gebunden. Bereiten Sie solche Nodes vor oder überschreiben Sie `nodeSelector` und `tolerations` für diese Worker. Andernfalls bleiben ihre Pods im Zustand `Pending`, und `helm install --wait` läuft in den Timeout.
-- Das Chart gibt diesen Workern, was GOATs Jobs brauchen: die GOAT-Datenbank, den S3-Speicher, den Katalog-Bucket, die Adresse der Web-App für den Druck und, bei eingeschalteter Anmeldung, den Keycloak-Client, mit dem sich der Druck-Worker anmeldet. Windmill reicht nur die Variablen an die Jobs weiter, die in `WHITELIST_ENVS` stehen; das Chart stellt diese Liste zusammen, einschließlich jeder Variable, die Sie in `config` oder `extraEnv` eines Workers ergänzen.
+- Das Chart gibt diesen Workern, was GOATs Jobs brauchen: die GOAT-Datenbank, den S3-Speicher, den Katalog-Bucket, den Ort auf dem gemeinsamen Daten-Volume, an dem die Kopien hinzugefügter Katalog-Datensätze und ihre Kacheln liegen (`catalog.layersDir`, `catalog.tilesDir`; geoapi, processes und core lesen sie am selben Ort), die Adresse der Web-App für den Druck und, bei eingeschalteter Anmeldung, den Keycloak-Client, mit dem sich der Druck-Worker anmeldet. Windmill reicht nur die Variablen an die Jobs weiter, die in `WHITELIST_ENVS` stehen; das Chart stellt diese Liste zusammen, einschließlich jeder Variable, die Sie in `config` oder `extraEnv` eines Workers ergänzen.
 - Schalten Sie `windmill.scriptSync.enabled` ein, um GOATs Analyse-Werkzeuge und Aufgaben nach der Installation in Windmill zu registrieren. Die Einstellung ist standardmäßig aus.
 - Jeder Windmill-Container hält höchstens wenige Verbindungen zu seiner Datenbank: der Server 10 und jeder Worker 3 (`windmill.server.config.DATABASE_CONNECTIONS`, `windmill.workers.databaseConnections`). Ein Update auf ein GOAT-Release mit neuerem Windmill migriert die Windmill-Datenbank beim Start, und zwar nur vorwärts: Sichern Sie sie vorher.
 
@@ -104,6 +104,24 @@ Der Standard-Worker von Windmill übernimmt nur kleine Jobs. **Analyse-Werkzeuge
 Das gemeinsame Daten-Volume verwendet standardmäßig `ReadWriteOnce`, was auf einem einzelnen Node funktioniert. In einem Cluster mit mehreren Nodes setzen Sie `data.accessMode: ReadWriteMany` mit einer RWX-fähigen Storage-Class (`data.storageClassName`) oder stellen mit `data.existingClaim` Ihren eigenen Claim bereit.
 
 geoapi, processes und die Windmill-Worker schreiben alle in dieses Volume, und ein neues RWX-Volume gehört root, deshalb laufen sie als root. Erlaubt Ihr Cluster das nicht, finden Sie die Alternative in der README des Charts („The shared data volume“).
+
+### KI-Assistent {#assistant}
+
+Der Assistent ist standardmäßig an und bleibt verborgen, bis ein Modell eingerichtet ist. Richten Sie GOAT AI, das eingebaute Modell, in `assistant.config` ein (`ASSISTANT_DEFAULT_PROVIDER`, `ASSISTANT_DEFAULT_MODEL` und was der Anbieter braucht), mit dem API-Schlüssel aus einem Secret (`assistant.defaultConnection.existingSecret`), oder lassen Sie Administratoren der Organisationen eine eigene Verbindung unter <code>Einstellungen</code> → <code>KI</code> anlegen. Dafür muss `assistant.secretsKey.existingSecret` ein Secret mit einem Schlüssel nennen, der deren Zugangsdaten verschlüsselt; das Chart erzeugt ihn nie, weil ein neuer Schlüssel gespeicherte Zugangsdaten unlesbar macht. `ASSISTANT_DEFAULT_HOSTED_IN` in `assistant.config` nennt, wo das Modell von GOAT AI gehostet wird (eine Region wie `EU`); die Details seiner Antworten und die Seite der KI-Einstellungen zeigen sie.
+
+Geben Sie dem Assistenten ein Ingress (`assistant.ingress`) oder setzen Sie `web.publicUrls.assistant`. Seine Antworten kommen als Server-Sent Events, das Ingress darf Antworten deshalb nicht puffern (ingress-nginx: `proxy-buffering: "off"`, ein langes `proxy-read-timeout`) und muss GET, POST, PUT, PATCH, DELETE und OPTIONS durchlassen.
+
+**Anmeldung.** Der Assistent verwendet den Keycloak-Client der Web-App: Mit eingeschalteter Anmeldung erneuert er die Anmeldung langer Antworten mit diesem Client, weil nur der Client, der ein Refresh-Token ausgestellt hat, es erneuern kann. Er liest den Client aus `global.auth.existingSecret`; bei eingeschalteter Anmeldung ohne Secret nimmt er den Client aus derselben Quelle wie die Web-App. Hat die Web-App einen eigenen Client (`web.auth`), setzen Sie `assistant.auth` genauso. Im Realm muss **Revoke Refresh Token** in diesem Standardmodus ausgeschaltet sein. Mit Keycloak 26.2 oder neuer können Sie stattdessen Token Exchange verwenden (`ASSISTANT_TOKEN_EXCHANGE_ENABLED`), das diese Einstellung nicht voraussetzt: Schalten Sie am eigenen Client des Assistenten **Allow refresh token in Standard Token Exchange** ein und fügen Sie am Client der Web-App einen Audience-Mapper dafür hinzu.
+
+**Browser-Origin (CORS).** Der Assistent akzeptiert Browser-Anfragen von der öffentlichen URL der Web-App. Setzen Sie bei einem Aufbau über mehrere Origins `assistant.config.ASSISTANT_CORS_ORIGINS` oder die öffentliche URL der Web-App (`web.auth.publicUrl` oder ein Ingress für `web`); sonst gilt standardmäßig localhost als Origin, und die NOTES des Charts warnen.
+
+**MCP-Endpunkt.** Externe Agenten erreichen ihn unter `<Adresse des Assistenten>/mcp`; der Katalog bietet `/mcp` nicht mehr an. Er beantwortet nur Anfragen für bekannte Hostnamen. `assistant.config.ASSISTANT_MCP_ALLOWED_HOSTS` enthält standardmäßig die Hosts von `assistant.ingress`, jeweils ohne und mit `:*`. Ohne Ingress-Host ist der Wert `["*"]`, was die Host-Prüfung ausschaltet: Setzen Sie ihn hinter einem eigenen Gateway auf den Host dieses Gateways. `assistant.mcp.auditRetentionDays` legt fest, wie lange die Aufzeichnungen der MCP-Werkzeugaufrufe aufbewahrt werden.
+
+**Firmen-CA.** Mit gesetztem `global.caBundle` vertraut der Assistent dieser CA zusätzlich zu den öffentlichen CAs, für Modellserver, die Dienste von GOAT und Keycloak. `SSL_CERT_FILE` ist nicht nötig. Nehmen Sie `Authorization` nie in `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` auf: Sonst landen die Anmelde-Tokens in Ihren Traces.
+
+**Datenbank.** Der Assistent verbindet sich als Datenbankbenutzer von GOAT, dem die Datenbank gehört. Eine eigene Rolle braucht die Rechte aus `apps/assistant/sql/grants.sql`, weil die Berechtigungsprüfungen von GOAT mit den Rechten des Aufrufers laufen; `python -m assistant.dbcheck` im Pod des Assistenten gibt `ok` aus oder nennt, was fehlt. Bei einer ersten Installation läuft die Prüfung beim Start des Assistenten, bevor die Datenbankmigration sein Schema angelegt hat. Die Readiness-Probe prüft nur die Datenbankverbindung und Redis, der Pod ist also bereit, aber jede Anfrage an Unterhaltungen schlägt fehl, bis die Migration gelaufen ist, und das Start-Log sowie jeder Hintergrunddurchlauf nennen das fehlende Schema. Das ist während der Installation erwartet. Prüfen Sie danach erneut mit `dbcheck`.
+
+**Probes und Last.** Die Readiness-Probe ist `/readyz` (Datenbank und Redis sind erreichbar), die Liveness-Probe ist `/healthz`. Die Liste der Unterhaltungen prüft den Zugriff mit `customer.can` einmal pro gelisteter Zeile, bis zu 200 Zeilen pro Anfrage: Berücksichtigen Sie das in Lasttests und bei der Dimensionierung der Datenbank.
 
 ## Weiterführende Informationen {#further-reading}
 

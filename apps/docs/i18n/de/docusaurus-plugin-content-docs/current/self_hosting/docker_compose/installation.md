@@ -20,7 +20,7 @@ Diese Seite führt Sie Schritt für Schritt durch diese Befehle, von den Vorauss
 |---|---|---|
 | **CPU / RAM** | 4 vCPU / 8 GB | 8 vCPU / 16 GB |
 | **Festplatte** | 50 GB | 200 GB oder mehr (wächst mit Ihren Daten) |
-| **Betriebssystem** | Jedes Linux mit Docker Engine 24+ und Docker Compose 2.23+ | Ubuntu 24.04 LTS |
+| **Betriebssystem** | Jedes Linux mit Docker Engine 24+ und Docker Compose 2.24+ | Ubuntu 24.04 LTS |
 
 Außerdem benötigen Sie:
 
@@ -109,7 +109,7 @@ Für automatisierte Installationen übergeben Sie die Antworten als Optionen und
 - eine `http://`-URL mit einem anderen TLS-Modus als `off` kombiniert wird;
 - der Modus `auto` mit einem Port in der URL kombiniert wird (Let's Encrypt benötigt die Standard-Ports);
 - die E-Mail-Adresse für Let's Encrypt eine Domain verwendet, die Let's Encrypt ablehnt (siehe [Automatisches Zertifikat](./https.md#auto));
-- Docker Compose älter als 2.23 ist.
+- Docker Compose älter als 2.24 ist.
 
 ### setup.sh erneut ausführen {#rerun}
 
@@ -138,7 +138,7 @@ Einige Dienste bereiten die Installation nur vor und beenden sich dann: `data-in
 `smoke.sh` prüft die gesamte Installation Schritt für Schritt und gibt für jeden Schritt `PASS` oder `FAIL` aus:
 
 1. Alle einmaligen Dienste wurden erfolgreich beendet, und alle dauerhaft laufenden Dienste sind gesund. Dienste, deren Health-Check direkt nach `docker compose up -d` noch nicht bestanden ist, bekommen bis zu fünf Minuten Zeit (`SMOKE_WAIT`, in Sekunden).
-2. Web-App, Core API, GeoAPI, Processes und Catalog antworten unter der öffentlichen URL, und die GeoAPI bildet ihre Links mit der öffentlichen URL.
+2. Web-App, Core API, GeoAPI, Processes, Catalog und der KI-Assistent antworten unter der öffentlichen URL, und die GeoAPI bildet ihre Links mit der öffentlichen URL. Der MCP-Endpunkt antwortet unter `/assistant/mcp`, und der Assistent kann jede Datenbanktabelle lesen, die er braucht.
 3. Keycloak nennt die öffentliche URL als Aussteller (Issuer), und der erste Administrator kann sich anmelden.
 4. Der Administrator gehört zu einer Organisation und hat ein Profil.
 5. Eine kleine GeoJSON-Datei wird hochgeladen, als Layer importiert, als Vektorkachel ausgeliefert und in einer Puffer-Analyse verwendet.
@@ -168,6 +168,7 @@ Alle Dienste teilen sich die eine öffentliche URL und werden über den Pfad unt
 | `/geoapi` | GeoAPI |
 | `/processes` | Processes |
 | `/catalog` | Catalog (STAC API unter `/catalog/stac`) |
+| `/assistant` | KI-Assistent (MCP-Endpunkt für externe Agenten unter `/assistant/mcp`) |
 | `/keycloak` | Anmeldung (Keycloak); Admin-Konsole unter `/keycloak/admin` |
 
 Mit dem mitgelieferten Objektspeicher führen `/goat-uploads` und `/goat-assets` zu Garage, für Uploads und öffentliche Bilder.

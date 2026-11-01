@@ -1,6 +1,6 @@
-# Ships templates for: core, web, catalog, geoapi, processes, windmill,
-# caddy, ducklake/postgresql bootstrap. Defaults: core, web, catalog, geoapi
-# and processes enabled (a bare install deploys the full data plane);
+# Ships templates for: core, web, catalog, geoapi, processes, assistant, windmill,
+# caddy, ducklake/postgresql bootstrap. Defaults: core, web, catalog,
+# geoapi, processes and assistant enabled (a bare install deploys the full data plane);
 # windmill and caddy remain opt-in (see comments above each block for why).
 
 
@@ -15,7 +15,7 @@ global:
   storageClass: ""                 # default StorageClass for all PVCs ("" = cluster default)
 
   # ── Authentication (OIDC / Keycloak) — ONE switch for the whole release ──
-  # core, web, geoapi, processes and catalog all follow `global.auth.enabled`
+  # core, web, geoapi, processes, catalog and assistant all follow `global.auth.enabled`
   # unless their own `<service>.auth.enabled` says otherwise. Every service
   # always gets an explicit AUTH=true/false; none falls back to its code
   # default (geoapi and processes default to AUTH on, against plan4better's
@@ -34,9 +34,11 @@ global:
   #             KEYCLOAK_CLIENT_SECRET, NEXTAUTH_SECRET
   #   geoapi, processes, catalog
   #             AUTH=true, KEYCLOAK_SERVER_URL, REALM_NAME
+  #   assistant AUTH=true, KEYCLOAK_SERVER_URL, REALM_NAME, KEYCLOAK_CLIENT_ID,
+  #             KEYCLOAK_CLIENT_SECRET (the web client, to refresh logins)
   #
   # On, without a Secret: AUTH=true only. geoapi and processes (and the
-  # catalog, on or off) take KEYCLOAK_SERVER_URL / REALM_NAME from
+  # catalog and the assistant, on or off) take KEYCLOAK_SERVER_URL / REALM_NAME from
   # core.config.KEYCLOAK_SERVER_URL / core.config.REALM_NAME when set; core
   # and web keep whatever their `config` holds (placeholders by default).
   #
@@ -76,7 +78,7 @@ global:
     # switching it off.
     allowOrganizationCreation: true
 
-    # Clients whose tokens core, geoapi, processes and catalog accept
+    # Clients whose tokens core, geoapi, processes, catalog and the assistant accept
     # (AUTH_ALLOWED_CLIENTS), matched against the token's `azp`: the client
     # Keycloak issued it to. In a realm shared with other applications, any
     # client of the realm can otherwise get a token GOAT's APIs accept. The
@@ -91,8 +93,9 @@ global:
   # ── Company CA ───────────────────────────────────────────────────────────
   # A private CA certificate (PEM) the services trust in addition to the
   # public CAs: core for the SMTP relay (GOAT_CA_BUNDLE), web for Keycloak
-  # (NODE_EXTRA_CA_CERTS), the Windmill print, tools and workflows workers
-  # for the pages and services they call (GOAT_CA_BUNDLE). Name a ConfigMap
+  # (NODE_EXTRA_CA_CERTS), the assistant for model servers, GOAT's services
+  # and Keycloak (GOAT_CA_BUNDLE), the Windmill print, tools and workflows
+  # workers for the pages and services they call (GOAT_CA_BUNDLE). Name a ConfigMap
   # or a Secret in the release namespace and the key holding the PEM; the
   # chart mounts it at /etc/goat/ca/ca.pem. Both empty = public CAs only.
   caBundle:
@@ -404,6 +407,10 @@ web:
     # The chart gives catalog its own Service, so it sets this explicitly
     # whenever catalog has an ingress of its own.
     catalog: ""
+    # NEXT_PUBLIC_ASSISTANT_URL. Derived from the assistant's ingress (with its
+    # path, e.g. https://goat.example.com/assistant) when empty; while it
+    # resolves to nothing the web app hides the assistant.
+    assistant: ""
 
   # Home's blog strip, "What's new" popper and status card, all fetched by the
   # browser. Every one of those surfaces stays hidden while these are empty,
@@ -411,9 +418,10 @@ web:
   # plan4better's own feeds.
   websiteUrl: ""                   # NEXT_PUBLIC_WEBSITE_URL
   statusFeedUrl: ""                # NEXT_PUBLIC_STATUS_FEED_URL
-  # Address of "Report a problem" (a mailto link while support tickets are off)
-  # and of the "support unavailable" messages. Empty = support@plan4better.de;
-  # set your own address for a white-label installation.
+  # Address of "Report a problem" and of the AI assistant's "Feedback" link
+  # (mailto links while support tickets are off), and of the "support
+  # unavailable" messages. Empty = support@plan4better.de; set your own
+  # address for a white-label installation.
   supportEmail: ""                 # NEXT_PUBLIC_SUPPORT_EMAIL
   extraEnv: []
   # Mount extra volumes (e.g. CA bundles for NextAuth to trust self-signed
@@ -496,9 +504,9 @@ geoapi:
     # service has its own host.
     # ROOT_PATH: "/geoapi"
     MAPBOX_TOKEN: "placeholder"
-    # Materialized catalog layers and their PMTiles, on the shared data volume.
-    CATALOG_LAYERS_DIR: "/app/data/catalog/layers"
-    CATALOG_TILES_DIR: "/app/data/catalog/tiles"
+    # CATALOG_LAYERS_DIR / CATALOG_TILES_DIR (materialized catalog layers and
+    # their PMTiles) come from catalog.layersDir / catalog.tilesDir, shared
+    # with the workers that write them. A value set here wins for geoapi alone.
     # Read-authorization gate for tile/feature/metadata endpoints. Shadow mode
     # (false) only logs would-be denials; turn on once that log is quiet.
     ENFORCE_READ_AUTHZ: "false"
@@ -666,7 +674,7 @@ processes:
     maxReplicas: 5
     targetCPUUtilizationPercentage: 80
 
-# ─── Catalog (STAC API + MCP server) ───────────────────────────────────────
+# ─── Catalog (STAC API) ────────────────────────────────────────────────────
 # Database-less. Serves the catalog mirror from the shared `data` volume
 # (${DATA_DIR}/catalog/mirror_items.parquet + mirror_collections.parquet,
 # written by the goatlib sync_catalog task on the tools worker). With no mirror
@@ -699,11 +707,6 @@ catalog:
     # and a heavy concurrent moment OOM-kills the pod instead of spilling.
     CATALOG_DUCKDB_MEMORY_LIMIT: "2GB"
     CATALOG_DUCKDB_THREADS: "4"
-    CATALOG_ENABLE_MCP: "true"
-    # Host header the /mcp Streamable HTTP transport accepts (DNS-rebinding
-    # protection). ["*"] disables the check; name your real ingress host once
-    # you have one, e.g. '["catalog.goat.example.com"]'.
-    CATALOG_MCP_ALLOWED_HOSTS: '["*"]'
 
   # OIDC/Keycloak — per-service override of `global.auth` (see there). The
   # catalog reads the bare AUTH, KEYCLOAK_SERVER_URL and REALM_NAME variables
@@ -741,6 +744,20 @@ catalog:
     existingSecret: ""             # K8s Secret holding the two keys below
     accessKeyIdKey: access_key
     secretAccessKeyKey: secret_key
+  # Where promoted catalog layers live on the shared `data` volume. The tools
+  # worker's catalog_materialize job writes a layer's parquet copy to
+  # `layersDir` and its PMTiles to `tilesDir`; geoapi serves both, processes
+  # analyses the copy, and core checks that the copy exists when a dataset is
+  # added again. Rendered as CATALOG_LAYERS_DIR and CATALOG_TILES_DIR into
+  # geoapi, the print, tools and workflows workers (and their WHITELIST_ENVS),
+  # and, `layersDir` only, processes and core, also with the catalog service
+  # off. A key of the same name in a component's `config` (or a worker's
+  # `extraEnv`) wins for that component.
+  # Both stay under /app/data, where geoapi, processes and the tools and
+  # workflows workers mount the volume; `layersDir` under /app/data/catalog,
+  # the only part of the volume core mounts.
+  layersDir: "/app/data/catalog/layers"
+  tilesDir: "/app/data/catalog/tiles"
   extraEnv: []
   extraVolumes: []
   extraVolumeMounts: []
@@ -794,6 +811,179 @@ catalog:
     minReplicas: 1
     maxReplicas: 5
     targetCPUUtilizationPercentage: 80
+
+# ─── Assistant (AI) ────────────────────────────────────────────────────────
+# GOAT's AI assistant: conversations, agent runs that outlive the browser
+# request, the model layer and the MCP endpoint for external agents (`/mcp`).
+# It reads and writes only the `assistant` schema of GOAT's database (created
+# by core's migration) and uses Redis to stream answers across replicas.
+#
+# Without a model it is inert: GOAT AI (the built-in connection) is off
+# (`ASSISTANT_DEFAULT_PROVIDER: none`) and organizations can add their own
+# connection only once `secretsKey` names a Secret. The web app shows the
+# assistant only when it knows its URL (`web.publicUrls.assistant` or this
+# block's ingress).
+assistant:
+  enabled: true
+  replicaCount: 1
+  image:
+    registry: ghcr.io
+    repository: plan4better/goat/assistant
+    tag: ""                        # "" = .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  # The image stops waiting for open answer streams after 20 s
+  # (UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN); the lifespan shutdown needs the rest.
+  # The chart refuses less than 25.
+  terminationGracePeriodSeconds: 30
+  config:
+    ENVIRONMENT: prod
+    # Trust X-Forwarded-* from the ingress (read by uvicorn).
+    FORWARDED_ALLOW_IPS: "*"
+    # ROOT_PATH is derived from the ingress's first path (e.g. /assistant);
+    # set it here only to override that.
+    # ROOT_PATH: "/assistant"
+    #
+    # GOAT AI, the built-in connection every organization may use. Provider
+    # types: none, anthropic, bedrock, vertex, azure_openai, openai, mistral,
+    # openai_compatible. Its API key comes from `defaultConnection` below.
+    ASSISTANT_DEFAULT_PROVIDER: "none"
+    # ASSISTANT_DEFAULT_MODEL: ""
+    # ASSISTANT_DEFAULT_BASE_URL: ""           # openai_compatible, azure_openai (…/openai/v1), or a gateway
+    # ASSISTANT_DEFAULT_REGION: ""             # bedrock: AWS region; vertex: Google Cloud location
+    # Where GOAT AI's model is hosted, a region such as EU: its answers say
+    # "Runs on a model hosted in the EU." and admins see it on the AI page.
+    # ASSISTANT_DEFAULT_HOSTED_IN: ""
+    # What organizations may configure.
+    ASSISTANT_ALLOW_ORG_CONNECTIONS: "true"
+    ASSISTANT_ALLOWED_PROVIDERS: "anthropic,bedrock,vertex,azure_openai,openai,mistral,openai_compatible"
+    # true lets organizations' connections reach private and cluster-internal
+    # addresses and plain http (a model server in your own network).
+    ASSISTANT_ALLOW_PRIVATE_ENDPOINTS: "false"
+    # Limits per answer and per user. Tokens read from the model provider's
+    # cache count at a tenth toward ASSISTANT_RUN_MAX_TOKENS. Reading a
+    # finished workflow run's result may take up to 7 tool calls beyond
+    # ASSISTANT_RUN_MAX_TOOL_CALLS.
+    ASSISTANT_RUN_MAX_TOOL_CALLS: "40"
+    ASSISTANT_RUN_MAX_TOKENS: "200000"
+    ASSISTANT_RUN_MAX_SECONDS: "900"
+    # How long in all an answer may take that waits for a workflow run; the
+    # run itself goes on after it. Takes effect only above
+    # ASSISTANT_RUN_MAX_SECONDS.
+    ASSISTANT_RUN_WAIT_MAX_SECONDS: "1800"
+    ASSISTANT_USER_MAX_CONCURRENT_RUNS: "3"
+    ASSISTANT_TOOL_TIMEOUT_SECONDS: "30"
+    # Pages where the assistant is off, comma-separated: catalog, project.map,
+    # project.workflows, project.layouts, project.dashboard, none.
+    # ASSISTANT_DISABLED_SURFACES: ""
+    ASSISTANT_ENABLE_MCP: "true"
+    # Host header the /mcp transport accepts (DNS-rebinding protection). The
+    # chart derives it from the ingress hosts, each bare and with any port
+    # ('["assistant.goat.example.com","assistant.goat.example.com:*"]'); without
+    # an ingress it renders '["*"]', which switches the check off. Behind a
+    # gateway of your own, name its host here.
+    # ASSISTANT_MCP_ALLOWED_HOSTS: '["goat.example.com","goat.example.com:*"]'
+    #
+    # Browser origins allowed to call the assistant. Unset, the only origin is
+    # the web app's public URL (web.auth.publicUrl, else web.ingress).
+    # ASSISTANT_CORS_ORIGINS: '["https://goat.example.com"]'
+    #
+    # Keycloak token exchange instead of refreshing logins with the web
+    # client. Needs Keycloak >= 26.2 and a confidential client of the
+    # assistant's own (ASSISTANT_KEYCLOAK_CLIENT_ID in config, its secret as
+    # ASSISTANT_KEYCLOAK_CLIENT_SECRET in extraEnv).
+    ASSISTANT_TOKEN_EXCHANGE_ENABLED: "false"
+    # Never set OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST to a
+    # list with Authorization: bearer and MCP tokens would land in traces.
+  mcp:
+    # Days the audit rows of tool calls made over /mcp are kept
+    # (ASSISTANT_MCP_AUDIT_RETENTION_DAYS, at least 1). They belong to no
+    # conversation; in-app calls are deleted with their conversation.
+    auditRetentionDays: 30
+  # GOAT AI's API key (ASSISTANT_DEFAULT_API_KEY), from a Secret in the release
+  # namespace. Bedrock without an API key and Vertex AI use their SDKs'
+  # credentials instead: set AWS_* or GOOGLE_APPLICATION_CREDENTIALS (with a
+  # mounted file) in `extraEnv`, or use the cluster's workload identity.
+  defaultConnection:
+    existingSecret: ""
+    existingSecretKey: api-key
+  # The Fernet key that encrypts organizations' stored credentials
+  # (ASSISTANT_SECRETS_KEY), from a Secret. The chart never generates it: a
+  # new key makes every stored credential unreadable. Create it once:
+  #   kubectl create secret generic goat-assistant --from-literal=secrets-key="$(openssl rand -base64 32 | tr '+/' '-_')"
+  # Empty: organizations cannot add connections of their own.
+  secretsKey:
+    existingSecret: ""
+    existingSecretKey: secrets-key
+  # OIDC/Keycloak — per-service override of `global.auth`. Wired to a Secret,
+  # the assistant also reads client-id and client-secret from it: a long
+  # answer refreshes the user's login with the web app's client, which owns
+  # the refresh token. Auth on without a Secret, it takes that client from
+  # the web app's own source (web.auth's Secret, web.extraEnv or web.config).
+  # It must be the web app's client: when `web.auth` names a Secret or keys
+  # of its own, set `assistant.auth` the same way. The realm must not revoke
+  # refresh tokens on use.
+  auth:
+    enabled: null                  # null = global.auth.enabled; true/false overrides it
+    existingSecret: ""             # "" = global.auth.existingSecret
+    existingSecretKeys: {}         # per key; unset keys = global.auth.existingSecretKeys
+  extraEnv: []
+  extraVolumes: []
+  extraVolumeMounts: []
+  # The limit the Docker Compose bundle sets too. See "Resource defaults" in
+  # the README.
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8500
+    annotations: {}
+  # Answers stream as server-sent events: the ingress must not buffer them and
+  # must allow long responses (more than the 45 s connection test). For
+  # ingress-nginx:
+  #   nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  #   nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  #   nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  # Traefik streams without buffering by default.
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []                      # e.g. [{host: assistant.goat.example.com, paths: [{path: /, pathType: Prefix}]}]
+    tls: []
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 10
+    timeoutSeconds: 5
+    periodSeconds: 20
+    failureThreshold: 6
+  # /readyz checks Postgres and Redis in parallel, each with its own 2 s
+  # timeout: keep timeoutSeconds at 3 or more. While either is down the pod
+  # leaves the Service instead of being restarted.
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /readyz
+      port: http
+    initialDelaySeconds: 5
+    timeoutSeconds: 5
+    periodSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
 
 # ─── Windmill (workflow automation) ────────────────────────────────────────
 windmill:
@@ -1273,7 +1463,7 @@ postgresql:
     # DUCKLAKE_POSTGRES_PORT. null = `port`.
     ducklakePort: null
     # `host` is a connection pooler in transaction mode (PgBouncer, Supavisor,
-    # a CNPG Pooler): core, geoapi, processes and the workers then prepare no
+    # a CNPG Pooler): core, geoapi, processes, the assistant and the workers then prepare no
     # statements on the server and send no startup settings a pooler might
     # refuse, so a pooler with stock settings works. Sets
     # POSTGRES_TRANSACTION_POOLER. Needs `ducklakeHost`, and Windmill on its

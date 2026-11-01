@@ -12,12 +12,13 @@ import uuid as uuid_module
 from pathlib import Path
 from typing import Any, Self
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from goatlib.analysis.geoanalysis.spatial_clustering import ClusteringZones
 from goatlib.analysis.schemas.clustering import (
     ClusteringParams,
     ClusterType,
+    SizeMethod,
 )
 from goatlib.analysis.schemas.ui import (
     SECTION_INPUT,
@@ -143,6 +144,18 @@ class ClusteringZonesToolParams(ToolInputBase, ClusteringParams):
             },
         ),
     )
+
+    @model_validator(mode="after")
+    def _balancing_field_is_set(self: Self) -> Self:
+        # The form does not run equal-size zones balanced by a field without
+        # one; the analysis would otherwise balance by count.
+        if (
+            self.cluster_type == ClusterType.equal_size
+            and self.size_method == SizeMethod.field
+            and not self.size_field
+        ):
+            raise ValueError("size_field is required when size_method is 'field'.")
+        return self
 
 
 class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
@@ -342,6 +355,10 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
                 if pmtiles_path:
                     table_info_points["pmtiles_path"] = str(pmtiles_path)
 
+            self._fill_result_geometry_type(
+                table_info_points, params.user_id, metadata_points
+            )
+
             # Step 3: Ingest summary layer to DuckLake
             table_info_summary = None
             if summary_result:
@@ -353,6 +370,9 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
                 )
                 logger.info(
                     "Summary DuckLake table: %s", table_info_summary["table_name"]
+                )
+                self._fill_second_layer_geometry_type(
+                    table_info_summary, metadata_summary
                 )
 
             # Refresh database pool

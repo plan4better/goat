@@ -9,6 +9,7 @@ import SupportMenu, {
   SupportMenuEntries,
   supportCountLabel,
   ticketsNeedingAttention,
+  useReportProblemHref,
   useSupportCounts,
 } from "@/components/support/SupportMenu";
 
@@ -328,5 +329,17 @@ describe("useSupportCounts", () => {
     summary(1, 2);
     rerender(<Probe />);
     expect(JSON.parse(screen.getByTestId("c").textContent ?? "")).toEqual({ needsReply: 1, unread: 2 });
+  });
+});
+
+describe("useReportProblemHref", () => {
+  const Probe = () => <span data-testid="href">{String(useReportProblemHref())}</span>;
+  it("leads where Report a problem does: the ticket form from this page, else the support email", () => {
+    summary(0, 0);
+    const { rerender } = render(<Probe />);
+    expect(screen.getByTestId("href").textContent).toBe("/support/new?from=%2Fmap%2Fabc");
+    useSupportSummaryMock.mockReturnValue({ summary: undefined, enabled: false });
+    rerender(<Probe />);
+    expect(screen.getByTestId("href").textContent).toBe("mailto:help@example.com?subject=Help");
   });
 });

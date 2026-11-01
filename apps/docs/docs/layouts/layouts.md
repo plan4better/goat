@@ -41,6 +41,10 @@ The Settings Panel allows you to create a new layout, customize the overall layo
   <div class="content">Now you are ready to start working on your Layout. Once is finished click <code>Print Layout</code> at the bottom to <b>export your layout</b> as PDF, PNG, or JPEG.</div>
 </div>
 
+:::info Saving
+GOAT saves your changes to a layout as you make them. If the layout was saved somewhere else in the meantime, for example by someone else or in another tab, your changes don't replace that version. A notice at the top says <code>This layout was changed elsewhere</code>, with who changed it and when, and nothing is saved until you choose: click <code>Reload</code> to load the saved version, or <code>Keep mine</code> to save your version over it. Turning <code>Snap to Guides</code> or <code>Show Rulers</code> on or off never causes this notice.
+:::
+
 ### Save as a template
 
 A layout you have designed can be saved as a **template** and reused for other reports.

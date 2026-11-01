@@ -1,0 +1,1212 @@
+{
+  "titles": {
+    "aggregate_polygon": "Aggregate Polygons",
+    "buffer": "Buffer",
+    "catchment_area_v2": "Catchment Area",
+    "dissolve": "Dissolve",
+    "intersection": "Intersect",
+    "join": "Join"
+  },
+  "cases": [
+    {
+      "note": "buffer, dissolve without group fields, intersect with the districts, sum the residents: the intersection gets a geometry-only layer",
+      "run": "chain",
+      "draft": {
+        "name": "Einwohner im Schulumfeld je Bezirk",
+        "steps": [
+          {
+            "id": "schools",
+            "kind": "dataset",
+            "layer": 31
+          },
+          {
+            "id": "districts",
+            "kind": "dataset",
+            "layer": 35
+          },
+          {
+            "id": "residents",
+            "kind": "dataset",
+            "layer": 33
+          },
+          {
+            "id": "ring",
+            "kind": "tool",
+            "tool": "buffer",
+            "settings": {
+              "distances": [
+                500
+              ]
+            }
+          },
+          {
+            "id": "merged",
+            "kind": "tool",
+            "tool": "dissolve",
+            "settings": {}
+          },
+          {
+            "id": "per_district",
+            "kind": "tool",
+            "tool": "intersection",
+            "settings": {}
+          },
+          {
+            "id": "count",
+            "kind": "tool",
+            "tool": "aggregate_polygon",
+            "settings": {
+              "area_type": "polygon",
+              "column_statistics": [
+                {
+                  "operation": "sum",
+                  "field": "einwohner"
+                }
+              ]
+            }
+          },
+          {
+            "id": "save",
+            "kind": "export",
+            "name": "Einwohner im Schulumfeld je Bezirk"
+          }
+        ],
+        "connections": [
+          {
+            "from": "schools",
+            "to": "ring",
+            "input": "input_layer_id"
+          },
+          {
+            "from": "ring",
+            "to": "merged",
+            "input": "input_layer_id"
+          },
+          {
+            "from": "merged",
+            "to": "per_district",
+            "input": "input_layer_id"
+          },
+          {
+            "from": "districts",
+            "to": "per_district",
+            "input": "overlay_layer_id"
+          },
+          {
+            "from": "residents",
+            "to": "count",
+            "input": "source_layer_id"
+          },
+          {
+            "from": "per_district",
+            "to": "count",
+            "input": "area_layer_id"
+          },
+          {
+            "from": "count",
+            "to": "save"
+          }
+        ],
+        "variables": []
+      },
+      "regions": [],
+      "config": {
+        "nodes": [
+          {
+            "id": "dataset-0be3e684-325d-5b36-b75d-998d1b7f344e",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": -200
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Schulen",
+              "projectLayerId": 31,
+              "layerId": "e2000000-0000-0000-0000-000000000031",
+              "layerName": "Schulen",
+              "filterInitialized": true,
+              "geometryType": "point",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "dataset-3746d120-f571-5bf8-b486-d55ffeadb108",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Stadtbezirke",
+              "projectLayerId": 35,
+              "layerId": "e2000000-0000-0000-0000-000000000035",
+              "layerName": "Stadtbezirke",
+              "filterInitialized": true,
+              "geometryType": "polygon",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "dataset-fb3f9084-4d35-56ba-af03-5d21f0e174ff",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": 200
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Einwohner Raster",
+              "projectLayerId": 33,
+              "layerId": "e2000000-0000-0000-0000-000000000033",
+              "layerName": "Einwohner Raster",
+              "filterInitialized": true,
+              "geometryType": "polygon",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "tool-a01b963f-f810-583f-9f3a-ef901f111814",
+            "type": "tool",
+            "position": {
+              "x": 360,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "buffer",
+              "label": "Buffer",
+              "config": {
+                "distances": [
+                  500
+                ]
+              },
+              "status": "idle"
+            }
+          },
+          {
+            "id": "tool-e4abd351-b505-5f58-a405-bb8f4af9baa1",
+            "type": "tool",
+            "position": {
+              "x": 720,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "dissolve",
+              "label": "Dissolve",
+              "config": {},
+              "status": "idle"
+            }
+          },
+          {
+            "id": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "type": "tool",
+            "position": {
+              "x": 1080,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "intersection",
+              "label": "Intersect",
+              "config": {},
+              "status": "idle"
+            }
+          },
+          {
+            "id": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "type": "tool",
+            "position": {
+              "x": 1440,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "aggregate_polygon",
+              "label": "Aggregate Polygons",
+              "config": {
+                "area_type": "polygon",
+                "column_statistics": [
+                  {
+                    "operation": "sum",
+                    "field": "einwohner"
+                  }
+                ]
+              },
+              "status": "idle"
+            }
+          },
+          {
+            "id": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "type": "export",
+            "position": {
+              "x": 1800,
+              "y": 0
+            },
+            "data": {
+              "type": "export",
+              "label": "Einwohner im Schulumfeld je Bezirk",
+              "datasetName": "Einwohner im Schulumfeld je Bezirk",
+              "addToProject": true,
+              "overwritePrevious": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge-7addc46c-9ce1-5b9d-86c2-4b169b651563",
+            "source": "dataset-0be3e684-325d-5b36-b75d-998d1b7f344e",
+            "target": "tool-a01b963f-f810-583f-9f3a-ef901f111814",
+            "targetHandle": "input_layer_id"
+          },
+          {
+            "id": "edge-c150a5a9-19e1-5030-a5b8-e8de26205152",
+            "source": "tool-a01b963f-f810-583f-9f3a-ef901f111814",
+            "target": "tool-e4abd351-b505-5f58-a405-bb8f4af9baa1",
+            "sourceHandle": "output",
+            "targetHandle": "input_layer_id"
+          },
+          {
+            "id": "edge-59fcbf78-cf5e-5669-8978-fe6866b72e19",
+            "source": "tool-e4abd351-b505-5f58-a405-bb8f4af9baa1",
+            "target": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "sourceHandle": "output",
+            "targetHandle": "input_layer_id"
+          },
+          {
+            "id": "edge-92376037-9f95-5387-9a59-160972daa95f",
+            "source": "dataset-3746d120-f571-5bf8-b486-d55ffeadb108",
+            "target": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "targetHandle": "overlay_layer_id"
+          },
+          {
+            "id": "edge-82c01e91-89eb-5061-ad66-e5abf46f8f75",
+            "source": "dataset-fb3f9084-4d35-56ba-af03-5d21f0e174ff",
+            "target": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "targetHandle": "source_layer_id"
+          },
+          {
+            "id": "edge-6cebe5e0-4e86-5a44-8340-96c039e68de3",
+            "source": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "target": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "sourceHandle": "output",
+            "targetHandle": "area_layer_id"
+          },
+          {
+            "id": "edge-554fb537-9084-5812-8796-87ae8b83f1ef",
+            "source": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "target": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "sourceHandle": "output",
+            "targetHandle": "input"
+          }
+        ],
+        "viewport": {
+          "x": 40.0,
+          "y": 106.0,
+          "zoom": 0.33
+        },
+        "variables": []
+      }
+    },
+    {
+      "note": "the Gymnasien of an area, by type, joined with the district they lie in",
+      "run": "chain",
+      "draft": {
+        "name": "Gymnasien mit Bezirk",
+        "steps": [
+          {
+            "id": "schools",
+            "kind": "dataset",
+            "layer": 31,
+            "filter": {
+              "area": "DED51",
+              "where": [
+                {
+                  "field": "schulart",
+                  "op": "=",
+                  "value": "Gymnasium"
+                }
+              ]
+            }
+          },
+          {
+            "id": "districts",
+            "kind": "dataset",
+            "layer": 35
+          },
+          {
+            "id": "named",
+            "kind": "tool",
+            "tool": "join",
+            "settings": {
+              "use_spatial_relationship": true,
+              "use_attribute_relationship": false,
+              "spatial_relationship": "intersects"
+            }
+          },
+          {
+            "id": "save",
+            "kind": "export",
+            "name": "Gymnasien mit Bezirk"
+          }
+        ],
+        "connections": [
+          {
+            "from": "schools",
+            "to": "named",
+            "input": "target_layer_id"
+          },
+          {
+            "from": "districts",
+            "to": "named",
+            "input": "join_layer_id"
+          },
+          {
+            "from": "named",
+            "to": "save"
+          }
+        ],
+        "variables": []
+      },
+      "regions": [
+        {
+          "nuts_id": "DED51",
+          "name": "Leipzig, Kreisfreie Stadt",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  12.25,
+                  51.25
+                ],
+                [
+                  12.55,
+                  51.25
+                ],
+                [
+                  12.55,
+                  51.45
+                ],
+                [
+                  12.25,
+                  51.45
+                ],
+                [
+                  12.25,
+                  51.25
+                ]
+              ]
+            ]
+          }
+        }
+      ],
+      "config": {
+        "nodes": [
+          {
+            "id": "dataset-0be3e684-325d-5b36-b75d-998d1b7f344e",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": -100
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Schulen",
+              "projectLayerId": 31,
+              "layerId": "e2000000-0000-0000-0000-000000000031",
+              "layerName": "Schulen",
+              "filterInitialized": true,
+              "geometryType": "point",
+              "layerType": "feature",
+              "filter": {
+                "op": "and",
+                "expressions": [
+                  {
+                    "id": "4aac6ee3-f290-59ba-8b36-a28f088709e6",
+                    "type": "spatial",
+                    "attribute": "geom",
+                    "expression": "s_intersects",
+                    "value": "{\"type\":\"Polygon\",\"coordinates\":[[[12.25,51.25],[12.55,51.25],[12.55,51.45],[12.25,51.45],[12.25,51.25]]],\"properties\":{\"type\":\"boundary\",\"label\":\"Leipzig, Kreisfreie Stadt\"}}"
+                  },
+                  {
+                    "id": "be3e3834-227e-5122-905d-c5d45c1f1a1d",
+                    "type": "logical",
+                    "attribute": "schulart",
+                    "expression": "is",
+                    "value": "Gymnasium"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "dataset-3746d120-f571-5bf8-b486-d55ffeadb108",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": 100
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Stadtbezirke",
+              "projectLayerId": 35,
+              "layerId": "e2000000-0000-0000-0000-000000000035",
+              "layerName": "Stadtbezirke",
+              "filterInitialized": true,
+              "geometryType": "polygon",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "tool-9a4ccaa3-786a-59cc-830e-300f543fd512",
+            "type": "tool",
+            "position": {
+              "x": 360,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "join",
+              "label": "Join",
+              "config": {
+                "use_spatial_relationship": true,
+                "use_attribute_relationship": false,
+                "spatial_relationship": "intersects"
+              },
+              "status": "idle"
+            }
+          },
+          {
+            "id": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "type": "export",
+            "position": {
+              "x": 720,
+              "y": 0
+            },
+            "data": {
+              "type": "export",
+              "label": "Gymnasien mit Bezirk",
+              "datasetName": "Gymnasien mit Bezirk",
+              "addToProject": true,
+              "overwritePrevious": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge-4b6ea001-115b-54e8-b100-606a13e3f69b",
+            "source": "dataset-0be3e684-325d-5b36-b75d-998d1b7f344e",
+            "target": "tool-9a4ccaa3-786a-59cc-830e-300f543fd512",
+            "targetHandle": "target_layer_id"
+          },
+          {
+            "id": "edge-cbe19195-300b-5251-9b96-7c465b4badae",
+            "source": "dataset-3746d120-f571-5bf8-b486-d55ffeadb108",
+            "target": "tool-9a4ccaa3-786a-59cc-830e-300f543fd512",
+            "targetHandle": "join_layer_id"
+          },
+          {
+            "id": "edge-dafe2254-c3ef-55ed-9654-8bb26ec13a84",
+            "source": "tool-9a4ccaa3-786a-59cc-830e-300f543fd512",
+            "target": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "sourceHandle": "output",
+            "targetHandle": "input"
+          }
+        ],
+        "viewport": {
+          "x": 40.0,
+          "y": 106.0,
+          "zoom": 0.66
+        },
+        "variables": []
+      }
+    },
+    {
+      "note": "a 15 minute walk from the schools with no speed set, dissolved, per district, the residents summed",
+      "run": "routing",
+      "draft": {
+        "name": "Einwohner im Fußweg je Bezirk",
+        "steps": [
+          {
+            "id": "schools",
+            "kind": "dataset",
+            "layer": 31
+          },
+          {
+            "id": "districts",
+            "kind": "dataset",
+            "layer": 35
+          },
+          {
+            "id": "residents",
+            "kind": "dataset",
+            "layer": 33
+          },
+          {
+            "id": "walk",
+            "kind": "tool",
+            "tool": "catchment_area_v2",
+            "settings": {
+              "routing_mode": "walking",
+              "max_cost": 15
+            }
+          },
+          {
+            "id": "merged",
+            "kind": "tool",
+            "tool": "dissolve",
+            "settings": {}
+          },
+          {
+            "id": "per_district",
+            "kind": "tool",
+            "tool": "intersection",
+            "settings": {}
+          },
+          {
+            "id": "count",
+            "kind": "tool",
+            "tool": "aggregate_polygon",
+            "settings": {
+              "area_type": "polygon",
+              "column_statistics": [
+                {
+                  "operation": "sum",
+                  "field": "einwohner"
+                }
+              ]
+            }
+          },
+          {
+            "id": "save",
+            "kind": "export",
+            "name": "Einwohner im Fußweg je Bezirk"
+          }
+        ],
+        "connections": [
+          {
+            "from": "schools",
+            "to": "walk",
+            "input": "starting_points"
+          },
+          {
+            "from": "walk",
+            "to": "merged",
+            "input": "input_layer_id"
+          },
+          {
+            "from": "merged",
+            "to": "per_district",
+            "input": "input_layer_id"
+          },
+          {
+            "from": "districts",
+            "to": "per_district",
+            "input": "overlay_layer_id"
+          },
+          {
+            "from": "residents",
+            "to": "count",
+            "input": "source_layer_id"
+          },
+          {
+            "from": "per_district",
+            "to": "count",
+            "input": "area_layer_id"
+          },
+          {
+            "from": "count",
+            "to": "save"
+          }
+        ],
+        "variables": []
+      },
+      "regions": [],
+      "config": {
+        "nodes": [
+          {
+            "id": "dataset-0be3e684-325d-5b36-b75d-998d1b7f344e",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": -200
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Schulen",
+              "projectLayerId": 31,
+              "layerId": "e2000000-0000-0000-0000-000000000031",
+              "layerName": "Schulen",
+              "filterInitialized": true,
+              "geometryType": "point",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "dataset-3746d120-f571-5bf8-b486-d55ffeadb108",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Stadtbezirke",
+              "projectLayerId": 35,
+              "layerId": "e2000000-0000-0000-0000-000000000035",
+              "layerName": "Stadtbezirke",
+              "filterInitialized": true,
+              "geometryType": "polygon",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "dataset-fb3f9084-4d35-56ba-af03-5d21f0e174ff",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": 200
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Einwohner Raster",
+              "projectLayerId": 33,
+              "layerId": "e2000000-0000-0000-0000-000000000033",
+              "layerName": "Einwohner Raster",
+              "filterInitialized": true,
+              "geometryType": "polygon",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "tool-530a69f6-c92b-5d9a-aa56-f63c2d367933",
+            "type": "tool",
+            "position": {
+              "x": 360,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "catchment_area_v2",
+              "label": "Catchment Area",
+              "config": {
+                "routing_mode": "walking",
+                "max_cost": 15
+              },
+              "status": "idle"
+            }
+          },
+          {
+            "id": "tool-e4abd351-b505-5f58-a405-bb8f4af9baa1",
+            "type": "tool",
+            "position": {
+              "x": 720,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "dissolve",
+              "label": "Dissolve",
+              "config": {},
+              "status": "idle"
+            }
+          },
+          {
+            "id": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "type": "tool",
+            "position": {
+              "x": 1080,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "intersection",
+              "label": "Intersect",
+              "config": {},
+              "status": "idle"
+            }
+          },
+          {
+            "id": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "type": "tool",
+            "position": {
+              "x": 1440,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "aggregate_polygon",
+              "label": "Aggregate Polygons",
+              "config": {
+                "area_type": "polygon",
+                "column_statistics": [
+                  {
+                    "operation": "sum",
+                    "field": "einwohner"
+                  }
+                ]
+              },
+              "status": "idle"
+            }
+          },
+          {
+            "id": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "type": "export",
+            "position": {
+              "x": 1800,
+              "y": 0
+            },
+            "data": {
+              "type": "export",
+              "label": "Einwohner im Fußweg je Bezirk",
+              "datasetName": "Einwohner im Fußweg je Bezirk",
+              "addToProject": true,
+              "overwritePrevious": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge-b889c1b7-0612-5794-81cd-9cd5c538c602",
+            "source": "dataset-0be3e684-325d-5b36-b75d-998d1b7f344e",
+            "target": "tool-530a69f6-c92b-5d9a-aa56-f63c2d367933",
+            "targetHandle": "starting_points"
+          },
+          {
+            "id": "edge-5fba0919-98f1-5755-81c5-a25d05b1f869",
+            "source": "tool-530a69f6-c92b-5d9a-aa56-f63c2d367933",
+            "target": "tool-e4abd351-b505-5f58-a405-bb8f4af9baa1",
+            "sourceHandle": "output",
+            "targetHandle": "input_layer_id"
+          },
+          {
+            "id": "edge-59fcbf78-cf5e-5669-8978-fe6866b72e19",
+            "source": "tool-e4abd351-b505-5f58-a405-bb8f4af9baa1",
+            "target": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "sourceHandle": "output",
+            "targetHandle": "input_layer_id"
+          },
+          {
+            "id": "edge-92376037-9f95-5387-9a59-160972daa95f",
+            "source": "dataset-3746d120-f571-5bf8-b486-d55ffeadb108",
+            "target": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "targetHandle": "overlay_layer_id"
+          },
+          {
+            "id": "edge-82c01e91-89eb-5061-ad66-e5abf46f8f75",
+            "source": "dataset-fb3f9084-4d35-56ba-af03-5d21f0e174ff",
+            "target": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "targetHandle": "source_layer_id"
+          },
+          {
+            "id": "edge-6cebe5e0-4e86-5a44-8340-96c039e68de3",
+            "source": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "target": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "sourceHandle": "output",
+            "targetHandle": "area_layer_id"
+          },
+          {
+            "id": "edge-554fb537-9084-5812-8796-87ae8b83f1ef",
+            "source": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "target": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "sourceHandle": "output",
+            "targetHandle": "input"
+          }
+        ],
+        "viewport": {
+          "x": 40.0,
+          "y": 106.0,
+          "zoom": 0.33
+        },
+        "variables": []
+      }
+    },
+    {
+      "note": "a 15 minute walk from the schools in three bands, per district, the residents summed per band",
+      "run": "routing",
+      "draft": {
+        "name": "Einwohner je Bezirk in 5, 10 und 15 Minuten zu Fuß",
+        "steps": [
+          {
+            "id": "schools",
+            "kind": "dataset",
+            "layer": 31
+          },
+          {
+            "id": "districts",
+            "kind": "dataset",
+            "layer": 35
+          },
+          {
+            "id": "residents",
+            "kind": "dataset",
+            "layer": 33
+          },
+          {
+            "id": "bands",
+            "kind": "tool",
+            "tool": "catchment_area_v2",
+            "settings": {
+              "routing_mode": "walking",
+              "max_cost": 15,
+              "steps": 3
+            }
+          },
+          {
+            "id": "per_district",
+            "kind": "tool",
+            "tool": "intersection",
+            "settings": {}
+          },
+          {
+            "id": "count",
+            "kind": "tool",
+            "tool": "aggregate_polygon",
+            "settings": {
+              "area_type": "polygon",
+              "column_statistics": [
+                {
+                  "operation": "sum",
+                  "field": "einwohner"
+                }
+              ]
+            }
+          },
+          {
+            "id": "save",
+            "kind": "export",
+            "name": "Einwohner je Bezirk in 5, 10 und 15 Minuten zu Fuß"
+          }
+        ],
+        "connections": [
+          {
+            "from": "schools",
+            "to": "bands",
+            "input": "starting_points"
+          },
+          {
+            "from": "bands",
+            "to": "per_district",
+            "input": "input_layer_id"
+          },
+          {
+            "from": "districts",
+            "to": "per_district",
+            "input": "overlay_layer_id"
+          },
+          {
+            "from": "residents",
+            "to": "count",
+            "input": "source_layer_id"
+          },
+          {
+            "from": "per_district",
+            "to": "count",
+            "input": "area_layer_id"
+          },
+          {
+            "from": "count",
+            "to": "save"
+          }
+        ],
+        "variables": []
+      },
+      "regions": [],
+      "config": {
+        "nodes": [
+          {
+            "id": "dataset-0be3e684-325d-5b36-b75d-998d1b7f344e",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": -200
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Schulen",
+              "projectLayerId": 31,
+              "layerId": "e2000000-0000-0000-0000-000000000031",
+              "layerName": "Schulen",
+              "filterInitialized": true,
+              "geometryType": "point",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "dataset-3746d120-f571-5bf8-b486-d55ffeadb108",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Stadtbezirke",
+              "projectLayerId": 35,
+              "layerId": "e2000000-0000-0000-0000-000000000035",
+              "layerName": "Stadtbezirke",
+              "filterInitialized": true,
+              "geometryType": "polygon",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "dataset-fb3f9084-4d35-56ba-af03-5d21f0e174ff",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": 200
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Einwohner Raster",
+              "projectLayerId": 33,
+              "layerId": "e2000000-0000-0000-0000-000000000033",
+              "layerName": "Einwohner Raster",
+              "filterInitialized": true,
+              "geometryType": "polygon",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "tool-8fbb8363-6650-5f1b-a41b-9d2b398338ef",
+            "type": "tool",
+            "position": {
+              "x": 360,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "catchment_area_v2",
+              "label": "Catchment Area",
+              "config": {
+                "routing_mode": "walking",
+                "max_cost": 15,
+                "steps": 3
+              },
+              "status": "idle"
+            }
+          },
+          {
+            "id": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "type": "tool",
+            "position": {
+              "x": 720,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "intersection",
+              "label": "Intersect",
+              "config": {},
+              "status": "idle"
+            }
+          },
+          {
+            "id": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "type": "tool",
+            "position": {
+              "x": 1080,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "aggregate_polygon",
+              "label": "Aggregate Polygons",
+              "config": {
+                "area_type": "polygon",
+                "column_statistics": [
+                  {
+                    "operation": "sum",
+                    "field": "einwohner"
+                  }
+                ]
+              },
+              "status": "idle"
+            }
+          },
+          {
+            "id": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "type": "export",
+            "position": {
+              "x": 1440,
+              "y": 0
+            },
+            "data": {
+              "type": "export",
+              "label": "Einwohner je Bezirk in 5, 10 und 15 Minuten zu Fuß",
+              "datasetName": "Einwohner je Bezirk in 5, 10 und 15 Minuten zu Fuß",
+              "addToProject": true,
+              "overwritePrevious": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge-5d888dfa-dd68-59e8-95cc-fc6a99b3e004",
+            "source": "dataset-0be3e684-325d-5b36-b75d-998d1b7f344e",
+            "target": "tool-8fbb8363-6650-5f1b-a41b-9d2b398338ef",
+            "targetHandle": "starting_points"
+          },
+          {
+            "id": "edge-7ca65bdc-47ac-5855-a1a3-c87d11a78ae1",
+            "source": "tool-8fbb8363-6650-5f1b-a41b-9d2b398338ef",
+            "target": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "sourceHandle": "output",
+            "targetHandle": "input_layer_id"
+          },
+          {
+            "id": "edge-92376037-9f95-5387-9a59-160972daa95f",
+            "source": "dataset-3746d120-f571-5bf8-b486-d55ffeadb108",
+            "target": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "targetHandle": "overlay_layer_id"
+          },
+          {
+            "id": "edge-82c01e91-89eb-5061-ad66-e5abf46f8f75",
+            "source": "dataset-fb3f9084-4d35-56ba-af03-5d21f0e174ff",
+            "target": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "targetHandle": "source_layer_id"
+          },
+          {
+            "id": "edge-6cebe5e0-4e86-5a44-8340-96c039e68de3",
+            "source": "tool-d353b6af-8be3-5121-b69e-8947c27441af",
+            "target": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "sourceHandle": "output",
+            "targetHandle": "area_layer_id"
+          },
+          {
+            "id": "edge-554fb537-9084-5812-8796-87ae8b83f1ef",
+            "source": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "target": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "sourceHandle": "output",
+            "targetHandle": "input"
+          }
+        ],
+        "viewport": {
+          "x": 40.0,
+          "y": 120.0,
+          "zoom": 0.4
+        },
+        "variables": []
+      }
+    },
+    {
+      "note": "a public transport catchment from the supermarkets with no travel budget set",
+      "run": "routing",
+      "draft": {
+        "name": "ÖPNV ab Supermärkten",
+        "steps": [
+          {
+            "id": "shops",
+            "kind": "dataset",
+            "layer": 34
+          },
+          {
+            "id": "transit",
+            "kind": "tool",
+            "tool": "catchment_area_v2",
+            "settings": {
+              "routing_mode": "pt"
+            }
+          },
+          {
+            "id": "save",
+            "kind": "export",
+            "name": "ÖPNV ab Supermärkten"
+          }
+        ],
+        "connections": [
+          {
+            "from": "shops",
+            "to": "transit",
+            "input": "starting_points"
+          },
+          {
+            "from": "transit",
+            "to": "save"
+          }
+        ],
+        "variables": []
+      },
+      "regions": [],
+      "config": {
+        "nodes": [
+          {
+            "id": "dataset-479a4792-82e8-5579-a575-621a9f86d3bb",
+            "type": "dataset",
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "data": {
+              "type": "dataset",
+              "label": "Supermärkte",
+              "projectLayerId": 34,
+              "layerId": "e2000000-0000-0000-0000-000000000034",
+              "layerName": "Supermärkte",
+              "filterInitialized": true,
+              "geometryType": "point",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "tool-277026a1-1d7c-58fb-88ff-6c6d4c43baea",
+            "type": "tool",
+            "position": {
+              "x": 360,
+              "y": 0
+            },
+            "data": {
+              "type": "tool",
+              "processId": "catchment_area_v2",
+              "label": "Catchment Area",
+              "config": {
+                "routing_mode": "pt"
+              },
+              "status": "idle"
+            }
+          },
+          {
+            "id": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "type": "export",
+            "position": {
+              "x": 720,
+              "y": 0
+            },
+            "data": {
+              "type": "export",
+              "label": "ÖPNV ab Supermärkten",
+              "datasetName": "ÖPNV ab Supermärkten",
+              "addToProject": true,
+              "overwritePrevious": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge-072a65fe-5e76-5837-a7ae-0d887946e3a6",
+            "source": "dataset-479a4792-82e8-5579-a575-621a9f86d3bb",
+            "target": "tool-277026a1-1d7c-58fb-88ff-6c6d4c43baea",
+            "targetHandle": "starting_points"
+          },
+          {
+            "id": "edge-1fe847e0-fa43-50d0-9123-6ac300fc0186",
+            "source": "tool-277026a1-1d7c-58fb-88ff-6c6d4c43baea",
+            "target": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "sourceHandle": "output",
+            "targetHandle": "input"
+          }
+        ],
+        "viewport": {
+          "x": 40.0,
+          "y": 40.0,
+          "zoom": 0.66
+        },
+        "variables": []
+      }
+    }
+  ]
+}

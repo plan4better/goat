@@ -22,6 +22,10 @@ import pytest
 from core.core.config import settings
 from core.crud.crud_space import space as crud_space
 from core.db.models._link_model import ResourceGrant
+from core.db.models.assistant import (
+    AssistantConnection,
+    AssistantOrganizationSettings,
+)
 from core.db.models.bundle import Bundle
 from core.db.models.folder import Folder
 from core.db.models.invitation import Invitation, InvitationStatusEnum, InvitationType
@@ -33,7 +37,7 @@ from core.db.models.project import Project
 from core.db.models.team import Team
 from core.db.models.template import Template, TemplatePayloadKind
 from core.db.models.user import User
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.authz.route_world import API, give_org_role, sweep_client
 
@@ -328,6 +332,55 @@ async def test_grants_on_the_folders_that_go_are_removed_with_them(
     grants_on = f"SELECT count(*) FROM {S}.resource_grant WHERE resource_id = :f"
     assert not await _scalar(db_session, grants_on, f=lonely.organization_root_id)
     assert await _scalar(db_session, grants_on, f=lonely.personal_home_id)
+
+
+@pytest.mark.asyncio
+async def test_the_organizations_ai_settings_and_model_connections_go_with_it(
+    db_session: AsyncSession,
+    auth_on: Callable[..., dict[str, str]],
+    make_org: Callable[[], Awaitable[Organization]],
+    make_user: Callable[..., Awaitable[User]],
+    lonely: Lonely,
+) -> None:
+    """They name the organization without a foreign key, so they would
+    outlive it, the stored API key included. Another organization's stay."""
+    other = await make_org()
+    assert other.id is not None
+    # Read before the commit expires the object.
+    other_id = other.id
+    for org_id in (lonely.organization_id, other_id):
+        connection = AssistantConnection(
+            organization_id=org_id,
+            name="Own model",
+            provider="openai_compatible",
+            base_url="https://llm.example.org/v1",
+            model="some-model",
+            credentials_encrypted="sealed",
+        )
+        db_session.add(connection)
+        await db_session.flush()
+        db_session.add(
+            AssistantOrganizationSettings(
+                organization_id=org_id, active_connection_id=connection.id
+            )
+        )
+    await db_session.commit()
+
+    deleted = await _delete(
+        lonely.organization_id, await _superuser(db_session, make_user, auth_on)
+    )
+
+    assert deleted.status_code == 200, deleted.text
+    db_session.expire_all()
+    for model in (AssistantConnection, AssistantOrganizationSettings):
+        left = (
+            await db_session.execute(
+                select(model.organization_id).where(
+                    model.organization_id.in_([lonely.organization_id, other_id])
+                )
+            )
+        ).scalars()
+        assert set(left) == {other_id}
 
 
 async def _memberless(

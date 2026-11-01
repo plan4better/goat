@@ -1,7 +1,7 @@
 GOAT Helm chart v{{ .Chart.Version }} (app {{ .Chart.AppVersion }}) installed
 into namespace "{{ .Release.Namespace }}" as release "{{ .Release.Name }}".
 
-Enabled services follow your values (core, web, catalog, geoapi and processes on
+Enabled services follow your values (core, web, catalog, geoapi, processes and assistant on
 by default, plus the windmill server and default worker; the heavier windmill
 workers and caddy are opt-in).
 {{- if .Values.web.enabled }}
@@ -38,6 +38,33 @@ One-time bootstrap runs in init containers, so no extra helm step is needed:
       kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "goat.fullname" . }}-windmill-server -c windmill-db-init
 {{- end }}
 On a fresh install those pods wait in Init:0/1 until Postgres is up.
+{{- end }}
+{{- if .Values.assistant.enabled }}
+{{- $assistantUrl := include "goat.assistant.publicUrl" . }}
+
+AI assistant: {{ if $assistantUrl }}reachable for the web app at {{ $assistantUrl }}{{ else }}the web app hides it until web.publicUrls.assistant or assistant.ingress gives it a URL{{ end }}.
+{{- if eq (toString (index .Values.assistant.config "ASSISTANT_DEFAULT_PROVIDER")) "none" }}
+  GOAT AI (the built-in model) is off; organization admins add their own connection under Settings → AI.
+{{- end }}
+{{- if not .Values.assistant.secretsKey.existingSecret }}
+  Organizations cannot store connections yet: set assistant.secretsKey.existingSecret (see values.yaml).
+{{- end }}
+{{- /* The assistant's default CORS origin is the web app's public URL
+       (goat.web.publicUrl: web.auth.publicUrl, web.ingress, NEXTAUTH_URL).
+       Warn only while the web app shows the assistant and that origin is
+       still the shipped localhost default. */}}
+{{- $corsSet := false }}
+{{- range $key := list "ASSISTANT_CORS_ORIGINS" "CORS_ORIGINS" "NEXT_PUBLIC_APP_URL" "ASSISTANT_GOAT_UI_BASE_URL" }}
+{{- if include "goat.env.userSet" (dict "values" $.Values.assistant "key" $key) }}{{ $corsSet = true }}{{ end }}
+{{- end }}
+{{- $origin := include "goat.web.publicUrl" . | trimSuffix "/" }}
+{{- if and $assistantUrl (not $corsSet) (or (not $origin) (eq $origin "http://localhost:3000")) }}
+
+WARNING: the AI assistant will refuse the web app's requests (CORS). Its
+allowed origin is the web app's public URL, still the default
+{{ $origin | default "(empty)" }}. Set web.auth.publicUrl to the URL users open
+GOAT at, or assistant.config.ASSISTANT_CORS_ORIGINS.
+{{- end }}
 {{- end }}
 
 To check core health from inside the cluster:
@@ -93,7 +120,7 @@ credentials are provided through catalog.extraEnv.
 {{- end }}
 {{- $authOn := list }}
 {{- $authOff := list }}
-{{- range $svc := list "core" "web" "geoapi" "processes" "catalog" }}
+{{- range $svc := list "core" "web" "geoapi" "processes" "catalog" "assistant" }}
 {{- $vals := index $.Values $svc }}
 {{- if $vals.enabled }}
 {{- $v := include "goat.auth.effectiveValue" (dict "values" $vals "root" $) }}

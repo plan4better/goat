@@ -18,6 +18,7 @@ import ToastProvider from "@/lib/providers/ToastProvider";
 import { getUserPreferencesForLayout } from "@/lib/server/getUserPreferences";
 
 import ThemeRegistry from "@/components/@mui/ThemeRegistry";
+import AssistantRoot from "@/components/assistant/AssistantRoot";
 
 import "@/styles/globals.css";
 
@@ -45,7 +46,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <AuthProvider>
               <I18nProvider language={lang}>
                 <ThemeRegistry theme={theme as "light" | "dark"}>
-                  <ToastProvider>{children}</ToastProvider>
+                  <ToastProvider>
+                    <AssistantRoot>{children}</AssistantRoot>
+                  </ToastProvider>
                 </ThemeRegistry>
               </I18nProvider>
             </AuthProvider>

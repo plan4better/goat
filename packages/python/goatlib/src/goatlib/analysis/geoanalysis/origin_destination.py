@@ -30,9 +30,7 @@ class OriginDestinationTool(AnalysisTool):
 
         geom_col = geom_meta.geometry_column
         if not geom_col:
-            raise ValueError(
-                f"Could not detect geometry column for input: {params.geometry_path}"
-            )
+            raise ValueError("The input layer has no geometry column.")
 
         # Get CRS from metadata, fallback to output_crs or EPSG:4326
         crs = geom_meta.crs
@@ -122,6 +120,7 @@ class OriginDestinationTool(AnalysisTool):
                     path=str(output_path_lines),
                     source_type="vector",
                     geometry_column="geometry",
+                    geometry_type="LineString",
                     crs=crs_str,
                     schema="public",
                     table_name=output_path_lines.stem,
@@ -133,6 +132,7 @@ class OriginDestinationTool(AnalysisTool):
                     path=str(output_path_points),
                     source_type="vector",
                     geometry_column="geometry",
+                    geometry_type="Point",
                     crs=crs_str,
                     schema="public",
                     table_name=output_path_points.stem,

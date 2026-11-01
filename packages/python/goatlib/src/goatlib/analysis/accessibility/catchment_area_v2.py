@@ -20,6 +20,7 @@ from goatlib.analysis.schemas.catchment_area_v2 import (
     OutputFormat,
     RoutingMode,
     ShapeStyle,
+    speed_or_default,
 )
 from goatlib.config.settings import settings
 from goatlib.models.io import DatasetMetadata
@@ -27,16 +28,6 @@ from goatlib.models.io import DatasetMetadata
 logger = logging.getLogger(__name__)
 
 WEB_MERCATOR_RADIUS_M = 6378137.0
-
-# Per-leg speed fallback when the user leaves the advanced speed blank, so the
-# C++ access/egress validation always has a positive speed. Car is 0: its cost
-# comes from per-edge OSM maxspeed, not a user speed.
-_PT_LEG_DEFAULT_SPEED_KMH: dict[AccessEgressMode, float] = {
-    AccessEgressMode.walk: 5.0,
-    AccessEgressMode.bicycle: 15.0,
-    AccessEgressMode.pedelec: 23.0,
-    AccessEgressMode.car: 0.0,
-}
 
 
 class CatchmentAreaToolV2(AnalysisTool):
@@ -128,9 +119,9 @@ class CatchmentAreaToolV2(AnalysisTool):
         )
         cfg.max_cost = params.max_cost
         cfg.steps = params.steps
-        # C++ uses 0.0 as the "not set" sentinel; for routing modes that don't
-        # take a user-supplied speed (PT/Car), params.speed is None.
-        cfg.speed_km_h = params.speed if params.speed is not None else 0.0
+        # Without a speed an active mode routes at its default, the one the form
+        # fills in. Car and PT take none: the engine reads 0.0 as "not set".
+        cfg.speed_km_h = speed_or_default(params.speed, params.routing_mode)
         # A bundle's graph replaces the global network when supplied.
         cfg.edge_dir = str(params.edge_path or self._edge_dir)
         cfg.node_dir = str(params.node_path or self._node_dir)
@@ -171,20 +162,14 @@ class CatchmentAreaToolV2(AnalysisTool):
             )
             cfg.access_max_cost = params.access_max_cost
             cfg.egress_max_cost = params.egress_max_cost
-            # If the user didn't set the per-leg speed (e.g. left advanced
-            # collapsed), fall back to a mode-specific default so the C++
-            # access/egress validation has a positive speed to work with.
-            # Car has no user-facing speed → 0 (C++ ignores user speed for car
-            # routing cost; per-edge OSM maxspeed governs).
-            cfg.access_speed_km_h = (
-                params.access_speed
-                if params.access_speed is not None
-                else _PT_LEG_DEFAULT_SPEED_KMH.get(params.access_mode, 0.0)
+            # A leg without a speed (e.g. advanced left collapsed) routes at
+            # its mode's default, so the C++ access/egress validation has a
+            # positive speed. Car has none: per-edge OSM maxspeed governs.
+            cfg.access_speed_km_h = speed_or_default(
+                params.access_speed, params.access_mode
             )
-            cfg.egress_speed_km_h = (
-                params.egress_speed
-                if params.egress_speed is not None
-                else _PT_LEG_DEFAULT_SPEED_KMH.get(params.egress_mode, 0.0)
+            cfg.egress_speed_km_h = speed_or_default(
+                params.egress_speed, params.egress_mode
             )
 
             if params.transit_modes:

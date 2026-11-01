@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from goatlib.analysis.geoanalysis.geocoding import GeocodingTool
 from goatlib.analysis.schemas.geocoding import (
@@ -204,6 +204,23 @@ class GeocodingToolParams(ToolInputBase, LayerInputMixin):
             },
         ),
     )
+
+    @model_validator(mode="after")
+    def _address_column_is_set(self: Self) -> Self:
+        # The form does not run without the column holding the address; the
+        # analysis would otherwise send every row as an empty query.
+        if (
+            self.input_mode == GeocodingInputMode.full_address
+            and not self.full_address_field
+        ):
+            raise ValueError(
+                "full_address_field is required when input_mode is 'full_address'."
+            )
+        if self.input_mode == GeocodingInputMode.structured and not self.address_field:
+            raise ValueError(
+                "address_field is required when input_mode is 'structured'."
+            )
+        return self
 
 
 # =============================================================================

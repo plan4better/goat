@@ -1,12 +1,13 @@
 -- Records one credit_usage ledger row and adds its cost to the org balance.
 -- Org-centric: the caller passes the org; p_user_id may be NULL (egress/system).
 -- Records always; does NOT gate (the over-budget gate is pre-submission).
+-- AI answers are booked by charge_ai_answer, on a pool of their own.
 CREATE OR REPLACE FUNCTION customer.charge_credits(
     p_organization_id uuid,
     p_user_id         uuid,     -- nullable: NULL for egress/system charges
     p_action          text,
-    p_category        text,     -- 'compute' | 'egress' | 'ai'
-    p_unit            numeric,  -- native: seconds (compute) | bytes (egress) | tokens (ai)
+    p_category        text,     -- 'compute' | 'egress'
+    p_unit            numeric,  -- native: seconds (compute) | bytes (egress)
     p_payload         jsonb
 ) RETURNS bigint AS $$
 DECLARE
@@ -28,9 +29,6 @@ BEGIN
     ELSIF v_unit_basis = 'GB' THEN
         v_cost := (p_unit / 1000000000.0) * v_rate;  -- bytes -> GB (decimal)
         v_unit_type := 'bytes';
-    ELSIF v_unit_basis = '1k_tokens' THEN
-        v_cost := (p_unit / 1000.0) * v_rate;  -- input + output tokens
-        v_unit_type := 'tokens';
     ELSE
         RAISE EXCEPTION 'charge_credits: unknown unit_basis %', v_unit_basis;
     END IF;

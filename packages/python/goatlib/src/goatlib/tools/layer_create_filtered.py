@@ -89,6 +89,7 @@ class LayerCreateFilteredToolRunner(BaseToolRunner["LayerCreateFilteredParams"])
 
     tool_class = "layer_create_filtered"
     output_geometry_type: str | None = None  # Dynamic based on source layer
+    output_geometry_follows_input = True
     default_output_name = "Filtered Layer"
 
     def process(

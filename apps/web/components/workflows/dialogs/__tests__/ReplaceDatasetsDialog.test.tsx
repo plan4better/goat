@@ -154,3 +154,45 @@ describe("ReplaceDatasetsDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+// A layer's type can change after a step picked it: a table overwritten
+// with geometries becomes a point layer. The dialog describes and matches
+// the step by the type the project's list gives the layer now.
+describe("ReplaceDatasetsDialog for a layer that changed type", () => {
+  const storedAsTable = (id: string, layerId: string, projectLayerId: number, label: string) => {
+    const node = dataset(id, layerId, projectLayerId, label);
+    return { ...node, data: { ...node.data, layerType: "table", geometryType: undefined } } as Node;
+  };
+  const tableLayer = (id: number, layerId: string, name: string) => ({
+    ...layer(id, layerId, name),
+    type: "table",
+    feature_layer_geometry_type: null,
+  });
+
+  beforeEach(() => {
+    storeState.nodes = [storedAsTable("d1", "L1", 11, "Stops")];
+    storeState.edges = [];
+    processesMock.mockReturnValue({ processes: {}, isLoading: false });
+    fieldsMock.mockReturnValue({ fieldsByLayerId: {}, isLoading: false });
+  });
+
+  it("describes the step by its layer's type now and offers layers of that shape", () => {
+    layersMock.mockReturnValue({
+      layers: [layer(11, "L1", "Stops"), layer(13, "L3", "Schools"), tableLayer(14, "L4", "Lookup")],
+    });
+    render(<ReplaceDatasetsDialog projectId="p1" workflowName="WF" onClose={() => {}} />);
+
+    expect(within(screen.getByTestId("replace-dataset-row-d1")).getByText("point")).toBeInTheDocument();
+    const menu = openPicker("d1");
+    expect(within(menu).getByRole("option", { name: "Schools" })).toBeInTheDocument();
+    expect(within(menu).queryByRole("option", { name: "Lookup" })).toBeNull();
+  });
+
+  it("keeps the stored type for a layer the project's list does not carry", () => {
+    layersMock.mockReturnValue({ layers: [tableLayer(14, "L4", "Lookup")] });
+    render(<ReplaceDatasetsDialog projectId="p1" workflowName="WF" onClose={() => {}} />);
+
+    expect(within(screen.getByTestId("replace-dataset-row-d1")).getByText("table")).toBeInTheDocument();
+    expect(within(openPicker("d1")).getByRole("option", { name: "Lookup" })).toBeInTheDocument();
+  });
+});

@@ -23,11 +23,12 @@ GOAT ist nicht ein einzelnes Programm, sondern eine Reihe von Diensten, die zusa
 | **GeoAPI** | Liefert die Daten Ihrer Layer als OGC API Features und als Vektorkacheln aus. |
 | **Processes** | Startet Analysen, Importe und andere Jobs (OGC API Processes) und meldet ihren Status. |
 | **Catalog** | Der GOAT-Datenkatalog als STAC API. |
+| **Assistant** | Der KI-Assistent: Unterhaltungen, Antworten eines Sprachmodells mit den Daten in GOAT und der MCP-Endpunkt für externe Agenten. Aus, bis ein Modell eingerichtet ist. |
 | **Keycloak** | Anmeldung und Benutzerkonten. |
 | **PostgreSQL mit PostGIS** | Die Datenbanken von GOAT, Keycloak und Windmill. |
 | **Garage** | S3-kompatibler Objektspeicher für hochgeladene Dateien und Bilder. |
 | **Windmill** | Die Job-Engine. Ihre Worker führen die Analyse-Werkzeuge, Datensatz-Importe, den PDF-Druck und geplante Aufgaben aus. |
-| **Redis** | Ein Cache für die GeoAPI. |
+| **Redis** | Ein Cache für die GeoAPI und die Live-Zustellung der Antworten des Assistenten. |
 | **Caddy** | Der Reverse Proxy vor allen Diensten. Er ist der einzige Zugangspunkt und kümmert sich um HTTPS. |
 
 ## Welcher Weg? {#which-option}

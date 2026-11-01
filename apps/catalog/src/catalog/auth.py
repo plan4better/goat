@@ -18,9 +18,6 @@ from typing import Any
 from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from goatlib.auth import JOSEError, KeycloakAuth
-from starlette.datastructures import Headers
-from starlette.responses import JSONResponse
-from starlette.types import ASGIApp, Receive, Scope, Send
 
 from catalog.config import CatalogSettings
 from catalog.errors import ApiError
@@ -133,58 +130,3 @@ async def optional_auth(request: Request) -> None:
             f"Invalid token: {exc}",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
-
-
-class BearerAuthASGIMiddleware:
-    """The ``require_auth`` bearer-token gate, reimplemented as plain ASGI
-    middleware for a raw ASGI sub-app that FastAPI's ``Depends``-based DI
-    can't reach.
-
-    ``catalog.app``'s ``/mcp`` mount is exactly that case: the Streamable
-    HTTP transport is its own Starlette app (``mcp.streamable_http_app()``),
-    not a FastAPI ``APIRouter``, so it never runs through
-    ``Depends(require_auth)`` -- without this wrapper, ``/mcp`` would be
-    reachable with no token at all even when ``AUTH=True``, unlike every
-    other endpoint (api spec §1). This reuses ``validate_token`` (the actual
-    Keycloak JWT check) so the two gates can never drift apart; only the
-    trivial "Bearer "-prefix header parsing is duplicated, since
-    ``_extract_bearer_token`` is written against FastAPI's
-    ``OAuth2PasswordBearer`` plumbing, which has no equivalent here.
-    """
-
-    def __init__(self, app: ASGIApp, settings: CatalogSettings) -> None:
-        self._app = app
-        self._settings = settings
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or not self._settings.auth:
-            await self._app(scope, receive, send)
-            return
-
-        headers = Headers(scope=scope)
-        auth_header = headers.get("authorization")
-        bearer = (
-            auth_header[7:]
-            if auth_header and auth_header.startswith("Bearer ")
-            else None
-        )
-
-        detail: str | None = None
-        if not bearer:
-            detail = "Missing authorization token"
-        else:
-            try:
-                validate_token(self._settings, bearer)
-            except JOSEError as exc:
-                detail = f"Invalid token: {exc}"
-
-        if detail is not None:
-            response = JSONResponse(
-                status_code=401,
-                content={"code": 401, "description": detail},
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-            await response(scope, receive, send)
-            return
-
-        await self._app(scope, receive, send)

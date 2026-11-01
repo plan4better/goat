@@ -5,6 +5,7 @@ templates:
   - core/configmap.yaml
   - geoapi/configmap.yaml
   - processes/configmap.yaml
+  - assistant/configmap.yaml
 set:
   postgresql.cluster.enabled: false
   postgresql.external.host: "pooler.example.com"
@@ -28,6 +29,7 @@ tests:
       geoapi.config.POSTGRES_SERVER: "geoapi-db.example.com"
       geoapi.config.POSTGRES_PORT: "6543"
       processes.config.POSTGRES_DB: "goat_processes"
+      assistant.config.POSTGRES_PORT: "6432"
     asserts:
       - equal:
           path: data.POSTGRES_SERVER
@@ -45,6 +47,10 @@ tests:
           path: data.POSTGRES_DB
           value: goat_processes
         template: processes/configmap.yaml
+      - equal:
+          path: data.POSTGRES_PORT
+          value: "6432"
+        template: assistant/configmap.yaml
 
   # A pooler in transaction mode with stock settings: the services then
   # prepare nothing on the server and send no keepalive startup settings.

@@ -126,6 +126,7 @@ export default function MultiEnumInput({
       items={enumItems}
       multiple
       label={label}
+      required={input.required}
       tooltip={description}
       placeholder={t("select_options")}
       allSelectedLabel={t("all")}

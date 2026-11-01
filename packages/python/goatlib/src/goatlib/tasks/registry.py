@@ -264,7 +264,7 @@ TASK_REGISTRY: tuple[TaskDefinition, ...] = (
     TaskDefinition(
         name="credit_reset",
         display_name="Credit Reset",
-        description="Monthly credit period: zero used_credits where credits_reset_at has passed.",
+        description="Monthly credit period: zero used_credits and used_ai_credits where credits_reset_at has passed.",
         module_path="goatlib.tasks.credit_reset",
         params_class_name="CreditResetParams",
         windmill_path="f/goat/tasks/credit_reset",

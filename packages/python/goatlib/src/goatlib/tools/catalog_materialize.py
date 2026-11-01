@@ -36,6 +36,7 @@ from typing import Any, Literal, Self
 import duckdb
 from pydantic import Field
 
+from goatlib.io.config import parquet_copy_options
 from goatlib.tools.base import SimpleToolRunner
 from goatlib.tools.schemas import ToolInputBase
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
@@ -222,16 +223,20 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                         COPY (
                             SELECT * FROM read_parquet('{src}')
                             ORDER BY ST_Hilbert("{geom_col_sql}")
-                        ) TO '{staged}' (FORMAT PARQUET, COMPRESSION ZSTD)
+                        ) TO '{staged}' {parquet_copy_options('COMPRESSION ZSTD')}
                     """)
                 else:
                     con.execute(f"""
                         COPY (SELECT * FROM read_parquet('{src}'))
-                        TO '{staged}' (FORMAT PARQUET, COMPRESSION ZSTD)
+                        TO '{staged}' {parquet_copy_options('COMPRESSION ZSTD')}
                     """)
 
+                # The features a tool can use: tools read the rows that have a
+                # geometry, and the workflow check compares this count with
+                # their limits. A table without a geometry counts every row.
+                counted = f'"{geom_col_sql}"' if geom_col_sql else "*"
                 stats = con.execute(
-                    f"SELECT count(*) FROM read_parquet('{staged}')"
+                    f"SELECT count({counted}) FROM read_parquet('{staged}')"
                 ).fetchone()
                 feature_count = int(stats[0]) if stats else 0
                 bounds = None

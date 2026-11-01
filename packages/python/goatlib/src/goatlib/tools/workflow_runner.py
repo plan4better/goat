@@ -13,6 +13,7 @@ Usage:
 import asyncio
 import logging
 import re
+from collections.abc import Callable
 from typing import Any
 
 import asyncpg
@@ -22,25 +23,22 @@ from pydantic import BaseModel, Field
 from goatlib.tools.if_node import IF_FALSE_HANDLE, execute_if_node
 from goatlib.tools.workflow_dataset_nodes import (
     current_layer_ids,
+    dataset_style,
     project_layer_ids,
     with_current_layer_ids,
 )
-from goatlib.utils.credentials import redact_credentials
+from goatlib.workflows.run_errors import error_message
 
 logger = logging.getLogger(__name__)
-
-# Pattern to strip usernames from Windmill cancellation messages
-# e.g. "cancelled by majkshkurti (reason: User requested dismissal)" -> "cancelled (reason: User requested dismissal)"
-_CANCEL_USER_RE = re.compile(r"cancelled by \S+")
 
 # Numbered opportunity-layer canvas handles, e.g. "opportunity_layer_2_id"
 _NUMBERED_OPPORTUNITY = re.compile(r"opportunity_layer_(\d+)_id")
 
 
-def _sanitize_error_msg(msg: str) -> str:
-    """A step's error text without the username of a Windmill cancellation
-    and without credentials."""
-    return redact_credentials(_CANCEL_USER_RE.sub("cancelled", msg))
+def _step_error(node_id: str, error: object) -> dict[str, str]:
+    """A failed step as the run result lists it: its id and its error's
+    message, never the stack (`goatlib.workflows.run_errors`)."""
+    return {"node_id": node_id, "message": error_message(error)}
 
 
 class WorkflowNode(BaseModel):
@@ -78,14 +76,14 @@ class WorkflowRunnerParams(BaseModel):
 class WorkflowResult(BaseModel):
     """Result from workflow execution."""
 
-    status: str = "success"
+    status: str = Field(default="success", description='"success" or "failed"')
     node_results: dict[str, dict[str, Any]] = Field(
         default_factory=dict,
         description="Results keyed by node_id",
     )
-    errors: list[dict[str, Any]] = Field(
+    errors: list[dict[str, str]] = Field(
         default_factory=list,
-        description="Any errors encountered",
+        description='Each failed step: {"node_id", "message"}',
     )
 
 
@@ -526,6 +524,56 @@ def convert_filter_to_cql(filter_config: dict) -> dict | None:
     return {"op": logical_op, "args": cql_args}
 
 
+def if_input_source(
+    if_node_id: str,
+    edges: list[dict[str, Any]],
+    all_nodes: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """The node whose layer an If step passes on: the source of its input
+    connection (the first one; an If takes exactly one)."""
+    edge = next((e for e in edges if e["target"] == if_node_id), None)
+    if edge is None:
+        return None
+    return next((n for n in all_nodes if n["id"] == edge["source"]), None)
+
+
+def passed_on_step(
+    source_node: dict[str, Any],
+    edges: list[dict[str, Any]],
+    all_nodes: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """The step whose layer `source_node` delivers: the node itself, or for
+    an If step the step before it, as an If passes its input layer on
+    unchanged (a chain of Ifs is followed back). None when an If has no
+    input or the chain loops."""
+    seen: set[str] = set()
+    node: dict[str, Any] | None = source_node
+    while node is not None and node.get("data", {}).get("type") == "if":
+        if node["id"] in seen:
+            return None
+        seen.add(node["id"])
+        node = if_input_source(node["id"], edges, all_nodes)
+    return node
+
+
+def dataset_filter_for_source(
+    source_node: dict[str, Any],
+    edges: list[dict[str, Any]],
+    all_nodes: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """The CQL2-JSON filter that comes with the layer `source_node` delivers.
+
+    A dataset step delivers its layer with its own filter, and If steps pass
+    it on with it (`passed_on_step`). A tool step's result has no filter: the
+    filter of a dataset it reads applies when it runs.
+    """
+    node = passed_on_step(source_node, edges, all_nodes)
+    if node is None or node.get("data", {}).get("type") != "dataset":
+        return None
+    raw_filter = node.get("data", {}).get("filter") or None
+    return convert_filter_to_cql(raw_filter) if raw_filter else None
+
+
 def export_style(
     export_data: dict[str, Any], source_result: dict[str, Any] | None
 ) -> dict[str, Any] | None:
@@ -543,26 +591,29 @@ def export_style(
     return source_properties if isinstance(source_properties, dict) else None
 
 
-def build_tool_inputs(
+def tool_arguments(
     node: dict,
     edges: list[dict],
     all_nodes: list[dict],
-    results: dict[str, dict],
-    params: WorkflowRunnerParams,
+    variables: list[dict[str, Any]],
+    layer_id_for_source: Callable[[dict], str | None],
 ) -> dict[str, Any]:
-    """Build the input parameters for a tool node.
+    """The tool parameters a node's settings and incoming edges give.
 
-    Combines:
-    - Node's configured parameters
-    - Input layer IDs from connected nodes
-    - Workflow context (user_id, project_id, temp_mode, etc.)
+    Combines the node's configured parameters (workflow variables resolved,
+    scalars wrapped where the tool expects a list) with the layer each
+    incoming edge delivers, then folds the canvas-only numbered inputs into
+    the shapes the tools take. `layer_id_for_source` names the layer an
+    upstream node delivers: a run asks its results, the workflow check
+    (`workflow_arguments`) puts placeholders in. `add_run_context` adds the
+    run's own values.
     """
     # Start with node's configured parameters
     node_data = node.get("data", {})
     inputs: dict[str, Any] = dict(node_data.get("config", {}))
 
     # Substitute workflow variables in config values
-    var_map = variable_map(params.variables)
+    var_map = variable_map(variables)
     if var_map:
         inputs = substitute_variables_in_config(inputs, var_map)
 
@@ -583,20 +634,15 @@ def build_tool_inputs(
         if not source_node:
             continue
 
-        # Determine target handle (input parameter name)
-        target_handle = edge.get("targetHandle", "input_layer_id")
+        # Target handle (input parameter name). A connection that names
+        # none, also with an explicit null, feeds the usual single input.
+        target_handle = edge.get("targetHandle") or "input_layer_id"
 
         # Get layer_id from source
-        layer_id = get_input_layer_id(source_node, results)
+        layer_id = layer_id_for_source(source_node)
         if layer_id:
-            # Get optional filter from dataset nodes
-            source_type = source_node.get("data", {}).get("type")
-            filter_config = None
-            if source_type == "dataset":
-                raw_filter = source_node.get("data", {}).get("filter") or None
-                filter_config = (
-                    convert_filter_to_cql(raw_filter) if raw_filter else None
-                )
+            # The dataset's filter, also when If steps pass its layer on
+            filter_config = dataset_filter_for_source(source_node, edges, all_nodes)
 
             # Check if the target field expects an object with a layer_id
             # property (e.g. StartingPointsLayer) rather than a plain string
@@ -704,20 +750,64 @@ def build_tool_inputs(
         if opportunities:
             inputs["opportunities"] = opportunities
 
-    # Add workflow context
-    inputs["user_id"] = params.user_id
-    inputs["project_id"] = params.project_id
-    inputs["folder_id"] = params.folder_id
+    return inputs
+
+
+def add_run_context(
+    inputs: dict[str, Any],
+    node: dict,
+    *,
+    user_id: str,
+    project_id: str,
+    folder_id: str,
+    workflow_id: str,
+) -> dict[str, Any]:
+    """`inputs` with what every tool job of a workflow run gets besides its
+    parameters: who runs it, where results go, and temp mode."""
+    inputs["user_id"] = user_id
+    inputs["project_id"] = project_id
+    inputs["folder_id"] = folder_id
 
     # Enable temp mode for workflow preview
     inputs["temp_mode"] = True
-    inputs["workflow_id"] = params.workflow_id
+    inputs["workflow_id"] = workflow_id
     inputs["node_id"] = node["id"]
 
     # Set layer name from node label
-    inputs["result_layer_name"] = node_data.get("label", "Workflow Result")
+    inputs["result_layer_name"] = node.get("data", {}).get("label", "Workflow Result")
 
     return inputs
+
+
+def build_tool_inputs(
+    node: dict,
+    edges: list[dict],
+    all_nodes: list[dict],
+    results: dict[str, dict],
+    params: WorkflowRunnerParams,
+) -> dict[str, Any]:
+    """Build the input parameters for a tool node.
+
+    Combines:
+    - Node's configured parameters
+    - Input layer IDs from connected nodes
+    - Workflow context (user_id, project_id, temp_mode, etc.)
+    """
+    inputs = tool_arguments(
+        node,
+        edges,
+        all_nodes,
+        params.variables,
+        lambda source_node: get_input_layer_id(source_node, results),
+    )
+    return add_run_context(
+        inputs,
+        node,
+        user_id=params.user_id,
+        project_id=params.project_id,
+        folder_id=params.folder_id,
+        workflow_id=params.workflow_id,
+    )
 
 
 def run_tool_node(
@@ -804,6 +894,40 @@ def run_tool_node(
     }
 
 
+def copy_passed_on_dataset(
+    step: dict[str, Any],
+    layer_id: str | None,
+    edges: list[dict[str, Any]],
+    all_nodes: list[dict[str, Any]],
+    params: WorkflowRunnerParams,
+) -> tuple[str, dict[str, Any]]:
+    """Write the dataset rows a dataset step, or an If step passing them on,
+    delivers to that step's own temp folder, the one finalize_layer reads for
+    an export behind it.
+
+    Only a tool step writes its result to a temp folder; a dataset step
+    delivers its layer as it is, with its filter, and an If passes both on
+    (`dataset_filter_for_source`). `layer_create_filtered` in temp mode reads
+    the layer with that filter and writes the rows there, with the dataset
+    layer's style (`dataset_layer_style`) in their temp metadata.
+    """
+    dataset = passed_on_step(step, edges, all_nodes) or step
+    inputs = add_run_context(
+        {
+            "source_layer_id": layer_id,
+            # The tool takes a filter; an empty one keeps every row.
+            "cql_filter": dataset_filter_for_source(step, edges, all_nodes) or {},
+            "source_properties": dataset_layer_style(params, dataset),
+        },
+        step,
+        user_id=params.user_id,
+        project_id=params.project_id,
+        folder_id=params.folder_id,
+        workflow_id=params.workflow_id,
+    )
+    return run_tool_node(step["id"], "layer_create_filtered", inputs)
+
+
 async def _connect() -> tuple[asyncpg.Connection, str]:
     """A connection to the GOAT database, and its customer schema."""
     from goatlib.tools.base import ToolSettings
@@ -855,6 +979,42 @@ def resolve_dataset_layers(params: WorkflowRunnerParams) -> list[dict[str, Any]]
     return nodes
 
 
+def dataset_layer_style(
+    params: WorkflowRunnerParams, dataset_node: dict[str, Any]
+) -> dict[str, Any] | None:
+    """The style an export saves a dataset step's rows in (``dataset_style``);
+    None gives the saved layer the default style, also when the look-up
+    fails: the style must not fail the export."""
+    if not (dataset_node.get("data") or {}).get("layerId"):
+        return None
+
+    async def lookup() -> dict[str, Any] | None:
+        conn, schema = await _connect()
+        try:
+            return await dataset_style(
+                conn,
+                schema,
+                user_id=params.user_id,
+                project_id=params.project_id,
+                node=dataset_node,
+            )
+        finally:
+            await conn.close()
+
+    try:
+        return asyncio.run(lookup())
+    except Exception as e:
+        # Only the error type: job output is shown to the user (see
+        # resolve_dataset_layers).
+        message = (
+            f"Could not look up the style of dataset node {dataset_node['id']} "
+            f"({type(e).__name__}); its rows are saved in the default style"
+        )
+        logger.warning(message)
+        print(f"[workflow_runner] {message}")
+        return None
+
+
 def cleanup_previous_results(params: WorkflowRunnerParams) -> None:
     """Clean up temp files from previous workflow run."""
     from goatlib.tools.cleanup_temp import cleanup_workflow_temp
@@ -896,7 +1056,7 @@ def run_append_nodes(
     edges: list[dict],
     results: dict[str, dict],
     node_jobs: dict[str, str],
-    errors: list[dict],
+    errors: list[dict[str, str]],
 ) -> None:
     """Run the "Save as dataset" nodes set to "Add to existing" through
     ``finalize_layer`` with a ``target_layer_id``.
@@ -917,16 +1077,16 @@ def run_append_nodes(
             continue
         target = data.get("targetLayerId")
         if not target:
-            errors.append({"node_id": node_id, "error": "Choose a target layer."})
+            errors.append(_step_error(node_id, "Choose a target layer."))
             continue
         produced = _produced_source(node_id, edges, results)
         if produced is None:
             errors.append(
-                {
-                    "node_id": node_id,
-                    "error": "Connect the result of a tool to this node; a dataset "
+                _step_error(
+                    node_id,
+                    "Connect the result of a tool to this node; a dataset "
                     "cannot be appended directly.",
-                }
+                )
             )
             continue
         source_node_id, source_result = produced
@@ -953,7 +1113,7 @@ def run_append_nodes(
                 print(
                     f"[workflow_runner] Append node {node_id} failed: {result.get('error')}"
                 )
-                errors.append({"node_id": node_id, "error": result.get("error")})
+                errors.append(_step_error(node_id, result.get("error")))
             else:
                 print(
                     f"[workflow_runner] Append node {node_id} completed: "
@@ -962,7 +1122,7 @@ def run_append_nodes(
         except Exception as e:
             print(f"[workflow_runner] Append node {node_id} failed: {e}")
             logger.error(f"Append node {node_id} failed: {e}")
-            errors.append({"node_id": node_id, "error": str(e)})
+            errors.append(_step_error(node_id, e))
 
 
 def main(
@@ -987,7 +1147,8 @@ def main(
         edges: List of workflow edges
 
     Returns:
-        Execution results for each node
+        Execution results for each node; `status` "failed" and each failed
+        step's {"node_id", "message"} in `errors` when a step failed
     """
     print(f"[workflow_runner] Starting workflow {workflow_id}")
     print(f"[workflow_runner] user_id={user_id}, project_id={project_id}")
@@ -1021,7 +1182,7 @@ def main(
     # Track results per node and node→job mapping
     results: dict[str, dict] = {}
     node_jobs: dict[str, str] = {}  # node_id → child job_id
-    errors: list[dict] = []
+    errors: list[dict[str, str]] = []
 
     # Variable map for If-node condition evaluation
     if_var_map = variable_map(params.variables)
@@ -1046,30 +1207,17 @@ def main(
             try:
                 # Single input edge — the upstream layer flows through to the
                 # active True/False branch.
-                incoming_input = next(
-                    (e for e in edges if e["target"] == node_id),
-                    None,
-                )
                 upstream_layer_id: str | None = None
                 upstream_filter: dict | None = None
-                if incoming_input:
-                    source_node = next(
-                        (n for n in nodes if n["id"] == incoming_input["source"]),
-                        None,
+                source_node = if_input_source(node_id, edges, nodes)
+                if source_node is not None:
+                    upstream_layer_id = get_input_layer_id(source_node, results)
+                    # The filter that comes with the layer (a dataset's, also
+                    # through earlier Ifs), so the condition is evaluated over
+                    # the rows the steps behind this If receive.
+                    upstream_filter = dataset_filter_for_source(
+                        source_node, edges, nodes
                     )
-                    if source_node is not None:
-                        upstream_layer_id = get_input_layer_id(source_node, results)
-                        # Carry the source layer's filter (dataset nodes) so the
-                        # condition is evaluated over the filtered rows.
-                        if source_node.get("data", {}).get("type") == "dataset":
-                            raw_filter = (
-                                source_node.get("data", {}).get("filter") or None
-                            )
-                            upstream_filter = (
-                                convert_filter_to_cql(raw_filter)
-                                if raw_filter
-                                else None
-                            )
                 if_result = execute_if_node(
                     node,
                     upstream_layer_id,
@@ -1092,7 +1240,7 @@ def main(
             except Exception as e:
                 print(f"[workflow_runner] If node {node_id} failed: {e}")
                 logger.error(f"If node {node_id} failed: {e}")
-                errors.append({"node_id": node_id, "error": str(e)})
+                errors.append(_step_error(node_id, e))
                 break
             continue
 
@@ -1103,7 +1251,7 @@ def main(
         process_id = node.get("data", {}).get("processId")
 
         if not process_id:
-            errors.append({"node_id": node_id, "error": "No processId"})
+            errors.append(_step_error(node_id, "No tool is chosen for this step."))
             continue
 
         print(f"[workflow_runner] Executing node {node_id} ({process_id})...")
@@ -1123,12 +1271,7 @@ def main(
             # Check if node failed (result contains error)
             if "error" in result:
                 print(f"[workflow_runner] Node {node_id} failed: {result.get('error')}")
-                errors.append(
-                    {
-                        "node_id": node_id,
-                        "error": result.get("error"),
-                    }
-                )
+                errors.append(_step_error(node_id, result.get("error")))
                 # Stop execution on error - downstream nodes depend on this
                 break
 
@@ -1139,12 +1282,7 @@ def main(
         except Exception as e:
             print(f"[workflow_runner] Node {node_id} failed: {e}")
             logger.error(f"Node {node_id} failed: {e}")
-            errors.append(
-                {
-                    "node_id": node_id,
-                    "error": str(e),
-                }
-            )
+            errors.append(_step_error(node_id, e))
             # Stop execution on error - downstream nodes depend on this
             break
 
@@ -1163,11 +1301,16 @@ def main(
         ]
         if export_nodes:
             print(f"[workflow_runner] Processing {len(export_nodes)} export node(s)...")
+        nodes_by_id = {n["id"]: n for n in nodes}
+        # Dataset or If id -> the result of copying the dataset rows it
+        # delivers.
+        dataset_copies: dict[str, dict[str, Any]] = {}
 
         for export_node in export_nodes:
             export_node_id = export_node["id"]
             export_data = export_node.get("data", {})
-            dataset_name = export_data.get("datasetName", "").strip()
+            # An explicit null is no name, like an empty one.
+            dataset_name = str(export_data.get("datasetName") or "").strip()
 
             # Honor skipped status from the reachability pass — don't finalize
             # exports on a rejected branch.
@@ -1185,6 +1328,18 @@ def main(
                 continue
 
             produced = _produced_source(export_node_id, edges, results)
+            if produced is None:
+                # A dataset step has no result, it delivers its layer: the
+                # first one connected is saved when no step's result is.
+                datasets = [
+                    e["source"]
+                    for e in edges
+                    if e["target"] == export_node_id
+                    and nodes_by_id.get(e["source"], {}).get("data", {}).get("type")
+                    == "dataset"
+                    and get_input_layer_id(nodes_by_id[e["source"]], results)
+                ]
+                produced = (datasets[0], {}) if datasets else None
             if produced is None:
                 print(
                     f"[workflow_runner] Export node {export_node_id}: "
@@ -1204,6 +1359,37 @@ def main(
                 # If-nodes pass an upstream temp_layer_id through without writing a temp dir.
                 temp_parts = (source_result.get("temp_layer_id") or "").split(":")
                 temp_node_id = temp_parts[1] if len(temp_parts) >= 2 else source_node_id
+
+                # A dataset's layer, delivered by its step or passed on by an
+                # If, is in no temp folder: its rows are copied to that step's
+                # own one first, once per step.
+                source_node = nodes_by_id.get(source_node_id, {})
+                origin = passed_on_step(source_node, edges, nodes) or {}
+                if origin.get("data", {}).get("type") == "dataset":
+                    if source_node_id not in dataset_copies:
+                        try:
+                            copy_job_id, dataset_copies[source_node_id] = (
+                                copy_passed_on_dataset(
+                                    source_node,
+                                    get_input_layer_id(source_node, results),
+                                    edges,
+                                    nodes,
+                                    params,
+                                )
+                            )
+                            node_jobs[source_node_id] = copy_job_id
+                        except Exception as e:
+                            # Kept like a returned error: every export
+                            # behind the step reports it, none copies again.
+                            dataset_copies[source_node_id] = {"error": e}
+                    copy_error = dataset_copies[source_node_id].get("error")
+                    if copy_error is not None:
+                        print(
+                            f"[workflow_runner] Export node {export_node_id}: "
+                            f"copying the rows of {source_node_id} failed: {copy_error}"
+                        )
+                        errors.append(_step_error(export_node_id, copy_error))
+                        continue
 
                 finalize_inputs = {
                     "user_id": params.user_id,
@@ -1233,12 +1419,7 @@ def main(
                         f"[workflow_runner] Export node {export_node_id} failed: "
                         f"{result.get('error')}"
                     )
-                    errors.append(
-                        {
-                            "node_id": export_node_id,
-                            "error": result.get("error"),
-                        }
-                    )
+                    errors.append(_step_error(export_node_id, result.get("error")))
                 else:
                     print(
                         f"[workflow_runner] Export node {export_node_id} completed: "
@@ -1248,12 +1429,7 @@ def main(
             except Exception as e:
                 print(f"[workflow_runner] Export node {export_node_id} failed: {e}")
                 logger.error(f"Export node {export_node_id} failed: {e}")
-                errors.append(
-                    {
-                        "node_id": export_node_id,
-                        "error": str(e),
-                    }
-                )
+                errors.append(_step_error(export_node_id, e))
 
     # Append nodes, after the exports and only if every step so far succeeded.
     if not errors:
@@ -1263,25 +1439,17 @@ def main(
         f"[workflow_runner] Workflow complete: {len(results)} results, {len(errors)} errors"
     )
 
+    # A failed run is returned, not raised: Windmill keeps only an
+    # exception's text as a failed job's result, which would lose each
+    # step's own error. processes reports a result with errors as a failed
+    # job and lists them as the job's `node_errors`.
     result = WorkflowResult(
-        status="success" if not errors else "partial",
+        status="failed" if errors else "success",
         node_results=results,
         errors=errors,
     ).model_dump()
 
     # Add node_jobs mapping to result for final reference
     result["node_jobs"] = node_jobs
-
-    # If there were errors, raise to mark job as failed in Windmill
-    if errors:
-        # Build error message from first error
-        first_error = errors[0]
-        error_info = first_error.get("error", {})
-        if isinstance(error_info, dict):
-            error_msg = error_info.get("message", str(error_info))
-        else:
-            error_msg = str(error_info)
-        node_id = first_error.get("node_id", "unknown")
-        raise RuntimeError(f"Node {node_id} failed: {_sanitize_error_msg(error_msg)}")
 
     return result

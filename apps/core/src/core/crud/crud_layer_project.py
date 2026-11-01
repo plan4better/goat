@@ -19,12 +19,15 @@ from core.schemas.project import (
     IFeatureToolProjectRead,
     IRasterProjectRead,
     ITableProjectRead,
+    ProjectLayerSearchHit,
+    ProjectLayerSearchPage,
     layer_type_mapping_read,
     layer_type_mapping_update,
 )
 
 # Local application imports
 from .base import CRUDBase
+from .crud_content import content as crud_content
 
 
 async def make_room_at_top(
@@ -91,7 +94,172 @@ LOCKED_ROW_KEYS = frozenset(
 )
 
 
+def contains_pattern(text_: str) -> str:
+    """A case-insensitive substring pattern for ``ILIKE`` with ``%``, ``_`` and
+    ``\\`` taken literally (backslash is Postgres's default LIKE escape)."""
+    escaped = text_.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def locked_link_sql(schema: str, link: str, user_param: str) -> str:
+    """The locked-row rule (D7) as a SQL boolean over a ``layer_project`` row
+    aliased ``link`` (its ``shareable`` and ``layer_id``), for the user bound as
+    ``:<user_param>``: a non-shareable link to a dataset the user has no access
+    to of his own. Only a non-shareable link can be locked, because a shareable
+    one grants read through rule 6 to anyone who reaches the project; the CASE
+    runs ``effective_role`` for non-shareable links only."""
+    return (
+        f"CASE WHEN {link}.shareable THEN FALSE "
+        f"ELSE {schema}.effective_role('layer', {link}.layer_id, :{user_param}) IS NULL END"
+    )
+
+
+def _layer_search_sql(schema: str) -> str:
+    """Layers whose name in the project or whose dataset's name matches, in
+    projects the caller can read.
+
+    Built from the caller's reach, never from every layer of the installation:
+    the projects of the spaces the caller is a member of, of grants to the
+    caller, their teams or their organisation, and of the folders below a
+    granted folder (a superset of what `effective_role` admits). Only those
+    projects' layers are matched by name, and `effective_role` then decides once
+    per project that has a match: each MATERIALIZED CTE runs on its own, so no
+    condition is pushed into an earlier step. `effective_role` hands a trashed
+    project to its space owner for restoring, so trashed projects are left out
+    explicitly, like every project listing.
+
+    A locked link (`locked_link_sql`, the rule of the project's layer list)
+    shows only what the layer list shows for it: it matches on its own name,
+    never on its dataset's, and the dataset's name is not returned.
+
+    The total rides on a one-row count joined to the page, so a page past the
+    end still carries it without a second query.
+    """
+    return f"""
+WITH RECURSIVE granted AS MATERIALIZED (
+    SELECT rg.resource_type, rg.resource_id
+      FROM {schema}.resource_grant rg
+     WHERE rg.resource_type IN ('project', 'folder')
+       AND ((rg.grantee_type = 'user' AND rg.grantee_id = :user_id)
+         OR (rg.grantee_type = 'team' AND rg.grantee_id IN (
+                SELECT ut.team_id FROM {schema}.user_team ut WHERE ut.user_id = :user_id))
+         OR (rg.grantee_type = 'organization' AND rg.grantee_id = (
+                SELECT u.organization_id FROM {schema}."user" u WHERE u.id = :user_id)))
+),
+-- A granted folder and the folders below it, as deep as folder_chain looks up.
+granted_folders (id, depth) AS (
+    SELECT g.resource_id, 1 FROM granted g WHERE g.resource_type = 'folder'
+    UNION
+    SELECT f.id, gf.depth + 1
+      FROM {schema}.folder f
+      JOIN granted_folders gf ON f.parent_id = gf.id
+     WHERE gf.depth < 4
+),
+reach_ids AS (
+    SELECT p.id FROM {schema}.project p WHERE p.space_id = ANY(:space_ids)
+    UNION
+    SELECT g.resource_id FROM granted g WHERE g.resource_type = 'project'
+    UNION
+    SELECT p.id FROM {schema}.project p JOIN granted_folders gf ON gf.id = p.folder_id
+),
+reach AS MATERIALIZED (
+    SELECT p.id, p.name, p.updated_at
+      FROM reach_ids r
+      JOIN {schema}.project p ON p.id = r.id
+     WHERE p.deleted_at IS NULL
+       AND NOT p.is_template_source
+),
+hits AS MATERIALIZED (
+    SELECT lp.project_id, lp.id AS layer_project_id, lp.layer_id, lp.shareable,
+           lp.name AS layer_name, l.name AS dataset_name,
+           l.type::text AS layer_type, l.feature_layer_geometry_type::text AS geometry_type,
+           lp.name ILIKE :pattern AS by_link_name
+      FROM reach r
+      JOIN {schema}.layer_project lp ON lp.project_id = r.id
+      JOIN {schema}.layer l ON l.id = lp.layer_id
+     WHERE l.deleted_at IS NULL
+       AND (lp.name ILIKE :pattern OR l.name ILIKE :pattern)
+),
+hit_projects AS MATERIALIZED (
+    SELECT DISTINCT project_id FROM hits
+),
+readable AS MATERIALIZED (
+    SELECT project_id FROM hit_projects
+     WHERE {schema}.effective_role('project', project_id, :user_id) IS NOT NULL
+),
+checked AS MATERIALIZED (
+    SELECT h.*, {locked_link_sql(schema, "h", "user_id")} AS locked
+      FROM hits h
+      JOIN readable USING (project_id)
+),
+matched AS MATERIALIZED (
+    SELECT c.project_id, r.name AS project_name, r.updated_at AS project_updated_at,
+           c.layer_project_id, c.layer_name,
+           CASE WHEN c.locked THEN NULL ELSE c.dataset_name END AS dataset_name,
+           c.layer_type, c.geometry_type, c.locked
+      FROM checked c
+      JOIN reach r ON r.id = c.project_id
+     WHERE c.by_link_name OR NOT c.locked
+)
+SELECT m.*, t.total
+  FROM (SELECT count(*) AS total FROM matched) t
+  LEFT JOIN LATERAL (
+        SELECT * FROM matched
+         ORDER BY project_updated_at DESC NULLS LAST, project_id, layer_project_id
+         LIMIT :size OFFSET :offset
+  ) m ON TRUE
+ ORDER BY m.project_updated_at DESC NULLS LAST, m.project_id, m.layer_project_id
+"""
+
+
 class CRUDLayerProject(CRUDBase):
+    async def search(
+        self,
+        async_session: AsyncSession,
+        *,
+        user_id: UUID,
+        search: str,
+        page: int,
+        size: int,
+    ) -> ProjectLayerSearchPage:
+        """Layers whose name in the project, or whose dataset's name, contains
+        ``search`` (case-insensitive, taken literally), in every project the
+        caller can read: their own, shared with them directly, through a team
+        or their organisation, or through a shared folder. Most recently
+        changed projects first."""
+        rows = (
+            (
+                await async_session.execute(
+                    text(_layer_search_sql(settings.SCHEMA)),
+                    {
+                        "pattern": contains_pattern(search),
+                        "space_ids": await crud_content.my_space_ids(
+                            async_session, user_id
+                        ),
+                        "user_id": user_id,
+                        "size": size,
+                        "offset": (page - 1) * size,
+                    },
+                )
+            )
+            .mappings()
+            .all()
+        )
+        # Always one row at least: the count, with no hit beside it on an
+        # empty page.
+        return ProjectLayerSearchPage(
+            items=[
+                ProjectLayerSearchHit.model_validate(
+                    {key: value for key, value in row.items() if key != "total"}
+                )
+                for row in rows
+                if row["layer_project_id"] is not None
+            ],
+            total=int(rows[0]["total"]) if rows else 0,
+            page=page,
+            size=size,
+        )
+
     async def shareable_by_layer_id(
         self,
         async_session: AsyncSession,
@@ -145,7 +313,7 @@ class CRUDLayerProject(CRUDBase):
         result = await async_session.execute(
             text(
                 "SELECT lp.layer_id, "
-                f"{settings.SCHEMA}.effective_role('layer', lp.layer_id, :u) IS NULL AS locked "
+                f"{locked_link_sql(settings.SCHEMA, 'lp', 'u')} AS locked "
                 f"FROM {settings.SCHEMA}.layer_project lp "
                 f"WHERE {clause} AND NOT lp.shareable"
             ),

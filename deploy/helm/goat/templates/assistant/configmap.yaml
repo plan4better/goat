@@ -1,0 +1,67 @@
+{{- if .Values.assistant.enabled -}}
+{{- $auth := dict "values" .Values.assistant "root" . -}}
+{{- $coreCfg := .Values.core.config | default dict -}}
+{{- $values := .Values.assistant -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "goat.serviceFullname" (dict "context" . "component" "assistant") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" (dict "context" . "component" "assistant") | nindent 4 }}
+data:
+  {{- $pgKeys := splitList " " (include "goat.postgresql.configKeys" .) }}
+  {{- range $k, $v := $values.config }}
+  {{- /* The Postgres connection is emitted below, once */}}
+  {{- if not (has $k $pgKeys) }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  {{- end }}
+  {{- include "goat.postgresql.configEnv" (dict "root" $ "config" $values.config) | nindent 2 }}
+  {{- /* The services the tools call, at their in-cluster Service (port 80). */}}
+  {{- range $pair := list (list "ASSISTANT_CORE_URL" "core") (list "ASSISTANT_GEOAPI_URL" "geoapi") (list "ASSISTANT_CATALOG_URL" "catalog") }}
+  {{- $name := index $pair 0 }}
+  {{- $component := index $pair 1 }}
+  {{- if and (index $.Values $component).enabled (not (include "goat.env.userSet" (dict "values" $values "key" $name))) }}
+  {{ $name }}: {{ printf "http://%s" (include "goat.serviceFullname" (dict "context" $ "component" $component)) | quote }}
+  {{- end }}
+  {{- end }}
+  {{- $processesUrl := include "goat.processes.url" . }}
+  {{- if and $processesUrl (not (include "goat.env.userSet" (dict "values" $values "key" "GOAT_PROCESSES_URL"))) }}
+  GOAT_PROCESSES_URL: {{ $processesUrl | quote }}
+  {{- end }}
+  {{- /* Links back into the app and the default CORS origin. */}}
+  {{- if not (include "goat.env.userSet" (dict "values" $values "key" "NEXT_PUBLIC_APP_URL")) }}
+  NEXT_PUBLIC_APP_URL: {{ include "goat.web.publicUrl" . | quote }}
+  {{- end }}
+  {{- $prefix := include "goat.assistant.pathPrefix" . }}
+  {{- if and $prefix (not (include "goat.env.userSet" (dict "values" $values "key" "ROOT_PATH"))) }}
+  ROOT_PATH: {{ $prefix | quote }}
+  {{- end }}
+  {{- /* DNS-rebinding protection of /mcp: the ingress hosts, bare and with any port. */}}
+  {{- if not (include "goat.env.userSet" (dict "values" $values "key" "ASSISTANT_MCP_ALLOWED_HOSTS")) }}
+  ASSISTANT_MCP_ALLOWED_HOSTS: {{ include "goat.assistant.mcpAllowedHosts" . | quote }}
+  {{- end }}
+  {{- if not (include "goat.env.userSet" (dict "values" $values "key" "ASSISTANT_MCP_AUDIT_RETENTION_DAYS")) }}
+  ASSISTANT_MCP_AUDIT_RETENTION_DAYS: {{ $values.mcp.auditRetentionDays | quote }}
+  {{- end }}
+  {{- /* Not wired to a Secret: Keycloak from core's non-secret values, as the catalog does. */}}
+  {{- if not (include "goat.auth.wired" $auth) }}
+  {{- if and $coreCfg.KEYCLOAK_SERVER_URL (not (include "goat.env.userSet" (dict "values" $values "key" "KEYCLOAK_SERVER_URL"))) }}
+  KEYCLOAK_SERVER_URL: {{ $coreCfg.KEYCLOAK_SERVER_URL | quote }}
+  {{- end }}
+  {{- if and $coreCfg.REALM_NAME (not (include "goat.env.userSet" (dict "values" $values "key" "REALM_NAME"))) }}
+  REALM_NAME: {{ $coreCfg.REALM_NAME | quote }}
+  {{- end }}
+  {{- end }}
+  {{- /* Auth on without a Secret: the web app's client from web.config, as the web app reads it. */}}
+  {{- range $key := list "KEYCLOAK_CLIENT_ID" "KEYCLOAK_CLIENT_SECRET" }}
+  {{- if eq (include "goat.assistant.webClientSource" (dict "root" $ "key" $key)) "config" }}
+  {{ $key }}: {{ index $.Values.web.config $key | quote }}
+  {{- end }}
+  {{- end }}
+  {{- /* Company CA, trusted in addition to the system CAs by every outbound client. */}}
+  {{- if and (include "goat.caBundle.enabled" .) (not (include "goat.env.userSet" (dict "values" $values "key" "GOAT_CA_BUNDLE"))) }}
+  GOAT_CA_BUNDLE: {{ include "goat.caBundle.path" . | quote }}
+  {{- end }}
+{{- end }}

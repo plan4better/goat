@@ -272,6 +272,30 @@ class TestAnalyticsServiceAreaStatistics:
                         assert result["total_area"] == 1000.5
                         assert result["unit"] == "square_meters"
 
+    def test_area_statistics_passes_the_group_column(self):
+        service = AnalyticsService()
+        with (
+            patch.object(service, "_get_table_name") as mock_table,
+            patch.object(service, "_build_where_clause") as mock_where,
+            patch("processes.services.analytics_service.ducklake_manager") as mock_dm,
+            patch(
+                "processes.services.analytics_service.calculate_area_statistics"
+            ) as mock_calc,
+        ):
+            mock_table.return_value = "lake.schema.table"
+            mock_where.return_value = ("TRUE", [])
+            mock_dm.connection.return_value.__enter__ = MagicMock(
+                return_value=MagicMock()
+            )
+            mock_dm.connection.return_value.__exit__ = MagicMock(return_value=None)
+            mock_calc.return_value = MagicMock(model_dump=lambda: {"groups": []})
+
+            service.area_statistics(
+                "layer-123", operation="sum", group_by_column="zone"
+            )
+
+            assert mock_calc.call_args.kwargs["group_by_column"] == "zone"
+
 
 class TestCatalogLayers:
     """A promoted catalog layer is not in DuckLake.
@@ -397,6 +421,21 @@ class TestCatalogLayers:
             result = service.class_breaks(self.LAYER_ID, "level", "quantile", 2)
 
         assert result["breaks"]
+
+    def test_column_names_read_a_catalog_layer(self, tmp_path, monkeypatch):
+        """What the workflow check compares field settings with."""
+        monkeypatch.setenv("CATALOG_LAYERS_DIR", str(tmp_path))
+        self._write_layer(tmp_path, self.TABLE)
+        service = AnalyticsService()
+
+        with patch(
+            "processes.services.analytics_service.ducklake_manager",
+            self._fresh_connections(),
+        ):
+            names = service.column_names(self.LAYER_ID)
+
+        # rowid is the view's own column (`catalog_view_sql`).
+        assert names == ["rowid", "source", "level"]
 
 
 def test_validate_sql_loads_spatial_through_goatlib(monkeypatch) -> None:

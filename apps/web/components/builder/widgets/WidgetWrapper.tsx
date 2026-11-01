@@ -51,6 +51,7 @@ function useWidgetHidden(widget: BuilderWidgetSchema, viewOnly?: boolean): boole
   }, [viewOnly, widget.config, temporaryFilters]);
 }
 
+import WidgetErrorBoundary from "@/components/builder/widgets/WidgetErrorBoundary";
 import WidgetChart from "@/components/builder/widgets/chart/WidgetChart";
 import WidgetData from "@/components/builder/widgets/data/WidgetData";
 import WidgetElement from "@/components/builder/widgets/elements/WidgetElement";
@@ -142,6 +143,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   panelWidgets,
 }) => {
   const isHidden = useWidgetHidden(widget, viewOnly);
+  const configKey = useMemo(() => JSON.stringify(widget.config ?? null), [widget.config]);
 
   // Completely remove the widget from the layout in public view
   if (isHidden) return null;
@@ -191,17 +193,23 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     </Box>
   );
 
+  // A published dashboard leaves out a widget that fails to render; the editor
+  // keeps its frame, so it can still be selected, fixed or deleted.
   return viewOnly ? (
-    <Box sx={(theme) => ({ width: "100%", ...widgetPadding(theme), pointerEvents: "all" })}>
-      {widgetContent}
-    </Box>
+    <WidgetErrorBoundary widgetId={widget.id} resetKey={configKey} showNotice={false}>
+      <Box sx={(theme) => ({ width: "100%", ...widgetPadding(theme), pointerEvents: "all" })}>
+        {widgetContent}
+      </Box>
+    </WidgetErrorBoundary>
   ) : (
     <DraggableWidgetContainer
       widget={widget}
       onWidgetDelete={onWidgetDelete}
       onWidgetDuplicate={onWidgetDuplicate}
       onSelectPanel={onSelectPanel}>
-      {widgetContent}
+      <WidgetErrorBoundary widgetId={widget.id} resetKey={configKey} showNotice>
+        {widgetContent}
+      </WidgetErrorBoundary>
     </DraggableWidgetContainer>
   );
 };

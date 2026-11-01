@@ -19,7 +19,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from functools import lru_cache
 from typing import Any
 from uuid import UUID
@@ -51,6 +51,32 @@ def is_temp_layer_id(text: str) -> bool:
         and len(parts) >= 2
         and all(TEMP_LAYER_PART_RE.fullmatch(part) for part in parts)
     )
+
+
+# Inputs naming a workflow's temporary folder: `user_<id>/w_<workflow>/n_<step>/`
+# is built from them as given, so they must not be able to leave it.
+TEMP_STEP_FIELDS: tuple[str, ...] = ("node_id", "export_node_id")
+
+
+def _is_safe_step_id(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) <= MAX_REFERENCE_LENGTH
+        and TEMP_LAYER_PART_RE.fullmatch(value) is not None
+    )
+
+
+def ensure_safe_workflow_ids(
+    workflow_id: str | None, step_ids: Iterable[object]
+) -> None:
+    """Refuse a workflow id that is not a UUID and a step id with anything
+    but letters, digits, `-` and `_`: both become folder names of the
+    caller's temporary results."""
+    if workflow_id is not None and not UUID_RE.fullmatch(str(workflow_id)):
+        raise _refuse("workflow_id must be a UUID")
+    for step_id in step_ids:
+        if not _is_safe_step_id(step_id):
+            raise _refuse("a step id may only contain letters, digits, '-' and '_'")
 
 
 # Layer fields a tool's schema does not mark as a layer selector.
@@ -195,6 +221,14 @@ def _refuse(detail: str) -> HTTPException:
 def _check_locations(
     process_id: str, inputs: dict[str, Any], user_id: UUID | None
 ) -> None:
+    ensure_safe_workflow_ids(
+        inputs.get("workflow_id") or None,
+        [
+            inputs[name]
+            for name in TEMP_STEP_FIELDS
+            if inputs.get(name) not in (None, "")
+        ],
+    )
     layer_names = {p.split(".")[0].removesuffix("[]") for p in layer_fields(process_id)}
     for name, value in inputs.items():
         if value in (None, "", []) or name in layer_names:
@@ -329,6 +363,28 @@ def analytics_references(process_id: str, inputs: dict[str, Any]) -> References:
     return refs
 
 
+def _connected_inputs(edges: Sequence[dict[str, Any]]) -> set[tuple[Any, Any]]:
+    """(step id, input name) of every input an edge feeds."""
+    return {
+        (edge.get("target"), edge.get("targetHandle", "input_layer_id"))
+        for edge in edges
+    }
+
+
+def _unconnected_config(
+    node: dict[str, Any], connected: set[tuple[Any, Any]]
+) -> dict[str, Any]:
+    """A tool step's settings without the inputs an edge feeds: the runner
+    replaces those with the upstream step's layer, so their saved values are
+    never read."""
+    data = node.get("data") or {}
+    return {
+        key: value
+        for key, value in (data.get("config") or {}).items()
+        if (node.get("id"), key) not in connected
+    }
+
+
 def workflow_references(
     nodes: list[dict[str, Any]],
     project_id: Any,
@@ -343,10 +399,7 @@ def workflow_references(
     still holds, often one left from before the input was connected, is
     never read. The upstream dataset's layer is checked instead.
     """
-    connected = {
-        (edge.get("target"), edge.get("targetHandle", "input_layer_id"))
-        for edge in edges
-    }
+    connected = _connected_inputs(edges)
     refs = References()
     for node in nodes:
         data = node.get("data") or {}
@@ -360,11 +413,7 @@ def workflow_references(
             tool = str(data.get("processId") or "")
             if tool not in REGISTERED_TOOLS:
                 raise _refuse(f"Unknown tool in workflow: {tool!r}")
-            config = {
-                key: value
-                for key, value in (data.get("config") or {}).items()
-                if (node.get("id"), key) not in connected
-            }
+            config = _unconnected_config(node, connected)
             for entry in tool_references(tool, config).entries:
                 if entry["kind"] not in ("project", "folder"):
                     refs.entries.append(entry)
@@ -376,66 +425,38 @@ def workflow_references(
 
 
 def refused_workflow_nodes(
-    nodes: list[dict[str, Any]], denied: list[dict[str, str]]
+    nodes: list[dict[str, Any]],
+    denied: list[dict[str, str]],
+    edges: Sequence[dict[str, Any]] = (),
 ) -> list[str]:
-    """The workflow's nodes that name a refused dataset, layer or bundle:
-    a dataset node by its layer, a tool node by any setting holding the id."""
+    """The workflow's steps that name a refused dataset, layer, project entry
+    or network: a dataset step by its layer, a tool step by a setting holding
+    the id. Inputs an edge feeds are left out, as in `workflow_references`:
+    the runner never reads their saved values."""
     refused_ids = {
         str(entry.get("raw_id", entry.get("id")))
         for entry in denied
-        if entry.get("kind") in ("layer", "bundle")
+        if entry.get("kind") in ("layer", "layer_project", "bundle")
     }
+    connected = _connected_inputs(edges)
     names: list[str] = []
     for node in nodes:
         data = node.get("data") or {}
         if data.get("type") == "dataset":
             hit = str(data.get("layerId")) in refused_ids
         elif data.get("type") == "tool":
-            hit = any(
-                str(value) in refused_ids
-                for value in _layer_shaped_values(data.get("config") or {})
-                + [
-                    value
-                    for path in BUNDLE_READ_FIELDS
-                    for value in _values(data.get("config") or {}, path)
-                ]
-            )
+            config = _unconnected_config(node, connected)
+            named = _layer_shaped_values(config) + [
+                value
+                for path in BUNDLE_READ_FIELDS + LAYER_PROJECT_FIELDS
+                for value in _values(config, path)
+            ]
+            hit = any(str(value) in refused_ids for value in named)
         else:
             hit = False
         if hit and node.get("id"):
             names.append(str(node["id"]))
     return names
-
-
-async def ensure_workflow_allowed(
-    user_id: UUID | None, refs: References, nodes: list[dict[str, Any]]
-) -> None:
-    """`ensure_allowed` for a workflow run, whose refusal says which of the
-    caller's own nodes hold what they may not use, and whether the project
-    or folder it writes to is refused. Node ids are the caller's own, so the
-    answer reveals nothing about the data, not even whether it exists."""
-    if not refs.entries:
-        return
-    try:
-        denied = await denied_references(user_id, refs.entries)
-    except Exception:
-        logger.exception("access check failed")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Access could not be checked",
-        )
-    if denied:
-        logger.info("access denied user=%s refs=%s", user_id, denied)
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "message": "Resource not found",
-                "refused_nodes": refused_workflow_nodes(nodes, denied),
-                "destination_refused": any(
-                    entry.get("kind") in ("project", "folder") for entry in denied
-                ),
-            },
-        )
 
 
 _pool: asyncpg.Pool | None = None
@@ -526,22 +547,30 @@ async def ensure_empty_copy_of_template(template_id: str, layer_id: str) -> None
         )
 
 
-async def ensure_allowed(user_id: UUID | None, refs: References) -> None:
-    """404 unless the caller may use everything referenced.
-
-    404, the answer for a missing resource, so a probe cannot tell "not
-    yours" from "does not exist". A failed check is a 503, never a pass.
-    """
+async def refused_references(
+    user_id: UUID | None, refs: References
+) -> list[dict[str, str]]:
+    """The references the caller may not use. A failed check is a 503,
+    never a pass; nothing referenced asks nothing."""
     if not refs.entries:
-        return
+        return []
     try:
-        denied = await denied_references(user_id, refs.entries)
+        return await denied_references(user_id, refs.entries)
     except Exception:
         logger.exception("access check failed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Access could not be checked",
         )
+
+
+async def ensure_allowed(user_id: UUID | None, refs: References) -> None:
+    """404 unless the caller may use everything referenced.
+
+    404, the answer for a missing resource, so a probe cannot tell "not
+    yours" from "does not exist". A failed check is a 503, never a pass.
+    """
+    denied = await refused_references(user_id, refs)
     if denied:
         logger.info("access denied user=%s refs=%s", user_id, denied)
         raise HTTPException(

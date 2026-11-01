@@ -28,6 +28,9 @@ from core.schemas.content import (
     ContentCreator,
     ContentItem,
     ContentPage,
+    ContentSearchHit,
+    ContentSearchPage,
+    ContentSearchType,
     ContentView,
     ResourceType,
     SharedWith,
@@ -468,6 +471,146 @@ WITH items AS (
 """
 
 
+def _content_search_sql(schema: str) -> str:
+    """Projects, datasets and the workflows and layouts of projects that the
+    caller can open, whose name, project name, folder or owner matches.
+
+    Built from the caller's reach like the layer search
+    (`crud_layer_project._layer_search_sql`), never from every row of the
+    installation: what lives in the caller's spaces, what is granted to them,
+    their teams or their organisation, and what sits in the folders below a
+    granted folder. `effective_role` then decides once per project, layer or
+    bundle that has a match (a workflow or layout goes by its project). A
+    folder matches only when the caller can open it, so a hit never reveals
+    the name of someone else's private folder above a shared one. Trashed
+    items and template sources are left out, as in every listing.
+    """
+    return f"""
+WITH RECURSIVE granted AS MATERIALIZED (
+    SELECT rg.resource_type, rg.resource_id
+      FROM {schema}.resource_grant rg
+     WHERE rg.resource_type IN ('project', 'folder', 'layer', 'bundle')
+       AND ((rg.grantee_type = 'user' AND rg.grantee_id = :user_id)
+         OR (rg.grantee_type = 'team' AND rg.grantee_id IN (
+                SELECT ut.team_id FROM {schema}.user_team ut WHERE ut.user_id = :user_id))
+         OR (rg.grantee_type = 'organization' AND rg.grantee_id = (
+                SELECT u.organization_id FROM {schema}."user" u WHERE u.id = :user_id)))
+),
+-- A granted folder and the folders below it, as deep as folder_chain looks up.
+granted_folders (id, depth) AS (
+    SELECT g.resource_id, 1 FROM granted g WHERE g.resource_type = 'folder'
+    UNION
+    SELECT f.id, gf.depth + 1
+      FROM {schema}.folder f
+      JOIN granted_folders gf ON f.parent_id = gf.id
+     WHERE gf.depth < 4
+),
+-- Folders the caller can open whose name matches, and the folders below them.
+named_folders (id, depth) AS (
+    SELECT f.id, 1
+      FROM {schema}.folder f
+     WHERE f.deleted_at IS NULL AND f.name ILIKE :pattern
+       AND {schema}.effective_role('folder', f.id, :user_id) IS NOT NULL
+    UNION
+    SELECT f.id, nf.depth + 1
+      FROM {schema}.folder f
+      JOIN named_folders nf ON f.parent_id = nf.id
+     WHERE nf.depth < 4
+),
+named_owners AS MATERIALIZED (
+    SELECT u.id FROM {schema}."user" u
+     WHERE concat_ws(' ', u.firstname, u.lastname) ILIKE :pattern
+),
+reach_projects AS (
+    SELECT p.id FROM {schema}.project p WHERE p.space_id = ANY(:space_ids)
+    UNION
+    SELECT g.resource_id FROM granted g WHERE g.resource_type = 'project'
+    UNION
+    SELECT p.id FROM {schema}.project p JOIN granted_folders gf ON gf.id = p.folder_id
+),
+projects AS MATERIALIZED (
+    SELECT p.id, p.name, p.description, p.space_id, p.folder_id, p.updated_at, p.user_id
+      FROM reach_projects r
+      JOIN {schema}.project p ON p.id = r.id
+     WHERE p.deleted_at IS NULL
+       AND NOT p.is_template_source
+),
+candidates AS MATERIALIZED (
+    SELECT 'project' AS type, p.id, p.name, p.description, NULL::uuid AS project_id,
+           NULL::text AS project_name, p.space_id, p.folder_id, p.updated_at,
+           p.user_id AS owner_id, NULL::text AS layer_type, NULL::text AS geometry_type,
+           NULL::text AS bundle_type, 'project' AS authz_type, p.id AS authz_id,
+           p.name ILIKE :pattern AS by_name, FALSE AS by_project
+      FROM projects p
+     WHERE 'project' = ANY(:types)
+    UNION ALL
+    SELECT 'workflow', w.id, w.name, w.description, p.id, p.name, p.space_id, p.folder_id, w.updated_at,
+           p.user_id, NULL, NULL, NULL, 'project', p.id,
+           w.name ILIKE :pattern, p.name ILIKE :pattern
+      FROM projects p
+      JOIN {schema}.workflow w ON w.project_id = p.id
+     WHERE 'workflow' = ANY(:types)
+    UNION ALL
+    SELECT 'layout', r.id, r.name, r.description, p.id, p.name, p.space_id, p.folder_id, r.updated_at,
+           p.user_id, NULL, NULL, NULL, 'project', p.id,
+           r.name ILIKE :pattern, p.name ILIKE :pattern
+      FROM projects p
+      JOIN {schema}.report_layout r ON r.project_id = p.id
+     WHERE 'layout' = ANY(:types)
+    UNION ALL
+    -- A bundle's member layers are found as the bundle, as the feed lists them.
+    SELECT 'layer', l.id, l.name, l.description, NULL, NULL, l.space_id, l.folder_id, l.updated_at,
+           l.user_id, l.type::text, l.feature_layer_geometry_type::text, NULL,
+           'layer', l.id, l.name ILIKE :pattern, FALSE
+      FROM {schema}.layer l
+     WHERE 'layer' = ANY(:types)
+       AND l.deleted_at IS NULL AND l.space_id IS NOT NULL
+       AND (l.space_id = ANY(:space_ids)
+            OR l.id IN (SELECT g.resource_id FROM granted g WHERE g.resource_type = 'layer')
+            OR l.folder_id IN (SELECT gf.id FROM granted_folders gf))
+       AND NOT EXISTS (SELECT 1 FROM {schema}.bundle_layer bl WHERE bl.layer_id = l.id)
+    UNION ALL
+    SELECT 'bundle', b.id, b.name, b.description, NULL, NULL, b.space_id, b.folder_id, b.updated_at,
+           b.user_id, NULL, NULL, b.bundle_type::text, 'bundle', b.id,
+           b.name ILIKE :pattern, FALSE
+      FROM {schema}.bundle b
+     WHERE 'bundle' = ANY(:types)
+       AND b.deleted_at IS NULL AND b.space_id IS NOT NULL
+       AND (b.space_id = ANY(:space_ids)
+            OR b.id IN (SELECT g.resource_id FROM granted g WHERE g.resource_type = 'bundle')
+            OR b.folder_id IN (SELECT gf.id FROM granted_folders gf))
+),
+hits AS MATERIALIZED (
+    SELECT c.*,
+           COALESCE(c.folder_id IN (SELECT nf.id FROM named_folders nf), FALSE) AS by_folder,
+           COALESCE(c.owner_id IN (SELECT o.id FROM named_owners o), FALSE) AS by_owner
+      FROM candidates c
+),
+matched AS MATERIALIZED (
+    SELECT * FROM hits WHERE by_name OR by_project OR by_folder OR by_owner
+),
+roles AS MATERIALIZED (
+    SELECT a.authz_type, a.authz_id,
+           {schema}.effective_role(a.authz_type, a.authz_id, :user_id) AS my_role
+      FROM (SELECT DISTINCT authz_type, authz_id FROM matched) a
+),
+found AS MATERIALIZED (
+    SELECT m.*, r.my_role
+      FROM matched m
+      JOIN roles r USING (authz_type, authz_id)
+     WHERE r.my_role IS NOT NULL
+)
+SELECT f.*, t.total
+  FROM (SELECT count(*) AS total FROM found) t
+  LEFT JOIN LATERAL (
+        SELECT * FROM found
+         ORDER BY by_name DESC, updated_at DESC NULLS LAST, type, id
+         LIMIT :size OFFSET :offset
+  ) f ON TRUE
+ ORDER BY f.by_name DESC, f.updated_at DESC NULLS LAST, f.type, f.id
+"""
+
+
 class CRUDContent:
     # Every method below `list` uses `typing.List` rather than the lowercase
     # builtin generic in its signature: once `list` is bound in this class's
@@ -874,6 +1017,138 @@ class CRUDContent:
         )
         return [r[0] for r in rows.all()]
 
+    async def search(
+        self,
+        db: AsyncSession,
+        *,
+        user_id: UUID,
+        search: str,
+        types: Sequence[ContentSearchType],
+        page: int,
+        size: int,
+    ) -> ContentSearchPage:
+        """What the caller can open whose name, project, folder or owner
+        contains ``search`` (case-insensitive, taken literally): name matches
+        first, then the most recently changed. See `_content_search_sql`."""
+        # crud_layer_project imports this module, so its helper is read here.
+        from core.crud.crud_layer_project import contains_pattern
+
+        rows = (
+            (
+                await db.execute(
+                    text(_content_search_sql(settings.SCHEMA)),
+                    {
+                        "pattern": contains_pattern(search),
+                        "types": list(types),
+                        "space_ids": await self.my_space_ids(db, user_id),
+                        "user_id": user_id,
+                        "size": size,
+                        "offset": (page - 1) * size,
+                    },
+                )
+            )
+            .mappings()
+            .all()
+        )
+        # Always one row at least: the count, with no hit beside it on an
+        # empty page.
+        hits = [row for row in rows if row["id"] is not None]
+        spaces = await self._space_labels(db, {row["space_id"] for row in hits})
+        paths = await self._folder_paths(
+            db, user_id, {row["folder_id"] for row in hits if row["folder_id"]}
+        )
+        creators = await self._creators(
+            db, {row["owner_id"] for row in hits if row["owner_id"]}
+        )
+        # `list` names this class's own method here, hence `List`.
+        items: List[ContentSearchHit] = []
+        for row in hits:
+            kind, space_name = spaces[row["space_id"]]
+            flags = {
+                "name": row["by_name"],
+                "project": row["by_project"],
+                "folder": row["by_folder"],
+                "owner": row["by_owner"],
+            }
+            # Validated: the space kind and the match reasons are literals.
+            items.append(
+                ContentSearchHit.model_validate(
+                    {
+                        "type": row["type"],
+                        "id": row["id"],
+                        "name": row["name"],
+                        "description": row["description"] or None,
+                        "project_id": row["project_id"],
+                        "project_name": row["project_name"],
+                        "updated_at": row["updated_at"],
+                        "my_role": row["my_role"],
+                        "created_by": creators.get(row["owner_id"]),
+                        "space_kind": kind,
+                        "space_name": space_name,
+                        "folder_path": paths.get(row["folder_id"], []),
+                        "matched_on": [match for match, flag in flags.items() if flag],
+                        "layer_type": row["layer_type"],
+                        "geometry_type": row["geometry_type"],
+                        "bundle_type": row["bundle_type"],
+                    }
+                )
+            )
+        return ContentSearchPage(
+            items=items,
+            total=int(rows[0]["total"]) if rows else 0,
+            page=page,
+            size=size,
+        )
+
+    async def _space_labels(
+        self, db: AsyncSession, space_ids: set[UUID]
+    ) -> dict[UUID, tuple[str, str | None]]:
+        """Each space's kind and name: the team's or organisation's name, or
+        for a personal space its owner's."""
+        if not space_ids:
+            return {}
+        schema = settings.SCHEMA
+        rows = await db.execute(
+            text(
+                f"""
+                SELECT s.id, s.kind::text AS kind,
+                       COALESCE(t.name, o.name,
+                                NULLIF(concat_ws(' ', u.firstname, u.lastname), '')) AS name
+                  FROM {schema}.space s
+                  LEFT JOIN {schema}.team t ON t.id = s.team_id
+                  LEFT JOIN {schema}.organization o ON o.id = s.organization_id
+                  LEFT JOIN {schema}."user" u ON u.id = s.user_id
+                 WHERE s.id = ANY(:ids)
+                """
+            ),
+            {"ids": list(space_ids)},
+        )
+        return {row.id: (row.kind, row.name) for row in rows}
+
+    async def _folder_paths(
+        self, db: AsyncSession, user_id: UUID, folder_ids: set[UUID]
+    ) -> dict[UUID, List[str]]:
+        """Each folder's path, outermost first, through the folders the caller
+        can open: the private folders above a shared one stay unnamed."""
+        if not folder_ids:
+            return {}
+        schema = settings.SCHEMA
+        rows = await db.execute(
+            text(
+                f"""
+                SELECT x.folder_id,
+                       ARRAY(SELECT f.name
+                               FROM {schema}.folder_chain(x.folder_id) WITH ORDINALITY AS c(id, n)
+                               JOIN {schema}.folder f ON f.id = c.id
+                              WHERE {schema}.effective_role('folder', f.id, :u) IS NOT NULL
+                              ORDER BY c.n DESC) AS path
+                  FROM unnest(CAST(:ids AS uuid[])) AS x(folder_id)
+                """
+            ),
+            {"ids": list(folder_ids), "u": user_id},
+        )
+        return {row.folder_id: list(row.path) for row in rows}
+
     async def _creators(
         self, db: AsyncSession, user_ids: set[UUID]
     ) -> dict[UUID, ContentCreator]:
@@ -1099,8 +1374,10 @@ class CRUDContent:
         `home` root is refused — it is folded into the space listing, so it
         has no row of its own to toggle the badge back off.
         """
-        # `authz.require` rejects any resource_type outside its own
-        # allow-list before the table name below is formatted into SQL.
+        # The table name formatted into the UPDATE below is the one
+        # `authz.table_of` holds for the type, never the caller's string;
+        # an unknown type is refused before any SQL.
+        table = authz.table_of(resource_type)
         await authz.require(db, resource_type, resource_id, user_id, "delete")
         if resource_type == "folder":
             folder = await db.get(Folder, resource_id)
@@ -1116,7 +1393,7 @@ class CRUDContent:
         updated = (
             await db.execute(
                 text(
-                    f"UPDATE {settings.SCHEMA}.{resource_type} "
+                    f"UPDATE {settings.SCHEMA}.{table} "
                     "SET restricted = :restricted, updated_at = now() "
                     "WHERE id = :id AND deleted_at IS NULL "
                     "RETURNING id"

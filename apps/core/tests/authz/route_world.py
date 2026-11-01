@@ -92,6 +92,9 @@ def body(method: str, pattern: str, ids: dict[str, Any], grantee_org: UUID) -> A
             "grantee_id": org,
             "role": "template-editor",
         },
+        ("POST", "template/{template_id}/use/preview"): {
+            "project_id": str(ids["project_id"])
+        },
     }
     return bodies.get((method, pattern), {})
 

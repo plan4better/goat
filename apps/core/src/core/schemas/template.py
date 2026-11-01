@@ -301,6 +301,11 @@ class TemplateUseRequest(BaseModel):
     project_id: UUID | None = None
     target_folder_id: UUID | None = None
     name: str | None = None
+    description: str | None = Field(
+        None,
+        description="For a workflow payload: the created workflow's description. "
+        "None leaves it empty.",
+    )
     bindings: dict[str, UUID] = {}
 
 
@@ -336,6 +341,28 @@ class TemplateUseResult(BaseModel):
     added_layer_project_ids: list[int] = []
     unresolved_inputs: list[TemplateInput] = []
     copy_jobs: list[TemplateCopyJob] = []
+
+
+class TemplateUsePreviewRequest(BaseModel):
+    """Body of ``POST /template/{id}/use/preview``: the existing project a
+    workflow template would be used in, and the ``bindings`` the use would
+    get (as in ``TemplateUseRequest``)."""
+
+    project_id: UUID
+    bindings: dict[str, UUID] = {}
+
+
+class TemplateUsePreview(BaseModel):
+    """Response of ``POST /template/{id}/use/preview``: the workflow config a
+    use with the same bindings would write, and the inputs it would leave
+    unresolved. A layer the use would link into the project anew has no
+    ``projectLayerId`` in it yet: the entry does not exist before the use.
+    For the same reason, the tool settings that name an empty copy's dataset
+    by its entry, which the use points at the copy's new entry, are cleared
+    (``None``), as for an input still to be chosen."""
+
+    config: dict[str, Any]
+    unresolved_inputs: list[TemplateInput] = []
 
 
 class TemplateGrantCreate(BaseModel):

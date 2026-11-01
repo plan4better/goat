@@ -35,8 +35,8 @@ const OrganizationLayout = (props: OrganizationLayoutProps) => {
 
   // Sub-sections that have their own tabs (e.g. White Label) should not
   // inherit the Profile/Members tabs. Add their path prefixes here as they
-  // grow — keeps each sub-section's tab strip self-contained.
-  const hideOwnTabs = pathname?.includes("/white-label");
+  // grow — keeps each sub-section's tab strip self-contained. The AI page has no tabs at all.
+  const hideOwnTabs = pathname?.includes("/white-label") || pathname?.includes("/organization/ai");
 
   if (hideOwnTabs) {
     return <>{children}</>;

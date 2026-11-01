@@ -9,6 +9,7 @@ from typing import Any, Self
 
 from goatlib.analysis.accessibility.base import PTToolBase
 from goatlib.analysis.schemas.trip_count import TripCountStationParams
+from goatlib.io.config import parquet_copy_options
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +156,7 @@ class TripCountStationTool(PTToolBase):
                 FROM station_mode_counts
                 WHERE total > 0
                 ORDER BY total DESC
-            ) TO '{output_path}' (FORMAT PARQUET, COMPRESSION ZSTD)
+            ) TO '{output_path}' {parquet_copy_options('COMPRESSION ZSTD')}
         """)
 
         # Collect statistics

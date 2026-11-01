@@ -121,3 +121,16 @@ export const createBufferWorkflow = async (
   expect(created.ok(), await created.text()).toBeTruthy();
   return ((await created.json()) as { id: string }).id;
 };
+
+
+/** Saves a workflow with this config in the project and returns its id. */
+export const createWorkflowFromConfig = async (
+  api: APIRequestContext,
+  projectId: string,
+  name: string,
+  config: { nodes: unknown[]; edges: unknown[] }
+): Promise<string> => {
+  const created = await api.post(`${API_URL}/api/v2/project/${projectId}/workflow`, { data: { name, config } });
+  expect(created.ok(), await created.text()).toBeTruthy();
+  return ((await created.json()) as { id: string }).id;
+};

@@ -232,6 +232,75 @@ Service port is 80, so no port suffix.
 {{- end }}
 
 {{/*
+Path prefix of the assistant behind a path-routing ingress: the first path of
+its ingress without a trailing slash; "" for "/" or without an ingress. It is
+the service's ROOT_PATH and the suffix of the web app's NEXT_PUBLIC_ASSISTANT_URL.
+*/}}
+{{- define "goat.assistant.pathPrefix" -}}
+{{- $ing := .Values.assistant.ingress -}}
+{{- if and $ing.enabled $ing.hosts -}}
+{{- $paths := (first $ing.hosts).paths | default list -}}
+{{- if $paths -}}
+{{- (first $paths).path | default "/" | trimSuffix "/" -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Browser-facing URL of the assistant, the web app's NEXT_PUBLIC_ASSISTANT_URL:
+web.publicUrls.assistant, else its ingress plus the path prefix; "" while the
+assistant is off or has neither (the web app then hides it).
+*/}}
+{{- define "goat.assistant.publicUrl" -}}
+{{- if .Values.assistant.enabled -}}
+{{- $base := include "goat.ingressUrl" (dict "ingress" .Values.assistant.ingress) -}}
+{{- $derived := ternary (printf "%s%s" $base (include "goat.assistant.pathPrefix" .)) "" (ne $base "") -}}
+{{- .Values.web.publicUrls.assistant | default $derived -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Where the assistant gets the web app's Keycloak client (KEYCLOAK_CLIENT_ID,
+KEYCLOAK_CLIENT_SECRET) when auth is on and the assistant itself is not wired
+to a Secret: from the same source the web app reads it. Renders "secret" (the
+web app is wired to a Secret), "extraEnv" (web.extraEnv sets it), "config"
+(web.config holds a value) or "" (nothing to take, or the operator set the key
+for the assistant). Params: root, key (KEYCLOAK_CLIENT_ID | KEYCLOAK_CLIENT_SECRET).
+*/}}
+{{- define "goat.assistant.webClientSource" -}}
+{{- $r := .root -}}
+{{- $values := $r.Values.assistant -}}
+{{- $auth := dict "values" $values "root" $r -}}
+{{- $webAuth := dict "values" $r.Values.web "root" $r -}}
+{{- $webCfg := $r.Values.web.config | default dict -}}
+{{- if and (include "goat.auth.enabled" $auth) (not (include "goat.auth.wired" $auth)) (not (include "goat.env.userSet" (dict "values" $values "key" .key))) -}}
+{{- if include "goat.auth.wired" $webAuth -}}secret
+{{- else if include "goat.env.inExtraEnv" (dict "values" $r.Values.web "key" .key) -}}extraEnv
+{{- else if index $webCfg .key -}}config
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Host headers the assistant's /mcp endpoint accepts, as a JSON list: every
+host of its ingress, bare and with any port (`host:*` does not match the bare
+host). '["*"]', which switches the check off, without an ingress host.
+*/}}
+{{- define "goat.assistant.mcpAllowedHosts" -}}
+{{- $ing := .Values.assistant.ingress -}}
+{{- $hosts := list -}}
+{{- if $ing.enabled -}}
+{{- range ($ing.hosts | default list) -}}
+{{- if .host -}}
+{{- $hosts = append $hosts .host -}}
+{{- $hosts = append $hosts (printf "%s:*" .host) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if $hosts -}}{{ toJson $hosts }}{{- else -}}["*"]{{- end -}}
+{{- end }}
+
+{{/*
 Derive a browser-facing URL from a service's ingress block: scheme from
 whether TLS is configured, host from the first entry. Empty when the ingress
 is off or has no hosts.
@@ -309,7 +378,7 @@ clientId | clientSecret | nextauthSecret).
 {{- end }}
 
 {{/*
-AUTH_ALLOWED_CLIENTS for core, geoapi, processes and catalog: the client IDs
+AUTH_ALLOWED_CLIENTS for core, geoapi, processes, catalog and the assistant: the client IDs
 in `global.auth.allowedClients`, comma-separated. Renders "" when the list is
 empty, and the services then accept tokens of every client. Param: root.
 */}}
@@ -451,8 +520,8 @@ Params: values, root.
 {{/*
 ──── Company CA ─────────────────────────────────────────────────────────────
 `global.caBundle` names a ConfigMap or a Secret holding a PEM CA certificate.
-Mounted at /etc/goat/ca/ca.pem in core, web and the Windmill print, tools
-and workflows workers; each points its own variable at that file.
+Mounted at /etc/goat/ca/ca.pem in core, web, the assistant and the Windmill
+print, tools and workflows workers; each points its own variable at that file.
 */}}
 {{- define "goat.caBundle.enabled" -}}
 {{- $ca := .Values.global.caBundle | default dict -}}

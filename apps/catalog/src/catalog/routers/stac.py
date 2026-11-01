@@ -18,6 +18,7 @@ Endpoints (api spec §2):
 - ``GET|POST /stac/search``                          cross-collection Item Search
 - ``GET /stac/aggregations`` · ``GET /stac/aggregate``
 - ``GET /stac/resolve/{entry_id}`` · ``GET /stac/items/{item_id}``  (GOAT extensions)
+- ``GET /stac/suggest``   GOAT extension: does a word occur?
 
 Every GET response gets an ``ETag``/``Cache-Control`` pair from the
 app-level middleware (``catalog.app``). These are **public read paths**
@@ -26,6 +27,7 @@ through and still rejects a malformed token, so the GOAT UI's public catalog
 page works with no credentials.
 """
 
+import re
 from typing import Annotated, Any, Literal
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
@@ -60,6 +62,7 @@ from catalog.services.search import (
     collection_ids,
     get_collection_row,
     resolve_id,
+    safe_query,
     search_collections,
     search_items,
 )
@@ -354,9 +357,21 @@ def stac_conformance(store: CatalogStore = Depends(get_store)) -> dict[str, Any]
     responses=_documents(stac_build.Queryables),
 )
 def stac_queryables(
-    request: Request, store: CatalogStore = Depends(get_store)
+    request: Request,
+    unit: Annotated[
+        Literal["items", "collections"],
+        Query(
+            description=(
+                "GOAT extension. 'items' (default) lists what Item Search can filter"
+                " and sort by; 'collections' lists what Collection Search can, which"
+                " is a narrower set."
+            )
+        ),
+    ] = "items",
+    store: CatalogStore = Depends(get_store),
 ) -> dict[str, Any]:
-    return queryables_schema(_stac_base(request), store.registry)
+    registry = store.collection_registry if unit == "collections" else store.registry
+    return queryables_schema(_stac_base(request), registry)
 
 
 @router.get(
@@ -650,6 +665,60 @@ def stac_aggregate(
 # --------------------------------------------------------------------------
 # GOAT extensions: resolve / collection-agnostic item lookup
 # --------------------------------------------------------------------------
+
+
+class TermMatch(BaseModel):
+    title: str | None
+    id: str
+
+
+class SuggestedTerms(BaseModel):
+    prefix: str
+    matches: list[TermMatch]
+
+
+#: Ceiling on suggestions; a probe needs a handful of titles, not a listing.
+MAX_SUGGEST_LIMIT = 50
+
+
+@router.get(
+    "/suggest",
+    summary="Check whether a word occurs in the catalog (GOAT extension)",
+    responses=_documents(SuggestedTerms),
+)
+def stac_suggest(
+    prefix: Annotated[
+        str,
+        Query(
+            max_length=100,
+            description="Word beginning, e.g. 'radver'. Case-insensitive.",
+        ),
+    ],
+    limit: Annotated[int, Query(description="Maximum titles to return (1-50).")] = 10,
+    store: CatalogStore = Depends(get_store),
+) -> dict[str, Any]:
+    """Titles of entries whose text contains a word starting with ``prefix``.
+
+    A cheap probe before searching: German catalogues compound words
+    ('Radverkehrsnetz', 'Radwegekataster'), so a guessed keyword often needs a
+    shorter stem than the one a user typed. A blank prefix matches nothing.
+    """
+    cleaned = prefix.strip().lower()
+    if not cleaned:
+        return {"prefix": prefix, "matches": []}
+    # \b anchors at a word start, so 'art' does not match 'Karte'; the pattern is
+    # a parameter, never interpolated, and RE2 has no catastrophic backtracking.
+    rows = safe_query(
+        store,
+        f"SELECT title, id FROM {CatalogStore.ITEMS} "
+        f"WHERE regexp_matches(search_text, ?) "
+        f"ORDER BY member_count DESC, updated DESC LIMIT ?",
+        [rf"\b{re.escape(cleaned)}", max(1, min(limit, MAX_SUGGEST_LIMIT))],
+    )
+    return {
+        "prefix": cleaned,
+        "matches": [{"title": title, "id": item_id} for title, item_id in rows],
+    }
 
 
 @router.get(

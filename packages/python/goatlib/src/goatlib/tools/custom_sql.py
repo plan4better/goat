@@ -26,6 +26,7 @@ from goatlib.analysis.schemas.ui import (
     ui_field,
     ui_sections,
 )
+from goatlib.io.config import parquet_copy_options
 from goatlib.models.io import DatasetMetadata
 from goatlib.tools.base import BaseToolRunner
 from goatlib.tools.schemas import ToolInputBase
@@ -371,7 +372,7 @@ class CustomSqlToolRunner(BaseToolRunner[CustomSqlToolParams]):
 
             con.execute(
                 f"COPY ({params.sql_query}) TO '{output_path}' "
-                f"(FORMAT PARQUET, COMPRESSION ZSTD)"
+                f"{parquet_copy_options('COMPRESSION ZSTD')}"
             )
 
             logger.info(f"Custom SQL result written to {output_path}")

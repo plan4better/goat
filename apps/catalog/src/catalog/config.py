@@ -18,7 +18,6 @@ class CatalogSettings(BaseSettings):
     collections_file: str = "mirror_collections.parquet"
     nuts_file: str = "nuts.parquet"
     version_file: str = "VERSION"
-    enable_mcp: bool = True
     # Path prefix when served behind a path-routing gateway (e.g. "/catalog").
     # Empty = served from "/" of its own host. Reads the repo-wide ROOT_PATH,
     # with a catalog-only override. See goatlib.api.root_path.
@@ -26,12 +25,6 @@ class CatalogSettings(BaseSettings):
         default="",
         validation_alias=AliasChoices("CATALOG_ROOT_PATH", "ROOT_PATH"),
     )
-    # Host headers the /mcp Streamable HTTP transport accepts (DNS-rebinding
-    # protection -- see catalog.routers.mcp.build_transport_security).
-    # ["*"] (the default) disables the check entirely, since a fresh
-    # deployment's real ingress hostname isn't known ahead of time; set this
-    # to the actual hostname(s) once it is (e.g. ["api.goat.example.com"]).
-    mcp_allowed_hosts: list[str] = Field(default_factory=lambda: ["*"])
 
     # DuckDB tuning. The catalog view is scanned from disk per request, so
     # memory is spent on query intermediates rather than resident data.

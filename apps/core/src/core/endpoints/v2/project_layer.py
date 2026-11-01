@@ -26,6 +26,7 @@ from core.schemas.project import (
     ILayerProjectGroupRead,
     IRasterProjectRead,
     ITableProjectRead,
+    ProjectLayerSearchPage,
 )
 from core.schemas.project import (
     request_examples as project_request_examples,
@@ -203,9 +204,10 @@ async def add_catalog_items_to_project(
     )
     from starlette.concurrency import run_in_threadpool
 
-    from core.services.materialize_heal import decide_heal
+    from core.services.materialize_heal import copy_on_disk, decide_heal
 
     mirror = FSPath(settings.CATALOG_DATA_DIR) / "mirror_items.parquet"
+    layers_dir = FSPath(settings.CATALOG_LAYERS_DIR)
     if not mirror.exists():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -260,25 +262,31 @@ async def add_catalog_items_to_project(
             layer_id = uuid_module.UUID(result["layer_id"])
             # Enqueue for a fresh layer — and re-enqueue for an existing one
             # whose data never arrived (`failed`, or `pending` with no job
-            # behind it because the original enqueue failed). That makes
-            # re-adding the dataset the recovery path: no retry affordance,
-            # selecting it again heals it. The rules live in
-            # `services.materialize_heal` — including how old a `pending` or
-            # `running` has to be before it counts as lost.
+            # behind it because the original enqueue failed) or is gone
+            # (`ready`, but its file is not on disk). That makes re-adding the
+            # dataset the recovery path: no retry affordance, selecting it
+            # again heals it. The rules live in `services.materialize_heal` —
+            # including how old a `pending` or `running` has to be before it
+            # counts as lost.
             should_enqueue = result["created"]
             add_link = True
             if not should_enqueue:
-                raw_doc = await conn.fetchval(
+                row = await conn.fetchrow(
                     f"""
-                    SELECT other_properties->'catalog_materialize'
+                    SELECT type, other_properties->'catalog_materialize' AS doc
                     FROM "{settings.SCHEMA}".layer WHERE id = $1
                     """,
                     layer_id,
                 )
+                raw_doc = row["doc"] if row else None
                 materialize_doc = (
                     json.loads(raw_doc) if isinstance(raw_doc, str) else raw_doc
                 )
-                decision = decide_heal(materialize_doc)
+                # Off the event loop: the data volume may be a network mount.
+                copy_present = await run_in_threadpool(
+                    copy_on_disk, layers_dir, layer_id, row["type"] if row else None
+                )
+                decision = decide_heal(materialize_doc, copy_present=copy_present)
                 should_enqueue = decision.should_enqueue
                 if decision.reset_to_pending:
                     # Back to pending so the tree shows "preparing" again.
@@ -395,6 +403,44 @@ async def add_bundle_to_project(
         async_session, project_id=project_id, bundle_id=bundle_id, user_id=user_id
     )
     return group
+
+
+@router.get(
+    "/layers/search",
+    summary="Search the layers of every project the caller can read",
+    response_model=ProjectLayerSearchPage,
+    response_model_exclude_none=True,
+    status_code=200,
+    dependencies=[Depends(auth_z)],
+)
+async def search_project_layers(
+    async_session: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_user_id),
+    search: str = Query(
+        ...,
+        min_length=2,
+        max_length=200,
+        description=(
+            "Text the layer's name in the project, or its dataset's name, "
+            "contains; case-insensitive, % and _ are taken literally"
+        ),
+    ),
+    page: int = Query(1, ge=1, le=1000, description="Page number, at most 1000"),
+    size: int = Query(20, ge=1, le=50, description="Hits per page, at most 50"),
+) -> ProjectLayerSearchPage:
+    """Find layers by name across every project the caller can read: own
+    projects, projects shared with the caller directly, through a team or the
+    organisation, or through a shared folder. Trashed projects and datasets
+    are left out. Returns names and IDs only, never the data; a layer locked
+    in the project's layer list shows no more here."""
+    term = search.strip()
+    if len(term) < 2:
+        raise HTTPException(
+            status_code=422, detail="search needs at least 2 characters besides spaces"
+        )
+    return await crud_layer_project.search(
+        async_session, user_id=user_id, search=term, page=page, size=size
+    )
 
 
 @router.get(

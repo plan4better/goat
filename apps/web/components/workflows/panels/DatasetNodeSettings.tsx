@@ -54,6 +54,9 @@ import DatasetPickerDialog from "@/components/addLayer/DatasetPickerDialog";
 import Container from "@/components/map/panels/Container";
 import Selector from "@/components/map/panels/common/Selector";
 import ToolsHeader from "@/components/map/panels/common/ToolsHeader";
+import StepIssuesSummary from "@/components/workflows/issues/StepIssuesSummary";
+import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
+import { useStepFieldFocus } from "@/hooks/workflows/useStepFieldFocus";
 import Expression from "@/components/map/panels/filter/Expression";
 
 // Tab panel component
@@ -99,6 +102,8 @@ interface DatasetNodeSettingsProps {
 
 export default function DatasetNodeSettings({ node, projectLayers = [], onBack }: DatasetNodeSettingsProps) {
   const { t } = useTranslation("common");
+  const stepIssues = useStepIssues(node.id);
+  const settingsRef = useStepFieldFocus(node.id);
   const dispatch = useDispatch<AppDispatch>();
   const { projectId } = useParams();
   const dateLocale = useDateFnsLocale();
@@ -467,7 +472,8 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
       header={<ToolsHeader onBack={onBack} title={nodeTitle} />}
       disablePadding={false}
       body={
-        <Box sx={{ mt: -1 }}>
+        <Box ref={settingsRef} sx={{ mt: -1 }}>
+          <StepIssuesSummary issues={stepIssues} sx={{ mt: 2 }} />
           {/* Tabs */}
           <Box sx={{ borderBottom: 1, borderColor: "divider", mx: -3 }}>
             <Tabs value={tabValue} onChange={handleTabChange} variant="fullWidth" sx={{ minHeight: 40 }}>

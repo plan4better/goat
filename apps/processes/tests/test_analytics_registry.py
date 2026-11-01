@@ -57,6 +57,12 @@ class TestAnalyticsProcessInputModels:
         assert inp.collection == "layer-123"
         assert inp.operation == AreaOperation.sum
 
+    def test_area_statistics_input_takes_a_group_column(self):
+        inp = AreaStatisticsProcessInput(
+            collection="layer-123", operation=AreaOperation.sum, group_by_column="zone"
+        )
+        assert inp.group_by_column == "zone"
+
 
 class TestAnalyticsDefinitions:
     """Tests for ANALYTICS_DEFINITIONS dict."""
@@ -206,3 +212,14 @@ class TestAnalyticsRegistry:
 
         # Analytics should support sync execution
         assert JobControlOptions.sync_execute in summary.jobControlOptions
+
+
+def test_aggregation_stats_takes_up_to_1000_groups():
+    """A share's denominator reads every group of a layer: the published
+    limit goes up to 1000, the default stays 100."""
+    desc = analytics_registry.get_process_description(
+        "aggregation-stats", "http://localhost:8000"
+    )
+    schema = desc.inputs["limit"].model_dump(by_alias=True)["schema"]
+    assert schema["maximum"] == 1000
+    assert schema["default"] == 100

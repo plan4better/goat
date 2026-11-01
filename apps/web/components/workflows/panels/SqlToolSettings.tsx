@@ -62,6 +62,9 @@ import DatasetPickerDialog from "@/components/addLayer/DatasetPickerDialog";
 import Container from "@/components/map/panels/Container";
 import Selector from "@/components/map/panels/common/Selector";
 import ToolsHeader from "@/components/map/panels/common/ToolsHeader";
+import StepIssuesSummary from "@/components/workflows/issues/StepIssuesSummary";
+import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
+import { useStepFieldFocus } from "@/hooks/workflows/useStepFieldFocus";
 import type { FormulaField, SqlTable } from "@/components/modals/FormulaBuilder";
 import { useWorkflowExecutionContext } from "@/components/workflows/context/WorkflowExecutionContext";
 import SaveDatasetDialog from "@/components/workflows/dialogs/SaveDatasetDialog";
@@ -162,6 +165,8 @@ async function fetchLayerColumns(layerUuid: string): Promise<Record<string, stri
 
 export default function SqlToolSettings({ node, onBack }: SqlToolSettingsProps) {
   const { t } = useTranslation("common");
+  const stepIssues = useStepIssues(node.id);
+  const settingsRef = useStepFieldFocus(node.id);
   const theme = useTheme();
   const dispatch = useDispatch<AppDispatch>();
   const { projectId } = useParams();
@@ -698,11 +703,14 @@ export default function SqlToolSettings({ node, onBack }: SqlToolSettingsProps) 
         header={<ToolsHeader onBack={onBack} title={t("custom_sql")} />}
         disablePadding={false}
         body={
-          <Box sx={{ display: "flex", flexDirection: "column" }}>
+          <Box ref={settingsRef} sx={{ display: "flex", flexDirection: "column" }}>
             {/* Description */}
             <Typography variant="body2" sx={{ fontStyle: "italic", mb: theme.spacing(4) }}>
               {t("custom_sql_description")}
             </Typography>
+
+            {/* The step's issues, a failed run's error among them */}
+            <StepIssuesSummary issues={stepIssues} />
 
             {/* Execution Status Section */}
             <Box sx={{ mb: 2 }}>

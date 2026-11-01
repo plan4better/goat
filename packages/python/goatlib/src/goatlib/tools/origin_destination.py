@@ -514,6 +514,10 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
             )
             logger.info(f"Lines DuckLake table: {table_info_lines['table_name']}")
 
+            self._fill_result_geometry_type(
+                table_info_lines, params.user_id, metadata_lines
+            )
+
             # Step 3: Ingest points to DuckLake
             table_info_points = self._ingest_to_ducklake(
                 user_id=params.user_id,
@@ -521,6 +525,8 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
                 parquet_path=Path(output_parquet_points),
             )
             logger.info(f"Points DuckLake table: {table_info_points['table_name']}")
+
+            self._fill_second_layer_geometry_type(table_info_points, metadata_points)
 
             # Refresh database pool
             asyncio.get_event_loop().run_until_complete(self._close_db_service())

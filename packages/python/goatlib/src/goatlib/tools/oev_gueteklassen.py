@@ -289,14 +289,15 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
     ) -> dict[str, str]:
         """Predict ÖV-Güteklassen output schema.
 
-        ÖV-Güteklassen outputs:
-        - gueteklasse: quality class (A-F or None)
-        - station_group_id: unique identifier for station catchment group
-        - geometry: Polygon representing the catchment area
+        ÖV-Güteklassen outputs (``OevGueteklasseTool._export_results``), one
+        row per piece of a class's area:
+        - pt_class: the class's number, 1 for the best
+        - pt_class_label: the class's letter (A for 1, B for 2, ...)
+        - geometry: Polygon of the piece
         """
         return {
-            "gueteklasse": "VARCHAR",
-            "station_group_id": "INTEGER",
+            "pt_class": "INTEGER",
+            "pt_class_label": "VARCHAR",
             "geometry": "GEOMETRY",
         }
 
@@ -500,6 +501,8 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
                 if pmtiles_path:
                     table_info["pmtiles_path"] = str(pmtiles_path)
 
+            self._fill_result_geometry_type(table_info, params.user_id, metadata)
+
             # Step 2c: Ingest stations layer to DuckLake (if available)
             stations_table_info = None
             if self._stations_parquet and self._stations_parquet.exists():
@@ -548,6 +551,9 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
                     source_type="vector",
                     geometry_type="Point",
                     crs="EPSG:4326",
+                )
+                self._fill_second_layer_geometry_type(
+                    stations_table_info, stations_metadata
                 )
                 stations_result_info = asyncio.get_event_loop().run_until_complete(
                     self._create_db_records(

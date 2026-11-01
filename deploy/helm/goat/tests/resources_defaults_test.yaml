@@ -9,6 +9,7 @@ templates:
   - geoapi/deployment.yaml
   - processes/deployment.yaml
   - catalog/deployment.yaml
+  - assistant/deployment.yaml
   - windmill/server/deployment.yaml
   - windmill/worker-default/deployment.yaml
   - windmill/worker-print/deployment.yaml
@@ -20,6 +21,7 @@ templates:
   - core/configmap.yaml          # read by the pod checksum
   - web/configmap.yaml          # read by the pod checksum
   - catalog/configmap.yaml          # read by the pod checksum
+  - assistant/configmap.yaml          # read by the pod checksum
   - windmill/server/configmap.yaml          # read by the pod checksum
   - windmill/worker-default/configmap.yaml          # read by the pod checksum
   - windmill/worker-print/configmap.yaml          # read by the pod checksum
@@ -37,6 +39,7 @@ tests:
       - geoapi/deployment.yaml
       - processes/deployment.yaml
       - catalog/deployment.yaml
+      - assistant/deployment.yaml
       - windmill/server/deployment.yaml
       - windmill/worker-default/deployment.yaml
       - windmill/worker-print/deployment.yaml

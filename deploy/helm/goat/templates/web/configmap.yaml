@@ -39,6 +39,9 @@ data:
   {{- if $catalog }}
   NEXT_PUBLIC_CATALOG_URL: {{ $catalog | quote }}
   {{- end }}
+  {{- with include "goat.assistant.publicUrl" . }}
+  NEXT_PUBLIC_ASSISTANT_URL: {{ . | quote }}
+  {{- end }}
   {{- with .Values.web.websiteUrl }}
   NEXT_PUBLIC_WEBSITE_URL: {{ . | quote }}
   {{- end }}

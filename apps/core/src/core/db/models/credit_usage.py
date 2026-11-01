@@ -32,20 +32,19 @@ class CreditUsage(SQLModel, table=True):
     user_id: Optional[UUID] = Field(
         default=None, sa_column=Column(UUID_PG(as_uuid=True), nullable=True)
     )
-    category: str = Field(
-        sa_column=Column(Text, nullable=False)
-    )  # 'compute' | 'egress'
+    # 'compute' | 'egress' (credits) | 'ai' (AI credits, a pool of their own)
+    category: str = Field(sa_column=Column(Text, nullable=False))
     action: str = Field(sa_column=Column(Text, nullable=False), max_length=255)
     unit: float = Field(
         sa_column=Column(Numeric, nullable=False)
-    )  # native: seconds | bytes
+    )  # native: seconds | bytes | steps
     unit_type: str = Field(
         sa_column=Column(Text, nullable=False)
-    )  # 'seconds' | 'bytes'
+    )  # 'seconds' | 'bytes' | 'steps'
     rate: float = Field(sa_column=Column(Numeric, nullable=False))  # snapshot at charge
     cost: float = Field(
         sa_column=Column(Numeric, nullable=False)
-    )  # credits (neg = adjustment)
+    )  # credits or AI credits (neg = adjustment)
     payload: dict = Field(
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     )
@@ -68,4 +67,12 @@ Index(
     CreditUsage.__table__.c.payload.op("->>")("job_id"),
     unique=True,
     postgresql_where=CreditUsage.__table__.c.category == "compute",
+)
+# One charge per assistant answer: a retried or twice-ended run cannot count
+# the same answer twice (customer.charge_ai_answer).
+Index(
+    "uq_credit_usage_ai_run",
+    CreditUsage.__table__.c.payload.op("->>")("run_id"),
+    unique=True,
+    postgresql_where=CreditUsage.__table__.c.category == "ai",
 )

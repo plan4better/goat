@@ -156,7 +156,7 @@ export default function ChipsInput({ input, value, onChange, disabled, formValue
 
   return (
     <Stack>
-      <FormLabelHelper label={label} tooltip={input.description} color="inherit" />
+      <FormLabelHelper label={label} tooltip={input.description} color="inherit" required={input.required} />
       <Autocomplete
         multiple
         freeSolo

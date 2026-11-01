@@ -9,10 +9,10 @@ metadata:
 data:
   {{- $pgKeys := splitList " " (include "goat.postgresql.configKeys" .) }}
   {{- range $k, $v := .Values.geoapi.config }}
-  {{- /* Omit GOAT_PROCESSES_URL, the Postgres connection and the DuckLake keys
-         here (emitted below so they aren't rendered twice when an operator sets
-         them explicitly) */}}
-  {{- if has $k (concat $pgKeys (list "GOAT_PROCESSES_URL" "DUCKLAKE_DATA_DIR" "DUCKLAKE_CATALOG_SCHEMA")) -}}
+  {{- /* Omit GOAT_PROCESSES_URL, the Postgres connection, the DuckLake keys
+         and the catalog layer directories here (emitted below so they aren't
+         rendered twice when an operator sets them explicitly) */}}
+  {{- if has $k (concat $pgKeys (list "GOAT_PROCESSES_URL" "DUCKLAKE_DATA_DIR" "DUCKLAKE_CATALOG_SCHEMA" "CATALOG_LAYERS_DIR" "CATALOG_TILES_DIR")) -}}
   {{- /* skip */ -}}
   {{- else }}
   {{ $k }}: {{ $v | quote }}
@@ -38,6 +38,10 @@ data:
   {{- end }}
   DUCKLAKE_DATA_DIR: {{ .Values.geoapi.config.DUCKLAKE_DATA_DIR | default .Values.ducklakeBootstrap.dataDir | quote }}
   DUCKLAKE_CATALOG_SCHEMA: {{ .Values.geoapi.config.DUCKLAKE_CATALOG_SCHEMA | default .Values.ducklakeBootstrap.catalogSchema | quote }}
+  {{- /* Where the workers write materialized catalog layers and their PMTiles
+         (catalog.layersDir / catalog.tilesDir, the values the workers get). */}}
+  CATALOG_LAYERS_DIR: {{ .Values.geoapi.config.CATALOG_LAYERS_DIR | default .Values.catalog.layersDir | quote }}
+  CATALOG_TILES_DIR: {{ .Values.geoapi.config.CATALOG_TILES_DIR | default .Values.catalog.tilesDir | quote }}
   {{- $processesUrl := .Values.geoapi.config.GOAT_PROCESSES_URL | default (include "goat.processes.url" .) }}
   {{- if $processesUrl }}
   GOAT_PROCESSES_URL: {{ $processesUrl | quote }}

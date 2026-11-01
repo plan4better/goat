@@ -37,11 +37,22 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- Get the organization_id of the user
-    SELECT organization_id
-    INTO organization_id_input
-    FROM customer.user
-    WHERE id = COALESCE(NEW.user_id, OLD.user_id);
+    -- The layer is the organization's of its creator; when the creator's
+    -- account was removed (`user_id` NULL), of the space it lives in: the
+    -- organization's own space, one of its teams' spaces or a member's
+    -- personal space. A catalog layer has neither and counts for nobody.
+    -- log_project_count and Alembic 0020_project_count follow the same rule.
+    SELECT COALESCE(
+        (SELECT u.organization_id
+         FROM customer.user u
+         WHERE u.id = COALESCE(NEW.user_id, OLD.user_id)),
+        (SELECT COALESCE(s.organization_id, t.organization_id, m.organization_id)
+         FROM customer.space s
+         LEFT JOIN customer.team t ON t.id = s.team_id
+         LEFT JOIN customer.user m ON m.id = s.user_id
+         WHERE s.id = COALESCE(NEW.space_id, OLD.space_id))
+    )
+    INTO organization_id_input;
 
     -- Handle INSERT: Only NEW.SIZE is relevant
     IF TG_OP = 'INSERT' THEN

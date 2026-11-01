@@ -163,6 +163,7 @@ export default function LayerInput({
       setSelectedItems={handleChange}
       items={layerItems}
       label={label}
+      required={input.required}
       tooltip={tooltip}
       placeholder={t("select_layer")}
       emptyMessage={emptyMessage}

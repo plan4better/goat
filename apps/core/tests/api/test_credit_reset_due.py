@@ -30,3 +30,32 @@ def test_the_next_reset_is_the_first_monthly_boundary_after_now():
     now = datetime(2026, 10, 14, 9, 0)
     assert advance_renewal(datetime(2026, 10, 1), now) == datetime(2026, 11, 1)
     assert advance_renewal(datetime(2026, 8, 31), now) == datetime(2026, 10, 30)
+
+
+@pytest.mark.asyncio
+async def test_a_new_credit_month_zeroes_both_pools(db_session):
+    from goatlib.tasks.credit_reset import RESET_SQL
+
+    now = datetime.now()
+    org = make_organization(
+        on_trial=False,
+        credits_reset_at=now - timedelta(hours=1),
+        used_credits=300,
+        used_ai_credits=90,
+        total_ai_credits=1000,
+    )
+    db_session.add(org)
+    await db_session.commit()
+
+    sql = (
+        RESET_SQL.format(schema=settings.SCHEMA)
+        .replace("$1", ":id")
+        .replace("$2", ":next")
+    )
+    following = now + timedelta(days=30)
+    await db_session.execute(text(sql), {"id": org.id, "next": following})
+    await db_session.commit()
+    await db_session.refresh(org)
+    assert (float(org.used_credits), float(org.used_ai_credits)) == (0, 0)
+    assert float(org.total_ai_credits) == 1000
+    assert org.credits_reset_at == following

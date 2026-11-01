@@ -100,11 +100,43 @@ catalog:
     endpointUrl: https://s3.example.com
     existingSecret: catalog-s3-credentials
 
+assistant:
+  enabled: true
+  replicaCount: 2
+  config:
+    ASSISTANT_DEFAULT_PROVIDER: "anthropic"
+    ASSISTANT_DEFAULT_MODEL: "claude-sonnet-4-5"
+  # ASSISTANT_MCP_ALLOWED_HOSTS comes from the ingress host.
+  mcp:
+    auditRetentionDays: 14
+  defaultConnection:
+    existingSecret: goat-ai
+  secretsKey:
+    existingSecret: goat-assistant
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-buffering: "off"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    hosts:
+      - host: assistant.goat.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: goat-assistant-tls
+        hosts: [assistant.goat.example.com]
+
 data:
   enabled: true
   accessMode: ReadWriteMany
   size: 500Gi
 
 web:
+  # The assistant's allowed browser origin (and core's links in emails).
+  auth:
+    publicUrl: https://goat.example.com
   websiteUrl: https://www.example.com
   statusFeedUrl: https://status.example.com/goat.json

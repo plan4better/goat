@@ -4,6 +4,8 @@ import { use } from "react";
 
 import { useCatalogResolve } from "@/lib/api/catalog";
 
+import { useCatalogRecordAssistantSurface } from "@/hooks/assistant/useCatalogAssistantSurface";
+
 import CatalogDetailView from "@/components/dashboard/catalog/CatalogDetailView";
 
 /**
@@ -18,6 +20,7 @@ export default function CatalogDetailPage(props: { params: Promise<{ datasetId: 
   // `params` is a Promise since Next 16 and must be unwrapped, as every other
   // dynamic route here does.
   const { datasetId } = use(props.params);
+  useCatalogRecordAssistantSurface(datasetId);
   const { collection, members, item, parent, isLoading, isError } = useCatalogResolve(datasetId);
 
   return (

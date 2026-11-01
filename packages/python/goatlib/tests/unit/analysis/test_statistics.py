@@ -1184,3 +1184,92 @@ class TestAggregationColumnValidation:
                 group_by_column="category",
                 group_by_secondary_column="nope",
             )
+
+
+NORTH_A = "POLYGON((10 53.5, 10.1 53.5, 10.1 53.6, 10 53.6, 10 53.5))"
+NORTH_B = "POLYGON((10.2 53.5, 10.3 53.5, 10.3 53.6, 10.2 53.6, 10.2 53.5))"
+EQUATOR = "POLYGON((10 0, 10.1 0, 10.1 0.1, 10 0.1, 10 0))"
+
+
+@pytest.fixture
+def zone_boxes(duckdb_connection):
+    """Boxes of 0.1 x 0.1 degrees in lon/lat order, two at 53.5 N, one at the equator."""
+    con = duckdb_connection
+    con.execute(f"""
+        CREATE TABLE zone_boxes AS SELECT * FROM (VALUES
+            (1, 'north', ST_GeomFromText('{NORTH_A}')),
+            (2, 'north', ST_GeomFromText('{NORTH_B}')),
+            (3, 'equator', ST_GeomFromText('{EQUATOR}')),
+            (4, NULL, ST_GeomFromText('{EQUATOR}'))
+        ) AS t(id, zone, geometry)
+    """)
+    return con
+
+
+def _utm_area(con, wkt: str) -> float:
+    """The box's area in UTM zone 32N (EPSG:32632), whose central meridian is 9 E."""
+    return con.execute(
+        f"SELECT ST_Area(ST_Transform(ST_GeomFromText('{wkt}'), "
+        "'EPSG:4326', 'EPSG:32632', always_xy := true))"
+    ).fetchone()[0]
+
+
+class TestAreaOnTheSpheroid:
+    @pytest.mark.parametrize("wkt", [NORTH_A, EQUATOR])
+    def test_a_box_measures_its_true_area(self, zone_boxes, wkt):
+        result = calculate_area_statistics(
+            zone_boxes,
+            "zone_boxes",
+            "geometry",
+            operation=AreaOperation.max,
+            where_clause=f"ST_Equals(geometry, ST_GeomFromText('{wkt}')) AND id < 4",
+        )
+        expected = _utm_area(zone_boxes, wkt)
+        assert abs(result.result - expected) / expected < 0.005
+
+    def test_areas_per_group_largest_first(self, zone_boxes):
+        result = calculate_area_statistics(
+            zone_boxes,
+            "zone_boxes",
+            "geometry",
+            operation=AreaOperation.sum,
+            group_by_column="zone",
+        )
+        assert result.feature_count == 4
+        assert result.total_groups == 3
+        assert [g.grouped_value for g in result.groups] == ["north", "equator", None]
+        north = result.groups[0]
+        assert north.feature_count == 2
+        expected = _utm_area(zone_boxes, NORTH_A) + _utm_area(zone_boxes, NORTH_B)
+        assert abs(north.total_area - expected) / expected < 0.005
+        assert north.result == north.total_area
+
+    def test_groups_respect_the_filter_and_limit(self, zone_boxes):
+        result = calculate_area_statistics(
+            zone_boxes,
+            "zone_boxes",
+            "geometry",
+            group_by_column="zone",
+            where_clause="zone = 'north'",
+            limit=1,
+        )
+        assert [g.grouped_value for g in result.groups] == ["north"]
+        assert result.total_groups == 1
+
+    def test_no_rows_give_no_groups(self, zone_boxes):
+        result = calculate_area_statistics(
+            zone_boxes,
+            "zone_boxes",
+            "geometry",
+            group_by_column="zone",
+            where_clause="FALSE",
+        )
+        assert result.feature_count == 0
+        assert result.groups == []
+        assert result.total_groups == 0
+
+    def test_an_unknown_group_column_is_refused(self, zone_boxes):
+        with pytest.raises(ValueError, match="nope"):
+            calculate_area_statistics(
+                zone_boxes, "zone_boxes", "geometry", group_by_column="nope"
+            )

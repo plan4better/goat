@@ -64,6 +64,45 @@ export const sameShapeLayers = (layers: ProjectLayer[], data: DatasetNodeData): 
   });
 };
 
+/** The layer type and geometry type of a dataset node's layer as the
+ * project's layer list gives them now. A node stores both when its layer is
+ * picked, but a layer can change type later (an export that overwrites a
+ * table with geometries, or an update from a file), and a run reads the
+ * layer as it is. The layer is found by its dataset id, the id a run reads;
+ * a node whose layer is not in the list (still loading, or a dataset that is
+ * not in the project) keeps what it stored. */
+export const currentDatasetType = (
+  data: DatasetNodeData,
+  layers: ProjectLayer[] | undefined
+): Pick<DatasetNodeData, "layerType" | "geometryType"> => {
+  const layer = data.layerId ? layers?.find((candidate) => candidate.layer_id === data.layerId) : undefined;
+  if (!layer) return { layerType: data.layerType, geometryType: data.geometryType };
+  return {
+    layerType: (layer.type as DatasetNodeData["layerType"]) || undefined,
+    geometryType: layer.feature_layer_geometry_type || undefined,
+  };
+};
+
+/** `nodes` with each dataset node's types as `currentDatasetType` gives
+ * them. Nodes that already carry the current types keep their object, and
+ * so does the list when none changed. The store is not changed, so showing
+ * a workflow saves nothing. */
+export const withCurrentDatasetTypes = <T extends CanvasNode>(
+  nodes: T[],
+  layers: ProjectLayer[] | undefined
+): T[] => {
+  if (!layers?.length) return nodes;
+  let changed = false;
+  const next = nodes.map((node) => {
+    if (!isDatasetNode(node)) return node;
+    const { layerType, geometryType } = currentDatasetType(node.data, layers);
+    if (layerType === node.data.layerType && geometryType === node.data.geometryType) return node;
+    changed = true;
+    return { ...node, data: { ...node.data, layerType, geometryType } };
+  });
+  return changed ? next : nodes;
+};
+
 /** The layer's own CQL filter, copied onto the node the way the dataset
  * node settings do when a project layer is picked there. */
 const inheritedFilter = (layer: ProjectLayer): Record<string, unknown> | undefined => {
@@ -191,18 +230,25 @@ const layerInputsOf = (process: OGCProcessDescription): string[] =>
     })
     .map(([name]) => name);
 
+/** The layer input a setting's widget names itself (`source_layer`). */
+const declaredSource = (ui: UIFieldMeta | undefined): string | null => {
+  const declared = ui?.widget_options?.source_layer;
+  return typeof declared === "string" ? declared : null;
+};
+
 /** Every field reference a tool node's config holds, read against the
  * process description: plain field inputs, field-statistics objects and
- * the `_field` props of repeatable arrays (opportunities, join attributes). */
+ * the `_field` props of repeatable arrays (opportunities, join attributes).
+ * A repeatable array item's field reads the layer input its own selector
+ * names (`column_statistics[].field` reads `source_layer_id`, a join's
+ * `target_field` and `join_field` their own layers), else the array
+ * setting's own pairing; processes' workflow check pairs them the same way. */
 export const fieldRefsOf = (process: OGCProcessDescription, config: Record<string, unknown>): FieldRef[] => {
   const refs: FieldRef[] = [];
   const layerInputs = layerInputsOf(process);
   const soleLayerInput = layerInputs.length === 1 ? layerInputs[0] : null;
-  const sourceFor = (name: string, ui: UIFieldMeta | undefined): string | null => {
-    const declared = ui?.widget_options?.source_layer;
-    if (typeof declared === "string") return declared;
-    return conventionalSource(name) ?? soleLayerInput;
-  };
+  const sourceFor = (name: string, ui: UIFieldMeta | undefined): string | null =>
+    declaredSource(ui) ?? conventionalSource(name) ?? soleLayerInput;
   for (const [name, input] of Object.entries(process.inputs ?? {})) {
     const ui = uiOf(input.schema);
     const label = ui?.label ?? input.title ?? name;
@@ -234,7 +280,7 @@ export const fieldRefsOf = (process: OGCProcessDescription, config: Record<strin
           if (typeof field !== "string" || !field) continue;
           const sourceInput = isOpportunities
             ? (OPPORTUNITY_LAYER_HANDLES[index] ?? null)
-            : sourceFor(name, ui);
+            : declaredSource(propUi) || sourceFor(name, ui);
           refs.push({
             input: `${name}[${index}].${prop}`,
             label: `${label} · ${propUi?.label ?? prop}`,

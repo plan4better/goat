@@ -113,7 +113,7 @@ Stammen Zertifikate in Ihrem Netz von einer privaten Zertifizierungsstelle, etwa
 GOAT_CA_BUNDLE=/certs/company-ca.pem
 ```
 
-Übernehmen Sie die Änderung mit `docker compose up -d`. GOATs Webserver, die Job-Worker einschließlich des PDF-Druck-Workers und die Absender von E-Mails (GOAT und das mitgelieferte Keycloak) vertrauen der CA dann zusätzlich zu den öffentlichen. `GOAT_CA_BUNDLE` nimmt eine Datei auf, die mehrere Zertifikate enthalten darf. Im Modus `internal` verwendet `setup.sh` die Einstellung für Caddys Stammzertifikat; um zusätzlich einer Firmen-CA zu vertrauen, legen Sie beide Zertifikate in eine Datei in `./certs`.
+Übernehmen Sie die Änderung mit `docker compose up -d`. GOATs Webserver, die Job-Worker einschließlich des PDF-Druck-Workers, der KI-Assistent (für Modellserver, GOATs Dienste und Keycloak) und die Absender von E-Mails (GOAT und das mitgelieferte Keycloak) vertrauen der CA dann zusätzlich zu den öffentlichen. `GOAT_CA_BUNDLE` nimmt eine Datei auf, die mehrere Zertifikate enthalten darf. Im Modus `internal` verwendet `setup.sh` die Einstellung für Caddys Stammzertifikat; um zusätzlich einer Firmen-CA zu vertrauen, legen Sie beide Zertifikate in eine Datei in `./certs`.
 
 ## HSTS und Sicherheits-Header {#hsts}
 

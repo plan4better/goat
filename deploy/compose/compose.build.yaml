@@ -19,6 +19,8 @@ services:
     build: { context: *ctx, dockerfile: apps/processes/Dockerfile }
   catalog:
     build: { context: *ctx, dockerfile: apps/catalog/Dockerfile }
+  assistant:
+    build: { context: *ctx, dockerfile: apps/assistant/Dockerfile }
   keycloak:
     build: { context: *ctx, dockerfile: packages/js/keycloak-theme/Dockerfile }
   windmill-server:
