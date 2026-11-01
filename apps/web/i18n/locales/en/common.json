@@ -3514,7 +3514,7 @@
   "ai_settings_active_connection": "Active connection",
   "ai_settings_goat_ai": "GOAT AI (included)",
   "ai_settings_goat_ai_unavailable": "GOAT AI is not available on this instance.",
-  "ai_settings_goat_ai_hosted_in": "hosted in {{place}}",
+  "ai_settings_goat_ai_hosted_in": "Hosted in {{place}}",
   "ai_settings_connection_needs_test": "Test the connection first",
   "ai_settings_use_connection": "Use this connection",
   "ai_settings_goat_ai_until_active": "GOAT AI (included) is used until one of your connections is active.",

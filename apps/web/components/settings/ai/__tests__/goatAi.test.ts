@@ -12,33 +12,21 @@ const GOAT_AI = {
 };
 
 describe("goatAiDescription", () => {
-  it("names GOAT AI's model, provider and where it is hosted", () => {
-    expect(goatAiDescription(GOAT_AI, commonT("en"))).toBe(
-      "eu.anthropic.claude-sonnet-4-5 · Amazon Bedrock · hosted in the EU"
-    );
-    expect(goatAiDescription(GOAT_AI, commonT("de"))).toBe(
-      "eu.anthropic.claude-sonnet-4-5 · Amazon Bedrock · gehostet in der EU"
+  it("says where GOAT AI is hosted, not its model or provider", () => {
+    expect(goatAiDescription(GOAT_AI, commonT("en"))).toBe("Hosted in the EU");
+    expect(goatAiDescription(GOAT_AI, commonT("de"))).toBe("Gehostet in der EU");
+    expect(goatAiDescription({ ...GOAT_AI, hosted_in: "Germany" }, commonT("en"))).toBe("Hosted in Germany");
+    expect(goatAiDescription({ ...GOAT_AI, model: null, provider: null }, commonT("en"))).toBe(
+      "Hosted in the EU"
     );
   });
 
-  it("leaves out what the instance does not say", () => {
-    expect(goatAiDescription({ ...GOAT_AI, hosted_in: null }, commonT("en"))).toBe(
-      "eu.anthropic.claude-sonnet-4-5 · Amazon Bedrock"
-    );
+  it("says nothing when the instance names no hosting place", () => {
+    expect(goatAiDescription({ ...GOAT_AI, hosted_in: null }, commonT("en"))).toBeNull();
+    expect(goatAiDescription({ ...GOAT_AI, hosted_in: " " }, commonT("en"))).toBeNull();
     // An instance before the setting existed sends no hosting place at all.
     const { hosted_in: _, ...older } = GOAT_AI;
-    expect(goatAiDescription(older, commonT("en"))).toBe("eu.anthropic.claude-sonnet-4-5 · Amazon Bedrock");
-    expect(goatAiDescription({ ...GOAT_AI, provider: null }, commonT("en"))).toBe(
-      "eu.anthropic.claude-sonnet-4-5 · hosted in the EU"
-    );
-    expect(
-      goatAiDescription({ ...GOAT_AI, provider: "openai_compatible", hosted_in: "Germany" }, commonT("en"))
-    ).toBe("eu.anthropic.claude-sonnet-4-5 · OpenAI compatible endpoint · hosted in Germany");
-    // An id the web does not know (the test model) stays as it is.
-    expect(goatAiDescription({ ...GOAT_AI, provider: "test", hosted_in: null }, commonT("en"))).toBe(
-      "eu.anthropic.claude-sonnet-4-5 · test"
-    );
-    expect(goatAiDescription({ ...GOAT_AI, model: null }, commonT("en"))).toBeNull();
+    expect(goatAiDescription(older, commonT("en"))).toBeNull();
     expect(goatAiDescription({ ...GOAT_AI, available: false }, commonT("en"))).toBeNull();
   });
 });
