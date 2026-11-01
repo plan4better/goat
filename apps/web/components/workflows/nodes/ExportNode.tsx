@@ -7,8 +7,8 @@ import DuplicateIcon from "@mui/icons-material/ContentCopy";
 import WarningIcon from "@mui/icons-material/Warning";
 import { Box, Stack, Tooltip, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
-import { type NodeProps, NodeToolbar, Position, useEdges } from "@xyflow/react";
-import React, { memo, useCallback, useMemo } from "react";
+import { type NodeProps, NodeToolbar, Position } from "@xyflow/react";
+import React, { memo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useDispatch, useSelector } from "react-redux";
 import { v4 as uuidv4 } from "uuid";
@@ -20,6 +20,9 @@ import { useLayerWriteAccess } from "@/lib/api/layers";
 import type { ExportNodeData } from "@/lib/validations/workflow";
 
 import { type TOOL_ICON_NAME, toolIconMap } from "@p4b/ui/assets/svg/ToolIcons";
+
+import StepIssueBadge from "@/components/workflows/issues/StepIssueBadge";
+import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
 
 import { useNodeExecutionStatus } from "../context/WorkflowExecutionContext";
 import {
@@ -44,7 +47,6 @@ const ParamRow = styled(Box)({
 const WarningBadge = styled(Box)(({ theme }) => ({
   position: "absolute",
   bottom: -14,
-  right: -8,
   width: 24,
   height: 24,
   borderRadius: "50%",
@@ -53,8 +55,12 @@ const WarningBadge = styled(Box)(({ theme }) => ({
   alignItems: "center",
   justifyContent: "center",
   color: theme.palette.warning.contrastText,
-  zIndex: 1,
+  zIndex: 3,
 }));
+
+/** Where the warning badge sits: in the corner, or left of the issue badge,
+ * which takes the corner when the step has issues and is wider with a count. */
+const warningBadgeRight = (issueCount: number) => (issueCount === 0 ? -8 : issueCount === 1 ? 20 : 33);
 
 interface ExportNodeProps extends NodeProps {
   data: ExportNodeData;
@@ -65,37 +71,20 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
   const dispatch = useDispatch<AppDispatch>();
   const nodes = useSelector(selectNodes);
 
-  const edges = useEdges();
   const { status: nodeStatus_ } = useNodeExecutionStatus(id);
   const nodeStatus = nodeStatus_ || data.status;
 
-  // "Existing dataset" needs a target dataset instead of a name
+  const issueCount = useStepIssues(id).length;
+
+  // "Existing dataset" adds the rows to a target dataset instead of saving a new one
   const isExisting = data.destination === "existing";
-
-  const missingDatasetName = !isExisting && !data.datasetName?.trim();
-  const missingTarget = isExisting && !data.targetLayerId;
-  // Checked before the run too: without edit rights this step fails.
+  // A missing target is a workflow issue (the issue badge). Whether this user
+  // may edit the chosen target only the browser can check, so it is a warning
+  // here, next to the step's issues: without edit rights the step fails when
+  // the workflow runs.
   const { canWrite } = useLayerWriteAccess(isExisting ? data.targetLayerId : undefined);
-  const noEditRights = isExisting && !!data.targetLayerId && canWrite === false;
-  const missingConnection = !edges.some((e) => e.target === id);
-  const hasWarning = missingDatasetName || missingTarget || noEditRights || missingConnection;
-
-  const warningMessage = useMemo(() => {
-    const parts: string[] = [];
-    if (missingConnection) {
-      parts.push(t("missing_layer_connections"));
-    }
-    if (missingDatasetName) {
-      parts.push(t("dataset_name_required"));
-    }
-    if (missingTarget) {
-      parts.push(t("append_target_required"));
-    }
-    if (noEditRights) {
-      parts.push(t("append_no_edit_rights"));
-    }
-    return parts.join(". ");
-  }, [missingConnection, missingDatasetName, missingTarget, noEditRights, t]);
+  const noEditRightsWarning =
+    isExisting && data.targetLayerId && canWrite === false ? t("append_no_edit_rights") : undefined;
 
   // Handle duplicate node
   const handleDuplicate = useCallback(
@@ -153,27 +142,24 @@ const ExportNode: React.FC<ExportNodeProps> = ({ id, data, selected }) => {
       </NodeToolbar>
 
       <NodeContainer selected={selected}>
-        {/* Warning badge for missing dataset name or connection */}
-        {/* New nodes carry status "idle": not run yet, so warn as with none */}
-        {hasWarning && !nodeStatus_ && (!data.status || data.status === "idle") && (
-          <Tooltip title={warningMessage} arrow>
-            <WarningBadge
-              aria-label={
-                missingDatasetName
-                  ? t("dataset_name_required")
-                  : missingTarget
-                    ? t("append_target_required")
-                    : noEditRights
-                      ? t("append_no_edit_rights")
-                      : warningMessage
-              }>
+        {/* The step's issues; stays after a run, next to the run status */}
+        <StepIssueBadge nodeId={id} />
+        {/* The edit-rights warning, until the step runs; new nodes carry status "idle" */}
+        {noEditRightsWarning && !nodeStatus_ && (!data.status || data.status === "idle") && (
+          <Tooltip title={noEditRightsWarning} arrow>
+            <WarningBadge aria-label={noEditRightsWarning} sx={{ right: warningBadgeRight(issueCount) }}>
               <WarningIcon sx={{ fontSize: 16 }} />
             </WarningBadge>
           </Tooltip>
         )}
 
         {/* Input handle - left (receives tool output) */}
-        <StyledHandle type="target" position={Position.Left} id="input" selected={selected} />
+        <StyledHandle
+          type="target"
+          position={Position.Left}
+          id="input"
+          selected={selected}
+        />
 
         <NodeHeader>
           <AnimatedBorderWrapper isRunning={nodeStatus === "running"}>

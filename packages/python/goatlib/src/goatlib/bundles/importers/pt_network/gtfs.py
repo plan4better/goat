@@ -27,6 +27,7 @@ from goatlib.bundles.importers.base import (
     register_importer,
 )
 from goatlib.bundles.importers.pt_network.stop_chains import stop_chain_lines_parquet
+from goatlib.io.config import parquet_copy_options
 from goatlib.models.bundle import BundleTypeName
 
 logger = logging.getLogger(__name__)
@@ -522,7 +523,9 @@ class GtfsImporter(BundleImporter):
         try:
             # The CSV is parsed once; the checks and the typed copy then read
             # the columnar copy, which is far cheaper to scan twice.
-            con.execute(f"COPY (SELECT * FROM {read}) TO '{text}' (FORMAT parquet)")
+            con.execute(
+                f"COPY (SELECT * FROM {read}) TO '{text}' {parquet_copy_options()}"
+            )
             relation = f"read_parquet('{text}')"
             columns = [
                 row[0]
@@ -537,7 +540,7 @@ class GtfsImporter(BundleImporter):
 
             select = f"SELECT {typed_select(role, columns)} FROM {relation}"
             if not point:
-                con.execute(f"COPY ({select}) TO '{dst}' (FORMAT parquet)")
+                con.execute(f"COPY ({select}) TO '{dst}' {parquet_copy_options()}")
                 return out_path
             from goatlib.io.geoparquet import write_optimized_parquet
 

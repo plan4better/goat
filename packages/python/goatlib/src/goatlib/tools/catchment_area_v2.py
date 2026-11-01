@@ -5,6 +5,7 @@ structure but builds CatchmentAreaV2Params with cost_type/max_cost.
 """
 
 import logging
+import math
 import tempfile
 from enum import StrEnum
 from pathlib import Path
@@ -47,8 +48,13 @@ from goatlib.bundles.artifacts.street_network import (
     fetch_linked_routing_network,
     fetch_routing_network,
 )
+from goatlib.io.config import parquet_copy_options
 from goatlib.models.io import DatasetMetadata
 from goatlib.tools.catchment_area import CatchmentAreaToolRunner
+from goatlib.tools.limits import (
+    CATCHMENT_MAX_STARTING_POINTS,
+    CATCHMENT_MAX_STARTING_POINTS_PT,
+)
 from goatlib.tools.pt_network import ensure_pt_date, pt_date_field
 from goatlib.tools.schemas import ToolInputBase, get_default_layer_name
 
@@ -58,6 +64,39 @@ logger = logging.getLogger(__name__)
 class StepsStyle(StrEnum):
     separate = "separate"
     cumulative = "cumulative"
+
+
+# The form computes step sizes (`compute_from`) for these output types only.
+_STEP_SIZE_TYPES = ("polygon", "network")
+_MAX_STEPS = 9
+
+
+def band_edges_problem(edges: list[int], steps: int, limit: float) -> str | None:
+    """Why ``edges`` are not band edges up to ``limit``, or None. Each band ends
+    at one edge, so they rise from above zero and end at most at the budget.
+    The router takes them in place of ``steps``, so their number may differ."""
+    rising = all(later > earlier for earlier, later in zip(edges, edges[1:]))
+    if edges and edges[0] > 0 and rising and edges[-1] <= limit:
+        return None
+    suggestion = step_sizes_from(steps, limit)
+    hint = f" For {steps} bands up to {limit:g}: {suggestion}." if suggestion else ""
+    return (
+        "step_sizes are the band edges: each band ends at one, so they rise and "
+        f"end at most at max_cost ({limit:g}); got {edges}.{hint}"
+    )
+
+
+def step_sizes_from(steps: int, limit: float) -> list[int] | None:
+    """The step sizes the form's chips compute from `steps` and the budget: the
+    budget split into equal steps, each rounded to a whole number with halves
+    rounded up, as the form's Math.round does. None where the form computes
+    none: no steps, more than nine, no budget, or more steps than budget units.
+    The engine's own split of `steps` keeps the fractions, so a run without
+    these sizes would draw its rings at other costs than the form shows."""
+    if steps <= 0 or steps > _MAX_STEPS or limit <= 0 or steps > limit:
+        return None
+    interval = limit / steps
+    return [math.floor(interval * (i + 1) + 0.5) for i in range(steps)]
 
 
 # Per-mode budget defaults + hard caps come from a shared module so the
@@ -72,6 +111,7 @@ from goatlib.tools._routing_limits import (  # noqa: E402
     leg_budget_widget_options,
     resolve_budget_input,
     resolve_leg_budget_input,
+    speed_default_by_field,
     validate_budget,
     validate_cost_type,
     validate_leg_budget,
@@ -454,10 +494,7 @@ class CatchmentAreaV2WindmillParams(ToolInputBase):
             },
             widget_options={
                 # Default speed switches with the mode (kicks in on first show).
-                "default_by_field": {
-                    "field": "routing_mode",
-                    "values": {"walking": 5, "bicycle": 15, "pedelec": 23},
-                },
+                "default_by_field": speed_default_by_field("routing_mode"),
                 # Per-mode caps using conditional literal entries — first
                 # matching `when` clause wins, with its own translation key.
                 "max_value_from": {
@@ -508,7 +545,12 @@ class CatchmentAreaV2WindmillParams(ToolInputBase):
 
     step_sizes: list[int] | None = Field(
         default=None,
-        description="Step size intervals. Auto-computed from steps and limit, editable.",
+        description=(
+            "The band edges, in rising order up to max_cost: each band ends at one, "
+            "e.g. [5, 10, 15] for three bands of 5 minutes up to 15. Left out, they "
+            "are computed from steps and max_cost."
+        ),
+        examples=[[5, 10, 15]],
         json_schema_extra=ui_field(
             section="configuration",
             field_order=7,
@@ -650,10 +692,7 @@ class CatchmentAreaV2WindmillParams(ToolInputBase):
             field_order=23,
             label_key="speed_kmh",
             widget_options={
-                "default_by_field": {
-                    "field": "access_mode",
-                    "values": {"walk": 5, "bicycle": 15, "pedelec": 23},
-                },
+                "default_by_field": speed_default_by_field("access_mode", leg=True),
                 "max_value_from": {
                     "fields": [
                         {
@@ -759,10 +798,7 @@ class CatchmentAreaV2WindmillParams(ToolInputBase):
             field_order=27,
             label_key="speed_kmh",
             widget_options={
-                "default_by_field": {
-                    "field": "egress_mode",
-                    "values": {"walk": 5, "bicycle": 15, "pedelec": 23},
-                },
+                "default_by_field": speed_default_by_field("egress_mode", leg=True),
                 "max_value_from": {
                     "fields": [
                         {
@@ -813,7 +849,12 @@ class CatchmentAreaV2WindmillParams(ToolInputBase):
 
     catchment_area_type: CatchmentType = Field(
         default=CatchmentType.polygon,
-        description="Output geometry type.",
+        description=(
+            "The shape of the result: polygons around the reached area, the reached "
+            "street network, a hexagon grid, or the points of a point layer. A hexagon "
+            "counts as reached when any reached part of the network lies in it, so the "
+            "grid's area is an upper estimate."
+        ),
         json_schema_extra=ui_field(
             section="configuration",
             field_order=4,
@@ -842,7 +883,11 @@ class CatchmentAreaV2WindmillParams(ToolInputBase):
 
     steps_style: StepsStyle = Field(
         default=StepsStyle.separate,
-        description="How steps are displayed in the output.",
+        description=(
+            "Separate gives each step as a ring (only the area between the previous "
+            "step and this one); cumulative gives each step the whole area reached up "
+            "to it."
+        ),
         json_schema_extra=ui_field(
             section="configuration",
             field_order=17,
@@ -908,6 +953,28 @@ class CatchmentAreaV2WindmillParams(ToolInputBase):
         return self
 
     @model_validator(mode="after")
+    def _apply_form_rules(self: Self) -> Self:
+        """What the form does before a run, for a run built without it: it
+        computes the step sizes from `steps` and the budget, and it does not
+        run a point grid without its layer. Step sizes given are band edges and
+        must rise up to the budget (``band_edges_problem``)."""
+        if (
+            self.catchment_area_type == CatchmentType.point_grid
+            and not self.point_grid_layer_id
+        ):
+            raise ValueError(
+                "point_grid_layer_id is required when catchment_area_type is "
+                "'point_grid'."
+            )
+        if self.step_sizes is None and self.catchment_area_type in _STEP_SIZE_TYPES:
+            self.step_sizes = step_sizes_from(self.steps, self.max_cost)
+        if self.step_sizes is not None and self.catchment_area_type in _STEP_SIZE_TYPES:
+            problem = band_edges_problem(self.step_sizes, self.steps, self.max_cost)
+            if problem is not None:
+                raise ValueError(problem)
+        return self
+
+    @model_validator(mode="after")
     def validate_shape_style(self: Self) -> Self:
         if self.shape_style != ShapeStyle.separated:
             return self
@@ -936,6 +1003,33 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
     tool_class = CatchmentAreaToolV2
     default_output_name = get_default_layer_name("catchment_area", "en")
 
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """The columns the engine writes for the kind of catchment
+        (``_write_empty_result`` writes the same), after ``_resolve_origins``:
+        - id, cost_step and geometry for every kind;
+        - cost, each point's own travel cost, for a point grid;
+        - origin for separated shapes: the reference field's value of the
+          starting point a catchment comes from, in the field's type on the
+          starting points layer, or the point's number from 1 without a field.
+        """
+        columns = {"id": "INTEGER"}
+        if params.get("catchment_area_type") == CatchmentType.point_grid:
+            columns["cost"] = "DOUBLE"
+        columns["cost_step"] = "INTEGER"
+        if params.get("shape_style") == ShapeStyle.separated:
+            reference = params.get("reference_field")
+            starting_points = input_schemas.get("starting_points") or {}
+            columns["origin"] = (
+                starting_points.get(reference, "VARCHAR") if reference else "INTEGER"
+            )
+        columns["geometry"] = "GEOMETRY"
+        return columns
+
     def process(
         self: Self,
         params: CatchmentAreaV2WindmillParams,
@@ -949,17 +1043,24 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
             params.user_id,
             reference_field=params.reference_field,
         )
+        if not latitudes:
+            # The starting points' filter matched nothing: the run goes on
+            # with an empty result of the usual columns.
+            return self._write_empty_result(params, temp_dir)
 
         # Validate starting point count
         n_points = len(latitudes)
         if params.routing_mode == CatchmentAreaRoutingMode.pt:
-            if n_points > 100:
+            if n_points > CATCHMENT_MAX_STARTING_POINTS_PT:
                 raise ValueError(
-                    f"Public transport supports a maximum of 100 starting points. "
-                    f"Got {n_points}."
+                    f"Public transport supports a maximum of "
+                    f"{CATCHMENT_MAX_STARTING_POINTS_PT} starting points. Got {n_points}."
                 )
-        elif n_points > 1000:
-            raise ValueError(f"Maximum 1,000 starting points allowed. Got {n_points}.")
+        elif n_points > CATCHMENT_MAX_STARTING_POINTS:
+            raise ValueError(
+                f"Maximum {CATCHMENT_MAX_STARTING_POINTS:,} starting points allowed. "
+                f"Got {n_points}."
+            )
 
         # Build PT time window
         time_window = None
@@ -1013,7 +1114,7 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
                         LN(TAN(PI() / 4.0 + ST_Y("{geom_col}") * PI() / 360.0)) * {earth_radius_m} AS y_3857
                     FROM read_parquet('{raw_layer_path}')
                     WHERE "{geom_col}" IS NOT NULL
-                ) TO '{grid_parquet}' (FORMAT PARQUET)
+                ) TO '{grid_parquet}' {parquet_copy_options()}
             """)
             con.close()
             grid_points_path = grid_parquet
@@ -1117,6 +1218,47 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
         finally:
             tool.cleanup()
 
+    def _write_empty_result(
+        self: Self, params: CatchmentAreaV2WindmillParams, temp_dir: Path
+    ) -> tuple[Path, DatasetMetadata]:
+        """A result without rows in the columns the engine writes for this
+        kind, passed through ``_resolve_origins`` like a real one. The engine
+        refuses zero starting points, so it is not asked."""
+        kind = params.catchment_area_type
+        geometry = "ST_Point(0, 0)::GEOMETRY('OGC:CRS84') AS geometry"
+        if kind == CatchmentType.point_grid:
+            columns = (
+                "0::INTEGER AS id, 0.0::DOUBLE AS cost, 0::INTEGER AS cost_step, "
+                f"{geometry}"
+            )
+        elif (
+            kind == CatchmentType.polygon
+            and params.routing_mode != CatchmentAreaRoutingMode.car
+        ):
+            columns = (
+                "0::INTEGER AS id, 0::INTEGER AS cost_step, "
+                f"0::INTEGER AS origin_idx, {geometry}"
+            )
+        else:
+            columns = f"0::INTEGER AS id, 0::INTEGER AS cost_step, {geometry}"
+        engine_file = temp_dir / "output.parquet"
+        con = duckdb.connect()
+        try:
+            con.execute("INSTALL spatial; LOAD spatial;")
+            con.execute(
+                f"COPY (SELECT {columns} WHERE false) TO '{engine_file}' "
+                f"{parquet_copy_options()}"
+            )
+        finally:
+            con.close()
+        path = self._resolve_origins(engine_file, params.shape_style, temp_dir)
+        return Path(path), DatasetMetadata(
+            path=str(path),
+            source_type="vector",
+            format="geoparquet",
+            geometry_type="Polygon",
+        )
+
     def _resolve_origins(
         self: Self,
         result_path: Path,
@@ -1157,7 +1299,7 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
             stripped = temp_dir / "output_without_idx.parquet"
             self.duckdb_con.execute(
                 f"COPY (SELECT * EXCLUDE (origin_idx) "
-                f"FROM '{result_path}') TO '{stripped}' (FORMAT PARQUET)"
+                f"FROM '{result_path}') TO '{stripped}' {parquet_copy_options()}"
             )
             return stripped
 
@@ -1179,6 +1321,14 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
                 LEFT JOIN (VALUES {mapping}) m(idx, ref)
                   ON m.idx = r.origin_idx
             """
+        elif self._starting_point_reference_type:
+            # A reference field on a layer that gave no point: nothing to
+            # map, and the column keeps the field's type.
+            query = f"""
+                SELECT * EXCLUDE (origin_idx),
+                       CAST(NULL AS {self._starting_point_reference_type}) AS origin
+                FROM '{result_path}'
+            """
         else:
             query = f"""
                 SELECT * EXCLUDE (origin_idx),
@@ -1186,7 +1336,9 @@ class CatchmentAreaV2ToolRunner(CatchmentAreaToolRunner):
                 FROM '{result_path}'
             """
 
-        self.duckdb_con.execute(f"COPY ({query}) TO '{rewritten}' (FORMAT PARQUET)")
+        self.duckdb_con.execute(
+            f"COPY ({query}) TO '{rewritten}' {parquet_copy_options()}"
+        )
         return rewritten
 
     @staticmethod

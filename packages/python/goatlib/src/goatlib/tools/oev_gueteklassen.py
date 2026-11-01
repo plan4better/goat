@@ -20,9 +20,14 @@ from goatlib.analysis.accessibility import (
 )
 from goatlib.analysis.schemas.catchment_area import WEEKDAY_LABELS, Weekday
 from goatlib.analysis.schemas.ui import (
+    SECTION_STREET_NETWORK,
     UISection,
     ui_field,
     ui_sections,
+)
+from goatlib.bundles.artifacts.street_network import (
+    fetch_linked_routing_network,
+    fetch_routing_network,
 )
 from goatlib.models.io import DatasetMetadata
 from goatlib.tools.base import BaseToolRunner, drops_unrecorded_tables
@@ -59,10 +64,12 @@ class CatchmentType(StrEnum):
     """Catchment area type for ÖV-Güteklassen."""
 
     buffer = "buffer"
+    network = "network"
 
 
 CATCHMENT_TYPE_LABELS: dict[str, str] = {
     "buffer": "enums.catchment_type.buffer",
+    "network": "enums.catchment_type.network",
 }
 
 
@@ -76,6 +83,7 @@ class OevGueteklassenToolParams(ToolInputBase):
     model_config = {
         "json_schema_extra": ui_sections(
             SECTION_PT_NETWORK,
+            SECTION_STREET_NETWORK,
             SECTION_CALCULATION_TIME,
             SECTION_OEV_CONFIGURATION,
             SECTION_RESULT_OEV,
@@ -162,6 +170,32 @@ class OevGueteklassenToolParams(ToolInputBase):
             field_order=1,
             label_key="catchment_type",
             enum_labels=CATCHMENT_TYPE_LABELS,
+        ),
+    )
+    street_network_bundle_id: str | None = Field(
+        default=None,
+        description=(
+            "The street network walked for network catchments: the default "
+            "network, or a street network bundle added to this project."
+        ),
+        json_schema_extra=ui_field(
+            section="street_network",
+            field_order=1,
+            label_key="street_network_bundle_id",
+            widget="bundle-selector",
+            # Only asked when the stations are walked, and only where the
+            # project holds a network of its own to choose.
+            visible_when={
+                "$and": [
+                    {"catchment_type": "network"},
+                    {"_project_has_street_network_bundle": True},
+                ]
+            },
+            # Only street networks whose routing graph is built and ready.
+            widget_options={
+                "bundle_type": "street_network",
+                "artifact_kind": "street_network_graph",
+            },
         ),
     )
     reference_area_layer_id: str = Field(
@@ -255,14 +289,15 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
     ) -> dict[str, str]:
         """Predict ÖV-Güteklassen output schema.
 
-        ÖV-Güteklassen outputs:
-        - gueteklasse: quality class (A-F or None)
-        - station_group_id: unique identifier for station catchment group
-        - geometry: Polygon representing the catchment area
+        ÖV-Güteklassen outputs (``OevGueteklasseTool._export_results``), one
+        row per piece of a class's area:
+        - pt_class: the class's number, 1 for the best
+        - pt_class_label: the class's letter (A for 1, B for 2, ...)
+        - geometry: Polygon of the piece
         """
         return {
-            "gueteklasse": "VARCHAR",
-            "station_group_id": "INTEGER",
+            "pt_class": "INTEGER",
+            "pt_class_label": "VARCHAR",
             "geometry": "GEOMETRY",
         }
 
@@ -284,6 +319,28 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
         class_count = max(class_values) if class_values else 1
 
         return oev_gueteklassen_style(class_count=class_count)
+
+    def _street_network_graph(
+        self: Self, params: OevGueteklassenToolParams, temp_dir: Path
+    ) -> tuple[str, str] | None:
+        """The ``(edges, nodes)`` graph the stations are walked on.
+
+        In order of what the user meant: the street network they picked; else
+        the one the chosen PT bundle is linked to, since its stops were
+        connected to that network; else None, for the default network. Circles
+        need no network at all.
+        """
+        if params.catchment_type != CatchmentType.network:
+            return None
+        if params.street_network_bundle_id:
+            return fetch_routing_network(
+                self, params.street_network_bundle_id, temp_dir
+            )
+        if params.pt_network_bundle_id:
+            return fetch_linked_routing_network(
+                self, params.pt_network_bundle_id, temp_dir
+            )
+        return None
 
     def process(
         self: Self, params: OevGueteklassenToolParams, temp_dir: Path
@@ -340,7 +397,12 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
             service_date=params.pt_date if bundle_tables else None,
             station_config=params.station_config or STATION_CONFIG_DEFAULT,
             stations_output_path=str(stations_output_path),
+            catchment_type=params.catchment_type.value,
         )
+
+        graph = self._street_network_graph(params, temp_dir)
+        if graph:
+            analysis_params.edge_path, analysis_params.node_path = graph
 
         tool = self.tool_class()
         stats = tool.run(analysis_params)
@@ -434,6 +496,8 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
                 if pmtiles_path:
                     table_info["pmtiles_path"] = str(pmtiles_path)
 
+            self._fill_result_geometry_type(table_info, params.user_id, metadata)
+
             # Step 2c: Ingest stations layer to DuckLake (if available)
             stations_table_info = None
             if self._stations_parquet and self._stations_parquet.exists():
@@ -481,6 +545,9 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
                     source_type="vector",
                     geometry_type="Point",
                     crs="EPSG:4326",
+                )
+                self._fill_second_layer_geometry_type(
+                    stations_table_info, stations_metadata
                 )
                 stations_result_info = asyncio.get_event_loop().run_until_complete(
                     self._create_db_records(

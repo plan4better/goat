@@ -24,6 +24,8 @@ type SelectorProps = {
   label?: string;
   /** Clip the label to one line — for a selector sharing a row. */
   truncateLabel?: boolean;
+  /** The field must be filled in: its label carries the required marker. */
+  required?: boolean;
   allSelectedLabel?: string;
   errorMessage?: string;
   emptyMessage?: string;
@@ -50,6 +52,7 @@ const Selector = (props: SelectorProps) => {
     placeholder,
     label,
     truncateLabel,
+    required,
     tooltip,
     multiple,
     allSelectedLabel,
@@ -93,6 +96,7 @@ const Selector = (props: SelectorProps) => {
             color={theme.palette.text.secondary}
             tooltip={tooltip}
             truncate={truncateLabel}
+            required={required}
           />
         )}
         {emptyMessage && <NoValuesFound text={emptyMessage} icon={emptyMessageIcon} />}
@@ -114,6 +118,7 @@ const Selector = (props: SelectorProps) => {
           }
           tooltip={tooltip}
           truncate={truncateLabel}
+          required={required}
         />
       )}
       <Select

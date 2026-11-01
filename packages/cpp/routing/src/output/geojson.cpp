@@ -98,7 +98,9 @@ std::string build_point_grid_geojson(duckdb::Connection &con)
         << "    'properties', json_object("
         << "      'id', id, "
         << "      'cost', cost, "
-        << "      'step_cost', step_cost"
+        // The table holds the step as `cost_step`, the name the parquet
+        // output keeps; GeoJSON calls it `step_cost`, as the other outputs do.
+        << "      'step_cost', cost_step"
         << "    )"
         << "  ) AS feature "
         << "  FROM " << point_grid_features_table_name() << " "

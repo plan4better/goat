@@ -1,6 +1,26 @@
 import "@testing-library/jest-dom";
 import { cleanup } from "@testing-library/react";
+import * as webStreams from "node:stream/web";
 import { afterEach, vi } from "vitest";
+
+// The VM pools (CI runs --pool=vmForks) evaluate each test file inside
+// jsdom's own window, into which vitest copies only a fixed list of Node
+// globals: fetch, Response and the like, but none of the web streams. The
+// `ai` SDK's eventsource-parser subclasses TransformStream at import time, so
+// without them every suite reaching it fails to load. The missing classes
+// come from node:stream/web, the realm whose streams the copied Response
+// bodies already are, so piping a fetched body through them keeps working.
+// Under the default pool they are present and left alone.
+const testGlobals = globalThis as Record<string, unknown>;
+for (const name of [
+  "ReadableStream",
+  "WritableStream",
+  "TransformStream",
+  "TextEncoderStream",
+  "TextDecoderStream",
+] as const) {
+  if (typeof testGlobals[name] === "undefined") testGlobals[name] = webStreams[name];
+}
 
 // Cleanup after each test
 afterEach(() => {

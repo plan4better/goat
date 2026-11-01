@@ -252,6 +252,10 @@ class StatusInfo(BaseModel):
     # Node status for workflow jobs (from flow_user_state)
     # Can be either string (legacy) or object with status/started_at/duration_ms
     node_status: dict[str, Any] | None = None
+    # Each failed step of a workflow run -> its message (no stack, at most
+    # 500 characters): from the finished run's result or, while the run goes
+    # on, from its failed child jobs.
+    node_errors: dict[str, str] | None = None
 
 
 class JobList(BaseModel):

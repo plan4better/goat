@@ -47,7 +47,7 @@ export interface ExplorerStrip {
 }
 
 /** The settings dialog's tabs (settings.ts). */
-export type ExplorerSettingsTab = "rates" | "periods" | "vehicles";
+export type ExplorerSettingsTab = "data" | "rates" | "periods" | "vehicles";
 
 /** Playback speeds: how many seconds of the day pass in one second. */
 export const PLAYBACK_SPEEDS = [1, 10, 60] as const;

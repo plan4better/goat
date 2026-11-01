@@ -16,7 +16,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.16.0\n"
+"Generated-By: Babel 2.18.0\n"
 
 #: src/crud/organization.py:126
 msgid "Thank you for signing up for the free demo!"
@@ -249,6 +249,77 @@ msgstr ""
 
 #: src/utils/email.py:40
 msgid "This is a test email"
+msgstr ""
+
+msgid "Your GOAT trial ends soon"
+msgstr ""
+
+msgid ""
+"Your organization's projects and data stay as they are. Get in touch with"
+" us to keep using GOAT after the trial."
+msgstr ""
+
+msgid "Get in touch"
+msgstr ""
+
+msgid "GOAT - Your trial ends soon"
+msgstr ""
+
+msgid "Your GOAT trial has ended"
+msgstr ""
+
+msgid ""
+"Your organization's projects and data are kept. Get in touch with us to "
+"continue with GOAT."
+msgstr ""
+
+msgid "GOAT - Your trial has ended"
+msgstr ""
+
+#, python-format
+msgid "You have been invited to %(organization)s"
+msgstr ""
+
+#, python-format
+msgid ""
+"You have been invited to work together in %(organization)s on GOAT. "
+"Accept the invitation with the button below."
+msgstr ""
+
+msgid "Accept invitation"
+msgstr ""
+
+#, python-format
+msgid "GOAT - Invitation to %(organization)s"
+msgstr ""
+
+#, python-format
+msgid "%(organization)s has been deleted"
+msgstr ""
+
+msgid ""
+"The organization and all its projects, layers and teams have been deleted"
+" for good."
+msgstr ""
+
+msgid "GOAT - Organization deleted"
+msgstr ""
+
+#, python-format
+msgid "You have been removed from %(organization)s"
+msgstr ""
+
+#, python-format
+msgid ""
+"You no longer have access to the projects and data of %(organization)s in"
+" GOAT. If you think this is a mistake, contact the administrators of the "
+"organization."
+msgstr ""
+
+msgid "Contact"
+msgstr ""
+
+msgid "You receive this email because of your GOAT account."
 msgstr ""
 
 #~ msgid "Activate your GOAT demo"

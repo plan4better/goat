@@ -14,6 +14,9 @@ export interface ElementWrapperProps {
   isSelected: boolean;
   onSelect?: () => void;
   onDelete?: () => void;
+  onDuplicate?: () => void;
+  /** Selects the parent container (e.g. the panel), which the element may fully cover */
+  onSelectParent?: () => void;
   /** Additional drag attributes for dnd-kit */
   dragAttributes?: DraggableAttributes;
   /** Additional drag listeners for dnd-kit */
@@ -48,6 +51,8 @@ export const ElementWrapper: React.FC<ElementWrapperProps> = ({
   isSelected,
   onSelect,
   onDelete,
+  onDuplicate,
+  onSelectParent,
   dragAttributes,
   dragListeners,
   showDragHandle = true,
@@ -110,6 +115,32 @@ export const ElementWrapper: React.FC<ElementWrapperProps> = ({
             </Tooltip>
           )}
           {controlPanelExtra}
+          {onDuplicate && (
+            <Tooltip title={t("duplicate")} placement="top" arrow>
+              <IconButton
+                aria-label={t("duplicate")}
+                sx={{ borderRadius: 0, color: "white" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDuplicate();
+                }}>
+                <Icon iconName={ICON_NAME.CLONE} style={{ fontSize: "12px" }} />
+              </IconButton>
+            </Tooltip>
+          )}
+          {onSelectParent && (
+            <Tooltip title={t("select_panel")} placement="top" arrow>
+              <IconButton
+                aria-label={t("select_panel")}
+                sx={{ borderRadius: 0, color: "white" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectParent();
+                }}>
+                <Icon iconName={ICON_NAME.EXPAND} style={{ fontSize: "12px" }} />
+              </IconButton>
+            </Tooltip>
+          )}
           {onDelete && (
             <Tooltip title={t("delete")} placement="top" arrow>
               <IconButton

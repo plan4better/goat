@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from pathlib import Path
 
 import pytest
@@ -14,9 +15,28 @@ except Exception as exc:  # pragma: no cover - import guard for local dev
 else:
     ROUTING_IMPORT_ERROR = None
 
-CACHE_DIR = Path(__file__).resolve().parents[4] / "apps" / "routing" / "cache"
-PARQUET_FILES = list(CACHE_DIR.glob("*.parquet"))
+# The street network where the tools read it: the tools' two settings, else
+# where goatlib.tasks.sync_base_data installs it under DATA_DIR. Munich's H3
+# res-3 cell (8077) is enough.
+_DATA_DIR = Path(os.environ.get("DATA_DIR") or "/app/data")
+EDGE_DIR = Path(
+    os.environ.get("STREET_NETWORK_EDGES_BASE_PATH")
+    or _DATA_DIR / "street_network" / "edges"
+)
+NODE_DIR = Path(
+    os.environ.get("STREET_NETWORK_NODES_BASE_PATH")
+    or _DATA_DIR / "street_network" / "nodes"
+)
+PARQUET_FILES = list(EDGE_DIR.glob("**/*.parquet"))
 MARIENPLATZ_3857 = (1288578.0, 6130064.0)
+
+# CI installs the street network for these tests, so there a missing one
+# fails them instead of skipping them all.
+if os.getenv("CI"):
+    if routing is None:
+        pytest.fail(f"routing is not importable: {ROUTING_IMPORT_ERROR}", pytrace=False)
+    if not PARQUET_FILES:
+        pytest.fail(f"no street network parquet files under {EDGE_DIR}", pytrace=False)
 
 pytestmark = [
     pytest.mark.skipif(
@@ -25,7 +45,7 @@ pytestmark = [
     ),
     pytest.mark.skipif(
         not PARQUET_FILES,
-        reason=f"no parquet files found in {CACHE_DIR}",
+        reason=f"no street network parquet files under {EDGE_DIR}",
     ),
 ]
 
@@ -34,11 +54,12 @@ def _make_config(**overrides):
     cfg = routing.RequestConfig()
     cfg.starting_points = [routing.Point3857(*MARIENPLATZ_3857)]
     cfg.mode = routing.RoutingMode.Walking
-    cfg.cost_mode = routing.CostMode.Time
-    cfg.max_traveltime = 10.0
+    cfg.cost_type = routing.CostType.Time
+    cfg.max_cost = 10.0
     cfg.steps = 10
     cfg.speed_km_h = 5.0
-    cfg.edge_dir = str(CACHE_DIR)
+    cfg.edge_dir = str(EDGE_DIR)
+    cfg.node_dir = str(NODE_DIR)
     cfg.catchment_type = routing.CatchmentType.Network
     cfg.output_format = routing.OutputFormat.GeoJSON
     cfg.polygon_difference = False
@@ -48,14 +69,30 @@ def _make_config(**overrides):
     return cfg
 
 
-def _assert_field_consistent(field):
-    assert field.node_count > 0
-    assert len(field.costs) == field.node_count
-    assert all(c >= 0 for c in field.costs)
+def _features(cfg):
+    doc = json.loads(routing.compute_catchment(cfg))
+    assert doc["type"] == "FeatureCollection"
+    return doc["features"]
 
 
-def _reachable_count(costs, budget):
-    return sum(1 for c in costs if math.isfinite(c) and c <= budget)
+def _cell_costs(**overrides):
+    """Costs of the H3 cells the catchment reaches. The HexagonalGrid output
+    gives each cell the lowest cost of the street nodes and edge points in it,
+    so the cell of the snapped starting point costs 0."""
+    cfg = _make_config(catchment_type=routing.CatchmentType.HexagonalGrid, **overrides)
+    return [feature["properties"]["cost"] for feature in _features(cfg)]
+
+
+def _reached_edges(**overrides):
+    """How many street edges the catchment reaches: the Network output has one
+    feature per reached edge."""
+    cfg = _make_config(catchment_type=routing.CatchmentType.Network, **overrides)
+    return len(_features(cfg))
+
+
+def _assert_costs_valid(costs, budget):
+    assert len(costs) > 0
+    assert all(0 <= c <= budget for c in costs)
 
 
 def _assert_step_bucket(cost: float, step_cost: float, step_size: float) -> None:
@@ -64,60 +101,43 @@ def _assert_step_bucket(cost: float, step_cost: float, step_size: float) -> None
     assert math.isclose(step_cost, expected, rel_tol=1e-9, abs_tol=1e-9)
 
 
-def test_walking_catchment_basic():
-    cfg = _make_config(mode=routing.RoutingMode.Walking, max_traveltime=10.0)
-    field = routing.compute_reachability_field(cfg)
+def _assert_on_step_grid(step_cost: float, step_size: float, steps: int) -> None:
+    step = step_cost / step_size
+    assert math.isclose(step, round(step), rel_tol=0, abs_tol=1e-9)
+    assert 0 <= round(step) <= steps
 
-    _assert_field_consistent(field)
-    assert any(c <= 1e-6 for c in field.costs)
+
+def test_walking_catchment_basic():
+    costs = _cell_costs(mode=routing.RoutingMode.Walking, max_cost=10.0)
+
+    _assert_costs_valid(costs, 10.0)
+    assert any(c <= 1e-6 for c in costs)
 
 
 def test_distance_mode_basic():
-    cfg = _make_config(cost_mode=routing.CostMode.Distance, max_traveltime=1200.0)
-    field = routing.compute_reachability_field(cfg)
+    costs = _cell_costs(cost_type=routing.CostType.Distance, max_cost=1200.0)
 
-    _assert_field_consistent(field)
-    assert _reachable_count(field.costs, cfg.max_traveltime) > 0
+    _assert_costs_valid(costs, 1200.0)
 
 
 def test_budget_monotonicity_time():
-    short_cfg = _make_config(max_traveltime=8.0)
-    long_cfg = _make_config(max_traveltime=15.0)
-
-    short_field = routing.compute_reachability_field(short_cfg)
-    long_field = routing.compute_reachability_field(long_cfg)
-
-    short_reachable = _reachable_count(short_field.costs, short_cfg.max_traveltime)
-    long_reachable = _reachable_count(long_field.costs, long_cfg.max_traveltime)
+    short_reachable = _reached_edges(max_cost=8.0)
+    long_reachable = _reached_edges(max_cost=15.0)
 
     assert long_reachable >= short_reachable
 
 
 def test_speed_monotonicity_time():
-    slow_cfg = _make_config(speed_km_h=4.0, max_traveltime=10.0)
-    fast_cfg = _make_config(speed_km_h=6.0, max_traveltime=10.0)
-
-    slow_field = routing.compute_reachability_field(slow_cfg)
-    fast_field = routing.compute_reachability_field(fast_cfg)
-
-    slow_reachable = _reachable_count(slow_field.costs, slow_cfg.max_traveltime)
-    fast_reachable = _reachable_count(fast_field.costs, fast_cfg.max_traveltime)
+    slow_reachable = _reached_edges(speed_km_h=4.0, max_cost=10.0)
+    fast_reachable = _reached_edges(speed_km_h=6.0, max_cost=10.0)
 
     assert fast_reachable >= slow_reachable
 
 
 def test_bicycle_vs_walking_reachability_smoke():
-    walking_cfg = _make_config(mode=routing.RoutingMode.Walking, speed_km_h=5.0)
-    bicycle_cfg = _make_config(mode=routing.RoutingMode.Bicycle, speed_km_h=15.0)
-
-    walking_field = routing.compute_reachability_field(walking_cfg)
-    bicycle_field = routing.compute_reachability_field(bicycle_cfg)
-
-    walking_reachable = _reachable_count(
-        walking_field.costs, walking_cfg.max_traveltime
-    )
-    bicycle_reachable = _reachable_count(
-        bicycle_field.costs, bicycle_cfg.max_traveltime
+    walking_reachable = _reached_edges(mode=routing.RoutingMode.Walking, speed_km_h=5.0)
+    bicycle_reachable = _reached_edges(
+        mode=routing.RoutingMode.Bicycle, speed_km_h=15.0
     )
 
     assert bicycle_reachable >= walking_reachable
@@ -127,28 +147,28 @@ def test_validation_requires_starting_points():
     cfg = _make_config(starting_points=[])
 
     with pytest.raises(ValueError, match="starting point"):
-        routing.compute_reachability_field(cfg)
+        routing.compute_catchment(cfg)
 
 
-def test_validation_requires_positive_max_traveltime():
-    cfg = _make_config(max_traveltime=0.0)
+def test_validation_requires_positive_max_cost():
+    cfg = _make_config(max_cost=0.0)
 
-    with pytest.raises(ValueError, match="max_traveltime"):
-        routing.compute_reachability_field(cfg)
+    with pytest.raises(ValueError, match="max_cost"):
+        routing.compute_catchment(cfg)
 
 
 def test_validation_requires_edge_dir():
     cfg = _make_config(edge_dir="")
 
     with pytest.raises(ValueError, match="edge_dir"):
-        routing.compute_reachability_field(cfg)
+        routing.compute_catchment(cfg)
 
 
 def test_runtime_error_for_disconnected_start_point():
     far_point_cfg = _make_config(starting_points=[routing.Point3857(0.0, 0.0)])
 
     with pytest.raises(RuntimeError, match="No edges loaded"):
-        routing.compute_reachability_field(far_point_cfg)
+        routing.compute_catchment(far_point_cfg)
 
 
 def test_geojson_api_returns_feature_collection():
@@ -163,17 +183,30 @@ def test_geojson_api_returns_feature_collection():
     first = doc["features"][0]
     assert first["type"] == "Feature"
     assert first["geometry"]["type"] == "LineString"
-    assert "cost" in first["properties"]
     assert "step_cost" in first["properties"]
 
 
-def test_geojson_network_step_cost_bucket_is_correct():
+def test_geojson_network_step_costs_are_on_the_step_grid():
+    # A network feature carries its step only, not the cost it was rounded
+    # from: the rounding itself is checked on the hexagonal grid below.
     cfg = _make_config(catchment_type=routing.CatchmentType.Network, steps=8)
     payload = routing.compute_catchment(cfg)
     doc = json.loads(payload)
 
     assert len(doc["features"]) > 0
-    step_size = cfg.max_traveltime / cfg.steps
+    step_size = cfg.max_cost / cfg.steps
+
+    for feature in doc["features"]:
+        _assert_on_step_grid(feature["properties"]["step_cost"], step_size, cfg.steps)
+
+
+def test_geojson_hexagonal_grid_step_cost_bucket_is_correct():
+    cfg = _make_config(catchment_type=routing.CatchmentType.HexagonalGrid, steps=8)
+    payload = routing.compute_catchment(cfg)
+    doc = json.loads(payload)
+
+    assert len(doc["features"]) > 0
+    step_size = cfg.max_cost / cfg.steps
 
     for feature in doc["features"]:
         props = feature["properties"]

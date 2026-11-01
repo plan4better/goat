@@ -78,22 +78,6 @@ def python_type_to_str(annotation: type) -> str:
     return str(annotation)
 
 
-def _format_default_value(value: object) -> str:
-    """Format a default value for code generation.
-
-    Handles enums specially to use their .value instead of repr().
-    Also handles lists that may contain enums.
-    """
-    if isinstance(value, Enum):
-        # Use the enum's value (e.g., "gaussian" instead of <ImpedanceFunction.gaussian>)
-        return repr(value.value)
-    if isinstance(value, list):
-        # Handle lists that may contain enums
-        formatted_items = [_format_default_value(item) for item in value]
-        return f"[{', '.join(formatted_items)}]"
-    return repr(value)
-
-
 def generate_windmill_script(
     module_path: str,
     params_class: type,
@@ -106,6 +90,13 @@ def generate_windmill_script(
     NOT Pydantic models. So we introspect the Pydantic model fields and generate
     a function with individual typed arguments.
 
+    Every optional argument defaults to None, and the script drops the None
+    ones before it builds the model, so a setting the job leaves out reaches the
+    model as absent. The model then applies its own default, including one
+    it resolves from the job's other settings (a travel budget that follows
+    the routing mode and cost type, as the form's `default_from` does). A
+    static default in the signature would be passed on as if the job had set it.
+
     Args:
         module_path: Import path for the module (e.g., "goatlib.tools.buffer")
         params_class: Pydantic model class with tool parameters
@@ -114,8 +105,6 @@ def generate_windmill_script(
     Returns:
         Generated Python script content for Windmill
     """
-    from pydantic_core import PydanticUndefined
-
     if excluded_fields is None:
         excluded_fields = {
             "input_path",
@@ -149,17 +138,11 @@ def generate_windmill_script(
         if "Literal" in type_str:
             needs_literal = True
 
-        # Check if required or has default
         if field_info.is_required():
             required_args.append(f"{name}: {type_str}")
-        elif (
-            field_info.default is not None
-            and field_info.default is not PydanticUndefined
-        ):
-            default_val = _format_default_value(field_info.default)
-            optional_args.append(f"{name}: {type_str} = {default_val}")
         else:
-            optional_args.append(f"{name}: {type_str} = None")
+            optional = type_str if type_str.endswith("None") else f"{type_str} | None"
+            optional_args.append(f"{name}: {optional} = None")
 
     # Required args first, then optional
     all_args = required_args + optional_args

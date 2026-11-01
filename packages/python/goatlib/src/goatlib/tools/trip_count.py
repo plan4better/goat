@@ -203,26 +203,30 @@ class TripCountToolRunner(BaseToolRunner[TripCountToolParams]):
     ) -> dict[str, str]:
         """Predict trip count output schema.
 
-        Trip count outputs:
+        Trip count outputs (``TripCountStationTool._export_results``):
         - stop_id: GTFS stop identifier
         - stop_name: station name
+        - parent_station: the station's parent stop, if any
         - bus: bus trip count
         - tram: tram trip count
         - metro: metro/subway trip count
         - rail: rail/train trip count
         - other: other transport mode trip count
         - total: total trip count (all modes)
+        - frequency: average minutes between departures in the time window
         - geometry: Point location of the station
         """
         return {
             "stop_id": "VARCHAR",
             "stop_name": "VARCHAR",
+            "parent_station": "VARCHAR",
             "bus": "INTEGER",
             "tram": "INTEGER",
             "metro": "INTEGER",
             "rail": "INTEGER",
             "other": "INTEGER",
             "total": "INTEGER",
+            "frequency": "DOUBLE",
             "geometry": "GEOMETRY",
         }
 

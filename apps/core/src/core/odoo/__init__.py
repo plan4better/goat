@@ -1,11 +1,11 @@
 """Plan4Better's Odoo, as GOAT's integrations reach it (SaaS only).
 
-Conventions every Odoo integration in core follows (support tickets today,
-billing next):
+Conventions every Odoo integration in core follows (support tickets, account
+reports):
 
 - Settings: the connection is shared, `ODOO_URL` and `ODOO_DB`. Each
   integration has its own API key and settings under its own prefix
-  (`ODOO_SUPPORT_*`, `ODOO_BILLING_*`), with a key that belongs to its own
+  (`ODOO_SUPPORT_*`, `ODOO_ACCOUNTS_*`), with a key that belongs to its own
   least-privilege Odoo user. An integration is on only when the connection
   and its own settings are all set; self-hosted installs set none of them.
 - Calls go through `OdooClient` (JSON-2), one instance per integration, with

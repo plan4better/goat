@@ -24,7 +24,10 @@ export const { useI18n } = createUseI18n({
     getStarted: "Get started!",
     accept: "I accept the ",
     terms: "Terms & conditions",
-    subscribeToNewsletter: "Subscribe to our newsletter",
+    subscribeToNewsletter:
+      "Subscribe to the GOAT newsletter (optional, unsubscribe at any time)",
+    trialEmailsNote:
+      "During your trial we send you tips for getting started, reminders about your trial and an offer to keep using GOAT. You can unsubscribe from them in every email.",
     formNotFilledProperly: "Form not filled properly",
     allowedEmailDomains: "allowed email domains",
     minimumLength: "Minimum length",
@@ -74,7 +77,10 @@ export const { useI18n } = createUseI18n({
     getStarted: "Los geht's!",
     accept: "Ich akzeptiere die ",
     terms: "Nutzungsbedingungen",
-    subscribeToNewsletter: "Abonnieren Sie unseren Newsletter",
+    subscribeToNewsletter:
+      "GOAT-Newsletter abonnieren (optional, jederzeit abbestellbar)",
+    trialEmailsNote:
+      "Während Ihres Testzeitraums schicken wir Ihnen Tipps für den Einstieg, Hinweise zum Testzeitraum und ein Angebot zur weiteren Nutzung. Abbestellen können Sie diese in jeder E-Mail.",
     formNotFilledProperly: "Formular nicht richtig ausgefüllt",
     allowedEmailDomains: "erlaubte E-Mail-Domains",
     minimumLength: "Mindestlänge",

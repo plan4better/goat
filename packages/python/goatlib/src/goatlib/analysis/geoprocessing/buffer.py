@@ -30,9 +30,7 @@ class BufferTool(AnalysisTool):
         crs = meta.crs
 
         if not geom_col:
-            raise ValueError(
-                f"Could not detect geometry column for {params.input_path}."
-            )
+            raise ValueError("The input layer has no geometry column.")
 
         # Fallback to output_crs (default EPSG:4326) if CRS not detected
         # This happens when exporting from DuckLake which doesn't preserve GeoParquet metadata

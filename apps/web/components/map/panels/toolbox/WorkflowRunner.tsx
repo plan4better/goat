@@ -24,9 +24,17 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { dismissJob, useJobs } from "@/lib/api/processes";
 import { useProject } from "@/lib/api/projects";
-import { type WorkflowExecuteRequest, cleanupWorkflowTemp, executeWorkflow, useWorkflow } from "@/lib/api/workflows";
+import {
+  type WorkflowExecuteRequest,
+  WorkflowIssuesError,
+  executeWorkflow,
+  useWorkflow,
+} from "@/lib/api/workflows";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
+import { creditsErrorMessage } from "@/lib/utils/credits";
 import { claimJobAnnouncement } from "@/lib/utils/jobAnnouncement";
+import { refusalSummary } from "@/lib/utils/workflowIssueText";
+import { workflowRunsSomething } from "@/lib/utils/workflowRuns";
 
 import type { NodeExecutionInfo, NodeExecutionStatus } from "@/components/workflows/context/WorkflowExecutionContext";
 
@@ -61,7 +69,7 @@ function formatDuration(ms: number): string {
 }
 
 export default function WorkflowRunner({ workflowId, onBack, onClose }: WorkflowRunnerProps) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const theme = useTheme();
   const { projectId } = useParams();
   const dispatch = useAppDispatch();
@@ -111,8 +119,8 @@ export default function WorkflowRunner({ workflowId, onBack, onClose }: Workflow
   const canExecute = useMemo(() => {
     if (!projectId || !workflowId || !project?.folder_id) return false;
     if (execState.isExecuting) return false;
-    return executableNodes.some((n) => n.data.type === "tool");
-  }, [projectId, workflowId, project?.folder_id, execState.isExecuting, executableNodes]);
+    return workflowRunsSomething(workflow?.config?.nodes ?? [], workflow?.config?.edges ?? []);
+  }, [projectId, workflowId, project?.folder_id, execState.isExecuting, workflow]);
 
   // Execute workflow
   const handleRun = useCallback(async () => {
@@ -136,8 +144,7 @@ export default function WorkflowRunner({ workflowId, onBack, onClose }: Workflow
     });
 
     try {
-      await cleanupWorkflowTemp(workflowId);
-
+      // Processes removes the last run's temp results itself once the run passes its check.
       // Send original nodes with {{@variable_name}} references intact.
       // The server-side workflow_runner resolves variables with proper type coercion.
       // We pass runtime values as defaultValue so the server uses them.
@@ -155,7 +162,7 @@ export default function WorkflowRunner({ workflowId, onBack, onClose }: Workflow
         }),
       };
 
-      const response = await executeWorkflow(workflowId, request);
+      const response = await executeWorkflow(workflowId, request, i18n.language);
       setExecState((s) => ({ ...s, jobId: response.job_id }));
 
       dispatch(setRunningJobIds([...runningJobIdsRef.current, response.job_id]));
@@ -164,7 +171,11 @@ export default function WorkflowRunner({ workflowId, onBack, onClose }: Workflow
       toast.dismiss();
       toast.success(t("workflow_started"));
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("execution_failed");
+      // A refusal names what to fix, step by step; other failures keep their message.
+      const message =
+        error instanceof WorkflowIssuesError
+          ? refusalSummary(t, error.issues, workflow.config.nodes)
+          : (creditsErrorMessage(error, t) ?? (error instanceof Error ? error.message : t("execution_failed")));
       setExecState((s) => ({
         ...s,
         isExecuting: false,
@@ -174,7 +185,18 @@ export default function WorkflowRunner({ workflowId, onBack, onClose }: Workflow
       toast.dismiss();
       toast.error(`${t("workflow_failed")}: ${message}`);
     }
-  }, [projectId, project?.folder_id, workflow, workflowId, executableNodes, variableValues, dispatch, mutateJobs, t]);
+  }, [
+    projectId,
+    project?.folder_id,
+    workflow,
+    workflowId,
+    executableNodes,
+    variableValues,
+    i18n.language,
+    dispatch,
+    mutateJobs,
+    t,
+  ]);
 
   // Cancel workflow
   const handleStop = useCallback(async () => {
@@ -353,7 +375,7 @@ export default function WorkflowRunner({ workflowId, onBack, onClose }: Workflow
           {workflow.description && (
             <Typography
               variant="body2"
-              sx={{ fontStyle: "italic", mb: theme.spacing(4) }}
+              sx={{ fontStyle: "italic", whiteSpace: "pre-line", mb: theme.spacing(4) }}
               color="text.secondary">
               {workflow.description}
             </Typography>

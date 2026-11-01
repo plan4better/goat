@@ -13,6 +13,14 @@ from core.deps.keycloak import get_keycloak_user
 from core.schemas import UserCreate, UserUpdate
 
 
+def _newsletter_consent(value: object) -> bool:
+    """The sign-up's newsletter box (Keycloak attribute subscribe_to_newsletter,
+    token claim `newsletter`): any non-empty value is consent."""
+    if isinstance(value, list):
+        value = value[0] if value else None
+    return bool(str(value or "").strip())
+
+
 class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
     async def upsert_from_token(self, *, token: dict, db_session: AsyncSession) -> User:
         """Ensure a local user row exists for a (verified) Keycloak token.
@@ -34,6 +42,11 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
                 "lastname": lastname,
             }
             changed = False
+            # Created before the token carried the claim (e.g. by the
+            # organization form): take the sign-up's consent now.
+            if user_obj.newsletter_subscribe is None and token.get("newsletter"):
+                user_obj.newsletter_subscribe = _newsletter_consent(token["newsletter"])
+                changed = True
             for field, value in updates.items():
                 if value and getattr(user_obj, field) != value:
                     setattr(user_obj, field, value)
@@ -51,6 +64,9 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             firstname=firstname,
             lastname=lastname,
             avatar=settings.USER_DEFAULT_AVATAR,
+            # The sign-up's newsletter box: Keycloak's `newsletter` claim holds
+            # the time of consent (packages/js/keycloak-theme/realm/README.md).
+            newsletter_subscribe=_newsletter_consent(token.get("newsletter")),
         )
         db_session.add(new_user)
         await db_session.commit()
@@ -91,6 +107,9 @@ class CRUDUser(CRUDBase[User, UserCreate, UserUpdate]):
             lastname=keycloak_user.get("lastName") or "",
             avatar=avatar,
             organization_id=organization.id if organization else None,
+            newsletter_subscribe=_newsletter_consent(
+                (keycloak_user.get("attributes") or {}).get("subscribe_to_newsletter")
+            ),
         )
         new_user = await self.create(db=db_session, obj_in=new_user_obj)
         assert new_user.id is not None

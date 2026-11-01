@@ -52,12 +52,14 @@ The ÖV-Güteklassen indicator is decisive and can be used to highlight deficits
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Choose the <code>Catchment area type</code>: <b>Buffer</b>.</div>
+  <div class="content">Choose the <code>Catchment area type</code>: <b>Buffer</b> or <b>Street network</b>.</div>
 </div>
 
 :::info
 
 **Buffers** represent areas around public transport stations measured "as the crow flies".
+
+**Street network** walks the same distances along the street network from each station, so the classes follow the streets and paths people actually use. Rivers, railway lines and dead ends shorten them where a circle would not. If the project holds a street network of its own, you can pick it under <code>Street network</code>; otherwise a public transport bundle linked to a street network walks its stations on that network, and the default network is used for everything else.
 
 :::
 

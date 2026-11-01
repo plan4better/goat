@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from goatlib.io.bbox_columns import BBOX_COLUMN, star_excluding, stray_bbox_columns
+from goatlib.io.config import parquet_copy_options
 
 if TYPE_CHECKING:
     import duckdb
@@ -133,7 +134,7 @@ def write_optimized_parquet(
     copy_sql = f"""
         COPY ({optimized_query})
         TO '{output_path}'
-        (FORMAT PARQUET, COMPRESSION {compression}, ROW_GROUP_SIZE {row_group_size}, PARQUET_VERSION V2)
+        {_copy_options(compression, row_group_size)}
     """
 
     logger.debug("Writing optimized GeoParquet: %s", output_path)
@@ -159,6 +160,16 @@ def write_optimized_parquet(
 
 # Alias for backward compatibility
 write_optimized_geoparquet = write_optimized_parquet
+
+
+def _copy_options(compression: str, row_group_size: int) -> str:
+    """The COPY options of an optimized file. PARQUET_VERSION V2 for its
+    encodings (DELTA_BINARY_PACKED, etc.), which compress better."""
+    return parquet_copy_options(
+        f"COMPRESSION {compression}",
+        f"ROW_GROUP_SIZE {row_group_size}",
+        "PARQUET_VERSION V2",
+    )
 
 
 def _normalize_source(source: str) -> str:
@@ -293,7 +304,7 @@ def _write_plain_parquet(
     copy_sql = f"""
         COPY ({source_query})
         TO '{output_path}'
-        (FORMAT PARQUET, COMPRESSION {compression}, ROW_GROUP_SIZE {row_group_size}, PARQUET_VERSION V2)
+        {_copy_options(compression, row_group_size)}
     """
     con.execute(copy_sql)
 

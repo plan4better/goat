@@ -42,6 +42,40 @@ check_common() {
   jq -e '[.services[] | .logging.options["max-size"]] | all' <<<"$json" >/dev/null || fail "service without log rotation"
   # Public URL never ends with a slash.
   jq -e '.services.web.environment.NEXTAUTH_URL | endswith("/") | not' <<<"$json" >/dev/null || fail "trailing slash in public url"
+  # The assistant: its route prefix, the web app's URL for it, the shutdown
+  # budget (uvicorn drains streams for 20 s, see apps/assistant/Dockerfile),
+  # GOAT's database role and the web client for refreshing logins.
+  jq -e '.services.assistant.environment.ROOT_PATH == "/assistant"' <<<"$json" >/dev/null || fail "assistant root path"
+  jq -e '.services.assistant.stop_grace_period == "30s"' <<<"$json" >/dev/null || fail "assistant stop_grace_period"
+  jq -e '.services.web.environment.NEXT_PUBLIC_ASSISTANT_URL == (.services.web.environment.NEXT_PUBLIC_APP_URL + "/assistant")' <<<"$json" >/dev/null || fail "web assistant url"
+  # GOAT's own database role, the one core migrates with: it owns the database,
+  # so customer.can (plain SQL, run with the caller's privileges) can read
+  # every table it needs (apps/assistant/sql/grants.sql lists them).
+  jq -e '.services as $s | $s.assistant.environment | .POSTGRES_USER == $s.core.environment.POSTGRES_USER and .POSTGRES_USER == $s["core-migrate"].environment.POSTGRES_USER and .POSTGRES_DB == $s.core.environment.POSTGRES_DB' <<<"$json" >/dev/null || fail "assistant must use GOAT's database role"
+  jq -e '.services.assistant.environment.REDIS_URL == "redis://redis:6379/0"' <<<"$json" >/dev/null || fail "assistant redis"
+  jq -e '.services.assistant.environment | .ASSISTANT_CORE_URL == "http://core:8000" and .ASSISTANT_GEOAPI_URL == "http://geoapi:8000" and .ASSISTANT_CATALOG_URL == "http://catalog:8400" and .GOAT_PROCESSES_URL == "http://processes:8000"' <<<"$json" >/dev/null || fail "assistant service urls"
+  jq -e '.services as $s | $s.assistant.environment.KEYCLOAK_CLIENT_ID == $s.web.environment.KEYCLOAK_CLIENT_ID and $s.assistant.environment.KEYCLOAK_CLIENT_SECRET == $s.web.environment.KEYCLOAK_CLIENT_SECRET' <<<"$json" >/dev/null || fail "assistant must refresh logins with the web client"
+  jq -e '.services.assistant.environment.ASSISTANT_TOKEN_EXCHANGE_ENABLED == "false"' <<<"$json" >/dev/null || fail "token exchange needs Keycloak 26.2"
+  jq -e '.services.assistant.environment.ASSISTANT_SECRETS_KEY | test("^[A-Za-z0-9_-]{43}=$")' <<<"$json" >/dev/null || fail "assistant secrets key"
+  jq -e '.services.assistant.environment.ASSISTANT_DEFAULT_PROVIDER == "none"' <<<"$json" >/dev/null || fail "GOAT AI must be off by default"
+  # GOAT AI's hosting place reaches the assistant, empty until it is set.
+  jq -e '.services.assistant.environment.ASSISTANT_DEFAULT_HOSTED_IN == ""' <<<"$json" >/dev/null || fail "GOAT AI hosting place"
+  jq -e '.services.assistant.environment.ASSISTANT_ALLOWED_PROVIDERS | split(",") | length == 7' <<<"$json" >/dev/null || fail "allowed providers"
+  # The MCP endpoint moved to the assistant; nothing configures the catalog's.
+  jq -e '[.services.catalog.environment | keys[] | select(test("MCP"))] | length == 0' <<<"$json" >/dev/null || fail "catalog still has MCP settings"
+  jq -e '.services.caddy.environment.GOAT_HOSTNAME as $h | (.services.assistant.environment.ASSISTANT_MCP_ALLOWED_HOSTS | fromjson) == [$h, ($h + ":*")]' <<<"$json" >/dev/null || fail "mcp allowed hosts"
+  jq -e '.services.assistant.environment.ASSISTANT_MCP_AUDIT_RETENTION_DAYS == "30"' <<<"$json" >/dev/null || fail "mcp audit retention"
+  # Same origin as the web app: CORS defaults to NEXT_PUBLIC_APP_URL, so the
+  # bundle sets no origins of its own.
+  jq -e '.services as $s | $s.assistant.environment | .NEXT_PUBLIC_APP_URL == $s.web.environment.NEXT_PUBLIC_APP_URL and (has("ASSISTANT_CORS_ORIGINS") or has("CORS_ORIGINS") | not)' <<<"$json" >/dev/null || fail "assistant cors origin"
+  # Bearer and MCP tokens must never land in traces.
+  jq -e '.services.assistant.environment.OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST // "" | ascii_downcase | contains("authorization") | not' <<<"$json" >/dev/null || fail "assistant traces capture the Authorization header"
+  # No cloud credentials unless assistant.env names them.
+  jq -e '.services.assistant.environment | (has("AWS_BEARER_TOKEN_BEDROCK") or has("GOOGLE_APPLICATION_CREDENTIALS")) | not' <<<"$json" >/dev/null || fail "cloud credentials without assistant.env"
+  # The company CA reaches the assistant as it reaches core: the same
+  # GOAT_CA_BUNDLE and the same folders it may point into.
+  jq -e '.services as $s | $s.assistant.environment | has("GOAT_CA_BUNDLE") and .GOAT_CA_BUNDLE == $s.core.environment.GOAT_CA_BUNDLE' <<<"$json" >/dev/null || fail "assistant GOAT_CA_BUNDLE differs from core"
+  jq -e '.services as $s | [$s.assistant.volumes[] | select(.target == "/certs" or .target == "/caddy-data") | [.source, .target, .read_only]] as $a | [$s.core.volumes[] | select(.target == "/certs" or .target == "/caddy-data") | [.source, .target, .read_only]] as $c | ($a | length) == 2 and $a == $c' <<<"$json" >/dev/null || fail "assistant mounts the CA folders unlike core"
   # DuckDB spills to disk only at its own budget, so geoapi's and processes'
   # budgets stay under 3/4 of their memory limits: geoapi's pool shares one
   # connection budgeted POOL_SIZE x MEMORY_LIMIT, plus its read and write
@@ -132,6 +166,12 @@ echo "ALLOW_ORGANIZATION_CREATION=false" >> "$d/.env"
 j=$(render "$d"); check_common "$j"
 jq -e '.services.core.environment.ALLOW_ORGANIZATION_CREATION == "false"' <<<"$j" >/dev/null || fail "organization creation setting not passed to core"
 
+variant=goat-ai-hosted-in
+d=$(make_variant --public-url https://goat.example.org --tls off)
+sed -i 's/^ASSISTANT_DEFAULT_HOSTED_IN=.*/ASSISTANT_DEFAULT_HOSTED_IN=EU/' "$d/.env"
+j=$(render "$d")
+jq -e '.services.assistant.environment.ASSISTANT_DEFAULT_HOSTED_IN == "EU"' <<<"$j" >/dev/null || fail "GOAT AI hosting place not passed to the assistant"
+
 variant=off-ip-port
 d=$(make_variant --public-url http://10.0.0.5:8080 --tls off)
 j=$(render "$d"); check_common "$j"
@@ -171,6 +211,32 @@ d=$(make_variant --public-url http://localhost --tls off)
 sed -i 's/^AUTH=.*/AUTH=False/; s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=garage/' "$d/.env"
 j=$(render "$d"); check_common "$j"
 jq -e '.services.web.environment.NEXT_PUBLIC_AUTH == "False" and .services.geoapi.environment.AUTH == "False"' <<<"$j" >/dev/null || fail "auth flag"
+
+variant=assistant-env
+d=$(make_variant --public-url https://goat.example.org --tls auto)
+printf 'AWS_BEARER_TOKEN_BEDROCK=bedrock-key\n' > "$d/assistant.env"
+j=$(render "$d")
+jq -e '.services.assistant.environment.AWS_BEARER_TOKEN_BEDROCK == "bedrock-key"' <<<"$j" >/dev/null || fail "assistant.env not read"
+jq -e '.services.core.environment | has("AWS_BEARER_TOKEN_BEDROCK") | not' <<<"$j" >/dev/null || fail "assistant.env leaked into core"
+
+variant=internal-ca
+d=$(make_variant --public-url https://10.0.0.5:8443 --tls internal)
+j=$(render "$d"); check_common "$j"
+jq -e '.services.assistant.environment.GOAT_CA_BUNDLE == "/caddy-data/caddy/pki/authorities/local/root.crt"' <<<"$j" >/dev/null || fail "assistant must trust Caddy's root"
+
+# The SSE route: flushed at once, and not inside the compressed web block.
+variant=caddy-assistant
+caddyfile="$here/init/caddy/Caddyfile"
+awk '/handle \/assistant\/\* \{/,/^\t\}/' "$caddyfile" | grep -q 'flush_interval -1' || fail "assistant route buffers"
+first_assistant=$(grep -n 'handle /assistant/\*' "$caddyfile" | cut -d: -f1)
+web_block=$(grep -nP '^\thandle \{' "$caddyfile" | cut -d: -f1)
+[ -n "$first_assistant" ] && [ "$first_assistant" -lt "$web_block" ] || fail "assistant route missing or inside the web block"
+
+# The realm keeps refresh tokens valid when they are used, which the
+# assistant's refresh and the browser's session both need.
+variant=keycloak-realm
+jq -e '.revokeRefreshToken == false' "$here/init/keycloak/realm-goat.json" >/dev/null || fail "realm must not revoke refresh tokens"
+grep -q 'revokeRefreshToken=false' "$here/init/keycloak/sync.sh" || fail "keycloak-sync must enforce revokeRefreshToken=false"
 
 # Caddyfile in every TLS mode
 variant=caddy

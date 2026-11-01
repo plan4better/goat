@@ -22,19 +22,13 @@ import { toast } from "react-toastify";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import {
-  createWorkflow,
-  deleteWorkflow,
-  duplicateWorkflow,
-  updateWorkflow,
-  useWorkflows,
-} from "@/lib/api/workflows";
+import { ChangedElsewhereError } from "@/lib/api/changedElsewhere";
+import { deleteWorkflow, duplicateWorkflow, useWorkflows } from "@/lib/api/workflows";
 import type { Project, ProjectLayer, ProjectLayerGroup } from "@/lib/validations/project";
-import type { TemplateRead, TemplateUseResult } from "@/lib/validations/template";
-import { createEmptyWorkflowConfig } from "@/lib/validations/workflow";
 import type { Workflow } from "@/lib/validations/workflow";
 
 import { useMapLayers } from "@/hooks/map/useMapLayers";
+import type { WorkflowCreation } from "@/hooks/workflows/useWorkflowCreation";
 
 import NewMenuButton from "@/components/common/NewMenuButton";
 import MoreMenu from "@/components/common/PopperMenu";
@@ -44,8 +38,6 @@ import { AddLayerButton, ProjectLayerTree } from "@/components/map/panels/layer/
 import ConfirmModal from "@/components/modals/Confirm";
 import WorkflowRenameModal from "@/components/modals/WorkflowRename";
 import SaveTemplateDialog from "@/components/templates/SaveTemplateDialog";
-import TemplateBrowser from "@/components/templates/TemplateBrowser";
-import UseTemplateFlow from "@/components/templates/UseTemplateFlow";
 import ReplaceDatasetsDialog from "@/components/workflows/dialogs/ReplaceDatasetsDialog";
 
 const PanelContainer = styled(SidePanelContainer)(({ theme }) => ({
@@ -68,8 +60,14 @@ interface WorkflowsConfigPanelProps {
   projectLayerGroups?: ProjectLayerGroup[];
   selectedWorkflow: Workflow | null;
   onSelectWorkflow: (workflow: Workflow | null) => void;
+  /** Renames a workflow in turn with the editor's saves
+   * (`useWorkflowAutosave().rename`): a rename moves it to a new revision. */
+  onRenameWorkflow: (workflowId: string, name: string) => Promise<void>;
   /** Callback for when a layer is dragged (for workflow canvas integration) */
   onLayerDragStart?: (event: React.DragEvent, layer: ProjectLayer) => void;
+  /** New workflow from scratch or from a template, shared with the card a
+   * project without workflows shows (`useWorkflowCreation`). */
+  creation: WorkflowCreation;
 }
 
 const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
@@ -78,9 +76,12 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
   projectLayerGroups = [],
   selectedWorkflow,
   onSelectWorkflow,
+  onRenameWorkflow,
   onLayerDragStart,
+  creation,
 }) => {
   const { t } = useTranslation("common");
+  const { selectWhenListed, pendingSelectId } = creation;
 
   // Fetch workflows from API
   const { workflows, isLoading, mutate } = useWorkflows(project?.id);
@@ -95,10 +96,8 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
   // The store is the single source of truth for which workflow is open — the
   // map page's `?workflow=` intent, the layout and this list all write it
   // through `onSelectWorkflow`, and the list highlights what it reads back.
-  // A workflow this panel just created is selected once the list carries it.
+  // A workflow just created is selected by `creation` once the list carries it.
   const selectedWorkflowId = selectedWorkflow?.id ?? null;
-  const [pendingSelectId, setPendingSelectId] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
 
   // Modal states
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -106,11 +105,8 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
   const [actionWorkflowId, setActionWorkflowId] = useState<string | null>(null);
   const [actionWorkflowName, setActionWorkflowName] = useState<string>("");
 
-  // Template entry points (T7/T8): "Add workflow"'s split arrow menu opens the
-  // browser, whose pick hands off to UseTemplateFlow; the kebab's "Save as
-  // template" opens SaveTemplateDialog for the clicked workflow.
-  const [templateBrowserOpen, setTemplateBrowserOpen] = useState(false);
-  const [templateForFlow, setTemplateForFlow] = useState<TemplateRead | null>(null);
+  // The kebab's "Save as template" opens SaveTemplateDialog for the clicked
+  // workflow; "From template" in the New menu goes through `creation`.
   const [templateSaveWorkflow, setTemplateSaveWorkflow] = useState<Workflow | null>(null);
   // The kebab's "Replace datasets…" works on the store's nodes, so the
   // clicked workflow is opened first and the dialog follows once it is the
@@ -119,60 +115,14 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
   const replaceDatasetsOpen =
     replaceDatasetsWorkflow !== null && replaceDatasetsWorkflow.id === selectedWorkflowId;
 
+  // Nothing open anywhere: the first workflow opens, unless a workflow just
+  // created is about to.
   useEffect(() => {
-    if (!workflows) return;
-    if (pendingSelectId) {
-      const created = workflows.find((w) => w.id === pendingSelectId);
-      if (created) {
-        setPendingSelectId(null);
-        onSelectWorkflow(created);
-      }
-      return;
-    }
-    // Nothing open anywhere: the first workflow opens.
+    if (!workflows || pendingSelectId) return;
     if (workflows.length > 0 && !selectedWorkflowId) {
       onSelectWorkflow(workflows[0]);
     }
   }, [workflows, pendingSelectId, selectedWorkflowId, onSelectWorkflow]);
-
-  // Handle create new workflow
-  const handleCreateWorkflow = useCallback(async () => {
-    if (!project?.id) return;
-
-    setIsCreating(true);
-    try {
-      const newWorkflow = await createWorkflow(project.id, {
-        name: `${t("workflow")} ${(workflows?.length || 0) + 1}`,
-        description: null,
-        is_default: false,
-        config: createEmptyWorkflowConfig(),
-      });
-
-      await mutate();
-      setPendingSelectId(newWorkflow.id);
-    } catch (error) {
-      console.error("Failed to create workflow:", error);
-    } finally {
-      setIsCreating(false);
-    }
-  }, [project?.id, t, workflows?.length, mutate]);
-
-  // A template picked from the browser hands off to UseTemplateFlow, which
-  // inserts the workflow into this project and marks unresolved inputs on
-  // the canvas (T7).
-  const handleUseTemplate = useCallback((template: TemplateRead) => {
-    setTemplateBrowserOpen(false);
-    setTemplateForFlow(template);
-  }, []);
-
-  const handleTemplateFlowDone = useCallback(
-    async (result: TemplateUseResult) => {
-      setTemplateForFlow(null);
-      await mutate();
-      if (result.workflow_id) setPendingSelectId(result.workflow_id);
-    },
-    [mutate]
-  );
 
   // Handle duplicate workflow
   const handleDuplicateWorkflow = useCallback(
@@ -182,12 +132,12 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
       try {
         const duplicated = await duplicateWorkflow(project.id, workflowId);
         await mutate();
-        setPendingSelectId(duplicated.id);
+        selectWhenListed(duplicated.id);
       } catch (error) {
         console.error("Failed to duplicate workflow:", error);
       }
     },
-    [project?.id, mutate]
+    [project?.id, mutate, selectWhenListed]
   );
 
   // Handle delete workflow
@@ -210,25 +160,27 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
     }
   }, [project?.id, actionWorkflowId, selectedWorkflowId, mutate, onSelectWorkflow]);
 
-  // Handle rename workflow
+  // Handle rename workflow. Only the name is sent and core keeps the stored
+  // config: the list's copy may be older than the last autosave, and core
+  // refuses a damaged config, which would make such a workflow unrenamable.
   const handleRenameWorkflow = useCallback(
     async (newName: string) => {
       if (!project?.id || !actionWorkflowId) return;
 
-      const workflow = workflows?.find((w) => w.id === actionWorkflowId);
-      if (!workflow) return;
-
       try {
-        await updateWorkflow(project.id, actionWorkflowId, {
-          name: newName,
-          config: workflow.config,
-        });
+        await onRenameWorkflow(actionWorkflowId, newName);
         await mutate();
       } catch (error) {
         console.error("Failed to rename workflow:", error);
+        // Refused on the revision the list read: the list is read again, so
+        // the next rename names the stored workflow's revision.
+        if (error instanceof ChangedElsewhereError) {
+          toast.error(t("workflow_changed_elsewhere"));
+          void mutate();
+        }
       }
     },
-    [project?.id, actionWorkflowId, workflows, mutate]
+    [project?.id, actionWorkflowId, onRenameWorkflow, mutate, t]
   );
 
   // Context menu items for workflow
@@ -301,20 +253,20 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
             {t("workflows")}
           </Typography>
           <NewMenuButton
-            disabled={!project?.id}
-            loading={isCreating}
+            disabled={!creation.canCreate}
+            loading={creation.isCreating}
             items={[
               {
                 key: "blank",
                 label: t("from_scratch"),
                 icon: ICON_NAME.WORKFLOW,
-                onSelect: handleCreateWorkflow,
+                onSelect: () => void creation.createFromScratch(),
               },
               {
                 key: "template",
                 label: t("from_template"),
                 icon: ICON_NAME.CLONE,
-                onSelect: () => setTemplateBrowserOpen(true),
+                onSelect: creation.openTemplateBrowser,
               },
             ]}
           />
@@ -464,29 +416,6 @@ const WorkflowsConfigPanel: React.FC<WorkflowsConfigPanelProps> = ({
         }}
         onRename={handleRenameWorkflow}
       />
-
-      {/* Template Browser — "Add workflow"'s split arrow menu. Mounted only
-       * while open, so its template/space/pin requests don't run on every
-       * panel mount. */}
-      {templateBrowserOpen && (
-        <TemplateBrowser
-          mode="dialog"
-          open
-          onClose={() => setTemplateBrowserOpen(false)}
-          lockedKind="workflow"
-          onUse={handleUseTemplate}
-        />
-      )}
-
-      {/* Inserts the picked template's workflow into this project */}
-      {templateForFlow && project?.id && (
-        <UseTemplateFlow
-          template={templateForFlow}
-          context={{ kind: "in_project", projectId: project.id }}
-          onClose={() => setTemplateForFlow(null)}
-          onDone={handleTemplateFlowDone}
-        />
-      )}
 
       {/* Kebab "Replace datasets…" — reads the open workflow's nodes */}
       {replaceDatasetsOpen && project?.id && (

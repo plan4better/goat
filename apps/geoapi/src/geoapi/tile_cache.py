@@ -31,11 +31,13 @@ _redis_last_failure_at: float = 0.0
 _redis_failure_warning_logged: bool = False
 
 
-def get_redis_client() -> Optional[redis.Redis]:
+def get_redis_client(*, for_tile_cache: bool = True) -> Optional[redis.Redis]:
     """Get or create Redis client with connection pooling.
 
     Returns:
         Redis client or None if caching is disabled or connection fails.
+        Credit metering passes ``for_tile_cache=False``: it shares this Redis
+        but must not stop counting when only the tile cache is switched off.
 
     When Redis is unavailable we don't retry on every call — that would
     flood the logs and add latency to hot read paths. We back off for
@@ -45,7 +47,7 @@ def get_redis_client() -> Optional[redis.Redis]:
     global _redis_pool, _redis_client
     global _redis_last_failure_at, _redis_failure_warning_logged
 
-    if not settings.TILE_CACHE_ENABLED:
+    if for_tile_cache and not settings.TILE_CACHE_ENABLED:
         return None
 
     if _redis_client is not None:

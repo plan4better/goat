@@ -1,0 +1,328 @@
+name: "Workflow chains"
+
+# Workflows that route (apps/web/playwright/workflows/workflow-chains.e2e.ts),
+# saved in core and run through processes and Windmill, as the editor runs
+# them. A stack of its own, started from source like the E2E workflow's but
+# with only what a run needs: Postgres and Redis from the root compose.yaml,
+# Garage for S3, Windmill with this checkout's goatlib mounted into the tools
+# and workflows workers, and core, geoapi and processes with AUTH=False. No
+# web build, browser or Keycloak: the spec makes API requests only. Its own
+# workflow, so it runs beside the Playwright E2E job instead of adding to it.
+# goatlib's workflow chain tests (test.yml) cover the steps that do not route.
+#
+# The workers are the newest release's images (`latest`), so the C++ router
+# is the released one, while goatlib is this checkout's: a PR that changes
+# the router together with goatlib fails here until a release publishes the
+# worker image with that router.
+#
+# On a PR: the street network chains, on Leipzig's street network cell,
+# cached by its published version. On pushes to main, nightly and by hand
+# also the public transport catchment: that data set is published for
+# Germany in one piece, and the router loads its whole network file into
+# memory, too much for every PR.
+#
+# Not a required check yet, like E2E.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/workflow-chains.yml"
+      - "apps/web/playwright/workflows/workflow-chains.e2e.ts"
+      - "apps/web/playwright/fixtures/**"
+      - "playwright.config.ts"
+      - "scripts/e2e/**"
+      - "deploy/compose/compose.yaml"
+      - "deploy/compose/init/**"
+      - "apps/core/**"
+      - "apps/geoapi/**"
+      - "apps/processes/**"
+      - "apps/assistant/evals/workflow_runs.json"
+      - "packages/python/**"
+      - "pnpm-lock.yaml"
+      - "uv.lock"
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The event is part of the group: a nightly run and a push to main share
+# the ref and would cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  routing:
+    name: workflow chains (routing)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      E2E_BASE_DATA: "1"
+      # Empty on a PR: the spec then skips what needs public transport.
+      E2E_PUBLIC_TRANSPORT: ${{ github.event_name != 'pull_request' && '1' || '' }}
+    steps:
+      # The job runs beside the Playwright E2E job, so it adds to a PR's
+      # wall clock only when it takes longer. The last step reports its time
+      # against its budget: 10 minutes, 15 with public transport.
+      - name: ⏱️ Start the clock
+        run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: 📥 Checkout
+        uses: actions/checkout@v7
+
+      - name: 🌬️ Pull the Windmill images
+        run: |
+          mkdir -p logs
+          for image in windmill-server windmill-worker-default windmill-worker-tools; do
+            nohup docker pull -q "ghcr.io/plan4better/goat/$image:latest" > "logs/pull-$image.log" 2>&1 &
+          done
+
+      # .env.example's development values, pointed at services on this
+      # runner. The services and the workers share one data directory at the
+      # same path, as DuckLake records absolute file paths. The base data
+      # paths are where sync_base_data links the data, set as the compose
+      # bundle sets them for its workers: Windmill hands a job a whitelisted
+      # variable the worker lacks as an empty string, and some tools read
+      # that as the path.
+      - name: ⚙️ Environment
+        run: |
+          cp .env.example .env
+          data_dir=/app/data
+          sudo mkdir -p "$data_dir"
+          sudo chown "$(id -u):$(id -g)" "$data_dir"
+          key_id="GK$(openssl rand -hex 12)"
+          key_secret="$(openssl rand -hex 32)"
+          cat >> .env <<EOF
+          POSTGRES_SERVER=localhost
+          DUCKLAKE_POSTGRES_SERVER=localhost
+          S3_ENDPOINT_URL=http://localhost:3900
+          S3_PUBLIC_ENDPOINT_URL=http://localhost:3900
+          ASSETS_S3_ENDPOINT_URL=http://localhost:3900
+          ASSETS_URL=http://localhost:3900/goat-assets
+          S3_PROVIDER=garage
+          S3_REGION=garage
+          AWS_REGION=garage
+          S3_ACCESS_KEY_ID=$key_id
+          S3_SECRET_ACCESS_KEY=$key_secret
+          AWS_ACCESS_KEY_ID=$key_id
+          AWS_SECRET_ACCESS_KEY=$key_secret
+          S3_BUCKET_NAME=goat
+          AWS_S3_ASSETS_BUCKET=goat-assets
+          GARAGE_RPC_SECRET=$(openssl rand -hex 32)
+          GARAGE_ADMIN_TOKEN=$(openssl rand -hex 32)
+          DATA_DIR=$data_dir
+          DUCKLAKE_DATA_DIR=$data_dir/ducklake
+          TILES_DATA_DIR=$data_dir/tiles
+          STREET_NETWORK_EDGES_BASE_PATH=$data_dir/street_network/edges
+          STREET_NETWORK_NODES_BASE_PATH=$data_dir/street_network/nodes
+          PT_NETWORK_BASE_PATH=$data_dir/pt_network/gtfs.bin
+          GTFS_DATA_PATH=$data_dir/gtfs
+          GOAT_PROCESSES_URL=http://localhost:8300
+          WINDMILL_URL=http://localhost:8110
+          WINDMILL_WORKSPACE=goat
+          WINDMILL_TOKEN_FILE=$data_dir/windmill/.token
+          WINDMILL_ADMIN_EMAIL=admin@windmill.dev
+          WINDMILL_ADMIN_PASSWORD=$(openssl rand -hex 16)
+          AUTH=False
+          NEXT_PUBLIC_AUTH=False
+          EOF
+          grep -E '^[A-Z_][A-Z0-9_]*=' .env | sed 's/"//g' >> "$GITHUB_ENV"
+
+      - name: 🐘 Start the infra (Postgres, Redis, Garage)
+        run: >-
+          scripts/e2e/bg.sh infra bash -c
+          "docker compose up -d --wait db redis &&
+          docker run -d --name garage -p 3900:3900 -p 3903:3903
+          -e GARAGE_RPC_SECRET -e GARAGE_ADMIN_TOKEN
+          -v \"$PWD/deploy/compose/init/garage/garage.toml:/etc/garage.toml:ro\"
+          dxflrs/garage:v2.4.1"
+
+      - name: 🐍 Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.9.2"
+          enable-cache: true
+          prune-cache: true
+      - name: 🐍 Start the Python dependencies
+        run: scripts/e2e/bg.sh python uv sync --frozen --all-packages --all-extras --no-install-package gdal --no-install-package routing
+
+      # The Playwright runner only: the spec starts no browser.
+      - name: 📥 JS dependencies
+        timeout-minutes: 10
+        uses: ./.github/actions/pnpm-install
+
+      # A cache key names the cell and the published version, so any job
+      # that installs the same cell into the same paths restores it.
+      - name: 🗺️ Base data versions
+        id: base-data
+        run: |
+          channels=$(curl -sf --retry 3 https://goat-base-data.plan4better.de/channels.json)
+          street_network=$(jq -er '.channels.stable.street_network' <<< "$channels")
+          public_transport=$(jq -er '.channels.stable.public_transport' <<< "$channels")
+          echo "street-network=$street_network" >> "$GITHUB_OUTPUT"
+          echo "public-transport=$public_transport" >> "$GITHUB_OUTPUT"
+      - name: 💾 Restore the street network
+        id: street-network-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            /app/data/.base/street_network
+            /app/data/street_network
+          key: base-data-street-network-h3-7962-${{ steps.base-data.outputs.street-network }}
+      - name: 💾 Restore the public transport data
+        id: public-transport-cache
+        if: env.E2E_PUBLIC_TRANSPORT == '1'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            /app/data/.base/public_transport
+            /app/data/gtfs
+            /app/data/pt_network
+          key: base-data-public-transport-${{ steps.base-data.outputs.public-transport }}
+
+      - name: ⏳ Infra and Python dependencies
+        run: |
+          scripts/e2e/await.sh infra 600
+          scripts/e2e/await.sh python 600
+
+      # On a cache hit sync finds the links and the region it installed and
+      # downloads nothing.
+      - name: 🗺️ Start installing the base data
+        run: >-
+          scripts/e2e/bg.sh base-data uv run --no-sync python -c
+          "import os; from goatlib.tasks.sync_base_data import SyncBaseDataParams, sync;
+          datasets = ['street_network', 'public_transport'] if os.environ.get('E2E_PUBLIC_TRANSPORT') else ['street_network'];
+          print(sync(SyncBaseDataParams(datasets=datasets, h3_3=[7962], data_dir='/app/data')))"
+
+      - name: 🪣 Buckets
+        env:
+          GARAGE_ADMIN_URL: http://localhost:3903
+          GARAGE_S3_URL: http://localhost:3900
+          GOAT_PUBLIC_URL: http://localhost:3000
+          UPLOADS_BUCKET: goat
+          ASSETS_BUCKET: goat-assets
+        run: uv run --no-sync python -m goatlib.storage.garage_init
+
+      - name: 🗄️ Database, seed data, DuckLake catalog
+        run: |
+          (cd apps/core && uv run --no-sync alembic upgrade head)
+          (cd apps/core && uv run --no-sync python -m core.scripts.initial_data)
+          uv run --no-sync python -m goatlib.storage.ducklake_init
+
+      # As in the E2E workflow, without the print worker.
+      - name: 🌬️ Windmill
+        timeout-minutes: 15
+        run: |
+          image=ghcr.io/plan4better/goat
+          windmill_db="postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5432/windmill?sslmode=disable"
+          whitelist=$(sed -n '/WHITELIST_ENVS: >-/{n;s/^ *//;p}' deploy/compose/compose.yaml)
+          [ -n "$whitelist" ] || { echo "::error::WHITELIST_ENVS not found in the compose bundle"; exit 1; }
+          grep -E '^[A-Z_][A-Z0-9_]*=' .env | sed 's/"//g' \
+            | awk -F= '{last[$1]=$0} END {for (k in last) print last[k]}' > "$RUNNER_TEMP/worker.env"
+          cat >> "$RUNNER_TEMP/worker.env" <<EOF
+          DATABASE_URL=$windmill_db
+          MODE=worker
+          DISABLE_NSJAIL=true
+          BASE_INTERNAL_URL=http://localhost:8110
+          POSTGRES_DATABASE_URI=postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5432/$POSTGRES_DB
+          WHITELIST_ENVS=$whitelist
+          EOF
+          for image_name in windmill-server windmill-worker-default windmill-worker-tools; do
+            docker pull -q "$image/$image_name:latest" > /dev/null
+          done
+          docker run -d --name windmill-server -p 8110:8000 --add-host host.docker.internal:host-gateway \
+            -e DATABASE_URL="${windmill_db/localhost/host.docker.internal}" -e MODE=server \
+            -e BASE_URL=http://localhost:8110 "$image/windmill-server:latest"
+          docker run -d --name windmill-worker-default --network host \
+            -e DATABASE_URL="$windmill_db" -e MODE=worker -e WORKER_GROUP=default \
+            -e DISABLE_SERVER=true -e DISABLE_NSJAIL=true -e BASE_INTERNAL_URL=http://localhost:8110 \
+            "$image/windmill-worker-default:latest"
+          goatlib="$PWD/packages/python/goatlib/src/goatlib:/venv/lib/python3.11/site-packages/goatlib:ro"
+          for group in tools workflows; do
+            docker run -d --name "windmill-worker-$group" --network host --user "$(id -u):$(id -g)" \
+              --env-file "$RUNNER_TEMP/worker.env" -e WORKER_GROUP="$group" -e WORKER_TAGS="$group" \
+              -e JOB_DEFAULT_TIMEOUT=1800 -v "$goatlib" -v /app/data:/app/data \
+              "$image/windmill-worker-tools:latest"
+          done
+          mkdir -p "$(dirname "$WINDMILL_TOKEN_FILE")"
+          uv run --no-sync python -m goatlib.windmill_init > /dev/null
+          for attempt in $(seq 1 30); do
+            if uv run --no-sync sh deploy/compose/init/windmill/windmill-sync.sh > logs/windmill-sync.log 2>&1; then
+              echo "scripts synced on attempt $attempt"; break
+            fi
+            [ "$attempt" = 30 ] && { tail -20 logs/windmill-sync.log; echo "::error::Windmill sync never succeeded"; exit 1; }
+            sleep 10
+          done
+
+      - name: 🚀 Services
+        run: |
+          start() { (cd "apps/$1" && nohup uv run --no-sync uvicorn "$1.main:app" --port "$2" > "../../logs/$1.log" 2>&1 &) ; }
+          start core 8000
+          start geoapi 8100
+          start processes 8300
+          for url in http://localhost:8000/api/healthz http://localhost:8100/ http://localhost:8300/; do
+            for _ in $(seq 1 60); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
+              [ "$code" != "000" ] && break
+              sleep 2
+            done
+            echo "$url -> $code"
+            [ "$code" != "000" ] || { echo "::error::$url never answered"; exit 1; }
+          done
+
+      - name: ⏳ Base data
+        run: scripts/e2e/await.sh base-data 900
+      # Saved as soon as it is installed, so a run that fails later still
+      # leaves the download for the next one.
+      - name: 💾 Save the street network
+        if: steps.street-network-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            /app/data/.base/street_network
+            /app/data/street_network
+          key: base-data-street-network-h3-7962-${{ steps.base-data.outputs.street-network }}
+      - name: 💾 Save the public transport data
+        if: env.E2E_PUBLIC_TRANSPORT == '1' && steps.public-transport-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            /app/data/.base/public_transport
+            /app/data/gtfs
+            /app/data/pt_network
+          key: base-data-public-transport-${{ steps.base-data.outputs.public-transport }}
+
+      # Inside the job's limit, so a run that hangs fails this step and the
+      # steps below still collect its logs.
+      - name: 🧪 Workflow chains
+        timeout-minutes: 20
+        run: pnpm exec playwright test --config=playwright.config.ts apps/web/playwright/workflows/workflow-chains.e2e.ts
+
+      - name: ⏱️ Duration
+        if: always()
+        run: |
+          elapsed=$(( $(date +%s) - JOB_STARTED ))
+          budget=$([ -n "$E2E_PUBLIC_TRANSPORT" ] && echo 900 || echo 600)
+          echo "### workflow chains (routing): $((elapsed / 60)) min $((elapsed % 60)) s (budget $((budget / 60)) min)" >> "$GITHUB_STEP_SUMMARY"
+          [ "$elapsed" -le "$budget" ] || echo "::warning::workflow chains (routing) took ${elapsed}s, over its ${budget}s budget"
+
+      - name: 🗒️ Container logs
+        if: failure() || cancelled()
+        run: |
+          for c in garage windmill-server windmill-worker-default windmill-worker-tools windmill-worker-workflows; do
+            docker logs "$c" > "logs/$c.log" 2>&1 || true
+          done
+      - name: 📤 Report and service logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: workflow-chains-report
+          path: |
+            test-results/
+            logs/
+          retention-days: 14

@@ -102,7 +102,7 @@ x-env-tools: &env-tools
   OD_MATRIX_BASE_PATH: /app/data/traveltime_matrices
   STREET_NETWORK_EDGES_BASE_PATH: ${STREET_NETWORK_EDGES_BASE_PATH:-/app/data/street_network/edges}
   STREET_NETWORK_NODES_BASE_PATH: ${STREET_NETWORK_NODES_BASE_PATH:-/app/data/street_network/nodes}
-  PT_NETWORK_BASE_PATH: ${PT_NETWORK_BASE_PATH:-/app/data/pt_network/latest_de.bin}
+  PT_NETWORK_BASE_PATH: ${PT_NETWORK_BASE_PATH:-/app/data/pt_network/gtfs.bin}
   GTFS_DATA_PATH: /app/data/gtfs
   GEOCODING_URL: ${GEOCODING_URL}
   GEOCODING_AUTHORIZATION: ${GEOCODING_AUTHORIZATION}
@@ -137,7 +137,7 @@ x-env-workflows: &env-workflows
   OD_MATRIX_BASE_PATH: /app/data/traveltime_matrices
   STREET_NETWORK_EDGES_BASE_PATH: ${STREET_NETWORK_EDGES_BASE_PATH:-/app/data/street_network/edges}
   STREET_NETWORK_NODES_BASE_PATH: ${STREET_NETWORK_NODES_BASE_PATH:-/app/data/street_network/nodes}
-  PT_NETWORK_BASE_PATH: ${PT_NETWORK_BASE_PATH:-/app/data/pt_network/latest_de.bin}
+  PT_NETWORK_BASE_PATH: ${PT_NETWORK_BASE_PATH:-/app/data/pt_network/gtfs.bin}
   GTFS_DATA_PATH: /app/data/gtfs
   GEOCODING_URL: ${GEOCODING_URL}
   GEOCODING_AUTHORIZATION: ${GEOCODING_AUTHORIZATION}
@@ -332,6 +332,9 @@ services:
       KEYCLOAK_PRODUCTION: "false"
       KEYCLOAK_ENABLE_HEALTH_ENDPOINTS: "true"
       KC_HOSTNAME_STRICT: "false"
+      # As on our clusters: the sign-up fields come from the realm's declarative
+      # user profile (packages/js/keycloak-theme/realm/user-profile.json).
+      KC_FEATURES: declarative-user-profile
       GOAT_PUBLIC_URL: ${CLIENT_URL:-http://localhost:3000}
       GOAT_REALM: ${REALM_NAME:-goat}
       GOAT_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-goat}

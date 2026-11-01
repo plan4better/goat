@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import Any
 
+import duckdb
 import pytest
 from goatlib.analysis.accessibility.huff_model import HuffmodelTool
 from goatlib.analysis.schemas.heatmap import (
@@ -188,3 +190,74 @@ def test_huff_computation_with_known_values() -> None:
         result_table,
     ]:
         tool.con.execute(f"DROP TABLE IF EXISTS {table}")
+
+
+#: An opportunity layer as the Huff tools import it: its own fields and a
+#: geometry column, here named `geom`.
+SUPERMARKETS = (
+    "SELECT * FROM (VALUES (7, 'Markt A', 1200), (8, 'Markt B', 800)) "
+    "t(market_id, name, floor_area), "
+    "LATERAL (SELECT ST_Point(11.5, 48.1) AS geom)"
+)
+#: The opportunity layer's schema as a workflow check passes it in, with the
+#: demand layer connected first.
+HUFF_INPUTS = {
+    "demand_layer_id": {"population": "INTEGER", "geometry": "GEOMETRY"},
+    "opportunity_layer_id": {
+        "market_id": "INTEGER",
+        "name": "VARCHAR",
+        "floor_area": "INTEGER",
+        "geom": "GEOMETRY",
+    },
+    "reference_area_layer_id": {"name": "VARCHAR", "geometry": "GEOMETRY"},
+}
+
+
+def _columns(path: Path) -> list[str]:
+    con = duckdb.connect()
+    try:
+        rel = con.execute(f"SELECT * FROM read_parquet('{path}')")
+        return [d[0] for d in rel.description]
+    finally:
+        con.close()
+
+
+@pytest.mark.parametrize("version", ["legacy", "v2"])
+def test_the_huff_prediction_holds_the_columns_the_run_writes(
+    tmp_path: Path, version: str
+) -> None:
+    """Each opportunity keeps its own fields and gets its probability, on its
+    own geometry: the prediction reads the opportunity layer, whichever
+    layer was connected first."""
+    from goatlib.analysis.accessibility.huff_model_v2 import HuffmodelV2Tool
+    from goatlib.tools.huff_model import HuffModelToolRunner
+    from goatlib.tools.huff_model_v2 import HuffModelV2ToolRunner
+
+    out = tmp_path / "huff.parquet"
+    if version == "legacy":
+        tool: Any = HuffmodelTool()
+        runner: Any = HuffModelToolRunner
+        tool.con.execute(f"CREATE TABLE supply_input AS {SUPERMARKETS}")
+    else:
+        tool = HuffmodelV2Tool()
+        runner = HuffModelV2ToolRunner
+        tool.con.execute(f"CREATE TABLE opp_import AS {SUPERMARKETS}")
+        tool._opp_import_table = "opp_import"
+        tool._opp_geom_col = "geom"
+    try:
+        tool.con.execute(
+            "CREATE TABLE results AS "
+            "SELECT * FROM (VALUES (1, 60.0), (2, 40.0)) t(supply_id, probability)"
+        )
+        if version == "legacy":
+            written = tool._export_original_geom_results("results", out)
+        else:
+            written = tool._export_original_geom("results", str(out))
+    finally:
+        tool.cleanup()
+
+    predicted = runner.predict_output_schema(HUFF_INPUTS, {})
+    # The parquet writer adds a bbox column; it is no layer column.
+    assert list(predicted) == [c for c in _columns(written) if c != "bbox"]
+    assert predicted["probability"] == "DOUBLE"
+    assert predicted["geometry"] == "GEOMETRY"

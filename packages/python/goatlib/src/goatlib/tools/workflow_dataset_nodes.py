@@ -15,6 +15,10 @@ Nodes that carry only a ``layerId`` (saved before entries were recorded, or
 copied from such a project) are retargeted by layer instead
 (``retarget_unlinked_dataset_nodes``), when no other entry of the project
 could be the one they mean.
+
+An export saves a dataset node's rows in the style the layer has where the
+node found it (``dataset_style``): its entry's in the running project, else
+the layer's own.
 """
 
 import copy
@@ -78,6 +82,54 @@ async def current_layer_ids(
         uuid.UUID(user_id),
     )
     return {row["id"]: row["layer_id"] for row in rows}
+
+
+def _style(raw: Any) -> dict[str, Any] | None:
+    """A style column's value as a style, None when it holds none."""
+    style = json.loads(raw) if isinstance(raw, str) else raw
+    return style if isinstance(style, dict) and style else None
+
+
+async def dataset_style(
+    conn: Any, schema: str, *, user_id: str, project_id: str, node: dict[str, Any]
+) -> dict[str, Any] | None:
+    """The style of a dataset node's layer, for the rows an export saves
+    from it; None when there is none to read (the saved layer then gets the
+    default style).
+
+    The node's project entry has the style the project shows the layer in,
+    when it is an entry of the running project that shows this layer and
+    ``user_id`` may read the project (as in ``current_layer_ids``). Else the
+    layer's own style, if ``user_id`` may read the layer. Visibility is view
+    state, not style, so the saved layer is shown even when the dataset is
+    hidden in the project (as core's ``initial_link_properties`` does for a
+    layer added to a project a second time).
+    """
+    data = node.get("data") or {}
+    row = await conn.fetchrow(
+        f"""
+        SELECT
+            (SELECT lp.properties::text
+             FROM {schema}.layer_project lp
+             WHERE lp.id = $3::int
+               AND lp.project_id = $1::uuid
+               AND lp.layer_id = $4::uuid
+               AND {schema}.can('project', $1::uuid, $2::uuid, 'read')
+            ) AS entry_style,
+            (SELECT l.properties::text
+             FROM {schema}.layer l
+             WHERE l.id = $4::uuid
+               AND l.deleted_at IS NULL
+               AND {schema}.can('layer', $4::uuid, $2::uuid, 'read')
+            ) AS layer_style
+        """,
+        uuid.UUID(project_id),
+        uuid.UUID(user_id),
+        _link_id(node),
+        uuid.UUID(str(data.get("layerId"))),
+    )
+    style = _style(row["entry_style"]) or _style(row["layer_style"])
+    return {**style, "visibility": True} if style else None
 
 
 def _swap_tool_config_ids(

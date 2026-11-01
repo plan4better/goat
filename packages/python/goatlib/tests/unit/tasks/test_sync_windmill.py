@@ -128,3 +128,15 @@ def test_a_new_schedule_starts_with_no_arguments() -> None:
     ((path, body),) = sent
     assert "/schedules/create" in path
     assert body["args"] == {}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("task_def", TASK_REGISTRY, ids=lambda t: t.name)
+def test_every_task_main_runs_without_being_awaited(task_def: Any) -> None:
+    # The generated Windmill script returns main(...) as is: an async main
+    # would hand Windmill an unawaited coroutine and do nothing.
+    import importlib
+    import inspect
+
+    main = importlib.import_module(task_def.module_path).main
+    assert not inspect.iscoroutinefunction(main)

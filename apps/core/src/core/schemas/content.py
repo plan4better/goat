@@ -181,3 +181,64 @@ class ContentPage(BaseModel):
     total: int
     page: int
     size: int
+
+
+#: What `GET /content/search` finds: projects, datasets (layers and bundles)
+#: and the workflows and print layouts inside projects.
+ContentSearchType = Literal["project", "layer", "bundle", "workflow", "layout"]
+#: Why a hit matched: its own name, the name of its project (workflows and
+#: layouts), a folder it sits in (or one above it), or its owner's name.
+ContentSearchMatch = Literal["name", "project", "folder", "owner"]
+
+
+class ContentSearchHit(BaseModel):
+    """One item the caller can open whose name, project, folder or owner
+    matches a search."""
+
+    type: ContentSearchType
+    id: UUID
+    name: str
+    description: str | None = None
+    project_id: UUID | None = Field(
+        default=None,
+        description="Workflows and layouts: the project they belong to.",
+    )
+    project_name: str | None = Field(
+        default=None,
+        description="Workflows and layouts: the name of their project.",
+    )
+    updated_at: datetime
+    my_role: Literal["owner", "editor", "viewer"]
+    created_by: ContentCreator | None = Field(
+        default=None,
+        description="Who owns the item (for a workflow or layout: its "
+        "project). None when the account no longer exists.",
+    )
+    space_kind: Literal["personal", "team", "organization"]
+    space_name: str | None = Field(
+        default=None,
+        description="The team's or organisation's name; for a personal "
+        "space, its owner's name.",
+    )
+    folder_path: list[str] = Field(
+        default_factory=list,
+        description="The folders the item sits in, outermost first (for a "
+        "workflow or layout: its project's).",
+    )
+    matched_on: list[ContentSearchMatch]
+    layer_type: str | None = Field(
+        default=None, description="Layers only: feature, table or raster."
+    )
+    geometry_type: str | None = Field(
+        default=None, description="Feature layers only: point, line or polygon."
+    )
+    bundle_type: str | None = Field(
+        default=None, description="Bundles only: what kind of bundle (e.g. gtfs)."
+    )
+
+
+class ContentSearchPage(BaseModel):
+    items: list[ContentSearchHit]
+    total: int
+    page: int
+    size: int

@@ -207,7 +207,10 @@ def _resolve_layer_sql_ref(
         else:
             matches = list(base.glob("t_*.parquet"))
             if not matches:
-                raise FileNotFoundError(f"No temp parquet found under {base}")
+                raise FileNotFoundError(
+                    f"The result of step {node_id} was not found. "
+                    f"The upstream tool may not have completed successfully."
+                )
             parquet_path = matches[0]
         return f"read_parquet('{parquet_path}')"
 

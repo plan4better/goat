@@ -12,7 +12,11 @@ from pathlib import Path
 from typing import Any, Self
 
 from goatlib.analysis.accessibility.base import HeatmapToolBase
-from goatlib.analysis.schemas.catchment_area_v2 import CostType, RoutingMode
+from goatlib.analysis.schemas.catchment_area_v2 import (
+    CostType,
+    RoutingMode,
+    speed_or_default,
+)
 from goatlib.analysis.schemas.heatmap import HuffmodelV2Params
 from goatlib.config.settings import settings
 from goatlib.io.parquet import write_optimized_parquet
@@ -28,13 +32,6 @@ DEFAULT_H3_RESOLUTION: dict[RoutingMode, int] = {
     RoutingMode.pedelec: 9,
     RoutingMode.car: 8,
     RoutingMode.pt: 9,
-}
-
-_MODE_SPEED_DEFAULTS: dict[RoutingMode, float] = {
-    RoutingMode.walking: 5.0,
-    RoutingMode.bicycle: 15.0,
-    RoutingMode.pedelec: 23.0,
-    RoutingMode.car: 0.0,
 }
 
 # Cap on total opportunity SEED cells (the routing sources). Mirrors
@@ -275,11 +272,7 @@ class HuffmodelV2Tool(HeatmapToolBase):
             else routing.CostType.Time
         )
         cfg.max_cost = float(params.max_cost)
-        cfg.speed_km_h = (
-            params.speed
-            if params.speed is not None
-            else _MODE_SPEED_DEFAULTS.get(params.routing_mode, 0.0)
-        )
+        cfg.speed_km_h = speed_or_default(params.speed, params.routing_mode)
         # An uploaded street network bundle's graph overrides the global network.
         cfg.edge_dir = str(params.edge_path or self._edge_dir)
         cfg.node_dir = str(params.node_path or self._node_dir)

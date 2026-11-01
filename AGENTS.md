@@ -10,6 +10,8 @@ GOAT is an open-source WebGIS platform for integrated planning, built as a monor
 
 The `catalog` service is database-less: it serves a local parquet mirror under `${DATA_DIR}/catalog`, kept current by the goatlib `sync_catalog` task; catalog items are promoted into `customer.layer` on first use. Its design decisions and the harvester contract are in `apps/catalog/README.md`.
 
+The `assistant` service runs the AI assistant and the MCP endpoint (`/mcp`): its tools call core, geoapi, processes and catalog with the user's token, and its tables live in schema `assistant`, defined in core and migrated by core's Alembic. Its design decisions are in `apps/assistant/README.md`.
+
 Docs-writing rules and diagram exports live in `apps/docs/AGENTS.md`; adding or syncing an analytics tool is covered by the `windmill` skill.
 
 ## Working rules
@@ -39,7 +41,7 @@ Docs-writing rules and diagram exports live in `apps/docs/AGENTS.md`; adding or 
 
 ## Service READMEs Follow Every Change
 
-- A change to a service's purpose, design decisions, storage model, access rules or the gotchas its README lists updates that README in the same change (`apps/{core,geoapi,processes,catalog}/README.md`, `packages/python/goatlib/README.md`). READMEs hold the "why" and point to the sources of truth (registries, `config.py`, `/api/docs`) instead of copying lists of tools, settings or routes; keep it that way.
+- A change to a service's purpose, design decisions, storage model, access rules or the gotchas its README lists updates that README in the same change (`apps/{core,geoapi,processes,catalog,assistant}/README.md`, `packages/python/goatlib/README.md`). READMEs hold the "why" and point to the sources of truth (registries, `config.py`, `/api/docs`) instead of copying lists of tools, settings or routes; keep it that way.
 - The `doc-references` PR check (`scripts/check-doc-references.py`) fails when a README or AGENTS.md names a file or setting that no longer exists. Run it locally after renaming or removing either.
 
 ## Commit Convention

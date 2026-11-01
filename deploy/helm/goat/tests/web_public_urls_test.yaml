@@ -75,3 +75,27 @@ tests:
       - equal:
           path: data.NEXT_PUBLIC_CATALOG_URL
           value: https://custom.example.com/stac
+  - it: derives the assistant URL from its ingress, including a path prefix
+    set:
+      assistant.ingress.enabled: true
+      assistant.ingress.hosts:
+        - host: goat.example.com
+          paths: [{ path: /assistant, pathType: Prefix }]
+      assistant.ingress.tls:
+        - secretName: goat-tls
+          hosts: [goat.example.com]
+    asserts:
+      - equal:
+          path: data.NEXT_PUBLIC_ASSISTANT_URL
+          value: https://goat.example.com/assistant
+  - it: sets no assistant URL without an ingress or an explicit one (the dock stays hidden)
+    asserts:
+      - notExists:
+          path: data.NEXT_PUBLIC_ASSISTANT_URL
+  - it: sets no assistant URL when the assistant is off
+    set:
+      assistant.enabled: false
+      web.publicUrls.assistant: https://goat.example.com/assistant
+    asserts:
+      - notExists:
+          path: data.NEXT_PUBLIC_ASSISTANT_URL

@@ -329,6 +329,7 @@ export default function FieldInput({
             setSelectedField={handleMultiChange as any}
             fields={filteredFields}
             label={input.title || input.name}
+            required={input.required}
             tooltip={input.description}
             disabled={disabled || noFields}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -348,6 +349,7 @@ export default function FieldInput({
           setSelectedField={handleChange}
           fields={filteredFields}
           label={input.title || input.name}
+          required={input.required}
           tooltip={input.description}
           disabled={disabled || noFields}
         />

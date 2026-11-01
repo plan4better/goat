@@ -4,6 +4,7 @@ import { Stack, Typography } from "@mui/material";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
+import { DEFAULT_WIDGET_COLOR } from "@/lib/constants/ui";
 import { hasNestedSchemaPath } from "@/lib/utils/zod";
 import type { ReportElement } from "@/lib/validations/reportLayout";
 import type { WidgetConfigSchema } from "@/lib/validations/widget";
@@ -93,7 +94,9 @@ const toWidgetConfig = (element: ReportElement): WidgetConfigSchema | null => {
               | undefined,
           },
           options: {
-            color: (element.config?.options?.color ?? element.config?.color ?? "#0e58ff") as string,
+            color: (element.config?.options?.color ??
+              element.config?.color ??
+              DEFAULT_WIDGET_COLOR) as string,
           },
         } as unknown as WidgetConfigSchema;
       case "categories_chart":
@@ -120,7 +123,9 @@ const toWidgetConfig = (element: ReportElement): WidgetConfigSchema | null => {
             num_categories: (element.config?.options?.num_categories ??
               element.config?.num_categories ??
               5) as number,
-            color: (element.config?.options?.color ?? element.config?.color ?? "#0e58ff") as string,
+            color: (element.config?.options?.color ??
+              element.config?.color ??
+              DEFAULT_WIDGET_COLOR) as string,
           },
         } as unknown as WidgetConfigSchema;
       case "pie_chart":

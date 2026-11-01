@@ -33,6 +33,7 @@ from goatlib.analysis.schemas.ui import (
     ui_sections,
 )
 from goatlib.bundles.runner import BundleImportRunner, ImportedLayer
+from goatlib.io.config import parquet_copy_options
 from goatlib.models.bundle import (
     BundleStatus,
     BundleTypeName,
@@ -152,7 +153,7 @@ class BundleCreateFilteredRunner(BundleImportRunner):
             clause = f" WHERE {' AND '.join(filters.clauses)}"
             params = list(filters.params)
         self.duckdb_con.execute(
-            f"COPY (SELECT * FROM {table}{clause}) TO '{out}' (FORMAT PARQUET)",
+            f"COPY (SELECT * FROM {table}{clause}) TO '{out}' {parquet_copy_options()}",
             params,
         )
         return str(out)
@@ -357,7 +358,11 @@ class BundleCreateFilteredRunner(BundleImportRunner):
             info = self._ingest_to_ducklake(
                 user_id=user_id, layer_id=layer_id, parquet_path=Path(parquet)
             )
-            geometry_type = normalize_geometry_type(info.get("geometry_type"))
+            # The type comes from the copy's rows; a copy the filter left
+            # without rows has its source's geometry type.
+            geometry_type = normalize_geometry_type(
+                info.get("geometry_type") or source.get("geometry_type")
+            )
             await db.create_layer(
                 layer_id=layer_id,
                 user_id=user_id,

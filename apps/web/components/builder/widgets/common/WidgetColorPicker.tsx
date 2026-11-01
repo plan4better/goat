@@ -2,6 +2,7 @@ import { Paper, Stack, useTheme } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { useState } from "react";
 
+import { pickerBorderColor, pickerBorderHoverColor } from "@/lib/constants/ui";
 import { rgbToHex } from "@/lib/utils/helpers";
 
 import type { RGBColor } from "@/types/map/color";
@@ -105,7 +106,7 @@ const WidgetColorPicker: React.FC<WidgetColorPickerProps> = ({ color, onChange, 
             border: "1px solid",
             outline: "2px solid transparent",
             minHeight: "40px",
-            borderColor: theme.palette.mode === "dark" ? "#464B59" : "#CBCBD1",
+            borderColor: pickerBorderColor(theme),
             ...(open && {
               outline: `2px solid ${theme.palette.primary.main}`,
             }),
@@ -113,7 +114,7 @@ const WidgetColorPicker: React.FC<WidgetColorPickerProps> = ({ color, onChange, 
             p: 2,
             "&:hover": {
               ...(!open && {
-                borderColor: theme.palette.mode === "dark" ? "#5B5F6E" : "#B8B7BF",
+                borderColor: pickerBorderHoverColor(theme),
               }),
             },
           }}>

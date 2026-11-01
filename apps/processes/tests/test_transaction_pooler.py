@@ -31,7 +31,7 @@ async def test_the_pool_follows_the_switch(
     from processes.services import access
 
     monkeypatch.setattr(access, "_pool", None)
-    await access._get_pool()
+    await access.get_pool()
 
     assert pool_kwargs["server_settings"]["application_name"] == "goat-processes"
     if pooler:

@@ -19,6 +19,8 @@ const SwitchContainer = styled(Box, {
   position: "relative",
   display: "flex",
   width: optionCount === 2 ? "200px" : optionCount === 3 ? "300px" : "400px",
+  // Narrower in a narrow header (the assistant dock takes width): the options stay equal and truncate.
+  maxWidth: "100%",
   height: "30px",
   backgroundColor: "transparent",
   border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
@@ -41,6 +43,7 @@ const SlidingIndicator = styled(Box, {
 
 const ToggleItem = styled(Box)(({ theme }) => ({
   flex: 1,
+  minWidth: 0,
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
@@ -72,6 +75,7 @@ const SlidingToggle: React.FC<SlidingToggleProps> = ({ options, activeOption, on
           <Typography
             color={activeOption === option.value ? "inherit" : "primary"}
             variant="body2"
+            noWrap
             sx={{ fontWeight: "bold", transition: "color 0.3s ease-in-out" }}>
             {option.label}
           </Typography>

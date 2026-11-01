@@ -489,11 +489,11 @@ def test_a_bundle_of_tables_claims_nowhere(tmp_path: Path) -> None:
     build_mirror(items_p, colls_p, out, out_c)
     con = duckdb.connect()
     con.execute("LOAD spatial;")
-    # The mirror is plain parquet, so the column reads back as WKB bytes.
+    # The mirror stores the column as Parquet's GEOMETRY type, so it reads
+    # back as a geometry also when no row has one.
     geom, hit = con.execute(
         f"""SELECT geometry,
-                   ST_Intersects(ST_GeomFromWKB(geometry),
-                                 ST_MakeEnvelope(6.0, 50.0, 7.0, 51.0))
+                   ST_Intersects(geometry, ST_MakeEnvelope(6.0, 50.0, 7.0, 51.0))
               FROM read_parquet('{out_c.as_posix()}')"""
     ).fetchone()
     con.close()

@@ -45,6 +45,8 @@ def set_test_mode():
     settings.MAX_FOLDER_COUNT = 15
     settings.TEST_MODE = True
     settings.AUTH = False
+    # Billing is switched on per test (tests/billing.py), never by a local .env.
+    settings.BILLING_ENABLED = False
     # No test reaches a real Odoo through a local .env: the support tests turn
     # support on with fakes, the staging integration tests read the env.
     settings.ODOO_SUPPORT_API_KEY = None
@@ -113,6 +115,9 @@ async def session_fixture(event_loop):
     session_manager._engine.update_execution_options(
         schema_translate_map={
             "customer": settings.SCHEMA,
+            # The assistant tables (core.db.models.assistant) go into the same
+            # per-process schema, so parallel test runs never share them.
+            "assistant": settings.SCHEMA,
         }
     )
     # xdist workers run this setup at the same time, and parts of it touch

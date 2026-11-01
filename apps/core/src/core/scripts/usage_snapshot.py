@@ -704,7 +704,16 @@ async def fetch_windmill_completed_jobs(
         SELECT
             (j.args->>'user_id')                          AS user_id,
             j.runnable_path                               AS path,
-            c.status::text                                AS status,
+            -- A workflow run whose steps failed returns their errors
+            -- instead of raising (goatlib workflow_runner), so Windmill
+            -- records it as a success; its result says it failed.
+            CASE
+                WHEN c.status::text = 'success'
+                 AND j.runnable_path = 'f/goat/tools/workflow_runner'
+                 AND c.result->>'status' = 'failed'
+                THEN 'failure'
+                ELSE c.status::text
+            END                                           AS status,
             COUNT(*)::bigint                              AS n,
             COALESCE(SUM(c.duration_ms), 0)::bigint       AS duration_ms_sum,
             COALESCE(SUM(octet_length(c.result::text)), 0)::bigint
@@ -718,7 +727,7 @@ async def fetch_windmill_completed_jobs(
           -- 'webhook', etc.) are NOT usage data and are emitted under a
           -- separate metric family if we ever need them.
           AND j.trigger_kind IS NULL
-        GROUP BY j.args->>'user_id', j.runnable_path, c.status
+        GROUP BY 1, 2, 3
         """,
         window_start,
         window_end,

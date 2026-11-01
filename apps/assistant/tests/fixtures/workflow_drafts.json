@@ -1,0 +1,573 @@
+{
+  "layers": [
+    {
+      "layer_project_id": 31,
+      "layer_id": "e2000000-0000-0000-0000-000000000031",
+      "name": "Schulen",
+      "type": "feature",
+      "geometry_type": "point"
+    },
+    {
+      "layer_project_id": 33,
+      "layer_id": "e2000000-0000-0000-0000-000000000033",
+      "name": "Einwohner Raster",
+      "type": "feature",
+      "geometry_type": "polygon"
+    },
+    {
+      "layer_project_id": 34,
+      "layer_id": "e2000000-0000-0000-0000-000000000034",
+      "name": "Supermärkte",
+      "type": "feature",
+      "geometry_type": "point"
+    }
+  ],
+  "titles": {
+    "catchment_area_v2": "Catchment Area",
+    "aggregate_polygon": "Aggregate Polygons",
+    "heatmap_closest_average": "Heatmap Closest Average",
+    "buffer": "Buffer"
+  },
+  "cases": [
+    {
+      "note": "the spec's example: two datasets, a catchment area, an aggregation and an export, the schools limited to Munich and to one category; a note above the steps that give the result",
+      "draft": {
+        "name": "Schools: 15-minute walk",
+        "steps": [
+          {
+            "id": "schools",
+            "kind": "dataset",
+            "label": "Schools",
+            "layer": 31,
+            "filter": {
+              "area": "DE212",
+              "where": [
+                {
+                  "field": "category",
+                  "op": "=",
+                  "value": "school"
+                }
+              ]
+            }
+          },
+          {"id": "residents", "kind": "dataset", "layer": 33},
+          {
+            "id": "walk",
+            "kind": "tool",
+            "tool": "catchment_area_v2",
+            "label": "15 minutes on foot",
+            "settings": {
+              "routing_mode": "walking",
+              "cost_type": "time",
+              "max_cost": 15,
+              "steps": 1
+            }
+          },
+          {
+            "id": "count",
+            "kind": "tool",
+            "tool": "aggregate_polygon",
+            "settings": {
+              "area_type": "polygon",
+              "column_statistics": [
+                {
+                  "operation": "sum",
+                  "field": "einwohner"
+                }
+              ],
+              "weighted_by_intersecting_area": true
+            }
+          },
+          {"id": "save", "kind": "export", "name": "Residents within 15 minutes"}
+        ],
+        "connections": [
+          {"from": "schools", "to": "walk", "input": "starting_points"},
+          {"from": "walk", "to": "count", "input": "area_layer_id"},
+          {"from": "residents", "to": "count", "input": "source_layer_id"},
+          {"from": "count", "to": "save"}
+        ],
+        "variables": [],
+        "notes": [
+          {
+            "id": "about",
+            "text": "Counts the residents within a 15 minute walk of any school.\n\n- Residents within 15 minutes: one row per separate area of the walk; their sum is the residents within a 15 minute walk of any school, each grid cell by its share inside the walk",
+            "near": ["count", "save"]
+          }
+        ]
+      },
+      "regions": [
+        {
+          "nuts_id": "DE212",
+          "name": "München, Kreisfreie Stadt",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [11.36, 48.06],
+                [11.72, 48.06],
+                [11.72, 48.25],
+                [11.36, 48.25],
+                [11.36, 48.06]
+              ]
+            ]
+          },
+          "as_box": false
+        }
+      ],
+      "config": {
+        "nodes": [
+          {
+            "id": "dataset-0be3e684-325d-5b36-b75d-998d1b7f344e",
+            "type": "dataset",
+            "position": {"x": 0, "y": -100},
+            "data": {
+              "type": "dataset",
+              "label": "Schools",
+              "projectLayerId": 31,
+              "layerId": "e2000000-0000-0000-0000-000000000031",
+              "layerName": "Schulen",
+              "filterInitialized": true,
+              "geometryType": "point",
+              "layerType": "feature",
+              "filter": {
+                "op": "and",
+                "expressions": [
+                  {
+                    "id": "4aac6ee3-f290-59ba-8b36-a28f088709e6",
+                    "type": "spatial",
+                    "attribute": "geom",
+                    "expression": "s_intersects",
+                    "value": "{\"type\":\"Polygon\",\"coordinates\":[[[11.36,48.06],[11.72,48.06],[11.72,48.25],[11.36,48.25],[11.36,48.06]]],\"properties\":{\"type\":\"boundary\",\"label\":\"München, Kreisfreie Stadt\"}}"
+                  },
+                  {
+                    "id": "be3e3834-227e-5122-905d-c5d45c1f1a1d",
+                    "type": "logical",
+                    "attribute": "category",
+                    "expression": "is",
+                    "value": "school"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "dataset-fb3f9084-4d35-56ba-af03-5d21f0e174ff",
+            "type": "dataset",
+            "position": {"x": 0, "y": 100},
+            "data": {
+              "type": "dataset",
+              "label": "Einwohner Raster",
+              "projectLayerId": 33,
+              "layerId": "e2000000-0000-0000-0000-000000000033",
+              "layerName": "Einwohner Raster",
+              "filterInitialized": true,
+              "geometryType": "polygon",
+              "layerType": "feature"
+            }
+          },
+          {
+            "id": "tool-530a69f6-c92b-5d9a-aa56-f63c2d367933",
+            "type": "tool",
+            "position": {"x": 360, "y": 0},
+            "data": {
+              "type": "tool",
+              "processId": "catchment_area_v2",
+              "label": "15 minutes on foot",
+              "config": {
+                "routing_mode": "walking",
+                "cost_type": "time",
+                "max_cost": 15,
+                "steps": 1
+              },
+              "status": "idle"
+            }
+          },
+          {
+            "id": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "type": "tool",
+            "position": {"x": 720, "y": 0},
+            "data": {
+              "type": "tool",
+              "processId": "aggregate_polygon",
+              "label": "Aggregate Polygons",
+              "config": {
+                "area_type": "polygon",
+                "column_statistics": [
+                  {
+                    "operation": "sum",
+                    "field": "einwohner"
+                  }
+                ],
+                "weighted_by_intersecting_area": true
+              },
+              "status": "idle"
+            }
+          },
+          {
+            "id": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "type": "export",
+            "position": {"x": 1080, "y": 0},
+            "data": {
+              "type": "export",
+              "label": "Residents within 15 minutes",
+              "datasetName": "Residents within 15 minutes",
+              "addToProject": true,
+              "overwritePrevious": false
+            }
+          },
+          {
+            "id": "text-cdf7b0bd-e6ef-527f-a50c-269043253960",
+            "type": "textAnnotation",
+            "position": {"x": 720, "y": -340},
+            "zIndex": -1000,
+            "data": {
+              "type": "textAnnotation",
+              "text": "<p>Counts the residents within a 15 minute walk of any school.</p><ul><li><p>Residents within 15 minutes: one row per separate area of the walk; their sum is the residents within a 15 minute walk of any school, each grid cell by its share inside the walk</p></li></ul>",
+              "backgroundColor": "#F2CE58",
+              "width": 320,
+              "height": 300
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge-b889c1b7-0612-5794-81cd-9cd5c538c602",
+            "source": "dataset-0be3e684-325d-5b36-b75d-998d1b7f344e",
+            "target": "tool-530a69f6-c92b-5d9a-aa56-f63c2d367933",
+            "targetHandle": "starting_points"
+          },
+          {
+            "id": "edge-71f1fc21-3847-5169-9750-f50600b28ab2",
+            "source": "tool-530a69f6-c92b-5d9a-aa56-f63c2d367933",
+            "target": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "sourceHandle": "output",
+            "targetHandle": "area_layer_id"
+          },
+          {
+            "id": "edge-82c01e91-89eb-5061-ad66-e5abf46f8f75",
+            "source": "dataset-fb3f9084-4d35-56ba-af03-5d21f0e174ff",
+            "target": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "targetHandle": "source_layer_id"
+          },
+          {
+            "id": "edge-554fb537-9084-5812-8796-87ae8b83f1ef",
+            "source": "tool-3941eec6-a7f9-5047-aa08-7bc1a48a9b49",
+            "target": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "sourceHandle": "output",
+            "targetHandle": "input"
+          }
+        ],
+        "viewport": {"x": 40.0, "y": 210.0, "zoom": 0.5},
+        "variables": []
+      }
+    },
+    {
+      "note": "a heatmap fed by two datasets, one of them left open, conditions with 'in' and 'contains', and a variable; a blue note beside the workflow",
+      "draft": {
+        "name": "Nahversorgung zu Fuß",
+        "steps": [
+          {
+            "id": "shops",
+            "kind": "dataset",
+            "label": "Supermärkte",
+            "layer": 34,
+            "filter": {
+              "where": [
+                {
+                  "field": "kette",
+                  "op": "in",
+                  "value": ["Edeka", "Rewe"]
+                },
+                {
+                  "field": "name",
+                  "op": "contains",
+                  "value": "markt"
+                }
+              ]
+            }
+          },
+          {"id": "doctors", "kind": "dataset", "label": "Hausärzte", "layer": null},
+          {
+            "id": "heat",
+            "kind": "tool",
+            "tool": "heatmap_closest_average",
+            "label": "Erreichbarkeit zu Fuß",
+            "settings": {
+              "routing_mode": "walking",
+              "opportunity_1_max_cost": 15,
+              "opportunity_1_n_destinations": 1,
+              "opportunity_2_max_cost": 15,
+              "opportunity_2_n_destinations": 1
+            }
+          },
+          {
+            "id": "save",
+            "kind": "export",
+            "name": "Nahversorgung",
+            "label": "Ergebnis speichern"
+          }
+        ],
+        "connections": [
+          {"from": "shops", "to": "heat", "input": "opportunity_layer_1_id"},
+          {
+            "from": "doctors",
+            "to": "heat",
+            "input": "opportunity_layer_2_id"
+          },
+          {"from": "heat", "to": "save"}
+        ],
+        "variables": [
+          {
+            "name": "minutes",
+            "type": "number",
+            "defaultValue": 15,
+            "label": "Minuten"
+          }
+        ],
+        "notes": [
+          {
+            "id": "hinweis",
+            "text": "Zeigt, wie gut Supermärkte und Hausärzte zu Fuß erreichbar sind.\n\nNahversorgung: je Zelle die mittlere Gehzeit zu den nächsten Zielen; weniger Minuten heißt näher.",
+            "color": "blue"
+          }
+        ]
+      },
+      "regions": [],
+      "config": {
+        "nodes": [
+          {
+            "id": "dataset-479a4792-82e8-5579-a575-621a9f86d3bb",
+            "type": "dataset",
+            "position": {"x": 0, "y": -100},
+            "data": {
+              "type": "dataset",
+              "label": "Supermärkte",
+              "projectLayerId": 34,
+              "layerId": "e2000000-0000-0000-0000-000000000034",
+              "layerName": "Supermärkte",
+              "filterInitialized": true,
+              "geometryType": "point",
+              "layerType": "feature",
+              "filter": {
+                "op": "and",
+                "expressions": [
+                  {
+                    "id": "acfeda04-306d-5340-aee8-abf7f66a3446",
+                    "type": "logical",
+                    "attribute": "kette",
+                    "expression": "includes",
+                    "value": ["Edeka", "Rewe"]
+                  },
+                  {
+                    "id": "fa11fc3c-48f1-5685-926e-fdc1400a411b",
+                    "type": "logical",
+                    "attribute": "name",
+                    "expression": "contains_the_text",
+                    "value": "markt"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "dataset-5db2ee34-4987-5838-94e8-b94129822a60",
+            "type": "dataset",
+            "position": {"x": 0, "y": 100},
+            "data": {"type": "dataset", "label": "Hausärzte"}
+          },
+          {
+            "id": "tool-b7972f2c-c581-5ce0-8471-bf855088c731",
+            "type": "tool",
+            "position": {"x": 360, "y": 0},
+            "data": {
+              "type": "tool",
+              "processId": "heatmap_closest_average",
+              "label": "Erreichbarkeit zu Fuß",
+              "config": {
+                "routing_mode": "walking",
+                "opportunity_1_max_cost": 15,
+                "opportunity_1_n_destinations": 1,
+                "opportunity_2_max_cost": 15,
+                "opportunity_2_n_destinations": 1
+              },
+              "status": "idle"
+            }
+          },
+          {
+            "id": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "type": "export",
+            "position": {"x": 720, "y": 0},
+            "data": {
+              "type": "export",
+              "label": "Ergebnis speichern",
+              "datasetName": "Nahversorgung",
+              "addToProject": true,
+              "overwritePrevious": false
+            }
+          },
+          {
+            "id": "text-3919c07b-1961-5249-9c6a-339a350c3aa2",
+            "type": "textAnnotation",
+            "position": {"x": 1120, "y": -100},
+            "zIndex": -1000,
+            "data": {
+              "type": "textAnnotation",
+              "text": "<p>Zeigt, wie gut Supermärkte und Hausärzte zu Fuß erreichbar sind.</p><p>Nahversorgung: je Zelle die mittlere Gehzeit zu den nächsten Zielen; weniger Minuten heißt näher.</p>",
+              "backgroundColor": "#5297DA",
+              "width": 320,
+              "height": 220
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge-1b70da7b-4e42-5fab-ba95-5bcbfa5eb66f",
+            "source": "dataset-479a4792-82e8-5579-a575-621a9f86d3bb",
+            "target": "tool-b7972f2c-c581-5ce0-8471-bf855088c731",
+            "targetHandle": "opportunity_layer_1_id"
+          },
+          {
+            "id": "edge-742b6a42-18ca-5f21-809d-62e966e858d8",
+            "source": "dataset-5db2ee34-4987-5838-94e8-b94129822a60",
+            "target": "tool-b7972f2c-c581-5ce0-8471-bf855088c731",
+            "targetHandle": "opportunity_layer_2_id"
+          },
+          {
+            "id": "edge-ac50a7e1-886a-54b5-ba64-d709c7a01978",
+            "source": "tool-b7972f2c-c581-5ce0-8471-bf855088c731",
+            "target": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "sourceHandle": "output",
+            "targetHandle": "input"
+          }
+        ],
+        "viewport": {"x": 40.0, "y": 90.0, "zoom": 0.5},
+        "variables": [
+          {
+            "id": "variable-5cf99bc2-d726-54f1-8c7f-a0166376927a",
+            "name": "minutes",
+            "type": "number",
+            "order": 0,
+            "defaultValue": 15,
+            "label": "Minuten"
+          }
+        ]
+      }
+    },
+    {
+      "note": "a region whose boundary was too large, stored as its bounding box",
+      "draft": {
+        "name": "Buffers in Bavaria",
+        "steps": [
+          {
+            "id": "shops",
+            "kind": "dataset",
+            "layer": 34,
+            "filter": {"area": "DE2"}
+          },
+          {
+            "id": "ring",
+            "kind": "tool",
+            "tool": "buffer",
+            "settings": {"distances": [500], "units": "meters"}
+          },
+          {"id": "save", "kind": "export", "name": "Shops, 500 m"}
+        ],
+        "connections": [
+          {"from": "shops", "to": "ring", "input": "input_layer_id"},
+          {"from": "ring", "to": "save"}
+        ]
+      },
+      "regions": [
+        {
+          "nuts_id": "DE2",
+          "name": "Bayern",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [8.98, 47.27],
+                [13.84, 47.27],
+                [13.84, 50.56],
+                [8.98, 50.56],
+                [8.98, 47.27]
+              ]
+            ]
+          },
+          "as_box": true
+        }
+      ],
+      "config": {
+        "nodes": [
+          {
+            "id": "dataset-479a4792-82e8-5579-a575-621a9f86d3bb",
+            "type": "dataset",
+            "position": {"x": 0, "y": 0},
+            "data": {
+              "type": "dataset",
+              "label": "Supermärkte",
+              "projectLayerId": 34,
+              "layerId": "e2000000-0000-0000-0000-000000000034",
+              "layerName": "Supermärkte",
+              "filterInitialized": true,
+              "geometryType": "point",
+              "layerType": "feature",
+              "filter": {
+                "op": "and",
+                "expressions": [
+                  {
+                    "id": "0676570b-e76a-5f0c-8fbf-2484e1ac0bb0",
+                    "type": "spatial",
+                    "attribute": "geom",
+                    "expression": "s_intersects",
+                    "value": "{\"type\":\"Polygon\",\"coordinates\":[[[8.98,47.27],[13.84,47.27],[13.84,50.56],[8.98,50.56],[8.98,47.27]]],\"properties\":{\"type\":\"boundary\",\"label\":\"Bayern (bounding box)\"}}"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "tool-a01b963f-f810-583f-9f3a-ef901f111814",
+            "type": "tool",
+            "position": {"x": 360, "y": 0},
+            "data": {
+              "type": "tool",
+              "processId": "buffer",
+              "label": "Buffer",
+              "config": {"distances": [500], "units": "meters"},
+              "status": "idle"
+            }
+          },
+          {
+            "id": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "type": "export",
+            "position": {"x": 720, "y": 0},
+            "data": {
+              "type": "export",
+              "label": "Shops, 500 m",
+              "datasetName": "Shops, 500 m",
+              "addToProject": true,
+              "overwritePrevious": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "edge-3f3d7c1d-a7ef-5b50-89e4-33cfd06fb9f3",
+            "source": "dataset-479a4792-82e8-5579-a575-621a9f86d3bb",
+            "target": "tool-a01b963f-f810-583f-9f3a-ef901f111814",
+            "targetHandle": "input_layer_id"
+          },
+          {
+            "id": "edge-ac3d12ee-bf52-5639-a8c5-298ecbff61e5",
+            "source": "tool-a01b963f-f810-583f-9f3a-ef901f111814",
+            "target": "export-0a56c7f4-a7c4-5368-ba67-48f3734e036b",
+            "sourceHandle": "output",
+            "targetHandle": "input"
+          }
+        ],
+        "viewport": {"x": 40.0, "y": 40.0, "zoom": 0.66},
+        "variables": []
+      }
+    }
+  ]
+}

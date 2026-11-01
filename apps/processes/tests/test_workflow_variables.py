@@ -53,12 +53,14 @@ async def test_execute_forwards_the_variables_unchanged() -> None:
     run = AsyncMock(return_value="job-1")
     with (
         patch(
-            "processes.routers.workflows.ensure_workflow_allowed",
-            AsyncMock(return_value=None),
+            "processes.routers.workflows.check_workflow",
+            AsyncMock(return_value=[]),
         ),
         patch("processes.routers.workflows.windmill_client.run_script_async", run),
     ):
-        response = await execute_workflow(WORKFLOW, request, user_id=USER)
+        response = await execute_workflow(
+            WORKFLOW, request, user_id=USER, language="en"
+        )
 
     assert response.job_id == "job-1"
     args = run.await_args.kwargs["args"]

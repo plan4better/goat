@@ -17,7 +17,7 @@
       </td>
     </tr>
     <tr>
-      <td>
+      <td align="center">
         <a
           href="${link}"
           style="${properties.actionButtonStyle}"

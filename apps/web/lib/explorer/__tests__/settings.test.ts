@@ -18,8 +18,8 @@ describe("Explorer settings", () => {
     const settings = { ...DEFAULT_SETTINGS, rates: { [rateKey("A", 3)]: { per_km: 5, per_hour: 40 } } };
     expect(rateFor(settings, "A", 3)).toEqual({ per_km: 5, per_hour: 40 });
     // Another operator's buses, and the same operator's trams, keep the defaults.
-    expect(rateFor(settings, "B", 3)).toEqual({ per_km: 4.5, per_hour: null });
-    expect(rateFor(settings, "A", 0)).toEqual({ per_km: 7, per_hour: null });
+    expect(rateFor(settings, "B", 3)).toEqual({ per_km: 5.5, per_hour: null });
+    expect(rateFor(settings, "A", 0)).toEqual({ per_km: 8, per_hour: null });
   });
 
   it("prices every route type of a kind of vehicle at its one rate", () => {

@@ -34,11 +34,12 @@ BEGIN
         RAISE EXCEPTION 'Organization is suspended';
     END IF;
 
-    /*Check if request need specific subscription if so check if organization has subscription*/
-    IF rec_resource.plan_names IS NOT NULL THEN
-        IF rec_organization.plan_name NOT IN (SELECT UNNEST(rec_resource.plan_names)) THEN
-            RAISE EXCEPTION 'Organization does not have the required subscription';
-        END IF; 
+    /*Check premium features: resource.extras lists required features, organization.extras
+      the granted ones. NULL organization.extras = all features enabled (self-hosted).*/
+    IF rec_resource.extras IS NOT NULL THEN
+        IF rec_organization.extras IS NOT NULL AND NOT (rec_organization.extras @> rec_resource.extras) THEN
+            RAISE EXCEPTION 'Organization does not have the required features';
+        END IF;
     END IF;
 
     /*Check if request affects quota*/

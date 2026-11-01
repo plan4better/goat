@@ -33,6 +33,7 @@
 namespace routing::heatmap
 {
 
+using output::sql_double;
 using output::sql_escape;
 using output::write_query_to_parquet;
 
@@ -503,31 +504,31 @@ void reduce_and_export(HeatmapConfig const &cfg, duckdb::Connection &con,
         {
         case GravityDecay::Gaussian:
             decay_expr =
-                "EXP(-1.0 * POW(min_cost / " + std::to_string(cfg.max_cost) +
-                ", 2) * " + std::to_string(inv_sensitivity_norm) + ")";
+                "EXP(-1.0 * POW(min_cost / " + sql_double(cfg.max_cost) +
+                ", 2) * " + sql_double(inv_sensitivity_norm) + ")";
             break;
         case GravityDecay::Exponential:
             decay_expr =
-                "EXP(-1.0 * (1.0 / " + std::to_string(inv_sensitivity_norm) +
-                ") * (min_cost / " + std::to_string(cfg.max_cost) + "))";
+                "EXP(-1.0 * (1.0 / " + sql_double(inv_sensitivity_norm) +
+                ") * (min_cost / " + sql_double(cfg.max_cost) + "))";
             break;
         case GravityDecay::Linear:
             decay_expr =
                 "GREATEST(0.0, 1.0 - (min_cost / " +
-                std::to_string(cfg.max_cost) + "))";
+                sql_double(cfg.max_cost) + "))";
             break;
         case GravityDecay::Power:
             decay_expr =
-                "POW(GREATEST(min_cost / " + std::to_string(cfg.max_cost) +
+                "POW(GREATEST(min_cost / " + sql_double(cfg.max_cost) +
                 ", 1e-9), -1.0 * (1.0 / " +
-                std::to_string(inv_sensitivity_norm) + "))";
+                sql_double(inv_sensitivity_norm) + "))";
             break;
         case GravityDecay::Cumulative:
             // Typed DOUBLE so the score column matches the other decays: bare
             // literals here are DECIMAL, and summing them against an integer
             // weight would emit DECIMAL(38,1) instead.
             decay_expr =
-                "CASE WHEN min_cost <= " + std::to_string(cfg.max_cost) +
+                "CASE WHEN min_cost <= " + sql_double(cfg.max_cost) +
                 " THEN 1.0::DOUBLE ELSE 0.0::DOUBLE END";
             break;
         }
@@ -565,7 +566,7 @@ void reduce_and_export(HeatmapConfig const &cfg, duckdb::Connection &con,
                << "FROM _hm_per_opp po "
                << "JOIN _hm_demand d USING (cell) "
                << "JOIN _hm_opp_meta om USING (opp_idx) "
-               << "WHERE po.min_cost <= " << cfg.max_cost << " "
+               << "WHERE po.min_cost <= " << sql_double(cfg.max_cost) << " "
                << "GROUP BY po.opp_idx";
             auto r1 = con.Query(s1.str());
             if (r1->HasError())
@@ -580,7 +581,7 @@ void reduce_and_export(HeatmapConfig const &cfg, duckdb::Connection &con,
                << "SUM(r.ratio * " << W2 << ") AS score "
                << "FROM _hm_per_opp po "
                << "JOIN _hm_ratios r USING (opp_idx) "
-               << "WHERE po.min_cost <= " << cfg.max_cost << " "
+               << "WHERE po.min_cost <= " << sql_double(cfg.max_cost) << " "
                << "GROUP BY po.cell";
             auto r2 = con.Query(s2.str());
             if (r2->HasError())
@@ -599,7 +600,7 @@ void reduce_and_export(HeatmapConfig const &cfg, duckdb::Connection &con,
                 << "       SUM(om.weight * " << decay_expr << ") AS score "
                 << "FROM _hm_per_opp po "
                 << "JOIN _hm_opp_meta om USING (opp_idx) "
-                << "WHERE po.min_cost <= " << cfg.max_cost << " "
+                << "WHERE po.min_cost <= " << sql_double(cfg.max_cost) << " "
                 << "GROUP BY po.cell";
         }
         else if (cfg.heatmap_type == HeatmapType::ClosestAverage)
@@ -616,7 +617,7 @@ void reduce_and_export(HeatmapConfig const &cfg, duckdb::Connection &con,
                 << "  FROM _hm_per_opp po "
                 << "  JOIN _hm_opp_meta om USING (opp_idx) ";
             if (std::isfinite(cfg.max_cost))
-                sql << "  WHERE po.min_cost <= " << cfg.max_cost;
+                sql << "  WHERE po.min_cost <= " << sql_double(cfg.max_cost);
             sql << "), ranked AS ("
                 << "  SELECT cell, min_cost, cnt, "
                 << "         COALESCE(SUM(cnt) OVER ("
@@ -638,7 +639,7 @@ void reduce_and_export(HeatmapConfig const &cfg, duckdb::Connection &con,
                 << "       SUM(h3_cell_area(po.cell, 'm^2')) AS score "
                 << "FROM _hm_per_opp po "
                 << "JOIN _hm_opp_meta om USING (opp_idx) "
-                << "WHERE po.min_cost <= " << cfg.max_cost << " "
+                << "WHERE po.min_cost <= " << sql_double(cfg.max_cost) << " "
                 << "GROUP BY om.opp_cell";
         }
 
@@ -964,7 +965,7 @@ void run_pt(HeatmapConfig const &cfg, duckdb::Connection &con,
             << "  SELECT cell, opp_idx, min_cost FROM _direct_per_opp "
             << "  UNION ALL "
             << "  SELECT cell, opp_idx, min_cost FROM _pt_per_opp"
-            << ") WHERE min_cost <= " << cfg.max_cost << " GROUP BY 1, 2";
+            << ") WHERE min_cost <= " << sql_double(cfg.max_cost) << " GROUP BY 1, 2";
         auto r = con.Query(sql.str());
         if (r->HasError())
             throw std::runtime_error("PT: combine direct+PT failed: " +

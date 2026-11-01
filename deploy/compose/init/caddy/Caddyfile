@@ -56,6 +56,17 @@
 	handle /catalog/* {
 		reverse_proxy catalog:8400
 	}
+	# AI assistant (conversations, answer streams, MCP at /assistant/mcp).
+	# Answers stream as server-sent events: every chunk goes out at once, and
+	# the route stays outside the compressed web block below. Caddy sets no
+	# response timeout by default, so long answers and the connection test
+	# are not cut off. Every method passes (GET, POST, PUT, PATCH, DELETE,
+	# OPTIONS).
+	handle /assistant/* {
+		reverse_proxy assistant:8500 {
+			flush_interval -1
+		}
+	}
 	handle /keycloak/* {
 		reverse_proxy keycloak:8080
 	}

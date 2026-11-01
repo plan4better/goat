@@ -7,6 +7,7 @@ import { useState } from "react";
 import DashboardSidebar from "@/components/dashboard/Sidebar";
 import StatusStrip from "@/components/dashboard/StatusStrip";
 import Header from "@/components/header/Header";
+import { TOOLBAR_HEIGHT } from "@/components/header/Toolbar";
 
 const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
   const hidden = useMediaQuery((theme: Theme) => theme.breakpoints.down("md"));
@@ -15,7 +16,7 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <Stack component="div" width="100%" height="100%" overflow="hidden">
       <Header
-        height={52}
+        height={TOOLBAR_HEIGHT}
         title="Workspace"
         // CSS (md breakpoint) decides whether the hamburger shows, so the phone layout is right
         // in the server HTML; `hidden` (JS) only drives the drawer behaviour.

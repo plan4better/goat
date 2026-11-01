@@ -9,7 +9,7 @@
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="x-apple-disable-message-reformatting" />
-    <title></title>
+    <title>{{ title }}</title>
     <!--[if mso]>
       <noscript>
         <xml>
@@ -20,180 +20,120 @@
         </xml>
       </noscript>
     <![endif]-->
+    {# The same layout as the trial mails Plan4Better's Odoo sends: one look for every mail a GOAT user gets. #}
+    <style>
+      @media only screen and (max-width: 480px) {
+        .px { padding-left: 22px !important; padding-right: 22px !important; }
+      }
+    </style>
   </head>
-  <body
-    style="
-      font-family: Arial, Open Sans, Helvetica, Arial, sans-serif;
-      text-align: center;
-      word-spacing: normal;
-      background-color: #f8f8f8;
-      margin: 0;
-      padding: 0;
-    "
-  >
-    <table
-      role="presentation"
-      style="
-        padding: 0;
-        border-spacing: 0;
-        width: 100%;
-        margin-left: auto;
-        margin-right: auto;
-        max-width: 600px;
-        text-align: center;
-        align-items: center;
-      "
-    >
-      <thead>
-        <tr>
-          <td>
-            <a
-              href="{{ brand_url }}"
-              style="
-                display: inline-block;
-                margin-top: 20px;
-                margin-bottom: 20px;
-                color: #4d4d4d;
-                font-size: 22px;
-                font-weight: 700;
-                text-decoration: none;
-              "
-            >
-              {% if logo_url %}
-              <img
-                alt="{{ brand_name }}"
-                src="{{ logo_url }}"
-                style="max-width: 140px"
-                title=""
-              />
-              {% else %}
-              {{ brand_name }}
-              {% endif %}
-            </a>
-          </td>
-        </tr>
-      </thead>
-      <tbody style="background: #ffffff; background-color: #ffffff">
-        {% if artwork_url %}
+  <body style="margin: 0; padding: 0; background-color: #f3f5f4">
+    <div style="display: none; max-height: 0; overflow: hidden">{{ message }}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f5f4">
+      <tr>
+        <td align="center" style="padding: 24px 12px">
+          <table
+            role="presentation"
+            width="600"
+            cellpadding="0"
+            cellspacing="0"
+            style="
+              max-width: 600px;
+              width: 100%;
+              background-color: #ffffff;
+              border-radius: 10px;
+              overflow: hidden;
+              font-family: Mulish, Arial, Helvetica, sans-serif;
+              color: #26303b;
+            "
+          >
             <tr>
-                <td style="padding-top: 40px">
-                    <img
-                    alt=""
-                    src="{{ artwork_url }}"
-                    style="width: 250px"
-                    />
-                </td>
-            </tr>
-        {% endif %}
-        <tr>
-          <td>
-            <div style="line-height: 32px; color: #4d4d4d">
-              <h2>{{title}}</h2>
-            </div>
-          </td>
-        </tr>
-        <tr>
-          <td>
-            <div
-              style="
-                font-size: 13px;
-                line-height: 22px;
-                color: #797e82;
-                padding-left: 50px;
-                padding-right: 50px;
-                margin-bottom: 30px;
-              "
-            >
-              {{message}}
-            </div>
-          </td>
-        </tr>
-        {% if action_label and action_url %}
-            <tr>
-            <td>
-                <a
-                href="{{ action_url }}"
-                style="
-                    display: inline-block;
-                    background: rgb(43, 179, 129);
-                    color: rgb(255, 255, 255);
-                    font-size: 13px;
-                    font-weight: normal;
-                    text-decoration: none;
-                    padding: 15px 25px 15px 25px;
-                    border-radius: 100px;
-                    margin-bottom: 20px;
-                "
-                >
-                <b style="font-weight: 700">{{action_label}}</b>
+              <td class="px" style="padding: 24px 40px 0 40px">
+                <a href="{{ brand_url }}" style="text-decoration: none; font-size: 20px; font-weight: 800; color: #2bb381">
+                  {% if logo_url %}
+                  <img
+                    src="{{ logo_url }}"
+                    alt="{{ brand_name }}"
+                    width="228"
+                    style="width: 228px; max-width: 100%; height: auto; border: 0; font-size: 20px; font-weight: 800; color: #2bb381"
+                  />
+                  {% else %}
+                  <span style="font-size: 22px; font-weight: 800; color: #2bb381">{{ brand_name }}</span>
+                  {% endif %}
                 </a>
-            </td>
+              </td>
             </tr>
-        {% endif %}
-        <tr>
-          <td style="padding-top: 40px">
-            <p
-              style="
-                border-top: solid 7px #2bb381;
-                margin: 0px auto;
-                width: 100%;
-              "
-            ></p>
-          </td>
-        </tr>
-      </tbody>
-      <tfoot
-        style="
-          text-align: center;
-          -webkit-text-size-adjust: 100%;
-          -ms-text-size-adjust: 100%;
-          color: #c7c8ca;
-          font-size: 10px;
-          line-height: 15px;
-          padding: 5px;
-        "
-      >
-        <tr>
-          <td>
-            <div style="margin-top: 20px">
-              &copy; {{ brand_name }} {{ now().year }} | {{ _('All Rights Reserved') }}
-            </div>
-          </td>
-        </tr>
-        {% if privacy_url or contact_url %}
-        <tr>
-          <td>
-            <div>
-              {% if privacy_url %}
-              <a
-                href="{{ privacy_url }}"
+            {% if artwork_url %}
+            <tr>
+              <td class="px" align="center" style="padding: 20px 40px 0 40px">
+                <img src="{{ artwork_url }}" alt="" width="260" style="width: 260px; max-width: 100%; height: auto; border: 0" />
+              </td>
+            </tr>
+            {% endif %}
+            <tr>
+              <td class="px" style="padding: 16px 40px 4px 40px; font-size: 22px; font-weight: 700; line-height: 1.3; color: #26303b">
+                {{ title }}
+              </td>
+            </tr>
+            <tr>
+              <td class="px" style="padding: 4px 40px 12px 40px; font-size: 15px; line-height: 1.6; color: #26303b">
+                {{ message }}
+              </td>
+            </tr>
+            {% if action_label and action_url %}
+            <tr>
+              <td class="px" align="center" style="padding: 8px 40px 8px 40px">
+                <a
+                  href="{{ action_url }}"
+                  style="
+                    display: inline-block;
+                    background-color: #2bb381;
+                    color: #ffffff;
+                    font-weight: 700;
+                    font-size: 15px;
+                    text-decoration: none;
+                    padding: 12px 28px;
+                    border-radius: 24px;
+                  "
+                  >{{ action_label }}</a
+                >
+              </td>
+            </tr>
+            {% endif %}
+            <tr>
+              <td style="padding: 0 0 28px 0; font-size: 0; line-height: 0">&nbsp;</td>
+            </tr>
+            <tr>
+              <td style="height: 4px; background-color: #2bb381; font-size: 0; line-height: 0">&nbsp;</td>
+            </tr>
+          </table>
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%">
+            <tr>
+              <td
                 style="
-                  -webkit-text-size-adjust: 100%;
-                  -ms-text-size-adjust: 100%;
-                  font-weight: normal;
-                  color: #c7c8ca;
+                  padding: 14px 40px;
+                  font-family: Arial, Helvetica, sans-serif;
+                  font-size: 12px;
+                  line-height: 1.5;
+                  color: #5f6b76;
+                  text-align: center;
                 "
-                >{{ _('Privacy') }}</a
               >
-              {% endif %}
-              {% if privacy_url and contact_url %}|{% endif %}
-              {% if contact_url %}
-              <a
-                href="{{ contact_url }}"
-                style="
-                  -webkit-text-size-adjust: 100%;
-                  -ms-text-size-adjust: 100%;
-                  font-weight: normal;
-                  color: #c7c8ca;
-                "
-                >{{ _('Contact us') }}</a
-              >
-              {% endif %}
-            </div>
-          </td>
-        </tr>
-        {% endif %}
-      </tfoot>
+                {{ _('You receive this email because of your GOAT account.') }}<br />
+                {% if company_name %}
+                {% if company_url %}<a href="{{ company_url }}" style="color: #5f6b76">{{ company_name }}</a>{% else %}{{ company_name }}{% endif %}
+                {% else %}
+                &copy; {{ brand_name }} {{ now().year }}
+                {% endif %}
+                {% if privacy_url or contact_url %}<br />{% endif %}
+                {% if privacy_url %}<a href="{{ privacy_url }}" style="color: #5f6b76">{{ _('Privacy') }}</a>{% endif %}
+                {% if privacy_url and contact_url %} &middot; {% endif %}
+                {% if contact_url %}<a href="{{ contact_url }}" style="color: #5f6b76">{{ _('Contact') }}</a>{% endif %}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
     </table>
   </body>
 </html>

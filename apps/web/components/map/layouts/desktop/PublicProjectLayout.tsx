@@ -6,6 +6,7 @@ import { v4 } from "uuid";
 
 import { DEFAULT_BASEMAP } from "@/lib/constants/basemaps";
 import { setSelectedLayers } from "@/lib/store/layer/slice";
+import { duplicateWidget } from "@/lib/utils/builderWidgets";
 import { useInteractionDispatcher } from "@/hooks/map/useInteractionDispatcher";
 import type { InteractionRule } from "@/lib/validations/interaction";
 import {
@@ -449,6 +450,18 @@ const PublicProjectLayout = ({
     });
   };
 
+  const onWidgetDuplicate = (widgetId: string) => {
+    if (viewOnly) return;
+    const duplicated = duplicateWidget(panels, widgetId);
+    if (!duplicated) return;
+    const builderConfig = {
+      ...project?.builder_config,
+      interface: duplicated.panels,
+    };
+    onProjectUpdate?.("builder_config", builderConfig);
+    dispatch(setSelectedBuilderItem(duplicated.copy));
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const onWidgetUpdate = (updatedWidget: BuilderWidgetSchema) => {
     if (viewOnly) return;
@@ -644,7 +657,8 @@ const PublicProjectLayout = ({
   return (
     <Box sx={{ height: "100%", width: "100%", display: "flex", flexDirection: "column", fontFamily: dashboardFont }}>
       {project && builderConfig?.settings?.toolbar && (
-        <Header showHambugerMenu={false} mapHeader={true} project={project} viewOnly />
+        // In the dashboard builder's preview (not view only) the project header above has Ask AI already.
+        <Header showHambugerMenu={false} mapHeader={true} project={project} viewOnly askAi={!!viewOnly} />
       )}
       <Box
         display="flex"
@@ -678,6 +692,7 @@ const PublicProjectLayout = ({
                   selected={selectedPanel?.type === "panel" && selectedPanel?.id === panel.id}
                   onChangeOrder={handleChangeOrder}
                   onWidgetDelete={onWidgetDelete}
+                  onWidgetDuplicate={onWidgetDuplicate}
                   onWidgetUpdate={onWidgetUpdate}
                   onClick={() => handlePanelClick(panel)}
                 />

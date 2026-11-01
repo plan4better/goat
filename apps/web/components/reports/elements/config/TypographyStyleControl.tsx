@@ -11,6 +11,7 @@ import {
   formatFontSize,
   parseFontSize,
 } from "@/lib/constants/typography";
+import { pickerBorderColor, pickerBorderHoverColor } from "@/lib/constants/ui";
 import type { TypographyStyle } from "@/lib/constants/typography";
 import { rgbToHex } from "@/lib/utils/helpers";
 
@@ -34,11 +35,11 @@ const ColorBlock = ({ color, onClick }: { color: string; onClick: () => void }) 
         borderRadius: theme.spacing(1.2),
         border: "1px solid",
         minHeight: "40px",
-        borderColor: theme.palette.mode === "dark" ? "#464B59" : "#CBCBD1",
+        borderColor: pickerBorderColor(theme),
         cursor: "pointer",
         p: 2,
         "&:hover": {
-          borderColor: theme.palette.mode === "dark" ? "#5B5F6E" : "#B8B7BF",
+          borderColor: pickerBorderHoverColor(theme),
         },
       }}>
       <div

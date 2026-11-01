@@ -25,7 +25,10 @@ i18next
     detection: {
       // cookie first; ignore path/navigator
       order: ["cookie", "htmlTag"],
-      caches: ["cookie"],
+      // Never cache the detected language: before sign-in that is the fallback, and
+      // as a cookie it would beat the user's own language right after sign-in. The
+      // cookie is written only when the user picks a language (/api/preferences/update).
+      caches: [],
       lookupCookie: LANGUAGE_COOKIE_NAME,
     },
     preload: runsOnServerSide ? languages : [],

@@ -343,7 +343,7 @@ def _dataset_collection_for(item: Row) -> Row:
     10,793 items are orphans -- because the harvester emits one Collection per
     source dataset and one Item per layer of it. The fixture used to leave all
     but the bundle members collection-less, which made a dataset-level search
-    (Collection Search, which the catalog page and the MCP tool both use) see a
+    (Collection Search, which the catalog page and the assistant's catalog tools both use) see a
     single dataset and nothing to page through.
 
     Metadata is copied from the layer, as it is upstream: for a one-layer dataset
@@ -855,11 +855,13 @@ def write_catalog(
 def write_nuts(
     path: Path,
     extra_regions: list[tuple[str, str, int, str, str]] | None = None,
+    replace_regions: dict[str, str] | None = None,
 ) -> None:
     """Write a small deterministic ``nuts.parquet`` lookup into ``path``.
 
     ``extra_regions`` appends hand-built ``(nuts_id, nuts_name, level, country,
-    wkt)`` rows. The generated regions are all rectangles, and a rectangle's
+    wkt)`` rows; ``replace_regions`` gives generated regions a shape of their own
+    (``nuts_id`` to WKT), for tests that need a region where it really is. The generated regions are all rectangles, and a rectangle's
     envelope *is* its geometry, so they cannot tell an exact spatial test from a
     bounding-box one; a test that needs to must bring a concave shape.
     """
@@ -884,7 +886,14 @@ def write_nuts(
             "INSERT INTO nuts_gen VALUES (?,?,?,?,?)",
             [
                 *(
-                    (nuts_id, nuts_name, level, country, _polygon(rng)[0])
+                    (
+                        nuts_id,
+                        nuts_name,
+                        level,
+                        country,
+                        # Drawn either way, so the other regions keep their shapes.
+                        (replace_regions or {}).get(nuts_id, _polygon(rng)[0]),
+                    )
                     for nuts_id, nuts_name, level, country in NUTS_REGIONS
                 ),
                 *(extra_regions or []),

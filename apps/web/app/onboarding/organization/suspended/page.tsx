@@ -30,11 +30,17 @@ export default function OrganizationSuspended() {
       <>
         {status == "authenticated" && !isOrgLoading && organization?.suspended && (
           <AuthContainer
-            headerTitle={<Typography variant="h5">{t("organization_suspended")}</Typography>}
+            headerTitle={
+              <Typography variant="h5">
+                {t(organization.on_trial ? "organization_trial_ended" : "organization_suspended")}
+              </Typography>
+            }
             body={
               <>
                 <Stack spacing={4}>
-                  <Typography variant="body1">{t("organization_suspended_message")}</Typography>
+                  <Typography variant="body1">
+                    {t(organization.on_trial ? "organization_trial_ended_message" : "organization_suspended_message")}
+                  </Typography>
                   {CONTACT_URL && (
                     <Button
                       variant="outlined"

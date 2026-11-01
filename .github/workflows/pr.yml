@@ -38,7 +38,8 @@ jobs:
         ${{ needs.file-changes.outputs.core == 'true'
         || needs.file-changes.outputs.geoapi == 'true'
         || needs.file-changes.outputs.processes == 'true'
-        || needs.file-changes.outputs.catalog == 'true' }}
+        || needs.file-changes.outputs.catalog == 'true'
+        || needs.file-changes.outputs.assistant == 'true' }}
 
   test:
     name: test
@@ -59,6 +60,7 @@ jobs:
       geoapi: ${{ needs.file-changes.outputs.geoapi == 'true' }}
       processes: ${{ needs.file-changes.outputs.processes == 'true' }}
       catalog: ${{ needs.file-changes.outputs.catalog == 'true' }}
+      assistant: ${{ needs.file-changes.outputs.assistant == 'true' }}
 
   build:
     name: build

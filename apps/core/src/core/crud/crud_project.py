@@ -7,17 +7,17 @@ from fastapi import HTTPException, status
 from fastapi_pagination import Page
 from fastapi_pagination import Params as PaginationParams
 from goatlib.models.project import DEFAULT_INITIAL_VIEW_STATE
-from sqlalchemy import Text, cast, select, text
+from sqlalchemy import Table, Text, cast, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import and_, not_, or_
 
+from core.core import revision
 from core.core.config import settings
 from core.core.content import (
     build_shared_with_object,
     create_query_shared_content,
     fetch_grants_by_resource,
     grant_conditions,
-    update_content_by_id,
 )
 from core.crud.base import CRUDBase
 from core.crud.crud_layer_project import layer_project as crud_layer_project
@@ -381,21 +381,56 @@ class CRUDProject(CRUDBase[Project, Any, Any]):
         return projects
 
     async def update_base(
-        self, async_session: AsyncSession, id: UUID, project: IProjectBaseUpdate
+        self,
+        async_session: AsyncSession,
+        id: UUID,
+        project: IProjectBaseUpdate,
+        user_id: UUID,
     ) -> IProjectRead:
-        """Update project base"""
+        """Update project base.
 
-        # Update project
-        updated_project = await update_content_by_id(
-            async_session=async_session,
-            id=id,
-            model=Project,
-            crud_content=self,
-            content_in=project,
+        A change of the dashboard (`builder_config`) is checked against
+        `builder_base_revision` and raises `builder_revision`, in the same
+        statement as the other fields of the request (`core.core.revision`).
+        Raises ChangedElsewhereError.
+        """
+        values = project.model_dump(
+            exclude_unset=True, exclude={"builder_base_revision"}
         )
+        stored = await self.get(async_session, id=id)
+        if stored is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+            )
+        # The dashboard has no volatile parts: one equal to the stored one is
+        # left out, so it neither raises the revision nor needs the check.
+        if "builder_config" in values and revision.significant_builder_config(
+            values["builder_config"]
+        ) == revision.significant_builder_config(stored.builder_config):
+            del values["builder_config"]
 
+        updated_project: Project | None = stored
+        if "builder_config" in values:
+            table: Table = getattr(Project, "__table__")
+            row = await revision.save_change(
+                async_session,
+                table=table,
+                where=[table.c.id == id],
+                values=values,
+                revision="builder_revision",
+                user_id=user_id,
+                base_revision=project.builder_base_revision,
+                document=f"Dashboard of project {id}",
+            )
+            updated_project = None if row is None else Project(**row)
+        elif values:
+            updated_project = await self.update(
+                async_session, db_obj=stored, obj_in={**values, "updated_by": user_id}
+            )
         if updated_project is None:
-            raise Exception("Project not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+            )
 
         return IProjectRead(
             **updated_project.model_dump(),

@@ -21,6 +21,9 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { useFeatures } from "@/lib/api/users";
+import { ASSISTANT_BASE_URL } from "@/lib/constants";
+
 import { useAuthZ } from "@/hooks/auth/AuthZ";
 
 import PageHeader from "@/components/dashboard/common/PageHeader";
@@ -29,12 +32,18 @@ interface SettingsLayoutProps {
   children: React.ReactNode;
 }
 
+/** Pages that lay their content on the page background under their own
+ * header, as the catalog and content pages do; every other settings page sits
+ * on a card. */
+const BARE_PAGES = ["/settings/usage"];
+
 const SettingsLayout = (props: SettingsLayoutProps) => {
   const { children } = props;
   const pathname = usePathname();
   const theme = useTheme();
   const { t } = useTranslation("common");
   const { isOrgAdmin, isLoading: isUserProfileLoading } = useAuthZ();
+  const { features } = useFeatures();
   const navigation = useMemo(() => {
     return [
       {
@@ -53,7 +62,10 @@ const SettingsLayout = (props: SettingsLayoutProps) => {
         link: "/settings/organization",
         icon: ICON_NAME.ORGANIZATION,
         label: t("organization"),
-        current: pathname?.includes("/organization") && !pathname?.includes("/white-label"),
+        current:
+          pathname?.includes("/organization") &&
+          !pathname?.includes("/white-label") &&
+          !pathname?.includes("/organization/ai"),
         auth: isOrgAdmin,
       },
       {
@@ -63,22 +75,27 @@ const SettingsLayout = (props: SettingsLayoutProps) => {
         current: pathname?.includes("/white-label"),
         auth: isOrgAdmin,
       },
+      ...(ASSISTANT_BASE_URL
+        ? [
+            {
+              link: "/settings/organization/ai",
+              icon: ICON_NAME.SPARKLES,
+              label: t("ai_settings_nav"),
+              current: pathname?.includes("/organization/ai"),
+              auth: isOrgAdmin,
+            },
+          ]
+        : []),
       {
         link: "/settings/usage",
         icon: ICON_NAME.CHART_PIE,
         label: t("usage_and_quotas"),
         current: pathname?.includes("/usage"),
-        auth: isOrgAdmin,
-      },
-      {
-        link: "/settings/billing",
-        icon: ICON_NAME.CREDIT_CARD,
-        label: t("billing"),
-        current: pathname?.includes("/billing"),
-        auth: isOrgAdmin,
+        // Credits and quotas exist only where billing runs (not self-hosted).
+        auth: isOrgAdmin && features?.billing === true,
       },
     ];
-  }, [pathname, t, isOrgAdmin]);
+  }, [pathname, t, isOrgAdmin, features?.billing]);
 
   return (
     <Container sx={{ py: 10, px: 10 }} maxWidth="xl">
@@ -146,7 +163,11 @@ const SettingsLayout = (props: SettingsLayoutProps) => {
           </Paper>
         </Grid>
         <Grid item xs={12} md={9}>
-          <Paper elevation={3}>{children}</Paper>
+          {BARE_PAGES.some((page) => pathname === page || pathname?.startsWith(`${page}/`)) ? (
+            children
+          ) : (
+            <Paper elevation={3}>{children}</Paper>
+          )}
         </Grid>
       </Grid>
     </Container>

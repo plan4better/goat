@@ -1,0 +1,29 @@
+{
+  "description": "Models that passed GOAT's eval set (spec §4.3, §12). Written by `python -m evals promote` from apps/assistant; each entry: provider, model, judge (provider and model that graded the run), eval_set_version, score, date, results. Every other model is labelled untested.",
+  "models": [
+    {
+      "provider": "openai_compatible",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "judge": {
+        "provider": "openai_compatible",
+        "model": "openai/gpt-oss-120b"
+      },
+      "eval_set_version": 16,
+      "score": 0.928,
+      "date": "2026-10-21",
+      "results": "20261021-134033-557606-openai-compatible-deepseek-deepseek-v4.1-flash.json"
+    },
+    {
+      "provider": "openai_compatible",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "judge": {
+        "provider": "openai_compatible",
+        "model": "openai/gpt-oss-120b"
+      },
+      "eval_set_version": 16,
+      "score": 0.913,
+      "date": "2026-10-21",
+      "results": "20261021-202225-655893-openai-compatible-deepseek-deepseek-v4.1-flash-1017.json"
+    }
+  ]
+}

@@ -27,11 +27,6 @@ vi.mock("@/lib/api/workflows", () => ({
   useWorkflows: (projectId?: string) => ({ workflows: projectId ? mockWorkflows : undefined }),
 }));
 
-let mockReportLayouts: { id: string }[] | undefined;
-vi.mock("@/lib/api/reportLayouts", () => ({
-  useReportLayouts: (projectId?: string) => ({ reportLayouts: projectId ? mockReportLayouts : undefined }),
-}));
-
 const setParams = (params: Record<string, string>) => {
   currentParams = new URLSearchParams(params);
 };
@@ -61,7 +56,6 @@ describe("useMapUrlIntent", () => {
   beforeEach(() => {
     setParams({});
     mockWorkflows = undefined;
-    mockReportLayouts = undefined;
     window.history.replaceState(null, "", "/map/p1");
     replaceStateSpy = vi.spyOn(window.history, "replaceState");
   });
@@ -141,21 +135,40 @@ describe("useMapUrlIntent", () => {
     expect(replaceStateSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("returns the parsed layoutId for the caller to thread down as a prop (e.g. to ReportsLayout)", () => {
+  it("keeps the requested layout for the caller to thread down (e.g. to ReportsLayout) after stripping the param", () => {
     setParams({ mode: "reports", layout: "l1" });
-    mockReportLayouts = [{ id: "l1" }];
     const store = makeStore();
 
-    const { result } = renderIntent("p1", store);
-
-    expect(result.current.layoutId).toBe("l1");
+    const { result, rerender } = renderIntent("p1", store);
+    expect(result.current.layoutRequest).toEqual({ id: "l1" });
     expect(store.getState().map.mapMode).toBe("reports");
+    expect(replaceStateSpy).toHaveBeenCalledTimes(1);
+
+    // The stripped param reaches useSearchParams; the request stays for the panel that mounts now.
+    setParams({});
+    rerender();
+    expect(result.current.layoutRequest).toEqual({ id: "l1" });
   });
 
-  it("returns a null layoutId when the URL carries none", () => {
+  it("makes a new request each time the param shows up again, also for the same layout", () => {
+    setParams({ mode: "reports", layout: "l1" });
+    const store = makeStore();
+    const { result, rerender } = renderIntent("p1", store);
+    const first = result.current.layoutRequest;
+
+    setParams({});
+    rerender();
+    setParams({ mode: "reports", layout: "l1" });
+    rerender();
+
+    expect(result.current.layoutRequest).toEqual({ id: "l1" });
+    expect(result.current.layoutRequest).not.toBe(first);
+  });
+
+  it("returns no layout request when the URL carries none", () => {
     const store = makeStore();
     const { result } = renderIntent("p1", store);
-    expect(result.current.layoutId).toBeNull();
+    expect(result.current.layoutRequest).toBeNull();
   });
 
   it("does nothing without a projectId even if the URL carries params", () => {

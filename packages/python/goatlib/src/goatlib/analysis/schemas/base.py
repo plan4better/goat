@@ -1,7 +1,7 @@
 """Base schemas for analysis operations."""
 
 from enum import StrEnum
-from typing import List, Optional, Self
+from typing import Any, List, Optional, Self
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -163,3 +163,39 @@ class FieldStatistic(BaseModel):
         if self.operation == StatisticOperation.count:
             return "count"
         return f"{self.field}_{self.operation.value}"
+
+    def get_operation_first_column_name(self: Self) -> str:
+        """The result column name dissolve and aggregate polygon write: the
+        custom name, else ``count`` or ``{operation}_{field}`` (e.g.
+        ``sum_population``)."""
+        if self.result_name:
+            return self.result_name
+        if self.operation == StatisticOperation.count:
+            return "count"
+        return f"{self.operation.value}_{self.field}"
+
+
+#: The result name text of a tool that names a statistic
+#: ``{operation}_{field}``; en.json holds the same text under
+#: ``fields.statistic_result_name_operation_first``.
+OPERATION_FIRST_RESULT_NAME = (
+    'Custom name for the result column. If empty, "{operation}_{field}" is '
+    'used, or "count" for "Count".'
+)
+
+
+def operation_first_result_name() -> Any:
+    """The result_name setting of a tool that names a statistic
+    ``{operation}_{field}``: its description and the editor's placeholder
+    give that order."""
+    return Field(
+        None,
+        description=OPERATION_FIRST_RESULT_NAME,
+        json_schema_extra={
+            "x-ui": {
+                "label_key": "statistic_result_name",
+                "description_key": "statistic_result_name_operation_first",
+                "widget_options": {"placeholder_template": "{operation}_{field}"},
+            }
+        },
+    )

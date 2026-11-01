@@ -88,6 +88,17 @@ export function shortDate(date: string, locale: string): string {
   }).format(new Date(`${date}T00:00:00Z`));
 }
 
+/** `Sat, 6 Oct 2026`: shortDate with its year. */
+export function shortDateYear(date: string, locale: string): string {
+  return new Intl.DateTimeFormat(dateLocale(locale), {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T00:00:00Z`));
+}
+
 /** `26 Nov`. */
 export function dayMonth(date: string, locale: string): string {
   return new Intl.DateTimeFormat(dateLocale(locale), {

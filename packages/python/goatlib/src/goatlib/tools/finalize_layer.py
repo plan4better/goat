@@ -46,7 +46,11 @@ from goatlib.tools.base import (
     drops_unrecorded_tables,
 )
 from goatlib.tools.finalize_existing import ExistingDatasetMixin
-from goatlib.tools.layer_replace import LayerReplaceMixin
+from goatlib.tools.layer_replace import (
+    LayerReplaceMixin,
+    entry_needs_feature_style,
+    style_entries_as_feature_layer,
+)
 from goatlib.tools.schemas import ToolInputBase
 from goatlib.tools.style_rows import insert_first_style
 from goatlib.tools.workflow_dataset_nodes import retarget_dataset_nodes
@@ -282,6 +286,7 @@ class FinalizeLayerRunner(
         params: FinalizeLayerParams,
         parquet_path: Path,
         target: ExportTarget,
+        metadata: dict | None = None,
     ) -> str:
         """Replace the target layer's data, keeping its id, style, tags and
         project entries.
@@ -304,6 +309,14 @@ class FinalizeLayerRunner(
             owner_id=user_id,
             parquet_path=parquet_path,
         )
+        # Data without rows gives no geometry type; the step's result has the
+        # one its temp metadata names (`result_geometry_type`).
+        has_geometry = any(
+            "GEOMETRY" in str(column_type).upper()
+            for column_type in table_info.get("columns", {}).values()
+        )
+        if has_geometry and not table_info.get("geometry_type"):
+            table_info["geometry_type"] = (metadata or {}).get("geometry_type")
 
         self._delete_old_pmtiles(user_id=user_id, layer_id=layer_id)
 
@@ -324,6 +337,7 @@ class FinalizeLayerRunner(
                 extent_wkt=table_info.get("extent_wkt"),
                 size=table_info.get("size", 0),
                 geometry_type=table_info.get("geometry_type"),
+                feature_layer_type="tool",
             )
         )
         if target.mode == "adopt":
@@ -591,7 +605,9 @@ class FinalizeLayerRunner(
                         claim_link_id=target.link_id,
                     )
                 else:
-                    layer_id = self._overwrite_in_place(params, parquet_path, target)
+                    layer_id = self._overwrite_in_place(
+                        params, parquet_path, target, metadata=metadata
+                    )
             except BaseException as exc:
                 loop.run_until_complete(
                     lock.__aexit__(type(exc), exc, exc.__traceback__)
@@ -717,6 +733,7 @@ class FinalizeLayerRunner(
 
         if (
             geometry_type
+            and feature_count
             and self.settings is not None
             and self.settings.pmtiles_enabled
         ):
@@ -780,7 +797,8 @@ class FinalizeLayerRunner(
             )
 
         async def create_db_records() -> int:
-            from goatlib.tools.db import ToolDatabaseService
+            from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
+            from goatlib.tools.style import get_default_style
 
             pool = await self.get_postgres_pool()
             try:
@@ -799,7 +817,15 @@ class FinalizeLayerRunner(
                 # failure cannot leave a layer that no project shows.
                 assert params.export_node_id is not None
                 async with pool.acquire() as conn, conn.transaction():
-                    await create_layer_record(ToolDatabaseService(conn, schema=schema))
+                    layer_properties = await create_layer_record(
+                        ToolDatabaseService(conn, schema=schema)
+                    )
+                    # The entry was made for the layer it shows now; one made
+                    # for a table, or without a style, is styled for the
+                    # feature layer it is about to show.
+                    restyle = bool(geometry_type) and await entry_needs_feature_style(
+                        conn, schema, claim_link_id
+                    )
                     await claim_link(
                         conn,
                         schema,
@@ -809,6 +835,19 @@ class FinalizeLayerRunner(
                         workflow_id=params.workflow_id,
                         export_node_id=params.export_node_id,
                     )
+                    if restyle:
+                        await style_entries_as_feature_layer(
+                            conn,
+                            schema,
+                            new_layer_id,
+                            {
+                                **get_default_style(
+                                    normalize_geometry_type(geometry_type)
+                                ),
+                                **(layer_properties or {}),
+                            },
+                            link_id=claim_link_id,
+                        )
                     await retarget_dataset_nodes(
                         conn,
                         schema,

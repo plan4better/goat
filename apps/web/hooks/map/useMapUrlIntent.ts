@@ -1,9 +1,8 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
-import { useReportLayouts } from "@/lib/api/reportLayouts";
 import { useWorkflows } from "@/lib/api/workflows";
 import type { MapMode } from "@/lib/store/map/slice";
 import { setMapMode } from "@/lib/store/map/slice";
@@ -16,14 +15,17 @@ const URL_MAP_MODES: readonly MapMode[] = ["workflows", "reports", "builder"];
 const isUrlMapMode = (value: string): value is MapMode =>
   (URL_MAP_MODES as readonly string[]).includes(value);
 
+/** A `?layout=<id>` to select: a new object every time the param shows up. */
+export interface LayoutRequest {
+  id: string;
+}
+
 export interface MapUrlIntent {
-  /** The `?layout=<id>` param, handed to the caller so it can thread it down
-   * to the Reports panel (which owns its own selection — there is no Redux
-   * action to dispatch here, see below). Read live from `useSearchParams`,
-   * which Next feeds the native history methods back into, so it turns null
-   * once this hook strips the param — by then the Reports panel's own effect
-   * has already consumed it (a child effect runs before this parent one). */
-  layoutId: string | null;
+  /** The last `?layout=<id>` the URL carried, handed to the caller so it can
+   * thread it down to the Reports panel (which owns its own selection — there
+   * is no Redux action to dispatch here, see below). It outlives the stripped
+   * param: the panel mounts only once the mode switch renders. */
+  layoutRequest: LayoutRequest | null;
 }
 
 /**
@@ -50,10 +52,10 @@ export interface MapUrlIntent {
  * Layout selection has no such action — the Reports panel keeps its
  * selection in local component state, not Redux (see
  * components/reports/panels/ReportsConfigPanel.tsx's `selectedReportId`).
- * This hook only exposes the parsed `layoutId` (see `MapUrlIntent`) for the
- * caller to thread down as a prop, and waits for the layout list to load
- * before stripping `?layout=` (so it doesn't disappear before anyone had a
- * chance to use it) — it does not select anything itself.
+ * This hook only keeps the requested layout (see `MapUrlIntent`) for the
+ * caller to thread down as a prop; the panel selects it once, also over a
+ * layout that is open already (e.g. the assistant opening another layout of
+ * the open project). It does not select anything itself.
  */
 export const useMapUrlIntent = (projectId: string | undefined): MapUrlIntent => {
   const dispatch = useAppDispatch();
@@ -64,9 +66,13 @@ export const useMapUrlIntent = (projectId: string | undefined): MapUrlIntent => 
   const layoutId = searchParams.get("layout");
 
   // Only fetched when there is actually an id to resolve, so a plain map
-  // load (the common case, no `?workflow=`/`?layout=`) triggers neither.
+  // load (the common case, no `?workflow=`) doesn't trigger it.
   const { workflows } = useWorkflows(workflowId ? projectId : undefined);
-  const { reportLayouts } = useReportLayouts(layoutId ? projectId : undefined);
+  const [layoutRequest, setLayoutRequest] = useState<LayoutRequest | null>(null);
+
+  useEffect(() => {
+    if (projectId && layoutId) setLayoutRequest({ id: layoutId });
+  }, [projectId, layoutId]);
 
   useEffect(() => {
     if (!projectId || (!mode && !workflowId && !layoutId)) return;
@@ -88,8 +94,6 @@ export const useMapUrlIntent = (projectId: string | undefined): MapUrlIntent => 
       }
     }
 
-    if (layoutId && !reportLayouts) return;
-
     const next = new URLSearchParams(searchParams.toString());
     next.delete("mode");
     next.delete("workflow");
@@ -97,7 +101,7 @@ export const useMapUrlIntent = (projectId: string | undefined): MapUrlIntent => 
     const query = next.toString();
     const path = window.location.pathname;
     window.history.replaceState(null, "", query ? `${path}?${query}` : path);
-  }, [projectId, mode, workflowId, layoutId, workflows, reportLayouts, dispatch, searchParams]);
+  }, [projectId, mode, workflowId, layoutId, workflows, dispatch, searchParams]);
 
-  return { layoutId };
+  return { layoutRequest };
 };

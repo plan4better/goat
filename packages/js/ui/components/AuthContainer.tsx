@@ -17,7 +17,9 @@ export default function AuthContainer({
   return (
     <Card
       sx={{
-        width: 490,
+        // 490 wide, but never wider than a phone: a fixed width stuck out on both sides.
+        width: "100%",
+        maxWidth: 490,
         height: "fit-content",
         marginBottom: theme.spacing(4),
       }}

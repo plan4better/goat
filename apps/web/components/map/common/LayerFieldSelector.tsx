@@ -31,6 +31,8 @@ export type SelectorProps<T extends boolean = false> = {
   fields: LayerFieldType[];
   label?: string;
   tooltip?: string;
+  /** The field must be filled in: its label carries the required marker. */
+  required?: boolean;
   disabled?: boolean;
   multiple?: T;
   onFocus?: () => void;
@@ -89,6 +91,7 @@ const LayerFieldSelector = <T extends boolean = false>(props: SelectorProps<T>) 
             props.disabled ? theme.palette.secondary.main : focused ? theme.palette.primary.main : "inherit"
           }
           tooltip={props.tooltip}
+          required={props.required}
         />
       )}
       <Select

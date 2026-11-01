@@ -43,6 +43,10 @@ on:
         description: "Catalog (STAC service) changed"
         value: ${{ jobs.checks.outputs.catalog }}
 
+      assistant:
+        description: "Assistant (AI service) changed"
+        value: ${{ jobs.checks.outputs.assistant }}
+
       compose-bundle:
         description: "Single-server deployment bundle (deploy/compose) changed"
         value: ${{ jobs.checks.outputs.compose-bundle }}
@@ -75,6 +79,7 @@ jobs:
       workers: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.workers }}
       windmill: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.windmill }}
       catalog: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.catalog }}
+      assistant: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.assistant }}
       compose-bundle: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.compose-bundle }}
       helm: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.helm }}
     steps:
@@ -86,8 +91,11 @@ jobs:
         id: changes
         with:
           filters: |
+            # The editor draws the configs the assistant builds, read from the
+            # assistant's shared fixture (lib/validations/__tests__/workflowDrafts.test.ts).
             web:
                 - 'apps/web/**'
+                - 'apps/assistant/tests/fixtures/workflow_drafts.json'
                 - 'packages/js/**'
                 - 'packages/python/goatlib/src/goatlib/style/data/**'
                 - 'packages/python/goatlib/tests/unit/style/fixtures/**'
@@ -96,6 +104,10 @@ jobs:
 
             core:
                 - 'apps/core/**'
+                # The alembic job proves the assistant's grant list against
+                # core's real schema and authz functions.
+                - 'apps/assistant/sql/**'
+                - 'apps/assistant/src/assistant/dbcheck.py'
                 - 'packages/python/goatlib/**'
                 - 'packages/python/goatobs/**'
                 - 'pyproject.toml'
@@ -110,6 +122,22 @@ jobs:
 
             catalog:
                 - 'apps/catalog/**'
+                - 'packages/python/goatlib/**'
+                - 'packages/python/goatobs/**'
+                - 'pyproject.toml'
+                - 'uv.lock'
+
+            # The assistant's tests build its tables from core's models and run
+            # the catalog pack against the catalog app.
+            # test_image_contract.py reads the compose file and the Helm values;
+            # test_encoding compares against the web's golden stream fixtures.
+            assistant:
+                - 'apps/assistant/**'
+                - 'apps/web/lib/assistant/__tests__/fixtures/**'
+                - 'apps/core/**'
+                - 'apps/catalog/**'
+                - 'deploy/compose/compose.yaml'
+                - 'deploy/helm/goat/values.yaml'
                 - 'packages/python/goatlib/**'
                 - 'packages/python/goatobs/**'
                 - 'pyproject.toml'

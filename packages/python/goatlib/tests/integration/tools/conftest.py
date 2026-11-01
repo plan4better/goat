@@ -304,6 +304,7 @@ async def test_schemas(postgres_pool: asyncpg.Pool) -> None:
                 public_read BOOLEAN NOT NULL DEFAULT false,
                 catalog_external_uid TEXT,
                 catalog_version TEXT,
+                deleted_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )
@@ -411,6 +412,12 @@ async def test_schemas(postgres_pool: asyncpg.Pool) -> None:
             $$
         """)
 
+        # core's layer_write_allowed, which finalize asks before it overwrites
+        # a layer. The stub allows everything: core's suite proves it.
+        await conn.execute(f"""
+            CREATE FUNCTION {TEST_CUSTOMER_SCHEMA}.layer_write_allowed(uuid, uuid)
+            RETURNS boolean LANGUAGE sql STABLE AS 'SELECT true'
+        """)
         logger.info("Created all test tables")
 
     yield

@@ -15,8 +15,10 @@ import duckdb
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from geoapi.config import settings
 from geoapi.dependencies import LayerInfoDep
 from geoapi.ducklake import ducklake_manager
+from geoapi.middleware.credit_metering import charge_download
 from geoapi.services.layer_service import layer_service
 
 logger = logging.getLogger(__name__)
@@ -395,8 +397,10 @@ async def download_layer(
 
     # Run export in thread pool (DuckDB is blocking)
     import asyncio
+    import time
 
     loop = asyncio.get_event_loop()
+    started = time.monotonic()
     try:
         zip_path = await loop.run_in_executor(
             _export_executor,
@@ -412,6 +416,21 @@ async def download_layer(
     except Exception as e:
         logger.error("Layer export failed: %s", e)
         raise HTTPException(status_code=500, detail="Export failed")
+
+    export_seconds = time.monotonic() - started
+
+    # Billing on: the layer owner's organization pays the export's run time
+    # and the file, like a layer export job; charged after the response.
+    org_id = getattr(metadata, "organization_id", None)
+    if settings.BILLING_ENABLED and org_id:
+        background_tasks.add_task(
+            charge_download,
+            str(org_id),
+            getattr(metadata, "user_id", None),
+            layer_info.layer_id,
+            export_seconds,
+            os.path.getsize(zip_path),
+        )
 
     # Schedule cleanup after response is sent
     background_tasks.add_task(_cleanup_export, zip_path)

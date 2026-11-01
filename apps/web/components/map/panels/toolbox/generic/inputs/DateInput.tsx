@@ -102,7 +102,7 @@ export default function DateInput({ input, value, onChange, disabled, formValues
 
   return (
     <Stack>
-      <FormLabelHelper label={input.title} tooltip={input.description} color="inherit" />
+      <FormLabelHelper label={input.title} tooltip={input.description} color="inherit" required={input.required} />
       <TemporalPicker
         locale={dayjsLocale}
         kind="date"

@@ -71,9 +71,14 @@ STANDARD_TO_EXTENDED_ROUTE_TYPES: dict[str, list[str]] = {
 
 
 class CatchmentType(str, Enum):
-    """Catchment area type for ÖV-Güteklassen."""
+    """Catchment area type for ÖV-Güteklassen.
+
+    ``buffer`` draws a circle of the class distance around each station;
+    ``network`` walks that distance along the street network instead.
+    """
 
     buffer = "buffer"
+    network = "network"
 
 
 class OevGueteklasseStationConfig(BaseModel):
@@ -369,3 +374,23 @@ class OevGueteklasseParams(BaseModel):
         default=None,
         description="Optional path to save station categories.",
     )
+    catchment_type: CatchmentType = Field(
+        default=CatchmentType.buffer,
+        description="Circles around the stations, or walking distance along the street network.",
+    )
+    #: Routing graph for ``catchment_type=network``, from a street network
+    #: bundle; empty = the routing settings' default network.
+    edge_path: str | None = Field(
+        default=None, description="Path to an edges parquet to use for street routing"
+    )
+    node_path: str | None = Field(
+        default=None, description="Path to a nodes parquet to use for street routing"
+    )
+
+    @model_validator(mode="after")
+    def validate_network_override(self) -> "OevGueteklasseParams":
+        # Edges of one network joined to another's nodes route over ids that
+        # do not match, which yields a near-empty result instead of an error.
+        if bool(self.edge_path) != bool(self.node_path):
+            raise ValueError("edge_path and node_path must be set together")
+        return self

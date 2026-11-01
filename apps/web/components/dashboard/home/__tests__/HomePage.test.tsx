@@ -11,6 +11,8 @@ const {
   useTemplatesMock,
   templateBrowserPropsMock,
   newProjectButtonMock,
+  useJobStatusMock,
+  refreshContentFeedMock,
 } = vi.hoisted(() => ({
   useHomeStageMock: vi.fn(),
   useUserProfileMock: vi.fn(),
@@ -19,6 +21,8 @@ const {
   useTemplatesMock: vi.fn(),
   templateBrowserPropsMock: vi.fn(),
   newProjectButtonMock: vi.fn(),
+  useJobStatusMock: vi.fn(),
+  refreshContentFeedMock: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -26,6 +30,16 @@ vi.mock("react-i18next", () => ({
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));
 vi.mock("@/lib/api/users", () => ({ useUserProfile: useUserProfileMock }));
+vi.mock("@/lib/api/content", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/content")>("@/lib/api/content");
+  return { ...actual, refreshContentFeed: refreshContentFeedMock };
+});
+vi.mock("@/hooks/jobs/JobStatus", () => ({
+  JobStatusWatcher: ({ onSuccess }: { onSuccess?: () => void }) => {
+    useJobStatusMock(onSuccess);
+    return null;
+  },
+}));
 vi.mock("@/lib/api/templates", () => ({
   useTemplates: (...args: unknown[]) => useTemplatesMock(...args),
 }));
@@ -79,6 +93,8 @@ describe("HomePage", () => {
     pushMock.mockReset();
     templateBrowserPropsMock.mockReset();
     newProjectButtonMock.mockReset();
+    useJobStatusMock.mockReset();
+    refreshContentFeedMock.mockReset();
     useTemplatesMock
       .mockReset()
       .mockReturnValue({ page: { items: [], total: 0 }, isLoading: false, isError: undefined });
@@ -90,6 +106,20 @@ describe("HomePage", () => {
       browseCatalog: vi.fn(),
       dialogs: null,
     });
+  });
+
+  it("refreshes the content lists and onboarding facts when an import job finishes", () => {
+    const refresh = vi.fn();
+    useHomeStageMock.mockReturnValue(stage({ refresh }));
+
+    render(<HomePage />);
+
+    expect(useJobStatusMock).toHaveBeenCalled();
+    const onSuccess = useJobStatusMock.mock.calls[0][0] as () => void;
+    onSuccess();
+
+    expect(refreshContentFeedMock).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("renders the hero straight away while the stage loads, greeting as a skeleton", () => {

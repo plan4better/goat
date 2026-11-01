@@ -339,3 +339,98 @@ def test_heatmap_connectivity_tool(data_root: Path, walking_matrix_dir: Path) ->
     path, metadata = results[0]
     assert path.exists()
     assert metadata.source_type == "vector"
+
+
+def test_heatmap_config_needs_only_the_decay_in_use(monkeypatch) -> None:
+    """A routing build without one decay type still builds heatmaps with the others."""
+    from types import SimpleNamespace
+
+    from goatlib.analysis.accessibility.heatmap_v2 import HeatmapV2Tool
+    from goatlib.analysis.schemas.heatmap_v2 import GravityDecay, HeatmapV2Params
+
+    class Config:
+        pass
+
+    fake = SimpleNamespace(
+        RoutingMode=SimpleNamespace(
+            Walking="w", Bicycle="b", Pedelec="p", Car="c", PublicTransport="pt"
+        ),
+        HeatmapType=SimpleNamespace(
+            Gravity="g", ClosestAverage="ca", Connectivity="co", TwoSFCA="2"
+        ),
+        # No Cumulative: an older routing build.
+        GravityDecay=SimpleNamespace(
+            Gaussian="gauss", Exponential="exp", Linear="lin", Power="pow"
+        ),
+        CostType=SimpleNamespace(Distance="d", Time="t"),
+        HeatmapConfig=Config,
+        Point3857=lambda x, y: (x, y),
+        Opportunity=lambda seeds, weight, ref: (seeds, weight, ref),
+    )
+    monkeypatch.setattr(
+        HeatmapV2Tool, "_get_routing_module", staticmethod(lambda: fake)
+    )
+    tool = HeatmapV2Tool()
+    params = HeatmapV2Params.model_construct(
+        **{
+            **HeatmapV2Params.model_construct().__dict__,
+            "decay": GravityDecay.gaussian,
+        }
+    )
+    cfg = tool._build_heatmap_cfg(params, [], 300000.0, "out.parquet")
+    assert cfg.decay == "gauss"
+
+
+@pytest.mark.parametrize("heatmap_type", ["gravity", "closest_average"])
+def test_a_layer_label_with_a_leading_digit_names_its_score_column(
+    monkeypatch, tmp_path: Path, heatmap_type: str
+) -> None:
+    """A layer named "1 Grundschulen" scores into `1_grundschulen_accessibility`,
+    an identifier that only parses quoted."""
+    from types import SimpleNamespace
+
+    import duckdb
+    from goatlib.analysis.accessibility.heatmap_v2 import HeatmapV2Tool
+    from goatlib.analysis.schemas.heatmap_v2 import HeatmapType
+
+    def compute_heatmap(cfg: SimpleNamespace) -> None:
+        duckdb.connect().execute(
+            "COPY (SELECT 1::UBIGINT AS h3_index, 0.5::DOUBLE AS score) "
+            f"TO '{cfg.output_path}' (FORMAT PARQUET)"
+        )
+
+    monkeypatch.setattr(
+        HeatmapV2Tool,
+        "_get_routing_module",
+        staticmethod(lambda: SimpleNamespace(compute_heatmap=compute_heatmap)),
+    )
+    tool = HeatmapV2Tool()
+    monkeypatch.setattr(
+        tool,
+        "_build_heatmap_cfg",
+        lambda params, opp_groups, **kw: SimpleNamespace(output_path=kw["output_path"]),
+    )
+    col = tool._opportunity_label(
+        SimpleNamespace(name="1 Grundschulen", input_path="schools.parquet"), 0
+    )
+    assert col == "1_grundschulen"
+    htype = HeatmapType(heatmap_type)
+
+    table = tool._compute_layer_scores(
+        0,
+        1,
+        col,
+        [],
+        300000.0,
+        30.0,
+        1,
+        SimpleNamespace(heatmap_type=htype),
+        tmp_path,
+    )
+    results = tool._join_layer_scores([(col, table)], htype)
+
+    rel = tool.con.execute(f"SELECT * FROM {results}")
+    names = [d[0] for d in rel.description]
+    row = dict(zip(names, rel.fetchone()))
+    assert row["1_grundschulen_accessibility"] == 0.5
+    assert row["total_accessibility"] == 0.5

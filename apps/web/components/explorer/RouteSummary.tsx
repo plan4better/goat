@@ -62,10 +62,12 @@ const META_LINE = "20px";
 export function RouteSummary({ route }: { route: RouteRow }) {
   const { t } = useTranslation("common");
   const dispatch = useAppDispatch();
-  const { db, complete, window, shapeLinesLayerId, settings } = useExplorer();
+  const { db, complete, window, dataPeriod, shapeLinesLayerId, settings } = useExplorer();
   const date = useAppSelector((s) => s.explorer.date);
   const tab = useAppSelector((s) => s.explorer.routeTab);
-  const summary = useRouteSummary(complete ? db : undefined, route, date, window, settings);
+  // The cost period once known (shared with the cost card), the feed's
+  // window until then: this tab needs no cost to show.
+  const summary = useRouteSummary(complete ? db : undefined, route, date, dataPeriod ?? window, settings);
   const mode = modeOf(route.route_type);
 
   // The stretch of line the map highlights for the picked patterns: a short

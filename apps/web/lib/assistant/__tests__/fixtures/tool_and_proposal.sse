@@ -1,0 +1,28 @@
+data: {"type":"start","messageId":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c"}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-start","toolCallId":"call-1","toolName":"catalog_search","dynamic":true}
+
+data: {"type":"tool-input-available","toolCallId":"call-1","toolName":"catalog_search","input":{"q":"radverkehr"},"dynamic":true}
+
+data: {"type":"tool-output-available","toolCallId":"call-1","output":{"numberMatched":3},"dynamic":true}
+
+data: {"type":"finish-step"}
+
+data: {"type":"start-step"}
+
+data: {"type":"data-proposal","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1","data":{"title":"Put these on the page","rows":[{"k":"SEARCH","v":"Berlin"}]}}
+
+data: {"type":"text-start","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:2"}
+
+data: {"type":"text-delta","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:2","delta":"Done."}
+
+data: {"type":"text-end","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:2"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish"}
+
+data: [DONE]
+

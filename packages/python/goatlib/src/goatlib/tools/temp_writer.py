@@ -70,6 +70,24 @@ class TempLayerMetadata(BaseModel):
     )
 
 
+def temp_step_folder(
+    user_id: str,
+    workflow_id: str,
+    node_id: str,
+    temp_data_root: Path | str | None = None,
+) -> Path:
+    """The folder a workflow step's temp result is written to:
+    ``user_{uuid}/w_{uuid}/n_{node}/`` under ``temp_data_root`` (None reads
+    ``TEMP_DATA_ROOT``), the ids without dashes."""
+    root = Path(TEMP_DATA_ROOT if temp_data_root is None else temp_data_root)
+    return (
+        root
+        / f"user_{user_id.replace('-', '')}"
+        / f"w_{workflow_id.replace('-', '')}"
+        / f"n_{node_id}"
+    )
+
+
 @dataclass
 class TempLayerResult:
     """Result of writing a temporary layer."""
@@ -102,7 +120,7 @@ class TempLayerWriter:
         user_id: str,
         workflow_id: str,
         node_id: str,
-        temp_data_root: Path | str = TEMP_DATA_ROOT,
+        temp_data_root: Path | str | None = None,
         pmtiles_enabled: bool = True,
         pmtiles_max_zoom: int = 14,
     ) -> None:
@@ -112,25 +130,25 @@ class TempLayerWriter:
             user_id: User UUID (without dashes)
             workflow_id: Workflow UUID
             node_id: Node ID within the workflow
-            temp_data_root: Root directory for temporary storage
+            temp_data_root: Root directory for temporary storage; None reads
+                ``TEMP_DATA_ROOT`` when the writer is made, as the readers of
+                the folder do
             pmtiles_enabled: Whether to generate PMTiles
             pmtiles_max_zoom: Maximum zoom level for PMTiles
         """
         self.user_id = user_id.replace("-", "")
         self.workflow_id = workflow_id.replace("-", "") if workflow_id else workflow_id
         self.node_id = node_id
-        self.temp_data_root = Path(temp_data_root)
+        self.temp_data_root = Path(
+            TEMP_DATA_ROOT if temp_data_root is None else temp_data_root
+        )
         self.pmtiles_enabled = pmtiles_enabled
         self.pmtiles_max_zoom = pmtiles_max_zoom
         # Generate unique temp file ID for this write
         self.temp_file_id = uuid.uuid4().hex
 
-        # Build paths with prefixes: user_{uuid}/w_{uuid}/n_{uuid}/
-        self.base_path = (
-            self.temp_data_root
-            / f"user_{self.user_id}"
-            / f"w_{self.workflow_id}"
-            / f"n_{self.node_id}"
+        self.base_path = temp_step_folder(
+            self.user_id, self.workflow_id, self.node_id, self.temp_data_root
         )
 
     @property
@@ -155,6 +173,7 @@ class TempLayerWriter:
         process_id: str | None = None,
         duckdb_con: duckdb.DuckDBPyConnection | None = None,
         style: Callable[[str | None], dict[str, Any] | None] | None = None,
+        geometry_type: str | None = None,
     ) -> TempLayerResult:
         """Write a parquet file to temporary storage.
 
@@ -170,6 +189,10 @@ class TempLayerWriter:
             duckdb_con: Optional DuckDB connection for reading parquet metadata
             style: Builds the layer's style from its geometry type as read from
                 the data
+            geometry_type: The geometry type the tool gives its result, for a
+                result whose rows give none (one without rows): an export of
+                it is then a layer of that type. Only a result with a
+                geometry column takes it.
 
         Returns:
             TempLayerResult with paths and metadata
@@ -190,14 +213,15 @@ class TempLayerWriter:
             layer_name=layer_name,
             process_id=process_id,
             duckdb_con=duckdb_con,
+            geometry_type=geometry_type,
         )
 
         if style is not None:
             metadata.style = style(metadata.geometry_type)
 
-        # Generate PMTiles if enabled and has geometry
+        # Generate PMTiles if enabled and has geometries to draw
         pmtiles_path = None
-        if self.pmtiles_enabled and metadata.geometry_type:
+        if self.pmtiles_enabled and metadata.geometry_type and metadata.feature_count:
             pmtiles_path = self._generate_pmtiles(duckdb_con)
 
         # Write metadata
@@ -218,6 +242,7 @@ class TempLayerWriter:
         layer_name: str,
         process_id: str | None,
         duckdb_con: duckdb.DuckDBPyConnection | None = None,
+        geometry_type: str | None = None,
     ) -> TempLayerMetadata:
         """Extract metadata from the parquet file.
 
@@ -225,6 +250,8 @@ class TempLayerWriter:
             layer_name: Display name for the layer
             process_id: Optional process/tool ID
             duckdb_con: Optional DuckDB connection
+            geometry_type: The geometry type when the file has a geometry
+                column and its rows give none
 
         Returns:
             TempLayerMetadata with extracted info
@@ -254,7 +281,7 @@ class TempLayerWriter:
 
             # Detect geometry column and type
             geom_col = None
-            geometry_type = None
+            declared_type, geometry_type = geometry_type, None
             bbox = None
 
             for col_name, col_type in columns.items():
@@ -272,6 +299,8 @@ class TempLayerWriter:
                 """).fetchone()
                 if type_result:
                     geometry_type = type_result[0]
+                else:
+                    geometry_type = declared_type
 
                 # Get bounding box
                 try:

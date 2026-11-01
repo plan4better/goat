@@ -17,21 +17,22 @@ import type { I18n } from "../i18n";
 import type { KcContext } from "../kcContext";
 import { UserProfileFormFields } from "./shared/UserProfileFormFields";
 
-interface Steps {
-  [key: number]: string[];
-}
-
-const steps: Steps = {
-  1: ["firstName", "lastName", "country", "profession", "domain"],
-  2: [
+// One step: the fields come from the realm's user profile (realm/user-profile.json),
+// shown in this order (no stepper: there is a single list and no active step).
+// The username is only asked for when the realm does not use the email as the
+// username (registrationEmailAsUsername): the GOAT realm does, so it is left out.
+const fieldOrder = (registrationEmailAsUsername: boolean) => ({
+  1: [
+    "firstName",
+    "lastName",
+    ...(registrationEmailAsUsername ? [] : ["username"]),
     "email",
     "password",
     "password-confirm",
     "terms_and_conditions",
     "subscribe_to_newsletter",
   ],
-  3: [""], // verify email (last step). This step is not used in this form even though it's shown in the stepper
-};
+});
 
 export default function RegisterUserProfile(
   props: PageProps<
@@ -41,10 +42,9 @@ export default function RegisterUserProfile(
 ) {
   const theme = useTheme();
   const { kcContext, i18n, doUseDefaultCss, Template } = props;
-  const { url, messagesPerField, recaptchaRequired, recaptchaSiteKey } =
+  const { url, messagesPerField, recaptchaRequired, recaptchaSiteKey, realm } =
     kcContext;
   const { msg, msgStr } = i18n;
-  const [activeStep, setActiveStep] = useState(0);
   const [isFormSubmittable, setIsFormSubmittable] = useState(false);
   const [isCaptchaValid, setIsCaptchaValid] = useState(false);
   const captchaRef = useRef(null);
@@ -52,14 +52,6 @@ export default function RegisterUserProfile(
     let counter = 1;
     return () => counter++;
   })();
-
-  const handleNext = () => {
-    setActiveStep((prevActiveStep) => prevActiveStep + 1);
-  };
-
-  const handleBack = () => {
-    setActiveStep((prevActiveStep) => prevActiveStep - 1);
-  };
 
   return (
     <Template
@@ -87,8 +79,7 @@ export default function RegisterUserProfile(
         <UserProfileFormFields
           kcContext={kcContext}
           onIsFormSubmittableValueChange={setIsFormSubmittable}
-          activeStep={activeStep}
-          steps={steps}
+          steps={fieldOrder(realm.registrationEmailAsUsername)}
           i18n={i18n}
           getIncrementedTabIndex={getIncrementedTabIndex}
         />
@@ -98,9 +89,6 @@ export default function RegisterUserProfile(
             id="recaptcha"
             hl={i18n.currentLanguageTag}
             theme={theme.palette.mode == "dark" ? "dark" : "light"}
-            style={{
-              display: activeStep == 1 ? "block" : "none",
-            }}
             sx={{
               mt: theme.spacing(4),
             }}
@@ -129,41 +117,16 @@ export default function RegisterUserProfile(
               </Button>
             );
 
-            return activeStep == 1 ? (
-              isFormSubmittable ? (
-                button
-              ) : (
-                <Tooltip title={msg("formNotFilledProperly")}>
-                  <span>{button}</span>
-                </Tooltip>
-              )
-            ) : null;
+            return isFormSubmittable ? (
+              button
+            ) : (
+              <Tooltip title={msg("formNotFilledProperly")}>
+                <span>{button}</span>
+              </Tooltip>
+            );
           })()}
         </div>
       </Box>
-      {activeStep == 0 && (
-        <Button
-          fullWidth
-          sx={{
-            mt: theme.spacing(4),
-          }}
-          onClick={handleNext}
-        >
-          {msgStr("next")}
-        </Button>
-      )}
-      {activeStep == 1 && (
-        <Button
-          sx={{
-            mt: theme.spacing(2),
-          }}
-          fullWidth
-          onClick={handleBack}
-          variant="text"
-        >
-          {msgStr("back")}
-        </Button>
-      )}
     </Template>
   );
 }

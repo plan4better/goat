@@ -10,10 +10,17 @@ from goatlib.analysis.schemas.data_management import (
     MultipleMatchingRecordsType,
     SpatialRelationshipType,
 )
+from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.io.parquet import write_optimized_parquet
 from goatlib.models.io import DatasetMetadata
 
 logger = logging.getLogger(__name__)
+
+
+def _join_column(name: str) -> str:
+    """A join-layer column carried into the result as `join_<name>`; both
+    names are user data, so each is one quoted identifier."""
+    return f"join_data.{quote_identifier(name)} as {quote_identifier(f'join_{name}')}"
 
 
 class JoinTool(AnalysisTool):
@@ -107,8 +114,8 @@ class JoinTool(AnalysisTool):
                 # Inside NOT EXISTS we test for the *match*, so use intersects.
                 spatial_condition = (
                     f"ST_Intersects("
-                    f"target.{target_meta.geometry_column}, "
-                    f"join_data.{join_meta.geometry_column}"
+                    f"target.{quote_identifier(target_meta.geometry_column)}, "
+                    f"join_data.{quote_identifier(join_meta.geometry_column)}"
                     f")"
                 )
             else:
@@ -121,7 +128,8 @@ class JoinTool(AnalysisTool):
         if params.use_attribute_relationship:
             for attr_rel in params.attribute_relationships:
                 attr_condition = (
-                    f"target.{attr_rel.target_field} = join_data.{attr_rel.join_field}"
+                    f"target.{quote_identifier(attr_rel.target_field)} = "
+                    f"join_data.{quote_identifier(attr_rel.join_field)}"
                 )
                 join_conditions.append(attr_condition)
 
@@ -206,8 +214,8 @@ class JoinTool(AnalysisTool):
         self: Self, params: JoinParams, target_geom: str, join_geom: str
     ) -> str:
         """Build spatial relationship condition for SQL."""
-        target_geom_ref = f"target.{target_geom}"
-        join_geom_ref = f"join_data.{join_geom}"
+        target_geom_ref = f"target.{quote_identifier(target_geom)}"
+        join_geom_ref = f"join_data.{quote_identifier(join_geom)}"
 
         if params.spatial_relationship == SpatialRelationshipType.intersects:
             return f"ST_Intersects({target_geom_ref}, {join_geom_ref})"
@@ -267,7 +275,7 @@ class JoinTool(AnalysisTool):
             self._get_raw_field_names(join_table),
             params.join_fields,
         )
-        join_fields = [f"join_data.{c} as join_{c}" for c in join_cols]
+        join_fields = [_join_column(c) for c in join_cols]
 
         # When all join fields are filtered out, the SELECT must still be valid
         select_fields = ", ".join(target_fields + join_fields)
@@ -349,7 +357,9 @@ class JoinTool(AnalysisTool):
                 if params.sort_configuration.sort_order == "descending"
                 else "ASC"
             )
-            order_field = f"join_data.{params.sort_configuration.field}"
+            order_field = (
+                f"join_data.{quote_identifier(params.sort_configuration.field)}"
+            )
         else:
             # Add a row number column to the join table for deterministic ordering
             # since rowid pseudo-column isn't available in JOINs
@@ -374,7 +384,7 @@ class JoinTool(AnalysisTool):
             c for c in self._get_raw_field_names(join_table) if c != "__join_row_order"
         ]
         join_cols = self._filter_join_columns(join_cols_all, params.join_fields)
-        join_fields = [f"join_data.{c} as join_{c}" for c in join_cols]
+        join_fields = [_join_column(c) for c in join_cols]
 
         all_select_fields = ", ".join(target_fields + join_fields)
 
@@ -419,7 +429,7 @@ class JoinTool(AnalysisTool):
         # COUNT(join_col) returns 0 for unmatched LEFT JOIN rows (NULL values),
         # unlike COUNT(*) which returns 1 for the phantom target row.
         join_fields = self._get_raw_field_names(join_table)
-        join_count_col = f"join_data.{join_fields[0]}"
+        join_count_col = f"join_data.{quote_identifier(join_fields[0])}"
 
         # Build aggregation expressions
         agg_expressions = []
@@ -427,14 +437,15 @@ class JoinTool(AnalysisTool):
 
         for field_stat in params.field_statistics:
             operation = field_stat.operation
-            result_col = field_stat.get_result_column_name()
+            # A result name is user-given: one quoted identifier.
+            result_col = quote_identifier(field_stat.get_result_column_name())
             if operation.value == "count":
                 # Count actual join matches using a specific join column
                 agg_expressions.append(f"COUNT({join_count_col}) as {result_col}")
                 has_count = True
             else:
                 field_name = field_stat.field
-                field_ref = f"join_data.{field_name}"
+                field_ref = f"join_data.{quote_identifier(field_name)}"
                 agg_expr = self.get_statistics_sql(field_ref, operation.value)
                 agg_expressions.append(f"{agg_expr} as {result_col}")
 
@@ -445,7 +456,8 @@ class JoinTool(AnalysisTool):
         agg_clause = ", ".join(agg_expressions)
 
         target_select = ", ".join(
-            [f"target.{f}" for f in self._get_raw_field_names(target_table)]
+            f"target.{quote_identifier(f)}"
+            for f in self._get_raw_field_names(target_table)
         )
 
         query = f"""
@@ -488,16 +500,17 @@ class JoinTool(AnalysisTool):
 
         # Use a specific join column for counting.
         join_fields = self._get_raw_field_names(join_table)
-        join_count_col = f"join_data.{join_fields[0]}"
+        join_count_col = f"join_data.{quote_identifier(join_fields[0])}"
 
         target_select = ", ".join(
-            [f"target.{f}" for f in self._get_raw_field_names(target_table)]
+            f"target.{quote_identifier(f)}"
+            for f in self._get_raw_field_names(target_table)
         )
 
         query = f"""
         CREATE OR REPLACE TEMP TABLE count_joins AS
         SELECT {target_select},
-               COUNT({join_count_col}) as {count_col}
+               COUNT({join_count_col}) as {quote_identifier(count_col)}
         FROM {target_table} target
         {join_type_sql} {join_table} join_data
         ON {join_condition}
@@ -541,10 +554,13 @@ class JoinTool(AnalysisTool):
 
         formatted_fields = []
         for col in columns:
+            ref = f"{alias}.{quote_identifier(col)}"
             if prefix:
-                formatted_fields.append(f"{alias}.{col} as {prefix}{col}")
+                formatted_fields.append(
+                    f"{ref} as {quote_identifier(f'{prefix}{col}')}"
+                )
             else:
-                formatted_fields.append(f"{alias}.{col}")
+                formatted_fields.append(ref)
 
         return formatted_fields
 
@@ -559,4 +575,4 @@ class JoinTool(AnalysisTool):
         # For now, use all fields. In a more sophisticated implementation,
         # we could detect primary key or use geometry column + a subset of fields
         fields = self._get_raw_field_names(table_name)
-        return ", ".join([f"target.{f}" for f in fields])
+        return ", ".join(f"target.{quote_identifier(f)}" for f in fields)

@@ -1,11 +1,10 @@
 import useSWR, { type SWRConfiguration } from "swr";
 
-import { API_BASE_URL } from "@/lib/constants";
-
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import { useAuthedSWR } from "@/lib/api/useAuthedSWR";
+import { API_BASE_URL } from "@/lib/constants";
 import type { InvitationPaginated } from "@/lib/validations/invitation";
-import type { Organization, OrganizationCreation } from "@/lib/validations/organization";
+import type { Features, Organization, OrganizationCreation } from "@/lib/validations/organization";
 import type { GetInvitationsQueryParams, User, UserUpdate } from "@/lib/validations/user";
 
 export const USERS_API_BASE_URL = new URL("api/v2/users", API_BASE_URL).href;
@@ -25,6 +24,16 @@ export const useOrganization = (config?: SWRConfiguration<Organization>) => {
     mutate,
     isValidating,
   };
+};
+
+// Support and billing are switched on per installation; a self-hosted GOAT
+// runs neither and shows none of their pages. Rarely changes: no revalidation.
+export const useFeatures = () => {
+  const { data, isLoading, error } = useAuthedSWR<Features>(`${USERS_API_BASE_URL}/me/features`, fetcher, {
+    revalidateOnFocus: false,
+    revalidateIfStale: false,
+  });
+  return { features: data, isLoading, isError: error };
 };
 
 export const useOrganizationCreation = () => {

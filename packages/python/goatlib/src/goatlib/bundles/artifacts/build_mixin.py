@@ -29,6 +29,7 @@ from goatlib.bundles.artifacts.storage import (
     resolve_artifact,
 )
 from goatlib.bundles.artifacts.street_network import require_routing_network
+from goatlib.io.config import parquet_copy_options
 from goatlib.models.bundle import (
     BundleArtifactBuildStatus,
     BundleArtifactKind,
@@ -88,7 +89,7 @@ class BundleArtifactBuildMixin:
             table = self.get_layer_table_path(str(member["layer_id"]))
             out = Path(workdir) / f"{role}.parquet"
             self.duckdb_con.execute(
-                f"COPY (SELECT * FROM {table}) TO '{out}' (FORMAT PARQUET)"
+                f"COPY (SELECT * FROM {table}) TO '{out}' {parquet_copy_options()}"
             )
             paths[role] = str(out)
         logger.info("Exported %d member layer(s) for artifact build", len(paths))

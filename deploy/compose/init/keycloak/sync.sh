@@ -1,7 +1,9 @@
 #!/bin/sh
 # Brings the settings of the GOAT realm that come from .env up to date on every
-# start: the client's addresses and secret, the HTTPS requirement and outgoing
-# email. The realm file is imported only once, when the realm does not exist
+# start: the client's addresses and secret, the HTTPS requirement, outgoing
+# email, and that refresh tokens are not revoked on use (the AI assistant
+# refreshes a user's login for long answers with the same client as the
+# browser). The realm file is imported only once, when the realm does not exist
 # yet; without this step a changed public URL or SMTP server would have to be
 # edited by hand in the admin console.
 set -eu
@@ -31,6 +33,7 @@ fi
 
 "$KCADM" update "realms/$REALM" --config "$CONFIG" \
   -s "sslRequired=$GOAT_SSL_REQUIRED" \
+  -s "revokeRefreshToken=false" \
   -s "smtpServer.host=$GOAT_SMTP_HOST" \
   -s "smtpServer.port=$GOAT_SMTP_PORT" \
   -s "smtpServer.from=$GOAT_SMTP_FROM" \

@@ -53,12 +53,14 @@ Die Berechnung der ÖV-Güteklassen ist für Gebiete verfügbar, in denen [GTFS-
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Wählen Sie den <code>Einzugsgebietstyp</code>: <b>Buffer</b>.</div>
+  <div class="content">Wählen Sie den <code>Einzugsgebietstyp</code>: <b>Puffer</b> oder <b>Wegenetz</b>.</div>
 </div>
 
 :::info
 
-**Buffer** stellen Bereiche rund um öffentliche Verkehrsstationen dar, gemessen in Luftlinie.
+**Puffer** stellen Bereiche rund um öffentliche Verkehrsstationen dar, gemessen in Luftlinie.
+
+**Wegenetz** misst dieselben Abstände von jeder Haltestelle aus entlang des Straßen- und Wegenetzes. Die Klassen folgen so den Wegen, die Menschen tatsächlich gehen. Flüsse, Bahnlinien und Sackgassen verkürzen sie dort, wo ein Kreis darüber hinwegreichen würde. Hat das Projekt ein eigenes Straßennetz, können Sie es unter <code>Straßennetz</code> auswählen. Sonst wird bei einem ÖV-Bundle, das mit einem Straßennetz verknüpft ist, dieses Netz genutzt, in allen anderen Fällen das Standardnetz.
 
 :::
 

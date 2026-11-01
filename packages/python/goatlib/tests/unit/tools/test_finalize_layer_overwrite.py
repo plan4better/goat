@@ -401,6 +401,9 @@ class TestCreateNewLayer:
         pool.acquire = acquire
         claim = AsyncMock(side_effect=claim_error)
         retarget = AsyncMock()
+        # The entry was made for a table: it is styled for the new layer.
+        needs_style = AsyncMock(return_value=True)
+        style = AsyncMock()
         outcome: dict[str, Any] = {}
         with (
             patch("goatlib.tools.db.ToolDatabaseService", side_effect=service),
@@ -409,6 +412,8 @@ class TestCreateNewLayer:
             patch.object(r, "_sync_name_and_get_link", new=AsyncMock()),
             patch.object(finalize_module, "claim_link", claim),
             patch.object(finalize_module, "retarget_dataset_nodes", retarget),
+            patch.object(finalize_module, "entry_needs_feature_style", needs_style),
+            patch.object(finalize_module, "style_entries_as_feature_layer", style),
         ):
             try:
                 outcome["layer_id"] = r._create_new_layer(
@@ -423,6 +428,7 @@ class TestCreateNewLayer:
             db=db,
             claim=claim,
             retarget=retarget,
+            style=style,
             conn=conn,
             pool=pool,
             services=services,
@@ -462,6 +468,9 @@ class TestCreateNewLayer:
         assert out["services"] == [
             out["conn"]
         ], "layer row written on the same connection"
+        assert out["style"].call_args.args[0] is out["conn"]
+        assert out["style"].call_args.args[2] == layer_id
+        assert out["style"].call_args.kwargs == {"link_id": LINK}
         assert out["tx_exits"] == [None]
 
     def test_copy_on_write_failing_to_claim_the_entry_keeps_no_layer(

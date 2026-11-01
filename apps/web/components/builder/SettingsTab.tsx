@@ -1,4 +1,4 @@
-import { Box, Button, FormControl, Link, MenuItem, Select, Stack, Switch, TextField, Typography, useTheme } from "@mui/material";
+import { Box, Button, FormControl, Link, MenuItem, Select, Stack, TextField, Typography, useTheme } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMap } from "react-map-gl/maplibre";
@@ -19,7 +19,7 @@ import type {
   ProjectLayerGroup,
   SearchSettings as SearchSettingsType,
 } from "@/lib/validations/project";
-import { DEFAULT_CONTROL_POSITIONS, DEFAULT_FAVICON_URL, builderConfigSchema } from "@/lib/validations/project";
+import { DEFAULT_CONTROL_POSITIONS, DEFAULT_FAVICON_URL, readBuilderConfig } from "@/lib/validations/project";
 
 import InteractionsModal, { InteractionsEntryButton } from "@/components/builder/InteractionsModal";
 import MapControlsLayout from "@/components/builder/MapControlsLayout";
@@ -30,6 +30,7 @@ import SettingsGroupHeader from "@/components/builder/widgets/common/SettingsGro
 import ConfirmModal from "@/components/modals/Confirm";
 import Selector from "@/components/map/panels/common/Selector";
 import SliderInput from "@/components/map/panels/common/SliderInput";
+import SwitchRow from "@/components/map/panels/common/SwitchRow";
 import MarkerIconPicker from "@/components/map/panels/style/marker/MarkerIconPicker";
 
 /** Google Fonts available for dashboard display */
@@ -101,10 +102,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [map]);
   const currentZoomPercent = Math.min(Math.max((currentZoom / 22) * 100, 0), 100);
 
-  const builderConfig = useMemo(() => {
-    const parsed = builderConfigSchema.safeParse(project?.builder_config);
-    return parsed.success ? parsed.data : undefined;
-  }, [project]);
+  const builderConfig = useMemo(() => readBuilderConfig(project?.builder_config), [project]);
 
   const interactions = useMemo(
     () => (builderConfig?.interactions ?? []) as InteractionRule[],
@@ -117,7 +115,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   );
 
   const handleInteractionsChange = (newInteractions: InteractionRule[]) => {
-    if (!builderConfig) return;
     const updatedConfig = { ...builderConfig, interactions: newInteractions };
     onProjectUpdate?.("builder_config", updatedConfig);
   };
@@ -130,28 +127,18 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           <SettingsGroupHeader label={t("map")} />
           <Stack spacing={2}>
             {/* Toolbar / Scalebar toggles */}
-            <Stack direction="row" alignItems="center">
-              <Switch
-                size="small"
-                name="toolbar"
-                checked={(settings?.toolbar as boolean) ?? true}
-                onChange={(e) => onChange("toolbar", e.target.checked)}
-              />
-              <Typography variant="body2" color="textSecondary">
-                {t("toolbar")}
-              </Typography>
-            </Stack>
-            <Stack direction="row" alignItems="center">
-              <Switch
-                size="small"
-                name="scalebar"
-                checked={(settings?.scalebar as boolean) ?? true}
-                onChange={(e) => onChange("scalebar", e.target.checked)}
-              />
-              <Typography variant="body2" color="textSecondary">
-                {t("scalebar")}
-              </Typography>
-            </Stack>
+            <SwitchRow
+              name="toolbar"
+              label={t("toolbar")}
+              checked={(settings?.toolbar as boolean) ?? true}
+              onChange={(checked) => onChange("toolbar", checked)}
+            />
+            <SwitchRow
+              name="scalebar"
+              label={t("scalebar")}
+              checked={(settings?.scalebar as boolean) ?? true}
+              onChange={(checked) => onChange("scalebar", checked)}
+            />
 
             {/* Control layout picker */}
             <Box>
@@ -562,7 +549,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           onReset();
         }}
       />
-      {showInteractionsModal && builderConfig && (
+      {showInteractionsModal && (
         <InteractionsModal
           open={showInteractionsModal}
           onClose={() => setShowInteractionsModal(false)}

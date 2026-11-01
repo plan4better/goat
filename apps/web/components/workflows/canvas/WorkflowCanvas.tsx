@@ -32,13 +32,14 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDispatch, useSelector } from "react-redux";
 import { v4 as uuidv4 } from "uuid";
 
 import type { AppDispatch } from "@/lib/store";
 import {
+  selectCanvasVersion,
   selectEdges,
   selectNodes,
   selectSelectedNodeId,
@@ -58,6 +59,7 @@ import type { WorkflowNode } from "@/lib/validations/workflow";
 import { createTextAnnotationNode } from "@/lib/validations/workflow";
 
 import { useConnectionValidator, useWorkflowProcessDescriptions } from "@/hooks/map/useConnectionValidation";
+import { useCurrentDatasetTypes } from "@/hooks/workflows/useCurrentDatasetTypes";
 import { useWorkflowHistory } from "@/hooks/workflows/useWorkflowHistory";
 
 import WorkflowVariablesDialog from "../dialogs/WorkflowVariablesDialog";
@@ -253,10 +255,8 @@ interface WorkflowCanvasProps {
   // Execution props
   isExecuting?: boolean;
   canExecute?: boolean;
-  /** At least one dataset node still needs a layer (a template's unresolved
-   * "ask" input) — the run button stays disabled and explains why. */
-  hasUnresolvedInputs?: boolean;
-  onRun?: () => void;
+  /** Starts a run; resolves true when processes refused it with issues. */
+  onRun?: () => void | Promise<boolean>;
   onStop?: () => void;
 }
 
@@ -265,7 +265,6 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   onDragOver,
   isExecuting = false,
   canExecute = false,
-  hasUnresolvedInputs = false,
   onRun,
   onStop,
 }) => {
@@ -303,9 +302,11 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   const selectedWorkflowId = useSelector(selectSelectedWorkflowId);
   const selectedNodeId = useSelector(selectSelectedNodeId);
   const reduxViewport = useSelector(selectViewport);
+  const canvasVersion = useSelector(selectCanvasVersion);
 
-  // Get process descriptions for connection validation
-  const workflowNodes = useMemo(() => reduxNodes as WorkflowNode[], [reduxNodes]);
+  // Get process descriptions for connection validation. Dataset steps are
+  // checked with their layer's current type; the store keeps what was stored.
+  const workflowNodes = useCurrentDatasetTypes(reduxNodes) as WorkflowNode[];
   const processMap = useWorkflowProcessDescriptions(workflowNodes);
   const validateConnection = useConnectionValidator(workflowNodes, processMap);
 
@@ -322,6 +323,8 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
   // Track previous node/edge counts to detect structural changes
   const prevNodeCountRef = useRef<number>(0);
   const prevEdgeCountRef = useRef<number>(0);
+  // Track the canvas version to detect steps replaced as a whole (undo, redo, a stored version)
+  const prevCanvasVersionRef = useRef(canvasVersion);
   // Track if ReactFlow is initialized (for initial viewport restore)
   const isReactFlowReady = useRef(false);
   // Track pending viewport to restore after init
@@ -372,24 +375,29 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
     [setViewport]
   );
 
-  // Sync from Redux to local state ONLY when workflow changes or structure changes (add/remove)
+  // Sync from Redux to local state ONLY when workflow changes, structure changes (add/remove), or
+  // the steps were replaced as a whole (undo, redo, a stored version loaded over the canvas).
   // We don't want to sync on every Redux update (e.g., position changes) as local state is source of truth during editing
   useEffect(() => {
     const workflowChanged = selectedWorkflowId !== prevWorkflowIdRef.current;
     const nodeCountChanged = reduxNodes.length !== prevNodeCountRef.current;
     const edgeCountChanged = reduxEdges.length !== prevEdgeCountRef.current;
+    const replaced = canvasVersion !== prevCanvasVersionRef.current;
 
     // Update tracking refs
     prevNodeCountRef.current = reduxNodes.length;
     prevEdgeCountRef.current = reduxEdges.length;
+    prevCanvasVersionRef.current = canvasVersion;
 
-    // Only do full sync when workflow changes or nodes/edges are added/removed
-    if (workflowChanged || nodeCountChanged || edgeCountChanged) {
+    // Only do full sync when workflow changes, nodes/edges are added/removed, or they were replaced
+    if (workflowChanged || nodeCountChanged || edgeCountChanged || replaced) {
       isSyncingFromRedux.current = true;
-      // Ensure text annotation nodes have low zIndex so they stay behind other nodes
+      // Ensure text annotation nodes have low zIndex so they stay behind other nodes;
+      // the selected step stays selected
       const nodesWithZIndex = reduxNodes.map((node) => ({
         ...node,
         zIndex: node.type === "textAnnotation" ? -1000 : (node.zIndex ?? 0),
+        ...(replaced ? { selected: node.id === selectedNodeId } : {}),
       }));
       setLocalNodes(nodesWithZIndex);
       setLocalEdges(reduxEdges);
@@ -411,7 +419,17 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
       // Reset sync flag after state update
       isSyncingFromRedux.current = false;
     }
-  }, [reduxNodes, reduxEdges, selectedWorkflowId, reduxViewport, setLocalNodes, setLocalEdges, setViewport]);
+  }, [
+    reduxNodes,
+    reduxEdges,
+    selectedWorkflowId,
+    reduxViewport,
+    canvasVersion,
+    selectedNodeId,
+    setLocalNodes,
+    setLocalEdges,
+    setViewport,
+  ]);
 
   // Sync node data (config) changes from Redux to local state
   // This ensures config panel changes are reflected in the canvas without losing positions
@@ -750,7 +768,6 @@ const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         onStop={onStop}
         isRunning={isExecuting}
         canRun={canExecute && localNodes.length > 0}
-        hasUnresolvedInputs={hasUnresolvedInputs}
         onVariablesClick={() => setVariablesDialogOpen(true)}
       />
 

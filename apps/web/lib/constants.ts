@@ -6,6 +6,13 @@ export const KEYCLOAK_ISSUER = process.env.NEXT_PUBLIC_KEYCLOAK_ISSUER;
 export const GEOAPI_BASE_URL = process.env.NEXT_PUBLIC_GEOAPI_URL;
 export const PROCESSES_BASE_URL = process.env.NEXT_PUBLIC_PROCESSES_URL;
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+
+/**
+ * The assistant service (apps/assistant): `/assistant` behind a path-routing
+ * gateway, or its own host. Unset and the unsubstituted Docker placeholder
+ * both count as "not set", which hides the dock and the admin AI page.
+ */
+export const ASSISTANT_BASE_URL = publicEnv(process.env.NEXT_PUBLIC_ASSISTANT_URL)?.replace(/\/+$/, "");
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL;
 /**
  * STAC API of the catalog service (apps/catalog).

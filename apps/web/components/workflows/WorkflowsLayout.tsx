@@ -2,42 +2,48 @@
 
 import { Box, useTheme } from "@mui/material";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { MapProvider } from "react-map-gl/maplibre";
 import { useDispatch, useSelector } from "react-redux";
 import { v4 as uuidv4 } from "uuid";
 
-import { updateWorkflow as updateWorkflowApi, useWorkflows } from "@/lib/api/workflows";
+import { useWorkflows } from "@/lib/api/workflows";
 import type { AppDispatch } from "@/lib/store";
 import {
   selectEdges,
-  selectIsDirty,
   selectNodes,
   selectSelectedNode,
   selectSelectedNodeId,
   selectSelectedWorkflow,
   selectSelectedWorkflowId,
   selectVariables,
-  selectViewport,
   selectWorkflows,
 } from "@/lib/store/workflow/selectors";
-import {
-  addNode,
-  markSaved,
-  selectWorkflow,
-  setWorkflows,
-  syncToWorkflowConfig,
-} from "@/lib/store/workflow/slice";
+import { addNode, selectWorkflow, setWorkflows } from "@/lib/store/workflow/slice";
 import { parseCQLQueryToObject } from "@/lib/transformers/filter";
 import type { Project, ProjectLayer, ProjectLayerGroup } from "@/lib/validations/project";
-import { createIfNode } from "@/lib/validations/workflow";
+import { createIfNode, isDrawableWorkflowConfig } from "@/lib/validations/workflow";
 import type { WorkflowNode } from "@/lib/validations/workflow";
 
+import { useIssueFocus } from "@/hooks/workflows/useIssueFocus";
+import { useWorkflowAutosave } from "@/hooks/workflows/useWorkflowAutosave";
+import { useWorkflowCreation } from "@/hooks/workflows/useWorkflowCreation";
 import { useWorkflowExecution } from "@/hooks/workflows/useWorkflowExecution";
+import { useWorkflowIssues } from "@/hooks/workflows/useWorkflowIssues";
 
+import ConflictBanner from "@/components/common/ConflictBanner";
+import WorkflowsEmptyState from "@/components/workflows/WorkflowsEmptyState";
 import WorkflowCanvas from "@/components/workflows/canvas/WorkflowCanvas";
+import CanvasErrorBoundary from "@/components/workflows/issues/CanvasErrorBoundary";
+import DamagedWorkflowNotice from "@/components/workflows/issues/DamagedWorkflowNotice";
+import SaveStatusNotice from "@/components/workflows/issues/SaveStatusNotice";
 import { WorkflowExecutionProvider } from "@/components/workflows/context/WorkflowExecutionContext";
+import {
+  WorkflowIssuesProvider,
+  type WorkflowIssuesValue,
+  summarizeIssues,
+} from "@/components/workflows/issues/WorkflowIssuesContext";
 import WorkflowDataPanel from "@/components/workflows/panels/WorkflowDataPanel";
 import WorkflowsConfigPanel from "@/components/workflows/panels/WorkflowsConfigPanel";
 import WorkflowsNodesPanel from "@/components/workflows/panels/WorkflowsNodesPanel";
@@ -72,8 +78,6 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
   const selectedNode = useSelector(selectSelectedNode) as WorkflowNode | null;
   const nodes = useSelector(selectNodes);
   const edges = useSelector(selectEdges);
-  const viewport = useSelector(selectViewport);
-  const isDirty = useSelector(selectIsDirty);
   const variables = useSelector(selectVariables);
 
   // Ref to track drag data
@@ -88,22 +92,20 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
     layerCql?: { op: string; args: unknown[] };
   } | null>(null);
 
-  // Ref for save timeout
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch workflows from API
-  const { workflows, mutate: mutateWorkflows } = useWorkflows(project?.id);
+  const { workflows, isLoading: workflowsLoading, mutate: mutateWorkflows } = useWorkflows(project?.id);
 
   // Workflow execution hook
   const {
     isExecuting,
     canExecute,
-    hasUnresolvedInputs,
     nodeStatuses,
     nodeExecutionInfo,
     tempLayerIds,
     exportedLayerIds,
     tempLayerStyles,
+    nodeErrors,
     execute,
     cancel,
     finalizeNode,
@@ -113,62 +115,55 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
     folderId: project?.folder_id,
   });
 
+  // The issue list: processes' check of the steps as they are now plus the
+  // errors of the last run, shared with the canvas, its toolbar and the panels
+  // A stored config the canvas cannot draw opens as an empty canvas in the
+  // store; the check gets its stored lists instead, so the damaged notice can
+  // say what is broken.
+  const shapeDamaged = useMemo(
+    () => !!selectedWorkflow && !isDrawableWorkflowConfig(selectedWorkflow.config),
+    [selectedWorkflow]
+  );
+  const storedConfig = selectedWorkflow?.config as { nodes?: unknown; edges?: unknown } | undefined;
+  const checkNodes =
+    shapeDamaged && storedConfig && Array.isArray(storedConfig.nodes) ? (storedConfig.nodes as typeof nodes) : nodes;
+  const checkEdges =
+    shapeDamaged && storedConfig && Array.isArray(storedConfig.edges) ? (storedConfig.edges as typeof edges) : edges;
+
+  const { issues, checkFailed, recheck, replaceIssues } = useWorkflowIssues({
+    projectId: project?.id,
+    workflowId: selectedWorkflow?.id,
+    nodes: checkNodes,
+    edges: checkEdges,
+    variables,
+    nodeErrors,
+    enabled: !!selectedWorkflow,
+  });
+  const { focus, focusRequest } = useIssueFocus();
+  const issuesValue = useMemo<WorkflowIssuesValue>(
+    () => ({ ...summarizeIssues(issues), issues, focus, focusRequest, checkFailed, recheck }),
+    [issues, focus, focusRequest, checkFailed, recheck]
+  );
+
+  // A run processes refuses: its issues replace the list, and the toolbar opens it
+  const handleRun = useCallback(async () => {
+    const refused = await execute();
+    if (!refused) return false;
+    replaceIssues(refused);
+    return true;
+  }, [execute, replaceIssues]);
+
+  // A damaged workflow opens read-only: a notice instead of the canvas (and
+  // so no Run), and no autosave over the stored config.
+  const isDamaged = shapeDamaged || issuesValue.damaged.length > 0;
+  const autosave = useWorkflowAutosave({ projectId: project?.id, enabled: !isDamaged, onSaved: mutateWorkflows });
+
   // Sync workflows from API to Redux
   useEffect(() => {
     if (workflows) {
       dispatch(setWorkflows(workflows));
     }
   }, [workflows, dispatch]);
-
-  // Auto-save when dirty (debounced)
-  useEffect(() => {
-    if (!isDirty || !selectedWorkflow || !project?.id) return;
-
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    // Debounce save by 1 second
-    saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        // Sync current state to workflow config
-        dispatch(syncToWorkflowConfig());
-
-        // Build config from current state with proper typing
-        const config: typeof selectedWorkflow.config = {
-          ...selectedWorkflow.config,
-          nodes: nodes.map((node) => ({
-            id: node.id,
-            type: node.type as "dataset" | "tool",
-            position: node.position,
-            data: node.data as (typeof selectedWorkflow.config.nodes)[number]["data"],
-          })),
-          edges: edges.map((edge) => ({
-            id: edge.id,
-            source: edge.source,
-            sourceHandle: edge.sourceHandle || undefined,
-            target: edge.target,
-            targetHandle: edge.targetHandle || undefined,
-          })),
-          viewport,
-          variables,
-        };
-
-        await updateWorkflowApi(project.id, selectedWorkflow.id, { config });
-        dispatch(markSaved());
-        mutateWorkflows();
-      } catch (error) {
-        console.error("Failed to save workflow:", error);
-      }
-    }, 1000);
-
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, [isDirty, selectedWorkflow, project?.id, nodes, edges, viewport, variables, dispatch, mutateWorkflows]);
 
   // Handle workflow selection (from config panel)
   // Only dispatch if the ID actually changes to avoid clearing selectedNodeId
@@ -186,6 +181,16 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
     },
     [dispatch, selectedWorkflowId, workflows, storeWorkflows]
   );
+
+  // New workflow from scratch or from a template: shared by the workflow list
+  // and the card the canvas shows while the project has no workflow.
+  const creation = useWorkflowCreation({
+    project,
+    workflows,
+    mutateWorkflows,
+    onSelectWorkflow: handleSelectWorkflow,
+  });
+  const showEmptyState = !!project?.id && !workflowsLoading && !!workflows && workflows.length === 0;
 
   // Handle drag start from nodes panel
   const handleDragStart = useCallback(
@@ -371,65 +376,91 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
         exportedLayerIds={exportedLayerIds}
         tempLayerStyles={tempLayerStyles}
         onSaveNode={finalizeNode}>
-        <Box
-          sx={{
-            display: "flex",
-            width: "100%",
-            height: "100%",
-            overflow: "hidden",
-            backgroundColor: theme.palette.background.default,
-          }}>
-          {/* Left Panel - Workflow list and Layers */}
-          <WorkflowsConfigPanel
-            project={project}
-            projectLayers={projectLayers}
-            projectLayerGroups={projectLayerGroups}
-            selectedWorkflow={selectedWorkflow ?? null}
-            onSelectWorkflow={handleSelectWorkflow}
-            onLayerDragStart={handleLayerDragStart}
-          />
-
-          {/* Center - Canvas and Data Panel */}
+        <WorkflowIssuesProvider value={issuesValue}>
           <Box
             sx={{
-              flex: 1,
               display: "flex",
-              flexDirection: "column",
-              minWidth: 0,
+              width: "100%",
               height: "100%",
               overflow: "hidden",
+              backgroundColor: theme.palette.background.default,
             }}>
-            {/* Canvas area */}
-            <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
-              <WorkflowCanvas
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                isExecuting={isExecuting}
-                canExecute={canExecute}
-                hasUnresolvedInputs={hasUnresolvedInputs}
-                onRun={execute}
-                onStop={cancel}
+            {/* Left Panel - Workflow list and Layers */}
+            <WorkflowsConfigPanel
+              project={project}
+              projectLayers={projectLayers}
+              projectLayerGroups={projectLayerGroups}
+              selectedWorkflow={selectedWorkflow ?? null}
+              onSelectWorkflow={handleSelectWorkflow}
+              onRenameWorkflow={autosave.rename}
+              onLayerDragStart={handleLayerDragStart}
+              creation={creation}
+            />
+
+            {/* Center - Canvas and Data Panel */}
+            <Box
+              sx={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                minWidth: 0,
+                height: "100%",
+                overflow: "hidden",
+              }}>
+              {/* Canvas area: the card of a project without workflows, a damaged
+                  workflow's notice, or the canvas */}
+              <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+                {showEmptyState ? (
+                  <WorkflowsEmptyState creation={creation} />
+                ) : isDamaged ? (
+                  <DamagedWorkflowNotice issues={issuesValue.damaged} />
+                ) : (
+                  <CanvasErrorBoundary resetKey={selectedWorkflowId}>
+                    <WorkflowCanvas
+                      onDrop={handleDrop}
+                      onDragOver={handleDragOver}
+                      isExecuting={isExecuting}
+                      canExecute={canExecute}
+                      onRun={handleRun}
+                      onStop={cancel}
+                    />
+                  </CanvasErrorBoundary>
+                )}
+                {autosave.conflict ? (
+                  <ConflictBanner
+                    document="workflow"
+                    conflict={autosave.conflict}
+                    byAssistant={autosave.conflictByAssistant}
+                    onReload={autosave.reload}
+                    onKeepMine={autosave.keepMine}
+                  />
+                ) : (
+                  <SaveStatusNotice status={autosave.status} issues={autosave.issues} onRetry={autosave.retry} />
+                )}
+              </Box>
+
+              {/* Bottom Data Panel - Table/Map view */}
+              <WorkflowDataPanel
+                selectedNode={selectedNode}
+                tempLayerIds={tempLayerIds}
+                tempLayerStyles={tempLayerStyles}
+                workflowId={selectedWorkflow?.id}
               />
             </Box>
 
-            {/* Bottom Data Panel - Table/Map view */}
-            <WorkflowDataPanel
-              selectedNode={selectedNode}
-              tempLayerIds={tempLayerIds}
-              tempLayerStyles={tempLayerStyles}
+            {/* Right Panel - Tools palette & Node Settings */}
+            <WorkflowsNodesPanel
+              config={selectedWorkflow?.config || null}
+              selectedNodeId={selectedNodeId}
+              projectLayers={projectLayers}
               workflowId={selectedWorkflow?.id}
+              onDragStart={handleDragStart}
             />
-          </Box>
 
-          {/* Right Panel - Tools palette & Node Settings */}
-          <WorkflowsNodesPanel
-            config={selectedWorkflow?.config || null}
-            selectedNodeId={selectedNodeId}
-            projectLayers={projectLayers}
-            workflowId={selectedWorkflow?.id}
-            onDragStart={handleDragStart}
-          />
-        </Box>
+            {/* The template browser and use-template flow of `creation` */}
+            {creation.dialogs}
+          </Box>
+        </WorkflowIssuesProvider>
       </WorkflowExecutionProvider>
     </MapProvider>
   );

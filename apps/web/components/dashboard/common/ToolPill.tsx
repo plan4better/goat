@@ -1,6 +1,7 @@
 "use client";
 
 import { ButtonBase, alpha, useTheme } from "@mui/material";
+import NextLink from "next/link";
 import { type ReactNode, forwardRef } from "react";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -15,7 +16,8 @@ interface ToolPillProps {
   /** A pill of the style panel (the named style, a section's scope): 28px, its text and icons those of the panel's
    * field values (body2 bold, the secondary text color, 14px icons). */
   small?: boolean;
-  /** What the pill does, when its label shows the choice in force instead. */
+  /** What the pill does, when its label shows the choice in force instead, or the name assistive tech reads where
+   * the label cannot give one (a label still loading); else the label. */
   ariaLabel?: string;
   /** What the pill opens, for assistive tech, and whether it is open. */
   popup?: { kind: "menu" | "dialog"; open: boolean };
@@ -37,6 +39,13 @@ interface ToolPillProps {
   /** Sits in a row of outlined filter chips rather than a toolbar: no paper
    * fill, chip height and weight, so it does not read as a raised panel. */
   flat?: boolean;
+  /** The id of a text that says more, such as why the pill is disabled. */
+  describedBy?: string;
+  /** A pill that switches something on and off: whether it is on, for
+   * assistive tech (`active` shows it). */
+  pressed?: boolean;
+  /** A pill that goes to another page: a link there instead of a button. */
+  href?: string;
   onClick?: () => void;
 }
 
@@ -58,6 +67,9 @@ const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
     disabled,
     iconOnly,
     flat,
+    describedBy,
+    pressed,
+    href,
     onClick,
   },
   ref
@@ -79,11 +91,14 @@ const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
   return (
     <ButtonBase
       ref={ref}
+      {...(href ? { component: NextLink, href } : {})}
       disabled={disabled}
       onClick={onClick}
       aria-label={ariaLabel ?? label}
       aria-haspopup={popup?.kind}
       aria-expanded={popup ? popup.open : undefined}
+      aria-describedby={describedBy}
+      aria-pressed={pressed}
       sx={{
         display: "inline-flex",
         alignItems: "center",
@@ -114,9 +129,7 @@ const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
           duration: 120,
         }),
         "&:hover": {
-          backgroundColor: active
-            ? alpha(theme.palette.primary.main, 0.16)
-            : theme.palette.action.hover,
+          backgroundColor: active ? alpha(theme.palette.primary.main, 0.16) : theme.palette.action.hover,
         },
       }}>
       {start}

@@ -205,6 +205,50 @@ export const builderConfigSchema = z.object({
   interactions: z.array(interactionRuleSchema).default([]),
 });
 
+type StoredObject = Record<string, unknown>;
+
+const asStoredObject = (value: unknown): StoredObject =>
+  value !== null && typeof value === "object" && !Array.isArray(value) ? (value as StoredObject) : {};
+
+/** Each item the schema reads in its parsed form, any other exactly as stored;
+ * undefined for no items, which the schema reads as its default. */
+function readEach<S extends z.ZodTypeAny>(items: unknown, schema: S): z.output<S>[] | undefined {
+  if (!Array.isArray(items) || items.length === 0) return undefined;
+  return items.map((item) => {
+    const parsed = schema.safeParse(item);
+    return parsed.success ? (parsed.data as z.output<S>) : (item as z.output<S>);
+  });
+}
+
+/**
+ * The stored dashboard config as the editor works on it, which saves it back
+ * whole. Whatever the schema reads comes parsed; a panel or interaction rule it
+ * cannot read (written by another GOAT version, or by hand) stays exactly as
+ * stored, and an unreadable setting falls back to its default, so a save never
+ * replaces the user's panels with the default layout. A project without a
+ * dashboard gets the default one.
+ */
+export function readBuilderConfig(stored: unknown): BuilderConfigSchema {
+  const whole = builderConfigSchema.safeParse(stored);
+  if (whole.success) return whole.data;
+  const raw = asStoredObject(stored);
+  const rawSettings = asStoredObject(raw.settings);
+  const settingsShape = builderConfigSchema.shape.settings.removeDefault().shape;
+  const settings = Object.fromEntries(
+    Object.entries(settingsShape).map(([key, schema]) => {
+      const parsed = (schema as z.ZodTypeAny).safeParse(rawSettings[key]);
+      return [key, parsed.success ? parsed.data : (schema as z.ZodTypeAny).parse(undefined)];
+    })
+  ) as BuilderConfigSchema["settings"];
+  const defaults = builderConfigSchema.parse({});
+  return {
+    ...defaults,
+    settings,
+    interface: readEach(raw.interface, builderPanelSchema) ?? defaults.interface,
+    interactions: readEach(raw.interactions, interactionRuleSchema) ?? defaults.interactions,
+  };
+}
+
 const baseCustomBasemapSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1).max(255),
@@ -267,6 +311,9 @@ export const projectSchema = contentMetadataSchema.extend({
   // Number and date locale of public maps, dashboards and print; null = the viewer's language.
   locale: z.string().nullish(),
   custom_basemaps: z.array(customBasemapSchema).default([]),
+  /** Counts the stored dashboard's changes; a dashboard save sends it back as
+   * `builder_base_revision`. */
+  builder_revision: z.number().int().nullish(),
   updated_at: z.string().optional(),
   created_at: z.string().optional(),
   shared_with: shareProjectSchema.optional(),

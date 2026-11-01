@@ -12,6 +12,14 @@ import { AUTH_ON, PASSWORD, SESSION_ROLES, logIn, storageStatePath, userOf } fro
 for (const role of SESSION_ROLES) {
   setup(`log in as ${role}`, async ({ page }) => {
     setup.skip(!AUTH_ON, "auth is off");
+    // Home may open its Welcome or release spotlight (the release feed is
+    // live outside CI); skipping it also records it as seen for the specs.
+    await page.addLocatorHandler(
+      page.getByRole("button", { name: /^(skip|skip guide|überspringen|guide überspringen)$/i }),
+      async (skip) => {
+        await skip.click();
+      },
+    );
     await logIn(page, userOf(role).email, PASSWORD);
     // Home greets the signed-in user by first name.
     await expect(page.getByRole("heading", { level: 1 })).toContainText(userOf(role).firstname, {

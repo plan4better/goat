@@ -6,6 +6,7 @@ import { useCallback, useMemo } from "react";
 import type { CatalogSearchParams } from "@/lib/api/catalog";
 import {
   CATALOG_PAGE_SIZE,
+  type CatalogSearchSnapshot,
   DEFAULT_SORT,
   buildFacetParams,
   buildSearchParams,
@@ -138,6 +139,41 @@ export const useCatalogSearchState = ({ aggregations }: UseCatalogSearchStateOpt
     });
   }, [facetParams, setState]);
 
+  /** The current search as URL values (an assistant proposal's undo point). */
+  const snapshot = useCallback(
+    (): CatalogSearchSnapshot => ({
+      q: state.q ?? null,
+      sortby: state.sortby,
+      from: state.from ?? null,
+      to: state.to ?? null,
+      nuts: state.nuts ?? null,
+      pt: state.pt ?? null,
+      poly: state.poly ?? null,
+      facets: facetSelections,
+    }),
+    [state.q, state.sortby, state.from, state.to, state.nuts, state.pt, state.poly, facetSelections]
+  );
+
+  /** Replace the whole search in one URL update; facets the page does not offer are ignored. */
+  const replaceSearch = useCallback(
+    (next: CatalogSearchSnapshot) =>
+      setState({
+        q: next.q,
+        sortby: next.sortby,
+        from: next.from,
+        to: next.to,
+        nuts: next.nuts,
+        pt: next.pt,
+        poly: next.poly,
+        ...Object.fromEntries(
+          facetParams.map((param) => [param, next.facets[param]?.length ? next.facets[param] : null])
+        ),
+        page: 1,
+        tab: "datasets",
+      }),
+    [facetParams, setState]
+  );
+
   /** The request, for Collection Search — one row per dataset. */
   const searchParams = useMemo<CatalogSearchParams>(
     () =>
@@ -176,5 +212,7 @@ export const useCatalogSearchState = ({ aggregations }: UseCatalogSearchStateOpt
     setTab,
     toggleFacet,
     clearAll,
+    snapshot,
+    replaceSearch,
   };
 };

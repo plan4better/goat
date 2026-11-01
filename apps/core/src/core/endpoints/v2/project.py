@@ -16,7 +16,9 @@ from sqlalchemy import select, text
 
 from core.core import authz
 from core.core.config import settings
+from core.core.revision import CHANGED_ELSEWHERE_RESPONSE
 from core.crud.crud_folder import folder as crud_folder
+from core.crud.crud_organization import organization as crud_organization
 from core.crud.crud_project import DEFAULT_INITIAL_VIEW_STATE
 from core.crud.crud_project import project as crud_project
 from core.crud.crud_project_copy import copy_project as copy_project_fn
@@ -109,6 +111,13 @@ async def create_project(
         headers=request.headers,
         peer=request.client.host if request.client else None,
     )
+
+    # Capacity quota: block when the org is at its project cap (NULL total = unlimited).
+    org = await crud_organization.get_by_user(async_session, user_id)
+    if org is not None:
+        crud_organization.check_capacity_quota(
+            organization=org, quota="projects", incoming=1
+        )
 
     # Create project
     project = await crud_project.create(
@@ -259,6 +268,7 @@ async def read_projects(
     response_model_exclude_none=True,
     status_code=200,
     dependencies=[Depends(auth_z)],
+    responses=CHANGED_ELSEWHERE_RESPONSE,
 )
 async def update_project(
     async_session: AsyncSession = Depends(get_db),
@@ -274,7 +284,12 @@ async def update_project(
         description="Project to update",
     ),
 ) -> IProjectRead:
-    """Update base attributes of a project by its ID."""
+    """Update base attributes of a project by its ID.
+
+    A change of `builder_config` raises `builder_revision` and is refused with
+    409 `changed_elsewhere` when `builder_base_revision` is not the stored
+    one (`core.core.revision`).
+    """
 
     # 404 if the project itself is trashed.
     await crud_project.get_live_or_404(async_session, project_id)
@@ -298,6 +313,7 @@ async def update_project(
         async_session=async_session,
         id=project_id,
         project=project_in,
+        user_id=user_id,
     )
     return project
 

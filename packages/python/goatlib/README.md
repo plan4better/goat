@@ -15,6 +15,7 @@ analysis algorithms, geospatial I/O, and shared models used by the `core`,
 | `style/` | GOAT Style, the layer style format: validation, conversion of today's styles, merge, defaults, JSON Schema |
 | `raster/` | Raster files read and colored on the server: band formulas, the coloring a tile URL carries, coloring, reading COGs with rio-tiler, statistics for computed values (the `raster` extra) |
 | `services/`, `storage/`, `tasks/` | Service clients, object storage, background task helpers |
+| `workflows/` | Workflow code that needs no analytics dependencies: the shape check core runs on save, the graph helpers and settings-visibility rules the full check in processes builds on, and the operations the assistant edits a stored workflow with |
 | `computed_columns/`, `i18n/`, `config/`, `utils/` | Supporting modules |
 
 ## Adding an analytics tool
@@ -34,6 +35,25 @@ input that names a layer needs `widget="layer-selector"` or an entry in that
 check. SQL a user writes goes through `validate_sql_query` /
 `validate_sql_expression` in `utils/sql_validation.py`, which allow the declared
 input aliases only.
+
+A workflow step is checked before it runs (`apps/processes/README.md`):
+processes builds the step's arguments with the runner's own code
+(`tools/workflow_arguments.py`) and hands them to the tool's parameter model,
+so the message of a `model_validator` error is what people see on the step.
+Write it for them.
+
+A run built without the form (a workflow the assistant drafts, a template, an
+API call) must behave like one built with it. The editor derives some settings
+from others (x-ui `default_by_field`, `default_from`, `compute_from`,
+`default_all`) and does not run while a setting it shows without a default is
+empty, so each tool applies the same value itself, from the constant its widget
+option is built from (the per-mode speeds are `DEFAULT_SPEED_KMH` in
+`analysis/schemas/catchment_area_v2.py`), or refuses in its parameter model.
+The generated Windmill script (`tools/codegen.py`) declares every optional
+argument as None and drops the None ones, so a setting a job leaves out reaches
+the model as absent: a default the model resolves from the job's other settings,
+such as a travel budget per mode and cost type, applies. A static default in the
+signature would reach the model as if the job had set it.
 
 ## Token verification
 
@@ -289,6 +309,131 @@ cancelled Windmill job is killed without a SIGTERM first, so nothing in the
 run can clean up after it; the `ducklake_orphan_tables` task reports the
 tables left behind and, when asked to, drops those older than a day.
 
+## Errors of a failed workflow run
+
+A workflow run (`tools/workflow_runner.py`) returns its result when a step
+fails, with `status: "failed"` and one `{"node_id", "message"}` per failed
+step, instead of raising: Windmill keeps only an exception's text as a failed
+job's result, so each step's own error would be lost. The message is the
+step's error reduced by `workflows/run_errors.py`: the Windmill error's
+`message` (its `name` when empty), never the stack, at most 500 characters.
+processes applies the same reduction to a failed child job while a run goes
+on, so a step's error reads the same during and after the run.
+
+## Exports behind a dataset or an If step
+
+An export saves what `finalize_layer` finds in the temp folder of the step it
+reads, and only a tool step writes one. A dataset step writes nothing: it
+delivers its layer with its filter, and an If step passes both on
+(`dataset_filter_for_source` in `tools/workflow_runner.py`). Behind an If on a
+tool, the temp layer id the If passes on names that tool's step, whose folder
+is saved. Behind a dataset, directly or through Ifs, the run first copies the
+dataset's rows, with its filter, into the temp folder of the step the export
+is connected to (`layer_create_filtered` in temp mode, once per step; a
+failed copy is the error of every export behind the step), so they are saved
+like a tool's result. The copy carries the dataset's style, its
+project entry's or else the layer's own, shown even where the dataset is
+hidden (`dataset_style` in `tools/workflow_dataset_nodes.py`); a template's
+remembered style for the export still wins. An export connected to both a
+step's result and a dataset saves the step's result.
+
+## Results without rows
+
+A step can get or give a layer without rows: a dataset filter outside the
+data's extent, an overlay without overlap. DuckDB writes the GeoParquet `geo`
+metadata only for a file with rows, and without it reads a GEOMETRY column
+back as plain BLOB, so the next tool would find no geometry column. Every
+parquet COPY in goatlib therefore takes its options from
+`parquet_copy_options` (`io/config.py`), which names a GeoParquet version
+that also stores the column as Parquet's own GEOMETRY type. A unit test keeps
+it that way, also for a COPY that leaves the format to the file name; only
+`layer_export`'s download for programs outside GOAT spells its own. Files
+written without DuckDB (pyarrow in `layer_create`) set their types
+themselves. `write_optimized_parquet` (`io/parquet.py`) gives an empty result
+the same columns as a full one, bbox included. The overlay tools take the
+geometry family they keep from the input's first geometry and keep every type
+when there is none.
+
+A layer's type comes from its rows' geometries, so a result without rows
+takes the geometry type its tool gives it instead (`result_geometry_type` in
+`tools/base.py`): the type the analysis reports, the runner's
+`output_geometry_type` (a catchment area's follows its kind), or, for a tool
+whose result keeps its input's geometry (`output_geometry_follows_input`:
+clip, erase, intersection, union, dissolve, join, merge, a dataset's filtered
+copy), the type of the first layer it read. `_write_temp_result` works it out
+also for a runner with its own `run()`, and the temp result carries it to the
+export, which saves a feature layer of that type. A custom SQL result without
+rows has no such type and is saved as a table layer. A second layer that a
+runner's own `run()` saves beside its result outside a workflow (the points of
+an origin-destination run, for example; a workflow step writes only the first
+layer) takes the type its own metadata names
+(`_fill_second_layer_geometry_type`), never the first layer's
+`output_geometry_type`. A member of a filtered bundle copy that the filter
+empties keeps its source layer's geometry type.
+
+An export whose data has a geometry type turns a table layer it writes into
+a feature layer: an overwrite in place (`_update_layer_metadata` in
+`tools/layer_replace.py`), and a re-run that writes a new layer behind a
+project entry made for a table (copy-on-write, in finalize). The map draws an
+entry only with a style (`visibility`, `filled`, `color`), and an entry made
+for a table holds none, or only the keys the web's layer tree writes
+(`legend`). So the layer and its entries get the default style beneath the
+keys they hold, which win (`style_entries_as_feature_layer`); an entry's own
+style stays. A feature layer never becomes a table.
+
+## Catchment start points
+
+A catchment area (`tools/catchment_area_v2.py`) whose starting points are
+empty after their filter writes a result without rows itself, with the columns
+of its kind, since the routing engine refuses zero points: a filter that
+matches nothing, such as a district without the stops asked about, gives a
+run with 0 rows instead of a failed one. More start points than one run takes
+are refused; the limits live in `tools/limits.py`, a module without imports,
+so the assistant's workflow check reads the same numbers and refuses such a
+draft before it runs. The travel cost matrix's cap on origin and destination
+pairs lives there for the same reason.
+
+## Measuring areas
+
+Area statistics (`analysis/statistics/area_statistics.py`, processes'
+`area-statistics`, also per value of a group column) measure square metres on
+the WGS84 spheroid, not in a projection: Web Mercator is not equal-area and
+enlarges areas more the farther they lie from the equator. A geometry in
+another CRS is brought to lon/lat first, with `always_xy` so its axes are not
+swapped.
+
+## Overlays on large polygons
+
+DuckDB spatial takes a copy of a geometry for every row it tests against it
+(ST_Intersects, ST_Intersection, ST_Difference) and frees the copies only after
+the whole vector of rows; that memory cannot spill. A dissolved city-wide
+catchment tested row by row against a few thousand points or parcels runs out
+of memory whatever the threads or memory limit. So clip, erase, union and
+aggregate_points cut polygons above `SUBDIVIDE_MAX_VERTICES` vertices into
+pieces first (`subdivide_polygons` in `analysis/core/base.py`, a quad split,
+since the extension has no ST_Subdivide) and find the pieces each row touches
+with a spatial join. Clip, erase and union then intersect or erase each row
+once with the union of only those pieces (`local_union_cte`), which gives the
+dissolved overlay's result. aggregate_points counts a point on a cut line once
+per area. A big row on the other side (a polygon, a line such as a route, or a
+multipoint), such as the input of an erase, is cut too, but only to find its
+pieces; the intersection or difference uses the row itself.
+
+The cut lines add vertices to the output where they cross the overlay's
+boundary. Where that boundary is slanted, such a vertex is computed in
+floating point and lies a rounding error off the edge, so the union of the
+pieces bends the edge by that much. A polygon row with an edge along it can
+then come back as a hair-thin sliver where the dissolved overlay leaves it
+nothing, or only a line. A row whose result has such a part is recomputed
+against the whole overlay, as before the pieces, in batches that bound the
+copies (`recompute_slivers`, `NEAR_EMPTY_WIDTH_RATIO`). A known edge case
+remains: a line lying exactly on the overlay's boundary along such a bent edge
+has no width to detect, so it is not recomputed and can lose or keep that edge
+where the dissolved overlay would give the other result.
+Not covered yet: union's overlapping parts pair each input row with each
+overlay row it touches, so one big input row touching many overlay rows is
+still copied once per pair, as in the intersection and spatial join tools.
+
 ## DuckLake catalog connections
 
 Every DuckLake read runs a few catalog queries inside a Postgres transaction,
@@ -333,6 +478,45 @@ doesn't know. `goatlib.config.postgres.asyncpg_connect_args` then turns off
 asyncpg's statement cache and the keepalive settings; every tool and task
 connection goes through it (`ToolSettings.postgres_connect_args`). DuckLake's
 catalog connections go to the database itself (`DUCKLAKE_POSTGRES_SERVER`).
+
+## Workflows
+
+`workflows/` holds the workflow code core, processes and the assistant share without the analytics stack: the shape check, the graph helpers and settings-visibility rules of the full check, and the assistant's edit operations. Core refuses a damaged config on save with `checks.shape_issues`; processes runs the same function first in its full check and builds on `find_loops`, `dangling_edges` and `visibility.is_shown`. The package imports the standard library only: core installs goatlib without its extras, so a pydantic model or a tool import here would stop core from starting on its own image (`apps/core/tests/unit/test_runs_without_the_geospatial_stack.py` loads it the way the image does).
+
+`ops.py` applies the assistant's edits (add or remove a step, change its settings, connect, rename, a note's text) to a stored config as pure functions, refusing what a run would get wrong: a loop, or a second connection into an input unless the two come from steps on different branches of one If step (a run passes an If's input on along every connection leaving the If itself, whichever branch it took). An edit is then a plain new config, which processes checks and core saves with `base_revision` like any other save, and the config before it is what the assistant's Undo writes back. Each operation writes the keys the editor writes for the same change and leaves every other step as stored, so an edit never rewrites what a person laid out.
+
+`visibility.py` is a port of the editor's `visible_when` / `hidden_when` evaluator (`apps/web/lib/utils/ogc-utils.ts`), with JavaScript's equality and truthiness, because a required setting counts as missing only while the editor shows it. `visibility_cases.json` is read by the Python and the web tests alike, so a change to one evaluator that the other does not share fails a test.
+
+## Workflow chain tests
+
+Each tool's own tests run that tool alone, on inputs with attributes and with
+its settings given. `tests/integration/tools/chains/` runs whole workflows
+instead: the real `tools/workflow_runner.py`, each step through the script
+sync writes to Windmill for it (`windmill_script` in `tools/sync_windmill.py`,
+for a tool its generated wrapper), and the real tools on Postgres and
+DuckLake, with only the settings the assistant sets. That is where a step
+meets what the step before it wrote, such as the geometry-only layer of a
+dissolve without group fields.
+
+Windmill is stood in (`tests/integration/tools/chains/windmill_stand_in.py`):
+a job runs at once in the test process, its arguments and result pass
+through JSON, and a script whose `main` takes no `**kwargs` gets only the
+arguments it names, as Windmill calls it. The layers
+(`tests/integration/tools/chains/world.py`) are the assistant eval's
+workflow project: its layer ids, names and fields, on a grid in Leipzig.
+
+The tests also run the assistant's regression workflows that do not route
+(`apps/assistant/evals/workflow_runs.json`) as the assistant built them,
+since their configs name these layers.
+
+CI runs them in the `workflow chains` job, which installs neither the routing
+package nor GDAL, so tools that route are not part of these chains. Locally,
+on a throwaway database of the Postgres in the root .env file (the chain tests
+refuse the goat and goat_slot_ databases), with DuckLake's files in a scratch
+directory:
+
+    createdb goat_chains_test && psql -d goat_chains_test -c "CREATE EXTENSION postgis"
+    POSTGRES_DB=goat_chains_test DUCKLAKE_DATA_DIR="$(mktemp -d)" uv run --no-sync --env-file ../../../.env pytest tests/integration/tools/chains -v
 
 ## Development
 

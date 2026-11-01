@@ -1,6 +1,7 @@
+from typing import get_args
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi_pagination import Params as PaginationParams
 from pydantic import UUID4
 
@@ -13,6 +14,8 @@ from core.schemas.content import (
     ContentOrder,
     ContentOrderBy,
     ContentPage,
+    ContentSearchPage,
+    ContentSearchType,
     ContentView,
     ResourceType,
     RestoreRequest,
@@ -74,6 +77,66 @@ async def read_content(
         order=order,
         page=page_params.page,
         size=page_params.size,
+    )
+
+
+#: Every kind the search finds, in the order `types` lists them.
+SEARCH_TYPES: tuple[ContentSearchType, ...] = get_args(ContentSearchType)
+
+
+@router.get(
+    "/search",
+    summary="Search everything the caller can open",
+    response_model=ContentSearchPage,
+    response_model_exclude_none=True,
+    status_code=200,
+    dependencies=[Depends(auth_z)],
+)
+async def search_content(
+    async_session: AsyncSession = Depends(get_db),
+    user_id: UUID4 = Depends(get_user_id),
+    search: str = Query(
+        ...,
+        min_length=2,
+        max_length=200,
+        description=(
+            "Text the item's name, its project's name (workflows and layouts), "
+            "a folder it sits in or its owner's name contains; case-insensitive, "
+            "% and _ are taken literally"
+        ),
+    ),
+    types: str | None = Query(
+        None,
+        description="Comma-separated: project,layer,bundle,workflow,layout; "
+        "all of them when left out",
+    ),
+    page: int = Query(1, ge=1, le=1000, description="Page number, at most 1000"),
+    size: int = Query(20, ge=1, le=50, description="Hits per page, at most 50"),
+) -> ContentSearchPage:
+    """Find projects, datasets and the workflows and print layouts of
+    projects across everything the caller can open: their own, shared with
+    them directly, through a team or the organisation, or through a shared
+    folder, in every space. Each hit says why it matched, who owns it and
+    where it sits. Trashed items and template sources are left out."""
+    term = search.strip()
+    if len(term) < 2:
+        raise HTTPException(
+            status_code=422, detail="search needs at least 2 characters besides spaces"
+        )
+    wanted = [t.strip() for t in types.split(",") if t.strip()] if types else []
+    unknown = sorted(set(wanted) - set(SEARCH_TYPES))
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown types {unknown}; choose from {list(SEARCH_TYPES)}",
+        )
+    return await crud_content.search(
+        async_session,
+        user_id=user_id,
+        search=term,
+        types=[t for t in SEARCH_TYPES if not wanted or t in wanted],
+        page=page,
+        size=size,
     )
 
 

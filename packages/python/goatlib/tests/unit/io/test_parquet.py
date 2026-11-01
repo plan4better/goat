@@ -346,3 +346,34 @@ def test_drops_inherited_and_stray_bbox_columns(
         f"SELECT bbox.xmax FROM read_parquet('{output_path}') WHERE id = 5"
     ).fetchone()
     assert xmax == (5.0,)
+
+
+def _schema(con: duckdb.DuckDBPyConnection, path: Path) -> list[tuple[str, str]]:
+    rows = con.execute(f"DESCRIBE SELECT * FROM read_parquet('{path}')").fetchall()
+    return [(str(r[0]), str(r[1])) for r in rows]
+
+
+def test_an_empty_result_has_the_columns_of_a_full_one(
+    duckdb_con: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    """A tool result with no rows (a filter outside the data, an overlay
+    without overlap) is the next step's input: its geometry column stays a
+    geometry, with the bbox beside it, as in a result with rows. DuckDB writes
+    a GEOMETRY column of a file without rows as plain BLOB unless the COPY
+    names a GeoParquet version."""
+    duckdb_con.execute("""
+        CREATE TABLE full_result AS
+        SELECT 1 AS id, ST_Point(11.5, 48.1)::GEOMETRY('OGC:CRS84') AS geometry
+    """)
+    duckdb_con.execute(
+        "CREATE TABLE empty_result AS SELECT * FROM full_result WHERE false"
+    )
+    full = tmp_path / "full.parquet"
+    empty = tmp_path / "empty.parquet"
+
+    write_optimized_geoparquet(duckdb_con, "full_result", full)
+    written = write_optimized_geoparquet(duckdb_con, "empty_result", empty)
+
+    assert written == 0
+    assert _schema(duckdb_con, empty) == _schema(duckdb_con, full)
+    assert dict(_schema(duckdb_con, empty))["geometry"] == "GEOMETRY('OGC:CRS84')"

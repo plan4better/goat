@@ -212,6 +212,15 @@ RESOURCES_PERMISSIONS = [
         "permissions": ["read-layer"],
     },
     {
+        # Its own row rather than the `content` row reached through
+        # check_resource's `LIKE url_pattern || '/%'` fallback. Gates the
+        # endpoint only: which items it returns is decided per item by
+        # `effective_role` inside the query.
+        "url_pattern": "content/search",
+        "method": ["GET"],
+        "permissions": ["read-layer"],
+    },
+    {
         # The real ownership/membership/organisation rights check is done by
         # `CRUDTransfer` — this only gates the endpoint to any authenticated
         # user who can read content at all.
@@ -248,6 +257,12 @@ RESOURCES_PERMISSIONS = [
         # follower, org owner/admin). 404 on self-hosted (settings unset).
         "url_pattern": "support",
         "method": ["GET", "POST", "PUT"],
+    },
+    {
+        # Credit and quota usage of the caller's own organization. No
+        # permissions: any member may see it; the routes read only their org.
+        "url_pattern": "credits",
+        "method": ["GET"],
     },
     {
         "url_pattern": "folder",
@@ -322,6 +337,15 @@ RESOURCES_PERMISSIONS = [
     },
     {"url_pattern": "layer", "method": ["POST"], "permissions": ["read-layer"]},
     {"url_pattern": "project", "method": ["GET"], "permissions": ["read-project"]},
+    {
+        # Its own row rather than the `project` row reached through
+        # check_resource's `LIKE url_pattern || '/%'` fallback. Gates the
+        # endpoint only: which projects' layers it returns is decided per
+        # project by `effective_role` inside the query.
+        "url_pattern": "project/layers/search",
+        "method": ["GET"],
+        "permissions": ["read-project"],
+    },
     {
         "url_pattern": "project",
         "method": ["POST"],
@@ -682,13 +706,13 @@ RESOURCES_PERMISSIONS = [
         "url_pattern": "project/{project_id}/public/custom-domain",
         "method": ["POST"],
         "permissions": ["update-project"],
-        "plan_names": ["goat_professional", "goat_enterprise"],
+        "extras": ["white_label"],
     },
     {
         "url_pattern": "project/{project_id}/public/custom-domain",
         "method": ["DELETE"],
         "permissions": ["update-project"],
-        "plan_names": ["goat_professional", "goat_enterprise"],
+        "extras": ["white_label"],
     },
     # ---------------------------------------------------------------
     # White-label: organization analytics instances + per-project tracking
@@ -724,7 +748,7 @@ RESOURCES_PERMISSIONS = [
         "url_pattern": "project/{project_id}/public/tracking",
         "method": ["PUT"],
         "permissions": ["update-project"],
-        "plan_names": ["goat_professional", "goat_enterprise"],
+        "extras": ["white_label"],
     },
     # ---------------------------------------------------------------
     # Templates (T1/T3/T4). No permissions: any authenticated user may call
@@ -745,6 +769,10 @@ RESOURCES_PERMISSIONS = [
     },
     {
         "url_pattern": "template/{template_id}/use",
+        "method": ["POST"],
+    },
+    {
+        "url_pattern": "template/{template_id}/use/preview",
         "method": ["POST"],
     },
     {
@@ -820,7 +848,7 @@ async def seed_roles(session: AsyncSession) -> None:
                     url_pattern=resource_dict["url_pattern"],
                     method=resource_dict["method"],
                     quota_types=resource_dict.get("quota_types"),
-                    plan_names=resource_dict.get("plan_names"),
+                    extras=resource_dict.get("extras"),
                 )
                 .returning(Resource.id)
             )

@@ -25,7 +25,7 @@ depends_on = None
 # `settings.SCHEMA` is the configurable data schema (default "customer"); the
 # models, SQL functions and triggers all resolve to it, so the baseline must
 # create the same one.
-SCHEMAS = ("basic", settings.SCHEMA, "temporal")
+SCHEMAS = ("basic", settings.SCHEMA, "temporal", settings.ASSISTANT_SCHEMA)
 
 
 def upgrade() -> None:

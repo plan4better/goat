@@ -17,8 +17,11 @@ export const getContentQueryParamsSchema = paginatedSchema.extend({
   authorization: z.string().optional(),
 });
 
+/** The server's limit for a content name (`ContentBaseAttributes.name`, `LayerProjectLink.name`). */
+export const MAX_CONTENT_NAME_LENGTH = 255;
+
 export const contentMetadataSchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(MAX_CONTENT_NAME_LENGTH),
   description: z.string().optional(),
   tags: z.array(z.string()).optional().nullable(),
   thumbnail_url: z.string().optional(),

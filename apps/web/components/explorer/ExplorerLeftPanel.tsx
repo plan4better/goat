@@ -60,7 +60,9 @@ export function ExplorerLeftPanel({ layersTab }: { layersTab: ReactNode }) {
             iconPosition="start"
             icon={<Icon iconName={ICON_NAME.LAYERS} style={{ fontSize: 14 }} />}
             label={t("layers")}
-            sx={{ minHeight: 44, textTransform: "none", gap: 0.5 }}
+            // Half the row each, whatever their padding: a tab's padding counts
+            // toward its share where they only grow.
+            sx={{ minHeight: 44, textTransform: "none", gap: 0.5, flex: "0 0 50%", maxWidth: "50%" }}
           />
           <Tab
             value="explorer"
@@ -100,16 +102,38 @@ export function ExplorerLeftPanel({ layersTab }: { layersTab: ReactNode }) {
                       width: 24,
                       height: 24,
                       borderRadius: "50%",
-                      // The tab's own text colour: grey, or green while selected.
-                      color: "inherit",
+                      // Grey whether or not the tab is selected: a control,
+                      // not part of the tab's name.
+                      color: "text.secondary",
                       "&:hover": { bgcolor: "action.hover" },
+                      // A hairline between the tab's name and its close.
+                      "&::before": {
+                        content: '""',
+                        position: "absolute",
+                        left: -6,
+                        top: "50%",
+                        width: "1px",
+                        height: 16,
+                        mt: "-8px",
+                        bgcolor: "divider",
+                      },
                     }}>
                     <Icon iconName={ICON_NAME.XCLOSE} style={{ fontSize: 13 }} htmlColor="inherit" />
                   </Box>
                 </Tooltip>
               </>
             }
-            sx={{ minHeight: 44, textTransform: "none", gap: 0.5 }}
+            // Icon and name centred between the tab's left padding and the
+            // divider before the close (40px from its right edge).
+            sx={{
+              minHeight: 44,
+              textTransform: "none",
+              gap: 0.5,
+              flex: "0 0 50%",
+              maxWidth: "50%",
+              pl: "16px",
+              pr: "40px",
+            }}
           />
         </Tabs>
         <Box

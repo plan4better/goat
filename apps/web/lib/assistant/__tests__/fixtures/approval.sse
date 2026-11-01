@@ -1,0 +1,16 @@
+data: {"type":"start","messageId":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c"}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-start","toolCallId":"call-9","toolName":"analysis_start","dynamic":true}
+
+data: {"type":"tool-input-available","toolCallId":"call-9","toolName":"analysis_start","input":{"tool":"buffer"},"dynamic":true}
+
+data: {"type":"tool-approval-request","approvalId":"approval-9","toolCallId":"call-9"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish"}
+
+data: [DONE]
+

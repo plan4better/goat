@@ -10,10 +10,8 @@ from core.db.models.invitation import InvitationStatusEnum
 from core.db.models.organization import (
     AvailableRegionsEnum,
     OrganizationBase,
-    OrganizationIndustryEnum,
     OrganizationRolesEnum,
     OrganizationTypeEnum,
-    OrganizationUseCaseEnum,
 )
 from core.utils.partial import optional
 
@@ -24,29 +22,16 @@ class OrganizationRead(OrganizationBase):
     updated_at: datetime | None = None
 
 
-class TrialPlanTypeEnum(str, Enum):
-    """This enum represents the trial subscription types."""
-
-    starter = "goat_starter"
-    profesional = "goat_professional"
-
-
 class OrganizationCreateUpdateBase(BaseModel):
     name: str
-    department: str
-    industry: OrganizationIndustryEnum
-    location: str
     newsletter_subscribe: bool | None = None
     type: OrganizationTypeEnum
-    size: str | None = None
-    use_case: OrganizationUseCaseEnum
     avatar: str | None = None
-    phone_number: str | None = None
 
 
 class OrganizationCreate(OrganizationCreateUpdateBase):
     name: str
-    region: AvailableRegionsEnum
+    region: AvailableRegionsEnum = AvailableRegionsEnum.eu
 
 
 @optional
@@ -64,6 +49,16 @@ class OrganizationUpdateMemberRole(SQLModel):
     role: OrganizationMemberRoleUpdateEnum
 
 
+class FeaturesRead(BaseModel):
+    """Which SaaS integrations this installation runs. Both are off on a
+    self-hosted install, and the web app shows none of their pages then."""
+
+    # Support tickets (Odoo Helpdesk).
+    support: bool
+    # Trials, credits and usage, quotas pushed by the billing system.
+    billing: bool
+
+
 class OrganizationCreationRead(BaseModel):
     """Whether the caller may set up an organization
     (`ALLOW_ORGANIZATION_CREATION`, superusers always may)."""
@@ -78,9 +73,9 @@ class OrganizationPermanentlyDeleted(BaseModel):
     # The former member, whose account stays without an organization; None
     # when the organization had no member left.
     user_id: UUID | None
-    # Billing is not touched: with Stripe on, the customer and its trial
-    # subscription stay in Stripe under this id.
-    stripe_id: str | None
+    # Billing is not touched: a subscription stays in Odoo under this
+    # company until someone ends it there.
+    odoo_company_id: int | None
 
 
 class OrganizationUser(BaseModel):
@@ -98,16 +93,9 @@ request_examples = {
         "create": {
             "name": "test",
             "type": "government",
-            "size": "25-50",
-            "industry": "architecture",
-            "department": "GIS",
-            "use_case": "infrastructure_planning_and_design",
-            "phone_number": "6479616224",
-            "location": "AF",
             "newsletter_subscribe": True,
-            "region": "EU",
         },
-        "update": {"phone_number": "6479616225"},
+        "update": {"name": "test renamed"},
         "update_user_role": {"role": "organization-admin"},
         "invite": {
             "user_email": "majkshkurti94@gmail.com",

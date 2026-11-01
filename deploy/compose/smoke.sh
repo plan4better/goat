@@ -73,6 +73,31 @@ check_status /api/healthz 200 core
 check_status /geoapi/healthz 200 geoapi
 check_status /processes/healthz 200 processes
 check_status /catalog/healthz 200 catalog
+check_status /assistant/healthz 200 assistant
+check_status /assistant/readyz 200 assistant
+# The MCP endpoint moved from the catalog to the assistant.
+check_status /catalog/mcp 404 catalog
+
+# Caddy passes every method to the assistant: a CORS preflight is answered by
+# the service, and PUT reaches it (405 from the app, not an error from Caddy).
+step "OPTIONS and PUT reach the assistant"
+pre=$("${CURL[@]}" -o /dev/null -w '%{http_code}' -X OPTIONS -H "Origin: $URL" -H 'Access-Control-Request-Method: PATCH' "$URL/assistant/conversations") || pre=000
+put=$("${CURL[@]}" -o /dev/null -w '%{http_code}' -X PUT "$URL/assistant/healthz") || put=000
+[ "$pre" = 200 ] && [ "$put" = 405 ] && pass "$pre/$put" || fail "OPTIONS $pre, PUT $put" assistant
+
+# MCP behind Caddy and ROOT_PATH: POST answers the handshake (401 without a
+# token while login is on); the endpoint is stateless, so GET (no event
+# stream) and DELETE (no session) answer 405.
+step "MCP at /assistant/mcp"
+if auth_on; then want_mcp=401; else want_mcp=200; fi
+mcp_init='{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}'
+init=$("${CURL[@]}" -o /dev/null -w '%{http_code}' -X POST -H 'Accept: application/json, text/event-stream' -H 'Content-Type: application/json' -d "$mcp_init" "$URL/assistant/mcp") || init=000
+get=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "$URL/assistant/mcp") || get=000
+del=$("${CURL[@]}" -o /dev/null -w '%{http_code}' -X DELETE "$URL/assistant/mcp") || del=000
+[ "$init" = "$want_mcp" ] && [ "$get" = 405 ] && [ "$del" = 405 ] && pass "POST $init, GET $get, DELETE $del" || fail "POST $init (want $want_mcp), GET $get, DELETE $del (want 405)" assistant
+
+step "assistant database privileges"
+out=$(docker compose exec -T assistant python -m assistant.dbcheck 2>&1) && pass || fail "$out" assistant
 
 step "catalog STAC root"
 type=$("${CURL[@]}" "$URL/catalog/stac" | jq -r '.type // empty' 2>/dev/null)
@@ -105,6 +130,7 @@ check_authed() {
   [ "$code" = 200 ] && pass || { head -c 400 /tmp/goat-smoke-body; echo; fail "HTTP $code" "$svc"; }
 }
 check_authed /processes/jobs processes
+check_authed /assistant/status assistant
 
 [ "$QUICK" -eq 1 ] && { echo "smoke (quick): PASS"; exit 0; }
 

@@ -86,6 +86,8 @@ Legen Sie in Ihrem Realm einen Client für GOAT mit diesen Einstellungen an:
 
 GOAT verwendet den Service-Account, um Benutzerkonten zu lesen, Name und E-Mail-Adresse eines Benutzers in Keycloak mit seinem GOAT-Profil abzugleichen und ein Konto zu löschen, wenn sein Benutzer es in GOAT löscht.
 
+Im Standardmodus des KI-Assistenten muss im Realm **Revoke Refresh Token** ausgeschaltet sein (Realm settings, Tokens), damit der Assistent die Anmeldung bei langen Antworten erneuern kann; siehe [KI-Assistent](#assistant).
+
 ### `.env` einrichten {#keycloak-env}
 
 Entfernen Sie `keycloak` aus `COMPOSE_PROFILES` und setzen Sie:
@@ -166,12 +168,14 @@ Standardmäßig zeigen die E-Mails von GOAT und von Keycloak den Namen `GOAT` un
 | `EMAIL_LOGO_URL` | Adresse eines Logo-Bildes, das statt des Namens erscheint |
 | `EMAIL_CONTACT_URL` | Kontakt-Link in der Fußzeile. Die App verwendet ihn auch für ihre <code>Kontakt</code>-Links. |
 | `EMAIL_PRIVACY_URL` | Link zur Datenschutzerklärung in der Fußzeile. Auch die Anmeldeseite verlinkt darauf. |
+| `EMAIL_COMPANY_NAME` | Wer Ihr GOAT betreibt, als Zeile in der Fußzeile, z. B. Name und Anschrift Ihrer Organisation. Entfällt, solange leer. |
+| `EMAIL_COMPANY_URL` | Website, auf die diese Zeile verlinkt. |
 
 Die Bilder in den E-Mails kommen von GOATs öffentlicher URL (`<öffentliche URL>/assets`) oder von `STATIC_ASSETS_URL`, falls gesetzt. Die Mailprogramme der Empfänger laden sie von dort, die Adresse muss für sie also erreichbar sein.
 
 ## Support-Tickets {#support}
 
-GOAT kann Problemmeldungen und Fragen seiner Benutzer an einen Odoo-Helpdesk weiterreichen, wo sie als Tickets mit Antworten erscheinen. Das ist optional und **standardmäßig aus**. Ohne diese Einstellungen zeigt *Problem melden* in der App eine E-Mail-Adresse und den Link *Dokumentation*, und die Routen unter `/api/v2/support` antworten mit 404, außer `/api/v2/support/summary`, die der App mitteilt, dass der Support aus ist. Die Adresse ist standardmäßig `support@plan4better.de`; Ihre eigene legen Sie mit `NEXT_PUBLIC_SUPPORT_EMAIL` fest, siehe [Konfigurationsreferenz](./configuration.md#integrations).
+GOAT kann Problemmeldungen und Fragen seiner Benutzer an einen Odoo-Helpdesk weiterreichen, wo sie als Tickets mit Antworten erscheinen. Das ist optional und **standardmäßig aus**. Ohne diese Einstellungen zeigt *Problem melden* in der App eine E-Mail-Adresse und den Link *Dokumentation*, und die Routen unter `/api/v2/support` antworten mit 404, außer `/api/v2/support/summary`, die der App mitteilt, dass der Support aus ist. Der Link *Feedback* des KI-Assistenten öffnet dieselbe Adresse. Sie ist standardmäßig `support@plan4better.de`; Ihre eigene legen Sie mit `NEXT_PUBLIC_SUPPORT_EMAIL` fest, siehe [Konfigurationsreferenz](./configuration.md#integrations).
 
 | Einstellung | Bedeutung |
 |---|---|
@@ -198,6 +202,61 @@ Alle, die GOAT öffnen, handeln dann als ein eingebauter Administrator.
 :::warning
 Mit `AUTH=False` hat jeder, der die URL erreicht, vollen Zugriff auf alle Daten. Verwenden Sie diese Einstellung nur für lokale oder Demo-Installationen.
 :::
+
+## KI-Assistent {#assistant}
+
+Der Assistent gehört zu jeder Installation. Er bleibt verborgen, bis ein Sprachmodell eingerichtet ist, auf einem von zwei Wegen:
+
+- **GOAT AI für alle Organisationen.** Richten Sie die eingebaute Verbindung in `.env` ein, zum Beispiel:
+
+  ```bash
+  ASSISTANT_DEFAULT_PROVIDER=openai_compatible
+  ASSISTANT_DEFAULT_MODEL=<Modell-ID>
+  ASSISTANT_DEFAULT_BASE_URL=https://llm.example.org/v1
+  ASSISTANT_DEFAULT_API_KEY=<Schlüssel>
+  ```
+
+  Welche von `ASSISTANT_DEFAULT_API_KEY`, `ASSISTANT_DEFAULT_BASE_URL` und `ASSISTANT_DEFAULT_REGION` ein Anbieter braucht, steht in der [Konfigurationsreferenz](./configuration.md#assistant).
+- **Eine eigene Verbindung der Organisation.** Ein Administrator der Organisation legt sie unter <code>Einstellungen</code> → <code>KI</code> an. Die Zugangsdaten werden mit `ASSISTANT_SECRETS_KEY` verschlüsselt gespeichert, den `setup.sh` erzeugt.
+
+Übernehmen Sie Änderungen mit `docker compose up -d`. Danach finden die Benutzer <code>KI fragen</code> in der oberen Leiste.
+
+**Amazon Bedrock und Google Vertex AI** ohne API-Schlüssel verwenden ihre eigenen Zugangsdaten. Legen Sie diese in einer Datei `assistant.env` neben `.env` ab; nur der Assistent liest sie:
+
+```bash
+# assistant.env
+AWS_ACCESS_KEY_ID=<Schlüssel-ID>
+AWS_SECRET_ACCESS_KEY=<Geheimnis>
+# oder für Vertex AI eine Dienstkonto-Datei in ./certs:
+# GOOGLE_APPLICATION_CREDENTIALS=/certs/vertex.json
+```
+
+Diese Zugangsdaten gelten nur für GOAT AI, nie für eigene Verbindungen der Organisationen. Der Assistent läuft in seinem Container als Benutzer `appuser`; eine Schlüsseldatei in `./certs` muss für ihn lesbar sein (zum Beispiel `chmod 644`).
+
+**Lange Antworten und Keycloak.** Eine Antwort läuft weiter, wenn der Browser geschlossen wird. Dauert sie länger als die Anmeldung, erneuert der Assistent die Anmeldung mit dem Keycloak-Client der Web-App, dem in `KEYCLOAK_CLIENT_ID`. Im Realm Ihres eigenen Keycloak muss deshalb **Revoke Refresh Token** ausgeschaltet sein (Realm settings, Tokens); der mitgelieferte Realm ist so eingerichtet.
+
+Mit Keycloak 26.2 oder neuer können Sie stattdessen Token Exchange verwenden (`ASSISTANT_TOKEN_EXCHANGE_ENABLED=true`). Legen Sie für den Assistenten einen vertraulichen (confidential) Client an und tragen Sie ihn in `ASSISTANT_KEYCLOAK_CLIENT_ID` und `ASSISTANT_KEYCLOAK_CLIENT_SECRET` ein. Zwei Einstellungen sind Pflicht; ohne sie schlägt jede Antwort gleich zu Beginn fehl:
+
+- Schalten Sie am Client des Assistenten **Allow refresh token in Standard Token Exchange** ein.
+- Fügen Sie am Client der Web-App einen Audience-Mapper hinzu, der den Client des Assistenten in den Claim `aud` des Access-Tokens aufnimmt.
+
+Mit Token Exchange ist **Revoke Refresh Token** nicht erforderlich, weil der Assistent ein eigenes Refresh-Token erhält. Das mitgelieferte Keycloak hat Version 22 und unterstützt Token Exchange nicht.
+
+**Firmen-CA.** Der Assistent vertraut `GOAT_CA_BUNDLE` zusätzlich zu den öffentlichen CAs, für Modellserver, die Dienste von GOAT und Keycloak, wie die anderen Dienste; siehe [Firmen-CA](./https.md#company-ca). Weitere Einstellungen sind nicht nötig.
+
+**Modellserver im eigenen Netz.** Eine Verbindung einer Organisation darf keine privaten oder internen Adressen erreichen, außer mit `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS=true`. GOAT AI richten Sie selbst ein; dafür gilt diese Grenze nicht.
+
+**Externe Agenten** erreichen den MCP-Endpunkt von GOAT unter `<GOAT_PUBLIC_URL>/assistant/mcp` mit einem Anmelde-Token von GOAT. Der Endpunkt beantwortet nur Anfragen für den Hostnamen von GOAT (`GOAT_HOSTNAME`), und die frühere Adresse des Katalogs, `/catalog/mcp`, gibt es nicht mehr. Die Aufzeichnungen der Werkzeugaufrufe über MCP werden `ASSISTANT_MCP_AUDIT_RETENTION_DAYS` Tage aufbewahrt.
+
+**Datenbank.** Der Assistent verbindet sich mit dem Datenbankbenutzer von GOAT, dem die Datenbank gehört. Das braucht er, weil die Berechtigungsprüfungen von GOAT mit den Rechten des Aufrufers laufen und viele Tabellen von GOAT lesen. Die Rechte prüfen Sie mit:
+
+```bash
+docker compose exec assistant python -m assistant.dbcheck
+```
+
+Der Befehl gibt `ok` aus oder listet jedes fehlende Recht auf.
+
+**Datenverarbeitung.** Fragen von Benutzern und, je nach Datenrichtlinie der Organisation, Daten aus GOAT gehen an den Modellanbieter der verwendeten Verbindung. Bei GOAT AI ist das der Anbieter, den Sie einrichten; bei einer eigenen Verbindung der Anbieter der Organisation. Die Datenrichtlinie einer Organisation ist **Eingeschränkt**, bis eine Administratorin oder ein Administrator der Organisation unter **Einstellungen → KI** **Standard** wählt: Bis dahin verlassen nur Feldnamen, Typen, Anzahlen und Statistiken GOAT, niemals Zeilen oder Geometrien.
 
 ## Optionale Integrationen {#integrations}
 

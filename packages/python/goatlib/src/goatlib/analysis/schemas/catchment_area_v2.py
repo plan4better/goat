@@ -41,6 +41,36 @@ class AccessEgressMode(StrEnum):
     car = "car"
 
 
+# Travel speed (km/h) an active mode routes at when a run names none. The form's
+# speed fields take their `default_by_field` values from here, and the routing
+# tools fall back to the same value, so a run built without the form routes at
+# the speed the form would have filled in. Car has no entry: its cost follows
+# each edge's OSM maxspeed. Keyed by mode value, so the routing-mode enums of
+# every v2 tool look it up alike.
+DEFAULT_SPEED_KMH: dict[str, float] = {
+    RoutingMode.walking: 5,
+    RoutingMode.bicycle: 15,
+    RoutingMode.pedelec: 23,
+}
+
+# The same speeds under the names a PT access or egress leg gives its mode.
+LEG_DEFAULT_SPEED_KMH: dict[str, float] = {
+    AccessEgressMode.walk: DEFAULT_SPEED_KMH[RoutingMode.walking],
+    AccessEgressMode.bicycle: DEFAULT_SPEED_KMH[RoutingMode.bicycle],
+    AccessEgressMode.pedelec: DEFAULT_SPEED_KMH[RoutingMode.pedelec],
+}
+
+
+def speed_or_default(speed: float | None, mode: str) -> float:
+    """The speed (km/h) a run routes `mode` at: the one given, else the mode's
+    default from the tables above (a routing mode or a PT leg's mode). 0.0, the
+    engine's "not set", for a mode that takes no speed: car and public
+    transport."""
+    if speed is not None:
+        return speed
+    return DEFAULT_SPEED_KMH.get(mode, LEG_DEFAULT_SPEED_KMH.get(mode, 0.0))
+
+
 class PTMode(StrEnum):
     bus = "bus"
     tram = "tram"

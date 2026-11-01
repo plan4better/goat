@@ -68,3 +68,70 @@ class TestDownloadRoute:
             COLLECTION, params={"format": "csv", "crs": "EPSG:3857"}
         )
         assert response.status_code == 403
+
+
+class TestDownloadCharge:
+    @patch("geoapi.routers.download.charge_download", new_callable=AsyncMock)
+    @patch("geoapi.routers.download._run_export")
+    @patch("geoapi.routers.download.layer_service")
+    def test_the_owner_pays_the_export_time_and_the_file(
+        self,
+        mock_layer_service,
+        mock_export,
+        mock_charge,
+        test_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        from types import SimpleNamespace
+
+        from geoapi.routers import download
+
+        monkeypatch.setattr(download.settings, "BILLING_ENABLED", True)
+        mock_layer_service.is_layer_in_public_project = AsyncMock(return_value=True)
+        mock_layer_service.get_layer_metadata = AsyncMock(
+            return_value=SimpleNamespace(
+                name="Layer", organization_id="org1", user_id="own1"
+            )
+        )
+        zip_path = tmp_path / "layer.zip"
+        zip_path.write_bytes(b"z" * 1234)
+        mock_export.return_value = str(zip_path)
+
+        response = test_client.get(COLLECTION, params={"format": "csv"})
+
+        assert response.status_code == 200
+        org, owner, layer, seconds, size = mock_charge.call_args.args
+        assert (org, owner, size) == ("org1", "own1", 1234)
+        assert layer.replace("-", "") == "abc123def456789012345678901234ab"
+        assert seconds >= 0
+
+    @patch("geoapi.routers.download.charge_download", new_callable=AsyncMock)
+    @patch("geoapi.routers.download._run_export")
+    @patch("geoapi.routers.download.layer_service")
+    def test_nothing_is_charged_with_billing_off(
+        self,
+        mock_layer_service,
+        mock_export,
+        mock_charge,
+        test_client,
+        tmp_path,
+        monkeypatch,
+    ):
+        from types import SimpleNamespace
+
+        from geoapi.routers import download
+
+        monkeypatch.setattr(download.settings, "BILLING_ENABLED", False)
+        mock_layer_service.is_layer_in_public_project = AsyncMock(return_value=True)
+        mock_layer_service.get_layer_metadata = AsyncMock(
+            return_value=SimpleNamespace(
+                name="Layer", organization_id="org1", user_id="own1"
+            )
+        )
+        zip_path = tmp_path / "layer.zip"
+        zip_path.write_bytes(b"z" * 10)
+        mock_export.return_value = str(zip_path)
+
+        assert test_client.get(COLLECTION, params={"format": "csv"}).status_code == 200
+        mock_charge.assert_not_called()

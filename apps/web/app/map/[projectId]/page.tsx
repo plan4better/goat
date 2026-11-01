@@ -36,8 +36,10 @@ import {
 } from "@/lib/validations/project";
 import { widgetSchemaMap } from "@/lib/validations/widget";
 
+import { useProjectAssistantSurface } from "@/hooks/assistant/useProjectAssistantSurface";
 import { useAuthZ } from "@/hooks/auth/AuthZ";
 import { useBrandedTheme } from "@/hooks/dashboard/useBrandedTheme";
+import { useDashboardSaves } from "@/hooks/dashboard/useDashboardSaves";
 import { useExplorerBasemap } from "@/hooks/explorer/useExplorerBasemap";
 import { JobStatusWatcher } from "@/hooks/jobs/JobStatus";
 import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
@@ -47,6 +49,7 @@ import { useMapUrlIntent } from "@/hooks/map/useMapUrlIntent";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { DraggableItem } from "@/components/builder/widgets/common/DraggableItem";
+import ConflictBanner from "@/components/common/ConflictBanner";
 import { LoadingPage } from "@/components/common/LoadingPage";
 import Header from "@/components/header/Header";
 import EditModeHalo from "@/components/map/EditModeHalo";
@@ -95,9 +98,9 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
   // A template result (T7) can land here as `?mode=workflows&workflow=<id>` /
   // `?mode=reports&layout=<id>` — see templateResultHref in
   // hooks/templates/useUseTemplate.ts. Workflow selection is handled inside
-  // the hook (Redux); layoutId is threaded down to ReportsLayout below since
+  // the hook (Redux); layoutRequest is threaded down to ReportsLayout below since
   // the Reports panel keeps its selection in local component state.
-  const { layoutId } = useMapUrlIntent(projectId);
+  const { layoutRequest } = useMapUrlIntent(projectId);
 
   const {
     project: _project,
@@ -204,6 +207,17 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
     return isOrgEditor;
   }, [project?.my_role, projectFolder, isOrgEditor]);
 
+  // The assistant's read-only project surface (spec §10): context per mode, map views in Map mode.
+  useProjectAssistantSurface({
+    projectId,
+    project,
+    failed: !!projectError,
+    mapRef,
+    mapMode,
+    isEditor: !!isProjectEditor,
+    layers: allProjectLayersIncludingTables,
+  });
+
   const isLoading = useMemo(
     () =>
       isProjectLoading ||
@@ -268,6 +282,14 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
     mutateMap();
   }, [mutateProjectLayers, mutateProjectLayerGroups, mutateProject, mutateMap]);
 
+  // The dashboard is saved on its revision: a save made on an older one than
+  // core holds is refused and shown, not written over the newer one.
+  const dashboardSaves = useDashboardSaves({
+    projectId,
+    builderRevision: project?.builder_revision,
+    mutateProject,
+  });
+
   // Widget Drag and Drop
   const [activeWidget, setActiveWidget] = useState<BuilderWidgetSchema | null>(null);
 
@@ -293,6 +315,13 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
       // Fidelity) must not be written back into it as if core had sent them.
       const projectToUpdate = JSON.parse(JSON.stringify(_project ?? project));
       Object.assign(projectToUpdate, partial);
+      if ("builder_config" in partial) {
+        // Shown at once; read again only once the save is in, so the read
+        // never brings back the dashboard from before it.
+        mutateProject(projectToUpdate, false);
+        await dashboardSaves.save(partial, refreshFlag);
+        return;
+      }
       mutateProject(projectToUpdate, refreshFlag);
       await updateProject(projectId, partial);
       // The map document carries the project's number locale.
@@ -546,7 +575,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                           project={project}
                           projectLayers={reportLayers}
                           onProjectUpdate={handleProjectUpdate}
-                          initialLayoutId={layoutId}
+                          layoutRequest={layoutRequest}
                         />
                       )}
                       {mapMode === "workflows" && (
@@ -603,6 +632,14 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                               </>
                             )}
                           </Box>
+                          {mapMode === "builder" && dashboardSaves.conflict && (
+                            <ConflictBanner
+                              document="dashboard"
+                              conflict={dashboardSaves.conflict}
+                              onReload={dashboardSaves.reload}
+                              onKeepMine={dashboardSaves.keepMine}
+                            />
+                          )}
                           {mapMode === "builder" && (
                             <Box
                               sx={{

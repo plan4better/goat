@@ -9,11 +9,13 @@ import logging
 from pathlib import Path
 from typing import Any, List, Optional, Self
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from goatlib.analysis.geoprocessing.dissolve import DissolveTool
-from goatlib.analysis.schemas.base import FieldStatistic
-from goatlib.analysis.schemas.geoprocessing import DissolveParams
+from goatlib.analysis.schemas.geoprocessing import (
+    DissolveFieldStatistic,
+    DissolveParams,
+)
 from goatlib.analysis.schemas.ui import (
     SECTION_INPUT,
     SECTION_OUTPUT,
@@ -95,14 +97,17 @@ class DissolveToolParams(ToolInputBase, LayerInputMixin, DissolveParams):
     )
 
     # Override field_statistics with proper UI metadata
-    field_statistics: Optional[List[FieldStatistic]] = Field(
+    field_statistics: Optional[List[DissolveFieldStatistic]] = Field(
         None,
         description="Statistics to calculate for each dissolved group.",
         json_schema_extra=ui_field(
             section="statistics",
             field_order=2,
             widget="field-statistics-selector",
-            widget_options={"source_layer": "input_layer_id"},
+            widget_options={
+                "source_layer": "input_layer_id",
+                "placeholder_template": "{operation}_{field}",
+            },
             visible_when={"calculate_statistics": True},
         ),
     )
@@ -122,12 +127,24 @@ class DissolveToolParams(ToolInputBase, LayerInputMixin, DissolveParams):
         ),
     )
 
+    @model_validator(mode="after")
+    def _statistics_need_a_statistic(self: Self) -> Self:
+        # The form does not run with statistics switched on and none chosen;
+        # the run would otherwise compute none.
+        if self.calculate_statistics and not self.field_statistics:
+            raise ValueError(
+                "field_statistics needs at least one statistic when "
+                "calculate_statistics is on."
+            )
+        return self
+
 
 class DissolveToolRunner(BaseToolRunner[DissolveToolParams]):
     """Dissolve tool runner for Windmill."""
 
     tool_class = DissolveTool
     output_geometry_type = None  # Dynamic based on input geometry
+    output_geometry_follows_input = True
     default_output_name = get_default_layer_name("dissolve", "en")
 
     @classmethod
@@ -153,15 +170,26 @@ class DissolveToolRunner(BaseToolRunner[DissolveToolParams]):
             if field in input_layer:
                 columns[field] = input_layer[field]
 
-        # Add count column (always present)
-        count_col = cls.unique_column_name(columns, "count")
-        columns[count_col] = "BIGINT"
-
-        # Add statistics columns (only when the toggle is on)
+        # Statistics apply only when the toggle is on
         calculate_statistics = params.get("calculate_statistics", False)
         field_statistics = (
             (params.get("field_statistics") or []) if calculate_statistics else []
         )
+
+        # Add count column (always present); a count statistic's result_name
+        # names it, as in the run
+        count_name = next(
+            (
+                stat["result_name"]
+                for stat in field_statistics
+                if stat.get("operation", "count") == "count" and stat.get("result_name")
+            ),
+            "count",
+        )
+        count_col = cls.unique_column_name(columns, count_name)
+        columns[count_col] = "BIGINT"
+
+        # Add statistics columns
         for stat in field_statistics:
             operation = stat.get("operation", "count")
             field = stat.get("field")
@@ -170,7 +198,7 @@ class DissolveToolRunner(BaseToolRunner[DissolveToolParams]):
                 # count is already added above
                 continue
             elif field:
-                base_name = result_name if result_name else f"{field}_{operation}"
+                base_name = result_name if result_name else f"{operation}_{field}"
                 col_name = cls.unique_column_name(columns, base_name)
                 columns[col_name] = "DOUBLE"
 
@@ -190,11 +218,7 @@ class DissolveToolRunner(BaseToolRunner[DissolveToolParams]):
         default style without statistics."""
         if not (params.calculate_statistics and params.field_statistics):
             return None
-        first_stat = params.field_statistics[0]
-        if first_stat.operation.value == "count":
-            field = "count"
-        else:
-            field = f"{first_stat.operation.value}_{first_stat.field}"
+        field = params.field_statistics[0].get_operation_first_column_name()
         return classified(field, TEAL, geometry)
 
     def process(

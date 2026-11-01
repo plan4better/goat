@@ -20,7 +20,7 @@ This page walks you through them, from the requirements to your first login.
 |---|---|---|
 | **CPU / RAM** | 4 vCPU / 8 GB | 8 vCPU / 16 GB |
 | **Disk** | 50 GB | 200 GB or more (grows with your data) |
-| **Operating system** | Any Linux with Docker Engine 24+ and Docker Compose 2.23+ | Ubuntu 24.04 LTS |
+| **Operating system** | Any Linux with Docker Engine 24+ and Docker Compose 2.24+ | Ubuntu 24.04 LTS |
 
 In addition, you need:
 
@@ -109,7 +109,7 @@ For scripted installs, pass the answers as options and add `--non-interactive`:
 - an `http://` URL is combined with a TLS mode other than `off`;
 - `auto` mode is combined with a port in the URL (Let's Encrypt needs the standard ports);
 - the Let's Encrypt email uses a domain that Let's Encrypt rejects (see [Automatic certificate](./https.md#auto));
-- Docker Compose is older than 2.23.
+- Docker Compose is older than 2.24.
 
 ### Running setup.sh again {#rerun}
 
@@ -138,7 +138,7 @@ A few services only prepare the installation and then stop: `data-init`, `core-m
 `smoke.sh` checks the whole installation step by step and prints `PASS` or `FAIL` for each step:
 
 1. All one-time services finished successfully, and all long-running services are healthy. Services whose health check has not passed yet, right after `docker compose up -d`, get up to five minutes (`SMOKE_WAIT`, in seconds).
-2. The web app, the Core API, GeoAPI, Processes and Catalog answer under the public URL, and GeoAPI builds its links with the public URL.
+2. The web app, the Core API, GeoAPI, Processes, Catalog and the AI assistant answer under the public URL, and GeoAPI builds its links with the public URL. The MCP endpoint answers at `/assistant/mcp`, and the assistant can read every database table it needs.
 3. Keycloak announces the public URL as its issuer, and the first administrator can log in.
 4. The administrator belongs to an organization and has a profile.
 5. A small GeoJSON file is uploaded, imported as a layer, served as a vector tile, and used in a buffer analysis.
@@ -168,6 +168,7 @@ All services share the one public URL and are told apart by the path:
 | `/geoapi` | GeoAPI |
 | `/processes` | Processes |
 | `/catalog` | Catalog (STAC API at `/catalog/stac`) |
+| `/assistant` | AI assistant (MCP endpoint for external agents at `/assistant/mcp`) |
 | `/keycloak` | Login (Keycloak); admin console at `/keycloak/admin` |
 
 With the bundled object storage, `/goat-uploads` and `/goat-assets` lead to Garage for uploads and public images.

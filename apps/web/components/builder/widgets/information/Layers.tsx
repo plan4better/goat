@@ -13,8 +13,9 @@ import { useLayerTreeState } from "@/hooks/map/useLayerTreeState";
 import { type MapLayer, useMapLayers, withMapGroups } from "@/hooks/map/useMapLayers";
 import { useAppSelector } from "@/hooks/store/ContextHooks";
 
-import { ProjectLayerTree } from "@/components/map/panels/layer/ProjectLayerTree";
+import { LayerGroupSwitcher } from "@/components/builder/widgets/information/LayerGroupSwitcher";
 import TabsLayerLayout from "@/components/builder/widgets/information/TabsLayerLayout";
+import { ProjectLayerTree } from "@/components/map/panels/layer/ProjectLayerTree";
 
 interface LayerInformationProps {
   widgetId: string;
@@ -58,13 +59,23 @@ export const LayerInformationWidget = ({
   );
   // An editor in the builder writes map state; a dashboard visitor's changes are view state.
   const treeState = useLayerTreeState(projectId, viewOnly ? "public" : "edit");
+  const allLayers = useMemo(
+    () => (viewOnly ? reduxProjectLayers : editProjectLayers || []),
+    [viewOnly, reduxProjectLayers, editProjectLayers]
+  );
+  const allGroups = useMemo(
+    () => (viewOnly ? reduxProjectLayerGroups : editProjectLayerGroups || []),
+    [viewOnly, reduxProjectLayerGroups, editProjectLayerGroups]
+  );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const opts = config.options as Record<string, any> | undefined;
-  const excludedLayers: number[] = opts?.excluded_layers ?? [];
-  const legendHiddenLayers: number[] = opts?.legend_hidden_layers ?? [];
-  const legendSimpleLayers: number[] = opts?.legend_simple_layers ?? [];
+  // Stable when unset, so memos and the switchers' play timer don't restart on every render
+  const excludedLayers: number[] = useMemo(() => opts?.excluded_layers ?? [], [opts?.excluded_layers]);
+  const legendHiddenLayers: number[] = useMemo(() => opts?.legend_hidden_layers ?? [], [opts?.legend_hidden_layers]);
+  const legendSimpleLayers: number[] = useMemo(() => opts?.legend_simple_layers ?? [], [opts?.legend_simple_layers]);
   const downloadableLayers: number[] = opts?.downloadable_layers ?? [];
+  const groupSwitchers = config.setup?.group_switchers;
   const outOfZoomBehavior = opts?.out_of_zoom_behavior ?? "hide";
 
   // Subscribe to currentZoom when we need it for zoom-based behavior (hide or dim)
@@ -73,8 +84,7 @@ export const LayerInformationWidget = ({
   );
 
   const filteredLayers = useMemo(() => {
-    const layersToUse = viewOnly ? reduxProjectLayers : editProjectLayers || [];
-    return layersToUse.filter((layer) => {
+    return allLayers.filter((layer) => {
       if (layer.layer_id && SYSTEM_LAYERS_IDS.includes(layer.layer_id)) return false;
       // Excluded by checkbox in config
       if (excludedLayers.includes(layer.id)) return false;
@@ -93,16 +103,37 @@ export const LayerInformationWidget = ({
       }
       return true;
     });
-  }, [viewOnly, reduxProjectLayers, editProjectLayers, currentZoom, searchText, excludedLayers, legendHiddenLayers, outOfZoomBehavior]);
+  }, [allLayers, currentZoom, searchText, excludedLayers, legendHiddenLayers, outOfZoomBehavior]);
 
   // Filter out groups that have no visible layers
-  const allGroups = viewOnly ? reduxProjectLayerGroups : editProjectLayerGroups || [];
   const filteredGroups = useMemo(() => {
     const visibleLayerGroupIds = new Set(
       filteredLayers.map((l) => l.layer_project_group_id).filter(Boolean)
     );
     return allGroups.filter((g) => visibleLayerGroupIds.has(g.id));
   }, [allGroups, filteredLayers]);
+
+  // Groups shown one layer at a time: the switcher takes the place of the group's layers
+  const groupContent = useMemo(() => {
+    const content: Record<number, React.ReactNode> = {};
+    allGroups.forEach((group) => {
+      const switcher = groupSwitchers?.[group.id];
+      if (!switcher) return;
+      content[group.id] = (
+        <LayerGroupSwitcher
+          groupId={group.id}
+          title={group.name}
+          config={switcher}
+          excludedLayers={excludedLayers}
+          legendHiddenLayers={legendHiddenLayers}
+          simpleLegendLayers={legendSimpleLayers}
+          hideLegendHeading={!!opts?.hide_legend_heading}
+          viewOnly={viewOnly}
+        />
+      );
+    });
+    return content;
+  }, [allGroups, groupSwitchers, excludedLayers, legendHiddenLayers, legendSimpleLayers, opts?.hide_legend_heading, viewOnly]);
 
   const options = config.options;
   const layoutStyle = options?.layout_style || "tree";
@@ -148,6 +179,7 @@ export const LayerInformationWidget = ({
           hideLegendHeading={!!opts?.hide_legend_heading}
           groupIcons={opts as Record<string, { url: string; source?: string }> | undefined}
           dimOutOfZoom={outOfZoomBehavior === "dim"}
+          groupContent={groupContent}
         />
       ) : (
         <ProjectLayerTree
@@ -174,6 +206,7 @@ export const LayerInformationWidget = ({
           groupIcons={opts as Record<string, { url: string; source?: string }> | undefined}
           dimOutOfZoom={outOfZoomBehavior === "dim"}
           groupInfo={config.setup?.group_info}
+          groupContent={groupContent}
         />
       )}
     </Box>

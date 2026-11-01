@@ -22,20 +22,15 @@ S = settings.SCHEMA
 
 NEW_ORGANIZATION = {
     "name": "Own organization",
-    "department": "Planning",
-    "industry": "urban_planning",
-    "location": "DE",
     "type": "government",
-    "use_case": "site_analysis_and_design_decision_support",
     "region": "EU",
-    "phone_number": "+490000000000",
 }
 
 
 @pytest.fixture(autouse=True)
 def no_billing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Creating an organization reaches Stripe when billing is configured."""
-    monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", None)
+    """Creating an organization starts a trial when billing is on."""
+    monkeypatch.setattr(settings, "BILLING_ENABLED", False)
 
 
 async def _organization_of(db: AsyncSession, user_id: UUID) -> Any:

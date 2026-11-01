@@ -11,7 +11,7 @@ import { Stepper, Step, StepLabel } from "@mui/material";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import type { Attribute } from "keycloakify/login/kcContext/KcContext";
 import { useFormValidation } from "keycloakify/login/lib/useFormValidation";
-import { useMemo, useEffect, Fragment } from "react";
+import { useMemo, useEffect, useState, Fragment } from "react";
 
 import type { I18n } from "../../i18n";
 import { getCountries } from "../../i18n";
@@ -86,58 +86,58 @@ export function UserProfileFormFields(props: UserProfileFormFieldsProps) {
     [attributesWithPasswordOrdered],
   );
 
-  // Terms and conditions checkbox
+  // The terms and the newsletter are checkboxes of their own, not text fields.
+  // Both are stored as the time they were ticked. Register starts them empty;
+  // update and IdP review start them from the stored value, so the box shows
+  // what the user agreed to before and resubmitting does not clear the consent.
   const termsAndConditions = attributesWithPasswordOrdered.find(
     ({ name }) => name === "terms_and_conditions",
   );
-  if (termsAndConditions !== undefined) {
-    attributesWithPasswordOrdered.splice(
-      attributesWithPasswordOrdered.indexOf(termsAndConditions),
-      1,
-    );
-  }
-  const handleTermsAndConditionChange = (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    let newValue = "";
-    if (event.target.checked) {
-      newValue = Date.now().toString();
-    }
-    formValidationDispatch({
-      action: "update value",
-      name: "terms_and_conditions",
-      newValue,
-    });
-  };
-
-  // Subscribe to newsletter checkbox
   const subscribeToNewsletter = attributesWithPasswordOrdered.find(
     ({ name }) => name === "subscribe_to_newsletter",
   );
-  if (subscribeToNewsletter !== undefined) {
-    attributesWithPasswordOrdered.splice(
-      attributesWithPasswordOrdered.indexOf(subscribeToNewsletter),
-      1,
-    );
-  }
-  const handleSubscribeToNewsletterChange = (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    let newValue = "";
-    if (event.target.checked) {
-      newValue = Date.now().toString();
-    }
-    formValidationDispatch({
-      action: "update value",
-      name: "subscribe_to_newsletter",
-      newValue,
-    });
-  };
+  const textFieldAttributes = useMemo(
+    () =>
+      attributesWithPasswordOrdered.filter(
+        ({ name }) =>
+          name !== "terms_and_conditions" &&
+          name !== "subscribe_to_newsletter",
+      ),
+    [attributesWithPasswordOrdered],
+  );
+
+  const [termsAcceptedAt, setTermsAcceptedAt] = useState(
+    () => termsAndConditions?.value ?? "",
+  );
+  const [newsletterConsentAt, setNewsletterConsentAt] = useState(
+    () => subscribeToNewsletter?.value ?? "",
+  );
+
+  // The checkbox posts its `value` when ticked and nothing when not, so the
+  // value is the ISO timestamp of the moment it was ticked.
+  const handleConsentChange =
+    (
+      name: "terms_and_conditions" | "subscribe_to_newsletter",
+      setConsentAt: (value: string) => void,
+    ) =>
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const newValue = event.target.checked ? new Date().toISOString() : "";
+      setConsentAt(newValue);
+      formValidationDispatch({ action: "update value", name, newValue });
+    };
+  const handleTermsAndConditionChange = handleConsentChange(
+    "terms_and_conditions",
+    setTermsAcceptedAt,
+  );
+  const handleSubscribeToNewsletterChange = handleConsentChange(
+    "subscribe_to_newsletter",
+    setNewsletterConsentAt,
+  );
 
   // Options Dropdown for all fields that have a predefined list of values
   const attributeOptions = useMemo(() => {
     const options: { [key: string]: AttributeOptions } = {};
-    attributesWithPasswordOrdered.forEach((attribute) => {
+    textFieldAttributes.forEach((attribute) => {
       if (attribute.validators.options !== undefined) {
         // EdgeCase: Check if attributes.name is country
         // For country attributes we are getting the options from library
@@ -179,7 +179,7 @@ export function UserProfileFormFields(props: UserProfileFormFieldsProps) {
         </Stepper>
       )}
 
-      {attributesWithPasswordOrdered.map((attribute, i) => {
+      {textFieldAttributes.map((attribute, i) => {
         const { value, displayableErrors } =
           fieldStateByAttributeName[attribute.name];
 
@@ -306,9 +306,11 @@ export function UserProfileFormFields(props: UserProfileFormFieldsProps) {
             <Checkbox
               id="terms_and_conditions"
               name="terms_and_conditions"
-              tabIndex={3}
               color="primary"
+              checked={termsAcceptedAt !== ""}
+              value={termsAcceptedAt}
               onChange={handleTermsAndConditionChange}
+              tabIndex={getIncrementedTabIndex()}
             />
           }
           label={
@@ -350,9 +352,11 @@ export function UserProfileFormFields(props: UserProfileFormFieldsProps) {
               <Checkbox
                 id="subscribe_to_newsletter"
                 name="subscribe_to_newsletter"
-                tabIndex={3}
                 color="primary"
+                checked={newsletterConsentAt !== ""}
+                value={newsletterConsentAt}
                 onChange={handleSubscribeToNewsletterChange}
+                tabIndex={getIncrementedTabIndex()}
               />
             }
             label={
@@ -367,6 +371,15 @@ export function UserProfileFormFields(props: UserProfileFormFieldsProps) {
               </Box>
             }
           />
+        )}
+      {/* The trial emails are part of the trial; the newsletter above is not.
+          Only a realm whose operator sends such emails says so, with the
+          annotation trialEmailsNote: "true" on the attribute (realm/README.md). */}
+      {subscribeToNewsletter?.annotations?.trialEmailsNote === "true" &&
+        (activeStep == 1 || activeStep === undefined) && (
+          <Typography variant="caption" color="text.secondary" component="p">
+            {msg("trialEmailsNote")}
+          </Typography>
         )}
     </>
   );

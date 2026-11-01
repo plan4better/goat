@@ -42,13 +42,19 @@ from goatlib.analysis.schemas.ui import (
     ui_field,
     ui_sections,
 )
+from goatlib.io.config import parquet_copy_options
 from goatlib.models.io import DatasetMetadata
+from goatlib.tools._routing_limits import speed_default_by_field
 from goatlib.tools.base import BaseToolRunner, drops_unrecorded_tables
 from goatlib.tools.schemas import ToolInputBase, get_default_layer_name
 from goatlib.tools.style import categories, starting_points_style
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
 
 logger = logging.getLogger(__name__)
+
+#: The geometry of a catchment result by its kind (`catchment_area_type`);
+#: polygons for the others (polygon, hexagonal grid).
+_CATCHMENT_GEOMETRY = {"network": "line", "point_grid": "point"}
 
 # Custom sections for catchment area UI
 # Order: routing (1), configuration (2), starting_points (3), result (7)
@@ -274,14 +280,7 @@ class CatchmentAreaWindmillParams(ToolInputBase):
                 "measure_type": CatchmentAreaMeasureType.time,
             },
             widget_options={
-                "default_by_field": {
-                    "field": "routing_mode",
-                    "values": {
-                        "walking": 5,
-                        "bicycle": 15,
-                        "pedelec": 23,
-                    },
-                }
+                "default_by_field": speed_default_by_field("routing_mode"),
             },
         ),
     )
@@ -435,6 +434,9 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
     # coordinates were read. None when there is nothing to reference: map
     # clicks, or a layer run that asked for no field.
     _starting_point_references: "list[Any] | None" = None
+    # The reference field's column type on the layer, so a result without
+    # points still types its origin as the field. None without a field.
+    _starting_point_reference_type: str | None = None
 
     @classmethod
     def predict_output_schema(
@@ -570,6 +572,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             Tuple of (latitudes, longitudes) lists
         """
         self._starting_point_references = None
+        self._starting_point_reference_type = None
         is_temp_layer = ":" in layer_id
         if is_temp_layer:
             # export_layer_to_parquet resolves temp layers
@@ -582,15 +585,14 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             parquet_info = self._get_table_info(self.duckdb_con, f"'{temp_parquet}'")
             geom_col = parquet_info.get("geometry_column", "geometry")
 
+            column_types = {
+                str(c[0]): str(c[1])
+                for c in self.duckdb_con.execute(
+                    f"DESCRIBE SELECT * FROM '{temp_parquet}'"
+                ).fetchall()
+            }
             ref_col = self._validated_reference_column(
-                reference_field,
-                [
-                    c[0]
-                    for c in self.duckdb_con.execute(
-                        f"DESCRIBE SELECT * FROM '{temp_parquet}'"
-                    ).fetchall()
-                ],
-                layer_id,
+                reference_field, list(column_types), layer_id
             )
             ref_select = f', "{ref_col}" as ref' if ref_col else ""
 
@@ -629,8 +631,10 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             )
             geom_col = "geometry"  # default
             column_names: list[str] = []
+            column_types = {}
             for col_name, col_type, *_ in cols_result.fetchall():
                 column_names.append(col_name)
+                column_types[col_name] = col_type
                 if "GEOMETRY" in col_type.upper():
                     geom_col = col_name
 
@@ -662,8 +666,12 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             """
             result = self.duckdb_con.execute(query, params).fetchall()
 
+        if ref_col:
+            self._starting_point_reference_type = column_types[ref_col]
+
+        # No point left after the filter: the caller decides what that means.
         if not result:
-            raise ValueError(f"No valid geometries found in layer {layer_id}")
+            return [], []
 
         # One pass: a row dropped for a null coordinate has to take its
         # reference value with it, or every later point is misidentified.
@@ -709,6 +717,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             # Map clicks have no attributes to reference. The generated layer
             # numbers them from 1, so position already is the identifier.
             self._starting_point_references = None
+            self._starting_point_reference_type = None
             return starting_points.latitude, starting_points.longitude
         elif isinstance(starting_points, StartingPointsLayer):
             # Extract from existing layer - don't create duplicate starting points layer
@@ -735,6 +744,8 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             params.starting_points,
             params.user_id,
         )
+        if not latitudes:
+            raise ValueError("No valid geometries found in the starting points layer")
 
         # Validate starting point limits based on routing mode
         # These limits match the frontend validation in apps/web/lib/validations/tools.ts
@@ -914,7 +925,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                     id,
                     geom
                 FROM (VALUES {values}) AS t(id, geom)
-            ) TO '{output_path}' (FORMAT PARQUET, COMPRESSION ZSTD)
+            ) TO '{output_path}' {parquet_copy_options('COMPRESSION ZSTD')}
         """)
 
         con.close()
@@ -931,6 +942,11 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
 
         # Check if we're in temp mode (for workflow preview)
         temp_mode = getattr(params, "temp_mode", False)
+
+        # The result's geometry follows the kind of catchment, also for a
+        # result without rows (`result_geometry_type`).
+        kind = getattr(getattr(params, "catchment_area_type", None), "value", None)
+        self.output_geometry_type = _CATCHMENT_GEOMETRY.get(str(kind), "polygon")
 
         # Main polygon layer - use result_layer_name, then output_name, then default
         output_layer_id = str(uuid_module.uuid4())
@@ -996,6 +1012,10 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                 if pmtiles_path:
                     table_info["pmtiles_path"] = str(pmtiles_path)
 
+            # Not the analysis's metadata: it reports "Polygon" for every
+            # kind of catchment; the kind decides (`output_geometry_type`).
+            self._fill_result_geometry_type(table_info, params.user_id, None)
+
             # Step 2c: Ingest starting points layer to DuckLake (if available)
             starting_points_table_info = None
             if self._starting_points_parquet and self._starting_points_parquet.exists():
@@ -1046,6 +1066,9 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                     source_type="vector",
                     geometry_type="Point",
                     crs="EPSG:4326",
+                )
+                self._fill_second_layer_geometry_type(
+                    starting_points_table_info, starting_points_metadata
                 )
                 starting_points_result_info = (
                     asyncio.get_event_loop().run_until_complete(

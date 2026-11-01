@@ -161,13 +161,15 @@ const InExplorerChip = () => {
     <Stack
       direction="row"
       alignItems="center"
-      spacing={0.5}
+      spacing={1}
       sx={{
-        px: 0.75,
+        px: "8px",
         py: 0.25,
         mr: 0.5,
-        borderRadius: 1,
+        // A pill, as the Explorer's other small labels.
+        borderRadius: "999px",
         bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+        // The icon in GOAT's darker green; the caption keeps its own grey.
         color: "primary.dark",
         flexShrink: 0,
       }}>
@@ -322,9 +324,10 @@ const filterMenuForViewMode = (
   return menuOptions.filter((option) => !excludedActions.includes(option.id as any));
 };
 
-// Catalogue layers cannot be renamed, duplicated, or have features edited
+// Catalogue layers cannot be duplicated or have features edited. Renaming is allowed: it only
+// changes the project layer's name, never the shared catalog dataset.
 const filterMenuForCatalogLayer = (menuOptions: PopperMenuItem[]): PopperMenuItem[] => {
-  const excludedActions = [MapLayerActions.RENAME, MapLayerActions.DUPLICATE, MapLayerActions.EDIT_FEATURES];
+  const excludedActions = [MapLayerActions.DUPLICATE, MapLayerActions.EDIT_FEATURES];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return menuOptions.filter((option) => !excludedActions.includes(option.id as any));
 };
@@ -380,6 +383,8 @@ interface ProjectLayerTreeProps {
   headerContent?: React.ReactNode;
   /** Per-group info text (keyed by group ID string) shown as an ⓘ button on the group row */
   groupInfo?: Record<string, string>;
+  /** Content shown under a group row instead of its layers, keyed by group ID */
+  groupContent?: Record<number, React.ReactNode>;
   /** Project owner's user id, used to decide whether feature editing is offered.
    * Passed in rather than fetched so the public dashboard, which renders this
    * tree read-only, makes no authenticated request. */
@@ -413,6 +418,7 @@ export const ProjectLayerTree = ({
   dimOutOfZoom = true,
   headerContent,
   groupInfo,
+  groupContent,
   projectOwnerId,
 }: ProjectLayerTreeProps) => {
   const { t } = useTranslation("common");
@@ -912,7 +918,7 @@ export const ProjectLayerTree = ({
         menuOptions = filterMenuForViewMode(menuOptions, allowedActions);
       }
 
-      // Catalogue layers cannot be renamed, duplicated, or have features edited
+      // Catalogue layers cannot be duplicated or have features edited
       if (node.is_catalog) {
         menuOptions = filterMenuForCatalogLayer(menuOptions);
       }
@@ -1254,6 +1260,7 @@ export const ProjectLayerTree = ({
           // bundle, which has metadata of its own and can be filtered as a
           // whole — but only in edit mode, where that panel exists at all.
           isSelectable: !!item.isBundleGroup && isEditMode,
+          legendContent: groupContent?.[node.id],
         };
       }
 
@@ -1365,6 +1372,7 @@ export const ProjectLayerTree = ({
     projectLayers,
     onLayerTimeChange,
     exploredBundleId,
+    groupContent,
   ]);
 
   const renderPrefix = useCallback(

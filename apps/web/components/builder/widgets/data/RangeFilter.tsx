@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Bar, BarChart, Cell, ResponsiveContainer, XAxis, YAxis } from "recharts";
 
 import { useProjectLayerHistogramStats } from "@/lib/api/projects";
+import { DEFAULT_WIDGET_COLOR } from "@/lib/constants/ui";
 import { formatNumber } from "@/lib/utils/format-number";
 import type { HistogramStatsQueryParams } from "@/lib/validations/project";
 
@@ -28,7 +29,7 @@ const RangeFilter = ({
   steps = 50,
   showSlider = true,
   cqlFilter,
-  color = "#0e58ff",
+  color = DEFAULT_WIDGET_COLOR,
 }: RangeFilterProps) => {
   const theme = useTheme();
   const { t, i18n } = useTranslation("common");

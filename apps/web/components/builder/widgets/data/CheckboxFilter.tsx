@@ -4,6 +4,8 @@ import { Box, Checkbox, FormControlLabel, Link, Skeleton, Stack, Typography, use
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { DEFAULT_WIDGET_COLOR } from "@/lib/constants/ui";
+
 import { MAX_FILTER_VALUES, useFilterValues } from "./useFilterValues";
 
 interface CheckboxFilterProps {
@@ -28,7 +30,7 @@ const CheckboxFilter = ({
   multiple = false,
   customOrder,
   cqlFilter,
-  color = "#0e58ff",
+  color = DEFAULT_WIDGET_COLOR,
   labelMap,
 }: CheckboxFilterProps) => {
   const theme = useTheme();

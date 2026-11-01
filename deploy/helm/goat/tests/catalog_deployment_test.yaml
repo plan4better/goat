@@ -13,7 +13,7 @@ tests:
           value: RELEASE-NAME-goat-catalog
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/plan4better/goat/catalog:v3.0.9
+          value: ghcr.io/plan4better/goat/catalog:v3.1.0
       - equal:
           path: spec.template.spec.containers[0].ports[0].containerPort
           value: 8400
@@ -156,3 +156,10 @@ tests:
           path: data.CATALOG_GOAT_UI_BASE_URL
           value: https://goat.example.org
 
+  - it: renders no MCP settings for the catalog (the endpoint moved to the assistant)
+    template: catalog/configmap.yaml
+    asserts:
+      - notExists:
+          path: data.CATALOG_ENABLE_MCP
+      - notExists:
+          path: data.CATALOG_MCP_ALLOWED_HOSTS

@@ -1,6 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { toast } from "react-toastify";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { requestDatasetUpload } from "@/lib/api/datasets";
+import { executeProcessAsync } from "@/lib/api/processes";
+import { OutOfCreditsError } from "@/lib/utils/credits";
 import type { Folder } from "@/lib/validations/folder";
 
 import ProjectImportModal from "@/components/modals/ProjectImport";
@@ -123,5 +127,27 @@ describe("ProjectImport", () => {
     render(<ProjectImportModal open defaultFolderId="folder-1" onClose={() => {}} />);
 
     expect(screen.getByText("Field surveys")).toBeInTheDocument();
+  });
+
+  const runImport = async () => {
+    vi.mocked(requestDatasetUpload).mockResolvedValue({ key: "k" } as never);
+    render(<ProjectImportModal open defaultFolderId="folder-1" onClose={() => {}} />);
+    pickFile("bonn-mobility.zip");
+    fireEvent.click(importButton());
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+  };
+
+  it("tells the user when the import is refused for lack of credits", async () => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(executeProcessAsync).mockRejectedValue(new OutOfCreditsError());
+    await runImport();
+    expect(toast.error).toHaveBeenCalledWith("out_of_credits_tool");
+  });
+
+  it("keeps the generic message for any other failure", async () => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(executeProcessAsync).mockRejectedValue(new Error("boom"));
+    await runImport();
+    expect(toast.error).toHaveBeenCalledWith("error_importing_project");
   });
 });

@@ -1,7 +1,9 @@
-import { Box, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import { Stack } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
 import type { PopupPlacement, PopupSize, PopupType } from "@/lib/validations/widget";
+
+import SegmentedControl from "@/components/map/panels/common/SegmentedControl";
 
 export type PopupTypeValue = PopupType;
 export type PopupPlacementValue = PopupPlacement;
@@ -34,85 +36,40 @@ const PopupSettingsControls = ({
 
   return (
     <Stack spacing={2}>
-      <Box>
-        <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: "block" }}>
-          {t("popup_type")}
-        </Typography>
-        <ToggleButtonGroup
-          exclusive
-          size="small"
-          value={popupType}
-          onChange={(_, v) => {
-            if (v) onPopupTypeChange(v as PopupTypeValue);
-          }}
-          sx={{ width: "100%" }}>
-          <ToggleButton value="tooltip" sx={{ flex: 1, fontSize: 12, py: 0.75, textTransform: "none" }}>
-            {t("tooltip")}
-          </ToggleButton>
-          <ToggleButton value="popover" sx={{ flex: 1, fontSize: 12, py: 0.75, textTransform: "none" }}>
-            {t("popup")}
-          </ToggleButton>
-          <ToggleButton value="dialog" sx={{ flex: 1, fontSize: 12, py: 0.75, textTransform: "none" }}>
-            {t("popup_dialog")}
-          </ToggleButton>
-        </ToggleButtonGroup>
-      </Box>
-
+      <SegmentedControl
+        label={t("popup_type")}
+        value={popupType}
+        onChange={(v) => onPopupTypeChange(v as PopupTypeValue)}
+        items={[
+          { value: "tooltip", label: t("tooltip") },
+          { value: "popover", label: t("popup") },
+          { value: "dialog", label: t("popup_dialog") },
+        ]}
+      />
       {showPlacement && (
-        <Box>
-          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: "block" }}>
-            {t("popup_placement")}
-          </Typography>
-          <ToggleButtonGroup
-            exclusive
-            size="small"
-            value={placement}
-            onChange={(_, v) => {
-              if (v) onPlacementChange(v as PopupPlacementValue);
-            }}
-            sx={{ width: "100%" }}>
-            <ToggleButton value="auto" sx={{ flex: 1, fontSize: 12, py: 0.5, textTransform: "none" }}>
-              {t("placement_auto")}
-            </ToggleButton>
-            <ToggleButton value="top" sx={{ flex: 1, fontSize: 12, py: 0.5, textTransform: "none" }}>
-              {t("placement_top")}
-            </ToggleButton>
-            <ToggleButton value="bottom" sx={{ flex: 1, fontSize: 12, py: 0.5, textTransform: "none" }}>
-              {t("placement_bottom")}
-            </ToggleButton>
-            <ToggleButton value="left" sx={{ flex: 1, fontSize: 12, py: 0.5, textTransform: "none" }}>
-              {t("placement_left")}
-            </ToggleButton>
-            <ToggleButton value="right" sx={{ flex: 1, fontSize: 12, py: 0.5, textTransform: "none" }}>
-              {t("placement_right")}
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
+        <SegmentedControl
+          label={t("popup_placement")}
+          value={placement}
+          onChange={(v) => onPlacementChange(v as PopupPlacementValue)}
+          items={[
+            { value: "auto", label: t("placement_auto") },
+            { value: "top", label: t("placement_top") },
+            { value: "bottom", label: t("placement_bottom") },
+            { value: "left", label: t("placement_left") },
+            { value: "right", label: t("placement_right") },
+          ]}
+        />
       )}
-
-      <Box>
-        <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mb: 0.5, display: "block" }}>
-          {t("popup_size")}
-        </Typography>
-        <ToggleButtonGroup
-          exclusive
-          size="small"
-          value={size}
-          onChange={(_, v) => {
-            if (v) onSizeChange(v as PopupSizeValue);
-          }}
-          sx={{ width: "100%" }}>
-          <ToggleButton value="sm" sx={{ flex: 1, fontSize: 12, py: 0.5, textTransform: "none" }}>
-            {t("size_small")}
-          </ToggleButton>
-          <ToggleButton value="md" sx={{ flex: 1, fontSize: 12, py: 0.5, textTransform: "none" }}>
-            {t("size_medium")}
-          </ToggleButton>
-          <ToggleButton value="lg" sx={{ flex: 1, fontSize: 12, py: 0.5, textTransform: "none" }}>
-            {t("size_large")}
-          </ToggleButton>
-        </ToggleButtonGroup>
-      </Box>
+      <SegmentedControl
+        label={t("popup_size")}
+        value={size}
+        onChange={(v) => onSizeChange(v as PopupSizeValue)}
+        items={[
+          { value: "sm", label: t("size_small") },
+          { value: "md", label: t("size_medium") },
+          { value: "lg", label: t("size_large") },
+        ]}
+      />
     </Stack>
   );
 };

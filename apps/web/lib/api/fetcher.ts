@@ -1,16 +1,17 @@
 import { getSession, signIn } from "next-auth/react";
 
+import { TOKEN_REFRESH_BUFFER_MS } from "@/lib/utils/token-refresh";
+
 /**
  * Cached access token to avoid hitting /api/auth/session on every API request.
  * getSession() makes a network call each time, so with ~70+ SWR hooks this
  * would otherwise generate dozens of session requests per second.
  *
- * Cache expiry is tied to the JWT exp claim with a 10s buffer, so the token
- * is always refreshed before it actually expires.
+ * Cache expiry is tied to the JWT exp claim less TOKEN_REFRESH_BUFFER_MS; the
+ * session asked then refreshes the token, so it is replaced before it expires.
  */
 let cachedToken: string | null = null;
 let cacheExpiry = 0;
-const REFRESH_BUFFER_MS = 10_000; // refresh 10s before token expires
 const NULL_CACHE_MS = 30_000; // cache null results for 30s
 let pendingSessionPromise: Promise<string | null> | null = null;
 
@@ -28,7 +29,7 @@ function getTokenExpiry(token: string): number | null {
  * Get access token from session or localStorage (for print mode)
  * Print mode uses localStorage to pass token from Playwright
  */
-const getAccessToken = async (): Promise<string | null> => {
+export const getAccessToken = async (): Promise<string | null> => {
   // Fallback to localStorage for print mode (Playwright injects token here)
   if (typeof window !== "undefined") {
     const printToken = localStorage.getItem("print_access_token");
@@ -63,7 +64,7 @@ const getAccessToken = async (): Promise<string | null> => {
       cachedToken = session?.access_token ?? null;
       if (cachedToken) {
         const exp = getTokenExpiry(cachedToken);
-        cacheExpiry = exp ? exp - REFRESH_BUFFER_MS : Date.now() + NULL_CACHE_MS;
+        cacheExpiry = exp ? exp - TOKEN_REFRESH_BUFFER_MS : Date.now() + NULL_CACHE_MS;
       } else {
         cacheExpiry = Date.now() + NULL_CACHE_MS;
       }

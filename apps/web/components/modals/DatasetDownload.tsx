@@ -9,6 +9,7 @@ import { downloadLayerDirect, startDatasetExport } from "@/lib/api/layers";
 import { useJobs } from "@/lib/api/processes";
 import { useUserProfile } from "@/lib/api/users";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
+import { creditsErrorMessage } from "@/lib/utils/credits";
 import { getSuggestedCRS } from "@/lib/utils/map/crs-suggestions";
 import type { FeatureDataExchangeType } from "@/lib/validations/common";
 import { featureDataExchangeType, tableDataExchangeType } from "@/lib/validations/common";
@@ -117,8 +118,8 @@ const DatasetDownloadModal: React.FC<DownloadDatasetDialogProps> = ({
         toast.info(t("export_started") || "Export started. Check the jobs menu for progress.");
         onDownload?.();
       }
-    } catch {
-      toast.error(`${t("error_downloading")} ${dataset.name}`);
+    } catch (error) {
+      toast.error(creditsErrorMessage(error, t, `${t("error_downloading")} ${dataset.name}`));
     } finally {
       setIsBusy(false);
       onClose?.();

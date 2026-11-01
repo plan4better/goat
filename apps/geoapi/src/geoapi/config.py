@@ -189,6 +189,16 @@ class Settings(BaseSettings):
             h.strip() for h in self.RASTER_PRIVATE_HOSTS.split(",") if h.strip()
         )
 
+    # SaaS: meter outbound bytes for credits and refuse downloads of an
+    # organization over its budget. Self-hosted installs leave it unset. Read
+    # unprefixed like the other shared settings: processes and the workers
+    # use the same BILLING_ENABLED.
+    BILLING_ENABLED: bool = os.getenv("BILLING_ENABLED", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
     # Redis settings for distributed tile caching
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
     # Tile cache TTL in seconds (default 1 hour)

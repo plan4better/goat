@@ -233,6 +233,7 @@ export default function NumberInput({
           tooltip={input.description}
           color="inherit"
           truncate={!!input.uiMeta?.inline_group}
+          required={input.required}
         />
         <SliderInput
           value={value ?? (effectiveDefault as number) ?? min ?? 0}
@@ -253,6 +254,7 @@ export default function NumberInput({
         tooltip={input.description}
         color="inherit"
         truncate={!!input.uiMeta?.inline_group}
+        required={input.required}
       />
       <TextField
         type="text"

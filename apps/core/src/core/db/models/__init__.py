@@ -11,9 +11,21 @@ from ._link_model import (
     UserRoleLink,
 )
 from .asset import UploadedAsset
+from .assistant import (
+    ASSISTANT_TABLES,
+    AssistantConnection,
+    AssistantConversation,
+    AssistantMessage,
+    AssistantOrganizationSettings,
+    AssistantRun,
+    AssistantRunEvent,
+    AssistantToolCall,
+    AssistantUsage,
+)
+from .billing_terms import BillingTerms  # noqa: F401
 from .bundle import Bundle
 from .bundle_artifact import BundleArtifact
-from .cost import Cost
+from .credit_rate import CreditRate  # noqa: F401
 from .credit_usage import CreditUsage
 from .favorite import Favorite
 from .folder import Folder

@@ -8,14 +8,14 @@ import certifi
 import emails
 
 from core.core.config import settings
-from core.utils.i18n import jinja_env
+from core.utils.i18n import active_jinja_env
 
 
 def render_email_html(
     environment: Dict[str, Any],
     html_template: str = "email/template.html",
 ) -> str:
-    template = jinja_env.get_template(html_template)
+    template = active_jinja_env().get_template(html_template)
     # Mail clients fetch images from outside GOAT: root-relative paths are
     # resolved against CLIENT_URL.
     environment = dict(environment)
@@ -29,8 +29,31 @@ def render_email_html(
         logo_url=settings.absolute_url(logo_url) if logo_url else None,
         contact_url=settings.EMAIL_CONTACT_URL,
         privacy_url=settings.EMAIL_PRIVACY_URL,
+        company_name=settings.EMAIL_COMPANY_NAME,
+        company_url=settings.EMAIL_COMPANY_URL,
         **environment,
     )
+
+
+async def user_language(db: Any, user_id: Any) -> str:
+    """The GOAT language of a mail's recipient (their setting), GOAT's default
+    for someone without one."""
+    from sqlalchemy import select
+
+    from core.db.models.system_setting import SystemSetting
+    from core.schemas.system_setting import default_system_settings
+
+    setting = None
+    if user_id:
+        setting = (
+            await db.execute(
+                select(SystemSetting.preferred_language).where(
+                    SystemSetting.user_id == user_id
+                )
+            )
+        ).scalar_one_or_none()
+    value = setting or default_system_settings.preferred_language
+    return str(getattr(value, "value", value))
 
 
 SMTP_TIMEOUT = 30  # seconds
@@ -81,6 +104,8 @@ def send_email(
             f"skipping email to {email_to}: {subject}"
         )
         return
+    # One line: a subject carries organization names, never a header break.
+    subject = " ".join(subject.split())
     message = emails.Message(
         subject=subject,
         html=render_email_html(environment, html_template),

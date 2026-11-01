@@ -41,7 +41,8 @@ from core.schemas.organization import (
     OrganizationUser,
     request_examples,
 )
-from core.utils.email import send_email
+from core.utils.email import send_email, user_language
+from core.utils.i18n import language
 from core.utils.i18n import trans as _
 
 logger = logging.getLogger(__name__)
@@ -202,9 +203,9 @@ async def delete_organization_permanently(
     Answers 409 unless the organization has at most one member and nothing
     in it: no content in its space or in the member's personal space (trash
     included), no teams, pending invitations, custom domains or analytics
-    settings. Billing is not touched: with Stripe on, the customer named by
-    `stripe_id` stays in Stripe until it is cancelled there; its events find
-    no organization and are ignored.
+    settings. Billing is not touched: a subscription of the Odoo company named
+    by `odoo_company_id` stays in Odoo until it is ended there; its
+    entitlement pushes find no organization and are refused.
     """
     try:
         deleted = await crud_organization.delete_permanently(
@@ -429,20 +430,25 @@ async def invite_user_to_organization(
     invitation_url = (
         f"{settings.CLIENT_URL}/onboarding/organization/invite/{invitation.id}"
     )
-    email_content = EmailTemplateContent(
-        artwork_url=f"{settings.email_artwork_url}/img/email/organization_invited.png",
-        title=_("You have been invited to join an organization"),
-        message=_(
-            "You have been invited to join an organization. Click on the button below to accept the invitation."
-        ),
-        action_url=invitation_url,
-        action_label=_("Join organization"),
-    )
-    send_email(
-        email_to=payload.user_email,
-        subject=_("You have been invited to join an organization"),
-        environment=email_content.model_dump(),
-    )
+    # The invitee's language when they have an account, else the inviter's.
+    lang = await user_language(db, invited_user[0].id if invited_user else user_id)
+    with language(lang):
+        names = {"organization": organization.name}
+        email_content = EmailTemplateContent(
+            artwork_url=f"{settings.email_artwork_url}/img/email/organization_invited.png",
+            title=_("You have been invited to %(organization)s") % names,
+            message=_(
+                "You have been invited to work together in %(organization)s on GOAT. Accept the invitation with the button below."
+            )
+            % names,
+            action_url=invitation_url,
+            action_label=_("Accept invitation"),
+        )
+        send_email(
+            email_to=payload.user_email,
+            subject=_("GOAT - Invitation to %(organization)s") % names,
+            environment=email_content.model_dump(),
+        )
 
     account_setup = None
     if created_keycloak_user_id:

@@ -48,3 +48,20 @@ def test_the_thin_heatmap_modules_resolve_to_their_own_v2_runner() -> None:
     two_sfca = _entry("heatmap_2sfca").get_runner_class()
     assert gravity is not None and gravity.__name__ == "HeatmapGravityV2ToolRunner"
     assert two_sfca is not None and two_sfca.__name__ == "Heatmap2SFCAV2ToolRunner"
+
+
+def test_a_tool_predicts_its_output_itself_or_with_the_first_inputs_columns() -> None:
+    """A workflow check trusts a prediction only when the tool's runner makes
+    it itself: the default passes the first input's columns through, which
+    may be any of the step's layers."""
+    from goatlib.tools.schema_prediction import predicts_own_output
+
+    assert predicts_own_output("buffer")
+    assert predicts_own_output("join")
+    assert predicts_own_output("huff_model")
+    assert predicts_own_output("huff_model_legacy")
+    # Its columns per opportunity are named after each opportunity's name or
+    # file, which a prediction cannot know.
+    assert not predicts_own_output("heatmap_2sfca_legacy")
+    assert not predicts_own_output("layer_delete")
+    assert not predicts_own_output("no_such_tool")

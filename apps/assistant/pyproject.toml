@@ -1,0 +1,84 @@
+[project]
+name = "assistant"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic-settings>=2.4",
+  # Pinned exactly: the event translation and the AI SDK contract test depend on its event types.
+  # Extras for the provider types of spec §4.2. No `bedrock` extra: it needs boto3>=1.42.63, which
+  # conflicts with core's boto3 pin in the shared lock; Bedrock and Vertex AI go through the
+  # Anthropic SDK's clients instead (anthropic[bedrock,vertex]).
+  "pydantic-ai-slim[anthropic,openai,mistral]==2.52.0",
+  "anthropic[bedrock,vertex]>=1.9.0",
+  "cryptography>=43",
+  # pydantic_ai.models.mistral imports httpx (legacy) directly; today it is present only through goatlib.
+  "httpx>=0.27",
+  # Imported directly by the model layer; the floors match the lock.
+  "httpx2>=2.13",
+  "httpcore2>=2.13",
+  "openai>=3.22",
+  "google-auth>=2.59",
+  "requests>=2.32",
+  "botocore>=1.38",
+  "anyio>=4.0",
+  "asyncpg>=0.29.0",
+  "redis>=5.2",
+  # The MCP endpoint (spec §9.1): SDK v2 speaks the 2026-07-28 revision and still
+  # answers 2025-era clients that start with `initialize`.
+  "mcp>=2.2,<3",
+  "goatlib",
+  "goatobs",
+]
+
+[tool.uv.sources]
+goatlib = { workspace = true }
+goatobs = { workspace = true }
+core = { workspace = true }
+catalog = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/assistant"]
+# The golden-stream generator writes into apps/web from a source checkout
+# (FIXTURE_DIR); it has no use in an installed package.
+exclude = ["src/assistant/encoding/fixtures.py"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+    # Tests build the assistant tables from core's models, the single source of truth (Task 4).
+    "core",
+    # The catalog pack's tests run against the catalog app and its fixture catalog (plan 3 Task 7).
+    "catalog",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["integration: needs local Redis or other services"]
+# The catalog app (a test-only dependency) imports lark, which still imports the
+# deprecated sre_* modules on Python 3.11.
+filterwarnings = ["ignore:module 'sre_(parse|constants)' is deprecated:DeprecationWarning"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "N", "I", "ANN"]
+ignore = ["E501", "ANN401", "ANN101", "ANN102"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true

@@ -155,6 +155,9 @@ class IProjectRead(ContentBaseAttributes, DateTimeBase):
         description="Closed by a restricted ancestor folder rather than its own flag",
     )
     builder_config: dict[str, Any] | None = Field(None, description="Builder config")
+    builder_revision: int | None = Field(
+        None, description="Revision of builder_config to send as builder_base_revision"
+    )
     max_extent: list[float] | None = Field(
         None, description="Max extent of the project"
     )
@@ -223,6 +226,14 @@ class IProjectBaseUpdate(SQLModel):
         None, description="Max extent of the project"
     )
     builder_config: dict[str, Any] | None = Field(None, description="Builder config")
+    builder_base_revision: int | None = Field(
+        None,
+        description=(
+            "The builder_revision a builder_config change was made on. A "
+            "change on another revision answers 409 changed_elsewhere; without "
+            "it the change lands anyway."
+        ),
+    )
     tags: List[str] | None = Field(
         default=None,
         sa_column=Column(ARRAY(Text), nullable=True),
@@ -256,6 +267,41 @@ class LayerProjectIds(BaseModel):
             "style, filter and preferences are withheld and it is not mapped."
         ),
     )
+
+
+class ProjectLayerSearchHit(BaseModel):
+    """One layer, in a project the caller can read, whose name matches a search."""
+
+    project_id: UUID = Field(..., description="Project ID")
+    project_name: str = Field(..., description="Project name")
+    project_updated_at: datetime | None = Field(
+        None, description="When the project last changed"
+    )
+    layer_project_id: int = Field(..., description="Layer Project ID")
+    layer_name: str = Field(..., description="Layer name within the project")
+    dataset_name: str | None = Field(
+        None,
+        description="Name of the underlying dataset; withheld for a locked layer",
+    )
+    layer_type: str = Field(..., description="feature, table or raster")
+    geometry_type: str | None = Field(
+        None, description="Geometry type of a feature layer"
+    )
+    locked: bool = Field(
+        False,
+        description=(
+            "The caller has no access to this dataset of his own (D7), as the "
+            "project's layer list marks it: matched on its name in the project "
+            "only, and its dataset's name is withheld."
+        ),
+    )
+
+
+class ProjectLayerSearchPage(BaseModel):
+    items: list[ProjectLayerSearchHit]
+    total: int
+    page: int
+    size: int
 
 
 class IFeatureBaseProject(CQLQuery):

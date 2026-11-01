@@ -24,7 +24,7 @@ export default function TimePickerInput({ input, value, onChange }: TimePickerIn
   const locale = useDayjsLocale();
   return (
     <Stack>
-      <FormLabelHelper label={input.title} tooltip={input.description} color="inherit" />
+      <FormLabelHelper label={input.title} tooltip={input.description} color="inherit" required={input.required} />
       <TimePicker locale={locale} time={value ?? (input.defaultValue as number) ?? 0} onChange={onChange} />
     </Stack>
   );

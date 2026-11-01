@@ -51,6 +51,7 @@ function useWidgetHidden(widget: BuilderWidgetSchema, viewOnly?: boolean): boole
   }, [viewOnly, widget.config, temporaryFilters]);
 }
 
+import WidgetErrorBoundary from "@/components/builder/widgets/WidgetErrorBoundary";
 import WidgetChart from "@/components/builder/widgets/chart/WidgetChart";
 import WidgetData from "@/components/builder/widgets/data/WidgetData";
 import WidgetElement from "@/components/builder/widgets/elements/WidgetElement";
@@ -72,6 +73,8 @@ interface WidgetWrapperProps {
   projectLayerGroups: ProjectLayerGroup[];
   viewOnly?: boolean;
   onWidgetDelete?: (widgetId: string) => void;
+  onWidgetDuplicate?: (widgetId: string) => void;
+  onSelectPanel?: () => void;
   onWidgetUpdate?: (updatedWidget: BuilderWidgetSchema) => void;
   panelWidgets?: BuilderWidgetSchema[];
 }
@@ -80,12 +83,16 @@ interface DraggableWidgetContainerProps {
   children: React.ReactNode;
   widget: BuilderWidgetSchema;
   onWidgetDelete?: (widgetId: string) => void;
+  onWidgetDuplicate?: (widgetId: string) => void;
+  onSelectPanel?: () => void;
 }
 
 const DraggableWidgetContainer: React.FC<DraggableWidgetContainerProps> = ({
   children,
   widget,
   onWidgetDelete,
+  onWidgetDuplicate,
+  onSelectPanel,
 }) => {
   const dispatch = useAppDispatch();
   const selectedWidget = useAppSelector((state) => state.map.selectedBuilderItem);
@@ -112,6 +119,8 @@ const DraggableWidgetContainer: React.FC<DraggableWidgetContainerProps> = ({
         isSelected={isSelected}
         onSelect={() => dispatch(setSelectedBuilderItem(widget))}
         onDelete={() => onWidgetDelete?.(widget.id)}
+        onDuplicate={onWidgetDuplicate && (() => onWidgetDuplicate(widget.id))}
+        onSelectParent={onSelectPanel}
         dragAttributes={attributes}
         dragListeners={listeners}
         showDragHandle={true}
@@ -128,10 +137,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   projectLayerGroups,
   viewOnly,
   onWidgetDelete,
+  onWidgetDuplicate,
+  onSelectPanel,
   onWidgetUpdate,
   panelWidgets,
 }) => {
   const isHidden = useWidgetHidden(widget, viewOnly);
+  const configKey = useMemo(() => JSON.stringify(widget.config ?? null), [widget.config]);
 
   // Completely remove the widget from the layout in public view
   if (isHidden) return null;
@@ -181,13 +193,23 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     </Box>
   );
 
+  // A published dashboard leaves out a widget that fails to render; the editor
+  // keeps its frame, so it can still be selected, fixed or deleted.
   return viewOnly ? (
-    <Box sx={(theme) => ({ width: "100%", ...widgetPadding(theme), pointerEvents: "all" })}>
-      {widgetContent}
-    </Box>
+    <WidgetErrorBoundary widgetId={widget.id} resetKey={configKey} showNotice={false}>
+      <Box sx={(theme) => ({ width: "100%", ...widgetPadding(theme), pointerEvents: "all" })}>
+        {widgetContent}
+      </Box>
+    </WidgetErrorBoundary>
   ) : (
-    <DraggableWidgetContainer widget={widget} onWidgetDelete={onWidgetDelete}>
-      {widgetContent}
+    <DraggableWidgetContainer
+      widget={widget}
+      onWidgetDelete={onWidgetDelete}
+      onWidgetDuplicate={onWidgetDuplicate}
+      onSelectPanel={onSelectPanel}>
+      <WidgetErrorBoundary widgetId={widget.id} resetKey={configKey} showNotice>
+        {widgetContent}
+      </WidgetErrorBoundary>
     </DraggableWidgetContainer>
   );
 };

@@ -10,12 +10,14 @@ Reference:
 """
 
 import logging
+import tempfile
 from pathlib import Path
 from typing import Any, Self
 
 from goatlib.analysis.accessibility.base import PTToolBase
 from goatlib.analysis.schemas.oev_gueteklasse import (
     STATION_CONFIG_DEFAULT,
+    CatchmentType,
     OevGueteklasseParams,
     OevGueteklasseStationConfig,
     PTTimeWindow,
@@ -130,9 +132,13 @@ class OevGueteklasseTool(PTToolBase):
         logger.info("Calculating station categories...")
         self._calculate_station_categories(config, params.time_window)
 
-        # Step 6: Create buffer catchments
-        logger.info("Creating buffer catchments...")
-        self._create_buffer_catchments(config)
+        # Step 6: Create catchments, as circles or along the street network
+        if params.catchment_type == CatchmentType.network:
+            logger.info("Creating street network catchments...")
+            self._create_network_catchments(config, params)
+        else:
+            logger.info("Creating buffer catchments...")
+            self._create_buffer_catchments(config)
 
         # Step 7: Union and difference buffers
         logger.info("Processing buffer overlaps...")
@@ -332,6 +338,115 @@ class OevGueteklasseTool(PTToolBase):
                 AND s.transport_group = c.transport_group
         """)
 
+    def _create_classification_lookup(
+        self: Self,
+        config: OevGueteklasseStationConfig,
+    ) -> None:
+        """Table of (station category, distance) -> quality class."""
+        class_values = []
+        for station_cat, distances in config.classification.items():
+            for distance, pt_class in distances.items():
+                class_values.append(f"({station_cat}, {distance}, {pt_class})")
+        class_values_str = ", ".join(class_values)
+        self.con.execute(f"""
+            CREATE OR REPLACE TABLE classification_lookup AS
+            SELECT * FROM (VALUES {class_values_str}) AS t(station_category, distance_m, pt_class)
+        """)
+
+    def _create_network_catchments(
+        self: Self,
+        config: OevGueteklasseStationConfig,
+        params: OevGueteklasseParams,
+    ) -> None:
+        """Create catchments by walking the class distances along the street network.
+
+        One routing run covers every station: each class distance is a cutoff,
+        and the separated shape style keeps one polygon per station and cutoff,
+        so a station's category picks its classes from its own polygons. The
+        result fills ``station_buffers`` exactly like the circles do, so the
+        overlap processing is shared.
+        """
+        # Imported here so the buffer method never needs the routing package.
+        from goatlib.analysis.accessibility.catchment_area_v2 import (
+            CatchmentAreaToolV2,
+        )
+        from goatlib.analysis.schemas.catchment_area_v2 import (
+            CatchmentAreaV2Params,
+        )
+
+        self._create_classification_lookup(config)
+        self.con.execute("""
+            CREATE OR REPLACE TABLE station_buffers (
+                stop_id VARCHAR,
+                station_category INTEGER,
+                distance_m INTEGER,
+                pt_class INTEGER,
+                h3_3 BIGINT,
+                geom GEOMETRY
+            )
+        """)
+
+        # The routing run tags each polygon with the index of its starting
+        # point, so the stations are numbered in the order they are passed.
+        self.con.execute("""
+            CREATE OR REPLACE TABLE network_origins AS
+            SELECT
+                (ROW_NUMBER() OVER (ORDER BY stop_id) - 1)::INTEGER AS origin_idx,
+                stop_id,
+                station_category,
+                h3_3,
+                ST_X(geom) AS lon,
+                ST_Y(geom) AS lat
+            FROM station_categories
+            WHERE station_category < 999
+        """)
+        origins = self.con.execute(
+            "SELECT lat, lon FROM network_origins ORDER BY origin_idx"
+        ).fetchall()
+        if not origins:
+            logger.info("No classified stations, no network catchments to create.")
+            return
+
+        cutoffs = sorted(
+            {d for distances in config.classification.values() for d in distances}
+        )
+        with tempfile.TemporaryDirectory(prefix="oev_network_") as tmp:
+            catchment_path = Path(tmp) / "catchments.parquet"
+            CatchmentAreaToolV2().run(
+                CatchmentAreaV2Params(
+                    latitude=[lat for lat, _ in origins],
+                    longitude=[lon for _, lon in origins],
+                    routing_mode="walking",
+                    cost_type="distance",
+                    max_cost=cutoffs[-1],
+                    cutoffs=cutoffs,
+                    shape_style="separated",
+                    polygon_difference=False,
+                    output_format="parquet",
+                    output_path=str(catchment_path),
+                    edge_path=params.edge_path,
+                    node_path=params.node_path,
+                )
+            )
+            # A station whose category has no class at a distance gets no
+            # polygon there, as with the circles.
+            self.con.execute(f"""
+                INSERT INTO station_buffers
+                SELECT
+                    o.stop_id,
+                    o.station_category,
+                    c.distance_m,
+                    c.pt_class,
+                    o.h3_3,
+                    r.geometry AS geom
+                FROM read_parquet('{catchment_path}') r
+                JOIN network_origins o ON o.origin_idx = r.origin_idx
+                JOIN classification_lookup c
+                    ON c.station_category = o.station_category
+                    AND c.distance_m = r.cost_step
+            """)
+        self.con.execute("DROP TABLE IF EXISTS network_origins")
+
     def _create_buffer_catchments(
         self: Self,
         config: OevGueteklasseStationConfig,
@@ -344,16 +459,7 @@ class OevGueteklasseTool(PTToolBase):
 
         For large datasets, processes in batches by h3_3 partition to avoid OOM.
         """
-        # Create classification lookup table
-        class_values = []
-        for station_cat, distances in config.classification.items():
-            for distance, pt_class in distances.items():
-                class_values.append(f"({station_cat}, {distance}, {pt_class})")
-        class_values_str = ", ".join(class_values)
-        self.con.execute(f"""
-            CREATE OR REPLACE TABLE classification_lookup AS
-            SELECT * FROM (VALUES {class_values_str}) AS t(station_category, distance_m, pt_class)
-        """)
+        self._create_classification_lookup(config)
 
         # Get count of station-distance combinations and h3_3 partitions
         count_result = self.con.execute("""

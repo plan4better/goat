@@ -197,6 +197,12 @@
         },
         "privacyUrl": {
           "type": "string"
+        },
+        "companyName": {
+          "type": "string"
+        },
+        "companyUrl": {
+          "type": "string"
         }
       }
     },
@@ -894,6 +900,137 @@
             },
             "secretAccessKeyKey": {
               "type": "string"
+            }
+          }
+        },
+        "layersDir": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Absolute path of the materialized catalog layers (CATALOG_LAYERS_DIR) on the data volume"
+        },
+        "tilesDir": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Absolute path of their PMTiles (CATALOG_TILES_DIR) on the data volume"
+        },
+        "extraEnv": {
+          "type": "array"
+        },
+        "resources": {
+          "type": "object"
+        },
+        "service": {
+          "type": "object"
+        },
+        "ingress": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "enabled"
+      ]
+    },
+    "assistant": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "registry": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          },
+          "required": [
+            "repository"
+          ]
+        },
+        "terminationGracePeriodSeconds": {
+          "type": "integer",
+          "minimum": 25
+        },
+        "config": {
+          "type": "object"
+        },
+        "mcp": {
+          "type": "object",
+          "properties": {
+            "auditRetentionDays": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "defaultConnection": {
+          "type": "object",
+          "properties": {
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKey": {
+              "type": "string"
+            }
+          }
+        },
+        "secretsKey": {
+          "type": "object",
+          "properties": {
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKey": {
+              "type": "string"
+            }
+          }
+        },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKeys": {
+              "type": "object",
+              "properties": {
+                "serverUrl": {
+                  "type": "string"
+                },
+                "realm": {
+                  "type": "string"
+                },
+                "clientId": {
+                  "type": "string"
+                },
+                "clientSecret": {
+                  "type": "string"
+                }
+              }
             }
           }
         },

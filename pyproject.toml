@@ -32,6 +32,7 @@ dev = [
 package = false
 
 [tool.uv.sources]
+assistant = { workspace = true }
 catalog = { workspace = true }
 core = { workspace = true }
 geoapi = { workspace = true }
@@ -45,6 +46,7 @@ members = [
     "apps/core",
     "apps/processes",
     "apps/catalog",
+    "apps/assistant",
     "packages/python/goatlib",
     "packages/python/goatobs",
 ]
@@ -91,6 +93,7 @@ testpaths = [
     "apps/core/tests",
     "apps/geoapi/tests",
     "apps/processes/tests",
+    "apps/assistant/tests",
     "packages/python/goatlib/tests",
     "packages/python/goatobs/tests",
 ]

@@ -65,6 +65,8 @@ from pathlib import Path
 
 import duckdb
 
+from goatlib.io.config import parquet_copy_options
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -798,7 +800,7 @@ def build_mirror(
             out.parent.mkdir(parents=True, exist_ok=True)
             con.execute(
                 f"COPY (SELECT * FROM ({query}) ORDER BY {order}) "
-                f"TO '{out.as_posix()}' (FORMAT PARQUET)"
+                f"TO '{out.as_posix()}' {parquet_copy_options()}"
             )
 
         def _count(path: Path) -> int:

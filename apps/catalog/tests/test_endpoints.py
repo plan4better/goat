@@ -117,6 +117,26 @@ def test_queryables_media_type(client: TestClient) -> None:
     assert {"id", "collection", "geometry", "datetime"} <= props
 
 
+def test_queryables_unit_collections_serves_the_collection_registry(
+    client: TestClient,
+) -> None:
+    items = client.get("/stac/queryables").json()["properties"]
+    default = client.get("/stac/queryables", params={"unit": "items"}).json()
+    collections = client.get("/stac/queryables", params={"unit": "collections"})
+    assert default["properties"] == items
+    assert collections.status_code == 200
+    assert collections.headers["content-type"].startswith("application/schema+json")
+    props = collections.json()["properties"]
+    # A dataset row does not carry per-layer fields, so Collection Search cannot
+    # sort or filter by them.
+    assert props != items
+    assert set(items) - set(props)
+    assert client.get("/stac/queryables", params={"unit": "bogus"}).status_code in (
+        400,
+        422,
+    )
+
+
 def test_collection_queryables_media_type(client: TestClient) -> None:
     r = client.get("/stac/collections/src-1/queryables")
     assert r.status_code == 200

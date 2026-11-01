@@ -7,10 +7,11 @@
  * - Job status tracking and management
  * - Analytics operations (feature-count, class-breaks, etc.)
  */
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
 
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import { PROCESSES_BASE_URL } from "@/lib/constants";
+import { OutOfCreditsError } from "@/lib/utils/credits";
 
 // OGC API Processes base URLs
 export const PROCESSES_API_BASE_URL = `${PROCESSES_BASE_URL}/processes`;
@@ -133,6 +134,9 @@ export interface Job {
         temp_layer_id?: string; // Temp layer ID for completed nodes
       }
   >;
+  /** Error text of each step that failed, for workflow_runner jobs: from the
+   * failed child jobs while the run goes on, from the run's result after it. */
+  node_errors?: Record<string, string>;
 }
 
 /**
@@ -297,6 +301,7 @@ async function executeProcess<TInput, TOutput>(processId: string, inputs: TInput
   });
 
   if (!response.ok) {
+    if (response.status === 402) throw new OutOfCreditsError();
     const error = await response.json();
     throw new Error(error.detail?.detail || error.detail || `Process execution failed: ${processId}`);
   }
@@ -317,6 +322,7 @@ export async function executeProcessAsync<TInput>(processId: string, inputs: TIn
   });
 
   if (!response.ok) {
+    if (response.status === 402) throw new OutOfCreditsError();
     const error = await response.json();
     throw new Error(error.detail?.detail || error.detail || `Process execution failed: ${processId}`);
   }
@@ -443,6 +449,13 @@ export function useJobs(queryParams?: GetJobsQueryParams) {
     isValidating,
   };
 }
+
+/**
+ * Reads every job list again (`useJobs`). A list without a running job does not poll,
+ * so a run started elsewhere, by the assistant, shows only after this.
+ */
+export const refreshJobLists = (): Promise<unknown> =>
+  mutate((key) => Array.isArray(key) && typeof key[0] === "string" && key[0].startsWith(JOBS_API_BASE_URL));
 
 /**
  * Hook to fetch and poll a single job by ID

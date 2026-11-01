@@ -27,7 +27,6 @@ dependencies = [
   "goatlib",
   "goatobs",
   "dnspython>=2.8.0",
-  "stripe>=6.7.0,<8.0.0",
   "python-keycloak>=2.16.3",
   "emails>=0.6",
   "babel>=2.13.0",

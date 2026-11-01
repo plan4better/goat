@@ -28,12 +28,6 @@ import ConfirmModal from "@/components/modals/Confirm";
 const toOrgFormDefaults = (organization: Organization): OrganizationUpdate => ({
   name: organization.name ?? "",
   type: organization.type ?? "",
-  size: organization.size ?? "",
-  industry: organization.industry ?? "",
-  department: organization.department ?? "",
-  use_case: organization.use_case ?? "",
-  phone_number: organization.phone_number ?? "",
-  location: organization.location ?? "",
   avatar: organization.avatar ?? "",
 });
 

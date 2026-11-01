@@ -1,5 +1,6 @@
 import * as z from "zod";
 
+import { DEFAULT_WIDGET_COLOR } from "@/lib/constants/ui";
 import { DEFAULT_COLOR_RANGE } from "@/lib/constants/color";
 import { formatNumberTypes, sortTypes, statisticOperationEnum } from "@/lib/validations/common";
 import { colorRange } from "@/lib/validations/layer";
@@ -97,11 +98,23 @@ export const layersToggleStyleTypes = z.enum(["eye", "checkbox", "switch"]);
 export const layersTogglePositionTypes = z.enum(["left", "right"]);
 export const layersMoreOptionsStyleTypes = z.enum(["compact", "direct_actions"]);
 export const layersOutOfZoomBehaviorTypes = z.enum(["hide", "dim"]);
+export const groupSwitcherLayoutTypes = z.enum(["chips", "slider", "dropdown"]);
+/**
+ * A layer group shown one layer at a time instead of as a list, e.g. one layer
+ * per monitoring year. Picking a layer turns it on and its group siblings off.
+ */
+export const groupSwitcherSchema = z.object({
+  layout: groupSwitcherLayoutTypes,
+  show_play: z.boolean().optional().default(false),
+});
+
 export const informationLayersConfigSchema = informationConfigSchema.extend({
   type: z.literal("layers"),
   setup: informationConfigSetupBaseSchema
     .extend({
       group_info: z.record(z.string(), z.string()).optional(),
+      // Per group id; a group without an entry is a plain list
+      group_switchers: z.record(z.string(), groupSwitcherSchema).optional(),
     })
     .default({}),
   options: informationConfigOptionsBaseSchema
@@ -290,7 +303,7 @@ export const filterDataConfigSchema = dataConfigSchema.extend({
       description: z.string().optional(),
       zoom_to_selection: z.boolean().optional().default(true),
       // Color settings (for chips, checkbox, range layouts)
-      color: z.string().optional().default("#0e58ff"),
+      color: z.string().optional().default(DEFAULT_WIDGET_COLOR),
       // Custom label mapping for discrete filter values
       label_map: z.array(z.tuple([z.string(), z.string()])).optional(),
       // Multi-layer attribute filtering
@@ -340,7 +353,7 @@ export const histogramChartConfigSchema = chartsConfigBaseSchema.extend({
       format: formatNumberTypes.optional().default("none"),
       display_field_label: z.string().optional(),
       // Base color for bars
-      color: z.string().optional().default("#0e58ff"),
+      color: z.string().optional().default(DEFAULT_WIDGET_COLOR),
       // Color when hovering over a bar
       highlight_color: z.string().optional().default("#f5b704"),
       // Color for selected/filtered portion (only used in highlight mode)
@@ -559,6 +572,8 @@ export type ImageElementSchema = z.infer<typeof imageElementConfigSchema>;
 export type TabItemSchema = z.infer<typeof tabItemSchema>;
 export type TabsContainerSchema = z.infer<typeof tabsContainerConfigSchema>;
 export type LayerInformationSchema = z.infer<typeof informationLayersConfigSchema>;
+export type GroupSwitcherType = z.infer<typeof groupSwitcherSchema>;
+export type GroupSwitcherLayoutType = z.infer<typeof groupSwitcherLayoutTypes>;
 export type NumbersDataSchema = z.infer<typeof numbersDataConfigSchema>;
 export type TableDataSchema = z.infer<typeof tableDataConfigSchema>;
 export type FilterDataSchema = z.infer<typeof filterDataConfigSchema>;

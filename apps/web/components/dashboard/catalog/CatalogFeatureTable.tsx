@@ -26,14 +26,19 @@ export const TABLE_ROWS = 100;
 const CatalogFeatureTable = ({
   features,
   columns,
+  rows = TABLE_ROWS,
+  maxHeight,
 }: {
   /** A geometry-less dataset's rows arrive as Features with a `null` geometry;
    * this table reads attributes either way. */
   features: GeoJSON.Feature<GeoJSON.Geometry | null>[];
   columns: CatalogColumn[];
+  /** Rows to show: fewer where the table is a glance (the assistant's card preview). */
+  rows?: number;
+  /** Height the table scrolls within; the frame's own default when left out. */
+  maxHeight?: number;
 }) => {
-
-  const shown = useMemo(() => features.slice(0, TABLE_ROWS), [features]);
+  const shown = useMemo(() => features.slice(0, rows), [features, rows]);
 
   /** Declared columns first, then anything the data carries beyond them. */
   const fields = useMemo<FeatureTableField[]>(() => {
@@ -77,7 +82,7 @@ const CatalogFeatureTable = ({
     /* How much of the dataset this is stands in the card's heading, where the
        dataset's own size already is — the reader compares the two numbers in
        one place rather than finding one above the table and one below it. */
-    <FeatureTableFrame fields={fields} data={data} />
+    <FeatureTableFrame fields={fields} data={data} maxHeight={maxHeight} />
   );
 };
 

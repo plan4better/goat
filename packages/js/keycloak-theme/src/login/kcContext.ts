@@ -43,60 +43,7 @@ export const { getKcContext } = createGetKcContext({
             value: undefined,
             name: "subscribe_to_newsletter",
             required: false,
-          },
-          // {
-          //   // eslint-disable-next-line no-template-curly-in-string
-          //   displayName: "country",
-          //   autocomplete: "off",
-          //   validators: {
-          //     options: {
-          //       options: ["al", "de", "fr", "us", "en"],
-          //     },
-          //   },
-          //   annotations: {},
-          //   required: true,
-          //   groupAnnotations: {},
-          //   readOnly: false,
-          //   name: "country",
-          // },
-          {
-            // eslint-disable-next-line no-template-curly-in-string
-            displayName: "profession",
-            autocomplete: "off",
-            validators: {
-              options: {
-                options: ["student", "employee", "self_employed", "other"],
-              },
-            },
-            annotations: {},
-            required: true,
-            groupAnnotations: {},
-            readOnly: false,
-            name: "profession",
-          },
-          {
-            // eslint-disable-next-line no-template-curly-in-string
-            displayName: "domain",
-            autocomplete: "off",
-            validators: {
-              options: {
-                options: [
-                  "transport_planning",
-                  "urban_planning",
-                  "gis",
-                  "architecture",
-                  "location_planning",
-                  "civil_engineering",
-                  "politics",
-                  "other",
-                ],
-              },
-            },
-            annotations: {},
-            required: true,
-            groupAnnotations: {},
-            readOnly: false,
-            name: "domain",
+            annotations: { trialEmailsNote: "true" },
           },
         ],
       },

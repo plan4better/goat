@@ -113,6 +113,7 @@ export default function BundleInput({ input, value, onChange, disabled }: Bundle
       setSelectedItems={handleChange}
       items={bundleItems}
       label={label}
+      required={input.required}
       tooltip={tooltip}
       placeholder={t("select_bundle")}
       emptyMessage={t("no_bundles_found")}
