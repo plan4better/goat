@@ -1,13 +1,13 @@
 "use client";
 
-import RedoIcon from "@mui/icons-material/Redo";
-import RunIcon from "@mui/icons-material/PlayArrow";
-import SelectIcon from "@mui/icons-material/NearMe";
-import StopIcon from "@mui/icons-material/Stop";
-import TextIcon from "@mui/icons-material/StickyNote2";
-import UndoIcon from "@mui/icons-material/Undo";
 import VariablesIcon from "@mui/icons-material/DataObject";
+import SelectIcon from "@mui/icons-material/NearMe";
+import RunIcon from "@mui/icons-material/PlayArrow";
+import RedoIcon from "@mui/icons-material/Redo";
+import TextIcon from "@mui/icons-material/StickyNote2";
+import StopIcon from "@mui/icons-material/Stop";
 import NotCheckedIcon from "@mui/icons-material/SyncProblem";
+import UndoIcon from "@mui/icons-material/Undo";
 import IssuesIcon from "@mui/icons-material/WarningAmber";
 import { Box, Button, Chip, IconButton, Popover, Tooltip, useTheme } from "@mui/material";
 import { styled } from "@mui/material/styles";
@@ -169,7 +169,8 @@ const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
   };
 
   return (
-    <ToolbarContainer>
+    // Named, so the workflow's issue chip is told apart from the steps' issue badges, which read the same.
+    <ToolbarContainer role="toolbar" aria-label={t("toolbar")}>
       {/* Tools and History Group */}
       <ToolGroup>
         {/* Selection Tools */}

@@ -6,6 +6,13 @@ import { type APIRequestContext, expect, test } from "@playwright/test";
 // fake model (apps/assistant/e2e/fake_openai.py). No provider key is involved.
 // The fake calls catalog_propose_filters with q "Radverkehr" and the theme
 // "transportation", then answers with a fixed sentence.
+// run.sh sets E2E_ASSISTANT; elsewhere (the E2E workflow starts no assistant,
+// so no page offers "Ask AI") the spec is skipped.
+test.skip(
+  !process.env.E2E_ASSISTANT,
+  "needs the assistant on the fake model: E2E_ASSISTANT (apps/assistant/e2e/run.sh)"
+);
+
 test.describe("Assistant", () => {
   // The conversation the test creates, removed again so repeated runs leave no history.
   let created: { url: string; headers: Record<string, string> } | undefined;
@@ -32,7 +39,9 @@ test.describe("Assistant", () => {
     const response = await conversation;
     const { id } = (await response.json()) as { id: string };
     // The bearer token, when the assistant needs one, is the page's own.
-    const authorization = Object.entries(response.request().headers()).filter(([name]) => name === "authorization");
+    const authorization = Object.entries(response.request().headers()).filter(
+      ([name]) => name === "authorization"
+    );
     created = {
       url: `${response.url().replace(/\/conversations\/?$/, "")}/conversations/${id}`,
       headers: Object.fromEntries(authorization),

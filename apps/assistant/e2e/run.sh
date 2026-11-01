@@ -36,4 +36,5 @@ for _ in $(seq 1 60); do
 done
 curl -fsS http://127.0.0.1:8500/readyz >/dev/null 2>&1 || { echo "assistant did not become ready" >&2; exit 1; }
 cd "$root"
-pnpm exec playwright test apps/web/playwright/assistant "$@"
+# The spec runs only where this says the fake model answers.
+E2E_ASSISTANT=1 pnpm exec playwright test apps/web/playwright/assistant "$@"

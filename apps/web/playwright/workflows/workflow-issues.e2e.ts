@@ -76,7 +76,9 @@ test.beforeAll(async () => {
         {
           id: "tool-sql",
           type: "tool",
-          position: { x: 450, y: 150 },
+          // A workflow without a stored view opens at the canvas origin; placed here, the step's
+          // issue badge (its bottom right corner) is inside the canvas, not under the Tools panel.
+          position: { x: 350, y: 150 },
           data: {
             type: "tool",
             processId: "custom_sql",
@@ -117,7 +119,10 @@ test("an input that is not connected blocks Run until it is connected", async ({
 
   // The check answers shortly after the workflow opens.
   await expect(input).toHaveAttribute("data-issue", "true", { timeout: 15000 });
-  await expect(page.getByRole("button", { name: /^\d+ issues?$/ })).toBeVisible();
+  // The toolbar's chip counts the workflow's issues; each step's badge is named the same way.
+  await expect(
+    page.getByRole("toolbar", { name: "Toolbar" }).getByRole("button", { name: /^\d+ issues?$/ })
+  ).toBeVisible();
   await expect(run).toBeDisabled();
   await badge.hover();
   await expect(badge).toContainText("is not connected");

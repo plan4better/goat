@@ -48,3 +48,11 @@ That workflow runs this checkout's goatlib on the newest release's worker
 image, with the router built into it: a PR that changes the C++ router
 (`packages/cpp/routing`) together with goatlib fails there until a release
 publishes the worker image with that router.
+
+## The assistant
+
+`assistant/catalog-proposal.e2e.ts` needs the assistant service answering
+with a fake model (`apps/assistant/e2e/fake_openai.py`), which gives the same
+answer on every run. `apps/assistant/e2e/run.sh` starts both and sets
+`E2E_ASSISTANT`; elsewhere, the E2E workflow included (it starts no
+assistant, so no page offers "Ask AI"), the spec is skipped.

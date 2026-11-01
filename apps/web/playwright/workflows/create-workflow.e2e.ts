@@ -41,8 +41,8 @@ test.describe("Workflow Management", () => {
     // Switch to Workflows tab
     await page.getByText("Workflows").click();
 
-    // Should see workflows panel
-    await expect(page.getByRole("heading", { name: "Workflows" })).toBeVisible();
+    // Should see workflows panel; exact, as the empty project's "No workflows yet" card is a heading too
+    await expect(page.getByRole("heading", { name: "Workflows", exact: true })).toBeVisible();
 
     // Create a new workflow: "New" opens a menu, "From scratch" starts empty.
     await newWorkflow(page);
