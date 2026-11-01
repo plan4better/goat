@@ -192,7 +192,14 @@ async def test_storage_filters_unused_type_owner_and_search(client, db_session, 
     assert _names(r) == ["Table A"] and r.json()["total"] == 2
     assert r.json()["split"] == split and r.json()["trash"]["count"] == 1
 
-    for bad in [{"type": "feature"}, {"sort": "owner"}, {"dir": "up"}]:
+    for bad in [
+        {"type": "feature"},
+        {"sort": "owner"},
+        {"dir": "up"},
+        # Written into the ORDER BY: only the listed values get there.
+        {"sort": "name, (SELECT 1)"},
+        {"dir": "asc; SELECT 1"},
+    ]:
         assert (await client.get(STORAGE, params=bad)).status_code == 422, bad
 
 
@@ -272,7 +279,15 @@ async def test_org_projects_lists_newest_first_with_layer_counts(
         assert _names(await client.get(PROJECTS, params=params)) == names, params
     r = await client.get(PROJECTS, params={"limit": 1, "offset": 1})
     assert _names(r) == ["A"] and r.json()["total"] == 2
-    for bad in [{"sort": "size"}, {"limit": 0}, {"limit": 101}, {"offset": -1}]:
+    for bad in [
+        {"sort": "size"},
+        {"limit": 0},
+        {"limit": 101},
+        {"offset": -1},
+        # Written into the ORDER BY: only the listed values get there.
+        {"sort": "name, (SELECT 1)"},
+        {"dir": "asc; SELECT 1"},
+    ]:
         assert (await client.get(PROJECTS, params=bad)).status_code == 422, bad
 
 

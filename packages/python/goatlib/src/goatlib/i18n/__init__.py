@@ -30,6 +30,9 @@ TRANSLATIONS_DIR = Path(__file__).parent / "translations"
 # Supported languages (ISO 639-1 codes)
 SUPPORTED_LANGUAGES = ("en", "de")
 DEFAULT_LANGUAGE = "en"
+# The translation file of each supported language: the file read is the one
+# looked up here, never a name built from the requested language.
+_TRANSLATION_FILES = {language: f"{language}.json" for language in SUPPORTED_LANGUAGES}
 
 
 class Translator:
@@ -52,13 +55,13 @@ class Translator:
 
     def _load_translations(self: Self) -> dict[str, Any]:
         """Load translations from JSON file."""
-        file_path = TRANSLATIONS_DIR / f"{self.language}.json"
+        file_path = TRANSLATIONS_DIR / _TRANSLATION_FILES[self.language]
 
         if not file_path.exists():
             logger.warning(
                 f"Translation file not found: {file_path}, falling back to {DEFAULT_LANGUAGE}"
             )
-            file_path = TRANSLATIONS_DIR / f"{DEFAULT_LANGUAGE}.json"
+            file_path = TRANSLATIONS_DIR / _TRANSLATION_FILES[DEFAULT_LANGUAGE]
 
         try:
             with open(file_path, encoding="utf-8") as f:

@@ -453,12 +453,28 @@ _STD_BREAKDOWN = {
     "category": ("category", f"AND {_CREDITS}"),
     "service": ("action", "AND category = 'egress'"),
 }
-# What each group may be sorted by (sort=); the other groups keep their order.
+# What each group may be sorted by (sort=), as SQL over its row g; the other
+# groups keep their order.
 _SORTS = {
-    "workflow": {"credits", "name", "runs", "last_run"},
-    "layer": {"credits", "name", "requests"},
-    "member": {"credits", "name", "compute", "traffic", "ai_credits", "ai_answers"},
+    "workflow": {
+        "credits": "g.credits",
+        "name": "g.name",
+        "runs": "g.runs",
+        "last_run": "g.last_run",
+    },
+    "layer": {"credits": "g.credits", "name": "g.name", "requests": "g.requests"},
+    "member": {
+        "credits": "g.credits",
+        "name": "g.name",
+        "compute": "g.compute",
+        "traffic": "g.traffic",
+        "ai_credits": "g.ai_credits",
+        "ai_answers": "g.ai_answers",
+    },
 }
+# The direction of a sort (dir=) as SQL. Every ORDER BY takes its SQL from
+# these lookups, never the request's text.
+_DIRECTIONS = {"asc": "ASC", "desc": "DESC"}
 # The groups whose rows have a name to search (q=).
 _SEARCHABLE = ("workflow", "layer", "member")
 
@@ -645,13 +661,13 @@ async def get_breakdown(
     )
     sql, order = _breakdown_sql(group_by, base, schema)
     if sort is not None:
-        if sort not in _SORTS.get(group_by, ()):
+        columns = _SORTS.get(group_by, {})
+        if sort not in columns:
             raise HTTPException(
                 status_code=422,
                 detail=f"unknown sort '{sort}' for group_by '{group_by}'",
             )
-        # sort and direction are from fixed lists: safe in the SQL text.
-        order = f"g.{sort} {direction} NULLS LAST, g.key"
+        order = f"{columns[sort]} {_DIRECTIONS[direction]} NULLS LAST, g.key"
     where = ""
     q = _search(q)
     if q and group_by in _SEARCHABLE:
@@ -802,8 +818,7 @@ def _storage_query(org: Organization, f: _StorageFilter) -> tuple[str, dict]:
     if f.unused:
         filters.append("pc.n IS NULL")
     extra = "".join(f" AND {clause}" for clause in filters)
-    # sort and direction are from fixed lists: safe in the SQL text.
-    order = f"{_STORAGE_SORTS[f.sort]} {f.direction} NULLS LAST, l.id"
+    order = f"{_STORAGE_SORTS[f.sort]} {_DIRECTIONS[f.direction]} NULLS LAST, l.id"
     return (
         f"""
         SELECT l.id::text AS layer_id, l.name,
@@ -1014,8 +1029,7 @@ async def get_org_projects(
             {"o": params["o"]},
         )
     ).scalar_one()
-    # sort and direction are from fixed lists: safe in the SQL text.
-    order = f"{_PROJECT_SORTS[sort]} {direction} NULLS LAST, p.id"
+    order = f"{_PROJECT_SORTS[sort]} {_DIRECTIONS[direction]} NULLS LAST, p.id"
     rows = (
         (
             await db.execute(

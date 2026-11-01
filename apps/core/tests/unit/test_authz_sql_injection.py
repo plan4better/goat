@@ -1,5 +1,6 @@
 import types
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 from core.core.config import settings
@@ -57,3 +58,54 @@ async def test_uuid_bind_cast_roundtrips(db_session):
         text("SELECT CAST(:user_id AS uuid) AS u"), {"user_id": uid}
     )
     assert str(result.scalar_one()) == uid
+
+
+# A resource type is formatted into SQL as a table name: one outside the
+# known types must never reach the database.
+UNKNOWN_TYPE = "layer WHERE false; DROP TABLE customer.user; --"
+
+
+def _session_without_sql() -> MagicMock:
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=AssertionError("no SQL may run"))
+    session.get = AsyncMock(side_effect=AssertionError("no SQL may run"))
+    return session
+
+
+@pytest.mark.asyncio
+async def test_require_refuses_an_unknown_resource_type_before_any_sql():
+    from core.core import authz
+
+    session = _session_without_sql()
+
+    with pytest.raises(ValueError):
+        await authz.require(session, UNKNOWN_TYPE, uuid4(), uuid4(), "read")
+    session.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_set_restricted_refuses_an_unknown_resource_type_before_any_sql():
+    from core.crud.crud_content import content
+
+    session = _session_without_sql()
+
+    with pytest.raises(ValueError):
+        await content.set_restricted(
+            session,
+            user_id=uuid4(),
+            resource_type=UNKNOWN_TYPE,  # type: ignore[arg-type]
+            resource_id=uuid4(),
+            restricted=True,
+        )
+    session.execute.assert_not_awaited()
+    session.get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_restricted_route_answers_422_for_an_unknown_resource_type(client):
+    response = await client.patch(
+        f"{settings.API_V2_STR}/content/layer;DROP TABLE x/{uuid4()}/restricted",
+        json={"restricted": True},
+    )
+
+    assert response.status_code == 422, response.text

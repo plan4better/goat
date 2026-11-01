@@ -1374,8 +1374,10 @@ class CRUDContent:
         `home` root is refused — it is folded into the space listing, so it
         has no row of its own to toggle the badge back off.
         """
-        # `authz.require` rejects any resource_type outside its own
-        # allow-list before the table name below is formatted into SQL.
+        # The table name formatted into the UPDATE below is the one
+        # `authz.table_of` holds for the type, never the caller's string;
+        # an unknown type is refused before any SQL.
+        table = authz.table_of(resource_type)
         await authz.require(db, resource_type, resource_id, user_id, "delete")
         if resource_type == "folder":
             folder = await db.get(Folder, resource_id)
@@ -1391,7 +1393,7 @@ class CRUDContent:
         updated = (
             await db.execute(
                 text(
-                    f"UPDATE {settings.SCHEMA}.{resource_type} "
+                    f"UPDATE {settings.SCHEMA}.{table} "
                     "SET restricted = :restricted, updated_at = now() "
                     "WHERE id = :id AND deleted_at IS NULL "
                     "RETURNING id"

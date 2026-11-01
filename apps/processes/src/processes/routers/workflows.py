@@ -7,6 +7,7 @@ plus metadata/schema prediction for workflow nodes.
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -545,23 +546,30 @@ class PredictedSchemaResponse(BaseModel):
     geometry_column: str = Field("geometry", description="Name of geometry column")
 
 
+def _caller_temp_path(user_id: str, *parts: str) -> Path:
+    """`parts` below the caller's own temporary folder, `user_<id>`.
+
+    The parts come from the request: a path that resolves outside that
+    folder (another user's results, anything else on the volume) is refused
+    as not found instead of read.
+    """
+    user_root = os.path.realpath(TEMP_DATA_ROOT / f"user_{user_id.replace('-', '')}")
+    path = os.path.realpath(os.path.join(user_root, *parts))
+    if not path.startswith(user_root + os.sep):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found")
+    return Path(path)
+
+
 def _get_temp_node_path(user_id: str, workflow_id: str, node_id: str) -> Path:
     """Get the path to a temp node's data directory."""
-    user_id_clean = user_id.replace("-", "")
-    workflow_id_clean = workflow_id.replace("-", "")
-    return (
-        TEMP_DATA_ROOT
-        / f"user_{user_id_clean}"
-        / f"w_{workflow_id_clean}"
-        / f"n_{node_id}"
+    return _caller_temp_path(
+        user_id, f"w_{workflow_id.replace('-', '')}", f"n_{node_id}"
     )
 
 
 def _get_workflow_temp_path(user_id: str, workflow_id: str) -> Path:
     """Get the path to a workflow's temp directory."""
-    user_id_clean = user_id.replace("-", "")
-    workflow_id_clean = workflow_id.replace("-", "")
-    return TEMP_DATA_ROOT / f"user_{user_id_clean}" / f"w_{workflow_id_clean}"
+    return _caller_temp_path(user_id, f"w_{workflow_id.replace('-', '')}")
 
 
 def _get_layer_schema_from_ducklake(layer_id: str) -> dict[str, str]:
@@ -617,6 +625,8 @@ async def get_workflow_metadata(
     Returns column information for each node that has been executed.
     This enables field selectors to show available fields from upstream nodes.
     """
+    # The id is a folder name of the caller's temporary results.
+    ensure_safe_workflow_ids(workflow_id, [])
     workflow_path = _get_workflow_temp_path(str(user_id), workflow_id)
     nodes: dict[str, NodeMetadata] = {}
 
@@ -666,6 +676,8 @@ async def get_node_metadata(
     user_id: UUID = Depends(get_user_id),
 ) -> NodeMetadata:
     """Fetch metadata for a single workflow node."""
+    # Both ids are folder names of the caller's temporary results.
+    ensure_safe_workflow_ids(workflow_id, [node_id])
     node_path = _get_temp_node_path(str(user_id), workflow_id, node_id)
     metadata_path = node_path / "metadata.json"
 
@@ -717,6 +729,8 @@ async def predict_schema(
     """
     from goatlib.tools.schema_prediction import predict_node_output_schema
 
+    # The id is a folder name of the caller's temporary results.
+    ensure_safe_workflow_ids(workflow_id, [])
     user_id_str = str(user_id)
 
     # A layer's columns are the shape of its data: every layer the request

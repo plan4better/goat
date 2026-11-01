@@ -831,6 +831,9 @@ async def test_breakdown_sort_by_name_ascending(client, db_session):
         {"sort": "bogus"},
         {"sort": "runs"},  # a workflow's key, not a member's
         {"sort": "name", "dir": "sideways"},
+        # Written into the ORDER BY: only the listed values get there.
+        {"sort": "name, (SELECT 1)"},
+        {"sort": "name", "dir": "asc; SELECT 1"},
         {"limit": 0},
         {"limit": 101},
         {"offset": -1},
