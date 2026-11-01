@@ -197,6 +197,13 @@ describe("AiCreditsUsedUp", () => {
     expect(document.activeElement).toBe(screen.getByRole("status"));
   });
 
+  it("is named by its sentence, which a status does not take from its content", () => {
+    wrap(<AiCreditsUsedUp usedUp={USED_UP} isAdmin={false} autoFocus />);
+    expect(screen.getByRole("status")).toHaveAccessibleName(
+      "This month's AI credits are used up. Resets on 1 Dec."
+    );
+  });
+
   it("leaves the focus where it is otherwise, as when it shows on load", () => {
     wrap(<AiCreditsUsedUp usedUp={USED_UP} isAdmin={false} />);
     expect(document.activeElement).toBe(document.body);

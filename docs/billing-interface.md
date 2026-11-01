@@ -21,8 +21,11 @@ The commercial terms (the trial, the credit rates and the AI-credit terms) are
 no settings: the billing system pushes them (see "Terms push").
 
 With billing off (self-hosted) both webhooks answer 404, organizations get no
-trial and the `DEFAULT_QUOTA_*` values, credits and AI credits are unlimited
-and nothing is metered.
+trial and the `DEFAULT_QUOTA_*` values, credits and AI credits are unlimited.
+Compute and traffic are not metered. The answers of GOAT AI are still
+recorded (a `customer.credit_usage` row each, and `used_ai_credits`), but never
+limited. When billing is switched on, the push that starts an organization's
+first monthly period clears what was used (see "Entitlement push").
 
 ## Terms push
 
@@ -112,10 +115,14 @@ part of the organization as it is.
 | `suspended` | boolean | suspends or reactivates the organization. |
 | `on_trial` | boolean | `false` converts a trial into a subscription (it also reactivates a trial that expired). |
 | `as_of` | ISO 8601 datetime | the sender's time of the data. A push older than the one already applied is ignored. |
-| `reset_usage` | boolean, default `false` | zero the used credits and AI credits (send `true` on a renewal, with the new `plan_renewal_date`). A push with the renewal date already applied is a repeat and does not reset again. A conversion zeroes them as well. |
+| `reset_usage` | boolean, default `false` | zero the used credits and AI credits (send `true` on a renewal, with the new `plan_renewal_date`). A push with the renewal date already applied is a repeat and does not reset again. A conversion and the push that starts a subscription's first monthly period zero them as well. |
 
 A subscription's credits and AI credits are reset every month from its first
-push on; a trial's last the whole trial.
+push on; a trial's last the whole trial. That first push (or a conversion)
+starts the period with nothing used, so what was booked before the
+organization had a period, such as the AI answers recorded with billing off,
+never counts against its first allowance. Later pushes in a running period
+keep what was used unless they reset it.
 
 **Validation.** The payload is strict: unknown keys and wrong types are
 refused with 422 and change nothing. Flags must be JSON booleans (the string
@@ -154,8 +161,9 @@ Answers from an organization's own AI connection are not counted.
   without `total_ai_credits` returns to the seats. So the deal goes with every
   push that carries `total_editors`, and without a deal the key is left out
   (`null` means unlimited).
-- **Reset:** with the credits (`reset_usage`, a conversion, the monthly
-  `credit_reset` task).
+- **Reset:** with the credits (`reset_usage`, a conversion, the push that
+  starts a subscription's first monthly period, the monthly `credit_reset`
+  task).
 - **Price:** an answer costs the AI credits of its tier (`ai_credit_tiers`): by
   default 1, 2 when it took more than 10 steps, 3 when more than 20. A step is
   one tool call of the answer, counted by the assistant after the answer.

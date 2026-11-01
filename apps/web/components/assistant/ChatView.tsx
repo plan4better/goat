@@ -9,6 +9,7 @@ import { toast } from "react-toastify";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { refreshAssistantStatus } from "@/lib/api/assistant";
 import { refreshCreditBalance } from "@/lib/api/usage";
 import { announceRunEnd, lastAnswer, runEndOf } from "@/lib/assistant/announce";
 import { type AskCardState, answersCard, askCardOf, askCardState, openAskCard } from "@/lib/assistant/ask";
@@ -39,7 +40,6 @@ import AskPanel from "@/components/assistant/AskPanel";
 import Composer, { UnsentMessages } from "@/components/assistant/Composer";
 import { useDockActions } from "@/components/assistant/DockActions";
 import QueuedItem from "@/components/assistant/QueuedItem";
-import { useOpenCreatedWorkflows } from "@/components/assistant/useOpenCreatedWorkflows";
 import DockNote from "@/components/assistant/messages/DockNote";
 import MessageList from "@/components/assistant/messages/MessageList";
 import {
@@ -53,6 +53,7 @@ import { useComposerContext } from "@/components/assistant/useComposerContext";
 import { useFitRunResults } from "@/components/assistant/useFitRunResults";
 import { useFollowWorkflowEdits } from "@/components/assistant/useFollowWorkflowEdits";
 import { useLayerAddRefresh } from "@/components/assistant/useLayerAddRefresh";
+import { useOpenCreatedWorkflows } from "@/components/assistant/useOpenCreatedWorkflows";
 import { useWorkflowRunRefresh } from "@/components/assistant/useWorkflowRunRefresh";
 
 /** How long Stop waits for the server's own end of the run before it drops the connection. */
@@ -290,7 +291,7 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
-  const { messages, sendMessage, stop, status, error, setMessages } = useChat<AssistantMessage>({
+  const { messages, sendMessage, stop, status, error, setMessages, clearError } = useChat<AssistantMessage>({
     id: conversationId,
     messages: props.initialMessages,
     resume,
@@ -331,6 +332,8 @@ export default function ChatView(props: ChatViewProps) {
           aiCreditsUsedUp: { resetsOn: refused.resetsOn ?? null, onTrial: refused.onTrial ?? false },
         });
         void refreshCreditBalance();
+        // The refusal holds only while /status says GOAT AI answers, which a 402 proves.
+        void refreshAssistantStatus();
       }
       if (refused?.code === "project_access_lost") {
         if (live === null) setMessages((list) => (live = list));
@@ -752,10 +755,22 @@ export default function ChatView(props: ChatViewProps) {
   // A refusal the read-only notice explains needs no second note, nor an answer
   // the server no longer takes: the chat loads again, and a toast says why.
   const refusedCode = toRequestError(error)?.code;
+  // The composer shows the used-up line in its place once no answer runs.
+  const usedUpShown = !!credits.usedUp && !busy && !props.waiting && !props.readOnly && !panelCard;
+  // Once the AI credits no longer hold the dock back (an own connection answers, a later
+  // balance shows credits left), their 402 is stale. useChat keeps an error until the next
+  // send, so it is cleared before paint instead of turning up under the conversation.
+  const usedUp = !!credits.usedUp;
+  const wasUsedUp = useRef(usedUp);
+  useLayoutEffect(() => {
+    if (wasUsedUp.current && !usedUp && toRequestError(error)?.code === "ai_credits_used_up") clearError();
+    wasUsedUp.current = usedUp;
+  }, [usedUp, error, clearError]);
   const explained =
     refusedCode === "invalid_answer" ||
-    // The used-up line says it where the composer stood; the ask panel has no such line.
-    (refusedCode === "ai_credits_used_up" && !panelCard) ||
+    // The used-up line says it where the composer stood. Without the line (the ask panel,
+    // a status that does not know yet that GOAT AI answers) the error says it.
+    (refusedCode === "ai_credits_used_up" && usedUpShown) ||
     (!!props.readOnly && (refusedCode === "project_access_lost" || refusedCode === "conversation_bound"));
   // A refused queued message shows the reason in its own item.
   const errorKey =

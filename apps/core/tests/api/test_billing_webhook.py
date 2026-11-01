@@ -289,7 +289,12 @@ async def test_usage_is_kept_unless_the_push_says_reset(
     client, db_session, monkeypatch
 ):
     enable_billing(monkeypatch)
-    org = await _org(db_session, used_credits=300)
+    # Within a running period: the push that starts the first one clears usage.
+    org = await _org(
+        db_session,
+        used_credits=300,
+        credits_reset_at=datetime.now() + timedelta(days=20),
+    )
     assert (await _push(client, org.id, total_credits=2000)).status_code == 200
     await db_session.refresh(org)
     assert float(org.used_credits) == 300
@@ -297,6 +302,33 @@ async def test_usage_is_kept_unless_the_push_says_reset(
     assert (await _push(client, org.id, reset_usage=True)).status_code == 200
     await db_session.refresh(org)
     assert float(org.used_credits) == 0
+
+
+@pytest.mark.asyncio
+async def test_the_first_seat_push_clears_what_was_used_before_billing(
+    client, db_session, monkeypatch
+):
+    """An organization from before billing (no trial, no period) answered
+    with GOAT AI while nothing was limited: its first seat push starts the
+    monthly period with nothing used. Later pushes in the period keep it."""
+    enable_billing(monkeypatch)
+    org = await _org(
+        db_session,
+        on_trial=False,
+        credits_reset_at=None,
+        used_credits=300,
+        used_ai_credits=412,
+    )
+    assert (await _push(client, org.id, total_editors=4)).status_code == 200
+    await db_session.refresh(org)
+    assert (float(org.used_credits), float(org.used_ai_credits)) == (0, 0)
+    assert org.credits_reset_at is not None
+
+    org.used_credits, org.used_ai_credits = 20, 3
+    await db_session.commit()
+    assert (await _push(client, org.id, total_editors=4)).status_code == 200
+    await db_session.refresh(org)
+    assert (float(org.used_credits), float(org.used_ai_credits)) == (20, 3)
 
 
 @pytest.mark.asyncio
@@ -541,7 +573,12 @@ async def test_ai_credits_follow_the_seats_at_the_pushed_rate(
     )
     assert resp.status_code == 200, resp.text
     try:
-        org = await _org(db_session, on_trial=False, used_ai_credits=30)
+        org = await _org(
+            db_session,
+            on_trial=False,
+            used_ai_credits=30,
+            credits_reset_at=datetime.now() + timedelta(days=20),
+        )
         assert (await _push(client, org.id, total_editors=4)).status_code == 200
         await db_session.refresh(org)
         assert float(org.total_ai_credits) == 600

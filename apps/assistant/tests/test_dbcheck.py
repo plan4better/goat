@@ -82,10 +82,9 @@ def test_grants_file_lists_exactly_the_checked_tables() -> None:
         "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA assistant TO goat_assistant;"
         in text
     )
-    # Core's initial_data drops and re-creates its functions on every deploy,
-    # and a dropped function loses its grants: the credit functions, which are
-    # not executable by everyone, keep the role's EXECUTE only through the
-    # schema's default privileges.
+    # Core's initial_data replaces its functions in place, which keeps their
+    # grants. The default privileges give the role's EXECUTE to a credit
+    # function core adds later or re-creates after a drop.
     assert DEFAULT_FUNCTION_GRANT in text
     # By name as well: the file fails when it runs before initial_data.
     named = re.search(
@@ -108,9 +107,11 @@ async def test_the_credit_functions_keep_the_grant_when_core_reinstalls_them(
     conn: asyncpg.Connection, settings: AssistantSettings
 ) -> None:
     """grants.sql's default privileges, run as the role that installs core's
-    functions, give a function re-created by initial_data (drop, create,
-    revoke from PUBLIC) the role's EXECUTE again. pg_monitor stands in for the
-    assistant's role; everything is rolled back."""
+    functions, give a dropped and re-created function (drop, create, revoke
+    from PUBLIC) the role's EXECUTE again. Today's install replaces the
+    functions in place and keeps the grant by name; this guards a future drop
+    (a changed signature, say). pg_monitor stands in for the assistant's role;
+    everything is rolled back."""
     schema = settings.customer_schema
 
     async def reinstall() -> bool:

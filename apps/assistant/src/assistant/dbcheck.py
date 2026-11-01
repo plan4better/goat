@@ -9,9 +9,10 @@ core's tables with the caller's privileges, and a missing SELECT would only
 show up as a failed permission check on the first project question. Core's
 AI credit functions are SECURITY DEFINER and not executable by everyone, so a
 missing EXECUTE would only show up as an unchecked and uncharged answer. The
-check runs when the assistant starts; core's initial_data re-creates the
-functions on every deploy, and grants.sql's default privileges give the
-re-created ones the role's EXECUTE again.
+check runs when the assistant starts. Core's initial_data replaces the
+functions in place on every deploy, which keeps their grants; grants.sql's
+default privileges give the role's EXECUTE to functions core adds later or
+re-creates after a drop.
 
 ``python -m assistant.dbcheck`` runs it with the service's environment.
 """

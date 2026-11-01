@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from core.crud.crud_organization import organization as crud_org
 from tests.utils import make_organization
@@ -45,7 +45,12 @@ def test_a_repeated_renewal_keeps_the_usage_since_the_first():
 
 
 def test_apply_entitlement_plan_change_keeps_usage():
-    org = make_organization(total_credits=1000, used_credits=300)
+    # Within a running period: the push that starts the first one clears usage.
+    org = make_organization(
+        total_credits=1000,
+        used_credits=300,
+        credits_reset_at=datetime.now() + timedelta(days=20),
+    )
     crud_org.apply_entitlement(
         organization=org,
         entitlement={"total_credits": 2000},
@@ -224,3 +229,28 @@ def test_used_ai_credits_reset_with_the_other_credits():
     trial = make_organization(on_trial=True, used_credits=5, used_ai_credits=60)
     _apply(trial, on_trial=False)  # a conversion
     assert (float(trial.used_credits), float(trial.used_ai_credits)) == (0, 0)
+
+
+def test_the_first_monthly_period_starts_with_nothing_used():
+    """Usage booked before the organization had a period (with billing off AI
+    answers are recorded, never limited) does not count against its first
+    allowance: the push that starts the period clears it."""
+    org = make_organization(
+        on_trial=False, credits_reset_at=None, used_credits=300, used_ai_credits=30
+    )
+    _apply(org, total_editors=4)
+    assert (float(org.used_credits), float(org.used_ai_credits)) == (0, 0)
+    assert org.credits_reset_at is not None
+    assert float(org.total_ai_credits) == 4 * PER_EDITOR
+
+
+def test_a_push_within_a_running_period_keeps_what_was_used():
+    org = make_organization(on_trial=False, credits_reset_at=None)
+    _apply(org, total_editors=4)  # the first period starts
+    period_ends = org.credits_reset_at
+    org.used_credits, org.used_ai_credits = 120, 12
+
+    _apply(org, total_editors=5)
+    _apply(org, total_editors=5, suspended=False)  # the same seats again
+    assert (float(org.used_credits), float(org.used_ai_credits)) == (120, 12)
+    assert org.credits_reset_at == period_ends

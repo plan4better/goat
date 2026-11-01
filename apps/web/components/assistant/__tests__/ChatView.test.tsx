@@ -12,6 +12,7 @@ import {
   registerSurface,
   resetAssistantStore,
   saveDraft,
+  setDockState,
 } from "@/lib/assistant/store";
 import { fetchConversation } from "@/lib/assistant/transport";
 import type { AssistantMessage, ConversationDetail } from "@/lib/assistant/types";
@@ -45,12 +46,42 @@ vi.mock("@/lib/assistant/transport", () => ({
   createConversation: vi.fn(),
 }));
 vi.mock("@/lib/assistant/conversations", () => ({ refreshConversationLists: vi.fn() }));
-const { refreshBalance } = vi.hoisted(() => ({ refreshBalance: vi.fn() }));
-// GOAT AI answers: the organization's AI credits apply.
-vi.mock("@/lib/api/assistant", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useAssistantStatus: () => ({ status: { available: true, goat_ai: true, is_admin: false } }),
-}));
+const { refreshBalance, refreshStatus, assistantStatus } = vi.hoisted(() => {
+  // GOAT AI answers unless a test says otherwise: the organization's AI credits apply.
+  const goatAi = { available: true, goat_ai: true, is_admin: false };
+  let status: Record<string, unknown> = goatAi;
+  const listeners = new Set<() => void>();
+  return {
+    refreshBalance: vi.fn(),
+    /** Reading `/status` again; a test makes it bring a new status. */
+    refreshStatus: vi.fn(),
+    /** The status the dock holds, as SWR would hand it out: a change renders its readers again. */
+    assistantStatus: {
+      get: () => status,
+      set: (next: Record<string, unknown>) => {
+        status = next;
+        listeners.forEach((listener) => listener());
+      },
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => void listeners.delete(listener);
+      },
+      reset: () => {
+        status = goatAi;
+      },
+    },
+  };
+});
+vi.mock("@/lib/api/assistant", async (importOriginal) => {
+  const { useSyncExternalStore } = await import("react");
+  return {
+    ...(await importOriginal<Record<string, unknown>>()),
+    useAssistantStatus: () => ({
+      status: useSyncExternalStore(assistantStatus.subscribe, assistantStatus.get),
+    }),
+    refreshAssistantStatus: refreshStatus,
+  };
+});
 vi.mock("@/lib/api/usage", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   refreshCreditBalance: refreshBalance,
@@ -118,6 +149,8 @@ beforeEach(() => {
   resetAssistantStore();
   resetHandedOverWorkflows();
   vi.clearAllMocks();
+  refreshStatus.mockReset();
+  assistantStatus.reset();
   registerSurface({
     surface: "catalog",
     getContext: () => ({ surface: "catalog", q: "rad", facets: { themes: ["transportation"] } }),
@@ -307,6 +340,111 @@ describe("ChatView", () => {
     // What was not sent stays readable, and in the draft for when the credits are back.
     expect(screen.getByText("Hallo")).toBeTruthy();
     expect(getDraft("c1")?.text).toBe("Hallo");
+  });
+
+  it("says why the AI credits refused a message while the dock holds an own connection's status", async () => {
+    // The organization switched to GOAT AI since the dock read /status.
+    assistantStatus.set({ available: true, goat_ai: false, is_admin: false });
+    sendMessages.mockRejectedValue(
+      refusal(402, {
+        code: "ai_credits_used_up",
+        message: "The organization's AI credits are used up.",
+        resets_on: "2026-12-01T00:00:00",
+        on_trial: false,
+      })
+    );
+    renderChat();
+    send("Hallo");
+    // No used-up line stands where the composer is: the error says it.
+    await screen.findByText("assistant_error_ai_credits_used_up");
+    expect(screen.queryByText("assistant_credits_used_up")).toBeNull();
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Hallo");
+    // A 402 proves GOAT AI answers: the status is read again.
+    expect(refreshStatus).toHaveBeenCalled();
+  });
+
+  it("shows the used-up line once /status read again says GOAT AI answers, never leaving a refusal unsaid", async () => {
+    assistantStatus.set({ available: true, goat_ai: false, is_admin: false });
+    let answer = () => {};
+    refreshStatus.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          answer = () => {
+            assistantStatus.set({ available: true, goat_ai: true, is_admin: false });
+            resolve();
+          };
+        })
+    );
+    sendMessages.mockRejectedValue(
+      refusal(402, {
+        code: "ai_credits_used_up",
+        message: "used up",
+        resets_on: "2026-12-01T00:00:00",
+        on_trial: false,
+      })
+    );
+    renderChat();
+    send("Hallo");
+    // While the status is on its way the error explains the refusal ...
+    await screen.findByText("assistant_error_ai_credits_used_up");
+    await act(async () => answer());
+    // ... then the used-up line takes the input's place and says it alone.
+    expect(screen.getByText("assistant_credits_used_up")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByText("assistant_error_ai_credits_used_up")).toBeNull();
+  });
+
+  it("gives the composer back once /status read again says an own connection answers", async () => {
+    setDockState({ aiCreditsUsedUp: { resetsOn: "2026-12-01T00:00:00", onTrial: false } });
+    renderChat();
+    expect(screen.getByText("assistant_credits_used_up")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    // The line blocks sending on the strength of /status: it reads it again as it appears.
+    expect(refreshStatus).toHaveBeenCalledTimes(1);
+    // An admin switched to an own connection; the status read again (the settings page's save) says so.
+    act(() => assistantStatus.set({ available: true, goat_ai: false, is_admin: false }));
+    expect(screen.getByRole("textbox")).toBeTruthy();
+    expect(screen.queryByText("assistant_credits_used_up")).toBeNull();
+  });
+
+  it("drops the refusal's error once the used-up line goes away because an own connection answers", async () => {
+    sendMessages.mockRejectedValue(
+      refusal(402, {
+        code: "ai_credits_used_up",
+        message: "used up",
+        resets_on: "2026-12-01T00:00:00",
+        on_trial: false,
+      })
+    );
+    renderChat();
+    send("Hallo");
+    await screen.findByText("assistant_credits_used_up");
+    expect(screen.queryByText("assistant_error_ai_credits_used_up")).toBeNull();
+    // /status read again says an own connection answers: the composer is back, and the
+    // refusal it explained is not news under the conversation.
+    act(() => assistantStatus.set({ available: true, goat_ai: false, is_admin: false }));
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Hallo");
+    expect(screen.queryByText("assistant_error_ai_credits_used_up")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("drops the refusal's error once a later balance shows AI credits left", async () => {
+    sendMessages.mockRejectedValue(
+      refusal(402, {
+        code: "ai_credits_used_up",
+        message: "used up",
+        resets_on: "2026-12-01T00:00:00",
+        on_trial: false,
+      })
+    );
+    renderChat();
+    send("Hallo");
+    await screen.findByText("assistant_credits_used_up");
+    // What useAiCredits does when a balance read after the refusal shows credits left.
+    act(() => setDockState({ aiCreditsUsedUp: null }));
+    expect(screen.getByRole("textbox")).toBeTruthy();
+    expect(screen.queryByText("assistant_error_ai_credits_used_up")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("reads the AI credits again after each answer", async () => {
@@ -1616,8 +1754,19 @@ describe("ChatView created workflows", () => {
     sendMessages.mockResolvedValue(
       stream([
         ...START,
-        { type: "tool-input-available", toolCallId: "call-new", toolName: "workflow_create", input: {}, dynamic: true },
-        { type: "tool-output-available", toolCallId: "call-new", output: createdOutput("w-new"), dynamic: true },
+        {
+          type: "tool-input-available",
+          toolCallId: "call-new",
+          toolName: "workflow_create",
+          input: {},
+          dynamic: true,
+        },
+        {
+          type: "tool-output-available",
+          toolCallId: "call-new",
+          output: createdOutput("w-new"),
+          dynamic: true,
+        },
         ...text("Created."),
         ...FINISH,
       ])

@@ -1,4 +1,4 @@
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
 
 import { fetcher } from "@/lib/api/fetcher";
 import { AssistantApiError } from "@/lib/assistant/errors";
@@ -17,15 +17,27 @@ export { AssistantApiError };
 const send = <T>(path: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body?: unknown): Promise<T> =>
   assistantFetch<T>(path, { method, body });
 
-/** Whether AI is available for the signed-in user (every member; the dock uses it). */
+const statusKey = () => (ASSISTANT_BASE_URL ? [assistantUrl("/status")] : null);
+
+/**
+ * Whether AI is available for the signed-in user (every member; the dock uses it).
+ * Read again when the tab gets the focus back (SWR throttles it), so a dock in another
+ * tab follows an admin's switch between GOAT AI and an own connection.
+ */
 export function useAssistantStatus() {
-  const { data, error, isLoading } = useSWR<AssistantStatus>(
-    ASSISTANT_BASE_URL ? [assistantUrl("/status")] : null,
-    fetcher,
-    { revalidateOnFocus: false }
-  );
+  const { data, error, isLoading } = useSWR<AssistantStatus>(statusKey(), fetcher);
   return { status: data, isLoading, isError: error };
 }
+
+/**
+ * Reads `/status` again wherever it is used. The dock's used-up line holds sending
+ * back on its `goat_ai`, so it is read again when that line engages, when GOAT AI
+ * refuses an answer and after the AI settings change.
+ */
+export const refreshAssistantStatus = () => {
+  const key = statusKey();
+  return key ? mutate(key) : Promise.resolve(undefined);
+};
 
 export function useAssistantSettings(enabled = true) {
   const { data, error, isLoading, mutate } = useSWR<AssistantSettings>(

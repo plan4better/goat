@@ -30,6 +30,11 @@ const { credits } = vi.hoisted(() => ({
   credits: { value: { pool: null, usedUp: null, isAdmin: false } as Record<string, unknown> },
 }));
 vi.mock("@/hooks/assistant/useAiCredits", () => ({ useAiCredits: () => credits.value }));
+const { refreshStatus } = vi.hoisted(() => ({ refreshStatus: vi.fn() }));
+vi.mock("@/lib/api/assistant", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  refreshAssistantStatus: refreshStatus,
+}));
 
 const POOL = {
   used: 412,
@@ -286,6 +291,19 @@ describe("Composer", () => {
     credits.value = { pool: null, usedUp: { resetsOn: null, onTrial: false }, isAdmin: false };
     rerender(<Composer {...props} />);
     expect(document.activeElement).toBe(screen.getByRole("status"));
+  });
+
+  it("reads the assistant's status again as the used-up line takes the input's place, once", () => {
+    const props = { ...base, draft: "", onDraftChange: vi.fn(), onAddSource: vi.fn() };
+    const { rerender } = render(<Composer {...props} />);
+    expect(refreshStatus).not.toHaveBeenCalled();
+    // The line holds sending back because GOAT AI answers: an organization that switched to
+    // its own connection meanwhile gets its composer back once /status says so.
+    credits.value = { pool: null, usedUp: { resetsOn: null, onTrial: false }, isAdmin: false };
+    rerender(<Composer {...props} />);
+    expect(refreshStatus).toHaveBeenCalledTimes(1);
+    rerender(<Composer {...props} />);
+    expect(refreshStatus).toHaveBeenCalledTimes(1);
   });
 
   it("leaves the focus alone when the line shows without the input having it", () => {

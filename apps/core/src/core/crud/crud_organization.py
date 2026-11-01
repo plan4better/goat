@@ -892,7 +892,8 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         ai_credits_per_editor: float = DEFAULT_AI_CREDITS_PER_EDITOR,
     ) -> bool:
         """Apply a billing entitlement (caps + renewal). Zeroes used_credits and
-        used_ai_credits on renewal.
+        used_ai_credits on renewal, on a conversion and where a subscription's
+        first monthly period starts.
 
         Returns whether this push converted a trial into a subscription.
 
@@ -935,7 +936,14 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
             organization.plan_renewal_date = renewal
         if entitlement.get("as_of"):
             organization.entitlement_as_of = moment(entitlement["as_of"])
-        if (reset_usage and not repeat) or converted:
+        # A subscription's credits reset monthly, from its first push on
+        # (credit_reset moves the date on); a trial's credits last the trial.
+        # What was booked before the first period (AI answers are recorded
+        # with billing off too) does not count against its allowance.
+        first_period = not organization.on_trial and (
+            converted or organization.credits_reset_at is None
+        )
+        if (reset_usage and not repeat) or first_period:
             organization.used_credits = 0
             organization.used_ai_credits = 0
         if "total_ai_credits" in entitlement:
@@ -950,11 +958,7 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
                 None if editors is None else editors * ai_credits_per_editor
             )
             organization.ai_credits_override = False
-        # A subscription's credits reset monthly, from its first push on
-        # (credit_reset moves the date on); a trial's credits last the trial.
-        if not organization.on_trial and (
-            converted or organization.credits_reset_at is None
-        ):
+        if first_period:
             organization.credits_reset_at = add_month(datetime.now())
         return converted
 

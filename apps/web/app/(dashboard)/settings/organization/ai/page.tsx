@@ -32,6 +32,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import {
   deleteAssistantConnection,
+  refreshAssistantStatus,
   testAssistantConnection,
   updateAssistantSettings,
   useAssistantConnections,
@@ -142,8 +143,9 @@ const AiSettingsPage = () => {
     );
   }
 
+  // The dock reads in /status whether GOAT AI answers, so it follows a change made here.
   const refresh = async () => {
-    await Promise.all([mutate(), mutateConnections()]);
+    await Promise.all([mutate(), mutateConnections(), refreshAssistantStatus()]);
   };
 
   const persist = async (next: AssistantSettingsUpdate) => {

@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import type { TFunction } from "i18next";
 import NextLink from "next/link";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { aiCreditsRuleText } from "@/lib/assistant/aiCredits";
@@ -203,6 +203,8 @@ export function AiCreditsUsedUp({
   const { t, i18n } = useTranslation("common");
   const theme = useTheme();
   const line = useRef<HTMLDivElement>(null);
+  // A status takes its name from the author, not its content: the sentence names it.
+  const textId = useId();
   // Decided as it mounts: a later change of the prop does not move the focus again.
   const [focusOnMount] = useState(autoFocus);
   useEffect(() => {
@@ -220,6 +222,7 @@ export function AiCreditsUsedUp({
       <Stack
         ref={line}
         role="status"
+        aria-labelledby={textId}
         tabIndex={-1}
         direction="row"
         alignItems="center"
@@ -243,7 +246,9 @@ export function AiCreditsUsedUp({
             strokeWidth={2.4}
           />
         </svg>
-        <Typography sx={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.45, color: "text.primary" }}>
+        <Typography
+          id={textId}
+          sx={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.45, color: "text.primary" }}>
           {text}
         </Typography>
         {isAdmin && <UsageLink>{t("usage")}</UsageLink>}

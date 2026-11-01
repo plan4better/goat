@@ -461,10 +461,11 @@ answer's metadata) carries `goat_ai`, the AI credits and steps charged, and `hos
 its model runs, and a later change of the setting never rewrites older answers. `/status` says with `goat_ai` whether
 GOAT AI is the organization's model, so the dock shows the pool only where its answers draw on it (an own connection
 with GOAT AI as its fallback does not). Both functions are SECURITY DEFINER
-and not executable by everyone: an assistant role of its own gets EXECUTE on them from `sql/grants.sql`, through the
-customer schema's default privileges, because core's `initial_data` drops and re-creates its functions on every
-deploy and a dropped function loses its grants. A role set up with an earlier version of the file runs it again
-once; `python -m assistant.dbcheck` reports a missing grant when the assistant starts.
+and not executable by everyone: an assistant role of its own gets EXECUTE on them from `sql/grants.sql`, by name.
+Core's `initial_data` replaces its customer functions in place on every deploy, which keeps their grants; the
+file's default privileges on the customer schema cover functions core adds later or re-creates after a drop, since a
+dropped function loses its grants. A role set up with an earlier version of the file runs it again once;
+`python -m assistant.dbcheck` reports a missing grant when the assistant starts.
 
 Behind a connection pooler in transaction mode, set `POSTGRES_TRANSACTION_POOLER`: the pool then prepares no
 statements on the server. The assistant holds no session state in Postgres (its locks are per transaction, its

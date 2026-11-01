@@ -18,6 +18,7 @@ import {
 import { type FocusEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { refreshAssistantStatus } from "@/lib/api/assistant";
 import type { ContextChip } from "@/lib/assistant/chips";
 import type { SourceRef } from "@/lib/assistant/types";
 
@@ -191,6 +192,12 @@ export default function Composer(props: ComposerProps) {
   const credits = useAiCredits();
   // An answer under way keeps its Stop; the line takes the input's place once it ended.
   const usedUp = !canStop ? credits.usedUp : null;
+  const engaged = !!usedUp;
+  useEffect(() => {
+    // The line holds sending back because /status says GOAT AI answers: read it again as the
+    // line appears, so an organization that switched to its own connection gets its input back.
+    if (engaged) void refreshAssistantStatus();
+  }, [engaged]);
   /** The focus is in the composer: the used-up line that takes its place takes the focus over. */
   const [focusWithin, setFocusWithin] = useState(false);
   const focusTracking = {

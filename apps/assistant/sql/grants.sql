@@ -30,11 +30,13 @@ GRANT SELECT ON
 -- EXECUTE on every function of the schema is deliberate: authz functions that
 -- later migrations add need no change to this file.
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA customer TO goat_assistant;
--- initial_data drops and re-creates core's functions on every deploy, and a
--- dropped function loses its grants. The authz functions are executable by
--- everyone again once re-created; the AI credit functions are SECURITY
--- DEFINER and core revokes EXECUTE on them from PUBLIC, so the role keeps
--- them only through the schema's default privileges.
+-- initial_data replaces core's customer functions in place (CREATE OR REPLACE)
+-- on every deploy, which keeps their grants, and its REVOKE from PUBLIC
+-- leaves the role's EXECUTE alone. The authz functions are executable by
+-- everyone; the AI credit functions are SECURITY DEFINER and not executable
+-- by PUBLIC, so the role needs EXECUTE on them. The default privileges give
+-- it to functions core adds later, or re-creates after a drop (a function
+-- dropped loses its grants).
 ALTER DEFAULT PRIVILEGES IN SCHEMA customer
   GRANT EXECUTE ON FUNCTIONS TO goat_assistant;
 -- Named as well, so the file fails when it runs before initial_data installed

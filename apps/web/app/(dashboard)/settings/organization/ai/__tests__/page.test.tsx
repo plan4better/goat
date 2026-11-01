@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   updateAssistantConnection: vi.fn(),
   deleteAssistantConnection: vi.fn(),
   testAssistantConnection: vi.fn(),
+  refreshAssistantStatus: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -245,6 +246,8 @@ describe("AI settings page: using a connection", () => {
       data_policy: "restricted",
       allow_default_fallback: true,
     });
+    // The dock in this tab reads again whether GOAT AI answers.
+    expect(api.refreshAssistantStatus).toHaveBeenCalled();
   });
 
   it("saves the form as it stands, like Save with the connection chosen in the select", async () => {
