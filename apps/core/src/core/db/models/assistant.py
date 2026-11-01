@@ -226,6 +226,10 @@ class AssistantUsage(SQLModel, table=True):
     output_tokens: int = _count()
     cache_read_tokens: int = _count()
     cache_write_tokens: int = _count()
+    #: Where GOAT AI's model ran for this answer, as the assistant was
+    #: configured when it answered; NULL for an own connection or when no
+    #: region was configured. A later change of the setting leaves it as is.
+    hosted_in: str | None = _text(nullable=True)
     created_at: datetime | None = _created_at()
 
 

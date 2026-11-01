@@ -1,4 +1,4 @@
-"""Migrations 0012 and 0013 on a database without the assistant schema create
+"""Migrations 0017 to 0019 on a database without the assistant schema create
 every column the assistant's models define, so an upgraded database matches a
 fresh one (built by ``init`` from the models)."""
 
@@ -39,7 +39,7 @@ def _created_tables() -> dict[str, set[str]]:
     )
     created.upgrade()
 
-    # 0013 adds a column to a table 0012 created.
+    # 0018 adds a column to a table 0017 created.
     def add_column(table: str, column: sa.Column, schema: str) -> None:
         if schema == settings.ASSISTANT_SCHEMA:
             tables[table].add(column.name)
@@ -49,6 +49,16 @@ def _created_tables() -> dict[str, set[str]]:
         add_column_if_missing=add_column, ensure_fk=lambda *_, **__: None
     )
     added.upgrade()
+
+    # 0019 adds the hosting line to usage.
+    ai_credits = _load("0019_ai_credits")
+    ai_credits.h = SimpleNamespace(
+        add_column_if_missing=add_column,
+        column_exists=lambda *_: True,
+        table_exists=lambda *_: False,
+    )
+    ai_credits.op = SimpleNamespace(execute=lambda *_: None)
+    ai_credits.upgrade()
     return tables
 
 

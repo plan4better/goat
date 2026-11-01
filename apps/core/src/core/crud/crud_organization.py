@@ -13,7 +13,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from core.accounts import report_suspension, report_trial
 from core.core.config import settings
 from core.crud.base import CRUDBase
-from core.crud.crud_billing_terms import trial_terms
+from core.crud.crud_billing_terms import DEFAULT_AI_CREDITS_PER_EDITOR, trial_terms
 from core.crud.crud_folder import folder as crud_folder
 from core.crud.crud_invitation import invitation as crud_invitations
 from core.crud.crud_role import role as crud_role
@@ -78,6 +78,7 @@ async def trial_quotas(db: AsyncSession) -> tuple[dict, int]:
         "projects": terms["projects"],
         "editors": terms["editors"],
         "viewers": terms["viewers"],
+        "ai_credits": terms["ai_credits"],
     }
     return quotas, terms["days"]
 
@@ -132,6 +133,8 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
             avatar=organization_obj.avatar or settings.ORGANIZATION_DEFAULT_AVATAR,
             on_trial=saas_mode,
             total_credits=quotas.get("credits"),
+            # Self-hosted has none: no limit on AI credits.
+            total_ai_credits=quotas.get("ai_credits"),
             total_storage=quotas.get("storage"),
             total_projects=quotas.get("projects"),
             total_editors=quotas.get("editors"),
@@ -886,13 +889,22 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         organization: Organization,
         entitlement: dict,
         reset_usage: bool = True,
+        ai_credits_per_editor: float = DEFAULT_AI_CREDITS_PER_EDITOR,
     ) -> bool:
-        """Apply a billing entitlement (caps + renewal). Zeroes used_credits on renewal.
+        """Apply a billing entitlement (caps + renewal). Zeroes used_credits and
+        used_ai_credits on renewal.
 
         Returns whether this push converted a trial into a subscription.
 
         Provider-agnostic: `entitlement` is a plain dict (validated by
         EntitlementPush at the webhook); absent keys are left as-is.
+
+        AI credits: a push with total_ai_credits sets them (a special deal,
+        kept until a push changes the allowance again). A subscription's push
+        with total_editors and without total_ai_credits sets them to the seats
+        times `ai_credits_per_editor` (the billing terms'), as does a
+        conversion when no special deal is set. A trial keeps its trial's AI
+        credits.
         """
         for cap in self._ENTITLEMENT_CAPS:
             if cap in entitlement:
@@ -925,6 +937,19 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
             organization.entitlement_as_of = moment(entitlement["as_of"])
         if (reset_usage and not repeat) or converted:
             organization.used_credits = 0
+            organization.used_ai_credits = 0
+        if "total_ai_credits" in entitlement:
+            organization.total_ai_credits = entitlement["total_ai_credits"]
+            organization.ai_credits_override = True
+        elif not organization.on_trial and (
+            "total_editors" in entitlement
+            or (converted and not organization.ai_credits_override)
+        ):
+            editors = organization.total_editors
+            organization.total_ai_credits = (
+                None if editors is None else editors * ai_credits_per_editor
+            )
+            organization.ai_credits_override = False
         # A subscription's credits reset monthly, from its first push on
         # (credit_reset moves the date on); a trial's credits last the trial.
         if not organization.on_trial and (

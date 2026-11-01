@@ -17,7 +17,7 @@ TERMS_PUSH = {
         "editors": 3,
         "viewers": 4,
     },
-    "credit_rates": {"compute": 12, "egress": 25, "ai": 2},
+    "credit_rates": {"compute": 12, "egress": 25},
 }
 
 

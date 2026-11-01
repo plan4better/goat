@@ -107,6 +107,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # The web app names a downloaded export (CSV) from this header.
+    expose_headers=["Content-Disposition"],
 )
 
 from goatlib.auth import JOSEError  # noqa: E402

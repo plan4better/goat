@@ -244,6 +244,8 @@ async def _push(client, org_id, **body):
         {"total_editors": -5},
         {"total_editors": 2.5},
         {"total_storage": float("inf")},
+        {"total_ai_credits": -1},
+        {"total_ai_credits": "100"},
         {"extras": "white_label"},
         {"extras": [1, 2]},
         {"plan_renewal_date": "not a date"},
@@ -524,3 +526,41 @@ async def test_expiring_reaches_an_active_trial(client, db_session, monkeypatch)
     org = await _org(db_session, on_trial=True)
     resp = await _trial(client, org.id, "expiring")
     assert resp.json() == {"status": "ok", "stage": "expiring"}
+
+
+@pytest.mark.asyncio
+async def test_ai_credits_follow_the_seats_at_the_pushed_rate(
+    client, db_session, monkeypatch
+):
+    from tests.billing import TERMS_PUSH
+
+    enable_billing(monkeypatch)
+    terms = {**TERMS_PUSH, "ai_credits_per_editor": 150}
+    resp = await client.post(
+        f"{settings.API_V2_STR}/webhooks/billing/terms", headers=HEADERS, json=terms
+    )
+    assert resp.status_code == 200, resp.text
+    try:
+        org = await _org(db_session, on_trial=False, used_ai_credits=30)
+        assert (await _push(client, org.id, total_editors=4)).status_code == 200
+        await db_session.refresh(org)
+        assert float(org.total_ai_credits) == 600
+        assert org.ai_credits_override is False
+
+        resp = await _push(client, org.id, total_editors=4, total_ai_credits=5000)
+        assert resp.status_code == 200
+        await db_session.refresh(org)
+        assert (float(org.total_ai_credits), org.ai_credits_override) == (5000, True)
+        assert float(org.used_ai_credits) == 30
+
+        assert (await _push(client, org.id, reset_usage=True)).status_code == 200
+        await db_session.refresh(org)
+        assert float(org.used_ai_credits) == 0
+    finally:
+        from core.db.models.billing_terms import BillingTerms
+        from core.db.models.credit_rate import CreditRate
+        from sqlalchemy import delete
+
+        for model in (CreditRate, BillingTerms):
+            await db_session.execute(delete(model))
+        await db_session.commit()

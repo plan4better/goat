@@ -10,7 +10,7 @@ from sqlmodel import col
 
 from core.accounts import report_suspension
 from core.core.config import settings
-from core.crud.crud_billing_terms import apply_terms
+from core.crud.crud_billing_terms import ai_terms, apply_terms
 from core.crud.crud_organization import organization as crud_organization
 from core.crud.crud_user import user as crud_user
 from core.db.models.organization import Organization
@@ -90,6 +90,7 @@ async def billing_entitlement(
         organization=organization,
         entitlement=payload.entitlement(),
         reset_usage=payload.reset_usage,
+        ai_credits_per_editor=(await ai_terms(db))["per_editor"],
     )
     await db.commit()
     # The accounts provider shows the state every time, not only on a
@@ -105,8 +106,9 @@ async def billing_terms(
     db: AsyncSession = Depends(get_db),
     payload: BillingTermsPush,
 ) -> dict:
-    """The billing system's terms: the trial new organizations start with and
-    the credit rates. Running trials keep what they started with."""
+    """The billing system's terms: the trial new organizations start with, the
+    credit rates and the AI-credit terms. Running trials keep what they
+    started with."""
     if not await apply_terms(db, payload):
         return {"status": "stale"}
     return {"status": "ok"}
