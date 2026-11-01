@@ -45,6 +45,7 @@ from assistant.bus import CONTROL_CHANNEL, EventBus, events_channel
 from assistant.clock import AnswerClock
 from assistant.config import AssistantSettings
 from assistant.context import NO_PAGE, PageContext, dump_context, parse_context
+from assistant.credits import AiCredits, answer_steps, charged
 from assistant.events import (
     EVENT_ADAPTER,
     RunEnded,
@@ -241,14 +242,32 @@ def _assistant_text(events: list[RunEvent]) -> str:
     )
 
 
-def usage_event(provider: str, model: str, usage: RunUsage) -> UsageReported:
+@dataclass(frozen=True)
+class Charge:
+    """What an answer of GOAT AI was charged (``assistant.credits``)."""
+
+    ai_credits: float
+    steps: int
+
+
+def usage_event(
+    target: Target,
+    usage: RunUsage,
+    *,
+    hosted_in: str | None = None,
+    charge: Charge | None = None,
+) -> UsageReported:
     return UsageReported(
-        provider=provider,
-        model=model,
+        provider=target.provider,
+        model=target.model,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
         cache_read_tokens=usage.cache_read_tokens,
         cache_write_tokens=usage.cache_write_tokens,
+        goat_ai=not target.own,
+        hosted_in=hosted_in,
+        ai_credits=charge.ai_credits if charge is not None else None,
+        steps=charge.steps if charge is not None else None,
     )
 
 
@@ -317,6 +336,9 @@ class RunManager:
         self.resolver = resolver or ModelResolver(
             OrgSettingsRepository(repo.db), settings
         )
+        #: The organization's AI credits: checked before GOAT AI answers,
+        #: charged after.
+        self.credits = AiCredits(repo.db)
         self.policy = EndpointPolicy.from_settings(settings)
         #: Builds the models of a target; tests replace it to avoid any network.
         self.opener: ModelOpener = opener or self._open_models
@@ -379,8 +401,9 @@ class RunManager:
         target: UUID | None = None,
         answer: CardAnswer | None = None,
     ) -> tuple[UUID, UUID]:
-        """``resolution``: the user's model, when the caller resolved it already
-        (the run route does, before it prepares the login). ``target``: the
+        """``resolution``: the user's model, when the caller resolved it and
+        checked it against the AI credits already (the run route does both,
+        before it prepares the login). ``target``: the
         project the conversation must be in once the run is recorded, bound then
         if it is unbound (``Repository.begin_run``; raises
         ``ConversationBoundElsewhere``). ``answer``: the user's answer to a card
@@ -393,10 +416,10 @@ class RunManager:
         if page.surface in self.settings.disabled_surfaces:
             raise SurfaceDisabled(page.surface)
         # Resolved before anything is stored: a refused run (AI disabled, no
-        # connection) leaves no trace in the conversation. Raises
-        # AssistantUnavailable.
+        # connection, no AI credits left) leaves no trace in the conversation.
+        # Raises AssistantUnavailable and AiCreditsUsedUp.
         if resolution is None:
-            resolution = await self.resolver.resolve(user_id)
+            resolution = await self.credits.check(await self.resolver.resolve(user_id))
         previous = _stored_context(await self.repo.last_user_context(conversation_id))
         # The conversation's cards and answers: an answer is checked against its
         # card before anything is stored, and tools read them for the user's
@@ -621,7 +644,11 @@ class RunManager:
                     served = target
                     break
         except asyncio.CancelledError:
-            status = "interrupted" if self._stopping else "cancelled"
+            # A run whose lease was lost was ended elsewhere as interrupted;
+            # like a shutdown, that is not the user's stop.
+            status = (
+                "interrupted" if self._stopping or run_id in self._lost else "cancelled"
+            )
             # The cancellation is handled here; clear it so the bookkeeping below
             # (and any timeout machinery) does not see a pending cancel request.
             current = asyncio.current_task()
@@ -696,6 +723,26 @@ class RunManager:
         won = False
         self._ending.add(run_id)
         try:
+            active = await self._still_active(run_id)
+            # Before the usage report, which carries what was charged. The
+            # target tried last is the one that answered when the run succeeded.
+            # A run ended elsewhere meanwhile (swept, taken over) is stored as
+            # interrupted, and an interrupted answer is free.
+            charge = (
+                await self._charge(
+                    run_id,
+                    conversation_id,
+                    user_id,
+                    resolution.organization_id,
+                    attempted,
+                    status,
+                    code,
+                    run_usage,
+                    emit.events,
+                )
+                if active
+                else None
+            )
             await self._record_usage(
                 run_id,
                 user_id,
@@ -703,6 +750,8 @@ class RunManager:
                 attempted,
                 run_usage,
                 emit,
+                charge,
+                active=active,
             )
             if status != "succeeded":
                 model_messages = _partial_history(text, emit.events)
@@ -869,13 +918,61 @@ class RunManager:
                     target.provider,
                     target.model,
                     "background",
-                    usage_event(target.provider, target.model, usage),
+                    usage_event(target, usage),
                     connection_id=target.connection_id,
                 )
             if title:
                 await self.repo.set_title_if_empty(conversation_id, title)
         except Exception:
             logger.exception("Run %s: storing the conversation title failed", run_id)
+
+    async def _still_active(self, run_id: UUID) -> bool:
+        """Whether the run is still this task's to end: queued or running, not
+        ended elsewhere. A failed read counts as ended: nothing is charged or
+        published for the run then."""
+        try:
+            current = await self.repo.get_run(run_id)
+        except Exception:
+            logger.exception("Run %s: reading its state failed", run_id)
+            return False
+        return current is not None and current["status"] in ACTIVE
+
+    async def _charge(
+        self,
+        run_id: UUID,
+        conversation_id: UUID,
+        user_id: UUID,
+        organization_id: UUID,
+        target: Target,
+        status: RunStatus,
+        code: RunErrorCode | None,
+        run_usage: RunUsage,
+        events: list[RunEvent],
+    ) -> Charge | None:
+        """Charge a GOAT AI answer to the organization's AI credits when the
+        way it ended counts (``assistant.credits.charged``). Core prices it by
+        its steps and books a run once. A failure is logged (once while it
+        lasts, ``AiCredits.book``), never raised: the answer stands uncharged."""
+        steps = answer_steps(events)
+        if target.own or not charged(status, code, steps):
+            return None
+        ai_credits = await self.credits.book(
+            organization_id,
+            user_id,
+            run_id,
+            steps,
+            {
+                "conversation_id": str(conversation_id),
+                "model": target.model,
+                "provider": target.provider,
+                "input_tokens": run_usage.input_tokens,
+                "output_tokens": run_usage.output_tokens,
+                "cache_read_tokens": run_usage.cache_read_tokens,
+            },
+        )
+        if ai_credits is None:
+            return None
+        return Charge(ai_credits=ai_credits, steps=steps)
 
     async def _record_usage(
         self,
@@ -885,14 +982,21 @@ class RunManager:
         target: Target,
         run_usage: RunUsage,
         emit: _Emitter,
+        charge: Charge | None = None,
+        *,
+        active: bool,
     ) -> None:
         """Store the tokens the run consumed, whatever its outcome: a cancelled or
         failed run has still been billed by the provider. One row per run and
         purpose, under the target that answered or was tried last; failures here
-        never keep the run from ending."""
-        if not (run_usage.input_tokens or run_usage.output_tokens):
+        never keep the run from ending. The report also carries what a GOAT AI
+        answer was charged and where its model is hosted, which the answer
+        keeps. It is published only while the run is ``active``: a run ended
+        elsewhere has its final event stored, and nothing may follow it."""
+        if not (run_usage.input_tokens or run_usage.output_tokens or charge):
             return
-        reported = usage_event(target.provider, target.model, run_usage)
+        hosted_in = None if target.own else (self.settings.default_hosted_in or None)
+        reported = usage_event(target, run_usage, hosted_in=hosted_in, charge=charge)
         try:
             await self.repo.insert_usage(
                 run_id,
@@ -906,12 +1010,10 @@ class RunManager:
             )
         except Exception:
             logger.exception("Run %s: recording its usage failed", run_id)
+        if not active:
+            return
         try:
-            current = await self.repo.get_run(run_id)
-            # A run the sweeper already ended has its final event stored; nothing
-            # may follow it in the stream.
-            if current is not None and current["status"] in ACTIVE:
-                await emit(reported)
+            await emit(reported)
         except Exception:
             logger.exception("Run %s: publishing its usage failed", run_id)
 

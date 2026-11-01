@@ -91,12 +91,19 @@ class StatusOut(BaseModel):
     data_policy: DataPolicy
     #: Surfaces where the assistant is switched off (spec §6.3): the dock hides there.
     disabled_surfaces: list[str] = Field(default_factory=list)
+    #: GOAT AI answers (no own connection is active), so the organization's AI
+    #: credits apply: the dock shows them only then.
+    goat_ai: bool = False
 
 
 class GoatAiOut(BaseModel):
+    """GOAT AI as admins see it: its model, provider and where it is hosted."""
+
     available: bool
     provider: str | None = None
     model: str | None = None
+    #: ``ASSISTANT_DEFAULT_HOSTED_IN``, e.g. "EU"; None when not set.
+    hosted_in: str | None = None
 
 
 class InstanceOut(BaseModel):
@@ -285,6 +292,9 @@ async def _settings_out(caller: Caller) -> SettingsOut:
                 available=goat_ai is not None,
                 provider=goat_ai.provider if goat_ai else None,
                 model=goat_ai.model if goat_ai else None,
+                hosted_in=(caller.settings.default_hosted_in or None)
+                if goat_ai
+                else None,
             ),
             org_connections=caller.resolver.org_connections_enabled,
             secrets_key_configured=caller.resolver.secrets is not None,
@@ -441,6 +451,7 @@ async def get_status(
         model=status.model,
         data_policy=status.data_policy,
         disabled_surfaces=list(settings.disabled_surfaces),
+        goat_ai=status.goat_ai,
     )
 
 

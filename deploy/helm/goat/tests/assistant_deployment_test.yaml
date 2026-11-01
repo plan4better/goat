@@ -112,6 +112,16 @@ tests:
           path: data.ASSISTANT_DB_SCHEMA
       - notExists:
           path: data.ROOT_PATH
+      - notExists:
+          path: data.ASSISTANT_DEFAULT_HOSTED_IN
+  - it: passes where GOAT AI's model is hosted to the assistant
+    template: assistant/configmap.yaml
+    set:
+      assistant.config.ASSISTANT_DEFAULT_HOSTED_IN: EU
+    asserts:
+      - equal:
+          path: data.ASSISTANT_DEFAULT_HOSTED_IN
+          value: EU
   - it: refreshes logins with the web client from the Keycloak Secret
     template: assistant/deployment.yaml
     set:

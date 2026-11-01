@@ -22,6 +22,7 @@ from assistant.auth import Principal, get_principal
 from assistant.bus import events_channel
 from assistant.config import AssistantSettings
 from assistant.context import parse_context, project_of
+from assistant.credits import AiCreditsUsedUp
 from assistant.encoding.ai_sdk import (
     SSE_DONE,
     UI_MESSAGE_STREAM_HEADERS,
@@ -553,6 +554,21 @@ def _ai_unavailable(exc: AssistantUnavailable) -> HTTPException:
     )
 
 
+AI_CREDITS_USED_UP = "The organization's AI credits are used up."
+
+
+def _ai_credits_used_up(exc: AiCreditsUsedUp) -> HTTPException:
+    """402 with the date the pool is refilled (``resets_on``, ISO 8601 as core
+    stores it, without a zone; a trial's end when ``on_trial``), or null."""
+    return _refusal(
+        402,
+        "ai_credits_used_up",
+        AI_CREDITS_USED_UP,
+        resets_on=exc.resets_on.isoformat() if exc.resets_on else None,
+        on_trial=exc.on_trial,
+    )
+
+
 @router.post("/{conversation_id}/runs")
 async def start_run(
     conversation_id: UUID,
@@ -586,6 +602,12 @@ async def start_run(
         resolution = await services.runs.resolver.resolve(principal.user_id)
     except AssistantUnavailable as exc:
         raise _ai_unavailable(exc) from exc
+    # Before the login as well: GOAT AI without AI credits left is refused, and
+    # an own connection loses its GOAT AI fallback (assistant.credits).
+    try:
+        resolution = await services.runs.credits.check(resolution)
+    except AiCreditsUsedUp as exc:
+        raise _ai_credits_used_up(exc) from exc
     # A database read, also before the login: a refused binding costs no token
     # exchange. Nothing is stored yet; begin_run binds or verifies the project
     # again in the run's transaction, for a binding made in between.
@@ -642,6 +664,8 @@ async def start_run(
         raise _refusal(503, "shutting_down", SHUTTING_DOWN) from exc
     except AssistantUnavailable as exc:
         raise _ai_unavailable(exc) from exc
+    except AiCreditsUsedUp as exc:
+        raise _ai_credits_used_up(exc) from exc
     return _sse_response(_stream_run(services, run_id, after=0))
 
 

@@ -244,9 +244,25 @@ async def test_an_unexpected_exception_is_an_internal_error(
         RunEnded(status="cancelled"),
     ],
 )
-def test_live_and_stored_endings_carry_the_same_data(ended: RunEnded) -> None:
+@pytest.mark.parametrize(
+    "charge",
+    [
+        {},
+        {"goat_ai": False},
+        {"goat_ai": True, "hosted_in": "EU"},
+        {"goat_ai": True, "hosted_in": "EU", "ai_credits": 3.0, "steps": 24},
+    ],
+)
+def test_live_and_stored_endings_carry_the_same_data(
+    ended: RunEnded, charge: dict[str, Any]
+) -> None:
     usage = UsageReported(
-        model="m", provider="p", input_tokens=3, output_tokens=2, cache_read_tokens=1
+        model="m",
+        provider="p",
+        input_tokens=3,
+        output_tokens=2,
+        cache_read_tokens=1,
+        **charge,
     )
     events = [
         RunStarted(message_id="m1"),

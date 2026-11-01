@@ -146,12 +146,13 @@ async def test_status_of_a_member(
     member = await org_repo.member(USER)
     assert member is not None
     status = await resolver.status_of(member)
-    assert (status.available, status.reason, status.provider, status.model) == (
-        True,
-        None,
-        "test",
-        "test",
-    )
+    assert (
+        status.available,
+        status.reason,
+        status.provider,
+        status.model,
+        status.goat_ai,
+    ) == (True, None, "test", "test", True)
     await org_repo.save_settings(
         ORG,
         enabled=False,
@@ -161,9 +162,27 @@ async def test_status_of_a_member(
         updated_by=ADMIN,
     )
     off = await resolver.status_of(member)
-    assert (off.available, off.reason, off.provider, off.data_policy) == (
+    assert (off.available, off.reason, off.provider, off.data_policy, off.goat_ai) == (
         False,
         "disabled",
         None,
         "restricted",
+        False,
+    )
+
+
+async def test_status_says_whether_goat_ai_answers(
+    org_repo: OrgSettingsRepository, settings: AssistantSettings
+) -> None:
+    """An own connection answers also when GOAT AI stands by as its fallback."""
+    resolver = ModelResolver(org_repo, settings)
+    member = await org_repo.member(USER)
+    assert member is not None
+    assert (await resolver.status_of(member)).goat_ai is True
+    await _own_connection(org_repo, settings, fallback=True)
+    own = await resolver.status_of(member)
+    assert (own.available, own.provider, own.goat_ai) == (
+        True,
+        "openai_compatible",
+        False,
     )

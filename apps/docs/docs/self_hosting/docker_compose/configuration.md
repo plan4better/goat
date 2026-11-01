@@ -145,6 +145,7 @@ See [AI assistant](./external_services.md#assistant) for how these work together
 | `ASSISTANT_DEFAULT_BASE_URL` | empty | Required for `openai_compatible` and `azure_openai` (the Azure v1 endpoint, ending in `/openai/v1`); an optional gateway for `anthropic`, `openai` and `mistral` |
 | `ASSISTANT_DEFAULT_API_KEY` | empty | Required for `anthropic`, `openai`, `mistral` and `azure_openai`; optional for `openai_compatible`; for `bedrock` an optional Bedrock API key |
 | `ASSISTANT_DEFAULT_REGION` | empty | AWS region (`bedrock`) or Google Cloud location (`vertex`) |
+| `ASSISTANT_DEFAULT_HOSTED_IN` | empty | Where GOAT AI's model is hosted, a region such as `EU`. The details of GOAT AI's answers name it, and organization admins see it on the AI settings page. Saved with each answer, so a later change leaves earlier answers as they were; empty names no place. |
 | `ASSISTANT_ALLOW_ORG_CONNECTIONS` | `true` | Organizations may add connections of their own |
 | `ASSISTANT_ALLOWED_PROVIDERS` | all seven types | Provider types organizations may use, comma-separated |
 | `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS` | `false` | Lets organizations' connections reach private and internal addresses and plain `http` |

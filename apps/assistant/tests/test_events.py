@@ -101,6 +101,44 @@ def test_fold_parts_keeps_one_usage_part_with_summed_tokens() -> None:
     ]
 
 
+def test_fold_parts_keeps_what_a_goat_ai_answer_was_charged() -> None:
+    events = [
+        RunStarted(message_id="m1"),
+        UsageReported(
+            model="m",
+            provider="openrouter",
+            input_tokens=10,
+            output_tokens=4,
+            goat_ai=True,
+            hosted_in="EU",
+            ai_credits=2.0,
+            steps=12,
+        ),
+        RunEnded(status="succeeded"),
+    ]
+    [usage] = fold_parts(events)
+    assert usage == {
+        "type": "usage",
+        "model": "m",
+        "provider": "openrouter",
+        "input_tokens": 10,
+        "output_tokens": 4,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "goat_ai": True,
+        "hosted_in": "EU",
+        "ai_credits": 2.0,
+        "steps": 12,
+    }
+    # Nothing charged, no hosting place: the keys are left out, as in answers
+    # stored before they existed.
+    [free] = fold_parts(
+        [UsageReported(model="m", input_tokens=1, output_tokens=1, goat_ai=False)]
+    )
+    assert free["goat_ai"] is False
+    assert not {"hosted_in", "ai_credits", "steps"} & set(free)
+
+
 def test_to_ui_message_names_the_answers_run_and_whether_it_was_undone() -> None:
     parts = [{"type": "text", "id": "m1:1", "text": "Changed."}]
     assert to_ui_message("m1", "assistant", parts, run_id="r1")["metadata"] == {

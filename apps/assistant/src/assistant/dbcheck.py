@@ -6,7 +6,12 @@ the database, so nothing is missing there. The check is for operators who
 give the assistant a role of its own (``apps/assistant/sql/grants.sql``):
 ``customer.can`` is a plain SQL function, not SECURITY DEFINER, so it reads
 core's tables with the caller's privileges, and a missing SELECT would only
-show up as a failed permission check on the first project question.
+show up as a failed permission check on the first project question. Core's
+AI credit functions are SECURITY DEFINER and not executable by everyone, so a
+missing EXECUTE would only show up as an unchecked and uncharged answer. The
+check runs when the assistant starts; core's initial_data re-creates the
+functions on every deploy, and grants.sql's default privileges give the
+re-created ones the role's EXECUTE again.
 
 ``python -m assistant.dbcheck`` runs it with the service's environment.
 """
@@ -72,6 +77,13 @@ AUTHZ_FUNCTIONS: tuple[str, ...] = (
     "space_admins",
     "space_rank",
 )
+
+#: Core's AI credit functions (assistant.credits); EXECUTE is granted to the
+#: assistant's role (grants.sql), not to everyone.
+CREDIT_FUNCTIONS: tuple[str, ...] = ("ai_credits_left", "charge_ai_answer")
+
+#: Every function of core's schema the check looks for.
+CHECKED_FUNCTIONS: tuple[str, ...] = (*AUTHZ_FUNCTIONS, *CREDIT_FUNCTIONS)
 
 
 def _ident(name: str) -> str:
@@ -148,10 +160,10 @@ async def missing_privileges(
         "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
         "WHERE n.nspname = $1 AND p.proname = ANY($2::text[]) ORDER BY 2",
         customer_schema,
-        list(AUTHZ_FUNCTIONS),
+        list(CHECKED_FUNCTIONS),
     )
     found = {row["proname"] for row in functions}
-    for name in AUTHZ_FUNCTIONS:
+    for name in CHECKED_FUNCTIONS:
         if name not in found:
             missing.append(
                 f"function {_ident(customer_schema)}.{name} (run core's initial_data)"

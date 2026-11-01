@@ -65,6 +65,20 @@ SEED_USERS = [
 #: One key per test session; tests that need other keys build their own SecretBox.
 TEST_SECRETS_KEY = Fernet.generate_key().decode()
 
+#: Core's AI credit functions, installed into the test schema from their files.
+BILLING_SQL = (
+    Path(__file__).resolve().parents[3]
+    / "apps"
+    / "core"
+    / "src"
+    / "core"
+    / "db"
+    / "sql"
+    / "functions"
+    / "billing"
+)
+AI_CREDIT_FUNCTIONS = ("ai_credits_left", "charge_ai_answer")
+
 
 def _settings() -> AssistantSettings:
     # Fields with a validation alias are set by alias here: by field name, an init
@@ -84,6 +98,7 @@ def _settings() -> AssistantSettings:
             "default_base_url": "",
             "default_api_key": "",
             "default_region": "",
+            "default_hosted_in": "",
             "allow_org_connections": True,
             "allowed_providers": list(PROVIDER_TYPES),
             "allow_private_endpoints": False,
@@ -158,6 +173,38 @@ async def _schema(settings: AssistantSettings) -> AsyncIterator[None]:
             f'SELECT 1 FROM "{TEST_SCHEMA}".project_reader r '
             "WHERE r.project_id = p_id AND r.user_id = p_user) $fn$"
         )
+        # Stand in for the columns of core's billing tables that its AI credit
+        # functions and the assistant read; the functions are core's own files.
+        await conn.exec_driver_sql(
+            f'CREATE TABLE "{TEST_SCHEMA}".organization '
+            "(id uuid PRIMARY KEY, total_ai_credits numeric, "
+            "used_ai_credits numeric NOT NULL DEFAULT 0, "
+            "on_trial boolean NOT NULL DEFAULT false, "
+            "plan_renewal_date timestamp, credits_reset_at timestamp)"
+        )
+        await conn.exec_driver_sql(
+            f'CREATE TABLE "{TEST_SCHEMA}".billing_terms '
+            "(id integer PRIMARY KEY, ai_credit_tiers jsonb NOT NULL)"
+        )
+        await conn.exec_driver_sql(
+            f'CREATE TABLE "{TEST_SCHEMA}".credit_usage '
+            "(id bigserial PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now(), "
+            "organization_id uuid NOT NULL, user_id uuid, category text NOT NULL, "
+            "action text NOT NULL, unit numeric NOT NULL, unit_type text NOT NULL, "
+            "rate numeric NOT NULL, cost numeric NOT NULL, payload jsonb)"
+        )
+        await conn.exec_driver_sql(
+            f'CREATE UNIQUE INDEX ON "{TEST_SCHEMA}".credit_usage '
+            "((payload->>'run_id')) WHERE category = 'ai'"
+        )
+        # Each file is several statements (the function, its privileges): run
+        # them over the simple query protocol, as core's install does, with
+        # `customer.` naming the data schema.
+        raw = (await conn.get_raw_connection()).driver_connection
+        assert raw is not None
+        for name in AI_CREDIT_FUNCTIONS:
+            sql = (BILLING_SQL / f"{name}.sql").read_text()
+            await raw.execute(sql.replace("customer.", f'"{TEST_SCHEMA}".'))
     yield
     async with engine.begin() as conn:
         await conn.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{TEST_SCHEMA}" CASCADE')
@@ -174,7 +221,14 @@ async def db(settings: AssistantSettings, _schema: None) -> AsyncIterator[Databa
             f'"{TEST_SCHEMA}".message, "{TEST_SCHEMA}".conversation, '
             f'"{TEST_SCHEMA}".organization_settings, "{TEST_SCHEMA}".connection, '
             f'"{TEST_SCHEMA}"."user", "{TEST_SCHEMA}".role, "{TEST_SCHEMA}".user_role, '
-            f'"{TEST_SCHEMA}".project, "{TEST_SCHEMA}".project_reader CASCADE'
+            f'"{TEST_SCHEMA}".project, "{TEST_SCHEMA}".project_reader, '
+            f'"{TEST_SCHEMA}".organization, "{TEST_SCHEMA}".billing_terms, '
+            f'"{TEST_SCHEMA}".credit_usage CASCADE'
+        )
+        # Both organizations without an AI credit limit, as with billing off.
+        await conn.executemany(
+            f'INSERT INTO "{TEST_SCHEMA}".organization (id) VALUES ($1)',
+            [(ORG,), (OTHER_ORG,)],
         )
         await conn.executemany(
             f'INSERT INTO "{TEST_SCHEMA}".role (id, name) VALUES ($1, $2)',

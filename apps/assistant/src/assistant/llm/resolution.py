@@ -48,6 +48,9 @@ class AssistantStatus:
     provider: str | None
     model: str | None
     data_policy: DataPolicy
+    #: GOAT AI is the main target, so the organization's AI credits apply. An own
+    #: connection with GOAT AI as its fallback is not.
+    goat_ai: bool = False
 
 
 class ModelResolver:
@@ -141,4 +144,5 @@ class ModelResolver:
             resolution.main.provider,
             resolution.main.model,
             resolution.data_policy,
+            goat_ai=not resolution.main.own,
         )

@@ -24,6 +24,7 @@ from assistant.events import (
     ToolFailed,
     ToolReturned,
     UsageReported,
+    usage_metadata,
 )
 
 UI_MESSAGE_STREAM_HEADERS: dict[str, str] = {
@@ -120,7 +121,7 @@ class AiSdkEncoder:
             return [
                 {
                     "type": "message-metadata",
-                    "messageMetadata": {"usage": event.model_dump(exclude={"type"})},
+                    "messageMetadata": {"usage": usage_metadata(event)},
                 }
             ]
         if isinstance(event, RunEnded):

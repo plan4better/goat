@@ -103,7 +103,9 @@ configured. Either set the built-in "GOAT AI" connection for every organization
 (`ASSISTANT_DEFAULT_PROVIDER`, `ASSISTANT_DEFAULT_MODEL` and, depending on the
 provider, `ASSISTANT_DEFAULT_API_KEY`, `ASSISTANT_DEFAULT_BASE_URL` or
 `ASSISTANT_DEFAULT_REGION`), or let organization admins add their own
-connection under **Settings** → **AI**. `setup.sh` creates
+connection under **Settings** → **AI**. `ASSISTANT_DEFAULT_HOSTED_IN` names
+where GOAT AI's model is hosted (a region such as `EU`); its answers and the
+AI settings page show it. `setup.sh` creates
 `ASSISTANT_SECRETS_KEY`, which encrypts the credentials organizations store:
 keep it with your backups. Credentials for Amazon Bedrock or Google Vertex AI
 go into `./assistant.env` (see `.env.example`). External agents reach the MCP

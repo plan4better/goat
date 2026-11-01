@@ -850,6 +850,9 @@ assistant:
     # ASSISTANT_DEFAULT_MODEL: ""
     # ASSISTANT_DEFAULT_BASE_URL: ""           # openai_compatible, azure_openai (…/openai/v1), or a gateway
     # ASSISTANT_DEFAULT_REGION: ""             # bedrock: AWS region; vertex: Google Cloud location
+    # Where GOAT AI's model is hosted, a region such as EU: its answers say
+    # "Runs on a model hosted in the EU." and admins see it on the AI page.
+    # ASSISTANT_DEFAULT_HOSTED_IN: ""
     # What organizations may configure.
     ASSISTANT_ALLOW_ORG_CONNECTIONS: "true"
     ASSISTANT_ALLOWED_PROVIDERS: "anthropic,bedrock,vertex,azure_openai,openai,mistral,openai_compatible"

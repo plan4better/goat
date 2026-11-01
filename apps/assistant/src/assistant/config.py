@@ -139,6 +139,11 @@ class AssistantSettings(BaseSettings):
     default_api_key: SecretStr = SecretStr("")
     #: AWS region (``bedrock``) or Google Cloud location (``vertex``).
     default_region: str = ""
+    #: Where GOAT AI's model is hosted, a region such as ``EU``: answers say
+    #: "Runs on a model hosted in the EU." and admins see it on the AI page.
+    #: Saved with each GOAT AI answer, so a later change never rewrites older
+    #: answers. Empty names no place.
+    default_hosted_in: str = ""
     #: Whether organizations may add their own connections (§4.1). Needs
     #: ``secrets_key``; without it own connections are unavailable.
     allow_org_connections: bool = True
@@ -255,6 +260,11 @@ class AssistantSettings(BaseSettings):
                 f"certificates ({exc})"
             ) from None
         return value
+
+    @field_validator("default_hosted_in")
+    @classmethod
+    def _trim_hosted_in(cls, value: str) -> str:
+        return value.strip()
 
     @field_validator("root_path", mode="before")
     @classmethod

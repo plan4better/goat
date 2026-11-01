@@ -436,6 +436,36 @@ dock shows in the user's language by its kind, the run completes, and a warning 
 text in the history after everything the run found, so the user can ask for the numbers. Otherwise the answer still
 fails: after a failed run or one without layers there are no numbers, and `workflow_last_run` shows no run card.
 
+**AI credits.** Answers of GOAT AI draw on the organization's pool of AI credits, which core owns with the
+allowance, the trial amount and the price tiers (`apps/core/README.md`); the assistant holds none of these numbers and
+calls core's two functions (`assistant/credits.py`). Before an answer, the run route (before the login) and
+`RunManager.start_run` (when it resolves the model itself) ask `ai_credits_left`: with GOAT AI as the model and none
+left, the answer is refused with 402 `ai_credits_used_up` and the date the pool is refilled, a trial's end for a trial,
+and nothing is stored. An own connection is never checked; it only loses its GOAT AI fallback while the pool is empty.
+NULL means no limit, which is also how billing off (self-hosted) looks, so the assistant needs no billing setting of
+its own. A check that fails or takes longer than `CHECK_TIMEOUT_SECONDS` lets the answer run, as processes' credit
+gate does, since charging comes after the answer; it is logged once until a check works again. When the answer ends,
+outside the cancel scope and before its usage report, `charge_ai_answer` books it by its steps (its tool calls,
+refused and failed ones included) under its run id, so an answer is booked once however often its end is recorded.
+Which endings count is one function (`credits.charged`): an answer that succeeded; one that ran into the run's
+limits (`run_limit`), since the question asked for more than an answer may take and these answers cost the most; one
+that ran out of time (`run_timeout`) or that the user stopped, once it made its first step. Free are failures on our
+side (the provider, an internal error), interrupted answers (a shutdown, or a lost lease, which the sweeper ends as
+interrupted), and timeouts and stops before a step: an answer out of time without a step is a provider that hung.
+The run's state is read once before the charge, so an answer ended elsewhere meanwhile (swept, stored as
+interrupted) is not charged even when its owner finished it. Organizations without a limit are booked as well:
+nothing refuses them, and the Usage page still shows their answers. A failed charge leaves the answer uncharged and,
+like a failed check, is logged once until a charge works again, so a lasting cause writes no line per answer. The usage report (`UsageReported`, kept in the
+answer's metadata) carries `goat_ai`, the AI credits and steps charged, and `hosted_in`
+(`ASSISTANT_DEFAULT_HOSTED_IN`, also saved in `assistant.usage`), so the answer's details show what it cost and where
+its model runs, and a later change of the setting never rewrites older answers. `/status` says with `goat_ai` whether
+GOAT AI is the organization's model, so the dock shows the pool only where its answers draw on it (an own connection
+with GOAT AI as its fallback does not). Both functions are SECURITY DEFINER
+and not executable by everyone: an assistant role of its own gets EXECUTE on them from `sql/grants.sql`, through the
+customer schema's default privileges, because core's `initial_data` drops and re-creates its functions on every
+deploy and a dropped function loses its grants. A role set up with an earlier version of the file runs it again
+once; `python -m assistant.dbcheck` reports a missing grant when the assistant starts.
+
 Behind a connection pooler in transaction mode, set `POSTGRES_TRANSACTION_POOLER`: the pool then prepares no
 statements on the server. The assistant holds no session state in Postgres (its locks are per transaction, its
 streams go through Redis), so nothing else changes.

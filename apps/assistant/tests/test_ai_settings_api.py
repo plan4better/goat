@@ -137,6 +137,7 @@ async def test_member_status(db: Database, authed: AssistantSettings) -> None:
         "model": "test",
         "data_policy": "restricted",
         "disabled_surfaces": [],
+        "goat_ai": True,
     }
 
 
@@ -190,12 +191,41 @@ async def test_admin_reads_the_defaults(
         "allow_default_fallback": False,
         "status": "ok",
         "instance": {
-            "goat_ai": {"available": True, "provider": "test", "model": "test"},
+            "goat_ai": {
+                "available": True,
+                "provider": "test",
+                "model": "test",
+                "hosted_in": None,
+            },
             "org_connections": True,
             "secrets_key_configured": True,
             "allowed_providers": list(authed.allowed_providers),
             "private_endpoints": False,
         },
+    }
+
+
+async def test_admins_read_where_goat_ai_is_hosted(
+    db: Database, authed: AssistantSettings
+) -> None:
+    hosted = authed.model_copy(update={"default_hosted_in": "EU"})
+    async with _client(db, hosted, ADMIN) as client:
+        body = (await client.get("/settings")).json()
+    assert body["instance"]["goat_ai"] == {
+        "available": True,
+        "provider": "test",
+        "model": "test",
+        "hosted_in": "EU",
+    }
+    # Without GOAT AI there is nothing to describe.
+    off = hosted.model_copy(update={"default_provider": "none"})
+    async with _client(db, off, ADMIN) as client:
+        body = (await client.get("/settings")).json()
+    assert body["instance"]["goat_ai"] == {
+        "available": False,
+        "provider": None,
+        "model": None,
+        "hosted_in": None,
     }
 
 
@@ -393,6 +423,8 @@ async def test_activation_requires_a_passed_test(
     async with _client(db, authed, USER) as member:
         status = (await member.get("/status")).json()
     assert (status["provider"], status["model"]) == ("openai_compatible", "own-model")
+    # The dock shows the AI credits only where GOAT AI answers.
+    assert status["goat_ai"] is False
 
 
 async def test_a_failed_test_is_recorded_and_blocks_activation(

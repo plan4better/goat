@@ -58,6 +58,8 @@ check_common() {
   jq -e '.services.assistant.environment.ASSISTANT_TOKEN_EXCHANGE_ENABLED == "false"' <<<"$json" >/dev/null || fail "token exchange needs Keycloak 26.2"
   jq -e '.services.assistant.environment.ASSISTANT_SECRETS_KEY | test("^[A-Za-z0-9_-]{43}=$")' <<<"$json" >/dev/null || fail "assistant secrets key"
   jq -e '.services.assistant.environment.ASSISTANT_DEFAULT_PROVIDER == "none"' <<<"$json" >/dev/null || fail "GOAT AI must be off by default"
+  # GOAT AI's hosting place reaches the assistant, empty until it is set.
+  jq -e '.services.assistant.environment.ASSISTANT_DEFAULT_HOSTED_IN == ""' <<<"$json" >/dev/null || fail "GOAT AI hosting place"
   jq -e '.services.assistant.environment.ASSISTANT_ALLOWED_PROVIDERS | split(",") | length == 7' <<<"$json" >/dev/null || fail "allowed providers"
   # The MCP endpoint moved to the assistant; nothing configures the catalog's.
   jq -e '[.services.catalog.environment | keys[] | select(test("MCP"))] | length == 0' <<<"$json" >/dev/null || fail "catalog still has MCP settings"
@@ -159,6 +161,12 @@ d=$(make_variant --public-url https://goat.example.org --tls off)
 echo "ALLOW_ORGANIZATION_CREATION=false" >> "$d/.env"
 j=$(render "$d"); check_common "$j"
 jq -e '.services.core.environment.ALLOW_ORGANIZATION_CREATION == "false"' <<<"$j" >/dev/null || fail "organization creation setting not passed to core"
+
+variant=goat-ai-hosted-in
+d=$(make_variant --public-url https://goat.example.org --tls off)
+sed -i 's/^ASSISTANT_DEFAULT_HOSTED_IN=.*/ASSISTANT_DEFAULT_HOSTED_IN=EU/' "$d/.env"
+j=$(render "$d")
+jq -e '.services.assistant.environment.ASSISTANT_DEFAULT_HOSTED_IN == "EU"' <<<"$j" >/dev/null || fail "GOAT AI hosting place not passed to the assistant"
 
 variant=off-ip-port
 d=$(make_variant --public-url http://10.0.0.5:8080 --tls off)

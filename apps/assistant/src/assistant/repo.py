@@ -606,12 +606,13 @@ class Repository:
         *,
         connection_id: UUID | None = None,
     ) -> None:
-        """One row per run and purpose (spec §11); ``connection_id`` None is GOAT AI."""
+        """One row per run and purpose (spec §11); ``connection_id`` None is GOAT
+        AI. Where GOAT AI's model is hosted comes from the report (``hosted_in``)."""
         await self.db.pool.execute(
             f"INSERT INTO {self.db.t('usage')} (run_id, user_id, organization_id, "
             "connection_id, provider, model, purpose, input_tokens, output_tokens, "
-            "cache_read_tokens, cache_write_tokens) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+            "cache_read_tokens, cache_write_tokens, hosted_in) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
             run_id,
             user_id,
             organization_id,
@@ -623,6 +624,7 @@ class Repository:
             usage.output_tokens,
             usage.cache_read_tokens,
             usage.cache_write_tokens,
+            usage.hosted_in,
         )
 
     async def organization_of(self, user_id: UUID) -> UUID | None:

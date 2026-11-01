@@ -20,7 +20,13 @@ import pytest_asyncio
 from assistant import app as app_module
 from assistant.config import AssistantSettings
 from assistant.db import Database
-from assistant.dbcheck import AUTHZ_FUNCTIONS, CUSTOMER_READS, missing_privileges
+from assistant.dbcheck import (
+    AUTHZ_FUNCTIONS,
+    CREDIT_FUNCTIONS,
+    CUSTOMER_READS,
+    missing_privileges,
+)
+from tests.conftest import BILLING_SQL
 
 ROOT = Path(__file__).resolve().parents[3]
 AUTHZ_SQL = (
@@ -48,9 +54,16 @@ def test_the_check_covers_the_services_own_reads() -> None:
             re.findall(r"\.customer\(\s*[\"']([a-z_]+)[\"']\s*\)", path.read_text())
         )
     assert own, "expected Database.customer(...) lookups in the service"
-    # Tables need SELECT (CUSTOMER_READS), functions EXECUTE (AUTHZ_FUNCTIONS).
-    known = set(CUSTOMER_READS) | set(AUTHZ_FUNCTIONS)
+    # Tables need SELECT (CUSTOMER_READS), functions EXECUTE (AUTHZ_FUNCTIONS,
+    # CREDIT_FUNCTIONS).
+    known = set(CUSTOMER_READS) | set(AUTHZ_FUNCTIONS) | set(CREDIT_FUNCTIONS)
     assert own <= known, sorted(own - known)
+
+
+DEFAULT_FUNCTION_GRANT = (
+    "ALTER DEFAULT PRIVILEGES IN SCHEMA customer\n"
+    "  GRANT EXECUTE ON FUNCTIONS TO goat_assistant;"
+)
 
 
 def test_grants_file_lists_exactly_the_checked_tables() -> None:
@@ -69,12 +82,69 @@ def test_grants_file_lists_exactly_the_checked_tables() -> None:
         "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA assistant TO goat_assistant;"
         in text
     )
+    # Core's initial_data drops and re-creates its functions on every deploy,
+    # and a dropped function loses its grants: the credit functions, which are
+    # not executable by everyone, keep the role's EXECUTE only through the
+    # schema's default privileges.
+    assert DEFAULT_FUNCTION_GRANT in text
+    # By name as well: the file fails when it runs before initial_data.
+    named = re.search(
+        r"GRANT EXECUTE ON FUNCTION\s+(.*?)\s+TO goat_assistant;", text, re.S
+    )
+    assert named, "grants.sql must grant the AI credit functions by name"
+    assert {
+        item.strip().removeprefix("customer.").split("(")[0]
+        for item in re.split(r",\s*(?=customer\.)", named.group(1))
+    } == set(CREDIT_FUNCTIONS)
 
 
 @pytest_asyncio.fixture
 async def conn(db: Database) -> AsyncIterator[asyncpg.Connection]:
     async with db.pool.acquire() as connection:
         yield connection
+
+
+async def test_the_credit_functions_keep_the_grant_when_core_reinstalls_them(
+    conn: asyncpg.Connection, settings: AssistantSettings
+) -> None:
+    """grants.sql's default privileges, run as the role that installs core's
+    functions, give a function re-created by initial_data (drop, create,
+    revoke from PUBLIC) the role's EXECUTE again. pg_monitor stands in for the
+    assistant's role; everything is rolled back."""
+    schema = settings.customer_schema
+
+    async def reinstall() -> bool:
+        for name in CREDIT_FUNCTIONS:
+            await conn.execute(f'DROP FUNCTION "{schema}".{name} CASCADE')
+            sql = (BILLING_SQL / f"{name}.sql").read_text()
+            await conn.execute(sql.replace("customer.", f'"{schema}".'))
+        allowed = await conn.fetch(
+            "SELECT has_function_privilege('pg_monitor', p.oid, 'EXECUTE') AS ok "
+            "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "WHERE n.nspname = $1 AND p.proname = ANY($2::text[])",
+            schema,
+            list(CREDIT_FUNCTIONS),
+        )
+        assert len(allowed) == len(CREDIT_FUNCTIONS)
+        return all(row["ok"] for row in allowed)
+
+    transaction = conn.transaction()
+    await transaction.start()
+    try:
+        await conn.execute(
+            f'GRANT EXECUTE ON FUNCTION "{schema}".ai_credits_left(uuid) TO pg_monitor'
+        )
+        # A grant by name alone is gone after the reinstall ...
+        assert not await reinstall()
+        await conn.execute(
+            DEFAULT_FUNCTION_GRANT.replace("customer", f'"{schema}"').replace(
+                "goat_assistant", "pg_monitor"
+            )
+        )
+        # ... the default privileges are not.
+        assert await reinstall()
+    finally:
+        await transaction.rollback()
 
 
 async def test_owner_has_every_privilege_on_the_assistant_tables(
@@ -100,6 +170,8 @@ async def test_owner_has_every_privilege_on_the_assistant_tables(
         f'function "{settings.customer_schema}".effective_role (run core\'s initial_data)'
         in missing
     )
+    # Core's AI credit functions are installed there (conftest), and found.
+    assert not [item for item in missing if any(f in item for f in CREDIT_FUNCTIONS)]
 
 
 async def test_a_role_without_schema_usage_is_reported_not_raised(
@@ -175,6 +247,25 @@ async def test_a_role_with_usage_only_is_told_which_tables_it_lacks(
     )
     assert f'SELECT ON "{settings.db_schema}"."conversation"' in missing
     assert f'USAGE ON SCHEMA "{settings.db_schema}"' not in missing
+
+
+@needs_roles
+async def test_a_role_without_execute_on_the_credit_functions_is_told(
+    conn: asyncpg.Connection, settings: AssistantSettings
+) -> None:
+    """Core's install revokes EXECUTE on them from PUBLIC (conftest installs
+    its files): a role that can read everything still lacks them."""
+    schema = settings.customer_schema
+    missing = await _with_role(
+        conn,
+        settings,
+        f"assistant_dbcheck_credits_{os.getpid()}",
+        f'GRANT USAGE ON SCHEMA "{schema}" TO {{role}}',
+        f'GRANT SELECT ON ALL TABLES IN SCHEMA "{schema}" TO {{role}}',
+    )
+    lacking = [item for item in missing if item.startswith("EXECUTE ON FUNCTION")]
+    for name in CREDIT_FUNCTIONS:
+        assert any(f"{name}(" in item for item in lacking), (name, missing)
 
 
 async def test_start_logs_what_is_missing_and_never_aborts(

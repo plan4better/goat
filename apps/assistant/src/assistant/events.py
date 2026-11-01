@@ -85,6 +85,29 @@ class UsageReported(BaseModel):
     cache_write_tokens: int = 0
     #: The provider type of the connection that served the run (spec §10 per-answer details).
     provider: str | None = None
+    #: GOAT AI answered, not an own connection of the organization.
+    goat_ai: bool | None = None
+    #: Where GOAT AI's model is hosted (``ASSISTANT_DEFAULT_HOSTED_IN``), saved
+    #: with the answer so a later change never rewrites it. GOAT AI only.
+    hosted_in: str | None = None
+    #: The AI credits the answer was charged and the steps (tool calls) they
+    #: were charged for; None when nothing was charged.
+    ai_credits: float | None = None
+    steps: int | None = None
+
+
+#: Usage keys an answer has only when they apply, and older answers never: a
+#: report and the stored message leave them out while they are None.
+OPTIONAL_USAGE = ("goat_ai", "hosted_in", "ai_credits", "steps")
+
+
+def usage_metadata(event: UsageReported) -> dict[str, Any]:
+    """The usage as the dock reads it from a live answer's message metadata."""
+    return {
+        key: value
+        for key, value in event.model_dump(exclude={"type"}).items()
+        if value is not None or key not in OPTIONAL_USAGE
+    }
 
 
 RunStatus = Literal["succeeded", "failed", "cancelled", "interrupted"]
@@ -212,6 +235,9 @@ def fold_parts(events: list[RunEvent]) -> list[dict[str, Any]]:
             usage["output_tokens"] += event.output_tokens
             usage["cache_read_tokens"] += event.cache_read_tokens
             usage["cache_write_tokens"] += event.cache_write_tokens
+            for key in OPTIONAL_USAGE:
+                if getattr(event, key) is not None:
+                    usage[key] = getattr(event, key)
         elif isinstance(event, RunEnded) and event.status != "succeeded":
             parts.append(
                 {

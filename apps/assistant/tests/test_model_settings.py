@@ -19,6 +19,7 @@ _MODEL_ENV = (
     "ASSISTANT_DEFAULT_BASE_URL",
     "ASSISTANT_DEFAULT_API_KEY",
     "ASSISTANT_DEFAULT_REGION",
+    "ASSISTANT_DEFAULT_HOSTED_IN",
     "ASSISTANT_ALLOW_ORG_CONNECTIONS",
     "ASSISTANT_ALLOWED_PROVIDERS",
     "ASSISTANT_ALLOW_PRIVATE_ENDPOINTS",
@@ -43,6 +44,12 @@ def test_model_defaults(env: pytest.MonkeyPatch) -> None:
     assert settings.allowed_providers == list(PROVIDER_TYPES)
     assert settings.allow_private_endpoints is False
     assert settings.secrets_keys() == []
+    assert settings.default_hosted_in == ""
+
+
+def test_the_hosting_place_is_trimmed(env: pytest.MonkeyPatch) -> None:
+    env.setenv("ASSISTANT_DEFAULT_HOSTED_IN", "  EU ")
+    assert AssistantSettings().default_hosted_in == "EU"
 
 
 def test_test_provider_selects_test_or_demo(env: pytest.MonkeyPatch) -> None:
