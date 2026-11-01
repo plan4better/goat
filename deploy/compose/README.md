@@ -91,7 +91,7 @@ More in the docs: [External services](https://goat.plan4better.de/docs/self_host
 ## Optional integrations
 
 In `.env`: `NEXT_PUBLIC_MAPTILER_KEY` (satellite basemap), `NEXT_PUBLIC_MAPBOX_TOKEN`
-(place search), `SMTP_*` (email, below), `CATALOG_S3_*` (GOAT data catalog),
+(place search), `SMTP_*` (email, below), `CATALOG_S3_*` (GOAT data catalog, and the OpenStreetMap and Overture mirror for Add layer › Connect service),
 `GEOCODING_URL` / `GEOCODING_AUTHORIZATION`, `ODOO_*` (Odoo connection and support tickets, below),
 `NEXT_PUBLIC_SUPPORT_EMAIL` (address of "Report a problem" without tickets, default `support@plan4better.de`),
 `OTEL_*` (telemetry export).

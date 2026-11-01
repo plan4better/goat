@@ -4,6 +4,12 @@ description: |
   Helm chart for GOAT (Geo Open Accessibility Tool) — a WebGIS platform for
   spatial analysis, accessibility modeling, and collaborative mapping.
 
+  v0.8.0:
+
+  - processes gets the catalog bucket (`catalog.s3`, CATALOG_S3_*): it reads
+    the OpenStreetMap and Overture mirror that goat-data publishes there for
+    Add layer › Connect service. No values change needed.
+
   v0.7.0:
 
   - Tracks GOAT v3.0.9 (Windmill 1.751): every image defaults to v3.0.9.
@@ -251,7 +257,7 @@ description: |
     `NEXT_PUBLIC_AUTH` (inverted meaning), matching the upstream single
     AUTH switch.
 type: application
-version: 0.7.0
+version: 0.8.0
 appVersion: "v3.0.9"   # GOAT release every image defaults to; override per service with <service>.image.tag
 icon: https://goat.plan4better.de/favicon.ico
 home: https://github.com/plan4better/goat/tree/main/deploy/helm/goat

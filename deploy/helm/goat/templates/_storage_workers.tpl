@@ -57,6 +57,36 @@ the AWS_* key pair it uses for it).
 {{- end }}
 
 {{/*
+The catalog bucket env of processes (catalog.s3), which reads the open-data
+mirror in it. Unset values render nothing. Params: root, values (the
+service's values block).
+*/}}
+{{- define "goat.catalogS3.env" -}}
+{{- $v := .values -}}
+{{- $cat := .root.Values.catalog.s3 | default dict -}}
+{{- if $cat.bucket -}}
+{{- range list (list "CATALOG_S3_BUCKET" $cat.bucket) (list "CATALOG_S3_ENDPOINT_URL" $cat.endpointUrl) (list "CATALOG_S3_REGION" $cat.region) -}}
+{{- $value := toString (index . 1 | default "") -}}
+{{- if and $value (not (include "goat.env.userSet" (dict "values" $v "key" (index . 0)))) }}
+- name: {{ index . 0 }}
+  value: {{ $value | quote }}
+{{- end -}}
+{{- end -}}
+{{- if $cat.existingSecret -}}
+{{- range list (list "CATALOG_S3_ACCESS_KEY_ID" $cat.accessKeyIdKey) (list "CATALOG_S3_SECRET_ACCESS_KEY" $cat.secretAccessKeyKey) -}}
+{{- if not (include "goat.env.userSet" (dict "values" $v "key" (index . 0))) }}
+- name: {{ index . 0 }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $cat.existingSecret }}
+      key: {{ index . 1 }}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 ──── Windmill workers that run GOAT's jobs (print, tools, workflows) ────────
 Windmill runs GOAT's tools, imports, workflows and prints as scripts inside
 these workers, and hands a script only the variables named in

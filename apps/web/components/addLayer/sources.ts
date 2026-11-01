@@ -83,13 +83,15 @@ export const ADD_LAYER_SOURCES: AddLayerSource[] = [
   },
   {
     id: "connect",
+    // A rail of what can be connected — a web service, or open data GOAT hosts — beside
+    // the chosen one.
     labelKey: "connect_service",
     group: "new",
     icon: ICON_NAME.LINK,
     // A layer list beside a preview map, both reaching the frame's edges; a folder is all
     // it needs, so the Content page offers it too.
     wide: true,
-    width: "min(1100px, 94vw)",
+    width: "min(1200px, 94vw)",
   },
 ];
 

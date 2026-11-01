@@ -98,6 +98,8 @@ ODOO_SUPPORT_TEAM_ID=7
 VARS
 j2=$(render "$d2"); check_common "$j2"
 jq -e '.services.core.environment | .ODOO_URL == "https://odoo.example.org" and .ODOO_DB == "odoo-db" and .ODOO_SUPPORT_API_KEY == "bridge-key" and .ODOO_SUPPORT_TEAM_ID == "7"' <<<"$j2" >/dev/null || fail "odoo settings not passed to core"
+# processes reads the open-data mirror from the catalog bucket.
+jq -e '.services.processes.environment | has("CATALOG_S3_BUCKET")' <<<"$j" >/dev/null || fail "catalog bucket not passed to processes"
 # The edge proxy must not cap request bodies (support uploads take up to 55 MiB).
 ! grep -q "^[[:space:]]*request_body" "$here/init/caddy/Caddyfile" || fail "Caddyfile caps the request body"
 

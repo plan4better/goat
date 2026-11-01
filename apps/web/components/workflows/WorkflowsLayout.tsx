@@ -33,6 +33,7 @@ import { parseCQLQueryToObject } from "@/lib/transformers/filter";
 import type { Project, ProjectLayer, ProjectLayerGroup } from "@/lib/validations/project";
 import { createIfNode } from "@/lib/validations/workflow";
 import type { WorkflowNode } from "@/lib/validations/workflow";
+import { INTEGRATE_PROCESS_ID } from "@/lib/workflows/datasetConnection";
 
 import { useWorkflowExecution } from "@/hooks/workflows/useWorkflowExecution";
 
@@ -331,7 +332,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
             position,
             data: {
               type: "tool",
-              label: toolId,
+              label: toolId === INTEGRATE_PROCESS_ID ? t("fetch_data") : toolId,
               processId: toolId,
               config: {},
               status: "idle",

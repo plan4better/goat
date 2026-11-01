@@ -103,11 +103,22 @@ Dieser Tab enthält kategorisierte Werkzeuge, die für die Workflow-Konstruktion
 
 - **Daten I/O**
   - <code>+ Datensatz hinzufügen</code>: Erstellt Datensatz-Knoten
+  - <code>Daten abrufen</code>: Ruft OpenStreetMap- oder Overture-Maps-Features aus der Kopie von GOAT ab, bei jeder Ausführung neu. Der Knoten hat keinen Eingang. Beschrieben unten unter **Knoten Daten abrufen**.
   - <code>Als Datensatz speichern</code>: Speichert Workflow-Ergebnisse als permanente Datensätze. Konfigurieren Sie den **Datensatznamen** (Feld <code>Datensatzname</code>), aktivieren Sie **Zum Projekt hinzufügen**, um das Ergebnis automatisch zur Projektlayerliste hinzuzufügen, und aktivieren Sie **Bei erneutem Ausführen überschreiben**, um das zuvor exportierte Dataset bei jeder Ausführung des Workflows zu ersetzen, anstatt einen neuen Datensatz zu erstellen.
 
 :::tip Gute Praxis
 Vergeben Sie für jeden **Als Datensatz speichern**-Knoten einen aussagekräftigen Namen und aktivieren Sie **Bei erneutem Ausführen überschreiben**, wenn Sie denselben Workflow mehrfach ausführen. So bleibt Ihr Projekt übersichtlich und es entstehen keine doppelten Layer nach jeder Ausführung.
 :::
+
+**Knoten Daten abrufen**
+
+Ein <code>Daten abrufen</code>-Knoten braucht keinen Eingangslayer. Er ruft OpenStreetMap- oder Overture-Maps-Features ab und tut das bei jeder Ausführung erneut, sodass das Ergebnis der Quelle folgt.
+
+1. Ziehen Sie <code>Daten abrufen</code> auf die Leinwand und klicken Sie den Knoten an. Das Panel zeigt einen Abschnitt <code>Quelle</code> mit der Schaltfläche <code>Daten wählen</code>.
+2. Klicken Sie auf <code>Daten wählen</code>. Es öffnet sich derselbe Dialog wie bei <code>OpenStreetMap</code> und <code>Overture Maps</code> in Layer hinzufügen: Wählen Sie Layertyp, Gebiet sowie Tag- oder Attributfilter oder SQL. Details finden Sie unter [Layer](../map/layers.md#layer-hinzufügen).
+3. Klicken Sie auf <code>Im Workflow verwenden</code>, um die Auswahl im Knoten zu speichern. Der Knoten übernimmt einen vorgeschlagenen Namen wie „OSM points“. Mit <code>Bearbeiten</code> öffnen Sie die Auswahl erneut.
+
+Es wird noch nichts abgerufen, daher können die folgenden Knoten schon vor der ersten Ausführung eingerichtet werden. Solange nichts gewählt ist, zeigt der Knoten ein Achtung-Symbol. Es können höchstens 1.000.000 Features abgerufen werden, und sehr große Gebiete werden abgelehnt.
 
 - **Erreichbarkeitsindikatoren**: Alle Werkzeuge, die im Abschnitt [Erreichbarkeitsindikatoren](../category/accessibility-indicators) der Toolbox verfügbar sind
 - **Geoanalyse**: Alle Werkzeuge, die im Abschnitt [Geoanalyse](../category/geoanalysis) der Toolbox verfügbar sind
@@ -133,6 +144,13 @@ Wenn ein Werkzeug-Knoten ausgewählt ist, zeigt das rechte Panel das **Werkzeug-
 Wenn ein **Datensatz-Knoten** ausgewählt ist, erscheint das Datensatz-Panel mit zwei verfügbaren Tabs:
 
 **Quelle Tab**: Zeigen Sie Metadaten aus der Datenquelle an und greifen Sie auf Tabellen- und Kartenansichten zu. Sie können auch den dem Knoten zugewiesenen Datensatz von diesem Tab aus ändern.
+
+Ein leerer Datensatz-Knoten zeigt <code>Datensatz hinzufügen</code> mit zwei Quellen: <code>Aus Projekt</code> und <code>Meine Datensätze</code>. Sobald ein Datensatz gesetzt ist, wählen Sie mit <code>Datensatz ändern</code> einen anderen.
+
+**Filter Tab** schon vor der ersten Ausführung eingerichtet werden können. Mit <code>Bearbeiten</code> öffnen Sie die Auswahl erneut.
+- Jede Ausführung holt die Daten neu, das Ergebnis folgt also Änderungen in der Quelle.
+- Kann die Verbindung nicht ausgeführt werden, zeigt der Knoten ein Hinweis-Symbol mit dem Grund, zum Beispiel wenn eine Ausführung stoppte, weil der WFS nicht erreichbar war.
+- Es werden höchstens 1.000.000 Features abgerufen, sehr große Gebiete werden abgelehnt. <code>Im Workflow verwenden</code> bleibt deaktiviert, bis die Auswahl gültig ist, und nennt den Grund.
 
 **Filter Tab**: Wenden Sie spezifische Filter für den Workflow an, ohne die ursprüngliche Ebene zu beeinträchtigen.
 

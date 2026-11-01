@@ -22,7 +22,8 @@ describe("sourcesFor", () => {
 
   it("drops project-only sources without one", () => {
     const ids = sourcesFor({ hasProject: false }).map((s) => s.id);
-    // Connecting a service needs only a folder, so the datasets page keeps it.
+    // Connecting a service or fetching for a drawn area needs only a folder; fetch is
+    // reached through Connect service, so the menu never lists it.
     expect(ids).toEqual(["upload", "connect"]);
     // The three left out are exactly those that add a layer to a project.
     expect(ADD_LAYER_SOURCES.filter((s) => s.needsProject).map((s) => s.id)).toEqual([
