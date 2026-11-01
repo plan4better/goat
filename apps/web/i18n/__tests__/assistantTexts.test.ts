@@ -167,16 +167,16 @@ describe("assistant texts", () => {
       `${notice.de} Details finden Sie in der <policy>Datenschutzerklärung</policy>.`
     );
     expect(EN.assistant_caveat_fallback).toBe(
-      "Your organization's AI provider is unavailable. This answer uses GOAT AI, so this request was processed by GOAT AI's model provider."
+      "Your organization's AI provider is unavailable. This answer uses GOAT AI, so this request was processed by GOAT AI's provider."
     );
     expect(DE.assistant_caveat_fallback).toBe(
-      "Der KI-Anbieter Ihrer Organisation ist nicht erreichbar. Diese Antwort verwendet GOAT AI, die Anfrage wurde daher vom Modell-Anbieter von GOAT AI verarbeitet."
+      "Der KI-Anbieter Ihrer Organisation ist nicht erreichbar. Diese Antwort verwendet GOAT AI, die Anfrage wurde daher vom KI-Anbieter von GOAT AI verarbeitet."
     );
     expect(EN.ai_settings_description).toMatch(
-      / When AI is on, members' messages and the data the assistant reads are processed by the selected model provider\. Make sure your organization may share this data with it\.$/
+      / When AI is on, members' messages and the data the assistant reads are processed by the selected AI provider\. Make sure your organization may share this data with it\.$/
     );
     expect(DE.ai_settings_description).toMatch(
-      / Ist KI aktiviert, verarbeitet der gewählte Modell-Anbieter die Nachrichten der Mitglieder und die Daten, die der Assistent liest\. Stellen Sie sicher, dass Ihre Organisation diese Daten mit ihm teilen darf\.$/
+      / Ist KI aktiviert, verarbeitet der gewählte KI-Anbieter die Nachrichten der Mitglieder und die Daten, die der Assistent liest\. Stellen Sie sicher, dass Ihre Organisation diese Daten mit ihm teilen darf\.$/
     );
   });
 
@@ -193,7 +193,7 @@ describe("assistant texts", () => {
     expect(DE.assistant_credits_title).toBe("KI-Credits · Ihre Organisation");
     expect(EN.assistant_credits_used_up).toBe("This month's AI credits are used up. Resets on {{date}}.");
     expect(DE.assistant_credits_used_up).toBe(
-      "Die KI-Credits dieses Monats sind aufgebraucht. Neu ab {{date}}."
+      "Die KI-Credits dieses Monats sind aufgebraucht. Sie werden am {{date}} erneuert."
     );
     expect(EN.assistant_credits_admins_manage).toBe("The admins of your organization manage its AI credits.");
     expect(EN.assistant_credits_ask_admin).toBe("An admin of your organization can ask for more.");

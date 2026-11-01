@@ -182,12 +182,12 @@ describe("EditorsDetail", () => {
     renderDetail(BALANCE, "de");
     const rowOf = (name: string) =>
       tableRows().find((tableRow) => tableRow.textContent?.includes(name)) as HTMLElement;
-    expect(screen.getByRole("heading", { level: 3, name: "Bearbeiter und Betrachter" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Editoren und Viewer" })).toBeInTheDocument();
     expect(within(rowOf("Anna Weber")).getByText("Administrator")).toBeInTheDocument();
-    expect(within(rowOf("Tim Braun")).getByText("Bearbeiter")).toBeInTheDocument();
-    expect(within(rowOf("Lea Hoffmann")).getByText("Betrachter")).toBeInTheDocument();
+    expect(within(rowOf("Tim Braun")).getByText("Editor")).toBeInTheDocument();
+    expect(within(rowOf("Lea Hoffmann")).getByText("Viewer")).toBeInTheDocument();
     expect(within(rowOf("Eva Lang")).getByText("Eigentümer")).toBeInTheDocument();
-    expect(within(rowOf("neu@example.org")).getByText("Bearbeiter, eingeladen")).toBeInTheDocument();
+    expect(within(rowOf("neu@example.org")).getByText("Editor, eingeladen")).toBeInTheDocument();
   });
 
   it("opens Credits for a member with credits", async () => {

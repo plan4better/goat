@@ -33,7 +33,7 @@ describe("goatAiDescription", () => {
     );
     expect(
       goatAiDescription({ ...GOAT_AI, provider: "openai_compatible", hosted_in: "Germany" }, commonT("en"))
-    ).toBe("eu.anthropic.claude-sonnet-4-5 · OpenAI compatible endpoint · hosted in Germany");
+    ).toBe("eu.anthropic.claude-sonnet-4-5 · OpenAI-compatible endpoint · hosted in Germany");
     // An id the web does not know (the test model) stays as it is.
     expect(goatAiDescription({ ...GOAT_AI, provider: "test", hosted_in: null }, commonT("en"))).toBe(
       "eu.anthropic.claude-sonnet-4-5 · test"
