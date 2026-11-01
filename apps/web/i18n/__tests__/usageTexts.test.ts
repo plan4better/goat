@@ -271,31 +271,37 @@ describe("usage page texts", () => {
 
   it("use the agreed words for AI credits and their dates", () => {
     expect([EN.usage_ai_credits, DE.usage_ai_credits]).toEqual(["AI credits", "KI-Credits"]);
-    expect([EN.resets_on, DE.resets_on]).toEqual(["Resets on", "Neu ab"]);
+    expect([EN.resets_on, DE.resets_on]).toEqual(["Resets on", "Erneuert am"]);
     expect([EN.valid_until, DE.valid_until]).toEqual(["Valid until", "Gültig bis"]);
     expect([EN.public_traffic, DE.public_traffic]).toEqual(["Public pages", "Öffentliche Seiten"]);
   });
 
   it("charge each answer, call admins Administratoren and label in sentence case", () => {
-    expect(EN.usage_ai_explain_rule).toMatch(/^Each answer of GOAT AI uses\b/);
+    expect(EN.usage_ai_explain_rule).toMatch(/^Each GOAT AI answer uses\b/);
     expect(DE.usage_ai_explain_rule).toMatch(/^Jede Antwort von GOAT AI verbraucht\b/);
     expect([EN.usage_role_admins, DE.usage_role_admins]).toEqual([
       "Owners and admins",
       "Eigentümer und Administratoren",
     ]);
-    // A member's role reads as the tiles name the seats.
+    // A member's role reads as the tiles name the seats, and as the members list and share dialog do.
     expect([DE.usage_role_owner, DE.usage_role_admin, DE.usage_role_editor, DE.usage_role_viewer]).toEqual([
       "Eigentümer",
       "Administrator",
-      "Bearbeiter",
-      "Betrachter",
+      "Editor",
+      "Viewer",
     ]);
+    expect([DE.usage_role_admin, DE.usage_role_editor, DE.usage_role_viewer]).toEqual([
+      DE.admin,
+      DE.editor,
+      DE.viewer,
+    ]);
+    for (const key of allKeys) expect(DE[key], key).not.toMatch(/\b(Bearbeiter|Betrachter)/);
     for (const key of PLAIN_KEYS) expect(DE[key], key).not.toMatch(/\bAdmins\b/);
     expect(EN.group_by).toBe("Group by");
     // The layers' column carries credits, and says so.
     expect([EN.usage_traffic_credits, DE.usage_traffic_credits]).toEqual([
       "Traffic credits",
-      "Credits Traffic",
+      "Traffic-Credits",
     ]);
   });
 

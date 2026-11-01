@@ -150,7 +150,7 @@ describe("QuotaTiles", () => {
     expect(within(tab(/AI credits/)).getByText("Resets on 30 Nov")).toBeInTheDocument();
     expect(within(tab(/Storage/)).getByText("Fixed by your plan")).toBeInTheDocument();
     expect(within(tab(/Projects/)).getByText("Fixed by your plan")).toBeInTheDocument();
-    expect(within(tab(/Editors/)).getByText("All in use. Viewers 2 of 50")).toBeInTheDocument();
+    expect(within(tab(/Editors/)).getByText("All editor seats taken. Viewers 2 of 50")).toBeInTheDocument();
     unmount();
 
     renderTiles({ balance: { ...balanceAllOk, on_trial: true } });
@@ -161,12 +161,12 @@ describe("QuotaTiles", () => {
 
   it("lets a note wrap to two lines and keeps the figure on one", () => {
     renderTiles({ balance: balanceEditorsFull, language: "de" });
-    const note = within(tab(/^Bearbeiter/)).getByText("Alle belegt. Betrachter 2 von 50");
+    const note = within(tab(/^Editoren/)).getByText("Alle Editor-Plätze belegt. Viewer 2 von 50");
     // A long note (German, a narrow tile beside the settings menu) wraps
     // instead of losing its end, and stops after two lines.
     expect(getComputedStyle(note).whiteSpace).not.toBe("nowrap");
     expect(getComputedStyle(note).getPropertyValue("-webkit-line-clamp")).toBe("2");
-    const figure = within(tab(/^Bearbeiter/)).getByText("10").parentElement as HTMLElement;
+    const figure = within(tab(/^Editoren/)).getByText("10").parentElement as HTMLElement;
     expect(getComputedStyle(figure).whiteSpace).toBe("nowrap");
   });
 

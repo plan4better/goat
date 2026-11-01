@@ -559,7 +559,7 @@ describe("step group summaries", () => {
     );
     expect(summary([lastRun("w1"), lastRun("w2")])).toBe("Read the last runs of 2 workflows");
     expect(summary([lastRun("w1"), lastRun("w2")], deTranslate)).toBe(
-      "Die letzten Läufe von 2 Workflows gelesen"
+      "Die letzten Ausführungen von 2 Workflows gelesen"
     );
   });
 });

@@ -156,14 +156,14 @@ describe("AiCreditsRing", () => {
   it("speaks German", () => {
     wrap(<AiCreditsRing pool={LOW} isAdmin={false} />, "de");
     const button = screen.getByRole("button", {
-      name: "38 übrig · 96 % der KI-Credits dieses Monats genutzt · neu ab 1. Dez.",
+      name: "38 übrig · 96 % der KI-Credits dieses Monats genutzt · erneuert am 1. Dez.",
     });
     expect(within(button).getByText("38 übrig")).toBeTruthy();
     fireEvent.click(button);
     const dialog = screen.getByRole("dialog", { name: "KI-Credits · Ihre Organisation" });
     for (const text of [
       "Dieser Monat",
-      "Neu ab 1. Dez.",
+      "Erneuert am 1. Dez.",
       "38 von 1.000 KI-Credits übrig",
       "Eine Antwort kostet 1 KI-Credit, 2 bei mehr als 10 Schritten, 3 bei mehr als 20.",
       "Die Administratoren Ihrer Organisation verwalten deren KI-Credits.",
@@ -221,7 +221,9 @@ describe("AiCreditsUsedUp", () => {
 
   it("speaks German", () => {
     wrap(<AiCreditsUsedUp usedUp={USED_UP} isAdmin={false} />, "de");
-    expect(screen.getByText("Die KI-Credits dieses Monats sind aufgebraucht. Neu ab 1. Dez.")).toBeTruthy();
+    expect(
+      screen.getByText("Die KI-Credits dieses Monats sind aufgebraucht. Sie werden am 1. Dez. erneuert.")
+    ).toBeTruthy();
     expect(
       screen.getByText("Ein Administrator Ihrer Organisation kann weitere KI-Credits anfragen.")
     ).toBeTruthy();

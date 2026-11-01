@@ -121,7 +121,7 @@ Vergeben Sie für jeden **Als Datensatz speichern**-Knoten einen aussagekräftig
 **Verlauf Tab**
 
 Hier können Sie Folgendes sehen:
-- **Ausführungsprotokoll**: Vorherige Workflow-Läufe mit Zeitstempeln und Status
+- **Ausführungsprotokoll**: Vorherige Workflow-Ausführungen mit Zeitstempeln und Status
 - **Ausführungsdetails**: Dauer, Erfolg-/Fehlerstatus und Fehlermeldungen
 - **Ergebniszugriff**: Links zu vorherigen Workflow-Ausgaben
 
@@ -242,7 +242,7 @@ Klicken Sie auf ein Problem in der Liste oder an einer Markierung, um dorthin zu
 
 Solange der Workflow Fehler hat, ist <code>Ausführen</code> ausgegraut; zeigen Sie darauf, sehen Sie, wie viele noch offen sind, zum Beispiel <code>Beheben Sie 2 Probleme, um den Workflow auszuführen</code>. Warnungen und Ausführungsfehler deaktivieren <code>Ausführen</code> nie.
 
-Konnte der Workflow nicht geprüft werden, etwa weil die Verbindung unterbrochen war, erscheint ein Chip <code>Nicht geprüft</code>. Klicken Sie darauf, um erneut zu prüfen; ein Lauf wird beim Start immer geprüft.
+Konnte der Workflow nicht geprüft werden, etwa weil die Verbindung unterbrochen war, erscheint ein Chip <code>Nicht geprüft</code>. Klicken Sie darauf, um erneut zu prüfen; eine Ausführung wird beim Start immer geprüft.
 
 :::info Beschädigte Workflows
 Kann die gespeicherte Fassung eines Workflows nicht gelesen werden, etwa weil sie außerhalb von GOAT geändert wurde, öffnet er sich mit dem Hinweis <code>Dieser Workflow kann nicht geöffnet werden</code> anstelle der Leinwand, der auflistet, was defekt ist. Ein solcher Workflow kann dort weder bearbeitet noch ausgeführt werden, und GOAT speichert nicht darüber. Die anderen Workflows des Projekts funktionieren weiter.
@@ -288,9 +288,9 @@ Sie können den Assistenten auch bitten, einen Workflow des geöffneten Projekts
 ### Einen Workflow mit dem KI-Assistenten ausführen
 
 - Fragen Sie nach einem Ergebnis, zum Beispiel <em>Wie viele Einwohner wohnen höchstens 15 Minuten Fußweg von einer Schule entfernt?</em>, erstellt der Assistent den Workflow und führt ihn aus. Einen Workflow, den er in dieser Unterhaltung erstellt hat, führt er ohne Rückfrage aus. Jeden anderen, etwa einen, den Sie selbst erstellt haben, führt er erst aus, wenn Sie zustimmen: Der Assistent fragt Sie in einer Karte, ob er ihn ausführen soll, und nichts läuft, bevor Sie sich dafür entscheiden.
-- Während der Workflow läuft, zeigt die Antwort eine Zeile wie <code>Workflow läuft: Schritt 2 von 4, Einzugsgebiet</code> mit der Zeit seit dem Start. <code>In Workflows öffnen</code> öffnet den Workflow, wo die Leinwand den Lauf zeigt. Zeigt die Antwort die Karte des Workflows, öffnen Sie ihn stattdessen mit <code>Öffnen</code> auf der Karte.
-- Der Assistent wartet auf den Lauf und berichtet das Ergebnis in seiner Antwort, mit den Layern, die der Lauf gespeichert hat. Ist der Lauf fehlgeschlagen (<code>Workflow-Lauf fehlgeschlagen</code>), nennt er den Schritt, der fehlgeschlagen ist, und was zu ändern ist.
-- Dauert der Lauf länger, als die Antwort warten kann, lautet die Zeile <code>Der Workflow lief noch, als diese Antwort endete</code>. Der Lauf geht weiter; fragen Sie den Assistenten später nach dem Ergebnis. Stoppen Sie die Antwort, stoppt auch ein Lauf, den sie gestartet hat.
+- Während der Workflow läuft, zeigt die Antwort eine Zeile wie <code>Workflow läuft: Schritt 2 von 4, Einzugsgebiet</code> mit der Zeit seit dem Start. <code>In Workflows öffnen</code> öffnet den Workflow, wo die Leinwand die Ausführung zeigt. Zeigt die Antwort die Karte des Workflows, öffnen Sie ihn stattdessen mit <code>Öffnen</code> auf der Karte.
+- Der Assistent wartet auf die Ausführung und berichtet das Ergebnis in seiner Antwort, mit den Layern, die sie gespeichert hat. Ist die Ausführung fehlgeschlagen (<code>Workflow-Ausführung fehlgeschlagen</code>), nennt er den Schritt, der fehlgeschlagen ist, und was zu ändern ist.
+- Dauert die Ausführung länger, als die Antwort warten kann, lautet die Zeile <code>Der Workflow lief noch, als diese Antwort endete</code>. Die Ausführung geht weiter; fragen Sie den Assistenten später nach dem Ergebnis. Stoppen Sie die Antwort, stoppt auch eine Ausführung, die sie gestartet hat.
 
 ### Einen Workflow als Vorlage speichern
 

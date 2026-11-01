@@ -163,12 +163,12 @@ describe("AiCreditsDetail", () => {
     expect(screen.getByText("out of 2,000 this period. Resets on 30 Nov 2026.")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Each answer of GOAT AI uses 1 AI credit up to 10 steps, 2 up to 20 steps, 3 above. Each editor seat adds 200 AI credits a month, shared by everyone in the organization. Answers from your own AI connection don't use any."
+        "Each GOAT AI answer uses 1 AI credit up to 10 steps, 2 up to 20 steps, 3 above. Each editor seat adds 200 AI credits a month, shared by everyone in the organization. Answers from your own AI connection don't use any."
       )
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "When the AI credits are used up, GOAT AI answers again after the reset. An own AI connection keeps working.",
+        "When the AI credits are used up, GOAT AI answers again after the reset. Your own AI connection keeps working.",
         { exact: false }
       )
     ).toBeInTheDocument();
@@ -243,7 +243,7 @@ describe("AiCreditsDetail", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "When the AI credits are used up, GOAT AI stops answering until the organization has a plan. An own AI connection keeps working.",
+        "When the AI credits are used up, GOAT AI stops answering until the organization has a plan. Your own AI connection keeps working.",
         { exact: false }
       )
     ).toBeInTheDocument();

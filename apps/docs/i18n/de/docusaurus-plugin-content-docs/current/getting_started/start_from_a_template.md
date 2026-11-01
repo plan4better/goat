@@ -52,7 +52,7 @@ Eine Projektvorlage wird als **neues Projekt** geöffnet, das Ihnen gehört. Sie
 
 Wenn Sie ein Projekt als Vorlage speichern (`Projekt als Vorlage speichern…` im **Projektmenü**) oder einen Workflow als Vorlage speichern, listet die Tabelle `Eingaben` alle Datensätze auf, die darin verwendet werden. Für jeden legen Sie fest, wie ihn die Personen erhalten, die die Vorlage verwenden:
 
-- `Mitliefern (nur lesen)`: Alle sehen **Ihren Datensatz** in ihrem Projekt. Sie können ihn ansehen und analysieren, aber nicht ändern, es sei denn, Sie teilen ihn zusätzlich als Bearbeiter mit ihnen. Das ist die Voreinstellung.
+- `Mitliefern (nur lesen)`: Alle sehen **Ihren Datensatz** in ihrem Projekt. Sie können ihn ansehen und analysieren, aber nicht ändern, es sei denn, Sie teilen ihn zusätzlich als Editor mit ihnen. Das ist die Voreinstellung.
 - `Kopie für jeden Nutzer (mit Inhalt)`: Alle, die die Vorlage verwenden, erhalten **eine eigene Kopie** des Datensatzes mit allen Features, Spalten, Stil, Auswahlfeldern und Beschreibung. Ihre Kopie können sie frei bearbeiten.
 - `Leere Kopie für jeden Nutzer`: wie eine Kopie, aber **ohne Features**: dieselben Spalten, derselbe Geometrietyp und derselbe Stil, bereit für eigene Eingaben, zum Beispiel geplante Vorhaben in einer Schulung.
 
