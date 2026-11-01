@@ -21,24 +21,48 @@ export class AssistantApiError extends Error {
 export class AssistantRequestError extends AssistantApiError {
   readonly reason?: string;
   readonly projectId?: string;
+  /** `ai_credits_used_up`: when the pool is refilled (a trial's end on a trial), as core stores it. */
+  readonly resetsOn?: string;
+  /** `ai_credits_used_up`: the organization is on a trial, so its date is the trial's end. */
+  readonly onTrial?: boolean;
 
   constructor(
     status: number,
     code: string,
     detail?: string,
-    options: { reason?: string; projectId?: string; field?: string } = {}
+    options: {
+      reason?: string;
+      projectId?: string;
+      field?: string;
+      resetsOn?: string;
+      onTrial?: boolean;
+    } = {}
   ) {
     super(status, code, detail, options.field);
     this.reason = options.reason;
     this.projectId = options.projectId;
+    this.resetsOn = options.resetsOn;
+    this.onTrial = options.onTrial;
   }
 }
 
-type Detail = { code?: unknown; message?: unknown; reason?: unknown; project_id?: unknown; field?: unknown };
+type Detail = {
+  code?: unknown;
+  message?: unknown;
+  reason?: unknown;
+  project_id?: unknown;
+  field?: unknown;
+  resets_on?: unknown;
+  on_trial?: unknown;
+};
 
 const text = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
+const flag = (value: unknown): boolean | undefined => (typeof value === "boolean" ? value : undefined);
 
-/** `{"detail": {"code", "message", "reason"?, "project_id"?, "field"?}}`, or a generic code. */
+/**
+ * `{"detail": {"code", "message", "reason"?, "project_id"?, "field"?, "resets_on"?, "on_trial"?}}`,
+ * or a generic code.
+ */
 export function errorFromBody(status: number, body: string | undefined): AssistantRequestError {
   let detail: Detail | undefined;
   try {
@@ -58,6 +82,8 @@ export function errorFromBody(status: number, body: string | undefined): Assista
     reason: text(detail?.reason),
     projectId: text(detail?.project_id),
     field: text(detail?.field),
+    resetsOn: text(detail?.resets_on),
+    onTrial: flag(detail?.on_trial),
   });
 }
 
@@ -103,6 +129,8 @@ const CODE_KEYS: Record<string, string> = {
   undo_unavailable: "assistant_error_undo_unavailable",
   run_active: "assistant_error_undo_running",
   nothing_to_undo: "assistant_error_nothing_to_undo",
+  // GOAT AI's answers wait until the organization's AI credits reset (402).
+  ai_credits_used_up: "assistant_error_ai_credits_used_up",
 };
 
 const UNAVAILABLE_KEYS: Record<string, string> = {

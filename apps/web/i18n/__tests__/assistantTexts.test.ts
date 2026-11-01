@@ -180,6 +180,26 @@ describe("assistant texts", () => {
     );
   });
 
+  it("word the AI credits in the dock as approved, never as questions left", () => {
+    const credits = (texts: Record<string, string>) =>
+      Object.keys(texts).filter((key) => key.startsWith("assistant_credits_"));
+    expect(credits(EN).length).toBeGreaterThan(0);
+    for (const key of credits(EN)) {
+      expect(EN[key], key).not.toMatch(/question/i);
+      expect(DE[key], key).not.toMatch(/Frage/);
+      expect(DE[key], key).not.toMatch(/\b(du|dein|deine)\b/i);
+    }
+    expect(EN.assistant_credits_title).toBe("AI credits · your organization");
+    expect(DE.assistant_credits_title).toBe("KI-Credits · Ihre Organisation");
+    expect(EN.assistant_credits_used_up).toBe("This month's AI credits are used up. Resets on {{date}}.");
+    expect(DE.assistant_credits_used_up).toBe(
+      "Die KI-Credits dieses Monats sind aufgebraucht. Neu ab {{date}}."
+    );
+    expect(EN.assistant_credits_admins_manage).toBe("The admins of your organization manage its AI credits.");
+    expect(EN.assistant_credits_ask_admin).toBe("An admin of your organization can ask for more.");
+    expect(EN.assistant_details_hosted_in).toBe("Runs on a model hosted in {{place}}.");
+  });
+
   it("say Features and Layouts in German, as the cards and the mode toggle do", () => {
     for (const key of assistantKeys(DE)) {
       expect(DE[key], key).not.toMatch(/objekt/i);

@@ -63,6 +63,20 @@ describe("assistant store", () => {
     expect(getDockState().conversationId).toBe("c2");
   });
 
+  it("keeps a refusal for used-up AI credits for this tab and its user only", () => {
+    claimDock("user-a");
+    setDockState({ aiCreditsUsedUp: { resetsOn: "2026-12-01T00:00:00", onTrial: false } });
+    expect(getDockState().aiCreditsUsedUp).toEqual({ resetsOn: "2026-12-01T00:00:00", onTrial: false });
+    // Not stored: a reload asks the balance again.
+    expect(window.sessionStorage.getItem("goat:assistant-dock")).not.toContain("aiCreditsUsedUp");
+    resetAssistantStore();
+    expect(getDockState().aiCreditsUsedUp).toBeNull();
+    // Another user in the same tab is not told the previous organization's state.
+    setDockState({ aiCreditsUsedUp: { resetsOn: null, onTrial: true } });
+    claimDock("user-b");
+    expect(getDockState().aiCreditsUsedUp).toBeNull();
+  });
+
   it("starts closed when the stored state cannot be read", () => {
     window.sessionStorage.setItem("goat:assistant-dock", "{not json");
     resetAssistantStore();

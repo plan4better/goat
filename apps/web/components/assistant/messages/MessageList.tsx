@@ -311,8 +311,10 @@ function Answer({
     .filter((part): part is TextUIPart => part.type === "text")
     .map((part) => part.text)
     .join("\n\n");
-  // A stopped or failed answer keeps Copy for what it said, but has no details to show.
+  // A stopped or failed answer keeps Copy for what it said; it has details only when it was
+  // charged (it ran into its limits, or was stopped after a step), to show what it cost.
   const ended = message.parts.some((part) => part.type === "data-run-status");
+  const charged = message.metadata?.usage?.ai_credits !== undefined;
   // A step under way shimmers in its line or its group's summary: one shimmer at a time.
   const stepUnderWay =
     running && message.parts.some((part) => part.type === "dynamic-tool" && stepRunning(part));
@@ -320,7 +322,7 @@ function Answer({
   const runId = message.metadata?.run_id;
   const edits = answerEdits(message);
   const undoable = !running && !readOnly && !!runId && edits.length > 0;
-  const actions = !running && (text.trim() || !ended || undoable);
+  const actions = !running && (text.trim() || !ended || undoable || charged);
   return (
     <Stack
       gap="14px"
@@ -352,7 +354,7 @@ function Answer({
             />
           )}
           <CopyAnswer text={text} />
-          {!ended && <AnswerDetails usage={message.metadata?.usage} />}
+          {(!ended || charged) && <AnswerDetails usage={message.metadata?.usage} />}
           {!ended && (
             <FeedbackButtons conversationId={conversationId} messageId={message.id} initial={feedback} />
           )}

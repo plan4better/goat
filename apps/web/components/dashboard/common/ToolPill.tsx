@@ -1,6 +1,7 @@
 "use client";
 
 import { ButtonBase, alpha, useTheme } from "@mui/material";
+import NextLink from "next/link";
 import { forwardRef } from "react";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -28,6 +29,16 @@ interface ToolPillProps {
   /** Sits in a row of outlined filter chips rather than a toolbar: no paper
    * fill, chip height and weight, so it does not read as a raised panel. */
   flat?: boolean;
+  /** The id of a text that says more, such as why the pill is disabled. */
+  describedBy?: string;
+  /** A pill that switches something on and off: whether it is on, for
+   * assistive tech (`active` shows it). */
+  pressed?: boolean;
+  /** A pill that goes to another page: a link there instead of a button. */
+  href?: string;
+  /** The name assistive tech reads where the label cannot give one (a label
+   * still loading); else the label. */
+  ariaLabel?: string;
   onClick?: () => void;
 }
 
@@ -35,7 +46,22 @@ interface ToolPillProps {
  * button of the Content selection action bar — so both pages' rows read as one
  * set. Ref-forwarding, so a popover or a menu can anchor to it. */
 const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
-  { icon, label, chevron, active, badge, danger, disabled, iconOnly, flat, onClick },
+  {
+    icon,
+    label,
+    chevron,
+    active,
+    badge,
+    danger,
+    disabled,
+    iconOnly,
+    flat,
+    describedBy,
+    pressed,
+    href,
+    ariaLabel,
+    onClick,
+  },
   ref
 ) {
   const theme = useTheme();
@@ -53,9 +79,12 @@ const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
   return (
     <ButtonBase
       ref={ref}
+      {...(href ? { component: NextLink, href } : {})}
       disabled={disabled}
       onClick={onClick}
-      aria-label={label}
+      aria-label={ariaLabel ?? label}
+      aria-describedby={describedBy}
+      aria-pressed={pressed}
       sx={{
         display: "inline-flex",
         alignItems: "center",
@@ -81,9 +110,7 @@ const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
           duration: 120,
         }),
         "&:hover": {
-          backgroundColor: active
-            ? alpha(theme.palette.primary.main, 0.16)
-            : theme.palette.action.hover,
+          backgroundColor: active ? alpha(theme.palette.primary.main, 0.16) : theme.palette.action.hover,
         },
       }}>
       <Icon iconName={icon} style={{ fontSize: 14, color: iconColor }} />

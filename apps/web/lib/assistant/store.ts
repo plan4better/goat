@@ -63,10 +63,22 @@ export interface DockState {
   /** Proposal cards the user applied or discarded, by part id. */
   proposals: Record<string, "applied" | "discarded">;
   /**
+   * The assistant refused an answer because the organization's AI credits are
+   * used up (402): the composer gives way to that line at once, before the
+   * balance is read again. Cleared when a later balance shows credits left.
+   */
+  aiCreditsUsedUp: AiCreditsRefusal | null;
+  /**
    * The user this state belongs to. The tab keeps it across a sign-out, so the
    * next user would otherwise open the previous user's conversation.
    */
   owner: string | null;
+}
+
+/** What a 402 `ai_credits_used_up` says: when the pool is refilled, or the trial ends. */
+export interface AiCreditsRefusal {
+  resetsOn: string | null;
+  onTrial: boolean;
 }
 
 const CLOSED: DockState = {
@@ -79,6 +91,7 @@ const CLOSED: DockState = {
   noSurfaceProject: null,
   pending: [],
   proposals: {},
+  aiCreditsUsedUp: null,
   owner: null,
 };
 
@@ -141,7 +154,9 @@ export function claimDock(userId: string): void {
   const foreign = state.owner !== null;
   setDockState({
     owner: userId,
-    ...(foreign ? { conversationId: null, pending: [], proposals: {}, review: null, bound: null } : {}),
+    ...(foreign
+      ? { conversationId: null, pending: [], proposals: {}, review: null, bound: null, aiCreditsUsedUp: null }
+      : {}),
   });
 }
 

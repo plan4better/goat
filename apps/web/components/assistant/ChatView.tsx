@@ -9,6 +9,7 @@ import { toast } from "react-toastify";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { refreshCreditBalance } from "@/lib/api/usage";
 import { announceRunEnd, lastAnswer, runEndOf } from "@/lib/assistant/announce";
 import { type AskCardState, answersCard, askCardOf, askCardState, openAskCard } from "@/lib/assistant/ask";
 import { type Translate, fitContext, plain, plainTranslate, stripContext } from "@/lib/assistant/chips";
@@ -32,8 +33,10 @@ import {
 import { cancelAssistantRun, createAssistantTransport, fetchConversation } from "@/lib/assistant/transport";
 import type { AnswerFeedback, AskAnswer, AssistantMessage, Locale, PageContext } from "@/lib/assistant/types";
 
+import { useAiCredits } from "@/hooks/assistant/useAiCredits";
+
 import AskPanel from "@/components/assistant/AskPanel";
-import Composer from "@/components/assistant/Composer";
+import Composer, { UnsentMessages } from "@/components/assistant/Composer";
 import { useDockActions } from "@/components/assistant/DockActions";
 import QueuedItem from "@/components/assistant/QueuedItem";
 import { useOpenCreatedWorkflows } from "@/components/assistant/useOpenCreatedWorkflows";
@@ -175,6 +178,7 @@ export default function ChatView(props: ChatViewProps) {
   const dock = useDockState();
   const surface = useActiveSurface();
   const composer = useComposerContext(conversationId);
+  const credits = useAiCredits();
   const activeRun = useRef(props.activeRunId);
   const locale = useRef<Locale>("en");
   const lastSent = useRef("");
@@ -321,6 +325,13 @@ export default function ChatView(props: ChatViewProps) {
       } else if (!refused && err instanceof TypeError) {
         brokeOff.current = true;
       }
+      if (refused?.code === "ai_credits_used_up") {
+        // The composer gives way to the used-up line at once; the balance read again keeps it there.
+        setDockState({
+          aiCreditsUsedUp: { resetsOn: refused.resetsOn ?? null, onTrial: refused.onTrial ?? false },
+        });
+        void refreshCreditBalance();
+      }
       if (refused?.code === "project_access_lost") {
         if (live === null) setMessages((list) => (live = list));
         props.onAccessLost?.(live ?? []);
@@ -347,6 +358,8 @@ export default function ChatView(props: ChatViewProps) {
       // or a refused request did not end the run.
       const ended = (!isAbort && !isError) || hasRunStatus(message);
       if (ended && message.role === "assistant") {
+        // The answer may have used AI credits: the ring shows the pool as it is now.
+        void refreshCreditBalance();
         // React escapes the title itself; the toast takes a plain string.
         endRun(
           conversationId,
@@ -741,6 +754,8 @@ export default function ChatView(props: ChatViewProps) {
   const refusedCode = toRequestError(error)?.code;
   const explained =
     refusedCode === "invalid_answer" ||
+    // The used-up line says it where the composer stood; the ask panel has no such line.
+    (refusedCode === "ai_credits_used_up" && !panelCard) ||
     (!!props.readOnly && (refusedCode === "project_access_lost" || refusedCode === "conversation_bound"));
   // A refused queued message shows the reason in its own item.
   const errorKey =
@@ -801,36 +816,20 @@ export default function ChatView(props: ChatViewProps) {
             </Box>
           ) : props.readOnly ? (
             <Stack gap="12px">
-              {unsent.length > 0 && (
-                // A refused or queued message stays readable (and copyable) when the composer gives way to the notice.
-                <Box>
-                  <Typography sx={{ fontSize: 12, color: mutedText }}>
-                    {t("assistant_draft_not_sent")}
-                  </Typography>
-                  {unsent.map((text, index) => (
-                    <Typography
-                      key={index}
-                      sx={{
-                        mt: "4px",
-                        px: "12px",
-                        py: "8px",
-                        borderRadius: "10px",
-                        fontSize: 13,
-                        color: "text.primary",
-                        bgcolor: "action.hover",
-                        whiteSpace: "pre-wrap",
-                        overflowWrap: "anywhere",
-                      }}>
-                      {text}
-                    </Typography>
-                  ))}
-                </Box>
-              )}
+              {/* A refused or queued message stays readable (and copyable) when the composer gives way to the notice. */}
+              {unsent.length > 0 && <UnsentMessages texts={unsent} />}
               <ReadOnlyNotice reason={props.readOnly} />
             </Stack>
           ) : (
             <>
-              {queued && <QueuedItem queued={queued} onSendNow={sendNow} onRemove={removeQueued} />}
+              {queued && (
+                // While the AI credits are used up a send would only be refused: the message waits.
+                <QueuedItem
+                  queued={queued}
+                  onSendNow={credits.usedUp ? undefined : sendNow}
+                  onRemove={removeQueued}
+                />
+              )}
               {panelCard ? (
                 // The open card asks in the composer's place; the draft waits behind it.
                 <AskPanel

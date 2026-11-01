@@ -15,7 +15,13 @@ const api = vi.hoisted(() => ({
   testAssistantConnection: vi.fn(),
 }));
 
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock("react-i18next", () => ({
+  // Interpolated values follow the key, so a test sees what a text was given.
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) =>
+      key === "ai_settings_goat_ai_hosted_in" ? `${key}:${String(options?.place)}` : key,
+  }),
+}));
 vi.mock("react-toastify", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/constants", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/constants")>()),
@@ -30,7 +36,12 @@ const SETTINGS = {
   allow_default_fallback: false,
   status: "ok",
   instance: {
-    goat_ai: { available: true, provider: "bedrock", model: "eu.anthropic.claude-sonnet-4-5" },
+    goat_ai: {
+      available: true,
+      provider: "bedrock",
+      model: "eu.anthropic.claude-sonnet-4-5",
+      hosted_in: "EU",
+    },
     org_connections: true,
     secrets_key_configured: true,
     allowed_providers: ["openai_compatible"],
@@ -78,9 +89,28 @@ beforeEach(() => {
 });
 
 describe("AI settings page", () => {
-  it("shows GOAT AI and its model as the active connection", () => {
+  it("shows GOAT AI as the active connection with its model, provider and where it is hosted", () => {
     render(<AiSettingsPage />);
     expect(screen.getAllByText("ai_settings_goat_ai").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(
+        "eu.anthropic.claude-sonnet-4-5 · Amazon Bedrock · ai_settings_goat_ai_hosted_in:assistant_hosted_place_eu"
+      ).length
+    ).toBeGreaterThan(0);
+  });
+
+  it("names GOAT AI's model alone where the instance names nothing else", () => {
+    given(
+      {
+        ...SETTINGS,
+        instance: {
+          ...SETTINGS.instance,
+          goat_ai: { ...SETTINGS.instance.goat_ai, provider: null, hosted_in: null },
+        },
+      },
+      []
+    );
+    render(<AiSettingsPage />);
     expect(screen.getAllByText("eu.anthropic.claude-sonnet-4-5").length).toBeGreaterThan(0);
   });
 

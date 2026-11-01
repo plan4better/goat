@@ -45,6 +45,16 @@ vi.mock("@/lib/assistant/transport", () => ({
   createConversation: vi.fn(),
 }));
 vi.mock("@/lib/assistant/conversations", () => ({ refreshConversationLists: vi.fn() }));
+const { refreshBalance } = vi.hoisted(() => ({ refreshBalance: vi.fn() }));
+// GOAT AI answers: the organization's AI credits apply.
+vi.mock("@/lib/api/assistant", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useAssistantStatus: () => ({ status: { available: true, goat_ai: true, is_admin: false } }),
+}));
+vi.mock("@/lib/api/usage", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  refreshCreditBalance: refreshBalance,
+}));
 const { toastInfo } = vi.hoisted(() => ({ toastInfo: vi.fn() }));
 vi.mock("react-toastify", () => ({
   toast: { info: toastInfo, warning: vi.fn(), success: vi.fn(), error: vi.fn() },
@@ -271,6 +281,40 @@ describe("ChatView", () => {
     await screen.findByText("assistant_error_conversation_busy");
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Hallo");
     expect(screen.queryByText("Hallo", { ignore: "textarea" })).toBeNull();
+  });
+
+  it("gives the input's place to the used-up line when the AI credits are used up", async () => {
+    sendMessages.mockRejectedValue(
+      refusal(402, {
+        code: "ai_credits_used_up",
+        message: "The organization's AI credits are used up.",
+        resets_on: "2026-12-01T00:00:00",
+        on_trial: false,
+      })
+    );
+    renderChat();
+    send("Hallo");
+    const line = await screen.findByText("assistant_credits_used_up");
+    expect(line.closest('[role="status"]')).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    // The dock remembers the refusal until a balance read after it shows credits left.
+    expect(getDockState().aiCreditsUsedUp).toEqual({ resetsOn: "2026-12-01T00:00:00", onTrial: false });
+    expect(refreshBalance).toHaveBeenCalled();
+    // Said once, by the line, never as an error under the conversation or in the server's English.
+    expect(screen.queryByText("assistant_error_ai_credits_used_up")).toBeNull();
+    expect(screen.queryByText("assistant_error_generic")).toBeNull();
+    expect(screen.queryByText(/are used up/)).toBeNull();
+    // What was not sent stays readable, and in the draft for when the credits are back.
+    expect(screen.getByText("Hallo")).toBeTruthy();
+    expect(getDraft("c1")?.text).toBe("Hallo");
+  });
+
+  it("reads the AI credits again after each answer", async () => {
+    sendMessages.mockResolvedValue(stream([...START, ...text("ok"), ...FINISH]));
+    renderChat();
+    send("Hallo");
+    await screen.findByText("ok");
+    await waitFor(() => expect(refreshBalance).toHaveBeenCalledTimes(1));
   });
 
   it("never drops stored messages when a reconnect is refused", async () => {
@@ -740,6 +784,29 @@ describe("ChatView queue", () => {
     fireEvent.click(within(queuedItem()).getByRole("button", { name: "assistant_send_now" }));
     await screen.findByText("Zwei");
     expect(sentText(1)).toBe("Zweite Frage");
+  });
+
+  it("offers no Send now on a queued message while the AI credits are used up", async () => {
+    const run = runningAnswer();
+    sendMessages.mockResolvedValueOnce(run.body).mockRejectedValueOnce(
+      refusal(402, {
+        code: "ai_credits_used_up",
+        message: "used up",
+        resets_on: "2026-12-01T12:00:00",
+        on_trial: false,
+      })
+    );
+    renderChat();
+    send("Eins");
+    await screen.findByText("Teil");
+    send("Zweite");
+    expect(within(queuedItem()).getByRole("button", { name: "assistant_send_now" })).toBeTruthy();
+    await run.end(FINISH);
+    await screen.findByText("assistant_credits_used_up");
+    // The queued message stays readable and can be removed; sending it again would only be refused.
+    expect(within(queuedItem()).getByText("Zweite")).toBeTruthy();
+    expect(within(queuedItem()).queryByRole("button", { name: "assistant_send_now" })).toBeNull();
+    expect(within(queuedItem()).getByRole("button", { name: "remove" })).toBeTruthy();
   });
 
   it("puts a refused queued message back into the queue with the translated reason", async () => {

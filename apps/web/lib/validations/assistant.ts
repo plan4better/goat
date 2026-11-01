@@ -29,6 +29,11 @@ export interface AssistantStatus {
   data_policy: DataPolicy;
   /** Surfaces where the assistant is switched off (spec §6.3); the dock hides there. */
   disabled_surfaces: string[];
+  /**
+   * GOAT AI answers (no own connection is active), so the organization's AI
+   * credits apply: the dock shows them only then.
+   */
+  goat_ai?: boolean;
 }
 
 /** GET/PUT /settings (organization admins). */
@@ -39,7 +44,13 @@ export interface AssistantSettings {
   allow_default_fallback: boolean;
   status: "ok" | AssistantUnavailableReason;
   instance: {
-    goat_ai: { available: boolean; provider: string | null; model: string | null };
+    goat_ai: {
+      available: boolean;
+      provider: string | null;
+      model: string | null;
+      /** Where GOAT AI's model runs (`ASSISTANT_DEFAULT_HOSTED_IN`, e.g. "EU"); null when not set. */
+      hosted_in?: string | null;
+    };
     org_connections: boolean;
     /** False when the service has no ASSISTANT_SECRETS_KEY: own connections are unavailable. */
     secrets_key_configured: boolean;
@@ -130,6 +141,12 @@ export const PROVIDER_NAMES: Record<AssistantProvider, string | null> = {
   mistral: "Mistral AI",
   openai_compatible: null,
 };
+
+const KNOWN_PROVIDERS: ReadonlySet<string> = new Set(ASSISTANT_PROVIDERS);
+
+/** A provider by its product name, an OpenAI-compatible endpoint by `compatible`, an unknown id as it is. */
+export const providerName = (provider: string, compatible: string): string =>
+  KNOWN_PROVIDERS.has(provider) ? (PROVIDER_NAMES[provider as AssistantProvider] ?? compatible) : provider;
 
 /** OpenRouter itself, not a host that merely starts with its name; as the assistant service judges it. */
 export function isOpenRouterUrl(url: string): boolean {

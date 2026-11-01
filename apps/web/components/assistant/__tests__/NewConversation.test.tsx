@@ -35,6 +35,10 @@ vi.mock("@/lib/api/projects", () => ({
   useProjectLayers: () => ({ layers: undefined }),
 }));
 vi.mock("@/components/support/SupportMenu", () => ({ useReportProblemHref: () => null }));
+const { credits } = vi.hoisted(() => ({
+  credits: { value: { pool: null, usedUp: null, isAdmin: false } as Record<string, unknown> },
+}));
+vi.mock("@/hooks/assistant/useAiCredits", () => ({ useAiCredits: () => credits.value }));
 // The start page's AI notice links the privacy policy only with NEXT_PUBLIC_WEBSITE_URL, through
 // `Trans`, which this i18n mock has not: without the link, these tests do not depend on that variable.
 vi.mock("@/lib/constants", async (importOriginal) => ({
@@ -56,6 +60,7 @@ beforeEach(() => {
   resetAssistantStore();
   vi.clearAllMocks();
   pathnameMock.mockReturnValue("/home");
+  credits.value = { pool: null, usedUp: null, isAdmin: false };
 });
 
 describe("NewConversation", () => {
@@ -177,6 +182,21 @@ describe("NewConversation", () => {
     expect(screen.queryByText(/shutting down/)).toBeNull();
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("Hallo");
     expect(getDockState().conversationId).toBeNull();
+  });
+
+  it("starts no conversation while the AI credits are used up: the line stands in the input's place", () => {
+    credits.value = {
+      pool: null,
+      usedUp: { resetsOn: "2026-12-01T00:00:00", onTrial: false },
+      isAdmin: false,
+    };
+    render(<NewConversation />);
+    expect(screen.getByText("assistant_credits_used_up")).toBeTruthy();
+    expect(screen.getByText("assistant_credits_ask_admin")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    // A starter would create a conversation only to be refused: none is offered.
+    expect(screen.queryByText("assistant_starters_label")).toBeNull();
+    expect(createMock).not.toHaveBeenCalled();
   });
 });
 

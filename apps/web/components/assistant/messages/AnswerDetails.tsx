@@ -6,39 +6,54 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { useFeatures } from "@/lib/api/users";
+import { hostedPlace } from "@/lib/assistant/aiCredits";
 import type { UsageMetadata } from "@/lib/assistant/types";
-import { ASSISTANT_PROVIDERS, type AssistantProvider, PROVIDER_NAMES } from "@/lib/validations/assistant";
+import { formatCredits } from "@/lib/utils/credits";
+import { providerName } from "@/lib/validations/assistant";
 
 import { CARD_RADIUS, eyebrowSx, headerIconButtonSx, mutedText } from "@/components/assistant/styles";
 import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
 
-const KNOWN: ReadonlySet<string> = new Set(ASSISTANT_PROVIDERS);
+/** GOAT AI is a product name: the same in every language. */
+const GOAT_AI = "GOAT AI";
 
-/** A provider by its product name, an OpenAI-compatible endpoint by `compatible`, an unknown id as it is. */
-const providerName = (provider: string, compatible: string): string =>
-  KNOWN.has(provider) ? (PROVIDER_NAMES[provider as AssistantProvider] ?? compatible) : provider;
-
-/** Per-answer details (spec §10, D3): the model is never hidden. */
+/**
+ * Per-answer details (spec §10, D3). An own connection's answer names its
+ * provider, model and tokens. A GOAT AI answer names GOAT AI, never the model
+ * behind it, with what it was charged (AI credits, where billing counts them,
+ * and steps) and where its model ran, as saved with the answer.
+ */
 export default function AnswerDetails({ usage }: { usage: UsageMetadata | undefined }) {
   const { t, i18n } = useTranslation("common");
   const theme = useTheme();
+  const { features } = useFeatures();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   // Every answer has its details: built once per language, not on every render.
   const number = useMemo(() => new Intl.NumberFormat(i18n.language), [i18n.language]);
-  const rows: [string, string][] = usage
-    ? [
-        ["assistant_details_model", usage.model],
-        [
-          "assistant_details_provider",
-          usage.provider
-            ? providerName(usage.provider, t("assistant_details_provider_openai_compatible"))
-            : "",
-        ],
-        ["assistant_details_input_tokens", number.format(usage.input_tokens)],
-        ["assistant_details_output_tokens", number.format(usage.output_tokens)],
-        ["assistant_details_cached_tokens", number.format(usage.cache_read_tokens ?? 0)],
-      ]
-    : [];
+  const goatAi = usage?.goat_ai === true;
+  let rows: [string, string][] = [];
+  if (usage && goatAi) {
+    if (features?.billing && usage.ai_credits !== undefined)
+      rows.push(["usage_ai_credits", formatCredits(usage.ai_credits, i18n.language)]);
+    if (usage.steps !== undefined) rows.push(["assistant_details_steps", number.format(usage.steps)]);
+    rows.push(["assistant_details_model", GOAT_AI]);
+  } else if (usage) {
+    rows = [
+      ["assistant_details_model", usage.model],
+      [
+        "assistant_details_provider",
+        usage.provider ? providerName(usage.provider, t("assistant_details_provider_openai_compatible")) : "",
+      ],
+      ["assistant_details_input_tokens", number.format(usage.input_tokens)],
+      ["assistant_details_output_tokens", number.format(usage.output_tokens)],
+      ["assistant_details_cached_tokens", number.format(usage.cache_read_tokens ?? 0)],
+    ];
+  }
+  const hosted =
+    goatAi && usage?.hosted_in
+      ? t("assistant_details_hosted_in", { place: hostedPlace(usage.hosted_in, t) })
+      : null;
   return (
     <>
       <Tooltip title={t("assistant_details")}>
@@ -77,6 +92,21 @@ export default function AnswerDetails({ usage }: { usage: UsageMetadata | undefi
               <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: "text.primary" }}>{value}</Typography>
             </Stack>
           ))}
+          {hosted && (
+            <Typography
+              sx={{
+                mt: "8px",
+                pt: "8px",
+                borderTop: 1,
+                borderColor: "divider",
+                maxWidth: 240,
+                fontSize: 12,
+                lineHeight: 1.45,
+                color: mutedText,
+              }}>
+              {hosted}
+            </Typography>
+          )}
         </Box>
       </Popover>
     </>

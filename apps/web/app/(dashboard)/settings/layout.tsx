@@ -32,6 +32,11 @@ interface SettingsLayoutProps {
   children: React.ReactNode;
 }
 
+/** Pages that lay their content on the page background under their own
+ * header, as the catalog and content pages do; every other settings page sits
+ * on a card. */
+const BARE_PAGES = ["/settings/usage"];
+
 const SettingsLayout = (props: SettingsLayoutProps) => {
   const { children } = props;
   const pathname = usePathname();
@@ -158,7 +163,11 @@ const SettingsLayout = (props: SettingsLayoutProps) => {
           </Paper>
         </Grid>
         <Grid item xs={12} md={9}>
-          <Paper elevation={3}>{children}</Paper>
+          {BARE_PAGES.some((page) => pathname === page || pathname?.startsWith(`${page}/`)) ? (
+            children
+          ) : (
+            <Paper elevation={3}>{children}</Paper>
+          )}
         </Grid>
       </Grid>
     </Container>

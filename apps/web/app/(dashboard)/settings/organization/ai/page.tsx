@@ -45,6 +45,7 @@ import ConnectionDialog, {
   assistantErrorText,
   providerLabel,
 } from "@/components/settings/ai/ConnectionDialog";
+import { goatAiDescription } from "@/components/settings/ai/goatAi";
 
 /** The select value of the built-in connection (`active_connection_id` null). */
 const GOAT_AI = "goat_ai";
@@ -263,7 +264,9 @@ const AiSettingsPage = () => {
           <MenuItem value={GOAT_AI} disabled={!goatAi.available}>
             <ListItemText
               primary={t("ai_settings_goat_ai")}
-              secondary={goatAi.available ? goatAi.model : t("ai_settings_goat_ai_unavailable")}
+              secondary={
+                goatAi.available ? goatAiDescription(goatAi, t) : t("ai_settings_goat_ai_unavailable")
+              }
             />
           </MenuItem>
           {connections.map((connection) => (

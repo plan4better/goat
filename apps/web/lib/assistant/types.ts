@@ -150,6 +150,14 @@ export interface UsageMetadata {
   output_tokens: number;
   cache_read_tokens?: number;
   cache_write_tokens?: number;
+  /** GOAT AI answered (also as the fallback); false for an own connection; absent on older answers. */
+  goat_ai?: boolean;
+  /** Where GOAT AI's model ran, saved with the answer (e.g. "EU"); absent when not set. */
+  hosted_in?: string;
+  /** The AI credits the answer was charged; absent when nothing was charged. */
+  ai_credits?: number;
+  /** The steps (tool calls) it was charged for; present exactly when `ai_credits` is. */
+  steps?: number;
 }
 /** One choice of an ask card question. Its `value` stays on the server and never reaches the page. */
 export interface AskOption {

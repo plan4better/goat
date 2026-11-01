@@ -41,6 +41,10 @@ vi.mock("@/components/assistant/ConversationHistory", () => ({
 }));
 // The composer's Feedback link reads the support summary; not under test here.
 vi.mock("@/components/support/SupportMenu", () => ({ useReportProblemHref: () => null }));
+vi.mock("@/hooks/assistant/useAiCredits", () => ({
+  useAiCredits: () => ({ pool: null, usedUp: null, isAdmin: false }),
+}));
+vi.mock("@/lib/api/users", () => ({ useFeatures: () => ({ features: undefined }) }));
 vi.mock("@/components/addLayer/AddLayerDialog", () => ({ default: () => null }));
 
 const view: Proposal = {

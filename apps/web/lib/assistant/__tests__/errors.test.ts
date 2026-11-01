@@ -70,6 +70,25 @@ describe("assistant error texts", () => {
     ).toBe("a");
   });
 
+  it("keeps the date of an AI credits refusal and whether it ends a trial", () => {
+    const body = {
+      code: "ai_credits_used_up",
+      message: "The organization's AI credits are used up.",
+      resets_on: "2026-12-01T00:00:00",
+      on_trial: false,
+    };
+    const error = toRequestError(refused(402, body));
+    expect(error?.code).toBe("ai_credits_used_up");
+    expect(error?.resetsOn).toBe("2026-12-01T00:00:00");
+    expect(error?.onTrial).toBe(false);
+    expect(assistantErrorKey(error)).toBe("assistant_error_ai_credits_used_up");
+    const trial = toRequestError(refused(402, { ...body, resets_on: null, on_trial: true }));
+    expect(trial?.resetsOn).toBeUndefined();
+    expect(trial?.onTrial).toBe(true);
+    // Anything but a boolean is not a trial flag.
+    expect(toRequestError(refused(402, { ...body, on_trial: "yes" }))?.onTrial).toBeUndefined();
+  });
+
   it("maps the real 401 answer, whose detail is a string", () => {
     const unauthenticated = {
       ...refused(401),

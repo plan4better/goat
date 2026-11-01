@@ -32,6 +32,9 @@ vi.mock("@/components/assistant/ConversationHistory", () => ({
 }));
 // The composer's Feedback link reads the support summary; not under test here.
 vi.mock("@/components/support/SupportMenu", () => ({ useReportProblemHref: () => null }));
+vi.mock("@/hooks/assistant/useAiCredits", () => ({
+  useAiCredits: () => ({ pool: null, usedUp: null, isAdmin: false }),
+}));
 // The start page's AI notice links the privacy policy only with NEXT_PUBLIC_WEBSITE_URL, through
 // `Trans`, which this i18n mock has not: without the link, these tests do not depend on that variable.
 vi.mock("@/lib/constants", async (importOriginal) => ({

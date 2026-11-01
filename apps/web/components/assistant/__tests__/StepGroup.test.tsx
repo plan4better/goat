@@ -20,6 +20,9 @@ vi.mock("react-i18next", async () => {
   };
 });
 
+// An answer's details ask whether billing is on; nothing here depends on it.
+vi.mock("@/lib/api/users", () => ({ useFeatures: () => ({ features: undefined }) }));
+
 let counter = 0;
 const call = (
   toolName: string,

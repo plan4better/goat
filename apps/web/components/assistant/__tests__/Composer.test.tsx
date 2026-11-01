@@ -26,6 +26,21 @@ vi.mock("@/components/support/SupportMenu", () => ({ useReportProblemHref: () =>
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
 }));
+const { credits } = vi.hoisted(() => ({
+  credits: { value: { pool: null, usedUp: null, isAdmin: false } as Record<string, unknown> },
+}));
+vi.mock("@/hooks/assistant/useAiCredits", () => ({ useAiCredits: () => credits.value }));
+
+const POOL = {
+  used: 412,
+  total: 1000,
+  left: 588,
+  percent: 41,
+  level: "ok",
+  resetsOn: "2026-12-01T00:00:00",
+  onTrial: false,
+  tiers: [{ max_steps: null, credits: 1 }],
+};
 
 const base = {
   onSend: vi.fn(),
@@ -40,6 +55,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
   feedback.href = null;
+  credits.value = { pool: null, usedUp: null, isAdmin: false };
 });
 
 describe("Composer", () => {
@@ -230,6 +246,67 @@ describe("Composer", () => {
     );
     expect(document.activeElement).toBe(box);
     expect(box.selectionStart).toBe("Build a workflow that ".length);
+  });
+
+  it("shows the organization's AI credits next to Send where they apply", () => {
+    const { rerender } = render(
+      <Composer {...base} draft="" onDraftChange={vi.fn()} onAddSource={vi.fn()} />
+    );
+    // Billing off, an own connection or no limit: no ring.
+    expect(screen.queryByRole("button", { name: /assistant_credits/ })).toBeNull();
+    credits.value = { pool: POOL, usedUp: null, isAdmin: false };
+    rerender(<Composer {...base} draft="" onDraftChange={vi.fn()} onAddSource={vi.fn()} />);
+    const ring = screen.getByRole("button", { name: /assistant_credits_used_month/ });
+    // In the foot row, right before Send.
+    expect(ring.compareDocumentPosition(screen.getByRole("button", { name: "assistant_send" }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+  });
+
+  it("puts the used-up line in place of the input and keeps the unsent text readable", () => {
+    credits.value = {
+      pool: { ...POOL, level: "empty" },
+      usedUp: { resetsOn: null, onTrial: false },
+      isAdmin: true,
+    };
+    render(<Composer {...base} draft="Wie viele Einwohner?" onDraftChange={vi.fn()} onAddSource={vi.fn()} />);
+    expect(screen.getByRole("status")).toHaveTextContent("assistant_credits_used_up_no_date");
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "assistant_send" })).toBeNull();
+    // The note above the input stays; the text that was not sent can still be copied.
+    expect(screen.getByText("assistant_scope_note")).toBeTruthy();
+    expect(screen.getByText("assistant_draft_not_sent")).toBeTruthy();
+    expect(screen.getByText("Wie viele Einwohner?")).toBeTruthy();
+  });
+
+  it("hands the focus to the used-up line when it takes the place of the focused input", () => {
+    const props = { ...base, draft: "", onDraftChange: vi.fn(), onAddSource: vi.fn() };
+    const { rerender } = render(<Composer {...props} />);
+    screen.getByRole("textbox").focus();
+    credits.value = { pool: null, usedUp: { resetsOn: null, onTrial: false }, isAdmin: false };
+    rerender(<Composer {...props} />);
+    expect(document.activeElement).toBe(screen.getByRole("status"));
+  });
+
+  it("leaves the focus alone when the line shows without the input having it", () => {
+    credits.value = { pool: null, usedUp: { resetsOn: null, onTrial: false }, isAdmin: false };
+    render(<Composer {...base} draft="" onDraftChange={vi.fn()} onAddSource={vi.fn()} />);
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("keeps Stop while an answer runs, also with the AI credits used up", () => {
+    credits.value = {
+      pool: { ...POOL, level: "empty" },
+      usedUp: { resetsOn: null, onTrial: false },
+      isAdmin: true,
+    };
+    const onStop = vi.fn();
+    render(
+      <Composer {...base} busy onStop={onStop} draft="" onDraftChange={vi.fn()} onAddSource={vi.fn()} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "stop" }));
+    expect(onStop).toHaveBeenCalled();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("sends nothing while busy otherwise", () => {

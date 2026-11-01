@@ -16,6 +16,8 @@ import {
 } from "@/lib/assistant/store";
 import { pageOrigin, useProjectSurfaceWait } from "@/lib/assistant/surface";
 
+import { useAiCredits } from "@/hooks/assistant/useAiCredits";
+
 import Composer from "@/components/assistant/Composer";
 import EmptyState from "@/components/assistant/EmptyState";
 import { composerFooterSx } from "@/components/assistant/styles";
@@ -48,10 +50,12 @@ export default function NewConversation({ big }: { big?: boolean }) {
   const [errorKey, setErrorKey] = useState<string | null>(null);
   // On a project page before its project registered, a conversation would start without it.
   const waiting = useProjectSurfaceWait(pathname, surface);
+  // With the AI credits used up the composer shows why; a starter would only start a refused conversation.
+  const usedUp = !!useAiCredits().usedUp;
 
   const start = async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || creating || waiting) return;
+    if (!trimmed || creating || waiting || usedUp) return;
     setCreating(true);
     setErrorKey(null);
     try {
@@ -87,6 +91,7 @@ export default function NewConversation({ big }: { big?: boolean }) {
           ) : (
             <EmptyState
               big={big}
+              noStarters={usedUp}
               context={composer.context}
               onPick={(text) => void start(text)}
               onDraft={prependDraft}

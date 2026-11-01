@@ -37,6 +37,12 @@ vi.mock("@/lib/api/projects", async (importOriginal) => ({
   }),
 }));
 
+/** Whether billing (and with it AI credits) is on here. */
+const { features } = vi.hoisted(() => ({
+  features: { value: { billing: true } as { billing?: boolean } | undefined },
+}));
+vi.mock("@/lib/api/users", () => ({ useFeatures: () => ({ features: features.value }) }));
+
 const actions = dockActions();
 
 /** The newest answer, still running, with these parts. */
@@ -624,6 +630,125 @@ describe("assistant messages", () => {
     // The popover stays open across the rerender: an answer without recorded usage says so.
     rerender(<AnswerDetails usage={undefined} />);
     expect(screen.getByText("assistant_details_none")).toBeTruthy();
+  });
+
+  it("shows a GOAT AI answer's AI credits, steps and GOAT AI as the model, never its tokens", () => {
+    render(
+      <AnswerDetails
+        usage={{
+          model: "eu.anthropic.claude-sonnet-4-5",
+          provider: "bedrock",
+          input_tokens: 606244,
+          output_tokens: 5,
+          cache_read_tokens: 2,
+          goat_ai: true,
+          hosted_in: "EU",
+          ai_credits: 2,
+          steps: 14,
+        }}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "assistant_details" }));
+    const rows = screen
+      .getAllByText(/^(usage_ai_credits|assistant_details_steps|assistant_details_model)$/)
+      .map((row) => [row.textContent, row.nextElementSibling?.textContent]);
+    expect(rows).toEqual([
+      ["usage_ai_credits", "2"],
+      ["assistant_details_steps", "14"],
+      ["assistant_details_model", "GOAT AI"],
+    ]);
+    // The hosting place saved with the answer, in one quiet line.
+    expect(screen.getByText("assistant_details_hosted_in")).toBeTruthy();
+    // Neither the real model, its provider nor tokens.
+    for (const hidden of [/claude/, /Bedrock/, /606/, /assistant_details_provider/, /tokens/])
+      expect(screen.queryByText(hidden)).toBeNull();
+  });
+
+  it("leaves out the hosting line an older answer never saved, and the AI credits nothing was charged", () => {
+    render(
+      <AnswerDetails
+        usage={{ model: "m", provider: "bedrock", input_tokens: 1, output_tokens: 1, goat_ai: true }}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "assistant_details" }));
+    expect(screen.getByText("GOAT AI")).toBeTruthy();
+    expect(screen.queryByText("assistant_details_hosted_in")).toBeNull();
+    expect(screen.queryByText("usage_ai_credits")).toBeNull();
+    expect(screen.queryByText("assistant_details_steps")).toBeNull();
+  });
+
+  it("shows no AI credits where billing is off, since nothing there counts them", () => {
+    features.value = { billing: false };
+    try {
+      render(
+        <AnswerDetails
+          usage={{ model: "m", input_tokens: 1, output_tokens: 1, goat_ai: true, ai_credits: 1, steps: 3 }}
+        />
+      );
+      fireEvent.click(screen.getByRole("button", { name: "assistant_details" }));
+      expect(screen.queryByText("usage_ai_credits")).toBeNull();
+      expect(screen.getByText("assistant_details_steps")).toBeTruthy();
+      expect(screen.getByText("GOAT AI")).toBeTruthy();
+    } finally {
+      features.value = { billing: true };
+    }
+  });
+
+  it("shows an own connection's provider, model and tokens, and no AI credits", () => {
+    render(
+      <AnswerDetails
+        usage={{ model: "qwen3", provider: "openai", input_tokens: 12, output_tokens: 3, goat_ai: false }}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "assistant_details" }));
+    for (const text of ["qwen3", "OpenAI", "12", "3", "assistant_details_input_tokens"])
+      expect(screen.getByText(text)).toBeTruthy();
+    expect(screen.queryByText("GOAT AI")).toBeNull();
+    expect(screen.queryByText("usage_ai_credits")).toBeNull();
+  });
+
+  it("shows what an answer that ran into its limits was charged, also without a word of text", () => {
+    const usage = {
+      model: "m",
+      provider: "bedrock",
+      input_tokens: 1,
+      output_tokens: 1,
+      goat_ai: true,
+      ai_credits: 3,
+      steps: 25,
+    };
+    const ended = (metadata: AssistantMessage["metadata"]) =>
+      render(
+        <DockActionsContext.Provider value={actions}>
+          <MessageList
+            messages={[
+              {
+                id: "a1",
+                role: "assistant",
+                metadata,
+                parts: [
+                  { type: "step-start" },
+                  search,
+                  { type: "data-run-status", data: { status: "failed", error: "x", code: "run_limit" } },
+                ],
+              },
+            ]}
+            busy={false}
+            conversationId="c1"
+            conversationProjectId={null}
+            projectName={null}
+            readOnly={false}
+          />
+        </DockActionsContext.Provider>
+      );
+    const { unmount } = ended({ usage });
+    fireEvent.click(screen.getByRole("button", { name: "assistant_details" }));
+    expect(screen.getByText("usage_ai_credits").nextElementSibling?.textContent).toBe("3");
+    expect(screen.getByText("assistant_details_steps").nextElementSibling?.textContent).toBe("25");
+    unmount();
+    // A failure on our side was free: nothing to show, as before.
+    ended({ usage: { ...usage, ai_credits: undefined, steps: undefined } });
+    expect(screen.queryByRole("button", { name: "assistant_details" })).toBeNull();
   });
 
   it("names an OpenAI-compatible endpoint in the UI language, and an unknown provider as it is", () => {

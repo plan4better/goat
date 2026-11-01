@@ -198,18 +198,21 @@ function StarterCard({ starter, onClick }: { starter: Starter; onClick: () => vo
  * it is an AI, and (docked) the latest conversations. `context` is what the
  * first message would carry; a starter that needs something it lacks is left
  * out. A question is sent at once (`onPick`), a sentence start goes into the
- * composer to be finished (`onDraft`).
+ * composer to be finished (`onDraft`). `noStarters` leaves them out (nothing
+ * can be asked now: the AI credits are used up).
  */
 export default function EmptyState({
   context,
   onPick,
   onDraft,
   big,
+  noStarters = false,
 }: {
   context: PageContext | null;
   onPick: (text: string) => void;
   onDraft: (text: string) => void;
   big?: boolean;
+  noStarters?: boolean;
 }) {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -266,26 +269,28 @@ export default function EmptyState({
           {t(`assistant_empty_sub_${group}`)}
         </Typography>
       </Stack>
-      <Stack gap="8px">
-        <Typography component="h3" sx={{ ...sectionLabelSx, m: 0 }}>
-          {t("assistant_starters_label")}
-        </Typography>
-        <Box
-          sx={{
-            display: "grid",
-            // Full screen shows only from md up (a phone gets the docked layout).
-            gridTemplateColumns: big ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)",
-            gap: big ? "12px" : "8px",
-          }}>
-          {starters.map((starter) => (
-            <StarterCard
-              key={starter.key}
-              starter={starter}
-              onClick={() => (starter.draft ? onDraft(`${starter.text} `) : onPick(starter.text))}
-            />
-          ))}
-        </Box>
-      </Stack>
+      {!noStarters && (
+        <Stack gap="8px">
+          <Typography component="h3" sx={{ ...sectionLabelSx, m: 0 }}>
+            {t("assistant_starters_label")}
+          </Typography>
+          <Box
+            sx={{
+              display: "grid",
+              // Full screen shows only from md up (a phone gets the docked layout).
+              gridTemplateColumns: big ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)",
+              gap: big ? "12px" : "8px",
+            }}>
+            {starters.map((starter) => (
+              <StarterCard
+                key={starter.key}
+                starter={starter}
+                onClick={() => (starter.draft ? onDraft(`${starter.text} `) : onPick(starter.text))}
+              />
+            ))}
+          </Box>
+        </Stack>
+      )}
       <AiNotice />
       {!big && <RecentConversations />}
     </Stack>

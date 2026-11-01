@@ -11,6 +11,7 @@ const BorderLinearProgress = styled(
     colorWhenFull: string;
     value: number;
     variant: "determinate" | "indeterminate" | "buffer" | "query";
+    "aria-label"?: string;
   }) => <LinearProgress variant={variant} {...other} />
 )<{ value: number; colorWhenFull: string; variant: "determinate" | "indeterminate" | "buffer" | "query" }>(
   ({ theme, value, colorWhenFull }) => ({
@@ -66,7 +67,13 @@ export default function QuotaStatus({
           {quotaLabel}
         </Typography>
       </Stack>
-      <BorderLinearProgress variant="determinate" value={progressValue} colorWhenFull={colorWhenFull} />
+      {/* The bar is named by its limit, so a screen reader says what it measures. */}
+      <BorderLinearProgress
+        variant="determinate"
+        value={progressValue}
+        colorWhenFull={colorWhenFull}
+        aria-label={titleLabel}
+      />
       {alertMessage && (
         <Alert severity={alertSeverity} sx={{ mt: 5 }}>
           {alertMessage}

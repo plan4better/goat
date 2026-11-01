@@ -23,7 +23,8 @@ const smallPill = { ...pillButtonSx, "&&": { ...pillButtonSx["&&"], px: "10px", 
 /**
  * The message waiting above the composer for the running answer to end: its
  * text cut to two lines, "Send now" and "Remove". A dashed edge marks it as
- * not sent yet; a refusal shows its reason underneath.
+ * not sent yet; a refusal shows its reason underneath. Without `onSendNow`
+ * (nothing can be sent now: the AI credits are used up) only Remove stays.
  */
 export default function QueuedItem({
   queued,
@@ -31,7 +32,7 @@ export default function QueuedItem({
   onRemove,
 }: {
   queued: QueuedMessage;
-  onSendNow: () => void;
+  onSendNow?: () => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation("common");
@@ -55,13 +56,15 @@ export default function QueuedItem({
         <Typography component="span" sx={{ ...eyebrowSx, flex: 1, color: accentText(theme) }}>
           {t("assistant_queued")}
         </Typography>
-        <Button
-          size="small"
-          variant="text"
-          onClick={onSendNow}
-          sx={{ ...smallPill, color: accentText(theme), ...focusRing(theme) }}>
-          {t("assistant_send_now")}
-        </Button>
+        {onSendNow && (
+          <Button
+            size="small"
+            variant="text"
+            onClick={onSendNow}
+            sx={{ ...smallPill, color: accentText(theme), ...focusRing(theme) }}>
+            {t("assistant_send_now")}
+          </Button>
+        )}
         <Button
           size="small"
           variant="text"

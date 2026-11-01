@@ -15,12 +15,15 @@ import {
   alpha,
   useTheme,
 } from "@mui/material";
-import { useEffect, useRef, useState } from "react";
+import { type FocusEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ContextChip } from "@/lib/assistant/chips";
 import type { SourceRef } from "@/lib/assistant/types";
 
+import { useAiCredits } from "@/hooks/assistant/useAiCredits";
+
+import { AiCreditsRing, AiCreditsUsedUp } from "@/components/assistant/AiCreditsRing";
 import SourcePicker from "@/components/assistant/SourcePicker";
 import ContextChips, { chipSx } from "@/components/assistant/messages/ContextChips";
 import { focusRing, mutedText } from "@/components/assistant/styles";
@@ -123,6 +126,36 @@ function ComposerNote() {
   );
 }
 
+/**
+ * What the user wrote that did not go out, readable and copyable where the
+ * composer gives way (a read-only conversation, used-up AI credits).
+ */
+export function UnsentMessages({ texts }: { texts: string[] }) {
+  const { t } = useTranslation("common");
+  return (
+    <Box>
+      <Typography sx={{ fontSize: 12, color: mutedText }}>{t("assistant_draft_not_sent")}</Typography>
+      {texts.map((text, index) => (
+        <Typography
+          key={index}
+          sx={{
+            mt: "4px",
+            px: "12px",
+            py: "8px",
+            borderRadius: "10px",
+            fontSize: 13,
+            color: "text.primary",
+            bgcolor: "action.hover",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+          }}>
+          {text}
+        </Typography>
+      ))}
+    </Box>
+  );
+}
+
 export default function Composer(props: ComposerProps) {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -155,14 +188,36 @@ export default function Composer(props: ComposerProps) {
     </IconButton>
   );
   const hasContext = props.chips.length > 0 || props.mentionsEnabled;
+  const credits = useAiCredits();
+  // An answer under way keeps its Stop; the line takes the input's place once it ended.
+  const usedUp = !canStop ? credits.usedUp : null;
+  /** The focus is in the composer: the used-up line that takes its place takes the focus over. */
+  const [focusWithin, setFocusWithin] = useState(false);
+  const focusTracking = {
+    onFocus: () => setFocusWithin(true),
+    onBlur: (event: FocusEvent<HTMLElement>) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocusWithin(false);
+    },
+  };
   useEffect(() => {
     const text = input.current;
     if (!props.focusRequest || !text) return;
     text.focus();
     text.setSelectionRange(text.value.length, text.value.length);
   }, [props.focusRequest]);
+  if (usedUp) {
+    return (
+      <Box {...focusTracking}>
+        <ComposerNote />
+        <Stack gap="10px">
+          {props.draft.trim() && <UnsentMessages texts={[props.draft]} />}
+          <AiCreditsUsedUp usedUp={usedUp} isAdmin={credits.isAdmin} autoFocus={focusWithin} />
+        </Stack>
+      </Box>
+    );
+  }
   return (
-    <Box>
+    <Box {...focusTracking}>
       <ComposerNote />
       {/* One box: the text on top, the message's context and Send in a row at its foot. */}
       <Box
@@ -245,6 +300,12 @@ export default function Composer(props: ComposerProps) {
               </Tooltip>
             )}
           </Stack>
+          {credits.pool && (
+            // Centred on the 32px round buttons.
+            <Box sx={{ display: "flex", mb: "2px", cursor: "default" }}>
+              <AiCreditsRing pool={credits.pool} isAdmin={credits.isAdmin} />
+            </Box>
+          )}
           {stopButton}
           {sendButton}
         </Stack>
