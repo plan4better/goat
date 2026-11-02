@@ -29,6 +29,7 @@ Klicken Sie in der oberen Leiste auf <code>KI fragen</code>. Die Schaltfläche f
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
   <img src={require('/img/goat_ai/dock_de.webp').default} alt="Der GOAT AI-Assistent neben einem Projekt geöffnet" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+  <p style={{ textAlign: 'center', fontSize: '0.9em' }}>Der KI-Assistent öffnet sich rechts neben dem Projekt. Eine leere Unterhaltung zeigt Vorschläge für die Seite, auf der Sie sind.</p>
 </div>
 
 ## 3. Eine Frage stellen
@@ -57,6 +58,7 @@ Schließen Sie den Assistenten oder öffnen Sie eine andere Unterhaltung, währe
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
   <img src={require('/img/goat_ai/answer_de.webp').default} alt="Eine Antwort von GOAT AI mit Ergebniskarten" style={{ maxWidth: "400px", objectFit: "cover"}}/>
+  <p style={{ textAlign: 'center', fontSize: '0.9em' }}>Die Antwort auf <i>Welche Layer enthält dieses Projekt?</i>: eine Karte pro Layer, mit <code>Zoomen</code>, und unter dem Text die Feedback-Schaltflächen.</p>
 </div>
 
 ## 4. Was GOAT AI kann {#capabilities}
@@ -108,6 +110,7 @@ Nachdem Sie einen Vorschlag angewendet haben, nimmt <code>Rückgängig</code> au
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
   <img src={require('/img/goat_ai/suggestion_de.webp').default} alt="Eine Vorschlagskarte für eine Kartenansicht" style={{ maxWidth: "400px", objectFit: "cover"}}/>
+  <p style={{ textAlign: 'center', fontSize: '0.9em' }}>Eine Vorschlagskarte für eine Kartenansicht: <code>Auf Karte anwenden</code> bewegt die Karte dorthin, <code>Verwerfen</code> verwirft den Vorschlag.</p>
 </div>
 
 ### Workflows erstellen, ändern und ausführen
@@ -170,6 +173,7 @@ KI-Credits zählen nur, wo GOAT AI antwortet und GOAT mit Abrechnung läuft. Ant
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
   <img src={require('/img/goat_ai/credits_de.webp').default} alt="Das KI-Credits-Fenster im Assistenten" style={{ maxWidth: "380px", objectFit: "cover"}}/>
+  <p style={{ textAlign: 'center', fontSize: '0.9em' }}>Das KI-Credits-Fenster, geöffnet über den Ring neben <code>Senden</code>: der Anteil, der diesen Monat genutzt ist, die verbleibenden KI-Credits und wie eine Antwort gezählt wird.</p>
 </div>
 
 ## 8. GOAT aus Ihren eigenen KI-Werkzeugen nutzen

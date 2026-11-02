@@ -29,6 +29,7 @@ Click <code>Ask AI</code> in the upper bar. It is missing when AI is switched of
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
   <img src={require('/img/goat_ai/dock.webp').default} alt="The GOAT AI dock opened next to a project" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+  <p style={{ textAlign: 'center', fontSize: '0.9em' }}>The AI dock opens on the right, next to the project. An empty conversation shows suggestions for the page you are on.</p>
 </div>
 
 ## 3. Ask a question
@@ -57,6 +58,7 @@ If you close the dock or open another conversation while an answer runs, the ans
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
   <img src={require('/img/goat_ai/answer.webp').default} alt="An answer of GOAT AI with result cards" style={{ maxWidth: "400px", objectFit: "cover"}}/>
+  <p style={{ textAlign: 'center', fontSize: '0.9em' }}>The answer to <i>Which layers does this project contain?</i>: a card for each layer, with <code>Zoom</code>, and the feedback buttons below the text.</p>
 </div>
 
 ## 4. What GOAT AI can do {#capabilities}
@@ -108,6 +110,7 @@ After you apply a suggestion, <code>Undo</code> on the card takes it back. <code
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
   <img src={require('/img/goat_ai/suggestion.webp').default} alt="A map view suggestion card" style={{ maxWidth: "400px", objectFit: "cover"}}/>
+  <p style={{ textAlign: 'center', fontSize: '0.9em' }}>A suggestion card for a map view: <code>Apply to map</code> moves the map there, <code>Discard</code> dismisses it.</p>
 </div>
 
 ### Build, change and run workflows
@@ -170,6 +173,7 @@ AI credits only count where GOAT AI answers and GOAT runs with billing. Answers 
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
   <img src={require('/img/goat_ai/credits.webp').default} alt="The AI credits window in the dock" style={{ maxWidth: "380px", objectFit: "cover"}}/>
+  <p style={{ textAlign: 'center', fontSize: '0.9em' }}>The AI credits window, opened from the ring next to <code>Send</code>: the share used this month, the AI credits left and how an answer is counted.</p>
 </div>
 
 ## 8. Use GOAT from your own AI tools
