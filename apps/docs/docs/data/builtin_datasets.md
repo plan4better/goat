@@ -115,4 +115,6 @@ The built-in `Default (Europe)` network covers Europe only. If your transit data
 
 Linking to your own street network is also what lets a timetable analysis account for streets you changed.
 
+Once imported, a public transport network can be opened in the [PT Network Explorer](../toolbox/pt_network_explorer.md) from its bundle in a project: browse its lines, stations and timetables, play its vehicles on the map and estimate its operating cost.
+
 For the file formats these networks are imported from and the layers they are made of, see [Dataset Types](./dataset_types.md#street-networks). For the import steps, see [Adding content](../workspace/content.md#adding-content).
