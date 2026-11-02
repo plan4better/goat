@@ -24,7 +24,13 @@ analysis algorithms, geospatial I/O, and shared models used by the `core`,
    - implement `process()` and set `tool_class`, `output_geometry_type`,
      `default_output_name`
 2. Register it in `tools/registry.py`
-3. Sync it to Windmill with `tools/sync_windmill.py`
+3. Sync it to Windmill with `tools/sync_windmill.py`. Both syncs (tools and
+   `tasks/sync_windmill.py`) write a script in place (`windmill_scripts.py`):
+   a new version when it changed, nothing when it did not, never a delete,
+   so the path always resolves to a script and Windmill keeps its version
+   history. These scripts are managed from goatlib: a code change deploys a
+   new version, which replaces per-script settings made in the Windmill UI
+   (timeout, concurrency, environment variables).
 
 Tools run with service credentials and never check the caller themselves:
 the `processes` service checks every layer, project, folder and bundle a
