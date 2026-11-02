@@ -242,7 +242,12 @@ Set `windmill.scriptSync.enabled: true` to run a second post-install hook
 (weight 20, after bootstrap) that uses the `windmill-worker-tools` image
 to call `python -m goatlib.tools.sync_windmill` and
 `python -m goatlib.tasks.sync_windmill`, pre-loading plan4better's
-scripts/tasks into the workspace.
+scripts/tasks into the workspace. On an upgrade it updates them in place: a
+changed script gets a new version (Windmill keeps its history), an unchanged
+one is left alone, and no script is deleted, so each script's path always
+resolves to a script. These scripts are managed from goatlib: a new version
+replaces per-script settings made in the Windmill UI (timeout, concurrency,
+environment variables).
 
 ### DuckLake catalog bootstrap (init container)
 
