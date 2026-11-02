@@ -82,10 +82,6 @@ Click `Save` to apply your changes.
 <p>
 </p>
 
-:::danger[Screenshot placeholder]
-The organization's AI settings page.
-:::
-
 ## Usage
 
 Under **Usage**, organization owners and admins can **follow how much of the organization's quotas is used**. This menu entry only appears where GOAT runs with billing; self-hosted instances don't have it.
@@ -105,10 +101,6 @@ To raise a limit, click `Ask for more` in a tile's details, or contact the **[Su
 
 <p>
 </p>
-
-:::danger[Screenshot placeholder]
-The Usage page with its tiles (Credits, AI credits, Storage, Projects, Editors), and one detail view.
-:::
 
 ## White Label
 

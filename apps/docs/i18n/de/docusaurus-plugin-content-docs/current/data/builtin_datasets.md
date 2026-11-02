@@ -116,6 +116,8 @@ Das integrierte Netz `Standard (Europa)` deckt nur Europa ab. Liegen Ihre Fahrpl
 
 Die Verknüpfung mit Ihrem eigenen Straßennetz sorgt außerdem dafür, dass eine Fahrplananalyse die Straßen berücksichtigt, die Sie geändert haben.
 
+:::tip Ihr Netz erkunden
 Ein importiertes ÖPNV-Netz können Sie über sein Bundle in einem Projekt im [ÖPNV-Netz-Explorer](../toolbox/pt_network_explorer.md) öffnen: Linien, Haltestellen und Fahrpläne durchsuchen, die Fahrzeuge auf der Karte abspielen und die Betriebskosten schätzen.
+:::
 
 Aus welchen Dateiformaten diese Netze importiert werden und aus welchen Layern sie bestehen, erfahren Sie unter [Datensatz-Typen](./dataset_types.md#straßennetze). Die Importschritte finden Sie unter [Inhalte hinzufügen](../workspace/content.md#inhalte-hinzufügen).

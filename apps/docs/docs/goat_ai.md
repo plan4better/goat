@@ -25,18 +25,7 @@ The assistant is in beta, and AI answers can be wrong. Check results before you 
 
 ## 2. Open the assistant
 
-Click <code>Ask AI</code> in the upper bar. The button is there on the Home, Projects, Datasets, Catalog and Settings pages and in every project, in the `Map`, `Workflows`, `Layouts` and `Dashboard` views. It is missing when AI is switched off for your organization or not set up on your GOAT instance. Click the button again to close the dock.
-
-The dock stays open while you move between pages and views, so you can keep a conversation going while you work. In its header:
-
-- The title of the open conversation opens the list of your **conversations** (see [Conversations](#conversations)).
-- <code>New conversation</code> (the plus icon) starts an empty conversation.
-- <code>Open full screen</code> opens the assistant over the page, with the conversations listed beside it. <code>Back to the side panel</code> docks it again. On a phone the assistant always fills the screen.
-- <code>Close</code> closes the dock.
-
-In the docked view, drag the dock's left edge to change its width.
-
-An empty conversation shows a few **suggestions** for the page you are on, for example <code>Which layers does this project contain?</code> in a project or <code>Which datasets were updated this year?</code> on the Catalog page. Click one to put it into the message field, complete it if needed, and send it.
+Click <code>Ask AI</code> in the upper bar. It is missing when AI is switched off for your organization or not set up on your GOAT instance. Click the button again to close the dock.
 
 :::danger[Screenshot placeholder]
 The AI dock opened next to a project, with its start page.

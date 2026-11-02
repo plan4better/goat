@@ -25,18 +25,7 @@ Der Assistent ist in der Beta-Phase, und KI-Antworten können fehlerhaft sein. P
 
 ## 2. Den Assistenten öffnen
 
-Klicken Sie in der oberen Leiste auf <code>KI fragen</code>. Die Schaltfläche finden Sie auf den Seiten Startseite, Projekte, Datensätze, Katalog und Einstellungen sowie in jedem Projekt in den Ansichten `Karte`, `Workflows`, `Layouts` und `Dashboard`. Sie fehlt, wenn KI für Ihre Organisation ausgeschaltet oder auf Ihrer GOAT-Instanz nicht eingerichtet ist. Ein weiterer Klick auf die Schaltfläche schließt den Assistenten.
-
-Der Assistent bleibt geöffnet, während Sie zwischen Seiten und Ansichten wechseln, sodass Sie eine Unterhaltung fortführen können, während Sie arbeiten. In seiner Kopfzeile:
-
-- Der Titel der geöffneten Unterhaltung öffnet die Liste Ihrer **Unterhaltungen** (siehe [Unterhaltungen](#conversations)).
-- <code>Neue Unterhaltung</code> (das Plus-Symbol) beginnt eine leere Unterhaltung.
-- <code>Vollbild öffnen</code> öffnet den Assistenten über der Seite, mit den Unterhaltungen daneben. <code>Zurück zur Seitenleiste</code> zeigt ihn wieder als Seitenleiste. Auf einem Smartphone füllt der Assistent immer den ganzen Bildschirm.
-- <code>Schließen</code> schließt den Assistenten.
-
-Als Seitenleiste ändern Sie die Breite des Assistenten, indem Sie seinen linken Rand ziehen.
-
-Eine leere Unterhaltung zeigt einige **Vorschläge** für die Seite, auf der Sie sind, zum Beispiel <code>Welche Layer enthält dieses Projekt?</code> in einem Projekt oder <code>Welche Datensätze wurden dieses Jahr aktualisiert?</code> auf der Seite Katalog. Ein Klick übernimmt den Vorschlag in das Eingabefeld; ergänzen Sie ihn bei Bedarf und senden Sie ihn ab.
+Klicken Sie in der oberen Leiste auf <code>KI fragen</code>. Die Schaltfläche fehlt, wenn KI für Ihre Organisation ausgeschaltet oder auf Ihrer GOAT-Instanz nicht eingerichtet ist. Ein weiterer Klick auf die Schaltfläche schließt den Assistenten.
 
 :::danger[Screenshot placeholder]
 The AI dock opened next to a project, with its start page.
