@@ -48,6 +48,20 @@ machine with internet access with the ``mirror`` command::
 A CDN serves no directory listings, so a generic copy tool cannot do this;
 the mirror follows ``channels.json`` and the manifests.
 
+**Publishing.** A new version goes up with ``publish``: the files, then the
+manifest it writes for them, then the version's entry in ``channels.json``
+(and the channel moved to it, if asked)::
+
+    python -m goatlib.tasks.sync_base_data publish --from ./public_transport \
+        --to s3://goat-base-data/ --dataset public_transport \
+        --version 2026-11-02 --requires street_network=2026-10-07
+
+A ``public_transport`` version holds the feed (``gtfs/``), its timetable
+(``pt_network/gtfs.bin``) and access/egress tables, and the feed as GTFS
+tables a cut is made from (``pt_network/gtfs_tables/``). The
+``build_pt_network`` task builds and publishes the ``pt_network/`` part from
+the combined feed.
+
 Windmill deployment: registered in `goatlib.tasks.registry` as
 `f/goat/tasks/sync_base_data`, worker tag ``"tools"``, weekly and created
 switched off -- turning it on (and choosing data sets, region, source) is a
@@ -82,8 +96,11 @@ __all__ = [
     "BaseDataSource",
     "SyncBaseDataParams",
     "h3_3_cells_for_bbox",
+    "installed_version",
     "main",
+    "open_source",
     "mirror",
+    "publish",
     "sync",
 ]
 
@@ -271,6 +288,17 @@ class _FileSource:
             src.seek(_offset(part))
             shutil.copyfileobj(src, dst, length=1024 * 1024)
 
+    def exists(self, rel: str) -> bool:
+        return (self.root / rel).is_file()
+
+    def put(self, rel: str, path: Path) -> None:
+        (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, self.root / rel)
+
+    def put_bytes(self, rel: str, data: bytes) -> None:
+        (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (self.root / rel).write_bytes(data)
+
 
 class _S3Source:
     def __init__(self, source: BaseDataSource) -> None:
@@ -314,6 +342,32 @@ class _S3Source:
             raise
         with part.open("ab") as handle:
             shutil.copyfileobj(body, handle, length=1024 * 1024)
+
+    def exists(self, rel: str) -> bool:
+        try:
+            self.client.head_object(Bucket=self.bucket, Key=self.prefix + rel)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey"):
+                return False
+            raise
+        return True
+
+    def put(self, rel: str, path: Path) -> None:
+        # Multipart for large files (a timetable is over a gigabyte).
+        self.client.upload_file(str(path), self.bucket, self.prefix + rel)
+
+    def put_bytes(self, rel: str, data: bytes) -> None:
+        self.client.put_object(Bucket=self.bucket, Key=self.prefix + rel, Body=data)
+
+
+class _Target(_Source, Protocol):
+    """A source that can also be published to."""
+
+    def exists(self, rel: str) -> bool: ...
+
+    def put(self, rel: str, path: Path) -> None: ...
+
+    def put_bytes(self, rel: str, data: bytes) -> None: ...
 
 
 def _open(source: BaseDataSource) -> _Source:
@@ -516,6 +570,19 @@ def _current(data_dir: Path, dataset: str) -> str | None:
     if len(versions) == 1:
         return versions.pop()
     return None  # half-switched (an interrupted run): re-link
+
+
+def installed_version(data_dir: Path | str, dataset: str) -> str | None:
+    """The version of ``dataset`` this task installed under ``data_dir``; None
+    when there is none, or what is there was not installed by it."""
+    version = _current(Path(data_dir), dataset)
+    return None if version in (None, _UNMANAGED, _ADOPTED) else version
+
+
+def open_source(url: str) -> _Source:
+    """A base data source to read from: ``https://``, ``s3://`` (keys from the
+    environment) or ``file://``."""
+    return _open(BaseDataSource(url=url))
 
 
 def _switch(link: Path, target: Path) -> None:
@@ -745,6 +812,127 @@ def mirror(
     return copied
 
 
+def _target(url: str) -> _Target:
+    scheme = urllib.parse.urlparse(url).scheme
+    if scheme == "file":
+        return _FileSource(url)
+    if scheme == "s3":
+        return _S3Source(BaseDataSource(url=url))
+    raise ValueError(f"cannot publish to {url!r} (s3://, file://)")
+
+
+def publish(
+    src: Path | str,
+    dest_url: str,
+    *,
+    dataset: str,
+    version: str,
+    coverage: dict[str, Any] | None = None,
+    requires: dict[str, str] | None = None,
+    channel: str | None = None,
+    workers: int = 4,
+) -> dict[str, Any]:
+    """Publish the folder ``src`` as ``dataset``'s ``version`` at ``dest_url``.
+
+    The counterpart of ``sync``: every file goes up, then ``manifest.json``
+    listing each with its size and sha256 -- last, as its presence is what
+    tells a sync the version is complete -- then ``channels.json`` lists the
+    version, and points ``channel`` at it if one is given. A version is
+    immutable, so one already published is refused. ``src`` holds what the
+    data set's links point into (``gtfs/`` and ``pt_network/`` for
+    public_transport), nothing else.
+    """
+    if dataset not in DATASETS:
+        raise ValueError(f"unknown data set {dataset!r}")
+    src = Path(src)
+    files = sorted(
+        p for p in src.rglob("*") if p.is_file() and p.name != "manifest.json"
+    )
+    if not files:
+        raise ValueError(f"{src} holds no files")
+    roots = {inner for inner in DATASETS[dataset].links.values() if inner}
+    if roots and "" not in DATASETS[dataset].links.values():
+        stray = [
+            p.relative_to(src).as_posix()
+            for p in files
+            if not any(
+                p.relative_to(src).as_posix() == r
+                or p.relative_to(src).as_posix().startswith(r + "/")
+                for r in roots
+            )
+        ]
+        if stray:
+            raise ValueError(
+                f"{dataset} reads only {', '.join(sorted(roots))}; not: "
+                + ", ".join(stray[:5])
+            )
+
+    target = _target(dest_url)
+    prefix = f"{dataset}/{version}"
+    if target.exists(f"{prefix}/manifest.json"):
+        raise ValueError(
+            f"{dataset} {version} is published already; versions are immutable"
+        )
+
+    def one(path: Path) -> dict[str, Any]:
+        rel = path.relative_to(src).as_posix()
+        target.put(f"{prefix}/{rel}", path)
+        logger.info("published %s", rel)
+        entry: dict[str, Any] = {
+            "path": rel,
+            "bytes": path.stat().st_size,
+            "sha256": _sha256(path),
+        }
+        # A partitioned file names its cell, which a regional sync selects on
+        # (_select); without it every deployment would fetch every cell.
+        for part in rel.split("/"):
+            if part.startswith("h3_3="):
+                entry["h3_3"] = int(part.split("=", 1)[1])
+        return entry
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        entries = list(pool.map(one, files))
+
+    manifest: dict[str, Any] = {
+        "dataset": dataset,
+        "version": version,
+        "data_schema": DATASETS[dataset].data_schema,
+        "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    if coverage:
+        manifest["coverage"] = coverage
+    if requires:
+        manifest["requires"] = requires
+    manifest["total_bytes"] = sum(e["bytes"] for e in entries)
+    manifest["files"] = entries
+    target.put_bytes(
+        f"{prefix}/manifest.json", (json.dumps(manifest, indent=1) + "\n").encode()
+    )
+
+    channels: dict[str, Any] = (
+        json.loads(target.read("channels.json"))
+        if target.exists("channels.json")
+        else {"format": 1, "channels": {}, "versions": {}}
+    )
+    listed = channels.setdefault("versions", {}).setdefault(dataset, [])
+    if not any(v["version"] == version for v in listed):
+        listed.append({"version": version, "data_schema": manifest["data_schema"]})
+        listed.sort(key=lambda v: v["version"])
+    if channel:
+        channels.setdefault("channels", {}).setdefault(channel, {})[dataset] = version
+    channels["updated_at"] = manifest["created_at"]
+    target.put_bytes("channels.json", (json.dumps(channels, indent=1) + "\n").encode())
+    logger.info(
+        "published %s %s: %d file(s), %d bytes%s",
+        dataset,
+        version,
+        len(entries),
+        manifest["total_bytes"],
+        f", {channel} channel" if channel else "",
+    )
+    return {"files": len(entries), "bytes": manifest["total_bytes"], "channel": channel}
+
+
 def main(params: SyncBaseDataParams | None = None) -> dict[str, Any]:
     """Entry point for the Windmill task."""
     return sync(params or SyncBaseDataParams())
@@ -761,8 +949,45 @@ def _cli(argv: list[str] | None = None) -> int:
     m.add_argument("--bbox", help="min_lon,min_lat,max_lon,max_lat")
     m.add_argument("--ring", type=int, default=1)
     m.add_argument("--workers", type=int, default=4)
+    p = sub.add_parser("publish", help="publish a folder as a data set version")
+    p.add_argument("--from", dest="src", required=True, help="the version's folder")
+    p.add_argument("--to", required=True, help="s3://bucket/prefix/ or file:///path/")
+    p.add_argument("--dataset", required=True, choices=list(DATASETS))
+    p.add_argument("--version", required=True, help="e.g. 2026-11-02")
+    p.add_argument("--channel", help="point this channel at the version, e.g. stable")
+    p.add_argument(
+        "--requires", action="append", default=[], help="dataset=version, repeatable"
+    )
+    p.add_argument("--coverage-name", help="what the data covers")
+    p.add_argument("--coverage-bbox", help="min_lon,min_lat,max_lon,max_lat")
+    p.add_argument("--workers", type=int, default=4)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    if args.command == "publish":
+        coverage = {
+            k: v
+            for k, v in (
+                ("name", args.coverage_name),
+                (
+                    "bbox",
+                    [float(x) for x in args.coverage_bbox.split(",")]
+                    if args.coverage_bbox
+                    else None,
+                ),
+            )
+            if v
+        }
+        publish(
+            args.src,
+            args.to,
+            dataset=args.dataset,
+            version=args.version,
+            coverage=coverage or None,
+            requires=dict(r.split("=", 1) for r in args.requires) or None,
+            channel=args.channel,
+            workers=args.workers,
+        )
+        return 0
     mirror(
         args.source,
         args.to,

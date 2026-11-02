@@ -10,7 +10,7 @@ analysis algorithms, geospatial I/O, and shared models used by the `core`,
 |--------|---------|
 | `tools/` | Analytics tools (buffer, clip, catchment areas, heatmaps, …). Each tool is a `BaseToolRunner[TParams]` subclass, registered in `tools/registry.py` and executed as a Windmill job. |
 | `analysis/` | Analysis algorithms backing the tools |
-| `io/` | Dataset import/export, format conversion, remote sources (WFS, …), and the readers for GOAT's base data: the OpenStreetMap/Overture mirror and the street network (`io/fetch/`) |
+| `io/` | Dataset import/export, format conversion, remote sources (WFS, …), and the readers for GOAT's base data: the OpenStreetMap/Overture mirror, the street network and the public transport network (`io/fetch/`) |
 | `models/` | Pydantic models shared across services |
 | `services/`, `storage/`, `tasks/` | Service clients, object storage, background task helpers |
 | `computed_columns/`, `i18n/`, `config/`, `utils/` | Supporting modules |
@@ -107,6 +107,33 @@ every trip without a usable one, a line through its stops
 (`bundles/importers/pt_network/stop_chains.py`), named after the stops so the
 Explorer's snapshot gives those trips the same line as their shape. Like any
 derived member it is never written back to the feed.
+
+## GOAT's public transport network is cut like an upload
+
+GOAT's default public transport network is one GTFS feed combining several
+countries, too large to be a bundle. Its timetable lies on the workers' shared
+volume (`${DATA_DIR}/pt_network/gtfs.bin`), and next to it the same feed as
+GTFS tables (`${DATA_DIR}/pt_network/gtfs_tables/`), which `fetch_pt_network`
+cuts to an area as a new GTFS bundle. Both arrive with the `public_transport`
+base data version (`tasks/sync_base_data.py`). When the combined feed is regenerated, the
+`build_pt_network` task builds the version from it (the timetable, the walking
+access/egress table and the tables) and publishes it: the same timetable and
+access/egress build as any GTFS bundle's, against the worker's global street
+network. It does not build the legacy `gtfs/` files that ÖV-Güteklassen and
+trip count read, so a channel should not point at its version until those
+come with it.
+
+The tables are the GTFS importer's own output, and a cut writes the same, so
+it is ingested, typed and built (timetable, access and egress) exactly as an
+uploaded feed is. A cut keeps whole lines: every line serving a stop in the
+area, or its station, with all its trips and every stop they call at, inside
+the area or not, so a trip still runs end to end. Every other table keeps a
+row only where each id it names is kept, so no reference is left dangling
+(`io/fetch/pt_network.py`).
+
+Both network fetches create their bundle through
+`BundleImportRunner.create_bundle_from_layers`, so a cut is created, ingested,
+built and rolled back as an import is.
 
 ## Copies behind a project entry
 
