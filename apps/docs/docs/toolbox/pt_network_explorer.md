@@ -57,6 +57,10 @@ If the network cannot be opened, the tab says why and what to do. Use `Try again
 
 :::
 
+:::danger[Screenshot placeholder]
+The layer menu (⋮) of a public transport bundle with the `Explorer` entry, and the `In Explorer` chip in the layer tree.
+:::
+
 ### Lines and stations
 
 The `Explorer` tab shows the bundle's name, a search field and two sections, `Lines` and `Stations & platforms`, each with its count. One section is open at a time; click a section's header to open or fold it.
@@ -78,6 +82,10 @@ Active filters show as chips under the search field; click a chip's × to remove
 
 The lists show at most 200 rows each; narrow the search to find the rest.
 
+:::danger[Screenshot placeholder]
+The Explorer's left panel: lines and stations lists with the search field and filter chips.
+:::
+
 ### The line panel
 
 <div class="step">
@@ -98,6 +106,10 @@ The `Overview` tab describes the line's service on the selected date, per direct
 
 The time periods (`Early`, `AM peak`, `Midday`, `PM peak`, `Evening`, `Night`) can be changed with the `Time periods` icon next to `Headways` and `Running time`; see [Network assumptions](#network-assumptions). If the line does not run on the selected date, pick another day in the bottom bar.
 
+:::danger[Screenshot placeholder]
+The line panel, `Overview` tab.
+:::
+
 #### Stops
 
 The `Stops` tab shows **one direction at a time**. Choose it under `Direction`: each direction is listed by where it goes, with its number of trips on the selected date, and its variants (`Short turn`, `Express` or `Branch`) indented under it.
@@ -108,6 +120,10 @@ On the map, the chosen direction is highlighted with arrows showing which way it
 
 The direction you choose here also applies to the trip strip and to the stop timetables of this line.
 
+:::danger[Screenshot placeholder]
+The line panel, `Stops` tab (line diagram).
+:::
+
 #### Schedule
 
 The `Schedule` tab shows on which days the line runs:
@@ -116,6 +132,10 @@ The `Schedule` tab shows on which days the line runs:
 - `Day types`: the sets of days that share the same timetable, each with its weekdays and number of trips a day. Rare day types are folded behind a link to show them.
 - `Exceptions`: the days on which service is added or removed compared with the usual week, marked in the calendar.
 - `Calendar`: the feed's period month by month, each day coloured by its day type. The selected date is outlined; click a day to make it the Explorer's date.
+
+:::danger[Screenshot placeholder]
+The line panel, `Schedule` tab.
+:::
 
 ### Stop and trip panels
 
@@ -131,6 +151,10 @@ Click a departure to open its trip.
 **A trip** shows its line badge, its departure time, its first and last stop and the date. Under it you see when it runs, how long it takes and how many stops it has; use the arrows (`Previous trip`, `Next trip`) to step to the trips before and after it in the same direction. Two tabs follow: `Stops`, its stops with their times (click a stop to open its timetable), and `Schedule`, the days on which this trip runs. While playback is within the trip, the stops already passed are dimmed, and its vehicle is ringed on the map.
 
 You can also open these panels from the map: click a vehicle to open its trip, a stop to open its timetable, or, zoomed in, the area of a station to open the timetable of all its stops. A click on an empty part of the map closes the right panel first, then the selected line.
+
+:::danger[Screenshot placeholder]
+A stop panel and a trip panel in the right panel.
+:::
 
 ### Playback and the date
 
@@ -150,6 +174,10 @@ On a device or browser with too little memory, playback is switched off and the 
 
 :::
 
+:::danger[Recording placeholder]
+Vehicle playback on the map, with the bottom bar (play, speed, date).
+:::
+
 ### The trip strip
 
 With a line selected, the bottom bar grows into the **trip strip**: the line's trips across its whole day. Its header shows the direction (the same choice as in the `Stops` tab) and a button to fold the strip away (`Fold the trips away`); folded, the line's badge in the bar brings it back (`Show the trips`). Drag the strip's top edge to make it taller or shorter.
@@ -161,6 +189,10 @@ Switch between two views at the bottom of the strip:
 
 The number of trips in view is shown next to the switch.
 
+:::danger[Screenshot placeholder]
+The trip strip.
+:::
+
 ### Operating cost
 
 Below the left panel, the `Operating cost` card estimates what the network costs to run in a year:
@@ -170,6 +202,10 @@ Below the left panel, the `Operating cost` card estimates what the network costs
 - the open trip of that line, under the line.
 
 Each step shows its approximate yearly cost. The deepest step also shows its `Vehicle-kilometers` and `Vehicle-hours`. The foot of the card says the figures are `Annualized` and from which months of the data period they are counted. Click the `Cost rates` icon in the card's header to adjust the rates.
+
+:::danger[Screenshot placeholder]
+The operating cost section and cost card.
+:::
 
 ### Network assumptions
 
@@ -182,6 +218,10 @@ The `Network assumptions` dialog holds the assumptions behind the figures. It op
 - `Vehicles`: the `Turnaround time`, the standing time at the end of each trip, in minutes.
 
 Click `Save` to apply the changes. They are kept for this bundle **in this browser** only.
+
+:::danger[Screenshot placeholder]
+The network assumptions dialog.
+:::
 
 ### Exit the Explorer
 

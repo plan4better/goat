@@ -79,6 +79,10 @@ To delete a panel, click <code>Delete Panel</code> at the bottom of the settings
   <img src={require('/img/builder/widgets.webp').default} alt="Dashboard Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
+:::danger[Media placeholder]
+Retake: this screenshot shows the old widget toolbar, without `Duplicate` and `Select panel`.
+:::
+
 <p></p>
 
 <div class="step">
@@ -111,6 +115,10 @@ For more details, see [Widgets](../category/widgets).
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
   <Video src={require('/img/builder/widget_drag.mp4').default} alt="recent datasets" style={{ maxHeight: "400px", maxWidth: "auto", objectFit: "cover"}}/>
 </div> 
+
+:::danger[Media placeholder]
+Retake: this recording shows the old widget toolbar, without `Duplicate` and `Select panel`.
+:::
 
 
 ## Settings

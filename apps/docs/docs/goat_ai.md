@@ -5,6 +5,10 @@ sidebar_position: 2.5
 
 # GOAT AI
 
+:::danger[Video placeholder]
+The website video of GOAT AI at work.
+:::
+
 GOAT AI is the **AI assistant built into GOAT**. Ask it in your own words to find projects and datasets, explain what a layer contains, compute statistics, or build and run an analysis as a workflow. It works with your own GOAT permissions, so it only sees and changes what you could.
 
 ## 1. Explanation
@@ -34,6 +38,10 @@ In the docked view, drag the dock's left edge to change its width.
 
 An empty conversation shows a few **suggestions** for the page you are on, for example <code>Which layers does this project contain?</code> in a project or <code>Which datasets were updated this year?</code> on the Catalog page. Click one to put it into the message field, complete it if needed, and send it.
 
+:::danger[Screenshot placeholder]
+The AI dock opened next to a project, with its start page.
+:::
+
 ## 3. Ask a question
 
 Type your question into <code>Ask a question</code> and press `Enter` or click <code>Send</code>. `Shift+Enter` starts a new line.
@@ -57,6 +65,10 @@ Below the newest answer, and below older ones when you point at them, you find:
 - <code>Good answer</code> and <code>Bad answer</code>, to rate the answer. After <code>Bad answer</code> you can say what could be better. Click the chosen button again to remove your rating.
 
 If you close the dock or open another conversation while an answer runs, the answer goes on. A message tells you when it is ready.
+
+:::danger[Screenshot placeholder]
+An answer with result cards and the feedback buttons.
+:::
 
 ## 4. What GOAT AI can do {#capabilities}
 
@@ -104,6 +116,10 @@ Some answers suggest a change to the page in a **suggestion card**. Nothing chan
 - **Catalog filters**: the assistant can suggest a search and filters for the catalog. On the Catalog page, <code>Apply to page</code> sets them; elsewhere, <code>Open in catalog</code> opens the catalog with them.
 
 After you apply a suggestion, <code>Undo</code> on the card takes it back. <code>Discard</code> dismisses it. A suggestion for another project offers <code>Open in project to review</code> instead.
+
+:::danger[Screenshot placeholder]
+A suggestion card (e.g. a map view or a filter) with its apply button.
+:::
 
 ### Build, change and run workflows
 
@@ -161,6 +177,10 @@ The AI credits window in the dock (see below) shows the rule that applies to you
 
 :::info
 AI credits only count where GOAT AI answers and GOAT runs with billing. Answers from your organization's own connection never use AI credits, and self-hosted GOAT has no limit (see [AI assistant](./self_hosting/docker_compose/configuration.md#assistant) in the self-hosting docs).
+:::
+
+:::danger[Screenshot placeholder]
+The AI credits ring in the dock and its details.
 :::
 
 ## 8. Use GOAT from your own AI tools

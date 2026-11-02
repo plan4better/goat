@@ -57,6 +57,10 @@ Lässt sich das Netz nicht öffnen, zeigt der Tab den Grund und was Sie tun kön
 
 :::
 
+:::danger[Screenshot placeholder]
+The layer menu (⋮) of a public transport bundle with the `Explorer` entry, and the `In Explorer` chip in the layer tree.
+:::
+
 ### Linien und Haltestellen
 
 Der Tab `Explorer` zeigt den Namen des Bundles, ein Suchfeld und zwei Abschnitte, `Linien` und `Haltestellen & Steige`, jeweils mit ihrer Anzahl. Es ist immer nur ein Abschnitt geöffnet; klicken Sie auf die Überschrift eines Abschnitts, um ihn zu öffnen oder einzuklappen.
@@ -78,6 +82,10 @@ Aktive Filter erscheinen als Chips unter dem Suchfeld; klicken Sie auf das × ei
 
 Jede Liste zeigt höchstens 200 Zeilen; grenzen Sie die Suche ein, um die übrigen zu finden.
 
+:::danger[Screenshot placeholder]
+The Explorer's left panel: lines and stations lists with the search field and filter chips.
+:::
+
 ### Das Linien-Panel
 
 <div class="step">
@@ -98,6 +106,10 @@ Der Tab `Übersicht` beschreibt das Angebot der Linie am gewählten Datum, je Ri
 
 Die Verkehrszeiten (`Früh`, `HVZ vorm.`, `Mittag`, `HVZ nachm.`, `Abend`, `Nacht`) ändern Sie über das Symbol `Verkehrszeiten` neben `Takt` und `Fahrzeit`; siehe [Berechnungsannahmen](#berechnungsannahmen). Fährt die Linie am gewählten Datum nicht, wählen Sie in der unteren Leiste einen anderen Tag.
 
+:::danger[Screenshot placeholder]
+The line panel, `Overview` tab.
+:::
+
 #### Haltestellen
 
 Der Tab `Haltestellen` zeigt **immer eine Richtung**. Wählen Sie sie unter `Richtung`: Jede Richtung ist nach ihrem Ziel benannt, mit der Anzahl ihrer Fahrten am gewählten Datum, und ihre Varianten (`Kurzläufer`, `Express` oder `Linienast`) stehen eingerückt darunter.
@@ -108,6 +120,10 @@ Auf der Karte ist die gewählte Richtung hervorgehoben, mit Pfeilen in Fahrtrich
 
 Die hier gewählte Richtung gilt auch für den Fahrtenstreifen und für die Haltestellenfahrpläne dieser Linie.
 
+:::danger[Screenshot placeholder]
+The line panel, `Stops` tab (line diagram).
+:::
+
 #### Fahrplan
 
 Der Tab `Fahrplan` zeigt, an welchen Tagen die Linie fährt:
@@ -116,6 +132,10 @@ Der Tab `Fahrplan` zeigt, an welchen Tagen die Linie fährt:
 - `Tagesarten`: die Tage mit gleichem Fahrplan, jeweils mit ihren Wochentagen und der Anzahl der Fahrten am Tag. Seltene Tagesarten sind hinter einem Link eingeklappt.
 - `Ausnahmen`: die Tage, an denen gegenüber der üblichen Woche zusätzlicher Verkehr stattfindet oder Verkehr entfällt, im Kalender markiert.
 - `Kalender`: der Zeitraum des Feeds Monat für Monat, jeder Tag in der Farbe seiner Tagesart. Das gewählte Datum ist umrandet; klicken Sie auf einen Tag, um ihn zum Datum des Explorers zu machen.
+
+:::danger[Screenshot placeholder]
+The line panel, `Schedule` tab.
+:::
 
 ### Haltestellen- und Fahrt-Panel
 
@@ -131,6 +151,10 @@ Klicken Sie auf eine Abfahrt, um ihre Fahrt zu öffnen.
 **Eine Fahrt** zeigt ihr Liniensymbol, ihre Abfahrtszeit, ihre erste und letzte Haltestelle und das Datum. Darunter sehen Sie, wann sie fährt, wie lange sie dauert und wie viele Haltestellen sie hat; mit den Pfeilen (`Vorherige Fahrt`, `Nächste Fahrt`) wechseln Sie zu den Fahrten davor und danach in derselben Richtung. Es folgen zwei Tabs: `Haltestellen`, ihre Haltestellen mit Zeiten (klicken Sie auf eine Haltestelle, um ihren Fahrplan zu öffnen), und `Fahrplan`, die Tage, an denen diese Fahrt verkehrt. Liegt die Abspielzeit innerhalb der Fahrt, sind die bereits passierten Haltestellen abgeblendet und ihr Fahrzeug ist auf der Karte umringt.
 
 Sie können diese Panels auch über die Karte öffnen: Klicken Sie auf ein Fahrzeug, um seine Fahrt zu öffnen, auf eine Haltestelle für ihren Fahrplan oder, nah herangezoomt, auf die Fläche einer Haltestelle für den Fahrplan all ihrer Steige. Ein Klick auf eine leere Stelle der Karte schließt zuerst das rechte Panel, danach die ausgewählte Linie.
+
+:::danger[Screenshot placeholder]
+A stop panel and a trip panel in the right panel.
+:::
 
 ### Abspielen und Datum
 
@@ -150,6 +174,10 @@ Auf einem Gerät oder in einem Browser mit zu wenig Arbeitsspeicher ist das Absp
 
 :::
 
+:::danger[Recording placeholder]
+Vehicle playback on the map, with the bottom bar (play, speed, date).
+:::
+
 ### Der Fahrtenstreifen
 
 Bei ausgewählter Linie wird die untere Leiste zum **Fahrtenstreifen**: die Fahrten der Linie über ihren ganzen Tag. Seine Kopfzeile zeigt die Richtung (dieselbe Auswahl wie im Tab `Haltestellen`) und eine Schaltfläche, um den Streifen einzuklappen (`Fahrten einklappen`); eingeklappt holt ihn das Liniensymbol in der Leiste zurück (`Fahrten zeigen`). Ziehen Sie den oberen Rand des Streifens, um ihn höher oder niedriger zu machen.
@@ -161,6 +189,10 @@ Unten im Streifen wechseln Sie zwischen zwei Ansichten:
 
 Die Anzahl der gezeigten Fahrten steht neben dem Umschalter.
 
+:::danger[Screenshot placeholder]
+The trip strip.
+:::
+
 ### Betriebskosten
 
 Unter dem linken Panel schätzt die Karte `Betriebskosten`, was der Betrieb des Netzes in einem Jahr kostet:
@@ -170,6 +202,10 @@ Unter dem linken Panel schätzt die Karte `Betriebskosten`, was der Betrieb des 
 - darunter die geöffnete Fahrt dieser Linie.
 
 Jede Stufe zeigt ihre ungefähren Jahreskosten. Die unterste Stufe zeigt außerdem ihre `Fahrplankilometer` und `Fahrzeugstunden`. Die Fußzeile der Karte gibt an, dass es sich um eine `Jahreshochrechnung` handelt und aus welchen Monaten des Datenzeitraums gerechnet wird. Klicken Sie auf das Symbol `Kostensätze` in der Kopfzeile der Karte, um die Sätze anzupassen.
+
+:::danger[Screenshot placeholder]
+The operating cost section and cost card.
+:::
 
 ### Berechnungsannahmen
 
@@ -182,6 +218,10 @@ Der Dialog `Berechnungsannahmen` enthält die Annahmen hinter den Kennzahlen. Er
 - `Fahrzeuge`: die `Wendezeit`, die Standzeit am Ende jeder Fahrt, in Minuten.
 
 Klicken Sie auf `Speichern`, um die Änderungen zu übernehmen. Sie werden für dieses Bundle **nur in diesem Browser** gespeichert.
+
+:::danger[Screenshot placeholder]
+The network assumptions dialog.
+:::
 
 ### Explorer verlassen
 

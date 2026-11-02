@@ -83,6 +83,10 @@ Um ein Panel zu löschen, klicken Sie unten in den Einstellungen auf `Panel lös
   <img src={require('/img/builder/widgets_de.webp').default} alt="Builder Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
+:::danger[Media placeholder]
+Retake: this screenshot shows the old widget toolbar, without `Duplicate` and `Select panel`.
+:::
+
 <div class="step">
   <div class="step-number">1</div>
   <div class="content"><b>Ziehen Sie</b> <code>Widgets</code> einfach per <b>Drag & Drop</b> aus der rechten Seitenleiste auf jedes Panel Ihres Dashboards.</div>
@@ -113,6 +117,10 @@ Weitere Details finden Sie unter [Widgets](../category/widgets).
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
   <Video src={require('/img/builder/widget_drag.mp4').default} alt="recent datasets" style={{ maxHeight: "400px", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
+
+:::danger[Media placeholder]
+Retake: this recording shows the old widget toolbar, without `Duplicate` and `Select panel`.
+:::
 
 ## Einstellungen
 

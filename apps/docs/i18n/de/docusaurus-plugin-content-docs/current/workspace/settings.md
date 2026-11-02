@@ -82,6 +82,10 @@ Klicken Sie auf `Speichern`, um Ihre Änderungen zu übernehmen.
 <p>
 </p>
 
+:::danger[Screenshot placeholder]
+The organization's AI settings page.
+:::
+
 ## Nutzung
 
 Unter **Nutzung** können Eigentümer und Administratoren der Organisation **verfolgen, wie viel der Kontingente der Organisation genutzt wird**. Dieser Menüeintrag erscheint nur, wenn GOAT mit Abrechnung betrieben wird; selbst gehostete Instanzen haben ihn nicht.
@@ -101,6 +105,10 @@ Um ein Limit zu erhöhen, klicken Sie in den Details einer Kachel auf `Mehr anfr
 
 <p>
 </p>
+
+:::danger[Screenshot placeholder]
+The Usage page with its tiles (Credits, AI credits, Storage, Projects, Editors), and one detail view.
+:::
 
 ## White Label
 

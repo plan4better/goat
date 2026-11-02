@@ -5,6 +5,10 @@ sidebar_position: 2.5
 
 # GOAT AI
 
+:::danger[Video placeholder]
+The website video of GOAT AI at work.
+:::
+
 GOAT AI ist der **in GOAT integrierte KI-Assistent**. Bitten Sie ihn in Ihren eigenen Worten, Projekte und Datensätze zu finden, zu erklären, was ein Layer enthält, Statistiken zu berechnen oder eine Analyse als Workflow zu erstellen und auszuführen. Er arbeitet mit Ihren eigenen GOAT-Berechtigungen und sieht und ändert daher nur, was auch Sie sehen und ändern dürften.
 
 ## 1. Erklärung
@@ -34,6 +38,10 @@ Als Seitenleiste ändern Sie die Breite des Assistenten, indem Sie seinen linken
 
 Eine leere Unterhaltung zeigt einige **Vorschläge** für die Seite, auf der Sie sind, zum Beispiel <code>Welche Layer enthält dieses Projekt?</code> in einem Projekt oder <code>Welche Datensätze wurden dieses Jahr aktualisiert?</code> auf der Seite Katalog. Ein Klick übernimmt den Vorschlag in das Eingabefeld; ergänzen Sie ihn bei Bedarf und senden Sie ihn ab.
 
+:::danger[Screenshot placeholder]
+The AI dock opened next to a project, with its start page.
+:::
+
 ## 3. Eine Frage stellen
 
 Geben Sie Ihre Frage in <code>Stellen Sie eine Frage</code> ein und drücken Sie `Enter` oder klicken Sie auf <code>Senden</code>. `Umschalt+Enter` beginnt eine neue Zeile.
@@ -57,6 +65,10 @@ Unter der neuesten Antwort, und unter älteren, wenn Sie auf sie zeigen, finden 
 - <code>Gute Antwort</code> und <code>Schlechte Antwort</code>, um die Antwort zu bewerten. Nach <code>Schlechte Antwort</code> können Sie angeben, was besser sein könnte. Ein erneuter Klick auf die gewählte Schaltfläche entfernt Ihre Bewertung.
 
 Schließen Sie den Assistenten oder öffnen Sie eine andere Unterhaltung, während eine Antwort läuft, läuft die Antwort weiter. Eine Meldung sagt Ihnen, wenn sie fertig ist.
+
+:::danger[Screenshot placeholder]
+An answer with result cards and the feedback buttons.
+:::
 
 ## 4. Was GOAT AI kann {#capabilities}
 
@@ -104,6 +116,10 @@ Manche Antworten schlagen in einer **Vorschlagskarte** eine Änderung an der Sei
 - **Katalog-Filter**: Der Assistent kann eine Suche und Filter für den Katalog vorschlagen. Auf der Seite Katalog setzt <code>Auf Seite anwenden</code> sie; an anderer Stelle öffnet <code>Im Katalog öffnen</code> den Katalog damit.
 
 Nachdem Sie einen Vorschlag angewendet haben, nimmt <code>Rückgängig</code> auf der Karte ihn zurück. <code>Verwerfen</code> blendet ihn aus. Ein Vorschlag für ein anderes Projekt bietet stattdessen <code>Im Projekt öffnen und prüfen</code>.
+
+:::danger[Screenshot placeholder]
+A suggestion card (e.g. a map view or a filter) with its apply button.
+:::
 
 ### Workflows erstellen, ändern und ausführen
 
@@ -161,6 +177,10 @@ Das Fenster zu den KI-Credits im Assistenten (siehe unten) zeigt die Regel, die 
 
 :::info
 KI-Credits zählen nur, wo GOAT AI antwortet und GOAT mit Abrechnung läuft. Antworten über die eigene Verbindung Ihrer Organisation verbrauchen nie KI-Credits, und ein selbst gehostetes GOAT hat kein Limit (siehe [KI-Assistent](./self_hosting/docker_compose/configuration.md#assistant) in der Dokumentation zum Selbst-Hosting).
+:::
+
+:::danger[Screenshot placeholder]
+The AI credits ring in the dock and its details.
 :::
 
 ## 8. GOAT aus Ihren eigenen KI-Werkzeugen nutzen
