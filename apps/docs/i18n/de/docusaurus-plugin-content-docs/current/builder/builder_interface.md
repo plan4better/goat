@@ -100,7 +100,7 @@ Um ein Panel zu löschen, klicken Sie unten in den Einstellungen auf `Panel lös
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Sie können auf das <code>Löschen-Symbol</code> klicken, um <b>das Widget zu entfernen</b> von Ihrem Dashboard.</div>
+  <div class="content">Sie können auf das <code>Löschen-Symbol</code> klicken, um <b>das Widget zu entfernen</b> von Ihrem Dashboard. Klicken Sie auf <code>Duplizieren</code>, um <b>das Widget zu kopieren</b>: Die Kopie wird direkt darunter mit denselben Einstellungen eingefügt, und ein <code>Tabs</code>-Widget wird mit seinen Widgets kopiert. Klicken Sie auf <code>Panel auswählen</code>, um <b>das Panel auszuwählen</b>, in dem das Widget liegt. Das hilft, wenn das Widget das ganze Panel ausfüllt.</div>
 </div>
 
 <div class="step">

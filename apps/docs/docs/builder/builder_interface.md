@@ -98,7 +98,7 @@ To delete a panel, click <code>Delete Panel</code> at the bottom of the settings
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">You can click on the <code>delete icon</code> to <b>remove the widget</b> from your dashboard.</div>
+  <div class="content">You can click on the <code>delete icon</code> to <b>remove the widget</b> from your dashboard. Click <code>Duplicate</code> to <b>copy the widget</b>: the copy is placed right below it with the same settings, and a <code>Tabs</code> widget is copied with its widgets. Click <code>Select panel</code> to <b>select the panel</b> the widget sits in, which helps when the widget fills the whole panel.</div>
 </div>
 
 <div class="step">
