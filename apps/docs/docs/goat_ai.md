@@ -5,9 +5,9 @@ sidebar_position: 2.5
 
 # GOAT AI
 
-:::danger[Video placeholder]
-The website video of GOAT AI at work.
-:::
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <Video src={require('/img/goat_ai/goat_ai.mp4').default} alt="GOAT AI answering a planning question in a project" />
+</div>
 
 GOAT AI is the **AI assistant built into GOAT**. Ask it in your own words to find projects and datasets, explain what a layer contains, compute statistics, or build and run an analysis as a workflow. It works with your own GOAT permissions, so it only sees and changes what you could.
 
