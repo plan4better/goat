@@ -5,9 +5,9 @@ sidebar_position: 6
 
 # ÖPNV-Netz-Explorer
 
-:::danger[Video placeholder]
-A general video of the Explorer.
-:::
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <Video src={require('/img/toolbox/pt_network_explorer/explorer.mp4').default} alt="Der ÖPNV-Netz-Explorer: Linien, Haltestellen, Fahrpläne und Fahrzeugwiedergabe" />
+</div>
 
 Der **Explorer** öffnet ein ÖPNV-Netz Ihres Projekts als interaktive Ansicht: **Durchsuchen Sie Linien und Haltestellen, lesen Sie Takt, Haltestellenfolgen und Fahrpläne, verfolgen Sie die Fahrzeuge im Tagesverlauf auf der Karte und schätzen Sie, was der Betrieb des Netzes kostet.**
 

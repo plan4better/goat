@@ -5,9 +5,9 @@ sidebar_position: 6
 
 # PT Network Explorer
 
-:::danger[Video placeholder]
-A general video of the Explorer.
-:::
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <Video src={require('/img/toolbox/pt_network_explorer/explorer.mp4').default} alt="The PT Network Explorer: lines, stations, timetables and vehicle playback" />
+</div>
 
 The **Explorer** opens a public transport network in your project as an interactive view: **search its lines and stations, read headways, stop sequences and timetables, watch its vehicles run through the day on the map and estimate what the network costs to operate.**
 
