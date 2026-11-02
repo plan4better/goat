@@ -1,11 +1,11 @@
 ---
-description: "Verwalten Sie Profil, Präferenzen, Teams, Organisation und Abrechnung und richten Sie eigene Domains und Matomo-Analytics für veröffentlichte Dashboards ein."
+description: "Verwalten Sie Profil, Präferenzen, Teams und Organisation, richten Sie den KI-Assistenten ein, behalten Sie die Nutzung Ihrer Organisation im Blick und richten Sie eigene Domains und Matomo-Analytics für veröffentlichte Dashboards ein."
 sidebar_position: 5
 ---
 
 # Einstellungen
 
-Auf der **Einstellungen**-Seite können Sie Ihre Präferenzen und Einstellungen bezüglich Ihres **Kontos, Teams, Organisation und Abrechnung** anzeigen und ändern. 
+Auf der **Einstellungen**-Seite können Sie Ihre Präferenzen und Einstellungen bezüglich Ihres **Kontos, Teams, Organisation, KI-Assistenten und Ihrer Nutzung** anzeigen und ändern. 
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
   <img src={require('/img/workspace/settings/settings_de.webp').default} alt="GOAT - Profil-Einstellungen" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "cover"}}/>
@@ -68,20 +68,34 @@ Wenn Sie zur Gefahrenzone nach unten scrollen, finden Sie auch eine Option zum *
 <p>
 </p>
 
-## Abrechnung
+## KI
 
-Im Menü **Abrechnung** können Sie Ihren aktuellen Plan sowie verfügbare Pläne einsehen. So bleiben Sie stets über Ihren Planstatus informiert und können bei Bedarf Anpassungen vornehmen, die Ihren Anforderungen besser entsprechen. 
+Unter **KI** können Eigentümer und Administratoren der Organisation **den KI-Assistenten für die Organisation einrichten**. Dieser Menüeintrag erscheint nur, wenn der KI-Assistent auf Ihrer GOAT-Instanz läuft.
 
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/workspace/settings/subscription_settings_de.webp').default} alt="Abrechnungsdetails" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "cover"}}/>
-</div> 
+- Aktivieren Sie `KI für diese Organisation aktivieren`, damit alle Mitglieder den Assistenten mit ihren eigenen GOAT-Berechtigungen nutzen können.
+- Wählen Sie unter `Aktive Verbindung` die Modellverbindung, die Ihre Mitglieder nutzen. `GOAT AI (inklusive)` ist die integrierte Verbindung; wenn Ihre Instanz es angibt, zeigt die Option, wo GOAT AI gehostet wird, z. B. `Gehostet in der EU`. Ihre eigenen Verbindungen können Sie auswählen, sobald ihr Test bestanden ist.
+- Wählen Sie unter `Datenrichtlinie` zwischen `Standard` (der Assistent darf alles an das Modell senden, was ein Mitglied sehen kann) und `Eingeschränkt` (nur Feldnamen, Typen, Anzahlen und Statistiken werden gesendet).
+- Fügen Sie unter `Verbindungen` mit `Verbindung hinzufügen` Ihren eigenen Anbieter, Schlüssel und Ihr eigenes Modell hinzu und prüfen Sie die Verbindung mit `Verbindung testen`.
+
+Klicken Sie auf `Speichern`, um Ihre Änderungen zu übernehmen.
 
 <p>
 </p>
 
+## Nutzung
+
+Unter **Nutzung** können Eigentümer und Administratoren der Organisation **verfolgen, wie viel der Kontingente der Organisation genutzt wird**. Dieser Menüeintrag erscheint nur, wenn GOAT mit Abrechnung betrieben wird; selbst gehostete Instanzen haben ihn nicht.
+
+Die Seite zeigt fünf Kacheln: `Credits`, `KI-Credits`, `Speicher`, `Projekte` und `Bearbeiter`. Jede Kachel zeigt, wie viel ihres Limits genutzt ist; ein Punkt markiert eine Kachel, die 90 % ihres Limits erreicht oder überschritten hat. Klicken Sie auf eine Kachel, um darunter ihre Details zu öffnen:
+
+- `Credits` und `KI-Credits`: die genutzte Menge, ein Diagramm pro Tag und eine Liste, die Sie über `Gruppierung` ordnen (`Workflows`, `Werkzeuge`, `Layer`, `Mitglieder` oder `Zeiträume` bei Credits; `Mitglieder`, `Tage` oder `Zeiträume` bei KI-Credits). Wählen Sie den Zeitraum, z. B. `Dieser Zeitraum`, `Letzte 30 Tage` oder `Eigener Zeitraum`, grenzen Sie die Details auf ein Mitglied ein und laden Sie die Liste mit `CSV exportieren` herunter.
+- `Speicher`: die Layer der Organisation, die größten zuerst. Filtern Sie sie nach Besitzer, Typ oder `In keinem Projekt` und laden Sie die Liste mit `CSV exportieren` herunter.
+- `Projekte`: die Projekte der Organisation, die neuesten zuerst. Durchsuchen Sie sie und filtern Sie sie nach Besitzer.
+- `Bearbeiter`: die Plätze für Bearbeiter und Betrachter, mit den Credits und KI-Credits, die jedes Mitglied in diesem Zeitraum genutzt hat. Klicken Sie auf ein Mitglied, um seine Nutzung unter `Credits` oder `KI-Credits` zu öffnen.
+
 :::info
 
-Bitte zögern Sie nicht, jederzeit den **[Support](https://plan4better.de/en/contact/ "Support kontaktieren")** zu kontaktieren, falls Sie Fragen zu Ihrem Plan haben. 
+Um ein Limit zu erhöhen, klicken Sie in den Details einer Kachel auf `Mehr anfragen` oder kontaktieren Sie jederzeit den **[Support](https://plan4better.de/en/contact/ "Support kontaktieren")**. 
 
 :::
 

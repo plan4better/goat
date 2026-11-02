@@ -1,11 +1,11 @@
 ---
-description: "Manage your profile and preferences, teams, organization members and billing plan, and set up custom domains and Matomo analytics for published dashboards."
+description: "Manage your profile and preferences, teams and organization members, set up the AI assistant, follow your organization's usage, and set up custom domains and Matomo analytics for published dashboards."
 sidebar_position: 5
 ---
 
 # Settings
 
-On the Settings page, **you can view and modify your preferences and settings** related to your account, teams, organization, and billing. 
+On the Settings page, **you can view and modify your preferences and settings** related to your account, teams, organization, AI assistant and usage. 
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
   <img src={require('/img/workspace/settings/settings.webp').default} alt="GOAT - Profile Settings" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "cover"}}/>
@@ -68,20 +68,34 @@ If you scroll down to the Danger zone, you also find an option to **delete your 
 <p>
 </p>
 
-## Billing
+## AI
 
-In the Billing menu, you can **view your current plan and available plans**. This allows you to stay informed about your plan status and make any necessary adjustments to better suit your requirements. 
+Under **AI**, organization owners and admins can **set up the AI assistant for the organization**. This menu entry only appears where the AI assistant runs on your GOAT instance.
 
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/workspace/settings/subscription_settings.webp').default} alt="Billing Details" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "cover"}}/>
-</div> 
+- Switch on `Enable AI for this organization` to let every member use the assistant with their own GOAT permissions.
+- Under `Active connection`, choose the model connection your members use. `GOAT AI (included)` is the built-in connection; where your instance names it, the option shows where GOAT AI is hosted, e.g. `Hosted in the EU`. Your own connections can be selected once their test has passed.
+- Under `Data policy`, choose `Standard` (the assistant may send everything a member can see to the model) or `Restricted` (only field names, types, counts and statistics are sent).
+- Under `Connections`, add your own provider, key and model with `Add connection` and check it with `Test connection`.
+
+Click `Save` to apply your changes.
 
 <p>
 </p>
 
+## Usage
+
+Under **Usage**, organization owners and admins can **follow how much of the organization's quotas is used**. This menu entry only appears where GOAT runs with billing; self-hosted instances don't have it.
+
+The page shows five tiles: `Credits`, `AI credits`, `Storage`, `Projects` and `Editors`. Each tile shows what is used of its limit; a dot marks a tile that is at 90 % of its limit or over it. Click a tile to open its details below:
+
+- `Credits` and `AI credits`: the amount used, a chart per day and a list you arrange with `Group by` (`Workflows`, `Tools`, `Layers`, `Members` or `Periods` for credits; `Members`, `Days` or `Periods` for AI credits). Choose the date range, e.g. `This period`, `Last 30 days` or a `Custom range`, narrow the details to one member, and download the list with `Export CSV`.
+- `Storage`: the organization's layers, largest first. Filter them by owner, type or `Not in any project`, and download the list with `Export CSV`.
+- `Projects`: the organization's projects, newest first. Search them and filter them by owner.
+- `Editors`: the editor and viewer seats, with the credits and AI credits each member used this period. Click a member to open their usage under `Credits` or `AI credits`.
+
 :::info
 
-Please feel free to contact the **[Support](https://plan4better.de/en/contact/ "Contact support")** anytime in case you have questions regarding your plan. 
+To raise a limit, click `Ask for more` in a tile's details, or contact the **[Support](https://plan4better.de/en/contact/ "Contact support")** anytime. 
 
 :::
 
