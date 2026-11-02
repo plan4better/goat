@@ -104,7 +104,7 @@ This tab contains categorized tools available for workflow construction, similar
 
 - **Data I/O**
   - <code>+ Add dataset</code>: Create dataset nodes
-  - <code>Save as dataset</code>: Save workflow results as permanent datasets. Configure the **Dataset name**, toggle **Add to project** to automatically add the result to the project layer list, and enable **Overwrite on re-run** to replace the previously exported dataset each time the workflow runs instead of creating a new one. Connected directly to a dataset node, it saves the features that match the node's filter, in the dataset's style.
+  - <code>Save as dataset</code>: Save workflow results as permanent datasets. Under **Save to**, choose `New dataset` to save the result as its own dataset, or `Existing dataset` to add its rows to a dataset you already have. For an existing dataset, click `Choose dataset` and pick the **Target dataset**: a feature layer or a table you can edit. If you have no edit rights on it, GOAT warns you, and the step fails when the workflow runs. For a new dataset, configure the **Dataset name**, toggle **Add to project** to automatically add the result to the project layer list, and enable **Overwrite on re-run** to replace the previously exported dataset each time the workflow runs instead of creating a new one. Connected directly to a dataset node, it saves the features that match the node's filter, in the dataset's style.
 
 :::tip Good practice
 Give each **Save as dataset** node a descriptive name and enable **Overwrite on re-run** when running the same workflow repeatedly. This keeps your project clean by avoiding duplicate layers after each run.
