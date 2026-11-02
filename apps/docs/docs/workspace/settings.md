@@ -17,7 +17,7 @@ On the Settings page, **you can view and modify your preferences and settings** 
 Under the **Account Settings**, you can adjust your profile and your preferences. 
 
 - In the <code>Profile</code> tab, you can update your **first name, last name**, and **email address** and upload a **profile picture**.
-- In the <code>Preferences</code> tab, you can choose your preferred **language** (English or German) and **theme** (light and dark mode).
+- In the <code>Preferences</code> tab, you can choose your preferred **language** (English or German) and **theme** (light and dark mode). The language you choose is also used on the sign-in pages and in the emails GOAT sends you; a new account starts in the language of the sign-in page or of your browser.
 
 :::info
 

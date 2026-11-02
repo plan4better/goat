@@ -17,7 +17,7 @@ Auf der **Einstellungen**-Seite können Sie Ihre Präferenzen und Einstellungen 
 Unter den **Konto-Einstellungen** können Sie Ihr Profil und Ihre Präferenzen anpassen. 
 
 - Im <code>Profil</code>-Tab können Sie Ihren **Vornamen, Nachnamen** und Ihre **E-Mail-Adresse** aktualisieren und ein **Profilbild** **hochladen**.
-- Im <code>Präferenzen</code>-Tab können Sie Ihre bevorzugte **Sprache** (Englisch oder Deutsch) und **Erscheinungsbild** (heller und dunkler Modus) wählen.
+- Im <code>Präferenzen</code>-Tab können Sie Ihre bevorzugte **Sprache** (Englisch oder Deutsch) und **Erscheinungsbild** (heller und dunkler Modus) wählen. Die gewählte Sprache gilt auch für die Anmeldeseiten und für die E-Mails, die GOAT Ihnen sendet; ein neues Konto startet in der Sprache der Anmeldeseite oder Ihres Browsers.
 
 :::info
 
