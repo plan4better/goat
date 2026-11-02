@@ -79,10 +79,6 @@ To delete a panel, click <code>Delete Panel</code> at the bottom of the settings
   <img src={require('/img/builder/widgets.webp').default} alt="Dashboard Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
-:::danger[Media placeholder]
-Retake: this screenshot shows the old widget toolbar, without `Duplicate` and `Select panel`.
-:::
-
 <p></p>
 
 <div class="step">
@@ -105,6 +101,10 @@ Retake: this screenshot shows the old widget toolbar, without `Duplicate` and `S
   <div class="content">You can click on the <code>delete icon</code> to <b>remove the widget</b> from your dashboard. Click <code>Duplicate</code> to <b>copy the widget</b>: the copy is placed right below it with the same settings, and a <code>Tabs</code> widget is copied with its widgets. Click <code>Select panel</code> to <b>select the panel</b> the widget sits in, which helps when the widget fills the whole panel.</div>
 </div>
 
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/builder/widget_toolbar.webp').default} alt="The toolbar of a selected widget: drag, Duplicate, Select panel and delete" style={{ maxWidth: "450px", objectFit: "cover"}}/>
+</div>
+
 <div class="step">
   <div class="step-number">5</div>
   <div class="content">Change the <code>Title</code>, which will appear on the top of the widget, and the <code>Description</code>, which will appear on the bottom of the widget.</div>
@@ -115,10 +115,6 @@ For more details, see [Widgets](../category/widgets).
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
   <Video src={require('/img/builder/widget_drag.mp4').default} alt="recent datasets" style={{ maxHeight: "400px", maxWidth: "auto", objectFit: "cover"}}/>
 </div> 
-
-:::danger[Media placeholder]
-Retake: this recording shows the old widget toolbar, without `Duplicate` and `Select panel`.
-:::
 
 
 ## Settings

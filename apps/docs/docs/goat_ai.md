@@ -27,9 +27,9 @@ The assistant is in beta, and AI answers can be wrong. Check results before you 
 
 Click <code>Ask AI</code> in the upper bar. It is missing when AI is switched off for your organization or not set up on your GOAT instance. Click the button again to close the dock.
 
-:::danger[Screenshot placeholder]
-The AI dock opened next to a project, with its start page.
-:::
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/goat_ai/dock.webp').default} alt="The GOAT AI dock opened next to a project" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
 
 ## 3. Ask a question
 
@@ -55,9 +55,9 @@ Below the newest answer, and below older ones when you point at them, you find:
 
 If you close the dock or open another conversation while an answer runs, the answer goes on. A message tells you when it is ready.
 
-:::danger[Screenshot placeholder]
-An answer with result cards and the feedback buttons.
-:::
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/goat_ai/answer.webp').default} alt="An answer of GOAT AI with result cards" style={{ maxWidth: "400px", objectFit: "cover"}}/>
+</div>
 
 ## 4. What GOAT AI can do {#capabilities}
 
@@ -106,9 +106,9 @@ Some answers suggest a change to the page in a **suggestion card**. Nothing chan
 
 After you apply a suggestion, <code>Undo</code> on the card takes it back. <code>Discard</code> dismisses it. A suggestion for another project offers <code>Open in project to review</code> instead.
 
-:::danger[Screenshot placeholder]
-A suggestion card (e.g. a map view or a filter) with its apply button.
-:::
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/goat_ai/suggestion.webp').default} alt="A map view suggestion card" style={{ maxWidth: "400px", objectFit: "cover"}}/>
+</div>
 
 ### Build, change and run workflows
 
@@ -168,9 +168,9 @@ The AI credits window in the dock (see below) shows the rule that applies to you
 AI credits only count where GOAT AI answers and GOAT runs with billing. Answers from your organization's own connection never use AI credits, and self-hosted GOAT has no limit (see [AI assistant](./self_hosting/docker_compose/configuration.md#assistant) in the self-hosting docs).
 :::
 
-:::danger[Screenshot placeholder]
-The AI credits ring in the dock and its details.
-:::
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/goat_ai/credits.webp').default} alt="The AI credits window in the dock" style={{ maxWidth: "380px", objectFit: "cover"}}/>
+</div>
 
 ## 8. Use GOAT from your own AI tools
 

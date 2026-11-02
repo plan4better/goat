@@ -27,9 +27,9 @@ Der Assistent ist in der Beta-Phase, und KI-Antworten können fehlerhaft sein. P
 
 Klicken Sie in der oberen Leiste auf <code>KI fragen</code>. Die Schaltfläche fehlt, wenn KI für Ihre Organisation ausgeschaltet oder auf Ihrer GOAT-Instanz nicht eingerichtet ist. Ein weiterer Klick auf die Schaltfläche schließt den Assistenten.
 
-:::danger[Screenshot placeholder]
-The AI dock opened next to a project, with its start page.
-:::
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/goat_ai/dock_de.webp').default} alt="Der GOAT AI-Assistent neben einem Projekt geöffnet" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
 
 ## 3. Eine Frage stellen
 
@@ -55,9 +55,9 @@ Unter der neuesten Antwort, und unter älteren, wenn Sie auf sie zeigen, finden 
 
 Schließen Sie den Assistenten oder öffnen Sie eine andere Unterhaltung, während eine Antwort läuft, läuft die Antwort weiter. Eine Meldung sagt Ihnen, wenn sie fertig ist.
 
-:::danger[Screenshot placeholder]
-An answer with result cards and the feedback buttons.
-:::
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/goat_ai/answer_de.webp').default} alt="Eine Antwort von GOAT AI mit Ergebniskarten" style={{ maxWidth: "400px", objectFit: "cover"}}/>
+</div>
 
 ## 4. Was GOAT AI kann {#capabilities}
 
@@ -106,9 +106,9 @@ Manche Antworten schlagen in einer **Vorschlagskarte** eine Änderung an der Sei
 
 Nachdem Sie einen Vorschlag angewendet haben, nimmt <code>Rückgängig</code> auf der Karte ihn zurück. <code>Verwerfen</code> blendet ihn aus. Ein Vorschlag für ein anderes Projekt bietet stattdessen <code>Im Projekt öffnen und prüfen</code>.
 
-:::danger[Screenshot placeholder]
-A suggestion card (e.g. a map view or a filter) with its apply button.
-:::
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/goat_ai/suggestion_de.webp').default} alt="Eine Vorschlagskarte für eine Kartenansicht" style={{ maxWidth: "400px", objectFit: "cover"}}/>
+</div>
 
 ### Workflows erstellen, ändern und ausführen
 
@@ -168,9 +168,9 @@ Das Fenster zu den KI-Credits im Assistenten (siehe unten) zeigt die Regel, die 
 KI-Credits zählen nur, wo GOAT AI antwortet und GOAT mit Abrechnung läuft. Antworten über die eigene Verbindung Ihrer Organisation verbrauchen nie KI-Credits, und ein selbst gehostetes GOAT hat kein Limit (siehe [KI-Assistent](./self_hosting/docker_compose/configuration.md#assistant) in der Dokumentation zum Selbst-Hosting).
 :::
 
-:::danger[Screenshot placeholder]
-The AI credits ring in the dock and its details.
-:::
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/goat_ai/credits_de.webp').default} alt="Das KI-Credits-Fenster im Assistenten" style={{ maxWidth: "380px", objectFit: "cover"}}/>
+</div>
 
 ## 8. GOAT aus Ihren eigenen KI-Werkzeugen nutzen
 

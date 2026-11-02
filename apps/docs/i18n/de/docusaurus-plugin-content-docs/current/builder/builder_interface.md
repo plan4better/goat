@@ -83,10 +83,6 @@ Um ein Panel zu löschen, klicken Sie unten in den Einstellungen auf `Panel lös
   <img src={require('/img/builder/widgets_de.webp').default} alt="Builder Interface Overview in GOAT" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
-:::danger[Media placeholder]
-Retake: this screenshot shows the old widget toolbar, without `Duplicate` and `Select panel`.
-:::
-
 <div class="step">
   <div class="step-number">1</div>
   <div class="content"><b>Ziehen Sie</b> <code>Widgets</code> einfach per <b>Drag & Drop</b> aus der rechten Seitenleiste auf jedes Panel Ihres Dashboards.</div>
@@ -107,6 +103,10 @@ Retake: this screenshot shows the old widget toolbar, without `Duplicate` and `S
   <div class="content">Sie können auf das <code>Löschen-Symbol</code> klicken, um <b>das Widget zu entfernen</b> von Ihrem Dashboard. Klicken Sie auf <code>Duplizieren</code>, um <b>das Widget zu kopieren</b>: Die Kopie wird direkt darunter mit denselben Einstellungen eingefügt, und ein <code>Tabs</code>-Widget wird mit seinen Widgets kopiert. Klicken Sie auf <code>Panel auswählen</code>, um <b>das Panel auszuwählen</b>, in dem das Widget liegt. Das hilft, wenn das Widget das ganze Panel ausfüllt.</div>
 </div>
 
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/builder/widget_toolbar_de.webp').default} alt="Die Werkzeugleiste eines ausgewählten Widgets: Ziehen, Duplizieren, Panel auswählen und Löschen" style={{ maxWidth: "450px", objectFit: "cover"}}/>
+</div>
+
 <div class="step">
   <div class="step-number">5</div>
   <div class="content">Ändern Sie den <code>Titel</code>, der oben im Widget erscheint, und die <code>Beschreibung</code>, die unten im Widget angezeigt wird.</div>
@@ -117,10 +117,6 @@ Weitere Details finden Sie unter [Widgets](../category/widgets).
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
   <Video src={require('/img/builder/widget_drag.mp4').default} alt="recent datasets" style={{ maxHeight: "400px", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
-
-:::danger[Media placeholder]
-Retake: this recording shows the old widget toolbar, without `Duplicate` and `Select panel`.
-:::
 
 ## Einstellungen
 
