@@ -8,8 +8,7 @@ network's slope.
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
+from typing import Any, Dict, Optional
 
 import duckdb
 from pydantic import ConfigDict, Field
@@ -21,10 +20,9 @@ from goatlib.analysis.schemas.ui import (
     ui_sections,
 )
 from goatlib.bundles.importers.base import ExtractedLayer
-from goatlib.bundles.runner import BundleImportRunner, ImportedLayer
+from goatlib.bundles.runner import BundleImportRunner
 from goatlib.io.fetch.street_network import export_network
 from goatlib.models.bundle import (
-    BundleStatus,
     BundleTypeName,
     get_spec,
 )
@@ -101,7 +99,6 @@ class FetchStreetNetworkRunner(BundleImportRunner):
             )
             bundle_type = BundleTypeName.street_network
             spec = get_spec(bundle_type)
-            name = result_bundle_name or "GOAT street network"
             # Cut first: a refused area (too large, no network) leaves nothing behind.
             with tempfile.TemporaryDirectory(prefix="goat_network_cut_") as workdir:
                 con = duckdb.connect()
@@ -115,14 +112,10 @@ class FetchStreetNetworkRunner(BundleImportRunner):
                     )
                 finally:
                     con.close()
-                bundle_id = str(uuid4())
-                await db.create_bundle(
-                    bundle_id=bundle_id,
-                    user_id=user_id,
-                    folder_id=folder_id,
-                    name=name,
+                return await self.create_bundle_from_layers(
+                    db,
                     bundle_type=bundle_type,
-                    status=BundleStatus.processing,
+                    name=result_bundle_name or "GOAT street network",
                     dataset_metadata={
                         "lineage": "Cut from the GOAT routing network (Overture "
                         "transportation, processed by goat-data)",
@@ -131,70 +124,19 @@ class FetchStreetNetworkRunner(BundleImportRunner):
                         "Foundation",
                         "distributor_name": "Overture Maps Foundation",
                     },
+                    layers=[
+                        ExtractedLayer(
+                            role=role,
+                            name=spec.role(role).label,
+                            layer_type="feature",
+                            file_path=path,
+                        )
+                        for role, path in paths.items()
+                    ],
+                    user_id=user_id,
+                    folder_id=folder_id,
+                    project_id=project_id,
                 )
-
-                imported: List[ImportedLayer] = []
-                try:
-                    # The import's own ingestion: it drops what a failing layer
-                    # created, bounds DuckDB and fills computed columns.
-                    imported = await self._ingest_layers(
-                        db,
-                        source_path="",
-                        bundle_type=bundle_type,
-                        user_id=user_id,
-                        folder_id=folder_id,
-                        bundle_id=bundle_id,
-                        layers=[
-                            ExtractedLayer(
-                                role=role,
-                                name=spec.role(role).label,
-                                layer_type="feature",
-                                file_path=path,
-                            )
-                            for role, path in paths.items()
-                        ],
-                    )
-                    await self.build_and_store_artifacts(
-                        db,
-                        bundle_id=bundle_id,
-                        bundle_type=bundle_type,
-                        source_path="",
-                        user_id=user_id,
-                        members=[
-                            {"role": layer.role, "layer_id": layer.layer_id}
-                            for layer in imported
-                        ],
-                    )
-                    await db.update_bundle_status(
-                        bundle_id=bundle_id, status=BundleStatus.ready
-                    )
-                except Exception:
-                    await self._rollback_bundle(
-                        db, user_id=user_id, bundle_id=bundle_id, imported=imported
-                    )
-                    raise
-
-            if project_id:
-                try:
-                    await self._add_bundle_to_project(
-                        db,
-                        project_id=project_id,
-                        bundle_id=bundle_id,
-                        bundle_type=bundle_type,
-                        imported=imported,
-                    )
-                except Exception as e:  # noqa: BLE001 - the bundle matters more
-                    logger.warning(
-                        "Street network %s created but not added to project %s: %s",
-                        bundle_id,
-                        project_id,
-                        e,
-                    )
-            return {
-                "bundle_id": bundle_id,
-                "bundle_type": bundle_type.value,
-                "layers": [layer.model_dump() for layer in imported],
-            }
         finally:
             await pool.close()
             self.cleanup()
