@@ -70,7 +70,7 @@ If you scroll down to the Danger zone, you also find an option to **delete your 
 
 ## AI
 
-Under **AI**, organization owners and admins can **set up the AI assistant for the organization**. This menu entry only appears where the AI assistant runs on your GOAT instance.
+Under **AI**, organization owners and admins can **set up the AI assistant for the organization**. This menu entry only appears where the AI assistant runs on your GOAT instance. What the assistant can do is described on the [GOAT AI](../goat_ai.md) page.
 
 - Switch on `Enable AI for this organization` to let every member use the assistant with their own GOAT permissions.
 - Under `Active connection`, choose the model connection your members use. `GOAT AI (included)` is the built-in connection; where your instance names it, the option shows where GOAT AI is hosted, e.g. `Hosted in the EU`. Your own connections can be selected once their test has passed.

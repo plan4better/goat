@@ -70,7 +70,7 @@ Wenn Sie zur Gefahrenzone nach unten scrollen, finden Sie auch eine Option zum *
 
 ## KI
 
-Unter **KI** können Eigentümer und Administratoren der Organisation **den KI-Assistenten für die Organisation einrichten**. Dieser Menüeintrag erscheint nur, wenn der KI-Assistent auf Ihrer GOAT-Instanz läuft.
+Unter **KI** können Eigentümer und Administratoren der Organisation **den KI-Assistenten für die Organisation einrichten**. Dieser Menüeintrag erscheint nur, wenn der KI-Assistent auf Ihrer GOAT-Instanz läuft. Was der Assistent kann, beschreibt die Seite [GOAT AI](../goat_ai.md).
 
 - Aktivieren Sie `KI für diese Organisation aktivieren`, damit alle Mitglieder den Assistenten mit ihren eigenen GOAT-Berechtigungen nutzen können.
 - Wählen Sie unter `Aktive Verbindung` die Modellverbindung, die Ihre Mitglieder nutzen. `GOAT AI (inklusive)` ist die integrierte Verbindung; wenn Ihre Instanz es angibt, zeigt die Option, wo GOAT AI gehostet wird, z. B. `Gehostet in der EU`. Ihre eigenen Verbindungen können Sie auswählen, sobald ihr Test bestanden ist.
