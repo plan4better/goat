@@ -8,7 +8,7 @@ import { getWritableDestinations, useFolders } from "@/lib/api/folders";
 import { executeProcessAsync, getMirrorColumns, getMirrorSize, useJobs } from "@/lib/api/processes";
 import { useProject } from "@/lib/api/projects";
 import { useUserProfile } from "@/lib/api/users";
-import { type CatalogSpatialFilter, formatBuffer, spatialGeometry } from "@/lib/catalog/spatial";
+import { type CatalogSpatialFilter, spatialGeometry } from "@/lib/catalog/spatial";
 import { addRunningJobIds } from "@/lib/store/jobs/slice";
 import type { GetContentQueryParams } from "@/lib/validations/common";
 import type { Space } from "@/lib/validations/content";
@@ -20,7 +20,15 @@ import { useShareNotice } from "@/hooks/addLayer/useShareNotice";
 import { useCatalogNutsGeometries } from "@/hooks/catalog/useCatalogNutsGeometries";
 import { useAppDispatch } from "@/hooks/store/ContextHooks";
 
-export type FetchSource = "osm" | "overture" | "street_network";
+export type FetchSource = "osm" | "overture" | "street_network" | "pt_network";
+
+/** GOAT's own networks, each cut whole to an area as a bundle by its own tool. */
+export const NETWORK_TOOLS: Partial<Record<FetchSource, string>> = {
+  street_network: "fetch_street_network",
+  pt_network: "fetch_pt_network",
+};
+
+export const isNetworkSource = (source: FetchSource) => source in NETWORK_TOOLS;
 export type AreaMode = "view" | "region" | "point" | "polygon";
 export type FilterMode = "builder" | "sql";
 export type MatchMode = "all" | "any";
@@ -131,8 +139,6 @@ export type FetchFlowState = {
   setSpatial: (filter: CatalogSpatialFilter | null) => void;
   regionNames: Record<string, string>;
   area?: GeoJSON.Polygon | GeoJSON.MultiPolygon;
-  /** What the chosen area is called, e.g. the regions' names; absent until one is chosen. */
-  areaLabel?: string;
   source: FetchSource;
   setSource: (source: FetchSource) => void;
   /** The area holds far more than a fetch takes, and no filter with values narrows it. */
@@ -213,6 +219,7 @@ export const useFetchFlow = ({
     osm: [],
     overture: [],
     street_network: [],
+    pt_network: [],
     ...(seed ? { [seed.params.source as FetchSource]: seed.filters } : {}),
   }));
   const [sql, setSql] = useState(seed?.params.where ?? "");
@@ -259,20 +266,8 @@ export const useFetchFlow = ({
     return keep(spatialGeometry(spatial));
   }, [areaMode, viewBox, viewChosen, spatial, geometries, kept]);
 
-  const areaLabel = kept
-    ? t("catalog_mode_polygon")
-    : areaMode === "view"
-      ? t("fetch_features_area_view")
-      : spatial?.kind !== areaMode
-        ? undefined
-        : spatial.kind === "region"
-          ? spatial.nutsIds.map((id) => regionNames[id] ?? id).join(", ")
-          : spatial.kind === "point"
-            ? `${spatial.label ?? t("catalog_spatial_point")} · ${formatBuffer(spatial.km)}`
-            : t("catalog_spatial_area", { count: spatial.ring.length });
-
-  // A street network is cut whole: no layer type, no filters.
-  const isNetwork = source === "street_network";
+  // A network is cut whole: no layer type, no filters.
+  const isNetwork = isNetworkSource(source);
   const featureType = source === "osm" ? osmType : isNetwork ? "" : overtureType;
   const filters = filtersBySource[source];
   const setFilters = useCallback(
@@ -296,7 +291,7 @@ export const useFetchFlow = ({
   );
 
   const suggestedName = isNetwork
-    ? t("fetch_features_source_street_network")
+    ? t(`fetch_features_source_${source}`)
     : `${t(`fetch_features_source_short_${source}`)} ${t(`fetch_features_type_${featureType}`).toLowerCase()}`;
   const name = customName ?? suggestedName;
 
@@ -307,7 +302,7 @@ export const useFetchFlow = ({
     heldArea.current = undefined;
     setSpatial(null);
     setKept(undefined);
-    setFiltersBySource({ osm: [], overture: [], street_network: [] });
+    setFiltersBySource({ osm: [], overture: [], street_network: [], pt_network: [] });
     setSql("");
     setCustomName(null);
     setIsBusy(false);
@@ -387,8 +382,9 @@ export const useFetchFlow = ({
     if (!area || !selectedFolder || !name.trim() || sqlMissing || tooBig || sizePending) return;
     try {
       setIsBusy(true);
-      const job = isNetwork
-        ? await executeProcessAsync("fetch_street_network", {
+      const networkTool = NETWORK_TOOLS[source];
+      const job = networkTool
+        ? await executeProcessAsync(networkTool, {
             user_id: userProfile?.id,
             project_id: projectId,
             folder_id: selectedFolder.id,
@@ -422,7 +418,7 @@ export const useFetchFlow = ({
     sqlMissing,
     tooBig,
     sizePending,
-    isNetwork,
+    source,
     userProfile?.id,
     projectId,
     fetchParams,
@@ -484,14 +480,14 @@ export const useFetchFlow = ({
     : sizePending
       ? t("fetch_features_checking_area")
       : tooLarge
-        ? t(isNetwork ? "fetch_features_street_network_too_large" : "fetch_features_area_too_large")
+        ? t(isNetwork ? `fetch_features_${source}_too_large` : "fetch_features_area_too_large")
         : tooBig
           ? t("fetch_features_reduce_area")
           : sqlMissing
             ? t("fetch_features_sql_needed")
             : workflow
               ? isNetwork
-                ? t("fetch_features_street_network_not_in_workflow")
+                ? t(`fetch_features_${source}_not_in_workflow`)
                 : undefined
               : !name.trim()
                 ? t("connect_service_name_needed")
@@ -507,6 +503,7 @@ export const useFetchFlow = ({
       disabled: !!reason || isBusy,
       reason,
       notice: workflow ? undefined : notice,
+      note: workflow ? undefined : t("connect_service_copy"),
       run: workflow ? use : submit,
     },
     fetch: {
@@ -532,7 +529,6 @@ export const useFetchFlow = ({
       },
       regionNames,
       area,
-      areaLabel,
       source,
       setSource: (next: FetchSource) => {
         setSource(next);

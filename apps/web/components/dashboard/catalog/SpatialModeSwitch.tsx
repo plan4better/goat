@@ -9,10 +9,13 @@ const SpatialModeSwitch = <Id extends string>({
   modes,
   value,
   onChange,
+  small = false,
 }: {
   modes: { id: Id; label: string; icon: ICON_NAME }[];
   value: Id;
   onChange: (mode: Id) => void;
+  /** Compact, where the switch shares its column with a map (Add layer). */
+  small?: boolean;
 }) => {
   const theme = useTheme();
   return (
@@ -38,19 +41,23 @@ const SpatialModeSwitch = <Id extends string>({
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: 2.5,
-            py: 3,
-            px: 2.5,
+            gap: small ? 1.5 : 2.5,
+            py: small ? 1.5 : 3,
+            px: small ? 2 : 2.5,
             cursor: "pointer",
             font: "inherit",
-            fontSize: 14,
+            fontSize: small ? 13 : 14,
             fontWeight: 600,
             border: "none",
             borderLeft: index > 0 ? `1.5px solid ${theme.palette.primary.main}` : undefined,
             color: theme.palette.primary.main,
             backgroundColor: mode.id === value ? theme.palette.action.selected : "transparent",
           }}>
-          <Icon iconName={mode.icon} style={{ fontSize: 15 }} htmlColor={theme.palette.primary.main} />
+          <Icon
+            iconName={mode.icon}
+            style={{ fontSize: small ? 13 : 15 }}
+            htmlColor={theme.palette.primary.main}
+          />
           {mode.label}
         </Box>
       ))}

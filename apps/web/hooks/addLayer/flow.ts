@@ -14,6 +14,8 @@ export type FlowAction = {
   reason?: string;
   /** D7: who else the project belongs to or is shared with, when there is anyone. */
   notice?: string;
+  /** What the action will do, said beside it at the footer's left. */
+  note?: string;
   run: () => void | Promise<void>;
 };
 

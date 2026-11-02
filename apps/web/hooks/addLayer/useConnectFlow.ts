@@ -250,9 +250,11 @@ export const useConnectFlow = ({
       disabled: !!reason || isBusy,
       reason,
       notice,
+      // What adding it does, once there is a service to add.
+      note: service ? t(isImport ? "connect_service_copy" : "connect_service_live") : undefined,
       run: submit,
     }),
-    [t, isImport, reason, isBusy, notice, submit]
+    [t, isImport, reason, isBusy, notice, service, submit]
   );
 
   return {

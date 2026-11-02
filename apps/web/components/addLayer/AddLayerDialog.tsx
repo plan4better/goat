@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Box, useMediaQuery, useTheme } from "@mui/material";
+import { Alert, Box, Typography, useMediaQuery, useTheme } from "@mui/material";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -93,6 +93,13 @@ const AddLayerFrame = ({
           primaryDisabled={controller.action.disabled}
           primaryLoading={controller.isBusy}
           primaryTooltip={controller.action.disabled ? (controller.action.reason ?? "") : ""}
+          extra={
+            controller.action.note ? (
+              <Typography variant="caption" color="text.secondary">
+                {controller.action.note}
+              </Typography>
+            ) : undefined
+          }
         />
       }>
       {aside ? (

@@ -425,22 +425,20 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
     expect((screen.getByLabelText("fetch_features_tag") as HTMLInputElement).disabled).toBe(false);
   });
 
-  it("says what is chosen, hints at the region search, and clears and frames a placed point", async () => {
+  it("shows a picked region, gives no hints, and clears and frames a placed point", async () => {
     const user = await openOsm({ onUse: vi.fn() });
     await user.click(screen.getByRole("radio", { name: "catalog_mode_region" }));
-    expect(screen.getByText("fetch_features_area_none")).toBeInTheDocument();
-    expect(screen.getByText("catalog_spatial_hint_region")).toBeInTheDocument();
+    // The mode buttons say what each one does: no hint under them.
+    expect(screen.queryByText("catalog_spatial_hint_region")).not.toBeInTheDocument();
     await pickBayern(user);
-    expect(screen.queryByText("fetch_features_area_none")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Bayern").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("Bayern").length).toBeGreaterThan(0);
 
     mapProps.fitBounds.mockClear();
     await user.click(screen.getByRole("radio", { name: "catalog_mode_point" }));
+    expect(screen.queryByText("catalog_spatial_hint_point")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("tap"));
     expect(mapProps.fitBounds).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/catalog_spatial_point/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "clear_all" }));
     expect(screen.queryByRole("button", { name: "clear_all" })).not.toBeInTheDocument();
-    expect(screen.getByText("fetch_features_area_none")).toBeInTheDocument();
   });
 });

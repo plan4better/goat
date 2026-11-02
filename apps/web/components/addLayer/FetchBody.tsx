@@ -33,6 +33,7 @@ import {
   OSM_TYPES,
   OVERTURE_THEMES,
   type TagFilter,
+  isNetworkSource,
   roundBox,
 } from "@/hooks/addLayer/useFetchFlow";
 
@@ -45,13 +46,10 @@ const SHAPE_COLOR = "#2BB381";
 /** How far in from the preview's edges the map-view box is drawn, in pixels. */
 const VIEW_INSET = 28;
 
+/** A section's name, as Add layer names its fields ("Layer name", "Save to"). */
 const SectionLabel = ({ children, action }: { children: ReactNode; action?: ReactNode }) => (
-  <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2, minHeight: 30 }}>
-    <Typography
-      variant="caption"
-      fontWeight={700}
-      color="text.secondary"
-      sx={{ flex: 1, letterSpacing: 0.6, textTransform: "uppercase" }}>
+  <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1.5, minHeight: 30 }}>
+    <Typography variant="body2" fontWeight="bold" sx={{ flex: 1 }}>
       {children}
     </Typography>
     {action}
@@ -164,7 +162,7 @@ const AreaSection = ({ flow }: { flow: FetchFlow["fetch"] }) => {
   const modes: { id: AreaMode; label: string; icon: ICON_NAME }[] = [
     { id: "view", label: t("fetch_features_area_view"), icon: ICON_NAME.MAP },
     { id: "region", label: t("catalog_mode_region"), icon: ICON_NAME.GLOBE },
-    { id: "point", label: t("catalog_mode_point"), icon: ICON_NAME.LOCATION },
+    { id: "point", label: t("catalog_mode_point"), icon: ICON_NAME.BUFFER },
     { id: "polygon", label: t("catalog_mode_polygon"), icon: ICON_NAME.POLYGON_FEATURE },
   ];
 
@@ -191,14 +189,7 @@ const AreaSection = ({ flow }: { flow: FetchFlow["fetch"] }) => {
     <Stack spacing={3} sx={{ flex: 1, minHeight: 0 }}>
       <Box>
         <SectionLabel>{t("fetch_features_area")}</SectionLabel>
-        <SpatialModeSwitch modes={modes} value={areaMode} onChange={flow.setAreaMode} />
-        {/* A line is kept in every mode, so the map below never moves. */}
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: "block", mt: 1.5, minHeight: 20 }}>
-          {!isView && (flow.areaLabel ?? t("fetch_features_area_none"))}
-        </Typography>
+        <SpatialModeSwitch modes={modes} value={areaMode} onChange={flow.setAreaMode} small />
       </Box>
       <CatalogSpatialPicker
         variant="inline"
@@ -209,39 +200,21 @@ const AreaSection = ({ flow }: { flow: FetchFlow["fetch"] }) => {
         onChange={flow.setSpatial}
         mapId="fetch-features-preview"
         initialViewState={initialViewState}
-        viewHint={t("fetch_features_area_view_hint")}
         onMoveEnd={measure}
         onLoad={measure}
         overlay={
-          <>
-            {isView && (
-              <Box
-                sx={{
-                  position: "absolute",
-                  inset: VIEW_INSET,
-                  pointerEvents: "none",
-                  border: `2px dashed ${shapeColor}`,
-                  borderRadius: 1,
-                  backgroundColor: alpha(shapeColor, 0.06),
-                }}
-              />
-            )}
+          isView && (
             <Box
               sx={{
                 position: "absolute",
-                top: 12,
-                left: 12,
-                px: 2.5,
-                py: 1.5,
-                borderRadius: 1.5,
-                backgroundColor: "background.paper",
-                boxShadow: "0 2px 10px rgba(58,53,65,0.12)",
-              }}>
-              <Typography variant="caption" fontWeight={700}>
-                {isView ? t("fetch_features_area_view_label") : t("fetch_features_area_preview")}
-              </Typography>
-            </Box>
-          </>
+                inset: VIEW_INSET,
+                pointerEvents: "none",
+                border: `2px dashed ${shapeColor}`,
+                borderRadius: 1,
+                backgroundColor: alpha(shapeColor, 0.06),
+              }}
+            />
+          )
         }
       />
     </Stack>
@@ -524,13 +497,30 @@ const FilterSection = ({ flow }: { flow: FetchFlow["fetch"] }) => {
             color="primary"
             value={flow.filterMode}
             disabled={paused}
-            onChange={(_, value) => value && flow.setFilterMode(value)}>
-            <ToggleButton value="builder" sx={{ textTransform: "none", py: 0.5, px: 2.5 }}>
-              {t("fetch_features_builder")}
-            </ToggleButton>
-            <ToggleButton value="sql" sx={{ textTransform: "none", py: 0.5, px: 2.5 }}>
-              SQL
-            </ToggleButton>
+            onChange={(_, value) => value && flow.setFilterMode(value)}
+            // The area switch's look (SpatialModeSwitch), at a header's size.
+            sx={{
+              borderRadius: 2.5,
+              overflow: "hidden",
+              border: (theme) =>
+                `1.5px solid ${paused ? theme.palette.action.disabled : theme.palette.primary.main}`,
+              "& .MuiToggleButton-root": {
+                border: "none",
+                borderRadius: 0,
+                color: "primary.main",
+                fontWeight: 600,
+                textTransform: "none",
+                py: 0.5,
+                px: 2.5,
+                "&.Mui-selected, &.Mui-selected:hover": { bgcolor: "action.selected", color: "primary.main" },
+              },
+              "& .MuiToggleButton-root + .MuiToggleButton-root": {
+                borderLeft: (theme) =>
+                  `1.5px solid ${paused ? theme.palette.action.disabled : theme.palette.primary.main}`,
+              },
+            }}>
+            <ToggleButton value="builder">{t("fetch_features_builder")}</ToggleButton>
+            <ToggleButton value="sql">SQL</ToggleButton>
           </ToggleButtonGroup>
         }>
         {t(flow.source === "osm" ? "fetch_features_tag_filters" : "fetch_features_attribute_filters")}
@@ -627,7 +617,7 @@ const FetchBody = ({ controller }: { controller: FetchFlow }) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
   const { fetch: flow } = controller;
-  const isNetwork = flow.source === "street_network";
+  const isNetwork = isNetworkSource(flow.source);
 
   return (
     <Stack sx={{ minHeight: 0, flex: 1 }}>
@@ -641,13 +631,6 @@ const FetchBody = ({ controller }: { controller: FetchFlow }) => {
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
           {t(`fetch_features_licence_${flow.source}`)}
-        </Typography>
-        <Typography
-          variant="caption"
-          fontWeight={700}
-          color="text.secondary"
-          sx={{ px: 2.5, py: 0.5, borderRadius: 999, border: `1px solid ${theme.palette.divider}` }}>
-          {t("connect_service_copy")}
         </Typography>
       </Stack>
       <Box
@@ -673,7 +656,7 @@ const FetchBody = ({ controller }: { controller: FetchFlow }) => {
               <Alert severity="warning" sx={{ py: 0.5 }}>
                 {t(
                   isNetwork
-                    ? "fetch_features_street_network_too_large"
+                    ? `fetch_features_${flow.source}_too_large`
                     : flow.tooLarge
                       ? "fetch_features_area_too_large"
                       : "fetch_features_reduce_area"
@@ -682,7 +665,7 @@ const FetchBody = ({ controller }: { controller: FetchFlow }) => {
             )}
             {isNetwork ? (
               <Typography variant="body2" color="text.secondary">
-                {t("fetch_features_street_network_hint")}
+                {t(`fetch_features_${flow.source}_hint`)}
               </Typography>
             ) : (
               <>

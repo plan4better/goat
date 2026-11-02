@@ -49,8 +49,13 @@ const LEVEL_LABEL_KEYS: Record<number, string> = {
   3: "catalog_nuts_level_district",
 };
 
-/** The inline strip keeps one height in every mode, so the map below it never resizes. */
-const STRIP_HEIGHT = 84;
+/** A distance reads as a value, not an aside: upright, where the theme sets chips in italics. */
+const UPRIGHT = { fontStyle: "normal" } as const;
+
+/** The inline strip's one row (the region search, the buffer, the polygon's
+ * buttons): every mode starts the map at the same size, and only the picked
+ * regions' chips, when there are any, take more. */
+const STRIP_MIN_HEIGHT = 40;
 
 export type Mode = "region" | "point" | "polygon";
 
@@ -72,7 +77,6 @@ const CatalogSpatialPicker = ({
   onLoad,
   geometry,
   overlay,
-  viewHint,
   shapeColor = SHAPE_COLOR,
 }: {
   /** Null is a plain map with nothing to pick. */
@@ -94,8 +98,6 @@ const CatalogSpatialPicker = ({
   geometry?: GeoJSON.Geometry | null;
   /** Drawn over the map box. */
   overlay?: ReactNode;
-  /** The inline strip's text when there is nothing to pick (mode null). */
-  viewHint?: ReactNode;
   /** The drawn area's colour. */
   shapeColor?: string;
 }) => {
@@ -106,6 +108,7 @@ const CatalogSpatialPicker = ({
 
   const [bufferKm, setBufferKm] = useState(value?.kind === "point" ? value.km : DEFAULT_BUFFER_KM);
   const [query, setQuery] = useState("");
+  const [regionsOpen, setRegionsOpen] = useState(false);
   const buffer = value?.kind === "point" ? value.km : bufferKm;
 
   const { regions, isLoading } = useCatalogNutsRegions(query);
@@ -229,6 +232,10 @@ const CatalogSpatialPicker = ({
   const regionSearch = (
     <Autocomplete
       size="small"
+      // Closed until there is something to search for: no list asking for more letters.
+      open={regionsOpen && query.length >= 2}
+      onOpen={() => setRegionsOpen(true)}
+      onClose={() => setRegionsOpen(false)}
       options={regions}
       loading={isLoading}
       inputValue={query}
@@ -243,7 +250,9 @@ const CatalogSpatialPicker = ({
       // The API already ranked and limited these.
       filterOptions={(options) => options}
       getOptionDisabled={(option) => regionIds.includes(option.nuts_id)}
-      noOptionsText={query.length < 2 ? t("catalog_region_hint") : t("no_results")}
+      noOptionsText={t("no_results")}
+      // Inline, the list speaks in the field's size.
+      slotProps={inline ? { paper: { sx: { fontSize: 13 } } } : undefined}
       renderOption={(props, option) => (
         <Box component="li" {...props} key={option.nuts_id}>
           <Stack direction="row" spacing={2.5} alignItems="center">
@@ -253,7 +262,7 @@ const CatalogSpatialPicker = ({
               htmlColor={theme.palette.primary.main}
             />
             <Stack>
-              <Typography variant="body2" fontWeight={600}>
+              <Typography variant="body2" fontWeight={600} sx={inline ? { fontSize: 13 } : undefined}>
                 {option.nuts_name}
               </Typography>
               <Typography variant="caption" color="text.secondary">
@@ -264,7 +273,21 @@ const CatalogSpatialPicker = ({
           </Stack>
         </Box>
       )}
-      renderInput={(params) => <TextField {...params} placeholder={t("catalog_search_region")} />}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          placeholder={t("catalog_search_region")}
+          // Inline, as slim as Add layer's other one-line fields (the service address).
+          sx={
+            inline
+              ? {
+                  "& .MuiInputBase-root": { height: 34, fontSize: 13, py: 0 },
+                  "& .MuiInputBase-input::placeholder": { fontSize: 13 },
+                }
+              : undefined
+          }
+        />
+      )}
     />
   );
 
@@ -302,11 +325,33 @@ const CatalogSpatialPicker = ({
     />
   );
 
-  const undoButton = mode === "polygon" && polygonVertices > 0 && (
-    <Button size="small" onClick={undoVertex}>
-      {t("undo")}
+  /** The drawing's controls over the map: white pills with bold green text, no edge. */
+  const quietButton = (label: string, onClick: () => void) => (
+    <Button
+      size="small"
+      onClick={onClick}
+      sx={{
+        minWidth: 0,
+        px: 2,
+        bgcolor: "background.paper",
+        boxShadow: 1,
+        "&:hover": { bgcolor: "background.paper" },
+      }}>
+      <Typography variant="caption" fontWeight="bold" color="inherit">
+        {label}
+      </Typography>
     </Button>
   );
+  const undoButton =
+    mode === "polygon" &&
+    polygonVertices > 0 &&
+    (inline ? (
+      quietButton(t("undo"), undoVertex)
+    ) : (
+      <Button size="small" onClick={undoVertex}>
+        {t("undo")}
+      </Button>
+    ));
 
   const hintIcon = (
     <Icon iconName={ICON_NAME.CIRCLEINFO} style={{ fontSize: 14 }} htmlColor={theme.palette.primary.main} />
@@ -391,56 +436,84 @@ const CatalogSpatialPicker = ({
   );
 
   const cursor = mode === "point" || mode === "polygon" ? "crosshair" : "grab";
+  /** Something is on the map to undo or clear: a polygon's points, or the buffer's point. */
+  const drawn = (mode === "polygon" && polygonVertices > 0) || (mode === "point" && value?.kind === "point");
 
   if (inline)
     return (
       <Stack spacing={2.5} sx={{ flex: 1, minHeight: 0 }}>
-        <Box sx={{ height: STRIP_HEIGHT, flexShrink: 0 }}>
-          {mode === "region" ? (
-            <>
-              {regionSearch}
-              {regionChips || (
-                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>
-                  {hint}
-                </Typography>
-              )}
-            </>
-          ) : mode === "point" ? (
-            <>
-              <Stack direction="row" spacing={3} alignItems="center" sx={{ height: 40 }}>
-                <Typography variant="body2" fontWeight={600} sx={{ whiteSpace: "nowrap" }}>
-                  {t("catalog_buffer_radius")}
-                </Typography>
-                {bufferSlider}
-                <Chip size="small" color="primary" label={formatBuffer(buffer)} />
-                {value?.kind === "point" && (
-                  <Button size="small" onClick={() => onChange(null)}>
-                    {t("clear_all")}
-                  </Button>
-                )}
-              </Stack>
-              <Typography variant="caption" color="text.secondary">
-                {hint}
-              </Typography>
-            </>
-          ) : (
-            <Stack direction="row" spacing={2.5} alignItems="center" sx={{ minHeight: 40 }}>
-              {hintIcon}
-              <Typography variant="caption" color="text.secondary" sx={{ flex: 1, lineHeight: 1.45 }}>
-                {mode === "polygon" ? hint : viewHint}
-              </Typography>
-              {undoButton}
-              {mode === "polygon" && polygonVertices > 0 && (
-                <Button size="small" onClick={() => onChange(null)}>
-                  {t("clear_all")}
-                </Button>
-              )}
-            </Stack>
-          )}
-        </Box>
+        {/* A strip only for what is picked outside the map (a region, a buffer):
+            the map view and a polygon are both drawn on the map, which takes the room. */}
+        {(mode === "region" || mode === "point") && (
+          <Box sx={{ minHeight: STRIP_MIN_HEIGHT, flexShrink: 0 }}>
+            {/* No hints inline: the mode buttons above say what each one does. */}
+            {mode === "region" ? (
+              <>
+                {regionSearch}
+                {regionChips}
+              </>
+            ) : mode === "point" ? (
+              <>
+                <Stack direction="row" spacing={3} alignItems="center" sx={{ height: 40 }}>
+                  <Typography variant="body2" fontWeight={600} sx={{ whiteSpace: "nowrap" }}>
+                    {t("catalog_buffer_radius")}
+                  </Typography>
+                  {bufferSlider}
+                  <Chip size="small" color="primary" label={formatBuffer(buffer)} sx={UPRIGHT} />
+                </Stack>
+              </>
+            ) : null}
+          </Box>
+        )}
         <Box sx={{ position: "relative", flex: 1, minHeight: 240, cursor }}>
           {map}
           {overlay}
+          {/* What to do on the map, over the map: until a point is placed, how
+              to start; then the drawing's own controls. */}
+          {(mode === "polygon" || mode === "point") && (
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{
+                position: "absolute",
+                top: 8,
+                right: 8,
+                cursor: "default",
+                // The hint on a white pill (the theme's button radius); the
+                // buttons are white pills themselves.
+                ...(!drawn && {
+                  p: 0.5,
+                  borderRadius: "50px",
+                  bgcolor: "background.paper",
+                  boxShadow: 1,
+                }),
+              }}>
+              {drawn ? (
+                <>
+                  {undoButton}
+                  {quietButton(t("clear_all"), () => onChange(null))}
+                </>
+              ) : (
+                <Stack
+                  direction="row"
+                  spacing={1.25}
+                  alignItems="center"
+                  // The buttons' green, in the same place: one voice over the map.
+                  sx={{ px: 2, py: 1, color: "primary.main" }}>
+                  <Icon
+                    iconName={ICON_NAME.ARROW_POINTER}
+                    style={{ fontSize: 11 }}
+                    htmlColor="currentColor"
+                  />
+                  <Typography variant="caption" color="inherit">
+                    {t(
+                      mode === "polygon" ? "catalog_spatial_click_to_draw" : "catalog_spatial_click_to_start"
+                    )}
+                  </Typography>
+                </Stack>
+              )}
+            </Stack>
+          )}
         </Box>
       </Stack>
     );
@@ -463,7 +536,7 @@ const CatalogSpatialPicker = ({
             <Typography variant="body2" fontWeight={600}>
               {t("catalog_buffer_radius")}
             </Typography>
-            <Chip size="small" color="primary" label={formatBuffer(buffer)} />
+            <Chip size="small" color="primary" label={formatBuffer(buffer)} sx={UPRIGHT} />
           </Stack>
           {bufferSlider}
         </Box>

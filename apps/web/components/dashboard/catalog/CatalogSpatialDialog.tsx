@@ -95,7 +95,7 @@ const CatalogSpatialDialog = ({
               onChange={switchMode}
               modes={[
                 { id: "region", label: t("catalog_mode_region"), icon: ICON_NAME.GLOBE },
-                { id: "point", label: t("catalog_mode_point"), icon: ICON_NAME.LOCATION },
+                { id: "point", label: t("catalog_mode_point"), icon: ICON_NAME.BUFFER },
                 { id: "polygon", label: t("catalog_mode_polygon"), icon: ICON_NAME.POLYGON_FEATURE },
               ]}
             />

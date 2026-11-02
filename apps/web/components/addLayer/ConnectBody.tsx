@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import type { Theme } from "@mui/material";
 import type { ReactNode } from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
@@ -109,7 +109,9 @@ const hostOf = (address: string) => {
   }
 };
 
-/** Live or copy: the one thing about a service that changes what the layer can do. */
+/** Live or copy: the one thing about a service that changes what the layer can do.
+ * A label, not a control: icon and text with no ground or edge, so it is not
+ * taken for a button. */
 const ModeTag = ({ mode }: { mode: ConnectedService["mode"] }) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -122,15 +124,11 @@ const ModeTag = ({ mode }: { mode: ConnectedService["mode"] }) => {
         alignItems: "center",
         gap: 1.25,
         flexShrink: 0,
-        px: 2.5,
-        py: 0.75,
-        borderRadius: 999,
-        border: `1px solid ${live ? alpha(theme.palette.primary.main, 0.4) : theme.palette.divider}`,
-        backgroundColor: live ? alpha(theme.palette.primary.main, 0.08) : theme.palette.action.hover,
-        color: live ? accentInk(theme) : theme.palette.text.secondary,
+        // Grey whichever it is: green text read as a link.
+        color: theme.palette.text.secondary,
       }}>
       <Icon
-        iconName={live ? ICON_NAME.LINK : ICON_NAME.DATABASE}
+        iconName={live ? ICON_NAME.EYE : ICON_NAME.DOWNLOAD}
         style={{ fontSize: 11 }}
         htmlColor="currentColor"
       />
@@ -152,23 +150,6 @@ const Label = ({ children, htmlFor }: { children: ReactNode; htmlFor?: string })
   </Typography>
 );
 
-const Note = ({ i18nKey }: { i18nKey: string }) => {
-  const { t } = useTranslation("common");
-  const theme = useTheme();
-  return (
-    <Typography
-      variant="body2"
-      color="text.secondary"
-      sx={{ p: 3, borderRadius: 2, backgroundColor: theme.palette.action.hover, lineHeight: 1.55 }}>
-      <Trans
-        i18nKey={i18nKey}
-        t={t}
-        components={{ b: <Box component="b" sx={{ color: "text.primary" }} /> }}
-      />
-    </Typography>
-  );
-};
-
 const MetaGrid = ({ rows }: { rows: { label: string; value: string }[] }) => (
   <Box sx={{ display: "grid", gridTemplateColumns: "110px minmax(0, 1fr)", columnGap: 3, rowGap: 1.5 }}>
     {rows.map((row) => [
@@ -187,24 +168,32 @@ const KindCards = () => {
   const theme = useTheme();
   return (
     <Stack spacing={3.5} sx={{ p: 6, overflowY: "auto" }}>
-      <Typography
-        variant="caption"
-        fontWeight={700}
-        color="text.secondary"
-        sx={{ letterSpacing: 0.6, textTransform: "uppercase" }}>
+      <Typography variant="body2" fontWeight="bold">
         {t("connect_service_what_you_can_connect")}
       </Typography>
       <Box
         sx={{
           display: "grid",
           gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", md: "repeat(5, minmax(0, 1fr))" },
-          gap: 3,
+          columnGap: 3,
+          rowGap: 3,
         }}>
+        {/* Each card spans the grid's four rows (subgrid): its title, name,
+            description and label line up with every other card's, whichever
+            wraps. */}
         {KINDS.map((kind) => (
-          <Stack
+          <Box
             key={kind.short}
-            spacing={2}
-            sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 2.5, p: 3.5, minHeight: 150 }}>
+            sx={{
+              display: "grid",
+              gridRow: "span 4",
+              gridTemplateRows: "subgrid",
+              rowGap: 2,
+              alignContent: "start",
+              border: `1px solid ${theme.palette.divider}`,
+              borderRadius: 2.5,
+              p: 3,
+            }}>
             <Stack direction="row" spacing={2} alignItems="center">
               <Box
                 sx={{
@@ -226,16 +215,17 @@ const KindCards = () => {
                 {kind.short}
               </Typography>
             </Stack>
-            <Typography variant="caption" fontWeight={600}>
+            {/* One line: the caption's letter spacing alone pushed the longest name onto two. */}
+            <Typography variant="caption" fontWeight="bold" noWrap sx={{ letterSpacing: 0 }}>
               {kind.nameKey ? t(kind.nameKey) : kind.name}
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ flex: 1, lineHeight: 1.45 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.45 }}>
               {t(kind.whatKey)}
             </Typography>
-            <Box sx={{ alignSelf: "flex-start" }}>
+            <Box sx={{ alignSelf: "end", justifySelf: "start" }}>
               <ModeTag mode={kind.copy ? "copy" : "live"} />
             </Box>
-          </Stack>
+          </Box>
         ))}
       </Box>
     </Stack>
@@ -275,11 +265,7 @@ const Failure = ({ failure, address }: { failure: ConnectFailure; address: strin
           </Typography>
           {copy.checks.length > 0 && (
             <>
-              <Typography
-                variant="caption"
-                fontWeight={700}
-                color="text.secondary"
-                sx={{ letterSpacing: 0.6, textTransform: "uppercase", pt: 1.5 }}>
+              <Typography variant="body2" fontWeight="bold" sx={{ pt: 1.5 }}>
                 {t("connect_service_worth_checking")}
               </Typography>
               <Box component="ul" sx={{ m: 0, pl: 4.5 }}>
@@ -368,8 +354,6 @@ const ServiceBrowser = ({ controller }: { controller: ConnectFlow }) => {
             )}
           </Stack>
         )}
-        <Box sx={{ flex: 1 }} />
-        <Note i18nKey={imagery ? "connect_service_live_note" : "connect_service_copy_note"} />
       </Stack>
     </Box>
   );
@@ -439,6 +423,11 @@ const ConnectBody = ({ controller }: { controller: ConnectFlow }) => {
             placeholder={t("connect_service_address_placeholder")}
             error={status === "failed"}
             inputProps={{ spellCheck: false }}
+            // Slimmer than a form field: one line to paste an address into.
+            sx={{
+              "& .MuiInputBase-root": { height: 34, fontSize: 13 },
+              "& .MuiInputBase-input::placeholder": { fontSize: 13 },
+            }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -466,7 +455,7 @@ const ConnectBody = ({ controller }: { controller: ConnectFlow }) => {
             variant="contained"
             loading={status === "connecting"}
             disabled={!connect.address.trim()}
-            sx={{ flexShrink: 0, px: 5 }}>
+            sx={{ flexShrink: 0, px: 5, height: 34 }}>
             {t("connect_service_connect")}
           </LoadingButton>
         </Stack>
@@ -497,11 +486,7 @@ const ConnectBody = ({ controller }: { controller: ConnectFlow }) => {
             <Box sx={{ flex: 1 }} />
             <ModeTag mode={service.mode} />
           </Stack>
-        ) : (
-          <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 2 }}>
-            {t("connect_service_hint")}
-          </Typography>
-        )}
+        ) : null}
       </Box>
 
       <Box

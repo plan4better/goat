@@ -32,7 +32,7 @@ You can add layers from [different sources](../data/dataset_types) to your map:
 
 - **Upload dataset**: a dataset from your device (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
 - **Create layer**: a new empty layer you draw into
-- **Fetch / Connect data**: a layer served by WFS, WMS, WMTS, XYZ Tiles or COG, added by URL, features from OpenStreetMap or Overture Maps for an area, or GOAT's street network for an area as a bundle
+- **Fetch / Connect data**: a layer served by WFS, WMS, WMTS, XYZ Tiles or COG, added by URL, features from OpenStreetMap or Overture Maps for an area, or GOAT's street network or public transport network for an area as a bundle
 
 **Existing data**
 
@@ -108,11 +108,11 @@ You can add layers from [different sources](../data/dataset_types) to your map:
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">On the left, under <code>Provided by GOAT</code>, choose <code>OpenStreetMap</code> or <code>Overture Maps</code> to add their features for an area, or <code>Street network</code> to cut GOAT's routing network to an area, or under <code>Connect a service</code> choose <code>OGC services</code> to add a web service by its address.</div>
+  <div class="content">On the left, under <code>Provided by GOAT</code>, choose <code>OpenStreetMap</code> or <code>Overture Maps</code> to add their features for an area, <code>Street Network</code> to cut GOAT's routing network to an area, or <code>Public Transport Network</code> to cut GOAT's public transport network to an area, or under <code>Connect a service</code> choose <code>OGC Services</code> to add a web service by its address.</div>
 </div>
 
 <Tabs>
-  <TabItem value="OGC" label="OGC services" default className="tabItemBox">
+  <TabItem value="OGC" label="OGC Services" default className="tabItemBox">
 
 <div class="step">
   <div class="step-number">4</div>
@@ -164,7 +164,7 @@ GOAT keeps a copy of [OpenStreetMap](https://www.openstreetmap.org) and [Overtur
 
 <div class="step">
   <div class="step-number">5</div>
-  <div class="content">Choose the <code>Area</code>: the <code>Map view</code>, where you pan and zoom the map until the dashed box shows the area, or a <code>Region</code>, a <code>Point + buffer</code> or a <code>Polygon</code>, set with <code>Choose</code>. Every feature that touches the area is added, including one that crosses its border.</div>
+  <div class="content">Choose the <code>Area</code>: the <code>Map view</code>, where you pan and zoom the map until the dashed box shows the area, or a <code>Region</code>, a <code>Buffer</code> or a <code>Polygon</code>, set with <code>Choose</code>. Every feature that touches the area is added, including one that crosses its border.</div>
 </div>
 
 <div class="step">
@@ -186,9 +186,14 @@ A layer holds up to 1,000,000 features. When the area holds more, GOAT asks you 
 The licence of the data is shown at the top of the pane: OpenStreetMap is published under the ODbL, Overture Maps under the ODbL, with places under CDLA-Permissive 2.0. Credit the source when you share maps made with it.
 
   </TabItem>
-  <TabItem value="StreetNetwork" label="Street network" className="tabItemBox">
+  <TabItem value="StreetNetwork" label="Street Network" className="tabItemBox">
 
-<code>Street network</code> cuts the network GOAT routes on to an area and saves it as a street network [bundle](../data/dataset_types#datasets-made-of-several-layers) with its edges and nodes. Every street touching the area is kept whole, with its slope, so routing tools pick the bundle like any other street network and route uphill and downhill as on GOAT's own network. Choose the area as for OpenStreetMap, give the bundle a name under <code>Bundle name</code> and click <code>Add layer</code>. The area can be up to about 1,000 km²; for a larger one the pane says it is too large.
+<code>Street Network</code> cuts the network GOAT routes on to an area and saves it as a street network [bundle](../data/dataset_types#datasets-made-of-several-layers) with its edges and nodes. Every street touching the area is kept whole, with its slope, so routing tools pick the bundle like any other street network and route uphill and downhill as on GOAT's own network. Choose the area as for OpenStreetMap, give the bundle a name under <code>Bundle name</code> and click <code>Add layer</code>. The area can be up to about 1,000 km²; for a larger one the pane says it is too large.
+
+  </TabItem>
+  <TabItem value="PublicTransportNetwork" label="Public Transport Network" className="tabItemBox">
+
+<code>Public Transport Network</code> cuts GOAT's public transport network to an area and saves it as a [GTFS](https://www.plan4better.de/en/glossary/gtfs) public transport network [bundle](../data/dataset_types#datasets-made-of-several-layers). Every line that serves a stop in the area is kept whole, with all its trips and every stop they call at, also outside the area, so a trip still runs from its first stop to its last. A stop counts with its station: a platform just outside the area is included when its station is inside it. The bundle is linked to GOAT's default street network and is ready for public transport catchments and heatmaps like an uploaded feed. Choose the area as for OpenStreetMap, give the bundle a name under <code>Bundle name</code> and click <code>Add layer</code>. The area can be up to about 1,000 km²; for a larger one the pane says it is too large.
 
   </TabItem>
 </Tabs>
