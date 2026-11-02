@@ -63,7 +63,8 @@ class MirrorValuesProcessInput(BaseModel):
 
     area: dict = Field(description="GeoJSON polygon the question is about")
     source: str = Field(
-        "osm", description="Which source: osm, overture, or street_network (size only)"
+        "osm",
+        description="Which source: osm, overture, street_network or pt_network (the networks answer their size only)",
     )
     feature_type: str = Field(
         "points", description="OSM layer, or Overture type when source is overture"

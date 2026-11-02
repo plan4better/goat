@@ -340,7 +340,7 @@ class GtfsImporter(BundleImporter):
                 )
                 converted[role] = out_path
 
-            lines = self._lines_layer(converted, workdir)
+            lines = self.lines_layer(converted, workdir)
             if lines is not None:
                 layers.append(lines)
 
@@ -558,13 +558,17 @@ class GtfsImporter(BundleImporter):
                 os.remove(text_path)
         return out_path
 
-    def _lines_layer(
+    def lines_layer(
         self, converted: Dict[str, str], workdir: str
     ) -> Optional[ExtractedLayer]:
         """The ``shape_lines`` member: the feed's shapes as lines, and a line
         through the stops for each trip without one (``stop_chains``), so a
         feed without shapes is drawn all the same. None where the feed has
-        nothing to draw a line from."""
+        nothing to draw a line from.
+
+        ``converted`` maps roles to their typed tables. Public because a cut
+        of GOAT's own network draws its lines the same way
+        (``goatlib.io.fetch.pt_network``)."""
         import duckdb
 
         from goatlib.io.geoparquet import write_optimized_parquet

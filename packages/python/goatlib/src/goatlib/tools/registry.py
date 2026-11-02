@@ -248,6 +248,20 @@ TOOL_REGISTRY: tuple[ToolDefinition, ...] = (
         toolbox_hidden=True,
     ),
     ToolDefinition(
+        name="fetch_pt_network",
+        display_name="Fetch public transport network",
+        description=(
+            "Cut GOAT's public transport network to an area as a GTFS bundle "
+            "with its routable artifacts"
+        ),
+        module_path="goatlib.tools.fetch_pt_network",
+        params_class_name="FetchPtNetworkParams",
+        windmill_path="f/goat/tools/fetch_pt_network",
+        category="data",
+        keywords=("bundle", "public", "transport", "gtfs", "network", "extract"),
+        toolbox_hidden=True,
+    ),
+    ToolDefinition(
         name="merge",
         display_name="Merge",
         description="Combines multiple vector layers into one output layer",
