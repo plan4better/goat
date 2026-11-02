@@ -25,7 +25,7 @@ const SECTIONS = [
   {
     key: "section-user-manual",
     label: "User manual",
-    dirs: ["workspace", "data", "map", "toolbox", "workflows", "layouts", "builder", "sharing", "routing"],
+    dirs: ["workspace", "goat_ai", "data", "map", "toolbox", "workflows", "layouts", "builder", "sharing", "routing"],
   },
   {
     key: "section-self-hosting",
