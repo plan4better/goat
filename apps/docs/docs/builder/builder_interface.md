@@ -109,7 +109,7 @@ To delete a panel, click <code>Delete Panel</code> at the bottom of the settings
 For more details, see [Widgets](../category/widgets).
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <Video src={require('/img/builder/widget_drag.mp4').default} alt="recent datasets" style={{ maxHeight: "400px", maxWidth: "auto", objectFit: "cover"}}/>
+  <Video src={require('/img/builder/widget_drag.mp4').default} alt="Dragging a Layers widget into a panel and setting its title and description" style={{ maxHeight: "400px", maxWidth: "auto", objectFit: "cover"}}/>
 </div> 
 
 
