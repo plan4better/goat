@@ -34,12 +34,8 @@ const GROUPS: { labelKey: string; options: ConnectOption[] }[] = [
         titleKey: "fetch_features_source_street_network",
         subtitleKey: "fetch_features_source_street_network_hint",
       },
-      {
-        kind: "pt_network",
-        icon: ICON_NAME.BUS,
-        titleKey: "fetch_features_source_pt_network",
-        subtitleKey: "fetch_features_source_pt_network_hint",
-      },
+      // The public transport network ("pt_network") is not offered yet: no server has the
+      // tables it is cut from until a public transport version with them is published.
     ],
   },
   {
