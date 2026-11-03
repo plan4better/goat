@@ -173,6 +173,24 @@ class TestProcess:
                 r.process(_params(overwrite_previous=False, export_node_id=None))
         mock_create.assert_not_called()
 
+    def test_a_steps_provenance_goes_onto_the_layer(self, tmp_path: Path) -> None:
+        """fetch_data's licence travels from the temp result to the layer."""
+        r = _runner()
+        base, parquet, _ = _temp(tmp_path)
+        provenance = {"license": "ODbL-1.0"}
+        with (
+            patch.object(
+                r,
+                "_resolve_temp_parquet",
+                return_value=(base, parquet, {"provenance": provenance}),
+            ),
+            patch.object(r, "_authorize", new=AsyncMock()),
+            patch.object(r, "_create_new_layer", return_value="new-layer-id"),
+            patch.object(r, "_record_provenance", new=AsyncMock()) as record,
+        ):
+            r.process(_params(overwrite_previous=False, export_node_id=None))
+        record.assert_awaited_once_with("new-layer-id", provenance)
+
     def test_no_target_creates_a_layer(self, tmp_path: Path) -> None:
         layer_id, mock_create, mock_overwrite = self._run(tmp_path, _params(), None)
         assert layer_id == "new-layer-id"

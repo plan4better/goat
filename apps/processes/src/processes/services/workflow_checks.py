@@ -739,6 +739,21 @@ class _WorkflowCheck:
                         {"step": step, "label": label},
                     )
                 )
+        # Integrate dataset's area is chosen in Add layer's dialog, not in a
+        # setting the form shows, so the settings check below never sees it.
+        if process_id == "fetch_data" and _is_empty(config.get("area")):
+            area = description.inputs.get("area")
+            label = (area.title if area else None) or "Area"
+            issues.append(
+                Issue(
+                    "setting_required",
+                    "error",
+                    f"{step}: {label} is required.",
+                    (node_id,),
+                    "area",
+                    {"step": step, "label": label},
+                )
+            )
         numbered = [
             h for h in NUMBERED_OPPORTUNITY_ID_FIELDS if h in description.inputs
         ]

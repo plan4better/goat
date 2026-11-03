@@ -78,7 +78,7 @@ Deleting content does not remove it straight away: it goes to the **Trash**, whe
 - **New folder**, to group content however suits you
 - **Blank project** or **Import project**
 - **Upload dataset**, to upload a file from your device (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
-- **Connect service**, to add an external layer by URL (WFS, WMS, WMTS, XYZ Tiles or COG)
+- **Fetch / Connect data**, to add an external layer by URL (WFS, WMS, WMTS, XYZ Tiles or COG)
 - **Upload document**, for a file that belongs with the work without being data
 
 A project can also be started from the Home page.
@@ -173,7 +173,7 @@ GOAT supports multiple file formats for upload: **GeoPackage**, **GeoJSON**, **S
 
 ### Connecting to an external source
 
-A service that already publishes the data, such as a **Web Feature Service (WFS)**, **Web Map Service (WMS)**, **Web Map Tile Service (WMTS)**, **XYZ Tiles** or a **Cloud Optimized GeoTIFF (COG)**, is added with `Connect service`. On this page, click `Add new` and choose `Connect service` to add it to the current folder. Inside a project you can also reach it from `+ Add layer` on the map. See [Add Layers](../map/layers#add-layers) for the steps.
+A service that already publishes the data, such as a **Web Feature Service (WFS)**, **Web Map Service (WMS)**, **Web Map Tile Service (WMTS)**, **XYZ Tiles** or a **Cloud Optimized GeoTIFF (COG)**, is added with `Fetch / Connect data`. On this page, click `Add new` and choose `Fetch / Connect data` to add it to the current folder. Inside a project you can also reach it from `+ Add layer` on the map. See [Add Layers](../map/layers#add-layers) for the steps.
 
 Once added, a connected layer appears on this page like any other dataset, with two differences that show where its data comes from:
 

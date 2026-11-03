@@ -3,8 +3,8 @@
 import BlockIcon from "@mui/icons-material/Block";
 import CancelIcon from "@mui/icons-material/Cancel";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import DeleteIcon from "@mui/icons-material/Delete";
 import DuplicateIcon from "@mui/icons-material/ContentCopy";
+import DeleteIcon from "@mui/icons-material/Delete";
 import SettingsIcon from "@mui/icons-material/Settings";
 import { Box, Chip, Stack, Tooltip, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
@@ -28,11 +28,13 @@ import {
 } from "@/lib/utils/ogc-utils";
 import { edgeDerivedInputHandles } from "@/lib/utils/workflowHandles";
 import type { ToolNodeData } from "@/lib/validations/workflow";
+import { INTEGRATE_PROCESS_ID } from "@/lib/workflows/datasetConnection";
 
 import { OPPORTUNITY_LAYER_HANDLES } from "@/types/map/ogc-processes";
 
 import { useProcessDescription } from "@/hooks/map/useOgcProcesses";
 
+import { addLayerSource } from "@/components/addLayer/sources";
 import StepIssueBadge from "@/components/workflows/issues/StepIssueBadge";
 import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
 
@@ -301,6 +303,8 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
 
   // Calculate handle positions for multiple inputs
   const inputHandleCount = effectiveInputHandles.length || 1; // Default to 1 if no process loaded yet
+  // Integrate dataset takes no layer, so it has nothing to connect into.
+  const hasInput = data.processId !== INTEGRATE_PROCESS_ID;
 
   const ToolIconComponent = toolIconMap[data.processId as TOOL_ICON_NAME];
 
@@ -327,7 +331,7 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
         <StepIssueBadge nodeId={id} />
 
         {/* Input handles - positioned vertically based on count */}
-        {inputHandleCount === 1 ? (
+        {!hasInput ? null : inputHandleCount === 1 ? (
           <Tooltip
             title={
               effectiveInputHandles[0]
@@ -376,7 +380,10 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
         <NodeHeader>
           <AnimatedBorderWrapper isRunning={nodeStatus === "running"}>
             <NodeIconWrapper status={nodeStatus}>
-              {ToolIconComponent ? (
+              {/* Integrate dataset looks like Add layer › Connect service, which it opens. */}
+              {data.processId === INTEGRATE_PROCESS_ID ? (
+                <Icon iconName={addLayerSource("connect").icon} sx={{ fontSize: 32 }} />
+              ) : ToolIconComponent ? (
                 <ToolIconComponent sx={{ fontSize: 32 }} />
               ) : (
                 <SettingsIcon
@@ -414,7 +421,10 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
             </NodeIconWrapper>
           </AnimatedBorderWrapper>
           <Typography variant="caption" fontWeight={700} sx={{ flex: 1, wordBreak: "break-word" }}>
-            {process?.title || t(data.processId, { defaultValue: data.label })}
+            {/* An integration is named after what it fetches, e.g. "OSM points". */}
+            {data.processId === INTEGRATE_PROCESS_ID
+              ? data.label
+              : process?.title || t(data.processId, { defaultValue: data.label })}
           </Typography>
           {/* Duration chip - shown when completed */}
           {nodeStatus === "completed" && executionInfo?.durationMs && (
