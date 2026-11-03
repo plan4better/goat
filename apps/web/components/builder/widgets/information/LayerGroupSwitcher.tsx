@@ -61,8 +61,18 @@ const ActiveLayerLegend = ({
       getLegendColorMap(props, "stroke_color").length > 1 ||
       getLegendMarkerMap(props).length > 1);
   const marker = resolveFeatureMarker(props);
+  const caption = props.legend?.caption;
   return (
     <Box sx={{ pt: 1, pl: 0.5 }}>
+      {/* The legend caption, as the layer list shows it under the layer name. */}
+      {caption && (
+        <Typography
+          variant="caption"
+          component="p"
+          sx={{ color: "text.secondary", wordBreak: "break-word", lineHeight: 1.3, mb: 0.5 }}>
+          {caption}
+        </Typography>
+      )}
       {hasBreakdown ? (
         <LayerLegendPanel properties={props} geometryType={geometryType} hideHeading={hideHeading} />
       ) : (

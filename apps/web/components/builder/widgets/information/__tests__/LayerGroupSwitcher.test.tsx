@@ -154,8 +154,17 @@ describe("LayerGroupSwitcher", () => {
     expect(screen.getAllByText("2018")).toHaveLength(2);
     unmount();
 
-    renderSwitcher({}, { legendHiddenLayers: [2] });
+    const hidden = renderSwitcher({}, { legendHiddenLayers: [2] });
     expect(screen.getAllByText("2018")).toHaveLength(1);
+    hidden.unmount();
+
+    // The legend caption shows above the legend, as in the layer list.
+    (layers[2] as { properties: object }).properties = {
+      visibility: true,
+      legend: { caption: "Einwohner je Hektar" },
+    };
+    renderSwitcher();
+    expect(screen.getByText("Einwohner je Hektar")).toBeInTheDocument();
   });
 
   it("plays through the layers and wraps around", async () => {
