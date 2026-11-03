@@ -54,6 +54,7 @@ from assistant.events import (
     RunStarted,
     RunStatus,
     ToolCalled,
+    ToolFailed,
     ToolReturned,
     UsageReported,
     fold_parts,
@@ -291,21 +292,36 @@ ENDED_NOTES: dict[str, str] = {
 }
 
 
+#: The result a write gets in the history when the answer ended while it ran:
+#: the change may exist (the request reached the service) although its result
+#: never came back.
+UNFINISHED_WRITE: dict[str, str] = {
+    "status": "unfinished",
+    "note": (
+        "The answer ended before this call's result came back, so it may have "
+        "been carried out. Check before doing it again."
+    ),
+}
+
+
+def _is_write(tool_name: str) -> bool:
+    spec = BY_WIRE_NAME.get(tool_name)
+    return spec is not None and spec.risk == "write"
+
+
 def _kept_call(tool_name: str) -> bool:
     """A call the next answer has to know about: a result the user was shown
     (a card, a created workflow), or a write, whose change exists whether the
     answer finished or not."""
-    if tool_name in SHOWN_TOOLS:
-        return True
-    spec = BY_WIRE_NAME.get(tool_name)
-    return spec is not None and spec.risk == "write"
+    return tool_name in SHOWN_TOOLS or _is_write(tool_name)
 
 
 def _partial_history(
     text: str, events: list[RunEvent], status: str = "cancelled"
 ) -> list[dict[str, Any]]:
     """Model history for a turn that did not succeed: the user's prompt, the
-    finished calls the next turn must know about (``_kept_call``), whatever
+    finished calls the next turn must know about (``_kept_call``), a write it
+    ended in the middle of (``UNFINISHED_WRITE``), whatever
     answer text was streamed, and how the turn ended (``ENDED_NOTES``), so the
     next turn still sees the exchange: an answer to the card, a layer or
     workflow not to create twice, a request not to take up again."""
@@ -317,31 +333,41 @@ def _partial_history(
         for event in events
         if isinstance(event, ToolCalled) and _kept_call(event.tool_name)
     }
+
+    def pair(call: ToolCalled, output: Any) -> None:
+        messages.append(
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=call.tool_name,
+                        args=call.args,
+                        tool_call_id=call.tool_call_id,
+                    )
+                ]
+            )
+        )
+        messages.append(
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name=call.tool_name,
+                        content=output,
+                        tool_call_id=call.tool_call_id,
+                    )
+                ]
+            )
+        )
+
+    ended: set[str] = set()
     for event in events:
+        if isinstance(event, ToolReturned | ToolFailed):
+            ended.add(event.tool_call_id)
         if isinstance(event, ToolReturned) and event.tool_call_id in kept:
-            call = kept[event.tool_call_id]
-            messages.append(
-                ModelResponse(
-                    parts=[
-                        ToolCallPart(
-                            tool_name=call.tool_name,
-                            args=call.args,
-                            tool_call_id=call.tool_call_id,
-                        )
-                    ]
-                )
-            )
-            messages.append(
-                ModelRequest(
-                    parts=[
-                        ToolReturnPart(
-                            tool_name=call.tool_name,
-                            content=event.output,
-                            tool_call_id=call.tool_call_id,
-                        )
-                    ]
-                )
-            )
+            pair(kept[event.tool_call_id], event.output)
+    # A write the answer ended in the middle of; a failed one changed nothing.
+    for call_id, call in kept.items():
+        if call_id not in ended and _is_write(call.tool_name):
+            pair(call, UNFINISHED_WRITE)
     answer = _assistant_text(events)
     note = ENDED_NOTES.get(status)
     ending = "\n\n".join(part for part in (answer, note) if part)

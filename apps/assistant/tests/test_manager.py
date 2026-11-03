@@ -29,6 +29,7 @@ from assistant.events import (
     RunStarted,
     TextDelta,
     ToolCalled,
+    ToolFailed,
     ToolReturned,
 )
 from assistant.llm.providers import default_target
@@ -801,7 +802,8 @@ def test_a_stopped_answer_keeps_what_it_changed() -> None:
         ToolReturned(tool_call_id="c1", output={"layer_project_id": 82844}),
         ToolCalled(tool_call_id="c2", tool_name="project_get_fields", args={}),
         ToolReturned(tool_call_id="c2", output={"fields": []}),
-        ToolCalled(tool_call_id="c3", tool_name="project_add_catalog_layer", args=add),
+        ToolCalled(tool_call_id="c3", tool_name="workflow_create", args={"x": 1}),
+        ToolFailed(tool_call_id="c3", error="refused"),
     ]
     history = ModelMessagesTypeAdapter.validate_python(
         _partial_history("City layer: Settlement points (GN250)", events)
@@ -852,6 +854,27 @@ def test_a_stopped_answer_keeps_what_it_showed_the_user() -> None:
     assert history[3].parts[0] == TextPart(
         content="The card is below.\n\n" + manager_module.ENDED_NOTES["cancelled"]
     )
+
+
+def test_a_write_the_answer_ended_in_the_middle_of_may_have_happened() -> None:
+    """Stopped while the call ran: the request may have reached the service, so
+    the next answer is told to check before doing it again. A read that never
+    returned changed nothing and stays out."""
+    add = {"catalog_id": "gn250", "project_id": "p1"}
+    events: list[RunEvent] = [
+        ToolCalled(tool_call_id="c1", tool_name="project_get_fields", args={}),
+        ToolCalled(tool_call_id="c2", tool_name="project_add_catalog_layer", args=add),
+    ]
+    history = ModelMessagesTypeAdapter.validate_python(
+        _partial_history("add it", events)
+    )
+    call, returned = history[1].parts[0], history[2].parts[0]
+    assert (
+        isinstance(call, ToolCallPart) and call.tool_name == "project_add_catalog_layer"
+    )
+    assert isinstance(returned, ToolReturnPart)
+    assert returned.content == manager_module.UNFINISHED_WRITE
+    assert len(history) == 4
 
 
 class _FailingRepo:

@@ -89,7 +89,8 @@ out, the decline too, since each run and each workflow needs a pick of its own a
 run after all; and a card whose Run pick was used counts no more with any of its questions. A pick without a value or
 datasets beside options that add datasets (the skill's "Leave it open") is left out as well: it chose no data, and
 every dataset card offers it. A stopped answer keeps the cards and workflows it showed in the history too, so a later answer to the card
-finds it, and the writes that finished (a layer added, a workflow created), which exist whether the answer finished or not.
+finds it, and the writes that finished (a layer added, a workflow created), which exist whether the answer finished or not;
+a write it ended in the middle of is kept with a result saying it may have been carried out (`UNFINISHED_WRITE`).
 It ends with a note that the user stopped it (or that it was interrupted or failed) and is not to be taken up unless asked
 again (`runs.manager.ENDED_NOTES`): without it the next message's answer read the last request as still open and carried it
 out first, adding a layer a second time. The user's answer is the next run's message (`RunMessage.answer`): it is checked against the stored card
