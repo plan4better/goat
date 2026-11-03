@@ -296,17 +296,57 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
     expect(executeProcessAsync).not.toHaveBeenCalled();
   });
 
-  it("keeps the button disabled while the area is too large", async () => {
-    vi.mocked(getMirrorSize).mockResolvedValue({ estimate: 9e9, tooLarge: true } as never);
+  it("keeps the button disabled while the area is too large, unless counted values fit", async () => {
+    vi.mocked(getMirrorSize).mockImplementation(((
+      _a: unknown,
+      _t: unknown,
+      _s: unknown,
+      filters?: unknown[]
+    ) =>
+      Promise.resolve(
+        filters?.length
+          ? { estimate: 9e9, tooLarge: false, matches: 16_851, matchesBound: true }
+          : { estimate: 9e9, tooLarge: true, matchesBound: false, filtersCanFit: true }
+      )) as never);
     const user = await openOsm({ onUse: vi.fn() });
     await pickBayern(user);
 
     await waitFor(() =>
-      expect(screen.getAllByLabelText("fetch_features_area_too_large")[0]).toContainElement(useButton())
+      expect(screen.getAllByLabelText("fetch_features_area_too_large_filters")[0]).toContainElement(
+        useButton()
+      )
     );
     expect(useButton().disabled).toBe(true);
-    // Filters cannot help here, so they wait for a smaller area.
-    expect(screen.getByText("fetch_features_filters_paused")).toBeInTheDocument();
+    // Only filters with values can help here: they stay open, SQL does not.
+    expect(screen.getByText("fetch_features_filters_values_only")).toBeInTheDocument();
+    expect(
+      (screen.getByRole("button", { name: "fetch_features_add_filter" }) as HTMLButtonElement).disabled
+    ).toBe(false);
+
+    await user.click(screen.getByText("fetch_features_pick_supermarkets"));
+    await waitFor(() => expect(useButton().disabled).toBe(false), { timeout: 3000 });
+    expect(getMirrorSize).toHaveBeenLastCalledWith(
+      expect.anything(),
+      "points",
+      "osm",
+      [{ key: "shop", values: ["supermarket"], operator: "is" }],
+      "all"
+    );
+    expect(screen.getByText(/fetch_features_matches_fit/)).toBeInTheDocument();
+  });
+
+  it("pauses the filters where no filter can make the area fit", async () => {
+    vi.mocked(getMirrorSize).mockResolvedValue({
+      estimate: 9e9,
+      tooLarge: true,
+      matchesBound: false,
+      filtersCanFit: false,
+    } as never);
+    const user = await openOsm({ onUse: vi.fn() });
+    await pickBayern(user);
+
+    await waitFor(() => expect(screen.getByText("fetch_features_filters_paused")).toBeInTheDocument());
+    expect(screen.getAllByLabelText("fetch_features_area_too_large")[0]).toContainElement(useButton());
     expect(
       (screen.getByRole("button", { name: "fetch_features_add_filter" }) as HTMLButtonElement).disabled
     ).toBe(true);
@@ -465,7 +505,7 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
   });
 
   it("lets filters be deleted while the area is too large", async () => {
-    vi.mocked(getMirrorSize).mockResolvedValue({ estimate: 9e9, tooLarge: true } as never);
+    vi.mocked(getMirrorSize).mockResolvedValue({ estimate: 9e9, tooLarge: true, filtersCanFit: false } as never);
     reopen(saved({ kind: "point", lng: 11, lat: 48, km: 5 }));
     await waitFor(() => expect(screen.getByText("fetch_features_filters_paused")).toBeInTheDocument());
 
@@ -654,7 +694,7 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
     expect(screen.getByTestId("view-box").getAttribute("data-size-state")).toBe("unknown");
     expect(screen.getByRole("status", { name: "" }).getAttribute("data-size-state")).toBe("unknown");
 
-    answer({ estimate: 9_000_000, tooLarge: true });
+    answer({ estimate: 9_000_000, tooLarge: true, filtersCanFit: false });
     expect(await screen.findByText(/fetch_features_too_large_hint/)).toBeInTheDocument();
     expect(useButton().disabled).toBe(true);
   });

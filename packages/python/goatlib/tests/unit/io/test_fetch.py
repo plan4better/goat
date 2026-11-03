@@ -95,6 +95,13 @@ def test_the_prefilter_uses_the_same_join() -> None:
     ]
     pre, exact = query.filter_sql(f, reader.SOURCES["osm"], "any")
     assert " OR " in pre and " OR " in exact
+    # A tag with its own column is tested there, in both, without the tags.
+    pre, exact = query.filter_sql(
+        f, reader.SOURCES["osm"], "any", columns=frozenset({"shop"})
+    )
+    assert pre.endswith("OR list_contains(['bakery'], \"shop\")") and exact.endswith(
+        "OR list_contains(['bakery'], \"shop\")"
+    )
 
 
 def test_several_values_on_one_key_are_any_of_them() -> None:
@@ -552,6 +559,66 @@ def test_a_big_view(tmp_path, monkeypatch) -> None:
     assert values.mirror_values(
         con, area=square, feature_type="points", source_name="osm", size_only=True
     )["too_large"]
+
+    # Unless the build's counts show the chosen values of any tag fit one fetch.
+    def sized(filters, mode="all"):
+        tag_filters = [
+            {"key": k, "values": v, **({"operator": o} if o else {})}
+            for k, v, o in filters
+        ]
+        return values.mirror_values(
+            con,
+            area=square,
+            feature_type="points",
+            source_name="osm",
+            size_only=True,
+            tag_filters=tag_filters,
+            match_mode=mode,
+        )["too_large"]
+
+    assert not sized([("highway", ["bus_stop"], None)]) and not sized(
+        [("surface", ["asphalt"], None)]
+    )
+    # Only "is" with values: no values, or "is not", keeps nearly everything.
+    assert sized([("highway", [], None)]) and sized(
+        [("highway", ["bus_stop"], "is_not")]
+    )
+    # A key the build did not count (only its total, or not at all) says nothing.
+    assert sized([("addr:street", ["Main"], None)]) and sized([("name", ["P1"], None)])
+    # Past the ceiling no filter makes it fit: the read alone is too much.
+    monkeypatch.setattr(reader, "MAX_FILTERED_READ_FEATURES", 30_000)
+    assert sized([("highway", ["bus_stop"], None)])
+    beyond = values.mirror_values(
+        con,
+        area=square,
+        feature_type="points",
+        source_name="osm",
+        size_only=True,
+        tag_filters=[{"key": "highway", "values": ["bus_stop"]}],
+    )
+    assert not beyond["filters_can_fit"] and beyond["matches"] is None
+    monkeypatch.setattr(reader, "MAX_FILTERED_READ_FEATURES", 10**8)
+    # With "all", a filter the counts cannot bound leaves the others to bound it.
+    assert not sized([("highway", ["bus_stop"], None), ("name", ["P1"], None)])
+    assert sized([("highway", ["bus_stop"], None), ("name", ["P1"], None)], "any")
+    monkeypatch.setattr(values, "MAX_FEATURES", 15_000)
+    assert sized(
+        [("highway", ["bus_stop"], None), ("highway", ["bus_stop"], None)], "any"
+    )
+    # A value the build left out is counted as the rarest kept one, never as none.
+    monkeypatch.setattr(values, "MAX_FEATURES", 5_000)
+    assert sized([("highway", ["tram_stop"], None)])
+    # Where the area can be read, the matches are counted, not bounded.
+    monkeypatch.setattr(reader, "MAX_READ_BYTES", 10**12)
+    counted = values.mirror_values(
+        con,
+        area=square,
+        feature_type="points",
+        source_name="osm",
+        size_only=True,
+        tag_filters=[{"key": "highway", "values": ["bus_stop"]}],
+    )
+    assert counted["matches"] == 10_000 and not counted["matches_bound"]
 
 
 def test_a_sample_shows_what_a_fetch_would_write(tmp_path, monkeypatch) -> None:

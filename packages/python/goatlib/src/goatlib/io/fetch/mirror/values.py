@@ -22,6 +22,7 @@ from goatlib.io.fetch.mirror.osm import (
     _quote,
     _raw_tags_sql,
     _tag_cache_path,
+    filter_operator,
     tag_storage,
 )
 from goatlib.io.fetch.mirror.overture import OVERTURE_FIELDS, OVERTURE_TYPES
@@ -42,6 +43,8 @@ from goatlib.io.fetch.mirror.reader import (
     _indexed,
     _too_large,
     area_size,
+    filters_can_fit,
+    inside_rows,
     mirror_columns,
     pointer,
     row_groups,
@@ -68,6 +71,21 @@ def _sample_cell(value: Any) -> str:
     )
 
 
+def _filters_of(tag_filters: list[dict] | None) -> list:
+    """Filters as the request sends them, as the objects the SQL builders read."""
+    from types import SimpleNamespace
+
+    return [
+        SimpleNamespace(
+            key=str(f.get("key", "")).strip(),
+            values=list(f.get("values") or []),
+            operator=f.get("operator") or "is",
+        )
+        for f in tag_filters or []
+        if str(f.get("key", "")).strip()
+    ]
+
+
 def _sample_rows(
     con: "Any",
     src: Source,
@@ -85,23 +103,14 @@ def _sample_rows(
     The fetch's own SQL (candidates, filters, selected columns), stopped after
     `limit` rows, so the table shows what the layer will hold rather than a guess.
     """
-    from types import SimpleNamespace
-
     columns = mirror_columns(con, files)
     storage = tag_storage(columns)
     if where:
         prefilter, exact = "TRUE", checked_where(con, files, src, where)
     else:
-        filters = [
-            SimpleNamespace(
-                key=str(f.get("key", "")).strip(),
-                values=list(f.get("values") or []),
-                operator=f.get("operator") or "is",
-            )
-            for f in tag_filters or []
-            if str(f.get("key", "")).strip()
-        ]
-        prefilter, exact = filter_sql(filters, src, match_mode, feature_type, storage)
+        prefilter, exact = filter_sql(
+            _filters_of(tag_filters), src, match_mode, feature_type, storage
+        )
     prefilter = f"({prefilter}) AND {src.geometry_filter(feature_type, files)}"
     selected = [
         item for item in selected_columns(columns, src, storage) if item[1] != src.geom
@@ -218,16 +227,21 @@ def _built_counts(
     return [vn for p in paths for vn in known[p]]
 
 
-def _build_values(
-    con: "Any", indexed: tuple[dict, list], key: str | None
-) -> list[tuple[str, int]] | None:
-    """Values (or keys) summed over the view's files from the built counts; None if none."""
+def _values_files(indexed: tuple[dict, list]) -> dict[str, list[str]]:
+    """The parts of each version the area reads, under that version's counts file."""
     by_file: dict[str, list[str]] = {}
     for index, p, *_ in indexed[1]:
         by_file.setdefault(
             index.removesuffix("_index.parquet") + "_values.parquet", []
         ).append(p)
-    found = [_built_counts(con, f, ps, key) for f, ps in by_file.items()]
+    return by_file
+
+
+def _build_values(
+    con: "Any", indexed: tuple[dict, list], key: str | None
+) -> list[tuple[str, int]] | None:
+    """Values (or keys) summed over the view's files from the built counts; None if none."""
+    found = [_built_counts(con, f, ps, key) for f, ps in _values_files(indexed).items()]
     if all(rows is None for rows in found):
         return None
     total: dict[str, int] = {}
@@ -293,6 +307,84 @@ def _column_counts(
     return [(v, n) for v, n, _ in rows], int(rows[0][2]) if rows else 0
 
 
+def _matching_rows(
+    con: "Any",
+    files: list[str],
+    source: Source,
+    type_key: str,
+    envelope: tuple,
+    boxes: list[tuple],
+    filters: list,
+    match_mode: str = "all",
+) -> int:
+    """Features matching the filters whose bbox touches the area, without their geometry."""
+    storage = tag_storage(mirror_columns(con, files))
+    own = frozenset(
+        f.key for f in filters if source.tagged and _key_column(con, files, f.key)
+    )
+    prefilter, exact = filter_sql(filters, source, match_mode, type_key, storage, own)
+    prefilter = f"({prefilter}) AND {source.geometry_filter(type_key, files)}"
+    touches = " OR ".join(
+        f"(c.bbox.xmin <= {x1} AND c.bbox.xmax >= {x0} "
+        f"AND c.bbox.ymin <= {y1} AND c.bbox.ymax >= {y0})"
+        for x0, y0, x1, y1 in boxes
+    )
+    candidates = candidates_sql(
+        files, source, envelope, prefilter, storage, exact_area=False
+    )
+    (n,) = con.execute(
+        f"SELECT count(*) FROM ({candidates}) c WHERE {exact} AND ({touches})"
+    ).fetchone()
+    return int(n)
+
+
+def counted_matches(
+    con: "Any",
+    indexed: tuple[dict, list],
+    source: Source,
+    type_key: str,
+    filters: list,
+    match_mode: str = "all",
+) -> int | None:
+    """At most how many features match, from the build's counts; None if they cannot say.
+
+    Only for chosen values, of any OSM tag or of Overture's filterable attributes:
+    whole files are counted, so a country's supermarkets fit a fetch however
+    large the area.
+    """
+    # Only "is" with values narrows to what the counts hold. With "all" every filter
+    # narrows, so the countable ones bound the rest; with "any" each adds, so all must count.
+    countable = [f for f in filters if filter_operator(f) == "is"]
+    if not source.tagged:
+        fields = OVERTURE_FIELDS.get(OVERTURE_TYPES[type_key][0], {})
+        countable = [f for f in countable if f.key in fields]
+    if not countable or (match_mode != "all" and len(countable) < len(filters)):
+        return None
+    total = 0
+    for values_file, paths in _values_files(indexed).items():
+        for f in countable:
+            # One read per file of counts; each part below is then cached.
+            if _built_counts(con, values_file, paths, f.key) is None:
+                return None
+        for p in paths:
+            per_filter = []
+            for f in countable:
+                counts = dict(_built_counts(con, values_file, [p], f.key) or [])
+                # A key the build did not count (addr:*, name, rare ones) says nothing.
+                if not counts:
+                    if match_mode == "all":
+                        continue
+                    return None
+                # The build keeps a key's commonest values only: one left out is
+                # rarer than the rarest kept.
+                rarest = min(counts.values())
+                per_filter.append(sum(counts.get(v, rarest) for v in f.values))
+            if not per_filter:
+                return None
+            total += min(per_filter) if match_mode == "all" else sum(per_filter)
+    return total
+
+
 def mirror_values(
     con: "Any",
     *,
@@ -331,14 +423,7 @@ def mirror_values(
     indexed = _indexed(con, pointer(con, src), src, feature_type, envelope)
     files, parts = _files_of(*indexed)
     # Features in files wholly inside the area, from the index without a read.
-    inside = sum(
-        n
-        for _, _, n, x0, y0, x1, y1 in indexed[1]
-        if any(
-            bx0 <= x0 and by0 <= y0 and x1 <= bx1 and y1 <= by1
-            for bx0, by0, bx1, by1 in boxes
-        )
-    )
+    inside = inside_rows(indexed[1], boxes)
     if sample_only:
         # A few rows of what a fetch with these filters would write. Not over an
         # area no fetch reads: a selective filter would scan all of it.
@@ -382,12 +467,31 @@ def mirror_values(
         else:
             estimate, geometry = area_size(con, row_groups(con, files, src.geom), boxes)
             too_large = _too_large(estimate, geometry)
+        # With filters, how many match: counted where the area can be read, and
+        # over the read limit at most the build's counts, which may let it through.
+        filters = [] if where else _filters_of(tag_filters)
+        matches, bound = None, False
+        # Up to the ceiling, filters with values may still make an area too large fit.
+        can_fit = not too_large or filters_can_fit(con, indexed, files, boxes, src.geom)
+        if filters and too_large and can_fit:
+            matches = counted_matches(
+                con, indexed, src, feature_type, filters, match_mode
+            )
+            bound = True
+            too_large = matches is None or matches > MAX_FEATURES
+        elif filters and not too_large:
+            matches = _matching_rows(
+                con, files, src, feature_type, envelope, boxes, filters, match_mode
+            )
         return {
             "key": None,
             "total": 0,
             "complete": True,
             "estimate": estimate,
             "too_large": too_large,
+            "matches": matches,
+            "matches_bound": bound,
+            "filters_can_fit": can_fit,
             "values": [],
         }
     if quick and (src.tagged or key is not None):

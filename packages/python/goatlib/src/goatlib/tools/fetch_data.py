@@ -40,9 +40,11 @@ from goatlib.io.fetch.mirror.reader import (
     _indexed,
     check_read_size,
     ensure_s3,
+    filters_can_fit,
     mirror_columns,
     pointer,
 )
+from goatlib.io.fetch.mirror.values import _key_column, counted_matches
 from goatlib.models.io import DatasetMetadata
 from goatlib.tools.base import BaseToolRunner, _get_or_create_event_loop
 from goatlib.tools.schemas import ToolInputBase
@@ -200,6 +202,9 @@ class FetchDataRunner(BaseToolRunner[FetchDataParams]):
     ) -> tuple[Path, DatasetMetadata]:
         con = self.duckdb_con
         ensure_s3(con)
+        # Read once, so nothing to gain from keeping it: cached, a country's
+        # polygons took 4 GB instead of 1.4.
+        con.execute("SET enable_external_file_cache = false")
 
         src = SOURCES[params.source]
         type_key = params.feature_type if src.tagged else params.overture_type
@@ -214,15 +219,35 @@ class FetchDataRunner(BaseToolRunner[FetchDataParams]):
         origin = {f: indexed[0][row[0]] for f, row in zip(files, indexed[1])}
         if not files:
             raise ValueError("The mirror holds no data for this area.")
-        check_read_size(con, files, area_boxes(con, area), src.geom)
+        boxes = area_boxes(con, area)
+        try:
+            check_read_size(con, files, boxes, src.geom)
+        except ValueError:
+            # Unless the build's counts show the chosen values fit one fetch.
+            matches = (
+                None
+                if params.where
+                or not filters_can_fit(con, indexed, files, boxes, src.geom)
+                else counted_matches(
+                    con, indexed, src, type_key, params.tag_filters, params.match_mode
+                )
+            )
+            if matches is None or matches > MAX_FEATURES:
+                raise
 
         columns = mirror_columns(con, files)
         storage = tag_storage(columns)
         if params.where:
             prefilter, exact = "TRUE", checked_where(con, files, src, params.where)
         else:
+            # Tags every file holds as their own column: far less to read than all tags.
+            own = frozenset(
+                k
+                for k in {f.key for f in params.tag_filters}
+                if src.tagged and _key_column(con, files, k)
+            )
             prefilter, exact = filter_sql(
-                params.tag_filters, src, params.match_mode, type_key, storage
+                params.tag_filters, src, params.match_mode, type_key, storage, own
             )
         prefilter = f"({prefilter}) AND {src.geometry_filter(type_key, files)}"
         out = temp_dir / "output.parquet"
@@ -244,13 +269,14 @@ class FetchDataRunner(BaseToolRunner[FetchDataParams]):
             f'SELECT ST_AsHEXWKB(ST_Union_Agg("{area_geom}")) FROM {area}'
         ).fetchone()
         geom, inside = f'c."{src.geom}"', f"ST_GeomFromHEXWKB('{shape}')"
+        # No LIMIT: it made DuckDB read the files one by one (Germany's supermarkets,
+        # 144 s instead of 30), and the size check above already bounds the rows.
         con.execute(f"""
             COPY (
                 WITH candidates AS ({candidates_sql(files, src, envelope, prefilter, storage)})
                 SELECT {selected}, c.filename AS _mirror_file
                 FROM candidates c
                 WHERE {exact} AND ST_Intersects({geom}, {inside})
-                LIMIT {2 * MAX_FEATURES + 1}
             ) TO '{staged}' {parquet_copy_options()}
         """)
         # Which files supplied rows, so the lineage names only those: a unit's
@@ -275,10 +301,6 @@ class FetchDataRunner(BaseToolRunner[FetchDataParams]):
                 )
             ) TO '{out}' {parquet_copy_options(f"ROW_GROUP_SIZE {OUTPUT_ROW_GROUP}")}
         """)
-        # The staged read stops at its limit: reaching it means rows were left out.
-        (staged_rows,) = con.execute(
-            f"SELECT count(*) FROM read_parquet('{staged}')"
-        ).fetchone()
         staged.unlink(missing_ok=True)
         count = con.execute(f"SELECT count(*) FROM read_parquet('{out}')").fetchone()
         features = int(count[0]) if count else 0
@@ -287,7 +309,7 @@ class FetchDataRunner(BaseToolRunner[FetchDataParams]):
             raise ValueError(
                 "No features match in this area. Pick another area or loosen the filters."
             )
-        if features > MAX_FEATURES or staged_rows > 2 * MAX_FEATURES:
+        if features > MAX_FEATURES:
             raise ValueError(
                 f"The area holds more than {MAX_FEATURES:,} matching features. "
                 "Pick a smaller area or add filters."

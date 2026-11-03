@@ -92,9 +92,11 @@ def candidates_sql(
     envelope: tuple,
     prefilter: str,
     storage: str = "text",
+    exact_area: bool = True,
 ) -> str:
     """One read over every covering file. Features at a continent seam can arrive
-    twice; the caller de-duplicates by id."""
+    twice; the caller de-duplicates by id. Without `exact_area`, the features' bbox
+    alone decides, so the geometry is not read."""
     xmin, ymin, xmax, ymax = envelope
     # Inside a CASE, so only rows the prefilter admits are parsed: written as a
     # plain projection, DuckDB merged it with the exact test into one filter and
@@ -111,12 +113,16 @@ def candidates_sql(
     else:
         projection = f"* EXCLUDE (tags), {_tags_from(storage, parsed)} AS tags"
     listed = ", ".join(f"'{_quote(f)}'" for f in files)
+    exact = (
+        f' AND ST_Intersects("{source.geom}", ST_MakeEnvelope({xmin}, {ymin}, {xmax}, {ymax}))'
+        if exact_area
+        else ""
+    )
     return f"""SELECT {projection}
         FROM read_parquet([{listed}], union_by_name = true, filename = true)
         WHERE bbox.xmin <= {xmax} AND bbox.xmax >= {xmin}
           AND bbox.ymin <= {ymax} AND bbox.ymax >= {ymin}
-          AND {prefilter}
-          AND ST_Intersects("{source.geom}", ST_MakeEnvelope({xmin}, {ymin}, {xmax}, {ymax}))"""
+          AND {prefilter}{exact}"""
 
 
 def _version_date(version: str) -> str:
@@ -204,9 +210,10 @@ def filter_sql(
     match_mode: str = "all",
     type_key: str = "places",
     storage: str = "text",
+    columns: frozenset[str] = frozenset(),
 ) -> tuple[str, str]:
-    """(cheap prefilter before parsing, exact test after)."""
+    """(cheap prefilter before parsing, exact test after); `columns`: tags with their own column."""
     joiner = " AND " if match_mode == "all" else " OR "
     if source.tagged:
-        return _tag_sql(filters, joiner, storage)
+        return _tag_sql(filters, joiner, storage, columns)
     return _column_sql(filters, joiner, source, type_key)

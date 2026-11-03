@@ -179,7 +179,7 @@ GOAT keeps a copy of [OpenStreetMap](https://www.openstreetmap.org) and [Overtur
 
 :::info
 
-A layer holds up to 1,000,000 features. When the area holds more, GOAT asks you to <code>Choose values for a filter, or a smaller area</code>. A very large area, such as a whole country for buildings, is refused even with filters: zoom in or choose a smaller area. <code>Add layer</code> waits while GOAT checks the size of the area.
+A layer holds up to 1,000,000 features. When the area holds more, or is too large to read, GOAT asks you to <code>Choose values for a filter, or a smaller area</code>. Values can make even a whole country fit, such as <code>shop</code> = <code>supermarket</code> for all supermarkets in Germany, or <code>category</code> = <code>grocery_store</code> in Overture Maps. <code>Add layer</code> waits while GOAT checks the size of the area.
 
 :::
 

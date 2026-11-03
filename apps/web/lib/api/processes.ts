@@ -556,6 +556,11 @@ export type MirrorValuesOutput = {
   estimate?: number | null;
   /** More in the area than one fetch reads: a fetch would be refused. */
   too_large?: boolean;
+  /** With size_only and filters: the features matching them, or at most that many when bound. */
+  matches?: number | null;
+  matches_bound?: boolean;
+  /** With size_only: filters with values can still make an area too large to read fit. */
+  filters_can_fit?: boolean;
   /** With columns_only: what a fetch would write, and its geometry type. */
   columns?: { name: string; type: string }[];
   geometry_type?: string;
@@ -568,15 +573,30 @@ export type MirrorValuesOutput = {
 export async function getMirrorSize(
   area: GeoJSON.Polygon | GeoJSON.MultiPolygon,
   featureType: string,
-  source: string
-): Promise<{ estimate?: number; tooLarge: boolean }> {
+  source: string,
+  tagFilters: { key: string; values: string[]; operator?: string }[] = [],
+  matchMode = "all"
+): Promise<{
+  estimate?: number;
+  tooLarge: boolean;
+  matches?: number;
+  matchesBound: boolean;
+  filtersCanFit: boolean;
+}> {
   const result = await executeProcess<Record<string, unknown>, MirrorValuesOutput>("mirror-values", {
     area,
     source,
     feature_type: featureType,
     size_only: true,
+    ...(tagFilters.length ? { tag_filters: tagFilters, match_mode: matchMode } : {}),
   });
-  return { estimate: result.estimate ?? undefined, tooLarge: !!result.too_large };
+  return {
+    estimate: result.estimate ?? undefined,
+    tooLarge: !!result.too_large,
+    matches: result.matches ?? undefined,
+    matchesBound: !!result.matches_bound,
+    filtersCanFit: result.filters_can_fit !== false,
+  };
 }
 
 /** The columns a fetch would write for an area, known before fetching. */
