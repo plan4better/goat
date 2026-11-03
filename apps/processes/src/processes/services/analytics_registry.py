@@ -6,7 +6,7 @@ Includes support for i18n translation resolution based on Accept-Language header
 
 import logging
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from goatlib.analysis.statistics import (
     AggregationStatsInput,
@@ -87,10 +87,13 @@ class MirrorValuesProcessInput(BaseModel):
         description="A few rows a fetch would write (limit up to 50), no list",
     )
     tag_filters: list[dict] | None = Field(
-        None, description="With sample_only: the fetch's tag or attribute filters"
+        None,
+        description="With sample_only or size_only: the fetch's tag or attribute "
+        "filters; with size_only, chosen values the mirror counts can make a large "
+        "area fit",
     )
-    match_mode: str = Field(
-        "all", description="With sample_only: all or any of the filters"
+    match_mode: Literal["all", "any"] = Field(
+        "all", description="With sample_only or size_only: all or any of the filters"
     )
     where: str | None = Field(
         None, max_length=4000, description="With sample_only: a SQL condition instead"
@@ -121,6 +124,18 @@ class MirrorValuesResult(BaseModel):
     )
     too_large: bool = Field(
         False, description="More in the area than one fetch reads: a fetch is refused"
+    )
+    matches: int | None = Field(
+        None,
+        description="With size_only and filters: the features matching them in the area",
+    )
+    matches_bound: bool = Field(
+        False,
+        description="matches is an upper bound from the mirror's counts, not a count",
+    )
+    filters_can_fit: bool = Field(
+        True,
+        description="With size_only: filters with values can still make the area fit",
     )
     columns: list[MirrorColumn] | None = Field(
         None, description="The columns a fetch would write (columns_only)"

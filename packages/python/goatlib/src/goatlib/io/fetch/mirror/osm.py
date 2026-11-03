@@ -211,19 +211,36 @@ def filter_operator(f: "object") -> str:
 
 
 def _tag_sql(
-    filters: list, joiner: str = " AND ", storage: str = "text"
+    filters: list,
+    joiner: str = " AND ",
+    storage: str = "text",
+    columns: frozenset[str] = frozenset(),
 ) -> tuple[str, str]:
-    """(cheap prefilter on the raw text, exact test on the parsed map)."""
+    """(cheap prefilter on the raw text, exact test on the parsed map).
+
+    A tag with its own column in `columns` is tested on that column, without the tags.
+    """
     if not filters:
         return "TRUE", "TRUE"
     if storage != "text":
         # A stored map needs no parsing, so nothing to spare it from.
-        return "TRUE", _tag_sql(filters, joiner)[1]
+        return "TRUE", _tag_sql(filters, joiner, columns=columns)[1]
     pre, exact = [], []
     for f in filters:
         key = _quote(re.escape(f.key))
         quoted = f"'{_quote(f.key)}'"
         operator = filter_operator(f)
+        if f.key in columns:
+            column = '"' + f.key.replace('"', '""') + '"'
+            listed = ", ".join(f"'{_quote(v)}'" for v in f.values)
+            test = {
+                "is_set": f"{column} IS NOT NULL",
+                "is_not_set": f"{column} IS NULL",
+                "is_not": f"coalesce({column} NOT IN ({listed}), TRUE)",
+            }.get(operator, f"list_contains([{listed}], {column})")
+            pre.append(test)
+            exact.append(test)
+            continue
         if operator == "is_not_set":
             # Absence leaves nothing in the raw text to look for, so this one passes the
             # prefilter and is decided on the parsed map.

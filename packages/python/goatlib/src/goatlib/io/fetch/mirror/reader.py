@@ -47,6 +47,9 @@ MAX_READ_FEATURES = 5_000_000
 #: Above this much compressed geometry in the area too: unpacked it would not fit
 #: a job's memory (one country's divisions: 86 MB).
 MAX_READ_BYTES = 100_000_000
+#: Above this many features in the row groups an area touches, no filter makes it fit:
+#: filters only shorten the result, and the read alone would be a continent's worth.
+MAX_FILTERED_READ_FEATURES = 50_000_000
 
 
 #: A GOAT layer holds one geometry type, and a base type mixes them (water has
@@ -413,6 +416,49 @@ def area_size(
     n = sum(g[2] for g in unique.values())
     geometry = sum(g[7] for g in unique.values())
     return rows, geometry * rows // n if n else 0
+
+
+def inside_rows(rows: list, boxes: list[tuple]) -> int:
+    """Features in the files wholly inside the area, from the index without a read."""
+    return sum(
+        n
+        for _, _, n, x0, y0, x1, y1 in rows
+        if any(
+            bx0 <= x0 and by0 <= y0 and x1 <= bx1 and y1 <= by1
+            for bx0, by0, bx1, by1 in boxes
+        )
+    )
+
+
+def filters_can_fit(
+    con: "Any",
+    indexed: tuple[dict, list],
+    files: list[str],
+    boxes: list[tuple],
+    geom: str,
+) -> bool:
+    """Whether the read a filtered fetch makes here stays under the ceiling.
+
+    The index first: a continent is over it by its whole countries alone, before
+    any of their footers is fetched.
+    """
+    if inside_rows(indexed[1], boxes) > MAX_FILTERED_READ_FEATURES:
+        return False
+    return touched_rows(con, files, boxes, geom) <= MAX_FILTERED_READ_FEATURES
+
+
+def touched_rows(con: "Any", files: list[str], boxes: list[tuple], geom: str) -> int:
+    """Features in the row groups the area touches: what a filtered fetch reads at most."""
+    unique = {
+        (g[0], g[1]): g
+        for g in row_groups(con, files, geom)
+        if g[3] is None
+        or any(
+            g[3] <= x1 and g[5] >= x0 and g[4] <= y1 and g[6] >= y0
+            for x0, y0, x1, y1 in boxes
+        )
+    }
+    return sum(g[2] for g in unique.values())
 
 
 def _too_large(rows: int, geometry: int) -> bool:

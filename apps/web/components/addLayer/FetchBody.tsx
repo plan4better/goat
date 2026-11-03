@@ -45,6 +45,8 @@ import {
   type FetchFlow,
   type Geometry,
   MAX_FEATURES,
+  MAX_FILTERED_READ_FEATURES,
+  MAX_READ_FEATURES,
   OSM_TYPES,
   OVERTURE_THEMES,
   type TagFilter,
@@ -435,20 +437,39 @@ const EstimateChip = ({ flow }: { flow: FetchFlow["fetch"] }) => {
     const tooMany = !isNetwork && flow.estimate != null && flow.estimate > MAX_FEATURES;
     const count = isNetwork
       ? t("fetch_features_network_size", { km2: number(km2) })
-      : flow.estimate == null
-        ? t("fetch_features_estimate_counting")
-        : tooMany
-          ? // Past the limit an exact count says nothing a fetch could use.
-            t("fetch_features_estimate_over", { limit: number(MAX_FEATURES) })
-          : t("fetch_features_estimate", { count: flow.estimate, formatted: number(flow.estimate) });
+      : flow.matchPending
+        ? t("fetch_features_matches_counting")
+        : flow.matches != null && flow.matches > MAX_FEATURES
+          ? t("fetch_features_matches_over", { limit: number(MAX_FEATURES) })
+          : flow.matches != null
+            ? flow.matchesBound
+              ? // A bound from whole countries, far above the area's own count: only that it fits.
+                t("fetch_features_matches_fit")
+              : t("fetch_features_matches", { count: flow.matches, formatted: number(flow.matches) })
+            : flow.estimate == null
+              ? t("fetch_features_estimate_counting")
+              : tooMany
+                ? // Past the limit an exact count says nothing a fetch could use.
+                  t("fetch_features_estimate_over", {
+                    limit: number(
+                      flow.beyondFilters
+                        ? MAX_FILTERED_READ_FEATURES
+                        : flow.tooLarge
+                          ? MAX_READ_FEATURES
+                          : MAX_FEATURES
+                    ),
+                  })
+                : t("fetch_features_estimate", { count: flow.estimate, formatted: number(flow.estimate) });
     const warning = flow.sizeState === "too_big";
     const after = warning
       ? t(
           isNetwork
             ? "fetch_features_network_limit"
-            : flow.tooLarge
+            : flow.beyondFilters
               ? "fetch_features_too_large_hint"
-              : "fetch_features_too_many_hint"
+              : flow.tooLarge
+                ? "fetch_features_too_large_filters_hint"
+                : "fetch_features_too_many_hint"
         )
       : isNetwork
         ? t("fetch_features_network_limit")
@@ -640,7 +661,7 @@ const QuickPicks = ({ flow }: { flow: FetchFlow["fetch"] }) => {
               aria-pressed={on}
               // Selected like a selected toggle button: primary text on a soft primary ground.
               sx={on ? { backgroundColor: alpha(theme.palette.primary.main, 0.12) } : undefined}
-              disabled={flow.tooLarge}
+              disabled={flow.beyondFilters}
               onClick={() => flow.toggleQuickPick(pick.key, pick.values)}
             />
           );
@@ -1236,8 +1257,10 @@ const useSqlCheck = (flow: FetchFlow["fetch"]) => {
 const FilterSection = ({ flow }: { flow: FetchFlow["fetch"] }) => {
   const { t } = useTranslation("common");
   const isSql = flow.filterMode === "sql";
-  // Filters cannot make an area this large fit: no new ones, while the ones there stay editable.
+  // Over the read limit only filters with values can make the area fit: SQL is never counted.
+  // Past the ceiling nothing does, so the filters wait for a smaller area.
   const paused = flow.tooLarge;
+  const beyond = flow.beyondFilters;
   const [open, setOpen] = useState<{ id: number; part: "key" | "values" } | null>(null);
   const [place, setPlace] = useState<DropdownPlace | null>(null);
   const fields = useRef<Record<string, HTMLElement | null>>({});
@@ -1296,7 +1319,7 @@ const FilterSection = ({ flow }: { flow: FetchFlow["fetch"] }) => {
       </Stack>
       {paused && (
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-          {t("fetch_features_filters_paused")}
+          {t(beyond ? "fetch_features_filters_paused" : "fetch_features_filters_values_only")}
         </Typography>
       )}
       {confirmBack && (
@@ -1436,7 +1459,7 @@ const FilterSection = ({ flow }: { flow: FetchFlow["fetch"] }) => {
               variant="text"
               size="small"
               // One empty row at a time: a second would only be another blank to fill.
-              disabled={paused || flow.filters.some((filter) => !filter.key.trim())}
+              disabled={beyond || flow.filters.some((filter) => !filter.key.trim())}
               startIcon={<Icon iconName={ICON_NAME.PLUS} style={{ fontSize: ICON_SIZE.medium }} />}
               onClick={() => {
                 const id = flow.addFilter();

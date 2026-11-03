@@ -180,7 +180,7 @@ GOAT hält eine Kopie von [OpenStreetMap](https://www.openstreetmap.org) und [Ov
 
 :::info
 
-Ein Layer umfasst bis zu 1.000.000 Features. Liegen im Gebiet mehr, fordert GOAT Sie auf, <code>Werte für einen Filter oder ein kleineres Gebiet</code> zu wählen. Ein sehr großes Gebiet, etwa ein ganzes Land bei Gebäuden, wird auch mit Filtern abgelehnt: Zoomen Sie hinein oder wählen Sie ein kleineres Gebiet. <code>Layer hinzufügen</code> wartet, während GOAT die Größe des Gebiets prüft.
+Ein Layer umfasst bis zu 1.000.000 Features. Liegen im Gebiet mehr oder ist es zu groß zum Lesen, fordert GOAT Sie auf, <code>Werte für einen Filter oder ein kleineres Gebiet</code> zu wählen. Werte können sogar ein ganzes Land passend machen, etwa <code>shop</code> = <code>supermarket</code> für alle Supermärkte in Deutschland oder <code>category</code> = <code>grocery_store</code> bei Overture Maps. <code>Layer hinzufügen</code> wartet, während GOAT die Größe des Gebiets prüft.
 
 :::
 

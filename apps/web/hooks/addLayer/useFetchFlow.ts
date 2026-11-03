@@ -63,6 +63,10 @@ export const OSM_TYPES = ["points", "lines", "multipolygons"] as const;
 
 /** The tool's own cap: a fetch over it stops, so the form refuses one far above it. */
 export const MAX_FEATURES = 1_000_000;
+/** The tool's read limit: an area holding more is read only when its filters' values fit. */
+export const MAX_READ_FEATURES = 5_000_000;
+/** Past this many features in the area no filter makes it fit: only a smaller area does. */
+export const MAX_FILTERED_READ_FEATURES = 50_000_000;
 
 export type Geometry = "point" | "line" | "polygon";
 
@@ -183,7 +187,7 @@ export type FetchFlowState = {
   setSource: (source: FetchSource) => void;
   /** The area holds far more than a fetch takes, and no filter with values narrows it. */
   tooBig: boolean;
-  /** The area holds more than a fetch reads in reasonable time, filters or not. */
+  /** The area holds more than a fetch reads, and its filters' values do not make it fit. */
   tooLarge: boolean;
   /** The size check for the current area, source and type has not answered yet. */
   sizePending: boolean;
@@ -194,6 +198,14 @@ export type FetchFlowState = {
   sizeState: "unknown" | "ok" | "too_big";
   /** Features in the area as last counted; absent while unknown. */
   estimate?: number;
+  /** Over the cap with filters that have values: the features matching them, once counted. */
+  matches?: number;
+  /** `matches` is at most that many, from the mirror's counts over an area too large to read. */
+  matchesBound: boolean;
+  /** The count of matching features is on its way. */
+  matchPending: boolean;
+  /** Too large, and so large that no filter makes it fit: only a smaller area does. */
+  beyondFilters: boolean;
   /** The fetch's filter inputs as they stand, for a sample of what it would write. */
   sampleFilters: Pick<FetchParams, "where" | "match_mode" | "tag_filters">;
   /** A quick pick is on while every one of its values is in a filter on its key. */
@@ -434,7 +446,12 @@ export const useFetchFlow = ({
   // Only the size check sets the estimate: the key and value lists read capped samples. Its last
   // answer stays, whichever area it was for, until the next one arrives: moving between two
   // large areas then changes nothing on screen, and the button keeps its state meanwhile.
-  const [sized, setSized] = useState<{ for: string; estimate?: number; tooLarge: boolean }>();
+  const [sized, setSized] = useState<{
+    for: string;
+    estimate?: number;
+    tooLarge: boolean;
+    filtersCanFit: boolean;
+  }>();
   const estimate = sized?.estimate;
   // Asked on its own so the size is known before any list; nothing is added until then.
   const [sizeFailedFor, setSizeFailedFor] = useState<string>();
@@ -446,9 +463,9 @@ export const useFetchFlow = ({
     let current = true;
     const timer = setTimeout(() => {
       getMirrorSize(askedArea, askedType, askedSource)
-        .then(({ estimate: n, tooLarge: large }) => {
+        .then(({ estimate: n, tooLarge: large, filtersCanFit }) => {
           if (!current) return;
-          setSized({ for: sizedFor, estimate: n, tooLarge: large });
+          setSized({ for: sizedFor, estimate: n, tooLarge: large, filtersCanFit });
         })
         // The tool checks the size itself, so a failed check does not block.
         .catch(() => current && setSizeFailedFor(sizedFor));
@@ -471,9 +488,46 @@ export const useFetchFlow = ({
     filterMode === "sql"
       ? !!sql.trim()
       : withValues.length > 0 && (match === "all" || withValues.length === usedFilters.length);
+  // Over the cap, filters with values are asked about too: how many match, and whether the
+  // mirror's counts let an area too large to read through. Under it the area alone decides.
+  const matchFor =
+    !isNetwork && filterMode === "builder" && narrowed && sized?.for === sizedFor && sized.filtersCanFit
+      ? sized.tooLarge || (sized.estimate ?? 0) > MAX_FEATURES
+        ? JSON.stringify([sizedFor, usedFilters.map(filterParam), match])
+        : undefined
+      : undefined;
+  const [matched, setMatched] = useState<{
+    for: string;
+    tooLarge: boolean;
+    matches?: number;
+    bound: boolean;
+  }>();
+  useEffect(() => {
+    if (!matchFor) return;
+    const [forArea, askedFilters, askedMatch] = JSON.parse(matchFor);
+    const [askedArea, askedSource, askedType] = JSON.parse(forArea);
+    let current = true;
+    const timer = setTimeout(() => {
+      getMirrorSize(askedArea, askedType, askedSource, askedFilters, askedMatch)
+        .then(({ tooLarge: large, matches, matchesBound }) => {
+          if (current) setMatched({ for: matchFor, tooLarge: large, matches, bound: matchesBound });
+        })
+        // No answer leaves the area's own verdict.
+        .catch(() => current && setMatched({ for: matchFor, tooLarge: !!sized?.tooLarge, bound: false }));
+    }, 800);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- asked once per filter set
+  }, [matchFor]);
+  const matchAnswer = matched && matched.for === matchFor ? matched : undefined;
+  const matchPending = !!matchFor && !matchAnswer;
   // Decided by the size check, which knows both limits: features and geometry.
-  const tooLarge = !!area && !!sized?.tooLarge;
-  const tooBig = tooLarge || (!narrowed && (estimate ?? 0) > MAX_FEATURES);
+  const tooLarge = !!area && !!sized?.tooLarge && !(matchAnswer && !matchAnswer.tooLarge);
+  // Counted matches over the cap are too many however the area was measured.
+  const tooManyMatches = (matchAnswer?.matches ?? 0) > MAX_FEATURES;
+  const tooBig = tooLarge || tooManyMatches || (!narrowed && (estimate ?? 0) > MAX_FEATURES);
   const sizeState = !sized ? "unknown" : tooBig ? "too_big" : "ok";
 
   const sampleFilters = useMemo(
@@ -629,7 +683,13 @@ export const useFetchFlow = ({
     : firstSizePending
       ? t("fetch_features_checking_area")
       : tooLarge
-        ? t(isNetwork ? `fetch_features_${source}_too_large` : "fetch_features_area_too_large")
+        ? t(
+            isNetwork
+              ? `fetch_features_${source}_too_large`
+              : sized?.filtersCanFit === false
+                ? "fetch_features_area_too_large"
+                : "fetch_features_area_too_large_filters"
+          )
         : tooBig
           ? t("fetch_features_reduce_area")
           : sqlMissing
@@ -688,6 +748,10 @@ export const useFetchFlow = ({
       sizePending,
       sizeState,
       estimate,
+      matches: matchAnswer?.matches,
+      matchesBound: !!matchAnswer?.bound,
+      matchPending,
+      beyondFilters: tooLarge && sized?.filtersCanFit === false,
       sampleFilters,
       isQuickPickOn,
       toggleQuickPick,
