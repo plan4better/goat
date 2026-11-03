@@ -522,3 +522,29 @@ class TestMainSignature:
         sig = inspect.signature(main)
         assert sig.parameters["overwrite_previous"].default is False
         assert sig.parameters["export_node_id"].default is None
+
+
+class TestTempResultOnAnotherNode:
+    """The step that wrote the result may have run on another node, whose file
+    this one sees only a moment later (goatlib.utils.shared_disk)."""
+
+    def test_a_result_that_appears_late_is_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threading
+
+        from goatlib.utils import shared_disk
+
+        monkeypatch.setattr(shared_disk, "WAIT_SECONDS", 5)
+        r = _runner()
+        parquet = tmp_path / "t_x.parquet"
+        threading.Timer(0.1, parquet.write_bytes, args=(b"data",)).start()
+        with patch.object(r, "get_temp_base_path", return_value=tmp_path):
+            _, found, _ = r._resolve_temp_parquet(USER, WORKFLOW, NODE)
+        assert found == parquet
+
+    def test_a_result_that_never_appears_is_reported(self, tmp_path: Path) -> None:
+        r = _runner()
+        with patch.object(r, "get_temp_base_path", return_value=tmp_path):
+            with pytest.raises(FileNotFoundError, match="Temp layer not found"):
+                r._resolve_temp_parquet(USER, WORKFLOW, NODE)

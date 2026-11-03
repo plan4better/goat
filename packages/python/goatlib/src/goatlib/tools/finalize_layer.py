@@ -61,6 +61,7 @@ from goatlib.utils.layer import (
     layer_schema_name,
     table_path_parts,
 )
+from goatlib.utils.shared_disk import wait_for
 
 logger = logging.getLogger(__name__)
 
@@ -175,12 +176,17 @@ class FinalizeLayerRunner(
         base_path = self.get_temp_base_path(user_id, workflow_id, node_id)
         metadata_path = base_path / "metadata.json"
 
-        parquet_files = list(base_path.glob("t_*.parquet"))
-        if not parquet_files:
+        def newest() -> Path | None:
+            files = list(base_path.glob("t_*.parquet"))
+            return max(files, key=lambda p: p.stat().st_mtime) if files else None
+
+        # The step that wrote it may have run on another node
+        # (goatlib.utils.shared_disk).
+        parquet_path = wait_for(newest)
+        if parquet_path is None:
             raise FileNotFoundError(
                 f"Temp layer not found: workflow={workflow_id}, node={node_id}"
             )
-        parquet_path = max(parquet_files, key=lambda p: p.stat().st_mtime)
 
         metadata: dict = {}
         if metadata_path.exists():

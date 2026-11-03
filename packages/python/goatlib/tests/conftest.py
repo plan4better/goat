@@ -21,6 +21,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# A file another pod wrote is waited for (goatlib.utils.shared_disk); a test
+# about a missing one should not wait the production minute and more.
+@pytest.fixture(autouse=True)
+def _short_shared_disk_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    from goatlib.utils import shared_disk
+
+    monkeypatch.setattr(shared_disk, "WAIT_SECONDS", 0.2)
+    monkeypatch.setattr(shared_disk, "POLL_SECONDS", 0.01)
+
+
 # ---------------------------------------------------------------------------
 # Global root
 # ---------------------------------------------------------------------------
