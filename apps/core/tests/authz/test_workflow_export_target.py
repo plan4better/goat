@@ -907,7 +907,7 @@ async def _link_row(db: AsyncSession, link_id: int) -> Any:
     return (
         await db.execute(
             text(
-                f'SELECT layer_id, name, "order", properties, other_properties '
+                f'SELECT layer_id, name, "order", properties, other_properties, shareable '
                 f"FROM {S}.layer_project WHERE id = :id"
             ),
             {"id": link_id},
@@ -926,7 +926,8 @@ async def test_claiming_a_project_entry_points_it_at_the_layer_and_keeps_its_set
     make_project: MakeProject,
 ) -> None:
     """Copy-on-write keeps the entry, so its name, style, position and
-    dashboard widgets stay; only the layer behind it changes."""
+    dashboard widgets stay; only the layer behind it changes, and the entry
+    becomes shareable, as the runner may share the new layer (D7)."""
     owner = await make_user()
     folder = await make_folder(owner)
     project = await make_project(owner, folder)
@@ -937,9 +938,10 @@ async def test_claiming_a_project_entry_points_it_at_the_layer_and_keeps_its_set
         await db_session.execute(
             text(
                 f"INSERT INTO {S}.layer_project "
-                '(layer_id, project_id, name, "order", properties, other_properties, updated_at) '
+                '(layer_id, project_id, name, "order", properties, other_properties, '
+                "shareable, updated_at) "
                 "VALUES (:l, :p, 'My catchments', 3, CAST(:props AS jsonb), "
-                "CAST(:other AS jsonb), now()) RETURNING id"
+                "CAST(:other AS jsonb), false, now()) RETURNING id"
             ),
             {
                 "l": inherited.id,
@@ -963,6 +965,7 @@ async def test_claiming_a_project_entry_points_it_at_the_layer_and_keeps_its_set
 
     row = await _link_row(db_session, link_id)
     assert row.layer_id == fresh.id
+    assert row.shareable
     assert (row.name, row.order, row.properties) == (
         "My catchments",
         3,
