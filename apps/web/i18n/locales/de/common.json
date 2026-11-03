@@ -3801,6 +3801,7 @@
   "assistant_chip_source": "Quelle: {{name}}",
   "assistant_result_none": "nichts gefunden",
   "assistant_result_withheld": "zurückgehalten",
+  "assistant_result_withheld_policy": "durch die Datenrichtlinie zurückgehalten",
   "assistant_result_datasets_one": "{{count, number}} Datensatz",
   "assistant_result_datasets_other": "{{count, number}} Datensätze",
   "assistant_result_layers_one": "{{count, number}} Layer",

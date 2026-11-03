@@ -16,6 +16,7 @@ from assistant.tools.policy import Withheld, apply_policy
 from assistant.tools.runtime import (
     MAX_RESULT_BYTES,
     InputInvalid,
+    PolicyWithheld,
     ToolEnv,
     ToolSpec,
     execute,
@@ -123,6 +124,25 @@ async def test_invalid_arguments_tell_the_model_what_to_fix(
     assert "text" in caught.value.message and "times" in caught.value.message
     [row] = await _audit(db)
     assert row["status"] == "invalid"
+
+
+async def test_a_policy_refusal_is_withheld_not_invalid(
+    repo: Repository, db: Database
+) -> None:
+    """The data policy keeping something back is an answer, not a mistake: the
+    user sees no failed step, the model reads what the policy allows."""
+
+    async def _kept_back(env: ToolEnv, args: EchoIn) -> EchoOut:
+        raise PolicyWithheld("The data policy (Restricted) allows no 'contains'.")
+
+    env = tool_env(fake_clients(), repo=repo)
+    payload = await execute(_spec(_kept_back, returns_data=True), env, {"text": "x"})
+    assert payload == {
+        "withheld": True,
+        "reason": "Withheld: The data policy (Restricted) allows no 'contains'.",
+    }
+    [row] = await _audit(db)
+    assert (row["status"], row["error"]) == ("withheld", None)
 
 
 async def test_the_data_policy_applies_to_data_tools_only() -> None:

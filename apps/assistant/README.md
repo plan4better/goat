@@ -205,6 +205,11 @@ sends counts only, for few groups (judged over the whole layer, also with a filt
 tools and the count's filter read `join_x` for a field `x` the layer lacks and say so in the result's note. The name is
 resolved before anything else, so the Restricted checks judge `join_x` exactly as when the model names it.
 
+What Restricted keeps back is known before an answer plans: the run's note says so (`prompt.RESTRICTED_POLICY`), so a
+card offers no choice the tools would refuse, such as keeping only some values of a field with many. A call the policy
+refuses (`runtime.PolicyWithheld`, a filter Restricted does not allow) is answered as withheld with the reason, like a
+withheld result: not invalid input, so the user sees no failed step and the model does not retry it as a mistake.
+
 **Building a workflow.** The model is shown only the tools of the user's toolbox (`offered` in
 `tools/workflow_tools.py`: `GET /processes` for the user, without the tools hidden from the toolbox, such as custom
 SQL), and the check and the create refuse a draft naming any other tool: processes describes, checks and runs every

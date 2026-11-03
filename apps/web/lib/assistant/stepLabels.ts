@@ -307,6 +307,8 @@ const shownCount = (output: Fields): number =>
 export function stepResult(step: DynamicToolUIPart, t: Translate): string | undefined {
   if (step.state !== "output-available") return undefined;
   const output = outputOf(step);
+  // Kept back by the organization's data policy (Restricted): an expected answer, not a failure.
+  if (output.withheld === true) return t("assistant_result_withheld_policy");
   const count = (key: string, value: number | undefined) =>
     value === undefined ? undefined : value === 0 ? t("assistant_result_none") : t(key, { count: value });
   switch (step.toolName) {
