@@ -4,6 +4,16 @@ import { alpha } from '@mui/material/styles'
 
 const input = (theme: Theme) => {
   return {
+    // Small inputs are the panels', forms' and dialogs' size and read in body2, like the
+    // selects and lists beside them; InputBase would otherwise use body1. Medium inputs
+    // (a page's large search) keep body1.
+    MuiInputBase: {
+      styleOverrides: {
+        sizeSmall: {
+          fontSize: theme.typography.body2.fontSize
+        }
+      }
+    },
     MuiInputLabel: {
       styleOverrides: {
         root: {

@@ -1,10 +1,72 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { forwardRef, useImperativeHandle } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  executeProcessAsync,
+  getMirrorColumns,
+  getMirrorSample,
+  getMirrorSize,
+  getMirrorValues,
+} from "@/lib/api/processes";
+import type { DatasetConnection } from "@/lib/workflows/datasetConnection";
 
 import AddLayerDialog from "@/components/addLayer/AddLayerDialog";
 
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({ map: undefined }) }));
+/** Keys as text, but for the two that name the layer Add layer suggests. */
+const names: Record<string, string> = {
+  fetch_features_source_short_osm: "OSM",
+  fetch_features_type_points: "Points",
+};
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => names[key] ?? key, i18n: { language: "en" } }),
+  Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
+}));
+
+/** The project's map, when a test puts one behind the dialog. */
+const mapState = vi.hoisted(() => ({ map: undefined as unknown }));
+const mapProps = vi.hoisted(() => ({ opened: [] as unknown[], fitBounds: vi.fn() }));
+vi.mock("react-map-gl/maplibre", () => ({
+  useMap: () => ({ map: mapState.map }),
+  Map: forwardRef(function MapMock(
+    {
+      onMoveEnd,
+      onClick,
+      initialViewState,
+      children,
+    }: {
+      onMoveEnd?: (event: unknown) => void;
+      onClick?: (event: unknown) => void;
+      initialViewState?: unknown;
+      children?: React.ReactNode;
+    },
+    ref
+  ) {
+    useImperativeHandle(ref, () => ({ fitBounds: mapProps.fitBounds }));
+    mapProps.opened.push(initialViewState);
+    return (
+      <>
+        <button
+          data-testid="pan"
+          onClick={() =>
+            onMoveEnd?.({
+              originalEvent: {},
+              target: {
+                getContainer: () => ({ clientWidth: 400, clientHeight: 300 }),
+                unproject: ([x, y]: number[]) => ({ lng: x / 100, lat: 50 - y / 100 }),
+              },
+            })
+          }
+        />
+        <button data-testid="tap" onClick={() => onClick?.({ lngLat: { lng: 11, lat: 48 } })} />
+        {children}
+      </>
+    );
+  }),
+  Source: ({ id }: { id: string }) => <i data-testid={`source-${id}`} />,
+  Layer: () => null,
+}));
 
 const controller = { action: { label: "add", disabled: false, run: vi.fn() }, isBusy: false, reset: vi.fn() };
 const selection = { selectedItems: [], toggle: vi.fn(), clear: vi.fn() };
@@ -29,6 +91,69 @@ vi.mock("@/components/addLayer/CatalogBody", () => ({ default: () => <div /> }))
 vi.mock("@/components/addLayer/CreateBody", () => ({ default: () => <div /> }));
 vi.mock("@/components/addLayer/ConnectBody", () => ({ default: () => <div /> }));
 vi.mock("@/components/addLayer/UploadBody", () => ({ default: () => <div /> }));
+vi.mock("@/components/addLayer/ConnectPreview", () => ({ default: () => null }));
+vi.mock("@/components/dashboard/common/DetailMapAttribution", () => ({ default: () => null }));
+
+// The OpenStreetMap / Overture flow runs for real; only what they ask the server is answered here.
+vi.mock("@/lib/api/processes", () => ({
+  useJobs: () => ({ mutate: vi.fn() }),
+  executeProcessAsync: vi.fn(),
+  getMirrorSize: vi.fn(),
+  getMirrorValues: vi.fn(),
+  getMirrorColumns: vi.fn(),
+  getMirrorSample: vi.fn(),
+}));
+vi.mock("@/lib/api/content", () => ({ refreshContentFeed: vi.fn(), useSpaces: () => ({ spaces: [] }) }));
+vi.mock("@/lib/api/folders", () => ({
+  useFolders: () => ({ folders: undefined }),
+  getWritableFolders: () => [],
+  getWritableDestinations: () => [],
+}));
+vi.mock("@/lib/api/projects", () => ({
+  useProject: () => ({ project: undefined, mutate: vi.fn() }),
+  useProjectLayers: () => ({ mutate: vi.fn() }),
+  addProjectLayers: vi.fn(),
+}));
+vi.mock("@/lib/api/users", () => ({ useUserProfile: () => ({ userProfile: { id: "u1" } }) }));
+vi.mock("@/lib/api/layers", () => ({ createLayer: vi.fn(), createRasterLayer: vi.fn() }));
+vi.mock("@/hooks/addLayer/useShareNotice", () => ({ useShareNotice: () => "shared" }));
+vi.mock("@/hooks/catalog/useCatalogBasemapStyle", () => ({ useCatalogBasemapStyle: () => undefined }));
+vi.mock("@/hooks/store/ContextHooks", () => ({ useAppDispatch: () => vi.fn() }));
+
+const BAVARIA: GeoJSON.Polygon = {
+  type: "Polygon",
+  coordinates: [
+    [
+      [10, 48],
+      [12, 48],
+      [12, 49],
+      [10, 49],
+      [10, 48],
+    ],
+  ],
+};
+const SAXONY: GeoJSON.Polygon = {
+  type: "Polygon",
+  coordinates: [
+    [
+      [12, 50],
+      [14, 50],
+      [14, 51],
+      [12, 51],
+      [12, 50],
+    ],
+  ],
+};
+const outlines = { geometries: { DE2: BAVARIA, DED: SAXONY }, names: {} };
+vi.mock("@/hooks/catalog/useCatalogNutsGeometries", () => ({ useCatalogNutsGeometries: () => outlines }));
+
+/** The region search, answering with Bayern. */
+vi.mock("@/lib/api/catalog", () => ({
+  useCatalogNutsRegions: (query?: string) => ({
+    regions: query && query.length >= 2 ? [{ nuts_id: "DE2", nuts_name: "Bayern", level: 1 }] : [],
+    isLoading: false,
+  }),
+}));
 
 /** jsdom has no matchMedia; the frame full-screens below `sm` and the shelf
  * reads the same split, so one answer drives both. */
@@ -64,5 +189,529 @@ describe("AddLayerDialog — My datasets", () => {
     render(<AddLayerDialog source="explorer" projectId="p1" onClose={vi.fn()} />);
 
     expect(shelfProps.at(-1)?.fullHeight).toBe(false);
+  });
+});
+
+describe("AddLayerDialog — Connect service in a workflow", () => {
+  // Read off DOM properties rather than jest-dom matchers: the repo's ESLint setup reads
+  // `toBeDisabled`/`toHaveAttribute` as Playwright's async matchers of the same name.
+  const useButton = () =>
+    screen.getByRole("button", { name: "connect_service_use_in_workflow" }) as HTMLButtonElement;
+  const attribute = (role: string, name: string | RegExp, key: string) =>
+    screen.getByRole(role, { name }).getAttribute(key);
+
+  const openOsm = async (workflow: { initial?: DatasetConnection; onUse: () => void }) => {
+    const user = userEvent.setup();
+    render(<AddLayerDialog source="connect" projectId="p1" workflow={workflow} onClose={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /^fetch_features_source_osm / }));
+    return user;
+  };
+
+  const areaSelect = () => screen.getByRole("combobox", { name: "fetch_features_area_by" });
+  /** The way the area is chosen, from the settings column's dropdown. */
+  const chooseArea = async (user: ReturnType<typeof userEvent.setup>, mode: string) => {
+    await user.click(areaSelect());
+    await user.click(await screen.findByRole("option", { name: `fetch_features_area_mode_${mode}` }));
+  };
+
+  // Through the picker: a key from the area's list, then its values, then Done.
+  const addFilter = async (user: ReturnType<typeof userEvent.setup>, key: string, picked: string[]) => {
+    await user.click(screen.getByRole("button", { name: "fetch_features_add_filter" }));
+    await user.click(await screen.findByText(key));
+    for (const value of picked)
+      await user.click(await screen.findByRole("checkbox", { name: new RegExp(`^${value}`) }));
+    await user.click(screen.getByRole("button", { name: "done" }));
+  };
+
+  // Picked inline: the search sits over the map in the same dialog.
+  const pickBayern = async (user: ReturnType<typeof userEvent.setup>) => {
+    await chooseArea(user, "region");
+    await user.type(screen.getByPlaceholderText("catalog_search_region"), "Bay");
+    await user.click(await screen.findByRole("option", { name: /Bayern/ }));
+  };
+
+  beforeEach(() => {
+    setViewport(false);
+    vi.mocked(getMirrorSize).mockResolvedValue({ estimate: 100, tooLarge: false } as never);
+    vi.mocked(getMirrorValues).mockImplementation(((_area: unknown, _type: unknown, key?: string) =>
+      Promise.resolve(
+        key
+          ? {
+              values: [
+                { value: "school", count: 37 },
+                { value: "kindergarten", count: 52 },
+              ],
+              complete: true,
+            }
+          : {
+              values: [
+                { value: "amenity", count: 2280 },
+                { value: "shop", count: 1104 },
+              ],
+              complete: true,
+            }
+      )) as never);
+    vi.mocked(getMirrorColumns).mockResolvedValue({
+      columns: [{ name: "amenity", type: "VARCHAR" }],
+      geometryType: "point",
+    });
+  });
+
+  afterEach(() => {
+    mapState.map = undefined;
+    mapProps.opened.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it("uses the choice in a workflow", async () => {
+    const onUse = vi.fn();
+    const user = await openOsm({ onUse });
+    await pickBayern(user);
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Bayern" })).toBeInTheDocument();
+    await addFilter(user, "amenity", ["school"]);
+
+    expect(screen.queryByText("layer_name")).not.toBeInTheDocument();
+    expect(screen.queryByText("connect_service_save_to")).not.toBeInTheDocument();
+    expect(screen.queryByText("shared")).not.toBeInTheDocument();
+    await waitFor(() => expect(useButton().disabled).toBe(false));
+    await user.click(useButton());
+
+    await waitFor(() => expect(onUse).toHaveBeenCalledTimes(1));
+    const connection = onUse.mock.calls[0][0] as DatasetConnection;
+    expect(connection).toMatchObject({
+      processId: "fetch_data",
+      params: {
+        source: "osm",
+        feature_type: "points",
+        tag_filters: [{ key: "amenity", values: ["school"] }],
+      },
+      geometryType: "point",
+      fields: [{ name: "amenity", type: "VARCHAR" }],
+      summary: "OSM Points",
+    });
+    for (const key of ["user_id", "project_id", "folder_id", "result_layer_name"])
+      expect(connection.params).not.toHaveProperty(key);
+    expect(connection.areaChoice).toEqual({ kind: "region", nutsIds: ["DE2"], names: { DE2: "Bayern" } });
+    expect(executeProcessAsync).not.toHaveBeenCalled();
+  });
+
+  it("keeps the button disabled while the area is too large", async () => {
+    vi.mocked(getMirrorSize).mockResolvedValue({ estimate: 9e9, tooLarge: true } as never);
+    const user = await openOsm({ onUse: vi.fn() });
+    await pickBayern(user);
+
+    await waitFor(() =>
+      expect(screen.getAllByLabelText("fetch_features_area_too_large")[0]).toContainElement(useButton())
+    );
+    expect(useButton().disabled).toBe(true);
+    // Filters cannot help here, so they wait for a smaller area.
+    expect(screen.getByText("fetch_features_filters_paused")).toBeInTheDocument();
+    expect(
+      (screen.getByRole("button", { name: "fetch_features_add_filter" }) as HTMLButtonElement).disabled
+    ).toBe(true);
+  });
+
+  it("keeps filters open when only narrowing helps", async () => {
+    vi.mocked(getMirrorSize).mockResolvedValue({ estimate: 9e9, tooLarge: false } as never);
+    const user = await openOsm({ onUse: vi.fn() });
+    await pickBayern(user);
+
+    await waitFor(() => expect(useButton().disabled).toBe(true));
+    expect(screen.queryByText("fetch_features_filters_paused")).not.toBeInTheDocument();
+    expect(
+      (screen.getByRole("button", { name: "fetch_features_add_filter" }) as HTMLButtonElement).disabled
+    ).toBe(false);
+  });
+
+  it("reopens with the saved connection", async () => {
+    const area: GeoJSON.MultiPolygon = {
+      type: "MultiPolygon",
+      coordinates: [BAVARIA.coordinates, SAXONY.coordinates],
+    };
+    const areaChoice = {
+      kind: "region" as const,
+      nutsIds: ["DE2", "DED"],
+      names: { DE2: "Bayern", DED: "Sachsen" },
+    };
+    const initial: DatasetConnection = {
+      processId: "fetch_data",
+      params: {
+        source: "osm",
+        feature_type: "lines",
+        overture_type: "places",
+        area,
+        match_mode: "all",
+        tag_filters: [{ key: "highway", values: ["primary"] }],
+      },
+      summary: "OSM lines",
+      geometryType: "line",
+      fields: [],
+      areaChoice,
+    };
+    const onUse = vi.fn();
+    const user = userEvent.setup();
+    render(<AddLayerDialog source="connect" workflow={{ initial, onUse }} onClose={vi.fn()} />);
+
+    expect(attribute("button", /^fetch_features_source_osm /, "aria-current")).toBe("true");
+    expect(attribute("button", "fetch_features_geometry_line", "aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "fetch_features_tag" }).textContent).toBe("highway");
+    // Values show as chips in the row.
+    expect(screen.getByRole("button", { name: "primary" })).toBeInTheDocument();
+    expect(areaSelect().textContent).toContain("fetch_features_area_mode_region");
+    expect(screen.getByRole("button", { name: "Bayern" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sachsen" })).toBeInTheDocument();
+
+    await waitFor(() => expect(useButton().disabled).toBe(false));
+    await user.click(useButton());
+    await waitFor(() => expect(onUse).toHaveBeenCalledTimes(1));
+    expect(onUse.mock.calls[0][0]).toMatchObject({ params: { area }, areaChoice });
+  });
+
+  it("starts on OpenStreetMap and Map view, without OGC services, and panning sets the area", async () => {
+    const onUse = vi.fn();
+    const user = await openOsm({ onUse });
+
+    expect(areaSelect().textContent).toContain("fetch_features_area_mode_view");
+    expect(screen.getByText("fetch_data")).toBeInTheDocument();
+    expect(screen.queryByText("connect_service")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /connect_data_ogc/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /street_network/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /fetch_features_source_overture/ })).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("pan"));
+    await waitFor(() => expect(useButton().disabled).toBe(false));
+    await user.click(useButton());
+    await waitFor(() => expect(onUse).toHaveBeenCalledTimes(1));
+    expect(onUse.mock.calls[0][0].areaChoice).toEqual({ kind: "view", bbox: [0.2, 47.62, 3.8, 49.8] });
+  });
+
+  const saved = (areaChoice?: DatasetConnection["areaChoice"], area: GeoJSON.Polygon = BAVARIA) =>
+    ({
+      processId: "fetch_data",
+      params: {
+        source: "osm",
+        feature_type: "points",
+        overture_type: "places",
+        area,
+        match_mode: "all",
+        tag_filters: [{ key: "amenity", values: ["school"] }],
+      },
+      summary: "OSM points",
+      geometryType: "point",
+      fields: [],
+      areaChoice,
+    }) as DatasetConnection;
+
+  const reopen = (initial: DatasetConnection) => {
+    const onUse = vi.fn();
+    render(<AddLayerDialog source="connect" workflow={{ initial, onUse }} onClose={vi.fn()} />);
+    return onUse;
+  };
+
+  it("fetches the box the map shows after another mode moved it", async () => {
+    const onUse = vi.fn();
+    const user = await openOsm({ onUse });
+    await chooseArea(user, "region");
+    await user.click(screen.getByTestId("pan"));
+    await chooseArea(user, "view");
+    await waitFor(() => expect(useButton().disabled).toBe(false));
+    await user.click(useButton());
+    await waitFor(() => expect(onUse).toHaveBeenCalledTimes(1));
+    expect(onUse.mock.calls[0][0].areaChoice).toEqual({ kind: "view", bbox: [0.2, 47.62, 3.8, 49.8] });
+  });
+
+  it("does not take the starting view as an area until the map is moved", async () => {
+    const user = await openOsm({ onUse: vi.fn() });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    expect(getMirrorSize).not.toHaveBeenCalled();
+    expect(useButton().disabled).toBe(true);
+    expect(screen.queryByText("fetch_features_filters_paused")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("pan"));
+    await waitFor(() => expect(getMirrorSize).toHaveBeenCalled());
+  });
+
+  it("frames the map on a reopened point, and draws the saved area once", async () => {
+    reopen(saved({ kind: "point", lng: 20, lat: 40, km: 5 }));
+    const view = mapProps.opened[0] as { bounds: number[] };
+    expect(view.bounds[0]).toBeLessThanOrEqual(20);
+    expect(view.bounds[2]).toBeGreaterThanOrEqual(20);
+    expect(view.bounds[1]).toBeGreaterThan(39);
+
+    cleanup();
+    reopen(saved());
+    expect(screen.queryByTestId("source-fetch-area")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("source-spatial-draft")).toHaveLength(1);
+  });
+
+  it("saves a reopened map view as the map view it was", async () => {
+    const view = { kind: "view" as const, bbox: [0.2, 47.62, 3.8, 49.8] as [number, number, number, number] };
+    const onUse = reopen(saved(view));
+    await waitFor(() => expect(useButton().disabled).toBe(false));
+    await userEvent.setup().click(useButton());
+    await waitFor(() => expect(onUse).toHaveBeenCalledTimes(1));
+    expect(onUse.mock.calls[0][0].areaChoice).toEqual(view);
+  });
+
+  it("keeps a saved area when a polygon is only started", async () => {
+    const onUse = reopen(saved());
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("tap"));
+    await waitFor(() => expect(useButton().disabled).toBe(false));
+    await user.click(useButton());
+    await waitFor(() => expect(onUse).toHaveBeenCalledTimes(1));
+    expect(onUse.mock.calls[0][0].params.area).toEqual(BAVARIA);
+  });
+
+  it("lets filters be deleted while the area is too large", async () => {
+    vi.mocked(getMirrorSize).mockResolvedValue({ estimate: 9e9, tooLarge: true } as never);
+    reopen(saved({ kind: "point", lng: 11, lat: 48, km: 5 }));
+    await waitFor(() => expect(screen.getByText("fetch_features_filters_paused")).toBeInTheDocument());
+
+    expect(
+      (screen.getByRole("button", { name: "fetch_features_remove_filter" }) as HTMLButtonElement).disabled
+    ).toBe(false);
+    expect((screen.getByRole("button", { name: "fetch_features_tag" }) as HTMLButtonElement).disabled).toBe(
+      false
+    );
+  });
+
+  it("offers no second empty filter row until the first has a tag", async () => {
+    const user = await openOsm({ onUse: vi.fn() });
+    await user.click(screen.getByTestId("pan"));
+    const addFilter = () =>
+      screen.getByRole("button", { name: "fetch_features_add_filter" }) as HTMLButtonElement;
+    expect(addFilter().disabled).toBe(false);
+    await user.click(addFilter());
+    expect(addFilter().disabled).toBe(true);
+  });
+
+  it("adds a filter row: a key from the area's list, then its values", async () => {
+    const user = await openOsm({ onUse: vi.fn() });
+    // The lists are read for an area; panning makes the map view one.
+    await user.click(screen.getByTestId("pan"));
+    await addFilter(user, "amenity", ["school", "kindergarten"]);
+    expect(screen.getByRole("button", { name: "fetch_features_tag" }).textContent).toBe("amenity");
+    expect(screen.getByRole("button", { name: "fetch_features_switch_to" }).textContent).toBe(
+      "fetch_features_filter_is"
+    );
+    expect(screen.getByRole("button", { name: "school" })).toBeInTheDocument();
+    // The rest as "+N", named by its tooltip listing every value.
+    expect(screen.getByRole("button", { name: "school, kindergarten" }).textContent).toBe("+1");
+    // Keys already filtered on are not offered again.
+    await user.click(screen.getByRole("button", { name: "fetch_features_add_filter" }));
+    const list = (await screen.findByText("shop")).closest('[role="dialog"]') as HTMLElement;
+    expect(within(list).queryByText("amenity")).toBeNull();
+  });
+
+  it("edits a row: is not, no value, and removes it", async () => {
+    const user = await openOsm({ onUse: vi.fn() });
+    await user.click(screen.getByTestId("pan"));
+    await addFilter(user, "amenity", ["school"]);
+
+    await user.click(screen.getByRole("button", { name: "fetch_features_switch_to" }));
+    expect(screen.getByRole("button", { name: "fetch_features_switch_to" }).textContent).toBe(
+      "fetch_features_filter_is_not"
+    );
+
+    await user.click(screen.getByRole("button", { name: "fetch_features_values" }));
+    await user.click(await screen.findByRole("checkbox", { name: "fetch_features_no_value" }));
+    await user.click(screen.getByRole("button", { name: "done" }));
+    expect(screen.getByRole("button", { name: "fetch_features_switch_to" }).textContent).toBe(
+      "fetch_features_filter_is_not_set"
+    );
+    expect(screen.getByRole("button", { name: "fetch_features_values" }).textContent).toBe("");
+
+    await user.click(screen.getByRole("button", { name: "fetch_features_values" }));
+    await user.click(await screen.findByRole("checkbox", { name: "fetch_features_any_value" }));
+    await user.click(screen.getByRole("button", { name: "done" }));
+    expect(screen.getByRole("button", { name: "fetch_features_switch_to" }).textContent).toBe(
+      "fetch_features_filter_is_set"
+    );
+
+    await user.click(screen.getByRole("button", { name: "fetch_features_remove_filter" }));
+    expect(screen.queryByRole("button", { name: "fetch_features_tag" })).not.toBeInTheDocument();
+    expect(screen.getByText("fetch_features_no_filters")).toBeInTheDocument();
+  });
+
+  it("flips a row's condition with its token, and marks an exclusion", async () => {
+    const user = await openOsm({ onUse: vi.fn() });
+    await user.click(screen.getByRole("button", { name: "fetch_features_pick_schools" }));
+    const token = () => screen.getByRole("button", { name: "fetch_features_switch_to" });
+    expect(token().textContent).toBe("fetch_features_filter_is");
+    expect(token().closest("[data-negative]")).toBeNull();
+
+    await user.click(token());
+    expect(token().textContent).toBe("fetch_features_filter_is_not");
+    expect(token().closest("[data-negative]")).not.toBeNull();
+    // The condition reaches the tool: the SQL written from the rows says it too.
+    await user.click(screen.getByRole("button", { name: "SQL" }));
+    expect((screen.getByLabelText("fetch_features_sql_condition") as HTMLTextAreaElement).value).toBe(
+      "(tags['amenity'] IS NULL OR tags['amenity'] NOT IN ('school'))"
+    );
+  });
+
+  it("puts each way's controls under the area choice, and clears and frames a placed point", async () => {
+    const user = await openOsm({ onUse: vi.fn() });
+    await chooseArea(user, "region");
+    // The region search sits in the settings column, under the choice.
+    expect(screen.getByLabelText("fetch_features_area_region")).toBeInTheDocument();
+    await pickBayern(user);
+    expect(screen.getByText("Bayern")).toBeInTheDocument();
+
+    mapProps.fitBounds.mockClear();
+    await chooseArea(user, "point");
+    expect(screen.getByText("fetch_features_area_pick_on_map")).toBeInTheDocument();
+    await user.click(screen.getByTestId("tap"));
+    expect(mapProps.fitBounds).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("48.0000, 11.0000")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "clear_all" }));
+    expect(screen.queryByRole("button", { name: "clear_all" })).not.toBeInTheDocument();
+    expect(screen.getByText("fetch_features_area_pick_on_map")).toBeInTheDocument();
+  });
+
+  it("turns a quick pick into a filter row and back", async () => {
+    const user = await openOsm({ onUse: vi.fn() });
+    const schools = screen.getByRole("button", { name: "fetch_features_pick_schools" });
+    await user.click(schools);
+    expect(schools.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("amenity")).toBeInTheDocument();
+    expect(screen.getByText("school")).toBeInTheDocument();
+
+    // A second pick on the same key joins the same row.
+    await user.click(screen.getByRole("button", { name: "fetch_features_pick_kindergartens" }));
+    expect(screen.getAllByText("amenity")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "school" })).toBeInTheDocument();
+    // The rest as "+N", named by its tooltip listing every value.
+    expect(screen.getByRole("button", { name: "school, kindergarten" }).textContent).toBe("+1");
+
+    await user.click(schools);
+    expect(schools.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("kindergarten")).toBeInTheDocument();
+  });
+
+  it("writes the rows as SQL, and goes back to the same rows when the SQL is unchanged", async () => {
+    const user = await openOsm({ onUse: vi.fn() });
+    await user.click(screen.getByRole("button", { name: "fetch_features_pick_schools" }));
+    await user.click(screen.getByRole("button", { name: "SQL" }));
+    const condition = screen.getByLabelText("fetch_features_sql_condition") as HTMLTextAreaElement;
+    expect(condition.value).toBe("tags['amenity'] IN ('school')");
+    // Quick picks build filters, so they wait while a condition is written.
+    expect(screen.queryByRole("button", { name: "fetch_features_pick_schools" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "fetch_features_mode_filters" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("amenity")).toBeInTheDocument();
+  });
+
+  it("asks before an edited SQL condition gives way to the rows", async () => {
+    const user = await openOsm({ onUse: vi.fn() });
+    await user.click(screen.getByRole("button", { name: "fetch_features_pick_schools" }));
+    await user.click(screen.getByRole("button", { name: "SQL" }));
+    await user.type(screen.getByLabelText("fetch_features_sql_condition"), " AND true");
+
+    await user.click(screen.getByRole("button", { name: "fetch_features_mode_filters" }));
+    expect(screen.getByRole("alert").textContent).toContain("fetch_features_sql_edited_note");
+    await user.click(screen.getByRole("button", { name: "fetch_features_keep_sql" }));
+    expect((screen.getByLabelText("fetch_features_sql_condition") as HTMLTextAreaElement).value).toContain(
+      " AND true"
+    );
+
+    await user.click(screen.getByRole("button", { name: "fetch_features_mode_filters" }));
+    await user.click(screen.getByRole("button", { name: "fetch_features_use_filters" }));
+    expect(screen.queryByLabelText("fetch_features_sql_condition")).not.toBeInTheDocument();
+    expect(screen.getByText("amenity")).toBeInTheDocument();
+  });
+
+  it("asks only for the size when the map moves and no list is open", async () => {
+    const user = await openOsm({ onUse: vi.fn() });
+    await user.click(screen.getByRole("button", { name: "fetch_features_pick_schools" }));
+    vi.mocked(getMirrorSize).mockClear();
+    vi.mocked(getMirrorValues).mockClear();
+    await user.click(screen.getByTestId("pan"));
+    await waitFor(() => expect(getMirrorSize).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(getMirrorValues).not.toHaveBeenCalled();
+  });
+
+  it("stays neutral until the size of a large area is known, then says it is too large", async () => {
+    // The size check answers late; the lists answer at once with a small, capped number.
+    let answer: (value: unknown) => void = () => undefined;
+    vi.mocked(getMirrorSize).mockImplementation(() => new Promise((resolve) => (answer = resolve)) as never);
+    vi.mocked(getMirrorValues).mockResolvedValue({ values: [], estimate: 120, complete: true } as never);
+    const user = await openOsm({ onUse: vi.fn() });
+    await user.click(screen.getByTestId("pan"));
+    await waitFor(() => expect(getMirrorSize).toHaveBeenCalled(), { timeout: 3000 });
+
+    // Before the answer: no count, no warning, and the button waits.
+    expect(screen.queryByText(/^fetch_features_estimate$/)).not.toBeInTheDocument();
+    expect(screen.queryByText("fetch_features_area_too_large")).not.toBeInTheDocument();
+    expect(screen.getByText("fetch_features_estimate_counting")).toBeInTheDocument();
+    expect(useButton().disabled).toBe(true);
+
+    // The box and the estimate are neutral too: no green before the first answer.
+    expect(screen.getByTestId("view-box").getAttribute("data-size-state")).toBe("unknown");
+    expect(screen.getByRole("status", { name: "" }).getAttribute("data-size-state")).toBe("unknown");
+
+    answer({ estimate: 9_000_000, tooLarge: true });
+    expect(await screen.findByText(/fetch_features_too_large_hint/)).toBeInTheDocument();
+    expect(useButton().disabled).toBe(true);
+  });
+
+  it("turns the box and the estimate to warning together for more than a million unnarrowed features", async () => {
+    vi.mocked(getMirrorSize).mockResolvedValue({ estimate: 1_500_000, tooLarge: false } as never);
+    const user = await openOsm({ onUse: vi.fn() });
+    await user.click(screen.getByTestId("pan"));
+    await waitFor(
+      () => expect(screen.getByTestId("view-box").getAttribute("data-size-state")).toBe("too_big"),
+      {
+        timeout: 3000,
+      }
+    );
+    expect(
+      screen
+        .getByText(/fetch_features_estimate_over/)
+        .closest("[data-size-state]")
+        ?.getAttribute("data-size-state")
+    ).toBe("too_big");
+    // A second large move keeps the state while its size is on its way.
+    await user.click(screen.getByTestId("pan"));
+    expect(screen.getByTestId("view-box").getAttribute("data-size-state")).toBe("too_big");
+  });
+
+  it("says more than the limit instead of a count past it", async () => {
+    vi.mocked(getMirrorSize).mockResolvedValue({ estimate: 2_500_000, tooLarge: false } as never);
+    const user = await openOsm({ onUse: vi.fn() });
+    await user.click(screen.getByTestId("pan"));
+    expect(
+      await screen.findByText(/fetch_features_estimate_over/, {}, { timeout: 3000 })
+    ).toBeInTheDocument();
+  });
+
+  it("shows a sample of the features with their columns, and the columns under details", async () => {
+    vi.mocked(getMirrorSample).mockResolvedValue({
+      columns: [
+        { name: "name", type: "VARCHAR" },
+        { name: "amenity", type: "VARCHAR" },
+      ],
+      rows: [["Grundschule am Park", "school"]],
+    });
+    const user = await openOsm({ onUse: vi.fn() });
+    await user.click(screen.getByTestId("pan"));
+    await user.click(screen.getByRole("tab", { name: "fetch_features_tab_table" }));
+    expect(await screen.findByText("Grundschule am Park", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "amenity" })).toBeInTheDocument();
+    expect(vi.mocked(getMirrorSample).mock.calls[0][2]).toBe("osm");
+
+    await user.click(screen.getByRole("tab", { name: "fetch_features_tab_details" }));
+    expect(await screen.findByText("amenity", {}, { timeout: 3000 })).toBeInTheDocument();
+  });
+
+  it("asks for an area before a sample", async () => {
+    const user = await openOsm({ onUse: vi.fn() });
+    await user.click(screen.getByRole("tab", { name: "fetch_features_tab_table" }));
+    expect(screen.getByText("fetch_features_choose_area_first")).toBeInTheDocument();
+    expect(getMirrorSample).not.toHaveBeenCalled();
   });
 });

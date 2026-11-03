@@ -503,6 +503,18 @@ class FinalizeLayerRunner(
         finally:
             await pool.close()
 
+    async def _record_provenance(self, layer_id: str, provenance: dict) -> None:
+        from goatlib.tools.db import ToolDatabaseService
+
+        assert self.settings is not None
+        pool = await self.get_postgres_pool()
+        try:
+            await ToolDatabaseService(
+                pool, schema=self.settings.customer_schema
+            ).record_provenance(layer_id, provenance)
+        finally:
+            await pool.close()
+
     def process(self, params: FinalizeLayerParams) -> str:
         """Finalize a temporary layer to permanent storage.
 
@@ -535,6 +547,12 @@ class FinalizeLayerRunner(
                 params=params,
                 parquet_path=parquet_path,
                 metadata=metadata,
+            )
+        if metadata.get("provenance"):
+            # Where the step's data came from (fetch_data: its licence), which
+            # has to travel with the layer.
+            loop.run_until_complete(
+                self._record_provenance(layer_id, metadata["provenance"])
             )
 
         if params.delete_temp:

@@ -6,6 +6,7 @@ import type { MapRef } from "react-map-gl/maplibre";
 import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import { toast } from "react-toastify";
 import { mutate as globalMutate } from "swr";
+import { v4 as uuidv4 } from "uuid";
 
 import { DrawHistory } from "@p4b/draw";
 
@@ -389,7 +390,7 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
           })
         );
       } else {
-        const featureId = crypto.randomUUID();
+        const featureId = uuidv4();
         dispatch(
           addPendingFeature({
             id: featureId,
@@ -558,7 +559,7 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
         if (existingPending.geometry && !existingPending.drawFeatureId) {
           const drawFeature = {
             type: "Feature" as const,
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             geometry: existingPending.geometry,
             properties: { ...existingPending.properties, ...iconProps },
           };
@@ -598,7 +599,7 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
         // Include _fillColor/_fillOpacity as properties so MapboxDraw styles can read them
         const drawFeature = {
           ...fullFeature,
-          id: crypto.randomUUID(),
+          id: uuidv4(),
           properties: {
             ...fullFeature.properties,
             ...(renderedFillColor && { _fillColor: renderedFillColor }),
@@ -888,7 +889,7 @@ export function useFeatureEditor(mapRef: React.RefObject<MapRef | null> | null) 
     tableDrawArmedForRef.current = activeLayerId;
     dispatch(
       addPendingFeature({
-        id: crypto.randomUUID(),
+        id: uuidv4(),
         drawFeatureId: null,
         geometry: null,
         properties: defaultProperties(layerFieldsRef.current),
