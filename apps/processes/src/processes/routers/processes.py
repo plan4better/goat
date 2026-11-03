@@ -746,12 +746,16 @@ async def execute_process(
             # Apply timeout to prevent runaway queries
             # layer-search runs on its own pool so it can't starve authenticated
             # analytics (see _search_executor).
+            # The size check gets its own threads only for the area alone: with
+            # filters it counts their matches, a scan as long as a list, which
+            # would hold up the plain checks every map move asks for.
+            inputs = execute_request.inputs or {}
             executor = (
                 _search_executor
                 if is_search
                 else (
                     _mirror_size_executor
-                    if (execute_request.inputs or {}).get("size_only")
+                    if inputs.get("size_only") and not inputs.get("tag_filters")
                     else _mirror_executor
                 )
                 if process_id == "mirror-values"
