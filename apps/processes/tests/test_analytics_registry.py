@@ -278,6 +278,7 @@ class TestMirrorSample:
     def test_wrong_inputs_are_refused_as_a_bad_request(self, monkeypatch):
         import pytest
         from fastapi import HTTPException
+
         from processes.routers import processes as router
 
         monkeypatch.setattr(
