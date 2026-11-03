@@ -364,6 +364,15 @@ asyncpg's statement cache and the keepalive settings; every tool and task
 connection goes through it (`ToolSettings.postgres_connect_args`). DuckLake's
 catalog connections go to the database itself (`DUCKLAKE_POSTGRES_SERVER`).
 
+## Files another pod just wrote
+
+The data volume is shared over NFS, and each node remembers for a while that a file name did not exist. A
+catalog layer's copy (`catalog_materialize`) or a workflow step's result written by a job on another node can
+therefore look missing here for a moment. Where the file must exist (a catalog copy the layer row marks ready, the
+result of a finished step), the runners wait for it, bounded, with `goatlib.utils.shared_disk.wait_for`, instead of
+concluding it is gone; a catalog layer would otherwise be looked up as a DuckLake table and fail. Where nothing says
+the file exists, nothing waits.
+
 ## Workflows
 
 `workflows/` holds the workflow code core, processes and the assistant share without the analytics stack: the shape check, the graph helpers and settings-visibility rules of the full check, and the assistant's edit operations. Core refuses a damaged config on save with `checks.shape_issues`; processes runs the same function first in its full check and builds on `find_loops`, `dangling_edges` and `visibility.is_shown`. The package imports the standard library only: core installs goatlib without its extras, so a pydantic model or a tool import here would stop core from starting on its own image (`apps/core/tests/unit/test_runs_without_the_geospatial_stack.py` loads it the way the image does).
