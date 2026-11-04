@@ -1,6 +1,8 @@
 #include "catchment.h"
 
 #include "../data/duckdb_setup.h"
+#include "../data/h3_util.h"
+#include "../data/street_network_loader.h"
 #include "../geometry/grid_surface_builder.h"
 #include "../input/validation.h"
 #include "../kernel/dijkstra.h"
@@ -12,11 +14,13 @@
 #include "../pt/pt_pipeline.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <duckdb.hpp>
 #include <functional>
 #include <memory>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -34,6 +38,8 @@ namespace routing::catchment
             // not the caller's index — and the caller needs its own index back
             // to attribute a catchment to the point that produced it.
             std::vector<int32_t> valid_start_inputs;
+            // Cells the edges were loaded from, reused for the geometry read.
+            data::SpatialFilter filter;
         };
 
         void validate_request(RequestConfig &cfg)
@@ -52,7 +58,8 @@ namespace routing::catchment
 
             PreparedNetwork prepared{.net = std::move(prep.net),
                                      .valid_starts = {},
-                                     .valid_start_inputs = {}};
+                                     .valid_start_inputs = {},
+                                     .filter = std::move(prep.filter)};
             prepared.valid_starts.reserve(prep.snapped_nodes.size());
             prepared.valid_start_inputs.reserve(prep.snapped_nodes.size());
             for (size_t i = 0; i < prep.snapped_nodes.size(); ++i)
@@ -98,6 +105,52 @@ namespace routing::catchment
             return "";
         }
 
+        // Reads geometry only for edges with a reached end; the rest keep their
+        // source-target line.
+        void attach_reached_geometry(SubNetwork &net,
+                                     std::vector<double> const &costs,
+                                     RequestConfig const &cfg,
+                                     data::SpatialFilter const &filter,
+                                     duckdb::Connection &con)
+        {
+            double const budget = cfg.cost_budget();
+            auto reached = [&](int32_t n) {
+                return n >= 0 && static_cast<size_t>(n) < costs.size() &&
+                       std::isfinite(costs[static_cast<size_t>(n)]) &&
+                       costs[static_cast<size_t>(n)] <= budget;
+            };
+            std::vector<int64_t> ids;
+            std::vector<size_t> at;
+            for (size_t i = 0; i < net.edges.size(); ++i)
+            {
+                // Snapping connectors and split halves (no loaded geometry).
+                if (net.edges[i].id < 0)
+                    continue;
+                if (reached(net.source[i]) || reached(net.target[i]))
+                {
+                    ids.push_back(net.edges[i].id);
+                    at.push_back(i);
+                }
+            }
+            if (ids.empty())
+                return;
+            auto geom = data::load_edge_geometry(con, cfg.edge_dir, filter, ids);
+            // Copy for repeated ids, move on the last occurrence.
+            std::unordered_map<int64_t, size_t> last;
+            for (size_t j = 0; j < ids.size(); ++j)
+                last[ids[j]] = j;
+            for (size_t j = 0; j < ids.size(); ++j)
+            {
+                auto it = geom.find(ids[j]);
+                if (it == geom.end())
+                    continue;
+                if (last[ids[j]] == j)
+                    net.edges[at[j]].geometry = std::move(it->second);
+                else
+                    net.edges[at[j]].geometry = it->second;
+            }
+        }
+
         ReachabilityField build_reachability_field(
             RequestConfig &cfg,
             duckdb::Connection &con)
@@ -120,10 +173,13 @@ namespace routing::catchment
             }
             else
             {
-                auto prepared = prepare_catchment_network(cfg, con, load_geom);
+                // Geometry is read after routing, for reached edges only.
+                auto prepared = prepare_catchment_network(cfg, con, false);
                 auto costs = run_reachability_dijkstra(prepared.net,
                                                        prepared.valid_starts,
                                                        cfg);
+                if (load_geom)
+                    attach_reached_geometry(prepared.net, costs, cfg, prepared.filter, con);
                 field = kernel::make_reachability_field(std::move(costs),
                                                         std::move(prepared.net));
             }
