@@ -78,7 +78,7 @@ Gelöschte Inhalte verschwinden nicht sofort: Sie landen im **Papierkorb**, aus 
 - **Neuer Ordner**, um Inhalte so zu gruppieren, wie es Ihnen passt
 - **Leeres Projekt** oder **Projekt importieren**
 - **Datensatz hochladen**, um eine Datei von Ihrem Gerät hochzuladen (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet sowie [GTFS](https://www.plan4better.de/de/glossar/gtfs)- und [Overture](https://www.plan4better.de/de/glossar/overture-maps)-Archive)
-- **Dienst verbinden**, um einen externen Layer per URL hinzuzufügen (WFS, WMS, WMTS, XYZ-Kacheln oder COG)
+- **Daten abrufen / verbinden**, um einen externen Layer per URL hinzuzufügen (WFS, WMS, WMTS, XYZ-Kacheln oder COG)
 - **Dokument hochladen**, für eine Datei, die zur Arbeit gehört, ohne selbst Daten zu sein
 
 Ein Projekt lässt sich auch von der Startseite aus beginnen.
@@ -173,7 +173,7 @@ GOAT unterstützt mehrere Dateiformate zum Hochladen: **GeoPackage**, **GeoJSON*
 
 ### Eine externe Quelle verbinden
 
-Ein Dienst, der die Daten bereits veröffentlicht, etwa ein **Web Feature Service (WFS)**, **Web Map Service (WMS)**, **Web Map Tile Service (WMTS)**, **XYZ-Kacheln** oder ein **Cloud Optimized GeoTIFF (COG)**, wird mit `Dienst verbinden` hinzugefügt. Klicken Sie auf dieser Seite auf `Neu` und wählen Sie `Dienst verbinden`, um ihn zum aktuellen Ordner hinzuzufügen. Innerhalb eines Projekts erreichen Sie die Funktion außerdem über `+ Layer hinzufügen` in der Karte. Die Schritte finden Sie unter [Layer hinzufügen](../map/layers#layer-hinzufügen).
+Ein Dienst, der die Daten bereits veröffentlicht, etwa ein **Web Feature Service (WFS)**, **Web Map Service (WMS)**, **Web Map Tile Service (WMTS)**, **XYZ-Kacheln** oder ein **Cloud Optimized GeoTIFF (COG)**, wird mit `Daten abrufen / verbinden` hinzugefügt. Klicken Sie auf dieser Seite auf `Neu` und wählen Sie `Daten abrufen / verbinden`, um ihn zum aktuellen Ordner hinzuzufügen. Innerhalb eines Projekts erreichen Sie die Funktion außerdem über `+ Layer hinzufügen` in der Karte. Die Schritte finden Sie unter [Layer hinzufügen](../map/layers#layer-hinzufügen).
 
 Nach dem Hinzufügen erscheint ein verbundener Layer auf dieser Seite wie jeder andere Datensatz, mit zwei Unterschieden, die die Herkunft der Daten kennzeichnen:
 

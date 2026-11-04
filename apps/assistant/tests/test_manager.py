@@ -29,6 +29,7 @@ from assistant.events import (
     RunStarted,
     TextDelta,
     ToolCalled,
+    ToolFailed,
     ToolReturned,
 )
 from assistant.llm.providers import default_target
@@ -764,17 +765,62 @@ async def test_cancelled_turn_stays_in_the_next_runs_history(
     ]
     responses = [m for m in history if isinstance(m, ModelResponse)]
     assert responses and isinstance(responses[0].parts[0], TextPart)
-    assert responses[0].parts[0].content == "first "
+    # What was streamed, then that the user stopped it: the follow-up must not
+    # take the first question up again.
+    assert responses[0].parts[0].content == (
+        "first \n\n" + manager_module.ENDED_NOTES["cancelled"]
+    )
 
 
-def test_partial_history_omits_the_response_without_text() -> None:
-    assert [m["kind"] for m in _partial_history("hello", [])] == ["request"]
+def test_partial_history_ends_with_how_the_turn_ended() -> None:
+    """The streamed text, then the note: without it the next answer read the
+    request as still open and carried it out first."""
+    stopped = _partial_history("hello", [])
+    assert [m["kind"] for m in stopped] == ["request", "response"]
+    assert stopped[1]["parts"][0]["content"] == manager_module.ENDED_NOTES["cancelled"]
     with_text = _partial_history(
         "hello",
         [TextDelta(part_id="p", delta="par"), TextDelta(part_id="p", delta="t")],
     )
-    assert [m["kind"] for m in with_text] == ["request", "response"]
-    assert with_text[1]["parts"][0]["content"] == "part"
+    assert with_text[1]["parts"][0]["content"] == (
+        "part\n\n" + manager_module.ENDED_NOTES["cancelled"]
+    )
+    interrupted = _partial_history("hello", [], "interrupted")
+    assert (
+        interrupted[1]["parts"][0]["content"]
+        == manager_module.ENDED_NOTES["interrupted"]
+    )
+
+
+def test_a_stopped_answer_keeps_what_it_changed() -> None:
+    """A layer added before the user stopped the answer exists: the next answer
+    must know, or it adds the layer again and reports that nothing was added.
+    A finished look-up, and a write that never returned, are left out."""
+    add = {"catalog_id": "gn250", "project_id": "p1"}
+    events: list[RunEvent] = [
+        ToolCalled(tool_call_id="c1", tool_name="project_add_catalog_layer", args=add),
+        ToolReturned(tool_call_id="c1", output={"layer_project_id": 82844}),
+        ToolCalled(tool_call_id="c2", tool_name="project_get_fields", args={}),
+        ToolReturned(tool_call_id="c2", output={"fields": []}),
+        ToolCalled(tool_call_id="c3", tool_name="workflow_create", args={"x": 1}),
+        ToolFailed(tool_call_id="c3", error="refused"),
+    ]
+    history = ModelMessagesTypeAdapter.validate_python(
+        _partial_history("City layer: Settlement points (GN250)", events)
+    )
+    calls = [
+        part.tool_name
+        for message in history
+        for part in message.parts
+        if isinstance(part, ToolCallPart)
+    ]
+    assert calls == ["project_add_catalog_layer"]
+    returned = history[2].parts[0]
+    assert isinstance(returned, ToolReturnPart)
+    assert returned.content == {"layer_project_id": 82844}
+    assert history[-1].parts[0] == TextPart(
+        content=manager_module.ENDED_NOTES["cancelled"]
+    )
 
 
 def test_a_stopped_answer_keeps_what_it_showed_the_user() -> None:
@@ -805,7 +851,30 @@ def test_a_stopped_answer_keeps_what_it_showed_the_user() -> None:
     returned = history[2].parts[0]
     assert isinstance(returned, ToolReturnPart)
     assert (returned.tool_call_id, returned.content) == ("c2", {"status": "asked"})
-    assert history[3].parts[0] == TextPart(content="The card is below.")
+    assert history[3].parts[0] == TextPart(
+        content="The card is below.\n\n" + manager_module.ENDED_NOTES["cancelled"]
+    )
+
+
+def test_a_write_the_answer_ended_in_the_middle_of_may_have_happened() -> None:
+    """Stopped while the call ran: the request may have reached the service, so
+    the next answer is told to check before doing it again. A read that never
+    returned changed nothing and stays out."""
+    add = {"catalog_id": "gn250", "project_id": "p1"}
+    events: list[RunEvent] = [
+        ToolCalled(tool_call_id="c1", tool_name="project_get_fields", args={}),
+        ToolCalled(tool_call_id="c2", tool_name="project_add_catalog_layer", args=add),
+    ]
+    history = ModelMessagesTypeAdapter.validate_python(
+        _partial_history("add it", events)
+    )
+    call, returned = history[1].parts[0], history[2].parts[0]
+    assert (
+        isinstance(call, ToolCallPart) and call.tool_name == "project_add_catalog_layer"
+    )
+    assert isinstance(returned, ToolReturnPart)
+    assert returned.content == manager_module.UNFINISHED_WRITE
+    assert len(history) == 4
 
 
 class _FailingRepo:

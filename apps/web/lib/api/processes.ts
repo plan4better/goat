@@ -544,6 +544,114 @@ export async function getUniqueValues(
   return executeProcess<UniqueValuesInput, UniqueValuesOutput>("unique-values", inputs);
 }
 
+export type MirrorValue = { value: string; count: number };
+export type MirrorValuesOutput = {
+  key: string | null;
+  total: number;
+  /** The area holds more than the tool reads, so the counts are of a sample, not totals. */
+  sampled?: boolean;
+  /** A quick read that saw the whole area, so its counts are final. */
+  complete?: boolean;
+  /** Features in the area, guessed from the mirror's index; with the attribute list only. */
+  estimate?: number | null;
+  /** More in the area than one fetch reads: a fetch would be refused. */
+  too_large?: boolean;
+  /** With size_only and filters: the features matching them, or at most that many when bound. */
+  matches?: number | null;
+  matches_bound?: boolean;
+  /** With size_only: filters with values can still make an area too large to read fit. */
+  filters_can_fit?: boolean;
+  /** With columns_only: what a fetch would write, and its geometry type. */
+  columns?: { name: string; type: string }[];
+  geometry_type?: string;
+  /** With sample_only: rows as text, in the order of `columns`. */
+  rows?: string[][];
+  values: MirrorValue[];
+};
+
+/** Features in an area, estimated from the mirror's file parts, without any list. */
+export async function getMirrorSize(
+  area: GeoJSON.Polygon | GeoJSON.MultiPolygon,
+  featureType: string,
+  source: string,
+  tagFilters: { key: string; values: string[]; operator?: string }[] = [],
+  matchMode = "all"
+): Promise<{
+  estimate?: number;
+  tooLarge: boolean;
+  matches?: number;
+  matchesBound: boolean;
+  filtersCanFit: boolean;
+}> {
+  const result = await executeProcess<Record<string, unknown>, MirrorValuesOutput>("mirror-values", {
+    area,
+    source,
+    feature_type: featureType,
+    size_only: true,
+    ...(tagFilters.length ? { tag_filters: tagFilters, match_mode: matchMode } : {}),
+  });
+  return {
+    estimate: result.estimate ?? undefined,
+    tooLarge: !!result.too_large,
+    matches: result.matches ?? undefined,
+    matchesBound: !!result.matches_bound,
+    filtersCanFit: result.filters_can_fit !== false,
+  };
+}
+
+/** The columns a fetch would write for an area, known before fetching. */
+export async function getMirrorColumns(
+  area: GeoJSON.Polygon | GeoJSON.MultiPolygon,
+  featureType: string,
+  source: string
+): Promise<{ columns: { name: string; type: string }[]; geometryType: string }> {
+  const result = await executeProcess<Record<string, unknown>, MirrorValuesOutput>("mirror-values", {
+    area,
+    source,
+    feature_type: featureType,
+    columns_only: true,
+  });
+  return { columns: result.columns ?? [], geometryType: result.geometry_type ?? "point" };
+}
+
+/** A few features a fetch with these filters would write, with the columns it would write. */
+export async function getMirrorSample(
+  area: GeoJSON.Polygon | GeoJSON.MultiPolygon,
+  featureType: string,
+  source: string,
+  filters: { tag_filters?: { key: string; values: string[] }[]; match_mode?: string; where?: string },
+  limit = 20
+): Promise<{ columns: { name: string; type: string }[]; rows: string[][] }> {
+  const result = await executeProcess<Record<string, unknown>, MirrorValuesOutput>("mirror-values", {
+    area,
+    source,
+    feature_type: featureType,
+    sample_only: true,
+    limit,
+    ...filters,
+  });
+  return { columns: result.columns ?? [], rows: result.rows ?? [] };
+}
+
+/** Attributes, or the values of one attribute, in the mirror for an area: OSM tags or Overture columns. */
+export async function getMirrorValues(
+  area: GeoJSON.Polygon | GeoJSON.MultiPolygon,
+  featureType: string,
+  key?: string,
+  limit = 200,
+  source = "osm",
+  quick = false
+): Promise<MirrorValuesOutput> {
+  return executeProcess<Record<string, unknown>, MirrorValuesOutput>("mirror-values", {
+    area,
+    source,
+    feature_type: featureType,
+    ...(key ? { key } : {}),
+    limit,
+    ...(quick ? { quick } : {}),
+  });
+}
+
 /**
  * Get class breaks for a numeric attribute
  */

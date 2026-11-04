@@ -254,6 +254,11 @@ async def claim_link(
     copy or template documents its outputs, and the first run there must not
     drop that.
 
+    The entry becomes ``shareable`` (D7): ``layer_id`` is either the runner's
+    own new layer or one he may write, and so share, so a link that was
+    non-shareable for the dataset it showed before (a template's) now travels
+    with the project and its published dashboard.
+
     Only an entry of ``project_id`` (the project the run was authorized for)
     is touched; any other raises, so a surrounding transaction rolls back.
     """
@@ -275,6 +280,7 @@ async def claim_link(
         f"""
         UPDATE {schema}.layer_project
         SET layer_id = $4,
+            shareable = TRUE,
             other_properties = {_with_stamp("other_properties")},
             updated_at = NOW()
         WHERE id = $1 AND project_id = $5

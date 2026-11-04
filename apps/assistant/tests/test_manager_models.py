@@ -38,7 +38,7 @@ from assistant.llm.resolution import AssistantUnavailable
 from assistant.llm.vault import SecretBox
 from assistant.org_repo import OrgSettingsRepository
 from assistant.repo import Repository
-from assistant.runs.manager import FALLBACK_CAVEAT, RunManager
+from assistant.runs.manager import ENDED_NOTES, FALLBACK_CAVEAT, RunManager
 from assistant.runs.titles import MAX_TITLE_CHARS, clean_title
 
 USER = UUID(int=1)
@@ -581,7 +581,7 @@ async def test_a_swept_turn_stays_in_the_next_runs_history(
     ]
     assert isinstance(answer, ModelResponse)
     assert [p.content for p in answer.parts if isinstance(p, TextPart)] == [
-        "half an answer"
+        "half an answer\n\n" + ENDED_NOTES["interrupted"]
     ]
 
 
@@ -601,8 +601,9 @@ async def test_a_run_ended_before_it_started_keeps_the_question(
     with pytest.raises(RuntimeError, match="shutting down"):
         await manager.start_run(conversation_id, USER, "lost question", None)
     history = await repo.history(conversation_id)
-    assert [m["kind"] for m in history] == ["request"]
+    assert [m["kind"] for m in history] == ["request", "response"]
     assert history[0]["parts"][0]["content"] == "lost question"
+    assert history[1]["parts"][0]["content"] == ENDED_NOTES["interrupted"]
 
 
 # -- tracing ------------------------------------------------------------------

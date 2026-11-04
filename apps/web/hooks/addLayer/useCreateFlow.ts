@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { type FieldErrors, type UseFormRegister, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
+import { v4 as uuidv4 } from "uuid";
 
 import { createEmptyLayer } from "@/lib/api/layers";
 import { useJobs } from "@/lib/api/processes";
@@ -10,10 +11,9 @@ import { addRunningJobIds } from "@/lib/store/jobs/slice";
 import type { CreatableFieldKind, CreateEmptyLayerInput, FieldDefinition } from "@/lib/validations/layer";
 import { createEmptyLayerSchema, isCreatableKind } from "@/lib/validations/layer";
 
-import { useAppDispatch } from "@/hooks/store/ContextHooks";
-
 import type { FlowController } from "@/hooks/addLayer/flow";
 import { useShareNotice } from "@/hooks/addLayer/useShareNotice";
+import { useAppDispatch } from "@/hooks/store/ContextHooks";
 
 /**
  * Creating an empty layer: name, geometry, fields — no UI.
@@ -41,7 +41,7 @@ export type CreateFlow = FlowController & { create: CreateFlowState };
 
 /** A new layer with no attributes at all is rarely what anyone wants. */
 const seedField = (): FieldDefinition => ({
-  id: crypto.randomUUID(),
+  id: uuidv4(),
   name: "name",
   kind: "string",
   is_computed: false,

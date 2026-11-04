@@ -46,7 +46,7 @@ Jeder Abschnitt zeigt die Werte, die der Katalog tatsächlich enthält, die häu
 `Räumlichen Filter setzen` schränkt den Katalog auf Datensätze ein, die ein bestimmtes Gebiet abdecken. Dafür gibt es drei Wege:
 
 - **Region**: nach Land, Bundesland oder Bezirk suchen. Mehrere lassen sich kombinieren; ein Datensatz passt, sobald er eine davon abdeckt.
-- **Punkt + Umkreis**: auf die Karte klicken, um einen Punkt zu setzen, dann einen Radius festlegen
+- **Puffer**: auf die Karte klicken, um einen Punkt zu setzen, dann einen Radius festlegen
 - **Polygon**: auf die Karte klicken, um die Eckpunkte eines Gebiets zu zeichnen
 
 Die Ergebnisse werden danach sortiert, wie viel eines Datensatzes in Ihrem Gebiet liegt. Datensätze, die es am besten abdecken, stehen oben.

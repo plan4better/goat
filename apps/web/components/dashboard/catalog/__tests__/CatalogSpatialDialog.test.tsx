@@ -25,7 +25,10 @@ vi.mock("@/hooks/catalog/useCatalogNutsGeometries", () => ({
   useCatalogNutsGeometries: () => ({ geometries: {}, names: {} }),
 }));
 vi.mock("@/lib/api/catalog", () => ({
-  useCatalogNutsRegions: () => ({ regions: [], isLoading: false }),
+  useCatalogNutsRegions: (query?: string) => ({
+    regions: query && query.length >= 2 ? [{ nuts_id: "DE2", nuts_name: "Bayern", level: 1 }] : [],
+    isLoading: false,
+  }),
 }));
 
 describe("CatalogSpatialDialog", () => {
@@ -64,5 +67,20 @@ describe("CatalogSpatialDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "apply" }));
 
     expect(onApply).toHaveBeenCalledWith(null);
+  });
+
+  it("applies a region picked from the search, and Cancel applies nothing", async () => {
+    const onApply = vi.fn();
+    const onClose = vi.fn();
+    render(<CatalogSpatialDialog open initial={null} onClose={onClose} onApply={onApply} />);
+
+    await userEvent.type(screen.getByPlaceholderText("catalog_search_region"), "Bay");
+    await userEvent.click(await screen.findByRole("option", { name: /Bayern/ }));
+    await userEvent.click(screen.getByRole("button", { name: "cancel" }));
+    expect(onClose).toHaveBeenCalled();
+    expect(onApply).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "apply" }));
+    expect(onApply).toHaveBeenCalledWith({ kind: "region", nutsIds: ["DE2"], names: { DE2: "Bayern" } });
   });
 });

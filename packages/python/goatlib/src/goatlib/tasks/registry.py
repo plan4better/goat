@@ -303,4 +303,18 @@ TASK_REGISTRY: tuple[TaskDefinition, ...] = (
         schedule=None,  # Run manually
         worker_tag="tools",
     ),
+    TaskDefinition(
+        name="build_pt_network",
+        display_name="Build PT Network",
+        description=(
+            "Build GOAT's default public transport network from its combined "
+            "GTFS feed (timetable, walking access/egress, GTFS tables) and "
+            "publish it as a public_transport base data version."
+        ),
+        module_path="goatlib.tasks.build_pt_network",
+        params_class_name="BuildPtNetworkParams",
+        windmill_path="f/goat/tasks/build_pt_network",
+        schedule=None,  # Run manually, when the feed is regenerated
+        worker_tag="tools",  # The routing extension and the street network
+    ),
 )
