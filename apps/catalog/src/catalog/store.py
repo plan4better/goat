@@ -444,10 +444,10 @@ class CatalogStore:
         """What is filterable/sortable/facetable in the currently loaded table.
 
         A convenience read of ``snapshot().registry`` for callers that only
-        need the queryables (``/queryables``, the conformance classes, MCP's
-        tool descriptions). A caller that goes on to *run* SQL built from it
-        should take ``snapshot()`` and pass its connection, so the schema it
-        compiled against is the one it executes on.
+        need the queryables (``/queryables``, the conformance classes). A
+        caller that goes on to *run* SQL built from it should take
+        ``snapshot()`` and pass its connection, so the schema it compiled
+        against is the one it executes on.
         """
         return self._state.registry
 

@@ -5,6 +5,7 @@ computing statistics like count, sum, mean, min, or max.
 """
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, List, Optional, Self
 
@@ -34,6 +35,78 @@ from goatlib.tools.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _statistic_name(stat: dict[str, Any], field_first: bool) -> str | None:
+    """The column a statistic writes: its result name, ``count`` for a
+    count, else its field and operation; None for one without a field."""
+    if stat.get("result_name"):
+        return str(stat["result_name"])
+    operation = stat.get("operation") or "count"
+    operation = str(getattr(operation, "value", operation))
+    if operation == "count":
+        return "count"
+    field = stat.get("field")
+    if not field:
+        return None
+    return f"{field}_{operation}" if field_first else f"{operation}_{field}"
+
+
+def field_first_statistic_name(stat: dict[str, Any]) -> str | None:
+    """``{field}_{operation}`` (``FieldStatistic.get_result_column_name``)."""
+    return _statistic_name(stat, field_first=True)
+
+
+def operation_first_statistic_name(stat: dict[str, Any]) -> str | None:
+    """``{operation}_{field}``
+    (``FieldStatistic.get_operation_first_column_name``)."""
+    return _statistic_name(stat, field_first=False)
+
+
+def predict_aggregation_columns(
+    input_schemas: dict[str, dict[str, str]],
+    params: dict[str, Any],
+    statistic_name: Callable[[dict[str, Any]], str | None],
+) -> dict[str, str]:
+    """The columns an aggregation of points or polygons writes, in the run's
+    order: the geometry; the area layer's columns, or on an H3 grid each
+    cell's id as ``h3_<resolution>``; one column per statistic; and with
+    group fields one JSON column ``<statistic>_grouped`` per statistic. The
+    group fields themselves are not written, and a count only when a count
+    statistic asks for one. A name already taken gets DuckDB's suffix."""
+    columns: dict[str, str] = {}
+
+    def add(name: str, dtype: str) -> None:
+        columns[BaseToolRunner.unique_column_name(columns, name)] = dtype
+
+    add("geometry", "GEOMETRY")
+    if params.get("area_type", AggregationAreaType.polygon) == (
+        AggregationAreaType.h3_grid
+    ):
+        resolution = params.get("h3_resolution")
+        if resolution is not None:
+            add(f"h3_{resolution}", "VARCHAR")
+    else:
+        for col, dtype in input_schemas.get("area_layer_id", {}).items():
+            if "GEOMETRY" not in dtype.upper() and col not in ("geometry", "bbox"):
+                add(col, dtype)
+
+    statistics = params.get("column_statistics") or []
+    if isinstance(statistics, dict):
+        statistics = [statistics]
+    names: list[str] = []
+    for stat in statistics:
+        name = statistic_name(stat) if isinstance(stat, dict) else None
+        if name is None:
+            continue
+        names.append(name)
+        operation = stat.get("operation") or "count"
+        counted = str(getattr(operation, "value", operation)) == "count"
+        add(name, "BIGINT" if counted else "DOUBLE")
+    if params.get("group_by_field"):
+        for name in names:
+            add(f"{name}_grouped", "JSON")
+    return columns
 
 
 class AggregatePointsToolParams(ToolInputBase, AggregatePointsParams):
@@ -197,56 +270,12 @@ class AggregatePointsToolRunner(BaseToolRunner[AggregatePointsToolParams]):
         input_schemas: dict[str, dict[str, str]],
         params: dict[str, Any],
     ) -> dict[str, str]:
-        """Predict aggregate points output schema.
-
-        Aggregate outputs:
-        - h3_index (if area_type is h3) or area layer columns
-        - group_by_field columns (if specified)
-        - count column (always present)
-        - Statistics columns (operation_field for each statistic)
-        - geometry column
-        """
-        columns = {}
-
-        # Add h3_index for H3 aggregation
-        area_type = params.get("area_type", "polygon")
-        if area_type == "h3":
-            columns["h3_index"] = "VARCHAR"
-        else:
-            # For polygon aggregation, area layer columns are preserved
-            area_layer = input_schemas.get("area_layer_id", {})
-            for col, dtype in area_layer.items():
-                if col != "geometry":
-                    columns[col] = dtype
-
-        # Add group_by_field columns
-        group_by_fields = params.get("group_by_field") or []
-        source_layer = input_schemas.get("source_layer_id", {})
-        for field in group_by_fields:
-            if field in source_layer:
-                columns[field] = source_layer[field]
-
-        # Add count column (always present)
-        count_col = cls.unique_column_name(columns, "count")
-        columns[count_col] = "BIGINT"
-
-        # Add statistics columns
-        column_statistics = params.get("column_statistics") or []
-        for stat in column_statistics:
-            operation = stat.get("operation", "count")
-            field = stat.get("field")
-            result_name = stat.get("result_name")
-            if operation == "count":
-                continue  # count already added
-            elif field:
-                base_name = result_name if result_name else f"{field}_{operation}"
-                col_name = cls.unique_column_name(columns, base_name)
-                columns[col_name] = "DOUBLE"
-
-        # Add geometry
-        columns["geometry"] = "GEOMETRY"
-
-        return columns
+        """The columns the run writes (``predict_aggregation_columns``), each
+        statistic named ``{field}_{operation}``, as
+        ``FieldStatistic.get_result_column_name`` names it in the run."""
+        return predict_aggregation_columns(
+            input_schemas, params, field_first_statistic_name
+        )
 
     def get_layer_properties(
         self: Self,
@@ -256,17 +285,8 @@ class AggregatePointsToolRunner(BaseToolRunner[AggregatePointsToolParams]):
         parquet_path: Path | str | None = None,
     ) -> dict[str, Any] | None:
         """Return style for aggregated output with quantile breaks."""
-        # Determine the value field based on the statistics operation
-        # Use first statistic for styling
-        stat_op = params.column_statistics[0].operation
-        stat_field = params.column_statistics[0].field
-
-        if stat_op.value == "count":
-            color_field = "count"
-        else:
-            color_field = (
-                f"{stat_field}_{stat_op.value}" if stat_field else stat_op.value
-            )
+        # Style by the column the first statistic wrote
+        color_field = params.column_statistics[0].get_result_column_name()
 
         # Compute quantile breaks from the DuckLake table
         color_scale_breaks = None

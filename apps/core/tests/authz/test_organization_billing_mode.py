@@ -34,7 +34,7 @@ async def _create(
     return (
         await db_session.execute(
             text(
-                f"SELECT on_trial, total_credits, plan_renewal_date "
+                f"SELECT on_trial, total_credits, total_ai_credits, plan_renewal_date "
                 f"FROM {S}.organization WHERE id = :id"
             ),
             {"id": created.json()["id"]},
@@ -53,6 +53,7 @@ async def test_self_hosted_organization_has_no_trial_and_no_credit_limit(
     org = await _create(db_session, auth_on, make_user)
     assert org.on_trial is False
     assert org.total_credits is None
+    assert org.total_ai_credits is None  # no AI-credit limit either
 
 
 @pytest.mark.asyncio
@@ -67,5 +68,6 @@ async def test_with_billing_an_organization_starts_a_one_month_trial(
     assert org.on_trial is True
     # No terms pushed yet: core's defaults.
     assert float(org.total_credits) == DEFAULT_TRIAL["credits"]
+    assert float(org.total_ai_credits) == DEFAULT_TRIAL["ai_credits"]
     expected = datetime.now() + timedelta(days=DEFAULT_TRIAL["days"])
     assert abs(org.plan_renewal_date - expected) < timedelta(minutes=5)

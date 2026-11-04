@@ -34,7 +34,6 @@ vi.mock("@/lib/api/processes", () => ({
 vi.mock("@/lib/api/workflows", () => ({
   executeWorkflow: vi.fn(),
   finalizeWorkflowLayer: vi.fn(),
-  cleanupWorkflowTemp: vi.fn(),
 }));
 
 const toolNode = {
@@ -67,7 +66,11 @@ const renderOpenWorkflow = () => {
         edges: [],
         viewport: { x: 0, y: 0, zoom: 1 },
         variables: [],
+        revisions: {},
+        reloadRequests: {},
+        canvasVersion: 0,
         isDirty: false,
+        contentDirty: false,
         requestMapView: false,
         requestTableView: false,
         activeDataPanelView: null,

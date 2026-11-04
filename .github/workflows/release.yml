@@ -38,6 +38,7 @@ jobs:
         || needs.file-changes.outputs.geoapi == 'true'
         || needs.file-changes.outputs.processes == 'true'
         || needs.file-changes.outputs.catalog == 'true'
+        || needs.file-changes.outputs.assistant == 'true'
         || startsWith(github.ref, 'refs/tags/v') }}
 
   # Gate releases on the test suites. Change-detection picks the affected
@@ -74,6 +75,9 @@ jobs:
         || startsWith(github.ref, 'refs/tags/v') }}
       catalog: >-
         ${{ needs.file-changes.outputs.catalog == 'true'
+        || startsWith(github.ref, 'refs/tags/v') }}
+      assistant: >-
+        ${{ needs.file-changes.outputs.assistant == 'true'
         || startsWith(github.ref, 'refs/tags/v') }}
 
   # Each image job gives the image a smoke test (smoke-command), run inside
@@ -173,6 +177,34 @@ jobs:
         export AUTH=false
         python -c "import catalog.main"
         python -c "import duckdb, os; c = duckdb.connect(config={'extension_directory': os.environ['DUCKDB_EXTENSION_DIRECTORY'], 'autoinstall_known_extensions': False}); c.execute('LOAD spatial'); c.execute('LOAD httpfs')"
+
+  release-docker-assistant:
+    needs: [file-changes, lint, test]
+    if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.assistant == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
+    uses: ./.github/workflows/reusable-docker-build.yml
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      file: ./apps/assistant/Dockerfile
+      platforms: linux/amd64,linux/arm64
+      image-name: ghcr.io/${{ github.repository }}/assistant
+      title: "GOAT Assistant"
+      description: "GOAT's AI assistant: conversations, agent runs, the model layer and the MCP endpoint."
+      # AUTH=false: with auth on the settings require a Keycloak URL, which an
+      # import check does not need. The last two lines check what the
+      # deployments rely on: no fixture generator in the wheel, and the
+      # graceful-shutdown bound the platforms' grace periods are sized for.
+      smoke-command: |
+        cd /app
+        export AUTH=false
+        python -c "import assistant.main"
+        python -c "from assistant.llm.capabilities import TESTED_MODELS; print(len(TESTED_MODELS), 'tested models')"
+        python -c "import importlib.util, sys; sys.exit(importlib.util.find_spec('assistant.encoding.fixtures') is not None)"
+        test ! -e /app/apps/assistant/evals && test ! -e /app/apps/assistant/e2e
+        test "$UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN" = 20
 
   release-docker-processes:
     needs: [file-changes, lint, test]
@@ -361,6 +393,7 @@ jobs:
       - release-docker-core
       - release-docker-geoapi
       - release-docker-catalog
+      - release-docker-assistant
       - release-docker-processes
       - release-docker-keycloak
       - release-docker-windmill-server

@@ -24,10 +24,13 @@ async def test_a_workflow_is_refused_without_credits() -> None:
     refused = HTTPException(status_code=402, detail="out of credits")
     run = AsyncMock(return_value="job-1")
     with (
+        # The workflow check passes: what the caller may not read would be
+        # one of its issues, refused before the credits are asked.
         patch(
-            "processes.routers.workflows.ensure_workflow_allowed",
-            AsyncMock(return_value=None),
+            "processes.routers.workflows._workflow_issues",
+            AsyncMock(return_value=[]),
         ),
+        patch("processes.routers.workflows.cleanup_workflow_temp"),
         patch(
             "processes.services.credit_gate.assert_credits_available",
             AsyncMock(side_effect=refused),
@@ -35,7 +38,9 @@ async def test_a_workflow_is_refused_without_credits() -> None:
         patch("processes.routers.workflows.windmill_client.run_script_async", run),
         pytest.raises(HTTPException) as caught,
     ):
-        await execute_workflow(WORKFLOW, request, user_id=USER, access_token="tok")
+        await execute_workflow(
+            WORKFLOW, request, user_id=USER, language="en", access_token="tok"
+        )
 
     assert caught.value.status_code == 402
     run.assert_not_awaited()

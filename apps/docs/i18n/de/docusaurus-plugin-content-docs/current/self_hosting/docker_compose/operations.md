@@ -119,6 +119,23 @@ Das funktioniert auch auf einem neuen Server: Installieren Sie das Paket derselb
 
 Der vollständige Ablauf aus Backup, vollständigem Löschen und Wiederherstellen wurde getestet.
 
+## Der Schlüssel des Assistenten {#assistant-key}
+
+`ASSISTANT_SECRETS_KEY` in `.env` verschlüsselt die Zugangsdaten der Modelle, die Organisationen speichern. Sichern Sie ihn zusammen mit `.env`: Eine wiederhergestellte Datenbank ohne ihn kann diese Verbindungen nicht nutzen, und die Organisationen müssen ihre Schlüssel neu eingeben.
+
+Um den Schlüssel zu ersetzen, stellen Sie einen neuen vor den alten, durch ein Komma getrennt, verschlüsseln neu und entfernen dann den alten:
+
+```bash
+new=$(openssl rand -base64 32 | tr '+/' '-_')
+sed -i "s|^ASSISTANT_SECRETS_KEY=|ASSISTANT_SECRETS_KEY=$new,|" .env
+docker compose up -d assistant
+docker compose exec assistant python -m assistant.llm.vault rotate
+# danach .env so ändern, dass ASSISTANT_SECRETS_KEY nur den neuen Schlüssel enthält, und:
+docker compose up -d assistant
+```
+
+Der Assistent speichert seine Unterhaltungen im Schema `assistant` der GOAT-Datenbank, das reguläre Backup erfasst sie also. Eine ältere GOAT-Version zu starten lässt das Schema bestehen; erst ein Downgrade der Datenbank unter die Migrationen des Assistenten (`alembic downgrade`) entfernt es mit den Unterhaltungen und den Nutzungsdaten.
+
 ## Updates {#upgrade}
 
 1. Erstellen Sie ein Backup: `docker compose run --rm backup --now` (siehe [Backups](#backups)).
@@ -136,7 +153,7 @@ Der vollständige Ablauf aus Backup, vollständigem Löschen und Wiederherstelle
 ## Logs {#logs}
 
 ```bash
-docker compose logs -f <dienst>    # z. B. core, web, geoapi, processes, keycloak, caddy
+docker compose logs -f <dienst>    # z. B. core, web, geoapi, processes, assistant, keycloak, caddy
 docker compose logs --tail 100 windmill-worker-tools
 ```
 
@@ -158,3 +175,5 @@ Ein einmaliger Dienst mit einem anderen Exit-Code zeigt den Grund in seinen Logs
 **Einzugsgebiete, Heatmaps oder ÖV-Analysen schlagen fehl:** Wahrscheinlich fehlen die [Routing-Basisdaten](#base-data) für das Gebiet.
 
 **E-Mails kommen nicht an:** Prüfen Sie die [E-Mail-Einstellungen](./external_services.md#email) und das Log des letzten Versuchs: `docker compose logs core` für GOATs E-Mails, `docker compose logs keycloak` für Passwort-E-Mails. Ein Zertifikatsfehler dort (`CERTIFICATE_VERIFY_FAILED`, `PKIX path building failed`) bedeutet, dass das Zertifikat des Relays von einer CA stammt, der GOAT noch nicht vertraut; siehe [Firmen-CA](./https.md#company-ca).
+
+**Der Assistent erscheint nicht:** Es ist noch kein Modell eingerichtet (siehe [KI-Assistent](./external_services.md#assistant)), oder der Dienst ist nicht bereit: `docker compose ps assistant` sollte `healthy` zeigen, und `docker compose logs assistant` nennt eine fehlende oder ungültige Einstellung.

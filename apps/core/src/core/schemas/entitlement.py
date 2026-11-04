@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
@@ -27,6 +27,10 @@ class EntitlementPush(BaseModel):
     suspended: StrictBool | None = None
     on_trial: StrictBool | None = None
     total_credits: _Cap | None = None
+    # The organization's AI credits per period, set by the billing system
+    # itself (a special deal); absent, a push with total_editors sets them to
+    # the seats times the amount per editor (CRUDOrganization.apply_entitlement).
+    total_ai_credits: _Cap | None = None
     total_storage: _Cap | None = None
     total_projects: _Cap | None = None
     total_editors: _Cap | None = None
@@ -99,6 +103,21 @@ _MAX_COUNT = 2_147_483_647
 _MAX_AMOUNT = 1e15
 
 
+_Amount = Annotated[
+    float, Field(ge=0, le=_MAX_AMOUNT, strict=True, allow_inf_nan=False)
+]
+
+
+_T = TypeVar("_T")
+
+
+def _not_null(value: _T | None) -> _T:
+    """An optional term may be left out, not sent as null."""
+    if value is None:
+        raise ValueError("leave it out instead of sending null")
+    return value
+
+
 class TrialTerms(BaseModel):
     """The trial a new organization starts with: its length and its quotas."""
 
@@ -120,6 +139,13 @@ class TrialTerms(BaseModel):
     viewers: Annotated[
         float, Field(ge=0, le=_MAX_COUNT, strict=True, allow_inf_nan=False)
     ]
+    # AI credits for the whole trial; left out, the stored or default amount.
+    ai_credits: _Amount | None = None
+
+    @field_validator("ai_credits")
+    @classmethod
+    def _ai_credits_not_null(cls, value: float | None) -> float:
+        return _not_null(value)
 
     @field_validator("days", "projects", "editors", "viewers")
     @classmethod
@@ -135,7 +161,8 @@ class TrialTerms(BaseModel):
 
 
 class CreditRates(BaseModel):
-    """Credits per unit: compute per minute, egress per GB, AI per 1000 tokens."""
+    """Credits per unit: compute per minute, egress per GB. AI answers are
+    priced in AI credits by their steps (BillingTermsPush.ai_credit_tiers)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -145,17 +172,63 @@ class CreditRates(BaseModel):
     egress: Annotated[
         float, Field(ge=0, le=_MAX_AMOUNT, strict=True, allow_inf_nan=False)
     ]
-    ai: Annotated[float, Field(ge=0, le=_MAX_AMOUNT, strict=True, allow_inf_nan=False)]
+
+
+class AiCreditTier(BaseModel):
+    """An answer with at most max_steps steps costs credits AI credits; null
+    max_steps: any number of steps (the last tier)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_steps: (
+        Annotated[float, Field(ge=0, le=_MAX_COUNT, strict=True, allow_inf_nan=False)]
+        | None
+    )
+    credits: _Amount
+
+    @field_validator("max_steps")
+    @classmethod
+    def _steps_are_whole(cls, value: float | None) -> int | None:
+        return None if value is None else _whole(value)
 
 
 class BillingTermsPush(BaseModel):
-    """The billing system's terms (docs/billing-interface.md), all of them at once."""
+    """The billing system's terms (docs/billing-interface.md), all of them at
+    once; the AI terms may be left out (core keeps the stored or default ones)."""
 
     model_config = ConfigDict(extra="forbid")
 
     trial: TrialTerms
     credit_rates: CreditRates
+    # A subscription's monthly AI credits per editor seat.
+    ai_credits_per_editor: _Amount | None = None
+    # The price of an answer by its steps, cheapest first, the last one open.
+    ai_credit_tiers: list[AiCreditTier] | None = None
     as_of: datetime | None = None
+
+    @field_validator("ai_credits_per_editor", "ai_credit_tiers")
+    @classmethod
+    def _ai_terms_not_null(cls, value: object) -> object:
+        return _not_null(value)
+
+    @field_validator("ai_credit_tiers")
+    @classmethod
+    def _tiers_ascend_to_an_open_one(
+        cls, tiers: list[AiCreditTier] | None
+    ) -> list[AiCreditTier] | None:
+        if tiers is None:
+            return None
+        if not tiers:
+            raise ValueError("needs at least one tier")
+        *bounded, last = tiers
+        if last.max_steps is not None:
+            raise ValueError("the last tier needs max_steps null")
+        limits = [tier.max_steps for tier in bounded if tier.max_steps is not None]
+        if len(limits) != len(bounded):
+            raise ValueError("only the last tier may have max_steps null")
+        if any(a >= b for a, b in zip(limits, limits[1:])):
+            raise ValueError("max_steps must increase from tier to tier")
+        return tiers
 
     @field_validator("as_of", mode="before")
     @classmethod

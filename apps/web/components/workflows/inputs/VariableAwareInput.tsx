@@ -327,7 +327,12 @@ const VariableTextField: React.FC<{
 
   return (
     <Stack>
-      <FormLabelHelper label={input.title || input.name} tooltip={input.description} color="inherit" />
+      <FormLabelHelper
+        label={input.title || input.name}
+        tooltip={input.description}
+        color="inherit"
+        required={input.required}
+      />
       <Box sx={{ position: "relative" }}>
         <TextField
           inputRef={inputRef}

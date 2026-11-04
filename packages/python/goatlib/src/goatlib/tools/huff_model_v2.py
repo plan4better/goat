@@ -34,6 +34,7 @@ from goatlib.tools._routing_limits import (
     leg_budget_widget_options,
     resolve_budget_input,
     resolve_leg_names,
+    speed_default_by_field,
     validate_budget,
     validate_cost_type,
     validate_leg_budget,
@@ -64,6 +65,7 @@ from goatlib.tools.pt_network import (
     pt_date_field,
     pt_network_bundle_field,
 )
+from goatlib.tools.schema_prediction import predict_huff_schema
 from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
@@ -380,10 +382,7 @@ class HuffModelV2ToolParams(ToolInputBase, HuffmodelV2Params):
                 ]
             },
             widget_options={
-                "default_by_field": {
-                    "field": "routing_mode",
-                    "values": {"walking": 5, "bicycle": 15, "pedelec": 23},
-                },
+                "default_by_field": speed_default_by_field("routing_mode"),
                 "max_value_from": {
                     "fields": [
                         {
@@ -602,6 +601,16 @@ class HuffModelV2ToolRunner(BaseToolRunner[HuffModelV2ToolParams]):
     tool_class = HuffmodelV2Tool
     output_geometry_type = None
     default_output_name = get_default_layer_name("huff_model", "en")
+
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """The opportunity layer's fields, ``probability`` and ``geometry``
+        (``predict_huff_schema``)."""
+        return predict_huff_schema(input_schemas)
 
     def get_layer_properties(
         self: Self,

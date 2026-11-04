@@ -15,6 +15,7 @@ from typing import Any, Self
 import httpx
 
 from goatlib.tasks.registry import TASK_REGISTRY, TaskDefinition
+from goatlib.windmill_scripts import deploy_script, summarize
 
 logging.basicConfig(
     level=logging.INFO,
@@ -93,42 +94,6 @@ class WindmillTaskSyncer:
     def close(self: Self) -> None:
         """Close HTTP client."""
         self.client.close()
-
-    def _delete_script(self: Self, path: str) -> bool:
-        """Delete existing script if it exists."""
-        try:
-            self.client.post(
-                f"{self.base_url}/api/w/{self.workspace}/scripts/delete/p/{path}"
-            )
-            return True
-        except Exception:
-            return False
-
-    def _create_script(
-        self: Self,
-        path: str,
-        content: str,
-        summary: str,
-        description: str,
-        tag: str | None = None,
-    ) -> dict[str, Any]:
-        """Create a script in Windmill."""
-        script_data: dict[str, Any] = {
-            "path": path,
-            "content": content,
-            "summary": summary,
-            "description": description,
-            "language": "python3",
-        }
-        if tag:
-            script_data["tag"] = tag
-
-        response = self.client.post(
-            f"{self.base_url}/api/w/{self.workspace}/scripts/create",
-            json=script_data,
-        )
-        response.raise_for_status()
-        return {"path": path, "status": "synced"}
 
     def _create_or_update_schedule(
         self: Self, task_def: TaskDefinition
@@ -242,20 +207,21 @@ class WindmillTaskSyncer:
             return {"path": task_def.windmill_path, "status": "dry-run"}
 
         try:
-            # Delete existing script first
-            self._delete_script(task_def.windmill_path)
-
-            # Create new script
-            result = self._create_script(
+            status = deploy_script(
+                self.client,
+                self.base_url,
+                self.workspace,
                 path=task_def.windmill_path,
                 content=content,
                 summary=task_def.display_name,
                 description=task_def.description or "",
                 tag=task_def.worker_tag,
             )
-            logger.info(f"✓ Synced: {task_def.windmill_path}")
+            result: dict[str, Any] = {"path": task_def.windmill_path, "status": status}
+            logger.info(f"✓ {status.capitalize()}: {task_def.windmill_path}")
 
-            # Create schedule if defined
+            # Create schedule if defined, for an unchanged script too: the
+            # cron may have changed on its own.
             if task_def.schedule:
                 schedule_result = self._create_or_update_schedule(task_def)
                 if schedule_result:
@@ -291,10 +257,7 @@ class WindmillTaskSyncer:
             result = self.sync_task(task_def, dry_run=dry_run)
             results.append(result)
 
-        # Summary
-        synced = sum(1 for r in results if r["status"] == "synced")
-        failed = sum(1 for r in results if r["status"] == "failed")
-        logger.info(f"Done: {synced} synced, {failed} failed")
+        logger.info(summarize(results))
 
         return results
 

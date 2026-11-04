@@ -64,6 +64,7 @@ from goatlib.tools._routing_limits import (
     leg_budget_widget_options,
     resolve_budget_input,
     resolve_leg_names,
+    speed_default_by_field,
     validate_budget,
     validate_cost_type,
     validate_leg_budget,
@@ -888,10 +889,7 @@ class HeatmapV2WindmillParams(ToolInputBase):
                 ]
             },
             widget_options={
-                "default_by_field": {
-                    "field": "routing_mode",
-                    "values": {"walking": 5, "bicycle": 15, "pedelec": 23},
-                },
+                "default_by_field": speed_default_by_field("routing_mode"),
                 "max_value_from": {
                     "fields": [
                         {

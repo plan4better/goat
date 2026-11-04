@@ -28,6 +28,7 @@ import { DEFAULT_SORT } from "@/lib/catalog/searchQuery";
 import type { CatalogCollection } from "@/lib/validations/catalog";
 import type { TemplateRead, TemplateUseResult } from "@/lib/validations/template";
 
+import { useCatalogAssistantSurface } from "@/hooks/assistant/useCatalogAssistantSurface";
 import { FACET_HIDDEN, useCatalogFacetSections } from "@/hooks/catalog/useCatalogFacetSections";
 import { CATALOG_PAGE_SIZE, useCatalogSearchState } from "@/hooks/catalog/useCatalogSearchState";
 import { templateResultHref } from "@/hooks/templates/useUseTemplate";
@@ -138,7 +139,11 @@ const CatalogPage = () => {
     toggleFacet,
     clearAll,
     state,
+    snapshot,
+    replaceSearch,
   } = useCatalogSearchState({ aggregations });
+  // The assistant's catalog surface: context chips and filter proposals (spec §10).
+  useCatalogAssistantSurface({ state, spatial, facetSelections, snapshot, replaceSearch });
   const [templateInUse, setTemplateInUse] = useState<TemplateRead | null>(null);
 
   /**

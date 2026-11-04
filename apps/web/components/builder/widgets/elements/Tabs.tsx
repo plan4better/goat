@@ -19,6 +19,7 @@ import {
 
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
+import WidgetErrorBoundary from "@/components/builder/widgets/WidgetErrorBoundary";
 import WidgetChart from "@/components/builder/widgets/chart/WidgetChart";
 import { WidgetStatusContainer } from "@/components/builder/widgets/common/WidgetStatusContainer";
 import WidgetData from "@/components/builder/widgets/data/WidgetData";
@@ -83,6 +84,7 @@ const TabChildWidget: React.FC<{
 }) => {
   const theme = useTheme();
   const config = childWidget.config as WidgetConfigSchema;
+  const configKey = useMemo(() => JSON.stringify(config ?? null), [config]);
 
   if (!config) return null;
 
@@ -159,7 +161,10 @@ const TabChildWidget: React.FC<{
             }
           : {},
       }}>
-      {renderWidget()}
+      {/* A child that fails to render takes only itself down, not its siblings in the other tabs. */}
+      <WidgetErrorBoundary widgetId={childWidget.id} resetKey={configKey} showNotice={!viewOnly}>
+        {renderWidget()}
+      </WidgetErrorBoundary>
     </Box>
   );
 };

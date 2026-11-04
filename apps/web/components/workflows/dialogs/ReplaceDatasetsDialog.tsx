@@ -19,6 +19,7 @@ import {
   missingFieldRefs,
   replaceDatasetLayers,
   sameShapeLayers,
+  withCurrentDatasetTypes,
 } from "@/lib/utils/workflowDatasets";
 import type { ProjectLayer } from "@/lib/validations/project";
 
@@ -62,7 +63,11 @@ const ReplaceDatasetsDialog = ({ projectId, workflowName, onClose }: ReplaceData
   const { layers } = useFilteredProjectLayers(projectId);
   const [picks, setPicks] = useState<Record<string, string>>({});
 
-  const rows = useMemo(() => datasetRows(nodes, edges), [nodes, edges]);
+  // Each row describes and matches its layer by the type it has now
+  const rows = useMemo(
+    () => datasetRows(withCurrentDatasetTypes(nodes, layers), edges),
+    [nodes, edges, layers]
+  );
   const processIds = useMemo(() => nodes.filter(isToolNode).map((node) => node.data.processId), [nodes]);
   const { processes } = useProcessDescriptions(processIds);
 

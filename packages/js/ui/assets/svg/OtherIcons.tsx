@@ -149,18 +149,6 @@ export const polygonIcon: IconDefinition = {
   prefix: "fas" as IconPrefix,
 };
 
-export const streetNetworkIcon: IconDefinition = {
-  icon: [
-    24,
-    24,
-    [],
-    "",
-    "M17.386 2.926c-1.3-.174-3.008-.176-5.386-.176s-4.086.002-5.386.176c-1.279.172-2.05.5-2.62 1.069c-.569.57-.896 1.34-1.068 2.619c-.174 1.3-.176 3.008-.176 5.386s.002 4.086.176 5.386c.119.882.311 1.522.606 2.021L19.407 3.532c-.499-.295-1.139-.487-2.02-.606m3.082 1.667L13.061 12l7.407 7.407c.295-.499.487-1.139.606-2.02c.174-1.3.176-3.009.176-5.387c0-2.378-.002-4.086-.176-5.386c-.119-.882-.311-1.522-.606-2.021m-1.06 15.875L12 13.061l-7.407 7.407c.499.295 1.139.487 2.02.606c1.3.174 3.009.176 5.387.176c2.378 0 4.086-.002 5.386-.176c.882-.119 1.522-.311 2.021-.606M17.586 1.44c1.445.194 2.585.6 3.48 1.494c.895.895 1.3 2.035 1.494 3.48c.19 1.411.19 3.22.19 5.529v.114c0 2.309 0 4.118-.19 5.53c-.194 1.444-.6 2.584-1.494 3.479c-.895.895-2.035 1.3-3.48 1.494c-1.411.19-3.22.19-5.529.19h-.114c-2.309 0-4.118 0-5.53-.19c-1.444-.194-2.584-.6-3.479-1.494c-.895-.895-1.3-2.035-1.494-3.48c-.19-1.411-.19-3.22-.19-5.529v-.114c0-2.309 0-4.118.19-5.53c.194-1.444.6-2.584 1.494-3.479c.895-.895 2.035-1.3 3.48-1.494c1.411-.19 3.22-.19 5.529-.19h.114c2.309 0 4.118 0 5.53.19",
-  ],
-  iconName: "street-network" as IconName,
-  prefix: "fas" as IconPrefix,
-};
-
 export const wmsIcon: IconDefinition = {
   icon: [
     24,
@@ -461,5 +449,81 @@ export const variableIcon: IconDefinition = {
     "M14 20v-2h3q.425 0 .713-.288T18 17v-2q0-.95.55-1.725t1.45-1.1v-.35q-.9-.325-1.45-1.1T18 9V7q0-.425-.288-.712T17 6h-3V4h3q1.25 0 2.125.875T20 7v2q0 .425.288.713T21 10h1v4h-1q-.425 0-.712.288T20 15v2q0 1.25-.875 2.125T17 20zm-7 0q-1.25 0-2.125-.875T4 17v-2q0-.425-.288-.712T3 14H2v-4h1q.425 0 .713-.288T4 9V7q0-1.25.875-2.125T7 4h3v2H7q-.425 0-.712.288T6 7v2q0 .95-.55 1.725T4 11.825v.35q.9.325 1.45 1.1T6 15v2q0 .425.288.713T7 18h3v2z",
   ],
   iconName: "variable" as IconName,
+  prefix: "fas" as IconPrefix,
+};
+
+/** The AI mark: a four-point sparkle with two small ones, drawn on Font Awesome's 512 grid.
+ * Font Awesome's own "sparkles" is a Pro icon. */
+export const sparklesIcon: IconDefinition = {
+  icon: [
+    512,
+    512,
+    [],
+    "",
+    "M216 80Q257 255 432 296Q257 337 216 512Q175 337 0 296Q175 255 216 80Z M408 16Q423 81 488 96Q423 111 408 176Q393 111 328 96Q393 81 408 16Z M476 204Q482 230 508 236Q482 242 476 268Q470 242 444 236Q470 230 476 204Z",
+  ],
+  iconName: "goat-sparkles" as IconName,
+  prefix: "fas" as IconPrefix,
+};
+
+/**
+ * OpenStreetMap as a source: a folded map under a magnifying glass, after the project's own logo.
+ * Three paths, strong (the glass), medium (the outer folds) and weak (the middle fold), drawn at
+ * falling opacities like `rasterIcon`.
+ */
+export const osmIcon: IconDefinition = {
+  icon: [
+    24,
+    24,
+    [],
+    "",
+    [
+      "M7.3 10.5A5.2 5.2 0 1 1 17.7 10.5A5.2 5.2 0 1 1 7.3 10.5ZM9.1 10.5A3.4 3.4 0 1 0 15.9 10.5A3.4 3.4 0 1 0 9.1 10.5ZM15.6 14.9L17 13.5L22.4 18.9A1 1 0 0 1 22.4 20.3L21.7 21A1 1 0 0 1 20.3 21L14.9 15.6Z",
+      "M1.5 5.5L7.5 3.5V18.5L1.5 20.5Z M16.5 5.5L22.5 3.5V14.2L16.5 8.2Z",
+      "M7.5 3.5L16.5 5.5V8.2L13.4 11.3 9 15.7V18.8L7.5 18.5Z",
+    ],
+  ],
+  iconName: "osm" as IconName,
+  prefix: "fas" as IconPrefix,
+};
+
+/**
+ * Overture Maps as a source: a globe over two stacked map sheets, after the foundation's mark.
+ * Three paths, strong (the globe), medium (the upper sheet) and weak (the lower sheet), drawn at
+ * falling opacities like `rasterIcon`.
+ */
+export const overtureIcon: IconDefinition = {
+  icon: [
+    24,
+    24,
+    [],
+    "",
+    [
+      "M6.4 6.6A5.6 5.6 0 1 1 17.6 6.6A5.6 5.6 0 1 1 6.4 6.6ZM8.1 6.6A3.9 3.9 0 1 0 15.9 6.6A3.9 3.9 0 1 0 8.1 6.6ZM12 1.4A2.3 5.2 0 1 1 12 11.8A2.3 5.2 0 1 1 12 1.4ZM12 2.5A0.9 4.1 0 1 0 12 10.7A0.9 4.1 0 1 0 12 2.5ZM7.5 5.85H16.5A0.5 0.5 0 0 1 17 6.35V6.85A0.5 0.5 0 0 1 16.5 7.35H7.5A0.5 0.5 0 0 1 7 6.85V6.35A0.5 0.5 0 0 1 7.5 5.85Z",
+      "M12 12.6L22.6 16.4L12 20.2L1.4 16.4Z",
+      "M1.4 19.2L3.9 18.3L12 21.2L20.1 18.3L22.6 19.2L12 23Z",
+    ],
+  ],
+  iconName: "overture" as IconName,
+  prefix: "fas" as IconPrefix,
+};
+
+/**
+ * A routable street network: roads meeting at junctions. Three paths, strong (the junctions),
+ * medium (the main roads) and weak (the side roads), drawn at falling opacities like `rasterIcon`.
+ */
+export const roadNetworkIcon: IconDefinition = {
+  icon: [
+    24,
+    24,
+    [],
+    "",
+    [
+      "M1.3 4.6A2.9 2.9 0 1 1 7.1 4.6A2.9 2.9 0 1 1 1.3 4.6ZM16.7 6.2A2.9 2.9 0 1 1 22.5 6.2A2.9 2.9 0 1 1 16.7 6.2ZM8.7 12.4A2.9 2.9 0 1 1 14.5 12.4A2.9 2.9 0 1 1 8.7 12.4ZM1.5 19.6A2.9 2.9 0 1 1 7.3 19.6A2.9 2.9 0 1 1 1.5 19.6ZM16.9 19.2A2.9 2.9 0 1 1 22.7 19.2A2.9 2.9 0 1 1 16.9 19.2Z",
+      "M3.26 5.49L10.66 13.29L12.54 11.51L5.14 3.71ZM18.8 5.17L10.8 11.37L12.4 13.43L20.4 7.23ZM10.68 11.48L3.48 18.68L5.32 20.52L12.52 13.32ZM10.77 13.4L18.97 20.2L20.63 18.2L12.43 11.4Z",
+      "M4.09 5.69L19.49 7.29L19.71 5.11L4.31 3.51ZM18.5 6.22L18.7 19.22L20.9 19.18L20.7 6.18Z",
+    ],
+  ],
+  iconName: "road-network" as IconName,
   prefix: "fas" as IconPrefix,
 };

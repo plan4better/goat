@@ -42,18 +42,28 @@ def without_geospatial_stack(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(builtins, "__import__", guarded)
 
 
-def test_the_importer_registry_loads(without_geospatial_stack: None) -> None:
+def test_the_importer_registry_loads(
+    without_geospatial_stack: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """core imports the registry for `infer_bundle_type` and `get_importer`.
 
     Importing a module registers its importer, so the concrete importers must
     stay importable with their heavy dependencies deferred into the functions
     that use them.
     """
+    # Import the registry and its importers afresh: modules other tests loaded
+    # would otherwise hide a heavy import at the top of an importer.
+    for mod in list(sys.modules):
+        if mod.startswith(("goatlib.bundles.importers", "goatlib.io")):
+            monkeypatch.delitem(sys.modules, mod)
     registry = importlib.import_module("goatlib.bundles.importers")
-    importlib.reload(registry)
 
     assert registry.get_importer("street_network") is not None
     assert registry.get_importer("pt_network_gtfs") is not None
+    # The converters and S3 discovery need pyproj and boto3, which neither
+    # core's nor geoapi's image installs.
+    for heavy in ("goatlib.io.converter", "goatlib.io.ingest", "goatlib.io.discover"):
+        assert heavy not in sys.modules
 
 
 def test_a_bundle_upload_can_still_be_typed(
@@ -92,3 +102,17 @@ def test_the_bundle_endpoints_import(without_geospatial_stack: None) -> None:
     # the stack this test hides — and a refusal raised here reaches nobody,
     # while a failed job is reported to whoever uploaded the file.
     assert not hasattr(module, "get_importer")
+
+
+def test_the_workflow_endpoints_import(
+    without_geospatial_stack: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Saving a workflow checks its shape with `goatlib.workflows.checks`,
+    which core's image loads from goatlib's base install."""
+    for name in list(sys.modules):
+        if name.startswith("goatlib.workflows"):
+            monkeypatch.delitem(sys.modules, name)
+    module = importlib.import_module("core.endpoints.v2.workflow")
+    importlib.reload(module)
+
+    assert module.shape_issues({"nodes": [], "edges": []}) == []

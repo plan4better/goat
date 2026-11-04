@@ -118,16 +118,21 @@ class MergeTool(AnalysisTool):
         Raises ValueError if incompatible types found (e.g., Point + Polygon).
         """
 
-        base_type = self._normalize_geometry_type(layer_info[0]["geometry_type"])
+        # A layer without geometries (no rows) has no type to compare.
+        typed = [info for info in layer_info if info["geometry_type"]]
+        if not typed:
+            return
+        first = typed[0]
+        base_type = self._normalize_geometry_type(first["geometry_type"])
 
-        for info in layer_info[1:]:
+        for info in typed[1:]:
             geom_type = self._normalize_geometry_type(info["geometry_type"])
             if geom_type != base_type:
                 raise ValueError(
                     f"Incompatible geometry types detected:\n"
-                    f"  Layer 0 ({layer_info[0]['path'].name}): "
-                    f"{layer_info[0]['geometry_type']} → {base_type} family\n"
-                    f"  Layer {info['index']} ({info['path'].name}): "
+                    f"  Layer {first['index']}: "
+                    f"{first['geometry_type']} → {base_type} family\n"
+                    f"  Layer {info['index']}: "
                     f"{info['geometry_type']} → {geom_type} family\n"
                     f"Set validate_geometry_types=False to allow mixed geometries."
                 )

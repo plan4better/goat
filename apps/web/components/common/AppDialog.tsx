@@ -147,6 +147,8 @@ export interface AppDialogFooterProps {
   onCancel?: () => void;
   /** Blocks the way out while the dialog is mid-flight. */
   cancelDisabled?: boolean;
+  /** Focuses Cancel when the dialog opens, for a destructive confirmation. */
+  cancelAutoFocus?: boolean;
   /** Omitting both `primaryLabel` and `onPrimary` leaves a dismiss-only row
    * with the Cancel button alone. */
   primaryLabel?: string;
@@ -173,6 +175,7 @@ export const AppDialogFooter = ({
   cancelLabel,
   onCancel,
   cancelDisabled,
+  cancelAutoFocus,
   primaryLabel,
   onPrimary,
   primaryDisabled,
@@ -205,7 +208,7 @@ export const AppDialogFooter = ({
       }}>
       {extra && <Box sx={{ display: "inline-flex", mr: "auto" }}>{extra}</Box>}
       {onCancel && (
-        <Button variant="text" onClick={onCancel} disabled={cancelDisabled}>
+        <Button variant="text" onClick={onCancel} disabled={cancelDisabled} autoFocus={cancelAutoFocus}>
           <Typography variant="body2" fontWeight="bold">
             {cancelLabel ?? t("cancel")}
           </Typography>

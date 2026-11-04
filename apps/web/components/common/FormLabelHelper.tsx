@@ -1,6 +1,8 @@
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import { FormHelperText, Stack, Tooltip } from "@mui/material";
 
+import RequiredMark from "@/components/common/RequiredMark";
+
 interface FormLabelHelperProps {
   label: string;
   color: string;
@@ -8,6 +10,8 @@ interface FormLabelHelperProps {
   /** Clip the label to one line instead of wrapping. For a field sharing a row
    * with another, where a wrapped label pushes its neighbour out of shape. */
   truncate?: boolean;
+  /** The field must be filled in: the label is followed by `RequiredMark`. */
+  required?: boolean;
 }
 
 /**
@@ -18,7 +22,7 @@ interface FormLabelHelperProps {
  * neighbour out of shape, so it is clipped to one line instead and the full
  * text stays available on hover.
  */
-const FormLabelHelper: React.FC<FormLabelHelperProps> = ({ label, color, tooltip, truncate }) => (
+const FormLabelHelper: React.FC<FormLabelHelperProps> = ({ label, color, tooltip, truncate, required }) => (
   <Stack
     direction="row"
     alignItems="center"
@@ -33,7 +37,7 @@ const FormLabelHelper: React.FC<FormLabelHelperProps> = ({ label, color, tooltip
         color: "inherit",
         ml: 0,
         mt: 0,
-        mr: 1,
+        mr: required ? 0 : 1,
         ...(truncate && {
           minWidth: 0,
           overflow: "hidden",
@@ -43,6 +47,7 @@ const FormLabelHelper: React.FC<FormLabelHelperProps> = ({ label, color, tooltip
       }}>
       {label}
     </FormHelperText>
+    {required && <RequiredMark />}
     {tooltip && (
       <Tooltip title={tooltip} placement="top" arrow>
         <HelpOutlineIcon

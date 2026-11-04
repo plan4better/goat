@@ -46,6 +46,8 @@ from typing import Any
 import duckdb
 from pydantic import BaseModel, Field
 
+from goatlib.io.config import parquet_copy_options
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["NUTS_FILENAME", "REQUIRED_NUTS_COLUMNS", "SyncNutsParams", "main"]
@@ -133,7 +135,7 @@ def build_nuts(source: Path, out: Path) -> int:
                     geom             AS geometry
                 FROM ST_Read('{source.as_posix()}')
                 ORDER BY level, nuts_id
-            ) TO '{out.as_posix()}' (FORMAT PARQUET)
+            ) TO '{out.as_posix()}' {parquet_copy_options()}
         """)
         row = con.execute(
             "SELECT count(*) FROM read_parquet(?)", [out.as_posix()]

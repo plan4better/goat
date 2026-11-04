@@ -25,6 +25,8 @@ from processes.services.access import (
     PATH_FIELD_RE,
     analytics_references,
     layer_fields,
+    refused_references,
+    refused_workflow_nodes,
     tool_references,
     workflow_references,
 )
@@ -513,69 +515,6 @@ def test_numeric_statistics_inputs_are_capped(
     assert received and received[0]["num_bins"] == 1_000
 
 
-def test_a_refused_workflow_names_the_nodes_it_cannot_use(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The run is refused as before, and the answer says which of the
-    caller's own nodes hold the datasets they may not read: ids and labels
-    the caller sent, so it reveals nothing about the data, not even whether
-    it exists."""
-    from uuid import UUID
-
-    from processes.deps.auth import get_user_id
-
-    async def refuse_other(
-        user_id: Any, entries: list[dict[str, str]]
-    ) -> list[dict[str, str]]:
-        # The shape the database answers with.
-        return [
-            {"kind": e["kind"], "raw_id": e["id"], "action": e["action"]}
-            for e in entries
-            if e["id"] == OTHER
-        ]
-
-    monkeypatch.setattr(access, "denied_references", refuse_other)
-    app.dependency_overrides[get_user_id] = lambda: UUID(USER)
-    try:
-        response = TestClient(app).post(
-            "/workflows/7a193b81-0000-4000-8000-000000000001/execute",
-            json={
-                "project_id": PROJECT,
-                "folder_id": FOLDER,
-                "nodes": [
-                    {
-                        "id": "readable",
-                        "data": {"type": "dataset", "label": "Mine", "layerId": LAYER},
-                    },
-                    {
-                        "id": "private",
-                        "data": {
-                            "type": "dataset",
-                            "label": "Schools",
-                            "layerId": OTHER,
-                        },
-                    },
-                    {
-                        "id": "buffer",
-                        "data": {
-                            "type": "tool",
-                            "processId": "buffer",
-                            "config": {"input_layer_id": OTHER},
-                        },
-                    },
-                ],
-                "edges": [],
-            },
-        )
-    finally:
-        app.dependency_overrides.pop(get_user_id, None)
-    assert response.status_code == 404, response.text
-    detail = response.json()["detail"]
-    assert detail["message"] == "Resource not found"
-    assert detail["refused_nodes"] == ["private", "buffer"]
-    assert detail["destination_refused"] is False
-
-
 @pytest.mark.parametrize(
     "data",
     ["oops", ["a"], {"type": "tool", "processId": "buffer", "config": "oops"}],
@@ -644,3 +583,107 @@ def test_an_empty_copy_runs_only_for_a_copy_input_of_that_template(
     else:
         assert response.status_code == 404, response.text
         assert submitted == []
+
+
+def test_a_refused_step_is_named_by_its_unconnected_settings_only() -> None:
+    """A stale layer id left in an input an edge feeds is never read by the
+    runner, so it does not make its step refused; an unconnected one does."""
+    nodes = [
+        {"id": "points", "data": {"type": "dataset", "layerId": LAYER}},
+        {
+            "id": "sql",
+            "data": {
+                "type": "tool",
+                "processId": "custom_sql",
+                "config": {"input_layer_1_id": OTHER},
+            },
+        },
+    ]
+    denied = [{"kind": "layer", "raw_id": OTHER, "action": "read"}]
+    edges = [{"source": "points", "target": "sql", "targetHandle": "input_layer_1_id"}]
+
+    assert refused_workflow_nodes(nodes, denied, edges=edges) == []
+    assert refused_workflow_nodes(nodes, denied) == ["sql"]
+
+
+def test_a_refused_project_entry_names_its_step() -> None:
+    nodes = [
+        {
+            "id": "gravity",
+            "data": {
+                "type": "tool",
+                "processId": "heatmap_gravity",
+                "config": {"opportunities": [{"layer_project_id": 86901}]},
+            },
+        }
+    ]
+    denied = [{"kind": "layer_project", "raw_id": "86901", "action": "read"}]
+
+    assert refused_workflow_nodes(nodes, denied) == ["gravity"]
+
+
+@pytest.mark.asyncio
+async def test_nothing_named_asks_no_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def unreachable(user_id: Any, entries: Any) -> Any:
+        raise AssertionError("the database was asked about nothing")
+
+    monkeypatch.setattr(access, "denied_references", unreachable)
+    assert await refused_references(None, access.References()) == []
+
+
+@pytest.mark.asyncio
+async def test_references_that_cannot_be_checked_are_a_503_not_a_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def broken(user_id: Any, entries: Any) -> Any:
+        raise ConnectionError("database unreachable")
+
+    monkeypatch.setattr(access, "denied_references", broken)
+    refs = access.References()
+    refs.add_layer(LAYER)
+    with pytest.raises(HTTPException) as refused:
+        await refused_references(None, refs)
+    assert refused.value.status_code == 503
+
+
+@pytest.mark.parametrize(
+    ("workflow_id", "step_ids"),
+    [
+        ("..", ["n1"]),
+        ("00000000-0000-0000-0000-000000000004/../x", ["n1"]),
+        ("00000000-0000-0000-0000-000000000004", [".."]),
+        ("00000000-0000-0000-0000-000000000004", ["../../user_other/w_x/n_y"]),
+        ("00000000-0000-0000-0000-000000000004", ["n1", "a/b"]),
+        ("00000000-0000-0000-0000-000000000004", [""]),
+        ("00000000-0000-0000-0000-000000000004", [None]),
+        ("00000000-0000-0000-0000-000000000004", ["x" * 201]),
+    ],
+)
+def test_ids_that_could_leave_the_temp_folder_are_refused(
+    workflow_id: str, step_ids: list[object]
+) -> None:
+    with pytest.raises(HTTPException) as refused:
+        access.ensure_safe_workflow_ids(workflow_id, step_ids)
+    assert refused.value.status_code == 422
+
+
+def test_the_ids_the_editor_creates_pass() -> None:
+    access.ensure_safe_workflow_ids(
+        "7a193b81-0000-4000-8000-000000000001",
+        ["tool-1", "dataset_2", "a1B2c3", "e3b0c442-98fc-4c14-9a1e-5f2d1c3b4a5e"],
+    )
+    access.ensure_safe_workflow_ids(None, [])
+
+
+@pytest.mark.parametrize(
+    "inputs",
+    [
+        {"workflow_id": "..", "node_id": "n1"},
+        {"workflow_id": "00000000-0000-0000-0000-000000000004", "node_id": "../x"},
+        {"workflow_id": "00000000-0000-0000-0000-000000000004", "export_node_id": ".."},
+    ],
+)
+def test_a_tool_job_with_unsafe_temp_ids_is_refused(inputs: dict[str, Any]) -> None:
+    with pytest.raises(HTTPException) as refused:
+        access.tool_references("buffer", {"distance": 100, **inputs})
+    assert refused.value.status_code == 422

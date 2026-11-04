@@ -6,8 +6,10 @@ from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
+from goatlib.workflows.checks import shape_issues
 from pydantic import UUID4
 
+from core.core.revision import CHANGED_ELSEWHERE_RESPONSE
 from core.crud.crud_project import project as crud_project
 from core.crud.crud_workflow import workflow as crud_workflow
 from core.db.session import AsyncSession
@@ -23,6 +25,24 @@ from core.schemas.workflow import (
 )
 
 router = APIRouter()
+
+
+def _refuse_damaged(config: object) -> None:
+    """422 with the issues when `config` cannot be read as a workflow.
+
+    Only the shape is checked: an incomplete workflow (a step without its
+    input, a missing setting) is saved as it is, since workflows are built
+    step by step.
+    """
+    issues = shape_issues(config)
+    if issues:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "message": "The workflow is damaged.",
+                "issues": [issue.to_dict() for issue in issues],
+            },
+        )
 
 
 @router.get(
@@ -110,9 +130,10 @@ async def create_workflow(
     """Create a new workflow for a project."""
     # 404 if the project itself is trashed.
     await crud_project.get_live_or_404(async_session, project_id)
+    _refuse_damaged(workflow_in.config)
 
     wf = await crud_workflow.create_for_project(
-        async_session, project_id=project_id, obj_in=workflow_in
+        async_session, project_id=project_id, obj_in=workflow_in, user_id=user_id
     )
     return WorkflowRead.model_validate(wf)
 
@@ -123,6 +144,7 @@ async def create_workflow(
     response_model=WorkflowRead,
     status_code=200,
     dependencies=[Depends(auth_z)],
+    responses=CHANGED_ELSEWHERE_RESPONSE,
 )
 async def update_workflow(
     *,
@@ -142,15 +164,26 @@ async def update_workflow(
         ..., examples=[workflow_request_examples["update"]]
     ),
 ) -> WorkflowRead:
-    """Update an existing workflow."""
+    """Update an existing workflow.
+
+    A save that changes the workflow raises its `revision` and is refused with
+    409 `changed_elsewhere` when `base_revision` is not the stored revision.
+    One that changes only the viewport, selection or run state is saved
+    without either (`core.core.revision`).
+    """
     # 404 if the project itself is trashed.
     await crud_project.get_live_or_404(async_session, project_id)
+    # A request without `config` (a rename) keeps the stored one; an explicit
+    # `"config": null` would replace it, so it is checked like any config.
+    if "config" in workflow_in.model_fields_set:
+        _refuse_damaged(workflow_in.config)
 
     wf = await crud_workflow.update_for_project(
         async_session,
         project_id=project_id,
         workflow_id=workflow_id,
         obj_in=workflow_in,
+        user_id=user_id,
     )
     if not wf:
         raise HTTPException(

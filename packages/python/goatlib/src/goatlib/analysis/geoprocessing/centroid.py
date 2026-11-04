@@ -34,9 +34,7 @@ class CentroidTool(AnalysisTool):
         input_geom = input_meta.geometry_column
 
         if not input_geom:
-            raise ValueError(
-                f"Could not detect geometry column for input: {params.input_path}"
-            )
+            raise ValueError("The input layer has no geometry column.")
 
         # Get CRS from metadata, fallback to output_crs or EPSG:4326
         crs = input_meta.crs

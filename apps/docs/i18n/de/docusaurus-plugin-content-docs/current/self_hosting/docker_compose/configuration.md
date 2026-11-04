@@ -29,7 +29,7 @@ Die gesamte Konfiguration steht in der Datei `.env` im Ordner des Pakets. `setup
 | `GOAT_ACME_EMAIL` | leer | Optionaler Kontakt für Ablaufhinweise von Let's Encrypt (nur `auto`) |
 | `GOAT_TRUSTED_PROXIES` | `private_ranges` | Adressen, die `X-Forwarded-*`-Header setzen dürfen (Ihr Load Balancer), als CIDRs durch Leerzeichen getrennt |
 | `GOAT_ADMIN_ALLOW_CIDRS` | `0.0.0.0/0 ::/0` | Netze, die die Keycloak-Admin-Konsole unter `/keycloak/admin` öffnen dürfen |
-| `GOAT_CA_BUNDLE` | leer | Pfad innerhalb der Container zu zusätzlichen CA-Zertifikaten (PEM) in `./certs`, etwa Ihrer Firmen-CA für Load Balancer, Keycloak oder SMTP-Relay; im Modus `internal` von setup.sh gesetzt. Siehe [Firmen-CA](./https.md#company-ca). |
+| `GOAT_CA_BUNDLE` | leer | Pfad innerhalb der Container zu zusätzlichen CA-Zertifikaten (PEM) in `./certs`, etwa Ihrer Firmen-CA für Load Balancer, Keycloak, SMTP-Relay oder den Modellserver des KI-Assistenten; im Modus `internal` von setup.sh gesetzt. Siehe [Firmen-CA](./https.md#company-ca). |
 | `GOAT_HTTP_PORT` | `80` | Port für HTTP; von setup.sh aus der URL oder `--http-port` gesetzt |
 | `GOAT_HTTPS_PORT` | `443` | Port für HTTPS; von setup.sh aus der URL gesetzt |
 | `GOAT_HOSTNAME`, `GOAT_NETWORK_ALIAS`, `GOAT_SITE_ADDRESS`, `GOAT_HTTPS_PUBLISH`, `GOAT_KEYCLOAK_SSL_REQUIRED` | | Abgeleitet; von setup.sh gesetzt |
@@ -104,10 +104,10 @@ Die Dienste von GOAT benennen ihre Datenbanksitzungen nach sich selbst (`goat-co
 |---|---|---|
 | `NEXT_PUBLIC_MAPTILER_KEY` | leer | MapTiler-Schlüssel für die Satelliten-/Hybrid-Grundkarte (ausgeblendet, wenn leer) |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | leer | Mapbox-Token für die Ortssuche |
-| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | leer | Der GOAT-Datenkatalog (schreibgeschützter Bucket mit den harmonisierten Datensätzen) |
+| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | leer | Der GOAT-Datenkatalog (schreibgeschützter Bucket mit den harmonisierten Datensätzen). Die Bereiche OpenStreetMap und Overture Maps unter *Layer hinzufügen › Daten abrufen / verbinden* lesen ihren Spiegel aus demselben Bucket; siehe [OpenStreetMap und Overture Maps](./external_services.md#open-data-mirror). |
 | `GEOCODING_URL`, `GEOCODING_AUTHORIZATION` | leer | Geocoding-Dienst, den Analyse-Werkzeuge verwenden |
-| `NEXT_PUBLIC_WEBSITE_URL` | leer | Eine Website, die GOATs Blog- und Changelog-Feeds veröffentlicht. Sie füllt die Neuigkeiten auf der Startseite und liefert das Willkommensvideo sowie den Link zum Datenschutz im Menü; solange leer, erscheint nichts davon. |
-| `NEXT_PUBLIC_SUPPORT_EMAIL` | leer | E-Mail-Adresse hinter *Problem melden*, solange [Support-Tickets](./external_services.md#support) aus sind, und in der Meldung, wenn der Support vorübergehend nicht erreichbar ist. Standard ist `support@plan4better.de`; tragen Sie für eine White-Label-Installation Ihre eigene Adresse ein. Eine ungültige Adresse wird ignoriert und der Standard verwendet. |
+| `NEXT_PUBLIC_WEBSITE_URL` | leer | Eine Website, die GOATs Blog- und Changelog-Feeds veröffentlicht. Sie füllt die Neuigkeiten auf der Startseite und liefert das Willkommensvideo sowie den Link zum Datenschutz im Menü und im Hinweis des KI-Assistenten; solange leer, erscheint nichts davon. |
+| `NEXT_PUBLIC_SUPPORT_EMAIL` | leer | E-Mail-Adresse hinter *Problem melden* und dem Link *Feedback* des KI-Assistenten, solange [Support-Tickets](./external_services.md#support) aus sind, und in der Meldung, wenn der Support vorübergehend nicht erreichbar ist. Standard ist `support@plan4better.de`; tragen Sie für eine White-Label-Installation Ihre eigene Adresse ein. Eine ungültige Adresse wird ignoriert und der Standard verwendet. |
 | `NEXT_PUBLIC_STATUS_FEED_URL` | leer | Status-Feed in der App |
 | `NEXT_PUBLIC_DOCS_URL` | `https://goat.plan4better.de/docs` | Link zur Dokumentation in der App |
 | `STATIC_ASSETS_URL` | *(auskommentiert)* | Ein Mirror oder CDN für die Produktgrafiken (Icons, Standard-Vorschaubilder, Bilder in E-Mails). Solange nicht gesetzt, liefert GOAT die Grafiken selbst unter `/assets` aus. |
@@ -116,6 +116,8 @@ Die Dienste von GOAT benennen ihre Datenbanksitzungen nach sich selbst (`goat-co
 | `ODOO_SUPPORT_POST_ACTION` | `GOAT: post message as ticket participant` | Odoo-Serveraktion, die eine Nachricht als Teilnehmer des Tickets veröffentlicht |
 | `OTEL_ENABLED` | `false` | Traces, Metriken und Logs über OpenTelemetry exportieren |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | leer | Ihr OpenTelemetry-Endpunkt (OTLP) |
+
+Wenn Sie `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` für einen Dienst setzen, nehmen Sie `Authorization` nie auf: Sonst landen die Anmelde-Tokens von Benutzern und externen Agenten in Ihren Traces.
 
 ## E-Mail {#email}
 
@@ -131,6 +133,33 @@ Wie diese Einstellungen zusammenwirken, lesen Sie unter [E-Mail](./external_serv
 | `EMAILS_FROM_NAME` | `GOAT` | Absendername |
 | `SMTP_STARTTLS`, `SMTP_SSL` | `true`, `false` | Aus `SMTP_SECURITY` abgeleitet; von setup.sh gesetzt |
 | `EMAIL_BRAND_NAME`, `EMAIL_LOGO_URL`, `EMAIL_CONTACT_URL`, `EMAIL_PRIVACY_URL`, `EMAIL_COMPANY_NAME`, `EMAIL_COMPANY_URL` | *(auskommentiert)* | Optionales Branding der E-Mails von GOAT und Keycloak: Name, Logo statt des Namens, Links in der Fußzeile, wer Ihr GOAT betreibt. Siehe [E-Mail-Branding](./external_services.md#email-branding). |
+
+## KI-Assistent {#assistant}
+
+Wie diese Einstellungen zusammenwirken, steht unter [KI-Assistent](./external_services.md#assistant).
+
+| Einstellung | Vorgabe | Bedeutung |
+|---|---|---|
+| `ASSISTANT_DEFAULT_PROVIDER` | `none` | Anbieter von „GOAT AI“, dem eingebauten Modell, das jede Organisation nutzen darf: `anthropic`, `bedrock`, `vertex`, `azure_openai`, `openai`, `mistral`, `openai_compatible` oder `none` (kein eingebautes Modell) |
+| `ASSISTANT_DEFAULT_MODEL` | leer | Die Modell-ID des Anbieters; das Modell antwortet und schreibt auch die Titel der Unterhaltungen; Pflicht, außer bei `none` |
+| `ASSISTANT_DEFAULT_BASE_URL` | leer | Pflicht für `openai_compatible` und `azure_openai` (der Azure-v1-Endpunkt, endet auf `/openai/v1`); ein optionales Gateway für `anthropic`, `openai` und `mistral` |
+| `ASSISTANT_DEFAULT_API_KEY` | leer | Pflicht für `anthropic`, `openai`, `mistral` und `azure_openai`; optional für `openai_compatible`; für `bedrock` ein optionaler Bedrock-API-Schlüssel |
+| `ASSISTANT_DEFAULT_REGION` | leer | AWS-Region (`bedrock`) oder Google-Cloud-Standort (`vertex`) |
+| `ASSISTANT_DEFAULT_HOSTED_IN` | leer | Wo das Modell von GOAT AI gehostet wird, eine Region wie `EU`. Die Details der Antworten von GOAT AI nennen sie, und Administratoren der Organisation sehen sie auf der Seite der KI-Einstellungen. Wird mit jeder Antwort gespeichert, sodass eine spätere Änderung frühere Antworten unverändert lässt; leer nennt keinen Ort. |
+| `ASSISTANT_ALLOW_ORG_CONNECTIONS` | `true` | Organisationen dürfen eigene Verbindungen anlegen |
+| `ASSISTANT_ALLOWED_PROVIDERS` | alle sieben Typen | Anbietertypen, die Organisationen verwenden dürfen, durch Kommas getrennt |
+| `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS` | `false` | Erlaubt Verbindungen von Organisationen zu privaten und internen Adressen sowie unverschlüsseltes `http` |
+| `ASSISTANT_SECRETS_KEY` | von setup.sh gesetzt | Verschlüsselt die Zugangsdaten, die Organisationen speichern. Bewahren Sie ihn mit Ihren Backups auf; siehe [Der Schlüssel des Assistenten](./operations.md#assistant-key). |
+| `ASSISTANT_RUN_MAX_TOOL_CALLS`, `ASSISTANT_RUN_MAX_TOKENS`, `ASSISTANT_RUN_MAX_SECONDS` | *(auskommentiert)*: `40`, `200000`, `900` | Grenzen pro Antwort. Tokens, die aus dem Cache des Modellanbieters gelesen werden, werden für `ASSISTANT_RUN_MAX_TOKENS` nur zu einem Zehntel gezählt. Das Ergebnis eines abgeschlossenen Workflow-Laufs zu lesen, kann bis zu 7 Werkzeugaufrufe über `ASSISTANT_RUN_MAX_TOOL_CALLS` hinaus kosten. |
+| `ASSISTANT_RUN_WAIT_MAX_SECONDS` | *(auskommentiert)*: `1800` | Wie lange eine Antwort insgesamt dauern darf, die auf einen Workflow-Lauf wartet; der Lauf selbst geht danach weiter. Wirkt nur mit einem Wert über `ASSISTANT_RUN_MAX_SECONDS` |
+| `ASSISTANT_USER_MAX_CONCURRENT_RUNS` | *(auskommentiert)*: `3` | Antworten, die eine Person gleichzeitig laufen lassen kann |
+| `ASSISTANT_TOOL_TIMEOUT_SECONDS` | *(auskommentiert)*: `30` | Sekunden pro Anfrage des Assistenten an die anderen Dienste |
+| `ASSISTANT_DISABLED_SURFACES` | *(auskommentiert)* | Seiten, auf denen der Assistent aus ist, durch Kommas getrennt: `catalog`, `project.map`, `project.workflows`, `project.layouts`, `project.dashboard`, `none` (alle anderen Seiten) |
+| `ASSISTANT_ENABLE_MCP` | *(auskommentiert)*: `true` | Der MCP-Endpunkt für externe Agenten unter `<GOAT_PUBLIC_URL>/assistant/mcp` |
+| `ASSISTANT_MCP_AUDIT_RETENTION_DAYS` | *(auskommentiert)*: `30` | Tage, die die Aufzeichnungen von Werkzeugaufrufen über MCP aufbewahrt werden (mindestens 1) |
+| `ASSISTANT_TOKEN_EXCHANGE_ENABLED`, `ASSISTANT_KEYCLOAK_CLIENT_ID`, `ASSISTANT_KEYCLOAK_CLIENT_SECRET` | *(auskommentiert)*: `false` | Keycloak Token Exchange für lange Antworten, statt die Anmeldung mit dem Client der Web-App zu erneuern. Erfordert Keycloak 26.2 oder neuer; das mitgelieferte Keycloak hat Version 22. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_BEARER_TOKEN_BEDROCK`, `GOOGLE_APPLICATION_CREDENTIALS`, `ANTHROPIC_VERTEX_PROJECT_ID`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`, `OPENAI_ADMIN_KEY`, `OPENAI_CUSTOM_HEADERS`, `ANTHROPIC_CUSTOM_HEADERS` | nicht gesetzt; in `assistant.env` | Die eigenen Einstellungen der Modell-SDKs. Sie gelten nur für GOAT AI, nie für eigene Verbindungen der Organisationen. |
+| `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` | siehe [Authentifizierung](#authentication) | Mit diesem Client der Web-App erneuert der Assistent die Anmeldung langer Antworten. Seine eigenen Namen, `ASSISTANT_WEB_CLIENT_ID` und `ASSISTANT_WEB_CLIENT_SECRET`, haben Vorrang; das Paket braucht keinen davon. |
 
 ## Backups {#backups}
 

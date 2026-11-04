@@ -48,6 +48,7 @@ from processes.dependencies import (
 )
 from processes.ducklake import (
     ducklake_manager,
+    mirror_query,
     preview_ducklake_manager,
     search_ducklake_manager,
 )
@@ -129,6 +130,12 @@ class AnalyticsService:
         with self._connection(table_name) as con:
             result = con.execute(f"DESCRIBE {table_name}").fetchall()
             return [row[0] for row in result]
+
+    def column_names(self, layer_id: str) -> list[str]:
+        """The column names of a layer, whichever home it has: a DuckLake
+        table or a promoted catalog file. Raises HTTPException 404 when it has
+        neither."""
+        return self._get_column_names(self._get_table_name(layer_id))
 
     def _detect_geometry_column(self, table_name: str) -> str:
         """Detect the geometry column name for a table.
@@ -287,6 +294,50 @@ class AnalyticsService:
 
         return result.model_dump()
 
+    def mirror_values(
+        self,
+        area: dict,
+        feature_type: str = "points",
+        key: str | None = None,
+        limit: int = 100,
+        source: str = "osm",
+        quick: bool = False,
+        size_only: bool = False,
+        columns_only: bool = False,
+        sample_only: bool = False,
+        tag_filters: list[dict] | None = None,
+        match_mode: str = "all",
+        where: str | None = None,
+    ) -> dict[str, Any]:
+        """Attributes, or one attribute's values, in the mirror for an area."""
+        from goatlib.io.fetch import pt_network, street_network
+        from goatlib.io.fetch.mirror.values import mirror_values
+
+        networks = {"street_network": street_network, "pt_network": pt_network}
+        if source in networks:
+            if not size_only:
+                raise ValueError(
+                    "A network answers only its size: it has no attributes or columns to list."
+                )
+            with mirror_query() as con:
+                return networks[source].size(con, area)
+        with mirror_query() as con:
+            return mirror_values(
+                con,
+                area=area,
+                feature_type=feature_type,
+                key=key,
+                limit=limit,
+                source_name=source,
+                quick=quick,
+                size_only=size_only,
+                columns_only=columns_only,
+                sample_only=sample_only,
+                tag_filters=tag_filters,
+                match_mode=match_mode,
+                where=where,
+            )
+
     def class_breaks(
         self,
         collection: str,
@@ -339,6 +390,7 @@ class AnalyticsService:
         collection: str,
         operation: str = "sum",
         filter_expr: str | None = None,
+        group_by_column: str | None = None,
     ) -> dict[str, Any]:
         """Calculate area statistics for polygon features.
 
@@ -346,9 +398,12 @@ class AnalyticsService:
             collection: Layer ID
             operation: Statistical operation (sum, mean, min, max)
             filter_expr: Optional CQL2 filter
+            group_by_column: Optional field whose values each get their own
+                area statistics
 
         Returns:
-            Dict with result, total_area, feature_count, unit
+            Dict with result, total_area, feature_count, unit, and the groups
+            (largest total area first) with total_groups when grouped
         """
         table_name = self._get_table_name(collection)
         geometry_column = self._detect_geometry_column(table_name)
@@ -369,6 +424,7 @@ class AnalyticsService:
                 operation=area_op,
                 where_clause=where_clause,
                 params=params if params else None,
+                group_by_column=group_by_column,
             )
 
         return result.model_dump()

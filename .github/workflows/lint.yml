@@ -90,6 +90,6 @@ jobs:
       - name: 🔬 ruff check (clean packages, required)
         run: >-
           uv run --no-sync ruff check
-          apps/core apps/geoapi apps/processes apps/catalog
+          apps/core apps/geoapi apps/processes apps/catalog apps/assistant
           packages/python/goatobs
         working-directory: ${{ github.workspace }}

@@ -13,6 +13,7 @@ from typing import Any, Self
 
 from goatlib.analysis.core.base import AnalysisTool
 from goatlib.analysis.pt_time import pt_anchor_unix_minutes
+from goatlib.analysis.schemas.catchment_area_v2 import speed_or_default
 from goatlib.analysis.schemas.travel_cost_matrix import (
     AccessEgressMode,
     CostType,
@@ -25,16 +26,6 @@ from goatlib.models.io import DatasetMetadata
 logger = logging.getLogger(__name__)
 
 WEB_MERCATOR_RADIUS_M = 6378137.0
-
-# Per-leg speed fallback when the user leaves the advanced speed blank, so the
-# C++ access/egress validation always has a positive speed. Car is 0: its cost
-# comes from per-edge OSM maxspeed, not a user speed.
-_PT_LEG_DEFAULT_SPEED_KMH: dict[AccessEgressMode, float] = {
-    AccessEgressMode.walk: 5.0,
-    AccessEgressMode.bicycle: 15.0,
-    AccessEgressMode.pedelec: 23.0,
-    AccessEgressMode.car: 0.0,
-}
 
 
 class TravelCostMatrixTool(AnalysisTool):
@@ -132,9 +123,10 @@ class TravelCostMatrixTool(AnalysisTool):
         # None means "no user-supplied limit" — pass +inf so the engine
         # computes every reachable O-D pair within the bbox-loaded network.
         cfg.max_cost = params.max_cost if params.max_cost is not None else math.inf
-        # C++ uses 0.0 as the "not set" sentinel; for routing modes that don't
-        # take a user-supplied speed (PT/Car/flight_distance), params.speed is None.
-        cfg.speed_km_h = params.speed if params.speed is not None else 0.0
+        # Without a speed an active mode routes at its default, the one the form
+        # fills in; at 0.0 every edge of an active mode would cost infinity.
+        # Car and PT take none: the engine reads 0.0 as "not set".
+        cfg.speed_km_h = speed_or_default(params.speed, params.routing_mode)
         # An uploaded street network bundle's graph overrides the global network.
         cfg.edge_dir = str(params.edge_path or self._edge_dir)
         cfg.node_dir = str(params.node_path or self._node_dir)
@@ -159,17 +151,13 @@ class TravelCostMatrixTool(AnalysisTool):
             )
             cfg.access_max_cost = params.access_max_cost
             cfg.egress_max_cost = params.egress_max_cost
-            # Fall back to mode-specific default when user didn't set the per-leg
-            # speed (e.g. advanced collapsed). Car: no user speed → 0.
-            cfg.access_speed_km_h = (
-                params.access_speed
-                if params.access_speed is not None
-                else _PT_LEG_DEFAULT_SPEED_KMH.get(params.access_mode, 0.0)
+            # A leg without a speed (e.g. advanced left collapsed) routes at
+            # its mode's default. Car has none: per-edge OSM maxspeed governs.
+            cfg.access_speed_km_h = speed_or_default(
+                params.access_speed, params.access_mode
             )
-            cfg.egress_speed_km_h = (
-                params.egress_speed
-                if params.egress_speed is not None
-                else _PT_LEG_DEFAULT_SPEED_KMH.get(params.egress_mode, 0.0)
+            cfg.egress_speed_km_h = speed_or_default(
+                params.egress_speed, params.egress_mode
             )
 
             if params.transit_modes:

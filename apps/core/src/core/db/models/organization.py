@@ -70,6 +70,14 @@ class OrganizationBase(SQLModel):
     used_credits: float = Field(
         default=0, sa_column=Column(Numeric, nullable=False, server_default=text("0"))
     )
+    # The AI-credit pool, apart from the credits: what GOAT AI's answers may
+    # use per credit period (a trial: the whole trial). None = unlimited.
+    total_ai_credits: float | None = Field(
+        default=None, sa_column=Column(Numeric, nullable=True)
+    )
+    used_ai_credits: float = Field(
+        default=0, sa_column=Column(Numeric, nullable=False, server_default=text("0"))
+    )
     total_projects: int | None = Field(
         default=None, sa_column=Column(Integer, nullable=True)
     )
@@ -119,7 +127,12 @@ class OrganizationBase(SQLModel):
     suspended: bool = Field(sa_column=Column(Boolean, nullable=False))
 
     @field_validator(
-        "used_storage", "used_credits", "used_projects", "used_editors", "used_viewers"
+        "used_storage",
+        "used_credits",
+        "used_ai_credits",
+        "used_projects",
+        "used_editors",
+        "used_viewers",
     )
     @classmethod
     def validate_min_value(cls, value: float) -> float:
@@ -153,6 +166,16 @@ class Organization(UUIDServerDefaultBase, OrganizationBase, table=True):
     # to the accounts provider (trial, join, status) failed; the retry loop in
     # core.accounts.sync re-sends it and clears the flag.
     odoo_sync_pending: bool = Field(
+        default=False,
+        sa_column=Column(
+            Boolean, nullable=False, server_default=text("false"), default=False
+        ),
+    )
+
+    # Whether total_ai_credits is the billing system's own amount (a special
+    # deal) rather than the seats times the amount per editor
+    # (CRUDOrganization.apply_entitlement).
+    ai_credits_override: bool = Field(
         default=False,
         sa_column=Column(
             Boolean, nullable=False, server_default=text("false"), default=False

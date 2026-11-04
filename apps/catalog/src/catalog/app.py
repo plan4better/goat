@@ -1,7 +1,6 @@
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import AsyncExitStack, asynccontextmanager
-from typing import Any
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -11,7 +10,6 @@ from goatlib.api import RootPathMiddleware, mount_api_docs
 from goatobs import setup_observability
 from starlette.middleware.gzip import GZipMiddleware
 
-from catalog.auth import BearerAuthASGIMiddleware
 from catalog.config import CatalogSettings
 from catalog.deps import get_store
 from catalog.errors import ApiError, NotModifiedError
@@ -30,39 +28,8 @@ __all__ = ["create_app", "get_store"]
 logger = logging.getLogger(__name__)
 
 
-def _try_load_mcp_module() -> Any:
-    """Import ``catalog.routers.mcp``, returning ``None`` (with a warning
-    log) if the import fails for any reason.
-
-    Deliberately imported here -- inside a function, on every ``create_app``
-    call -- rather than once at this module's top level: ``create_app`` is a
-    factory called many times with different ``CatalogSettings`` (tests build
-    a fresh app per case, some with ``enable_mcp=True``, some ``False``), so
-    the import attempt must be re-evaluated per call rather than cached from
-    whatever the first import happened to see. This also makes the "import
-    fails" guard testable: a test can force this to fail for one
-    ``create_app()`` call by temporarily setting
-    ``sys.modules["catalog.routers.mcp"] = None`` (Python's import machinery
-    raises ``ImportError`` immediately when a module name maps to ``None`` in
-    ``sys.modules``), without touching any other test's ability to import it.
-
-    A failure here (a broken/missing ``mcp`` install, or anything else the
-    import raises) must never take down the HTTP API -- same guard style as
-    the reference geoapi ``main.py``'s ``try/except`` around
-    ``from geoapi.mcp_server import mcp``.
-    """
-    try:
-        import catalog.routers.mcp as mcp_module
-    except Exception as exc:  # any import failure is caught, see docstring
-        logger.warning("MCP server unavailable, /mcp disabled: %s", exc)
-        return None
-    return mcp_module
-
-
 def create_app(settings: CatalogSettings | None = None) -> FastAPI:
     settings = settings or CatalogSettings()
-
-    mcp_module = _try_load_mcp_module() if settings.enable_mcp else None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -75,20 +42,7 @@ def create_app(settings: CatalogSettings | None = None) -> FastAPI:
         app.state.asset_reader = (
             AssetReader(settings) if settings.assets_enabled else None
         )
-        if mcp_module is not None:
-            mcp_module.set_store(app.state.store)
-            # Read from app.state, NOT mcp_module.mcp.session_manager: see
-            # the mount call below for why -- this app's session manager was
-            # captured onto app.state at mount time, paired with the exact
-            # sub-app this app mounted, rather than re-read here (lazily,
-            # possibly long after a later create_app() call rebuilt the
-            # shared `mcp` singleton's session manager out from under it).
-            session_manager = app.state.mcp_session_manager
-            async with AsyncExitStack() as stack:
-                await stack.enter_async_context(session_manager.run())
-                yield
-        else:
-            yield
+        yield
 
     app = FastAPI(
         title="GOAT Catalog",
@@ -245,38 +199,5 @@ def create_app(settings: CatalogSettings | None = None) -> FastAPI:
     app.include_router(stac_router)
     app.include_router(nuts_router)
     app.include_router(assets_router)
-
-    if mcp_module is not None:
-        # streamable_http_path="/" so the sub-app's single route sits at
-        # this mount's root -- the outer "/mcp" prefix already supplies the
-        # path segment the reference geoapi mount used its default "/mcp"
-        # streamable_http_path for (there, unmounted at app top level).
-        #
-        # transport_security narrows/disables the library's DNS-rebinding
-        # Host-header check per CatalogSettings.mcp_allowed_hosts -- see
-        # catalog.routers.mcp.build_transport_security's docstring for why
-        # this can't just be left at the library's own default.
-        mcp_asgi_app = mcp_module.mcp.streamable_http_app(
-            streamable_http_path="/",
-            transport_security=mcp_module.build_transport_security(
-                settings.mcp_allowed_hosts
-            ),
-        )
-        # Captured HERE, immediately after streamable_http_app() builds it,
-        # and paired on app.state with THIS app -- not read lazily from the
-        # module-level `mcp` singleton later (see lifespan above and
-        # catalog.routers.mcp's docstring): mcp.session_manager is a plain
-        # attribute on that shared singleton, reassigned by every
-        # streamable_http_app() call, so a later create_app() elsewhere in
-        # the same process would otherwise silently repoint an earlier app's
-        # lifespan at the wrong session manager.
-        app.state.mcp_session_manager = mcp_module.mcp.session_manager
-        # BearerAuthASGIMiddleware: /mcp is a raw ASGI Mount, so
-        # Depends(optional_auth) (used by /stac and /nuts) never runs for it --
-        # and unlike those public read paths, /mcp must stay credentialed
-        # -- this reimplements the same bearer-token gate as ASGI middleware
-        # instead (api spec §1: the whole service requires an authenticated
-        # GOAT session when AUTH=True).
-        app.mount("/mcp", BearerAuthASGIMiddleware(mcp_asgi_app, settings))
 
     return app

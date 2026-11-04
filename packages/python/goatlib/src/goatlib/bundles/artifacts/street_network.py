@@ -43,6 +43,7 @@ from goatlib.bundles.artifacts.base import (
     ArtifactSource,
     BuiltArtifact,
 )
+from goatlib.io.config import parquet_copy_options
 from goatlib.models.bundle import (
     ROUTING_CLASSES,
     BundleArtifactKind,
@@ -271,7 +272,7 @@ def _transform(
         FROM read_parquet('{nodes_layer}')
     """)
 
-    con.execute(f"COPY ({_node_query()}) TO '{nodes_out}' (FORMAT PARQUET)")
+    con.execute(f"COPY ({_node_query()}) TO '{nodes_out}' {parquet_copy_options()}")
     con.execute(f"""
         CREATE TABLE edge_src AS
         SELECT * FROM read_parquet('{edges_layer}')
@@ -303,7 +304,11 @@ def _transform(
             "recompute it."
         )
 
-    con.execute(f"COPY ({_edge_query()}) TO '{edges_out}' (FORMAT PARQUET)")
+    has_slope = {"impedance_slope", "impedance_slope_reverse"} <= edge_columns
+    has_surface = "impedance_surface" in edge_columns
+    con.execute(
+        f"COPY ({_edge_query(has_slope, has_surface)}) TO '{edges_out}' {parquet_copy_options()}"
+    )
 
     edge_count = con.execute(
         f"SELECT count(*) FROM read_parquet('{edges_out}')"
@@ -353,7 +358,15 @@ def _node_query() -> str:
     """
 
 
-def _edge_query() -> str:
+def _edge_query(has_slope: bool, has_surface: bool = False) -> str:
+    slope, slope_reverse = (
+        (
+            "coalesce(p.impedance_slope, 0)::DOUBLE",
+            "coalesce(p.impedance_slope_reverse, 0)::DOUBLE",
+        )
+        if has_slope
+        else ("0.0::DOUBLE", "0.0::DOUBLE")
+    )
     surface_case = " ".join(
         f"WHEN e.surface = '{name}' THEN {value}"
         for name, value in SURFACE_IMPEDANCE.items()
@@ -380,10 +393,13 @@ def _edge_query() -> str:
             p.length_m::DOUBLE AS length_m,
             ST_Length(p.geom_3857)::DOUBLE AS length_3857,
             p.routing_class::VARCHAR AS class_,
-            -- No DEM in an upload, so uploaded networks route as though flat.
-            0.0::DOUBLE AS impedance_slope,
-            0.0::DOUBLE AS impedance_slope_reverse,
-            p.surface_imp::FLOAT AS impedance_surface,
+            -- Slope where the layer has it (a cut of GOAT's own network); an
+            -- upload has no elevation model, so it routes as though flat.
+            {slope} AS impedance_slope,
+            {slope_reverse} AS impedance_slope_reverse,
+            -- The network's own value where the layer has it, else from `surface`.
+            {"coalesce(p.impedance_surface, p.surface_imp)" if has_surface else "p.surface_imp"}::FLOAT
+                AS impedance_surface,
             -- Straight from the layer: it already resolved stated limits, class
             -- defaults and access. A null means the class is not drivable, which
             -- is the same thing to the engine as 0 — it treats maxspeed <= 0 as

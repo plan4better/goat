@@ -212,6 +212,15 @@ RESOURCES_PERMISSIONS = [
         "permissions": ["read-layer"],
     },
     {
+        # Its own row rather than the `content` row reached through
+        # check_resource's `LIKE url_pattern || '/%'` fallback. Gates the
+        # endpoint only: which items it returns is decided per item by
+        # `effective_role` inside the query.
+        "url_pattern": "content/search",
+        "method": ["GET"],
+        "permissions": ["read-layer"],
+    },
+    {
         # The real ownership/membership/organisation rights check is done by
         # `CRUDTransfer` — this only gates the endpoint to any authenticated
         # user who can read content at all.
@@ -328,6 +337,15 @@ RESOURCES_PERMISSIONS = [
     },
     {"url_pattern": "layer", "method": ["POST"], "permissions": ["read-layer"]},
     {"url_pattern": "project", "method": ["GET"], "permissions": ["read-project"]},
+    {
+        # Its own row rather than the `project` row reached through
+        # check_resource's `LIKE url_pattern || '/%'` fallback. Gates the
+        # endpoint only: which projects' layers it returns is decided per
+        # project by `effective_role` inside the query.
+        "url_pattern": "project/layers/search",
+        "method": ["GET"],
+        "permissions": ["read-project"],
+    },
     {
         "url_pattern": "project",
         "method": ["POST"],
@@ -698,6 +716,10 @@ RESOURCES_PERMISSIONS = [
     },
     {
         "url_pattern": "template/{template_id}/use",
+        "method": ["POST"],
+    },
+    {
+        "url_pattern": "template/{template_id}/use/preview",
         "method": ["POST"],
     },
     {

@@ -20,7 +20,8 @@ Please follow these guidelines when contributing:
     - Serving geospatial data to the frontend (OGC API Features)
     - Triggering analytics tools via OGC API Processes (jobs run in Windmill)
     - DuckLake data management for user layer data
-  - `catalog/`: FastAPI/Python STAC API service for the GOAT data catalog. Database-less: serves a local parquet mirror (`${DATA_DIR}/catalog/`) via DuckDB; also hosts an MCP server at `/mcp`.
+  - `catalog/`: FastAPI/Python STAC API service for the GOAT data catalog. Database-less: serves a local parquet mirror (`${DATA_DIR}/catalog/`) via DuckDB.
+  - `assistant/`: FastAPI/Python service for the AI assistant (conversations, agent runs, tools); hosts the MCP endpoint at `/mcp`.
   - `routing/`: FastAPI/Python API service for routing/navigation services.
   - `storybook/`: React/NextJS/TypeScript application for UI component development and testing.
   - `web/`: The main frontend application built with React/NextJS/TypeScript.

@@ -6,21 +6,11 @@ import { toast } from "react-toastify";
 
 import { detectBundleType } from "@/lib/api/bundles";
 import { useProject } from "@/lib/api/projects";
+import { IMPORTS_DIRECTLY, NEEDS_SETUP, carriesFiles, extensionOf } from "@/lib/utils/dataFiles";
 
 import { useDatasetImport } from "@/hooks/addLayer/useDatasetImport";
 
 import AddLayerDialog from "@/components/addLayer/AddLayerDialog";
-
-/**
- * Formats that need an answer before they can be imported: which row is the header, and
- * which worksheet. Guessing produces a plausible, wrong layer, so these open the dialog.
- */
-const NEEDS_SETUP = ["csv", "xlsx", "xls"];
-
-/** Formats that carry their own geometry and fields, so there is nothing to ask. */
-const IMPORTS_DIRECTLY = ["gpkg", "geojson", "kml", "zip", "parquet"];
-
-const extensionOf = (file: File): string => file.name.split(".").pop()?.toLowerCase() ?? "";
 
 /**
  * Whether a drop landed inside a dialog, drawer, menu or popover.
@@ -35,6 +25,8 @@ const OVERLAY_SELECTOR = [
   ".MuiDrawer-root",
   ".MuiPopover-root",
   ".MuiMenu-root",
+  // The assistant dock takes its own drops: it opens the upload dialog (spec §10).
+  "[data-assistant-dock]",
 ].join(",");
 
 const insideModal = (target: EventTarget | null): boolean =>
@@ -97,9 +89,6 @@ const MapDropTarget = ({ projectId }: { projectId: string }) => {
   );
 
   useEffect(() => {
-    const carriesFiles = (event: DragEvent) =>
-      Array.from(event.dataTransfer?.types ?? []).includes("Files");
-
     // `dragover` must be prevented for a drop to be allowed at all, and only for files —
     // otherwise this swallows the panel's own drag-to-reorder.
     const onDragOver = (event: DragEvent) => {

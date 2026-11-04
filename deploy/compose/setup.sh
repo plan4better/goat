@@ -60,7 +60,8 @@ if [ -z "${SETUP_SKIP_DOCKER_CHECK:-}" ]; then
   at_least "$engine_version" 24 0 || die "Docker Engine >= 24 required (found $engine_version); $install_hint"
   compose_version=$(docker compose version --short 2>/dev/null | sed 's/^v//') \
     || die "the Docker Compose plugin is missing; $install_hint"
-  at_least "$compose_version" 2 23 || die "Docker Compose >= 2.23 required (found $compose_version); $install_hint"
+  # 2.24: optional env_file entries (required: false), used by the assistant.
+  at_least "$compose_version" 2 24 || die "Docker Compose >= 2.24 required (found $compose_version); $install_hint"
 fi
 
 # --- .env helpers -------------------------------------------------------------
@@ -89,6 +90,8 @@ set_if_empty() {
 
 hex() { openssl rand -hex "$1"; }
 password() { openssl rand -base64 30 | tr -dc 'A-Za-z0-9' | head -c "$1"; }
+# A Fernet key: 32 random bytes, URL-safe base64 (what the assistant expects).
+fernet_key() { openssl rand -base64 32 | tr '+/' '-_'; }
 
 ask() {
   # ask VAR "Question" default
@@ -249,6 +252,7 @@ set_if_empty GARAGE_RPC_SECRET "$(hex 32)"
 set_if_empty GARAGE_ADMIN_TOKEN "$(hex 32)"
 set_if_empty S3_ACCESS_KEY_ID "GK$(hex 12)"
 set_if_empty S3_SECRET_ACCESS_KEY "$(hex 32)"
+set_if_empty ASSISTANT_SECRETS_KEY "$(fernet_key)"
 
 chmod 600 "$ENV_FILE"
 

@@ -1,5 +1,6 @@
 """A materialize job that cannot even start must say so in the layer's status."""
 
+import shutil
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -111,3 +112,44 @@ def test_tiles_are_written_to_the_catalog_tiles_directory(
     # cleared without touching it.
     assert seen["dir"] != catalog_layers_dir()
     assert seen["dir"].parent == catalog_layers_dir().parent
+
+
+@pytest.mark.parametrize(
+    ("select", "expected"),
+    [
+        # A feature without a geometry is no feature a tool can use: tools
+        # seed from the rows that have one, and the workflow check compares
+        # this count with their limits.
+        (
+            "SELECT * FROM (VALUES (1, ST_Point(0, 0)), (2, NULL::GEOMETRY), "
+            "(3, ST_Point(1, 1))) t(id, geom)",
+            2,
+        ),
+        # A table has no geometry column: every row counts.
+        ("SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (3, 'c')) t(id, name)", 3),
+    ],
+)
+def test_the_recorded_count_is_of_features_with_a_geometry(
+    tmp_path, monkeypatch, select: str, expected: int
+) -> None:
+    monkeypatch.setenv("CATALOG_LAYERS_DIR", str(tmp_path / "catalog" / "layers"))
+    monkeypatch.setenv("CATALOG_S3_BUCKET", "catalog")
+    source = tmp_path / "item.parquet"
+    fixture = duckdb.connect()
+    fixture.execute("INSTALL spatial; LOAD spatial;")
+    fixture.execute(f"COPY ({select}) TO '{source}' (FORMAT PARQUET)")
+    fixture.close()
+
+    def download_file(_bucket: str, _key: str, target: str) -> None:
+        shutil.copyfile(source, target)
+
+    runner = CatalogMaterializeRunner()
+    monkeypatch.setattr(
+        runner, "_catalog_s3", lambda: SimpleNamespace(download_file=download_file)
+    )
+
+    _, feature_count, _, _ = runner._materialize_vector(
+        "00000000-0000-0000-0000-000000000001", "../../../data/item.parquet"
+    )
+
+    assert feature_count == expected

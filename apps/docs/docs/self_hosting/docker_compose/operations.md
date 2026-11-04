@@ -119,6 +119,23 @@ The same works on a new server: install the bundle of the same version, put the 
 
 The full cycle of backup, complete wipe and restore has been tested.
 
+## The assistant's key {#assistant-key}
+
+`ASSISTANT_SECRETS_KEY` in `.env` encrypts the model credentials organizations store. Back it up with `.env`: a restored database without it cannot use those connections, and organizations have to enter their keys again.
+
+To replace the key, put a new one in front of the old one, separated by a comma, re-encrypt, then remove the old one:
+
+```bash
+new=$(openssl rand -base64 32 | tr '+/' '-_')
+sed -i "s|^ASSISTANT_SECRETS_KEY=|ASSISTANT_SECRETS_KEY=$new,|" .env
+docker compose up -d assistant
+docker compose exec assistant python -m assistant.llm.vault rotate
+# then edit .env so ASSISTANT_SECRETS_KEY holds only the new key, and:
+docker compose up -d assistant
+```
+
+The assistant keeps its conversations in the `assistant` schema of GOAT's database, so the regular backup covers them. Starting an older GOAT version leaves the schema in place; only a database downgrade below the assistant's migrations (`alembic downgrade`) removes it, with its conversations and usage records.
+
 ## Upgrades {#upgrade}
 
 1. Make a backup: `docker compose run --rm backup --now` (see [Backups](#backups)).
@@ -136,7 +153,7 @@ The full cycle of backup, complete wipe and restore has been tested.
 ## Logs {#logs}
 
 ```bash
-docker compose logs -f <service>    # e.g. core, web, geoapi, processes, keycloak, caddy
+docker compose logs -f <service>    # e.g. core, web, geoapi, processes, assistant, keycloak, caddy
 docker compose logs --tail 100 windmill-worker-tools
 ```
 
@@ -158,3 +175,5 @@ A one-time service with another exit code shows why in its logs, e.g. `docker co
 **Catchment areas, heatmaps or public transport analyses fail:** the [routing base data](#base-data) for the area is probably missing.
 
 **Emails do not arrive:** check the [email settings](./external_services.md#email) and the log of the last email attempt: `docker compose logs core` for GOAT's emails, `docker compose logs keycloak` for password emails. A certificate error there (`CERTIFICATE_VERIFY_FAILED`, `PKIX path building failed`) means the relay's certificate comes from a CA that GOAT does not trust yet; see [Company CA](./https.md#company-ca).
+
+**The assistant does not show up:** no model is configured yet (see [AI assistant](./external_services.md#assistant)), or the service is not ready: `docker compose ps assistant` should show `healthy`, and `docker compose logs assistant` names a missing or invalid setting.

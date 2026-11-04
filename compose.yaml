@@ -102,7 +102,7 @@ x-env-tools: &env-tools
   OD_MATRIX_BASE_PATH: /app/data/traveltime_matrices
   STREET_NETWORK_EDGES_BASE_PATH: ${STREET_NETWORK_EDGES_BASE_PATH:-/app/data/street_network/edges}
   STREET_NETWORK_NODES_BASE_PATH: ${STREET_NETWORK_NODES_BASE_PATH:-/app/data/street_network/nodes}
-  PT_NETWORK_BASE_PATH: ${PT_NETWORK_BASE_PATH:-/app/data/pt_network/latest_de.bin}
+  PT_NETWORK_BASE_PATH: ${PT_NETWORK_BASE_PATH:-/app/data/pt_network/gtfs.bin}
   GTFS_DATA_PATH: /app/data/gtfs
   GEOCODING_URL: ${GEOCODING_URL}
   GEOCODING_AUTHORIZATION: ${GEOCODING_AUTHORIZATION}
@@ -137,7 +137,7 @@ x-env-workflows: &env-workflows
   OD_MATRIX_BASE_PATH: /app/data/traveltime_matrices
   STREET_NETWORK_EDGES_BASE_PATH: ${STREET_NETWORK_EDGES_BASE_PATH:-/app/data/street_network/edges}
   STREET_NETWORK_NODES_BASE_PATH: ${STREET_NETWORK_NODES_BASE_PATH:-/app/data/street_network/nodes}
-  PT_NETWORK_BASE_PATH: ${PT_NETWORK_BASE_PATH:-/app/data/pt_network/latest_de.bin}
+  PT_NETWORK_BASE_PATH: ${PT_NETWORK_BASE_PATH:-/app/data/pt_network/gtfs.bin}
   GTFS_DATA_PATH: /app/data/gtfs
   GEOCODING_URL: ${GEOCODING_URL}
   GEOCODING_AUTHORIZATION: ${GEOCODING_AUTHORIZATION}

@@ -120,6 +120,8 @@ check core      8000 /api/healthz
 check geoapi    8000 /healthz
 check processes 8000 /healthz
 check catalog   8400 /healthz
+# /readyz: the assistant reaches the chart's Postgres and Redis.
+check assistant 8500 /readyz
 
 echo "==> Asserting processes lists jobs without a token (auth off, windmill token wired)"
 # Two chart 0.5.0 regressions end at this one call, GET /jobs
@@ -229,7 +231,7 @@ if [ -z "$JS_COUNT" ] || [ "$JS_COUNT" -eq 0 ]; then
 fi
 # grep exits 1 on "no match" (the pass case) and 2 on a real error.
 if ! SENTINEL_FILES=$(kubectl -n "$NS" exec "$WEB_POD" -- \
-  sh -c "grep -rlE 'APP_NEXT_PUBLIC_(API|GEOAPI|PROCESSES|CATALOG)_URL' $WEB_STATIC; rc=\$?; [ \$rc -le 1 ] || exit \$rc"); then
+  sh -c "grep -rlE 'APP_NEXT_PUBLIC_(API|GEOAPI|PROCESSES|CATALOG|ASSISTANT)_URL' $WEB_STATIC; rc=\$?; [ \$rc -le 1 ] || exit \$rc"); then
   echo "FAIL: grep for sentinels in $WEB_STATIC errored in the web pod"
   exit 1
 fi
@@ -237,7 +239,7 @@ if [ -n "$SENTINEL_FILES" ]; then
   echo "FAIL: web bundle still contains unresolved APP_NEXT_PUBLIC_*_URL sentinels in:"
   echo "$SENTINEL_FILES"
   kubectl -n "$NS" exec "$WEB_POD" -- sh -c \
-    "grep -rhoE 'APP_NEXT_PUBLIC_(API|GEOAPI|PROCESSES|CATALOG)_URL' $WEB_STATIC | sort | uniq -c" || true
+    "grep -rhoE 'APP_NEXT_PUBLIC_(API|GEOAPI|PROCESSES|CATALOG|ASSISTANT)_URL' $WEB_STATIC | sort | uniq -c" || true
   exit 1
 fi
 CLEARED=$(kubectl -n "$NS" logs "$WEB_POD" 2>/dev/null \
@@ -247,7 +249,7 @@ if [ -n "$CLEARED" ]; then
   echo "$CLEARED"
   exit 1
 fi
-echo "    web $WEB_STATIC ($JS_COUNT JS chunks) -> no unresolved API/GEOAPI/PROCESSES/CATALOG sentinel"
+echo "    web $WEB_STATIC ($JS_COUNT JS chunks) -> no unresolved API/GEOAPI/PROCESSES/CATALOG/ASSISTANT sentinel"
 
 echo "==> Asserting the catalog serves a valid STAC root with no mirror present"
 CATALOG_POD=$(kubectl -n "$NS" get pod -l app.kubernetes.io/component=catalog \

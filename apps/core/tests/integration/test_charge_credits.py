@@ -23,7 +23,6 @@ async def _seed_rates(db_session):
     for cat, basis, rate in [
         ("compute", "minute", 10),
         ("egress", "GB", 20),
-        ("ai", "1k_tokens", 1),
     ]:
         if cat not in existing:
             db_session.add(
@@ -157,29 +156,15 @@ async def test_unlimited_org_still_records(db_session):
 
 
 @pytest.mark.asyncio
-async def test_ai_charge_counts_thousand_tokens(db_session):
+async def test_a_category_without_a_rate_is_refused(db_session):
+    """AI answers are not charged here: they have charge_ai_answer and a pool
+    of their own."""
     org, user = await _setup(db_session)
-    # 25,000 tokens at 1 cr per 1,000 tokens => 25.0 credits
-    row_id = (
+    with pytest.raises(Exception, match="no rate for category ai"):
         await db_session.execute(
-            text(f"SELECT {_S}.charge_credits(:o, :u, :a, :c, :unit, :p)"),
-            {
-                "o": str(org.id),
-                "u": str(user.id),
-                "a": "assistant",
-                "c": "ai",
-                "unit": 25000,
-                "p": "{}",
-            },
+            text(
+                f"SELECT {_S}.charge_credits(:o, :u, 'assistant', 'ai', 1000, '{{}}')"
+            ),
+            {"o": str(org.id), "u": str(user.id)},
         )
-    ).scalar_one()
-    await db_session.commit()
-
-    cost = (
-        await db_session.execute(
-            text(f"SELECT cost, unit_type FROM {_S}.credit_usage WHERE id = :i"),
-            {"i": row_id},
-        )
-    ).one()
-    assert float(cost.cost) == pytest.approx(25.0)
-    assert cost.unit_type == "tokens"
+    await db_session.rollback()

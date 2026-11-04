@@ -8,6 +8,7 @@ import {
   replaceDatasetLayers,
   sameShapeLayers,
   sourceDatasetFor,
+  withCurrentDatasetTypes,
 } from "@/lib/utils/workflowDatasets";
 import type { ProjectLayer } from "@/lib/validations/project";
 
@@ -164,6 +165,132 @@ const heatmap: OGCProcessDescription = {
   },
 } as unknown as OGCProcessDescription;
 
+const layerInput = (title: string) => ({
+  title,
+  schema: { "x-ui": { widget: "layer-selector" } },
+  minOccurs: 0,
+  maxOccurs: 1,
+  keywords: [],
+  metadata: [],
+});
+
+// Two layer inputs, and a list setting whose items name their own layer input
+// (aggregate_polygon's `column_statistics`).
+const aggregatePolygon: OGCProcessDescription = {
+  id: "aggregate_polygon",
+  version: "1",
+  title: "Aggregate polygons",
+  inputs: {
+    source_layer_id: layerInput("Source"),
+    area_layer_id: layerInput("Area"),
+    column_statistics: {
+      title: "Statistics",
+      schema: {
+        type: "array",
+        items: { $ref: "#/$defs/AggregateFieldStatistic" },
+        "x-ui": { repeatable: true, label: "Statistics" },
+      },
+      minOccurs: 1,
+      maxOccurs: 1,
+      keywords: [],
+      metadata: [],
+    },
+  },
+  outputs: {},
+  $defs: {
+    AggregateFieldStatistic: {
+      type: "object",
+      properties: {
+        operation: { type: "string" },
+        field: {
+          anyOf: [{ type: "string" }, { type: "null" }],
+          "x-ui": {
+            widget: "field-selector",
+            widget_options: { source_layer: "source_layer_id" },
+            label: "Field",
+          },
+        },
+      },
+    },
+  },
+} as unknown as OGCProcessDescription;
+
+// Each field of a match row reads its own layer (join's `attribute_relationships`).
+const join: OGCProcessDescription = {
+  id: "join",
+  version: "1",
+  title: "Join",
+  inputs: {
+    target_layer_id: layerInput("Target"),
+    join_layer_id: layerInput("Join"),
+    attribute_relationships: {
+      title: "Match Fields",
+      schema: {
+        anyOf: [{ type: "array", items: { $ref: "#/$defs/AttributeRelationship" } }, { type: "null" }],
+        "x-ui": { repeatable: true, label: "Match Fields" },
+      },
+      minOccurs: 0,
+      maxOccurs: 1,
+      keywords: [],
+      metadata: [],
+    },
+  },
+  outputs: {},
+  $defs: {
+    AttributeRelationship: {
+      type: "object",
+      properties: {
+        target_field: {
+          type: "string",
+          "x-ui": {
+            widget: "field-selector",
+            widget_options: { source_layer: "target_layer_id" },
+            label: "Target Field",
+          },
+        },
+        join_field: {
+          type: "string",
+          "x-ui": {
+            widget: "field-selector",
+            widget_options: { source_layer: "join_layer_id" },
+            label: "Join Field",
+          },
+        },
+      },
+    },
+  },
+} as unknown as OGCProcessDescription;
+
+// A list setting that names the layer input itself; its items name none.
+const grouped: OGCProcessDescription = {
+  id: "grouped",
+  version: "1",
+  title: "Grouped",
+  inputs: {
+    source_layer_id: layerInput("Source"),
+    area_layer_id: layerInput("Area"),
+    groups: {
+      title: "Groups",
+      schema: {
+        type: "array",
+        items: { $ref: "#/$defs/Group" },
+        "x-ui": { repeatable: true, widget_options: { source_layer: "area_layer_id" } },
+      },
+      minOccurs: 0,
+      maxOccurs: 1,
+      keywords: [],
+      metadata: [],
+    },
+  },
+  outputs: {},
+  $defs: {
+    Group: {
+      type: "object",
+      properties: { name_field: { type: "string", "x-ui": { widget: "field-selector" } } },
+    },
+  },
+} as unknown as OGCProcessDescription;
+
 describe("datasetRows", () => {
   it("lists dataset nodes with the tools they feed", () => {
     const nodes = [
@@ -177,6 +304,47 @@ describe("datasetRows", () => {
     expect(rows.map((row) => row.node.id)).toEqual(["d1", "d2"]);
     expect(rows[0].feeds).toEqual(["Buffer", "Clip"]);
     expect(rows[1].feeds).toEqual(["Clip"]);
+  });
+});
+
+describe("withCurrentDatasetTypes", () => {
+  const table = (id: number, layerId: string, name: string) =>
+    layer(id, layerId, name, "point", { type: "table", feature_layer_geometry_type: null } as never);
+
+  it("gives a node stored as a table the type of its layer, now a point layer", () => {
+    const nodes = [dataset("d1", "L1", 1, { layerType: "table", geometryType: undefined })];
+    const [node] = withCurrentDatasetTypes(nodes, [layer(1, "L1", "Stops")]);
+    expect(node.data).toMatchObject({ layerType: "feature", geometryType: "point" });
+  });
+
+  it("gives a node stored as a point layer the type of its layer, now a table", () => {
+    const nodes = [dataset("d1", "L1", 1)];
+    const [node] = withCurrentDatasetTypes(nodes, [table(1, "L1", "Stops")]);
+    expect(node.data).toMatchObject({ layerType: "table" });
+    expect((node.data as { geometryType?: string }).geometryType).toBeUndefined();
+  });
+
+  it("reads the layer by its dataset id, as the run does, also for a node without a project layer", () => {
+    const nodes = [
+      dataset("d1", "L1", 1, { projectLayerId: undefined, layerType: "table", geometryType: undefined }),
+    ];
+    const [node] = withCurrentDatasetTypes(nodes, [layer(7, "L1", "Stops", "polygon")]);
+    expect(node.data).toMatchObject({ layerType: "feature", geometryType: "polygon" });
+  });
+
+  it("keeps the stored types of a layer that is not in the list, and while the list loads", () => {
+    const nodes = [dataset("d1", "L1", 1, { layerType: "table", geometryType: undefined })];
+    expect(withCurrentDatasetTypes(nodes, [layer(2, "L2", "Other")])).toBe(nodes);
+    expect(withCurrentDatasetTypes(nodes, undefined)).toBe(nodes);
+  });
+
+  it("keeps every node object whose types are already current, and the other steps", () => {
+    const nodes = [dataset("d1", "L1", 1), tool("t1", "buffer", "Buffer", {})];
+    expect(withCurrentDatasetTypes(nodes, [layer(1, "L1", "Stops")])).toBe(nodes);
+    const next = withCurrentDatasetTypes(nodes, [table(1, "L1", "Stops")]);
+    expect(next).not.toBe(nodes);
+    expect(next[1]).toBe(nodes[1]);
+    expect(nodes[0].data).toMatchObject({ layerType: "feature", geometryType: "point" });
   });
 });
 
@@ -264,6 +432,38 @@ describe("fieldRefsOf", () => {
       ["seats", "opportunity_layer_2_id"],
     ]);
   });
+
+  it("reads a statistic's field from the layer input its own selector names", () => {
+    const refs = fieldRefsOf(aggregatePolygon, {
+      column_statistics: [
+        { operation: "sum", field: "population" },
+        { operation: "count" },
+      ],
+    });
+    expect(refs).toEqual([
+      {
+        input: "column_statistics[0].field",
+        label: "Statistics · Field",
+        field: "population",
+        sourceInput: "source_layer_id",
+      },
+    ]);
+  });
+
+  it("reads each field of a join's match row from its own layer input", () => {
+    const refs = fieldRefsOf(join, {
+      attribute_relationships: [{ target_field: "district_id", join_field: "id" }],
+    });
+    expect(refs.map((ref) => [ref.input, ref.field, ref.sourceInput])).toEqual([
+      ["attribute_relationships[0].target_field", "district_id", "target_layer_id"],
+      ["attribute_relationships[0].join_field", "id", "join_layer_id"],
+    ]);
+  });
+
+  it("falls back to the list setting's layer input when an item's selector names none", () => {
+    const refs = fieldRefsOf(grouped, { groups: [{ name_field: "district" }] });
+    expect(refs.map((ref) => [ref.field, ref.sourceInput])).toEqual([["district", "area_layer_id"]]);
+  });
 });
 
 describe("sourceDatasetFor", () => {
@@ -305,5 +505,23 @@ describe("missingFieldRefs", () => {
 
   it("does not judge a layer whose fields are not loaded", () => {
     expect(missingFieldRefs(nodes[2] as never, aggregate, edges, nodes, { L2: ["district"] })).toEqual([]);
+  });
+
+  it("judges a join's match fields against the layer each one reads", () => {
+    const joinNodes = [
+      dataset("d1", "L1", 1, { layerName: "Districts" }),
+      dataset("d2", "L2", 2, { layerName: "Schools" }),
+      tool("t1", "join", "Join", {
+        attribute_relationships: [{ target_field: "district_id", join_field: "district_id" }],
+      }),
+    ];
+    const joinEdges = [edge("d1", "t1", "target_layer_id"), edge("d2", "t1", "join_layer_id")];
+    const missing = missingFieldRefs(joinNodes[2] as never, join, joinEdges, joinNodes, {
+      L1: ["district_id"],
+      L2: ["id", "name"],
+    });
+    expect(missing).toEqual([
+      { toolLabel: "Join", paramLabel: "Match Fields · Join Field", field: "district_id", layerName: "Schools" },
+    ]);
   });
 });

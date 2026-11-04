@@ -85,7 +85,8 @@ Unter macOS verwenden Sie `⌘` statt `Strg`.
 Mit der Maus ziehen Sie auf einer leeren Stelle der Leinwand, um sie zu verschieben, und scrollen, um zu zoomen.
 
 - Rückgängig und Wiederholen wirken nicht, während Sie in einem Feld tippen, etwa in einer Textkarte oder einer Werkzeugeinstellung.
-- Das Verschieben von Knoten und Textkarten lässt sich noch nicht rückgängig machen.
+- Das Verschieben eines Knotens oder einer Textkarte, per Ziehen oder mit den Pfeiltasten, lässt sich wie jede andere Änderung rückgängig machen.
+- Eine Fassung, die über die Leinwand geladen wird, etwa eine Änderung des KI-Assistenten oder die gespeicherte Fassung nach <code>Neu laden</code>, ist ebenfalls ein Schritt: `Strg+Z` nimmt sie zurück (siehe <a href="#einen-workflow-mit-dem-ki-assistenten-ändern">Einen Workflow mit dem KI-Assistenten ändern</a>). Nach <code>Neu laden</code> holt `Strg+Z` Ihre Fassung zurück, und sie wird dann ohne erneute Nachfrage über die andere Änderung gespeichert.
 - Solange die Leinwand mit <code>Sperren</code> gesperrt ist, löscht `Entf` nichts.
 
 ### Werkzeuge und Konfigurations-Panel
@@ -103,11 +104,22 @@ Dieser Tab enthält kategorisierte Werkzeuge, die für die Workflow-Konstruktion
 
 - **Daten I/O**
   - <code>+ Datensatz hinzufügen</code>: Erstellt Datensatz-Knoten
-  - <code>Als Datensatz speichern</code>: Speichert Workflow-Ergebnisse als permanente Datensätze. Konfigurieren Sie den **Datensatznamen** (Feld <code>Datensatzname</code>), aktivieren Sie **Zum Projekt hinzufügen**, um das Ergebnis automatisch zur Projektlayerliste hinzuzufügen, und aktivieren Sie **Bei erneutem Ausführen überschreiben**, um das zuvor exportierte Dataset bei jeder Ausführung des Workflows zu ersetzen, anstatt einen neuen Datensatz zu erstellen.
+  - <code>Daten abrufen</code>: Ruft OpenStreetMap- oder Overture-Maps-Features aus der Kopie von GOAT ab, bei jeder Ausführung neu. Der Knoten hat keinen Eingang. Beschrieben unten unter **Knoten Daten abrufen**.
+  - <code>Als Datensatz speichern</code>: Speichert Workflow-Ergebnisse als permanente Datensätze. Konfigurieren Sie den **Datensatznamen** (Feld <code>Datensatzname</code>), aktivieren Sie **Zum Projekt hinzufügen**, um das Ergebnis automatisch zur Projektlayerliste hinzuzufügen, und aktivieren Sie **Bei erneutem Ausführen überschreiben**, um das zuvor exportierte Dataset bei jeder Ausführung des Workflows zu ersetzen, anstatt einen neuen Datensatz zu erstellen. Direkt mit einem Datensatz-Knoten verbunden, speichert der Knoten die Features, die dem Filter des Datensatz-Knotens entsprechen, im Stil des Datensatzes.
 
 :::tip Gute Praxis
 Vergeben Sie für jeden **Als Datensatz speichern**-Knoten einen aussagekräftigen Namen und aktivieren Sie **Bei erneutem Ausführen überschreiben**, wenn Sie denselben Workflow mehrfach ausführen. So bleibt Ihr Projekt übersichtlich und es entstehen keine doppelten Layer nach jeder Ausführung.
 :::
+
+**Knoten Daten abrufen**
+
+Ein <code>Daten abrufen</code>-Knoten braucht keinen Eingangslayer. Er ruft OpenStreetMap- oder Overture-Maps-Features ab und tut das bei jeder Ausführung erneut, sodass das Ergebnis der Quelle folgt.
+
+1. Ziehen Sie <code>Daten abrufen</code> auf die Leinwand und klicken Sie den Knoten an. Das Panel zeigt einen Abschnitt <code>Quelle</code> mit der Schaltfläche <code>Daten wählen</code>.
+2. Klicken Sie auf <code>Daten wählen</code>. Es öffnet sich derselbe Dialog wie bei <code>OpenStreetMap</code> und <code>Overture Maps</code> in Layer hinzufügen: Wählen Sie Layertyp, Gebiet sowie Tag- oder Attributfilter oder SQL. Details finden Sie unter [Layer](../map/layers.md#layer-hinzufügen).
+3. Klicken Sie auf <code>Im Workflow verwenden</code>, um die Auswahl im Knoten zu speichern. Der Knoten übernimmt einen vorgeschlagenen Namen wie „OSM points“. Mit <code>Bearbeiten</code> öffnen Sie die Auswahl erneut.
+
+Es wird noch nichts abgerufen, daher können die folgenden Knoten schon vor der ersten Ausführung eingerichtet werden. Solange nichts gewählt ist, zeigt der Knoten ein Achtung-Symbol. Es können höchstens 1.000.000 Features abgerufen werden, und sehr große Gebiete werden abgelehnt.
 
 - **Erreichbarkeitsindikatoren**: Alle Werkzeuge, die im Abschnitt [Erreichbarkeitsindikatoren](../category/accessibility-indicators) der Toolbox verfügbar sind
 - **Geoanalyse**: Alle Werkzeuge, die im Abschnitt [Geoanalyse](../category/geoanalysis) der Toolbox verfügbar sind
@@ -134,6 +146,13 @@ Wenn ein **Datensatz-Knoten** ausgewählt ist, erscheint das Datensatz-Panel mit
 
 **Quelle Tab**: Zeigen Sie Metadaten aus der Datenquelle an und greifen Sie auf Tabellen- und Kartenansichten zu. Sie können auch den dem Knoten zugewiesenen Datensatz von diesem Tab aus ändern.
 
+Ein leerer Datensatz-Knoten zeigt <code>Datensatz hinzufügen</code> mit zwei Quellen: <code>Aus Projekt</code> und <code>Meine Datensätze</code>. Sobald ein Datensatz gesetzt ist, wählen Sie mit <code>Datensatz ändern</code> einen anderen.
+
+**Filter Tab** schon vor der ersten Ausführung eingerichtet werden können. Mit <code>Bearbeiten</code> öffnen Sie die Auswahl erneut.
+- Jede Ausführung holt die Daten neu, das Ergebnis folgt also Änderungen in der Quelle.
+- Kann die Verbindung nicht ausgeführt werden, zeigt der Knoten ein Hinweis-Symbol mit dem Grund, zum Beispiel wenn eine Ausführung stoppte, weil der WFS nicht erreichbar war.
+- Es werden höchstens 1.000.000 Features abgerufen, sehr große Gebiete werden abgelehnt. <code>Im Workflow verwenden</code> bleibt deaktiviert, bis die Auswahl gültig ist, und nennt den Grund.
+
 **Filter Tab**: Wenden Sie spezifische Filter für den Workflow an, ohne die ursprüngliche Ebene zu beeinträchtigen.
 
 ## 2. Beispielhafte Anwendungsfälle
@@ -159,7 +178,7 @@ Beginnen Sie mit einfachen 2-3 Knoten-Workflows, um die Benutzeroberfläche zu v
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content"><strong>Erstellen Sie einen neuen Workflow</strong>: Klicken Sie auf <code>+ Neu</code> im linken Panel und wählen Sie <code>Neu erstellen</code>, um mit einer leeren Leinwand zu beginnen, oder <code>Aus Vorlage</code>, um von einem fertigen Workflow zu starten (siehe <a href="#mit-einer-vorlage-starten">Mit einer Vorlage starten</a>). Ein neuer Workflow wird mit einem Standardnamen zur Liste hinzugefügt.</div>
+  <div class="content"><strong>Erstellen Sie einen neuen Workflow</strong>: Klicken Sie auf <code>+ Neu</code> im linken Panel und wählen Sie <code>Neu erstellen</code>, um mit einer leeren Leinwand zu beginnen, oder <code>Aus Vorlage</code>, um von einem fertigen Workflow zu starten (siehe <a href="#mit-einer-vorlage-starten">Mit einer Vorlage starten</a>). Ein neuer Workflow wird mit einem Standardnamen zur Liste hinzugefügt. In einem Projekt ohne Workflows bietet die Leinwand dasselbe in ihrer Mitte an: <code>Neuer Workflow</code>, <code>Mit einer Vorlage beginnen</code>, wenn Ihnen Workflow-Vorlagen zur Verfügung stehen, und den Link <code>Was ist ein Workflow?</code> zu dieser Seite.</div>
 </div>
 
 <div class="step">
@@ -198,7 +217,7 @@ Beginnen Sie mit einfachen 2-3 Knoten-Workflows, um die Benutzeroberfläche zu v
 
 <div class="step">
   <div class="step-number">1</div>
-  <div class="content"><strong>Workflow ausführen</strong>: Verwenden Sie die Option <code>Workflow ausführen</code>, um den gesamten Workflow von Anfang bis Ende auszuführen.</div>
+  <div class="content"><strong>Workflow ausführen</strong>: Klicken Sie unten auf der Leinwand auf <code>Ausführen</code>, um den gesamten Workflow von Anfang bis Ende auszuführen. Solange der Workflow Fehler hat, ist die Schaltfläche ausgegraut (siehe <a href="#workflows-prüfen-und-ausführen">Workflows prüfen und ausführen</a>).</div>
 </div>
 
 <div class="step">
@@ -217,7 +236,34 @@ Beginnen Sie mit einfachen 2-3 Knoten-Workflows, um die Benutzeroberfläche zu v
 </div>
 
 :::info Auto-Speicher-Feature
-Workflows speichern Änderungen automatisch, während Sie sie erstellen. Das System bewahrt alle Konfigurationen, Verbindungen und Ausführungszustände auf.
+Workflows speichern Änderungen automatisch, während Sie sie erstellen. Das System bewahrt alle Konfigurationen, Verbindungen und Ausführungszustände auf. Schlägt das Speichern fehl, erscheint oben auf der Leinwand der Hinweis <code>Nicht gespeichert</code>; klicken Sie auf <code>Erneut versuchen</code>, um noch einmal zu speichern.
+
+Wurde der Workflow seit dem Öffnen an anderer Stelle gespeichert, etwa von einer anderen Person oder in einem anderen Tab, ersetzen Ihre Änderungen diese Fassung nicht. Ein Hinweis oben auf der Leinwand zeigt <code>Dieser Workflow wurde an anderer Stelle geändert</code> mit der Angabe, wer ihn wann geändert hat, und bis Sie wählen, wird nichts gespeichert: Klicken Sie auf <code>Neu laden</code>, um die gespeicherte Fassung zu laden, oder auf <code>Meine behalten</code>, um Ihre Fassung darüber zu speichern. Hat der KI-Assistent den Workflow geändert, während Sie ihn bearbeitet haben, lautet der Hinweis <code>Der Assistent hat diesen Workflow geändert, während Sie ihn bearbeitet haben.</code> Schwenken und Zoomen lösen diesen Hinweis nie aus.
+:::
+
+### Workflows prüfen und ausführen
+
+GOAT prüft den Workflow, während Sie ihn erstellen, und zeigt, was noch Aufmerksamkeit braucht. Nichts davon hindert Sie daran, weiterzubauen oder zu speichern.
+
+- Neben <code>Ausführen</code> zählt ein Chip wie <code>2 Probleme</code> alles, was gefunden wurde. Klicken Sie darauf, um die Liste zu öffnen, gruppiert nach Knoten; Probleme, die den ganzen Workflow betreffen, stehen oben.
+- Ein Knoten mit einem Problem zeigt unten rechts eine Markierung. Zeigen Sie auf die Markierung oder tippen Sie darauf, um ihre Meldungen zu lesen.
+- Ein Eingang, der verbunden sein muss, es aber nicht ist, erhält einen orangefarbenen Ring um seinen Anschluss.
+- In den Einstellungen eines Knotens erscheint eine Meldung unter der betroffenen Einstellung, die übrigen Probleme des Knotens stehen oben. Pflichteinstellungen sind mit einem Sternchen (<code>*</code>) markiert.
+
+Klicken Sie auf ein Problem in der Liste oder an einer Markierung, um dorthin zu gelangen: Die Leinwand springt zum Knoten, wählt ihn aus und öffnet seine Einstellungen bei der betroffenen Einstellung.
+
+| Stufe | Farbe | Bedeutung |
+|---|---|---|
+| Fehler | orange | Der Workflow kann noch nicht ausgeführt werden, zum Beispiel weil ein Eingang nicht verbunden ist, eine Pflichteinstellung leer ist oder ein Feld im Eingangsdatensatz fehlt. |
+| Warnung | grau | Einen Blick wert, verhindert aber nie eine Ausführung, zum Beispiel ein Knoten, der mit keinem anderen Knoten verbunden ist. |
+| Ausführungsfehler | rot | Der Knoten ist bei der letzten Ausführung fehlgeschlagen, und seine Markierung zeigt seine eigene Fehlermeldung. Sie verschwindet, sobald Sie den Knoten ändern oder den Workflow erneut ausführen. |
+
+Solange der Workflow Fehler hat, ist <code>Ausführen</code> ausgegraut; zeigen Sie darauf, sehen Sie, wie viele noch offen sind, zum Beispiel <code>Beheben Sie 2 Probleme, um den Workflow auszuführen</code>. Warnungen und Ausführungsfehler deaktivieren <code>Ausführen</code> nie.
+
+Konnte der Workflow nicht geprüft werden, etwa weil die Verbindung unterbrochen war, erscheint ein Chip <code>Nicht geprüft</code>. Klicken Sie darauf, um erneut zu prüfen; ein Lauf wird beim Start immer geprüft.
+
+:::info Beschädigte Workflows
+Kann die gespeicherte Fassung eines Workflows nicht gelesen werden, etwa weil sie außerhalb von GOAT geändert wurde, öffnet er sich mit dem Hinweis <code>Dieser Workflow kann nicht geöffnet werden</code> anstelle der Leinwand, der auflistet, was defekt ist. Ein solcher Workflow kann dort weder bearbeitet noch ausgeführt werden, und GOAT speichert nicht darüber. Die anderen Workflows des Projekts funktionieren weiter.
 :::
 
 ### Mit einer Vorlage starten
@@ -236,6 +282,33 @@ Workflows speichern Änderungen automatisch, während Sie sie erstellen. Das Sys
   <div class="step-number">3</div>
   <div class="content">Der Workflow wird zu Ihrem Projekt hinzugefügt. Wo die Vorlage eine Eingabe offen gelassen hat, wählen Sie einen Layer, sobald er im Projekt vorhanden ist.</div>
 </div>
+
+### Einen Workflow mit dem KI-Assistenten erstellen
+
+Sie können eine Analyse auch dem KI-Assistenten beschreiben und ihn den Workflow erstellen lassen. Öffnen Sie den Assistenten in einem Projekt, das Sie bearbeiten dürfen, über <code>KI fragen</code> in der oberen Leiste, in der Ansicht <code>Karte</code> oder <code>Workflows</code>, und beschreiben Sie, was Sie brauchen, zum Beispiel <em>Erstelle einen Workflow, der die Gebiete in 15 Minuten Fußweg um die Schulen ermittelt und die Einwohner darin zählt</em>.
+
+- Passt eine Workflow-Vorlage, verwendet der Assistent sie. Andernfalls baut er den Workflow aus den Werkzeugen Ihres Werkzeugkastens, prüft ihn mit derselben Prüfung wie der Editor (siehe <a href="#workflows-prüfen-und-ausführen">Workflows prüfen und ausführen</a>) und behebt, was er kann. Er erstellt den Workflow erst, wenn nur noch offen ist, was Sie wählen: die Layer der offen gelassenen Schritte und die Einstellungen, die diese lesen, etwa ein Feld.
+- Müssen Sie wählen, zum Beispiel welcher Datensatz verwendet werden soll, stellt Ihnen der Assistent eine oder mehrere Fragen unten im Assistenten, an der Stelle des Nachrichtenfelds. Mehrere Fragen erscheinen nacheinander: Wählen Sie eine Option (oder mehrere, wo die Frage es zulässt) oder wählen Sie <code>Eigene Antwort eingeben</code> und geben Sie Ihre Antwort ein; klicken Sie dann auf <code>Weiter</code>. <code>Überprüfen</code> zeigt danach Ihre Antworten, und <code>Antwort senden</code> sendet sie. Bei einer einzelnen Frage steht <code>Antwort senden</code> direkt darunter. Die Option, die der Assistent vorschlägt, ist mit <code>Empfohlen</code> markiert und steht an erster Stelle. Um stattdessen im Nachrichtenfeld zu antworten, klicken Sie auf <code>Stattdessen als Text antworten</code>.
+- Der Assistent fügt Ihrem Projekt einen Datensatz aus dem Katalog nur dann hinzu, wenn Sie ihn bei einer solchen Frage als Option wählen, nicht aber, wenn Sie ihn in einer getippten Antwort nennen. Eine Ausnahme ist eine Vorlage: Die Datensätze, die sie mitliefert, kommen mit ihr in Ihr Projekt (siehe <a href="../getting_started/start_from_a_template#datensätze-in-einer-vorlage">Datensätze in einer Vorlage</a>).
+- Wenn Sie einen Datensatz offen lassen oder es keine passenden Daten gibt, lässt der Assistent den Datensatz-Knoten leer und benennt den Schritt nach dem, was fehlt. Der Knoten zeigt dann <code>Kein Datensatz</code> und <code>Layer auswählen</code>, und die Problemliste zeigt unter dem Namen des Schritts <code>Für diesen Schritt ist kein Datensatz gewählt.</code> an. <code>Ausführen</code> bleibt ausgegraut, bis Sie einen Layer gewählt und ausgefüllt haben, was die Problemliste danach in den Schritten verlangt, die ihn verwenden.
+- Sind Sie noch in diesem Projekt und hat der geöffnete Workflow keine ungespeicherten Änderungen, öffnet sich der neue Workflow sofort im Editor; andernfalls klicken Sie in der Antwort beim Workflow auf <code>Öffnen</code>.
+
+### Einen Workflow mit dem KI-Assistenten ändern
+
+Sie können den Assistenten auch bitten, einen Workflow des geöffneten Projekts zu ändern, zum Beispiel <em>Setze die Gehzeit auf 10 Minuten und füge eine Notiz hinzu, die das erklärt</em>.
+
+- Der Assistent liest den Workflow zuerst und ändert nur, worum Sie bitten: Schritte, Einstellungen, Verbindungen und Textkarten. Einen Workflow löscht er nie.
+- Er prüft den geänderten Workflow mit derselben Prüfung wie der Editor und speichert keine Änderung, die einen Fehler hinzufügt. In seiner Antwort nennt er, was er geändert hat.
+- Ist der Workflow im Editor geöffnet, zeigt die Leinwand die Änderung sofort. `Strg+Z` (unter macOS `⌘+Z`) auf der Leinwand nimmt die Änderung in einem Schritt zurück.
+- Unter einer Antwort, die einen Workflow geändert hat, steht <code>Rückgängig</code>; bei älteren Antworten zeigen Sie auf die Antwort, um es zu sehen. Ein Klick nimmt alle Änderungen dieser Antwort zurück, auch wenn der Workflow nicht geöffnet ist. Die Schaltfläche lautet danach <code>Rückgängig gemacht</code>.
+- Wurde der Workflow nach der Antwort erneut gespeichert, fragt <code>Rückgängig</code> zuerst nach und nennt, wer ihn wann geändert hat. <code>Trotzdem rückgängig machen</code> nimmt auch diese späteren Änderungen zurück. Hat der Editor Änderungen, die noch nicht gespeichert sind, fragt <code>Rückgängig</code> ebenfalls; nach <code>Trotzdem rückgängig machen</code> wählen Sie im Hinweis oben auf der Leinwand, welche Fassung bleibt.
+
+### Einen Workflow mit dem KI-Assistenten ausführen
+
+- Fragen Sie nach einem Ergebnis, zum Beispiel <em>Wie viele Einwohner wohnen höchstens 15 Minuten Fußweg von einer Schule entfernt?</em>, erstellt der Assistent den Workflow und führt ihn aus. Einen Workflow, den er in dieser Unterhaltung erstellt hat, führt er ohne Rückfrage aus. Jeden anderen, etwa einen, den Sie selbst erstellt haben, führt er erst aus, wenn Sie zustimmen: Der Assistent fragt Sie in einer Karte, ob er ihn ausführen soll, und nichts läuft, bevor Sie sich dafür entscheiden.
+- Während der Workflow läuft, zeigt die Antwort eine Zeile wie <code>Workflow läuft: Schritt 2 von 4, Einzugsgebiet</code> mit der Zeit seit dem Start. <code>In Workflows öffnen</code> öffnet den Workflow, wo die Leinwand den Lauf zeigt. Zeigt die Antwort die Karte des Workflows, öffnen Sie ihn stattdessen mit <code>Öffnen</code> auf der Karte.
+- Der Assistent wartet auf den Lauf und berichtet das Ergebnis in seiner Antwort, mit den Layern, die der Lauf gespeichert hat. Ist der Lauf fehlgeschlagen (<code>Workflow-Lauf fehlgeschlagen</code>), nennt er den Schritt, der fehlgeschlagen ist, und was zu ändern ist.
+- Dauert der Lauf länger, als die Antwort warten kann, lautet die Zeile <code>Der Workflow lief noch, als diese Antwort endete</code>. Der Lauf geht weiter; fragen Sie den Assistenten später nach dem Ergebnis. Stoppen Sie die Antwort, stoppt auch ein Lauf, den sie gestartet hat.
 
 ### Einen Workflow als Vorlage speichern
 

@@ -359,3 +359,46 @@ async def test_a_copy_keeps_what_the_source_layer_authored(tmp_path) -> None:
     assert db.field_config["length_m"]["display_config"] == {"decimals": 2}
     # And still gained the contract.
     assert db.field_config["length_m"]["is_computed"] is True
+
+
+async def test_a_member_the_filter_empties_keeps_its_source_s_geometry(
+    tmp_path,
+) -> None:
+    """A filter that keeps none of a member's rows leaves no geometry to read
+    the type from: the copy is a layer of its source's geometry type, styled
+    as its role is."""
+    db = _CopyDb(
+        {
+            "id": "l-edges",
+            "name": "Augsburg Edges",
+            "type": "feature",
+            "feature_layer_type": "standard",
+            "geometry_type": "line",
+            "field_config": None,
+        }
+    )
+    runner = BundleCreateFilteredRunner.__new__(BundleCreateFilteredRunner)
+    runner._export_filtered = lambda layer_id, cql, workdir: str(tmp_path / "x.parquet")
+    runner._ingest_to_ducklake = lambda **kwargs: {
+        "geometry_column": "geometry",
+        "geometry_type": None,
+        "feature_count": 0,
+        "size": 10,
+    }
+    copied = await runner._copy_member(
+        db,
+        member={"role": "edges", "layer_id": "l-edges"},
+        cql_filter={"op": "s_intersects"},
+        user_id=USER,
+        folder_id=FOLDER,
+        bundle_id=BUNDLE,
+        bundle_name="Augsburg (filtered)",
+        spec=get_spec(BundleTypeName.street_network),
+        workdir=str(tmp_path),
+    )
+    assert (db.created["layer_type"], db.created["geometry_type"]) == (
+        "feature",
+        "line",
+    )
+    assert db.created["properties"] is not None
+    assert copied.geometry_type == "line"

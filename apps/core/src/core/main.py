@@ -12,6 +12,7 @@ from starlette.middleware.cors import CORSMiddleware
 import core._dotenv  # noqa: E402, F401, I001
 from core.accounts.sync import retry_loop
 from core.core.config import settings
+from core.core.revision import ChangedElsewhereError
 from core.crud.crud_billing_terms import seed_default_credit_rates
 from core.db.session import session_manager
 from core.endpoints.v2.api import router as api_router_v2
@@ -106,6 +107,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # The web app names a downloaded export (CSV) from this header.
+    expose_headers=["Content-Disposition"],
 )
 
 from goatlib.auth import JOSEError  # noqa: E402
@@ -125,6 +128,13 @@ def ping() -> dict[str, str]:
 
 
 app.include_router(api_router_v2, prefix=settings.API_V2_STR)
+
+
+@app.exception_handler(ChangedElsewhereError)
+async def changed_elsewhere_handler(
+    request: Request, exc: ChangedElsewhereError
+) -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=exc.content())
 
 
 @app.exception_handler(IntegrityError)

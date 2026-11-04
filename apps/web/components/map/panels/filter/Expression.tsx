@@ -28,6 +28,11 @@ import { useActiveLayer } from "@/hooks/map/LayerPanelHooks";
 import type { PopperMenuItem } from "@/components/common/PopperMenu";
 import MoreMenu from "@/components/common/PopperMenu";
 import LayerFieldSelector from "@/components/map/common/LayerFieldSelector";
+import {
+  spatialIntersectionOptions as buildSpatialIntersectionOptions,
+  spatialGeometry,
+  spatialGeometryType,
+} from "@/components/map/panels/filter/spatialIntersection";
 import Selector from "@/components/map/panels/common/Selector";
 import SelectorLayerValue from "@/components/map/panels/common/SelectorLayerValue";
 import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
@@ -53,20 +58,11 @@ const Expression: React.FC<ExpressionProps> = (props) => {
   const { t } = useTranslation("common");
   const { projectId } = useParams();
 
+  // A boundary appears only when the row holds one (set by the assistant).
+  const currentSpatialType = expression.type === FilterType.Spatial ? spatialGeometryType(expression.value) : null;
   const spatialIntersectionOptions: SelectorItem[] = useMemo(
-    () => [
-      {
-        value: SpatialIntersectionGeomType.BBOX,
-        label: t("map_extent"),
-        icon: ICON_NAME.BOUNDING_BOX,
-      },
-      // {
-      //   value: SpatialIntersectionGeomType.BOUNDARY,
-      //   label: t("boundary"),
-      //   icon: ICON_NAME.DRAW_POLYGON,
-      // },
-    ],
-    [t]
+    () => buildSpatialIntersectionOptions(t, currentSpatialType),
+    [t, currentSpatialType]
   );
 
   // Use provided layerId prop if available, otherwise fall back to active layer
@@ -136,21 +132,21 @@ const Expression: React.FC<ExpressionProps> = (props) => {
     }
   }, [expression, hasExpressionChanged, isExpressionValid, props]);
 
-  const selectedIntersection = useMemo(() => {
-    if (!expression.value || expression.type !== FilterType.Spatial) return;
-    const geometry = JSON.parse(expression.value as string);
-    const type = geometry?.properties?.type;
-    return spatialIntersectionOptions.find((intersection) => intersection.value === type);
-  }, [expression.type, expression.value, spatialIntersectionOptions]);
+  // A value that is not a geometry selects nothing and shows no label.
+  const selectedIntersection = useMemo(
+    () => spatialIntersectionOptions.find((intersection) => intersection.value === currentSpatialType),
+    [currentSpatialType, spatialIntersectionOptions]
+  );
 
   const formatedFeatureLabel = useMemo(() => {
-    if (!expression.value || expression.type !== FilterType.Spatial) return "";
-    const geometry = JSON.parse(expression.value as string);
-    if (geometry?.properties?.type === SpatialIntersectionGeomType.BBOX) {
+    const geometry = expression.type === FilterType.Spatial ? spatialGeometry(expression.value) : null;
+    if (!geometry) return "";
+    if (geometry.properties?.type === SpatialIntersectionGeomType.BBOX) {
       const _bbox = bbox(geometry);
       return `SW(${_bbox[0].toFixed(3)}, ${_bbox[1].toFixed(3)}); NE(${_bbox[2].toFixed(3)}, ${_bbox[3].toFixed(3)})`;
     }
-    return geometry?.properties?.label;
+    const label = geometry.properties?.label;
+    return typeof label === "string" ? label : "";
   }, [expression.type, expression.value]);
 
   return (
@@ -460,7 +456,9 @@ const Expression: React.FC<ExpressionProps> = (props) => {
                 </Stack>
               )}
               {selectedIntersection?.value === SpatialIntersectionGeomType.BOUNDARY && (
-                <div>{t("boundary")}</div>
+                <Typography variant="body2" fontWeight="bold" sx={{ pt: 2 }}>
+                  {formatedFeatureLabel || t("boundary")}
+                </Typography>
               )}
             </>
           )}

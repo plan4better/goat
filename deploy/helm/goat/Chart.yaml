@@ -4,6 +4,39 @@ description: |
   Helm chart for GOAT (Geo Open Accessibility Tool) — a WebGIS platform for
   spatial analysis, accessibility modeling, and collaborative mapping.
 
+  v0.8.0:
+
+  - Tracks GOAT v3.1.0. NEW: the `assistant` component (AI assistant:
+    conversations, agent runs, the model layer, the MCP endpoint), enabled by
+    default and inert until a model is configured. It uses GOAT's database
+    role and the chart's Redis; `assistant.secretsKey` and
+    `assistant.defaultConnection` read its secrets from Secrets; it
+    refreshes long answers' logins with the web app's client, from the
+    Keycloak Secret or, without one, from where the web app reads it. `web.publicUrls.assistant` (or the assistant's ingress)
+    gives the web app its URL. The `/mcp` Host allow-list follows the
+    assistant's ingress hosts, `assistant.mcp.auditRetentionDays` keeps MCP
+    audit rows (30 days), and `global.caBundle` reaches the assistant too
+    (GOAT_CA_BUNDLE).
+  - The catalog no longer serves `/mcp`: `catalog.config.CATALOG_ENABLE_MCP`
+    and `CATALOG_MCP_ALLOWED_HOSTS` are gone; the endpoint is the assistant's
+    `/mcp` (`assistant.config.ASSISTANT_MCP_ALLOWED_HOSTS`).
+  - The assistant follows chart 0.7.0's settings: memory and CPU requests
+    and a 1Gi memory limit by default (`assistant.resources`),
+    `global.auth.allowedClients` (AUTH_ALLOWED_CLIENTS) for the tokens it
+    accepts, and `postgresql.external.transactionPooler`
+    (POSTGRES_TRANSACTION_POOLER) for its database pool.
+  - NEW: `catalog.layersDir` and `catalog.tilesDir` set where promoted
+    catalog layers (their parquet copies) and their PMTiles live on the data
+    volume, rendered as CATALOG_LAYERS_DIR / CATALOG_TILES_DIR into geoapi, the
+    print, tools and workflows workers and their WHITELIST_ENVS, and
+    (CATALOG_LAYERS_DIR) processes and core. Before, only geoapi got them,
+    from `geoapi.config`, so moving them there left the workers writing to
+    the default and processes and core looking there. A `geoapi.config`,
+    `processes.config` or `core.config` key of the same name still wins.
+  - processes gets the catalog bucket (`catalog.s3`, CATALOG_S3_*): it reads
+    the OpenStreetMap and Overture mirror that goat-data publishes there for
+    Add layer › Connect service. No values change needed.
+
   v0.7.0:
 
   - Tracks GOAT v3.0.9 (Windmill 1.751): every image defaults to v3.0.9.
@@ -251,8 +284,8 @@ description: |
     `NEXT_PUBLIC_AUTH` (inverted meaning), matching the upstream single
     AUTH switch.
 type: application
-version: 0.7.0
-appVersion: "v3.0.9"   # GOAT release every image defaults to; override per service with <service>.image.tag
+version: 0.8.0
+appVersion: "v3.1.0"   # GOAT release every image defaults to; override per service with <service>.image.tag
 icon: https://goat.plan4better.de/favicon.ico
 home: https://github.com/plan4better/goat/tree/main/deploy/helm/goat
 sources:

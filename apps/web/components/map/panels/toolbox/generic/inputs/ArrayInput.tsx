@@ -79,7 +79,7 @@ export default function ArrayInput({ input, value, onChange, disabled }: ArrayIn
 
   return (
     <Stack>
-      <FormLabelHelper label={input.title} tooltip={input.description} color="inherit" />
+      <FormLabelHelper label={input.title} tooltip={input.description} color="inherit" required={input.required} />
       <TextField
         size="small"
         value={textValue}

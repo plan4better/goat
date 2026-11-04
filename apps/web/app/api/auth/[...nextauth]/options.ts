@@ -3,6 +3,7 @@ import type { JWT } from "next-auth/jwt";
 import KeycloakProvider from "next-auth/providers/keycloak";
 
 import { serverKeycloakClientId, serverKeycloakIssuer } from "@/lib/utils/server-env";
+import { TOKEN_REFRESH_BUFFER_MS } from "@/lib/utils/token-refresh";
 
 const keycloak = KeycloakProvider({
   id: "keycloak",
@@ -92,10 +93,19 @@ export const options: NextAuthOptions = {
 
         return newToken;
       }
-      if (Date.now() < token.expires_at * 1000) {
+      // Refreshed while it is still valid, once less than the client's buffer is left: the
+      // client asks again at that point, and the token it gets must outlast its requests.
+      if (Date.now() < token.expires_at * 1000 - TOKEN_REFRESH_BUFFER_MS) {
         return token;
       }
       const newToken = await refreshAccessToken(token);
+      // A refresh that fails while the current token is still valid (Keycloak briefly
+      // unreachable or refusing) keeps that token as it is, without the error that sends the
+      // user to sign in: it still works, and the next call tries the refresh again. Only a
+      // failed refresh after expiry, when no usable token is left, carries the error.
+      if (newToken.error && Date.now() < token.expires_at * 1000) {
+        return token;
+      }
       return newToken;
     },
   },

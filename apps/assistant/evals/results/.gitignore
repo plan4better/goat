@@ -1,0 +1,3 @@
+# Eval results stay local; a promoted model records its file name in tested_models.json.
+*
+!.gitignore

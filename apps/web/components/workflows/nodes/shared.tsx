@@ -184,6 +184,11 @@ export const StyledHandle = styled(Handle, {
   height: 12,
   backgroundColor: selected ? theme.palette.primary.main : theme.palette.grey[500],
   border: `2px solid ${theme.palette.background.paper}`,
+  // An input the workflow check found unconnected. The node sets the
+  // attribute; React Flow's Handle passes it on to its element.
+  '&[data-issue="true"]': {
+    boxShadow: `0 0 0 2px ${theme.palette.warning.main}`,
+  },
 }));
 
 // Tinted background section for parameters below the header

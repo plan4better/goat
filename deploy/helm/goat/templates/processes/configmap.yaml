@@ -9,8 +9,9 @@ metadata:
 data:
   {{- $pgKeys := splitList " " (include "goat.postgresql.configKeys" .) }}
   {{- range $k, $v := .Values.processes.config }}
-  {{- /* The Postgres connection and the DuckLake keys are emitted below, once */}}
-  {{- if not (has $k (concat $pgKeys (list "DUCKLAKE_DATA_DIR" "DUCKLAKE_CATALOG_SCHEMA"))) }}
+  {{- /* The Postgres connection, the DuckLake keys and the catalog layer
+         directory are emitted below, once */}}
+  {{- if not (has $k (concat $pgKeys (list "DUCKLAKE_DATA_DIR" "DUCKLAKE_CATALOG_SCHEMA" "CATALOG_LAYERS_DIR"))) }}
   {{ $k }}: {{ $v | quote }}
   {{- end }}
   {{- end }}
@@ -34,4 +35,7 @@ data:
   {{- end }}
   DUCKLAKE_DATA_DIR: {{ .Values.processes.config.DUCKLAKE_DATA_DIR | default .Values.ducklakeBootstrap.dataDir | quote }}
   DUCKLAKE_CATALOG_SCHEMA: {{ .Values.processes.config.DUCKLAKE_CATALOG_SCHEMA | default .Values.ducklakeBootstrap.catalogSchema | quote }}
+  {{- /* Where the workers write materialized catalog layers, which analyses
+         read (catalog.layersDir, the value the workers get). */}}
+  CATALOG_LAYERS_DIR: {{ .Values.processes.config.CATALOG_LAYERS_DIR | default .Values.catalog.layersDir | quote }}
 {{- end }}

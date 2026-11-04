@@ -19,7 +19,7 @@ import type {
   ProjectLayerGroup,
   SearchSettings as SearchSettingsType,
 } from "@/lib/validations/project";
-import { DEFAULT_CONTROL_POSITIONS, DEFAULT_FAVICON_URL, builderConfigSchema } from "@/lib/validations/project";
+import { DEFAULT_CONTROL_POSITIONS, DEFAULT_FAVICON_URL, readBuilderConfig } from "@/lib/validations/project";
 
 import InteractionsModal, { InteractionsEntryButton } from "@/components/builder/InteractionsModal";
 import MapControlsLayout from "@/components/builder/MapControlsLayout";
@@ -101,10 +101,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   }, [map]);
   const currentZoomPercent = Math.min(Math.max((currentZoom / 22) * 100, 0), 100);
 
-  const builderConfig = useMemo(() => {
-    const parsed = builderConfigSchema.safeParse(project?.builder_config);
-    return parsed.success ? parsed.data : undefined;
-  }, [project]);
+  const builderConfig = useMemo(() => readBuilderConfig(project?.builder_config), [project]);
 
   const interactions = useMemo(
     () => (builderConfig?.interactions ?? []) as InteractionRule[],
@@ -117,7 +114,6 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
   );
 
   const handleInteractionsChange = (newInteractions: InteractionRule[]) => {
-    if (!builderConfig) return;
     const updatedConfig = { ...builderConfig, interactions: newInteractions };
     onProjectUpdate?.("builder_config", updatedConfig);
   };
@@ -546,7 +542,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
           onReset();
         }}
       />
-      {showInteractionsModal && builderConfig && (
+      {showInteractionsModal && (
         <InteractionsModal
           open={showInteractionsModal}
           onClose={() => setShowInteractionsModal(false)}

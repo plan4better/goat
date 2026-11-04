@@ -1,0 +1,12 @@
+data: {"type":"start","messageId":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c"}
+
+data: {"type":"start-step"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"data-run-status","data":{"status":"failed","error":"Your organization's AI provider isn't reachable.","code":"provider_unreachable"}}
+
+data: {"type":"error","errorText":"Your organization's AI provider isn't reachable."}
+
+data: [DONE]
+

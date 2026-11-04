@@ -1,6 +1,6 @@
-"""The billing terms: the trial a new organization starts with and the credit
-rates (billing only). The billing system owns them and pushes them
-(POST /webhooks/billing/terms); core keeps the last push in
+"""The billing terms: the trial a new organization starts with, the credit
+rates and the AI-credit terms (billing only). The billing system owns them and
+pushes them (POST /webhooks/billing/terms); core keeps the last push in
 customer.billing_terms and customer.credit_rate.
 
 Until the first push core uses the defaults below, so sign-up never waits for
@@ -25,11 +25,22 @@ DEFAULT_TRIAL: dict[str, Any] = {
     "projects": 50,
     "editors": 5,
     "viewers": 2,
+    "ai_credits": 100,
 }
-DEFAULT_CREDIT_RATES: dict[str, float] = {"compute": 10, "egress": 20, "ai": 1}
+DEFAULT_CREDIT_RATES: dict[str, float] = {"compute": 10, "egress": 20}
 # The unit each category's rate is per; charge_credits.sql converts the native
-# unit (seconds, bytes, tokens) by it.
-UNIT_BASIS = {"compute": "minute", "egress": "GB", "ai": "1k_tokens"}
+# unit (seconds, bytes) by it.
+UNIT_BASIS = {"compute": "minute", "egress": "GB"}
+# A subscription's monthly AI credits per editor seat.
+DEFAULT_AI_CREDITS_PER_EDITOR: float = 200
+# The AI credits of an answer by its steps: the first tier whose max_steps is
+# None or at least the steps. customer.charge_ai_answer holds the same list for
+# when no terms were pushed, and the billing_terms column defaults repeat it.
+DEFAULT_AI_CREDIT_TIERS: list[dict[str, Any]] = [
+    {"max_steps": 10, "credits": 1},
+    {"max_steps": 20, "credits": 2},
+    {"max_steps": None, "credits": 3},
+]
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +57,22 @@ async def trial_terms(db: AsyncSession) -> dict[str, Any]:
         "projects": row.trial_projects,
         "editors": row.trial_editors,
         "viewers": row.trial_viewers,
+        "ai_credits": float(row.trial_ai_credits),
+    }
+
+
+async def ai_terms(db: AsyncSession) -> dict[str, Any]:
+    """A subscription's AI credits per editor seat and the price tiers of an
+    answer: the pushed terms, else the defaults."""
+    row = await db.get(BillingTerms, 1)
+    if row is None:
+        return {
+            "per_editor": DEFAULT_AI_CREDITS_PER_EDITOR,
+            "tiers": [dict(tier) for tier in DEFAULT_AI_CREDIT_TIERS],
+        }
+    return {
+        "per_editor": float(row.ai_credits_per_editor),
+        "tiers": row.ai_credit_tiers,
     }
 
 
@@ -79,10 +106,19 @@ async def _write_rates(
 
 async def seed_default_credit_rates(db: AsyncSession) -> None:
     """At startup with billing on: the default rate for every category that has
-    none yet, so metering charges from the first minute. Pushed rates stay."""
+    none yet, so metering charges from the first minute. Pushed rates stay; a
+    rate of a category core does not charge (a pod of an older version may
+    write one back) goes."""
     if not settings.billing_enabled:
         return
     await _write_rates(db, DEFAULT_CREDIT_RATES, source="default", overwrite=False)
+    await db.execute(
+        text(
+            f"DELETE FROM {settings.SCHEMA}.credit_rate "
+            "WHERE NOT (category = ANY(:known))"
+        ),
+        {"known": list(UNIT_BASIS)},
+    )
     await db.commit()
     if await db.get(BillingTerms, 1) is None:
         logger.warning(
@@ -94,7 +130,10 @@ async def seed_default_credit_rates(db: AsyncSession) -> None:
 async def apply_terms(db: AsyncSession, push: BillingTermsPush) -> bool:
     """Store pushed terms. False when the push is older than the stored one
     (a delayed retry must not undo a newer change). Running trials keep the
-    quotas they started with; past charges keep the rate they were made at."""
+    quotas they started with; past charges keep the rate they were made at.
+    An AI term the push leaves out keeps its stored value, else core's default.
+    A new amount per editor reaches every subscription whose AI credits follow
+    its seats at once; trials and special deals keep theirs."""
     # Pushes take turns, also the very first two (a missing row cannot be locked).
     await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('billing_terms'))"))
     row = (
@@ -113,6 +152,12 @@ async def apply_terms(db: AsyncSession, push: BillingTermsPush) -> bool:
         and as_of < row.as_of
     ):
         return False
+
+    def kept(pushed: Any, column: str, default: Any) -> Any:
+        if pushed is not None:
+            return pushed
+        return getattr(row, column) if row is not None else default
+
     values = {
         "trial_days": push.trial.days,
         "trial_credits": push.trial.credits,
@@ -120,9 +165,42 @@ async def apply_terms(db: AsyncSession, push: BillingTermsPush) -> bool:
         "trial_projects": push.trial.projects,
         "trial_editors": push.trial.editors,
         "trial_viewers": push.trial.viewers,
+        "trial_ai_credits": kept(
+            push.trial.ai_credits, "trial_ai_credits", DEFAULT_TRIAL["ai_credits"]
+        ),
+        "ai_credits_per_editor": kept(
+            push.ai_credits_per_editor,
+            "ai_credits_per_editor",
+            DEFAULT_AI_CREDITS_PER_EDITOR,
+        ),
+        "ai_credit_tiers": kept(
+            [tier.model_dump() for tier in push.ai_credit_tiers]
+            if push.ai_credit_tiers is not None
+            else None,
+            "ai_credit_tiers",
+            [dict(tier) for tier in DEFAULT_AI_CREDIT_TIERS],
+        ),
         # A push without a time keeps the stored one: the stale check stays armed.
         "as_of": as_of if as_of is not None else (row.as_of if row else None),
     }
+    per_editor = float(values["ai_credits_per_editor"])
+    previous = (
+        float(row.ai_credits_per_editor)
+        if row is not None
+        else DEFAULT_AI_CREDITS_PER_EDITOR
+    )
+    if per_editor != previous:
+        # The seats times the amount per editor, as apply_entitlement computes
+        # it; unlimited seats stay unlimited. Before the terms are written: a
+        # push that fails in between is sent again and recomputes again.
+        await db.execute(
+            text(
+                f"UPDATE {settings.SCHEMA}.organization "
+                "SET total_ai_credits = total_editors * CAST(:per_editor AS numeric) "
+                "WHERE NOT on_trial AND NOT ai_credits_override"
+            ),
+            {"per_editor": per_editor},
+        )
     if row is None:
         db.add(BillingTerms(id=1, **values))
     else:

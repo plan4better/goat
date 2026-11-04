@@ -86,6 +86,8 @@ Create a client for GOAT in your realm with these settings:
 
 GOAT uses the service account to read user accounts, to keep a user's name and email in Keycloak in step with their GOAT profile, and to delete an account when its user deletes it in GOAT.
 
+In the default mode of the AI assistant, the realm must have **Revoke Refresh Token** off (Realm settings, Tokens), so that the assistant can renew logins during long answers; see [AI assistant](#assistant).
+
 ### Configure `.env` {#keycloak-env}
 
 Remove `keycloak` from `COMPOSE_PROFILES`, then set:
@@ -173,7 +175,7 @@ The images in the emails come from GOAT's public URL (`<public URL>/assets`), or
 
 ## Support tickets {#support}
 
-GOAT can hand problem reports and questions from its users to an Odoo Helpdesk, where they appear as tickets with replies. This is optional and **off by default**. Without it, *Report a problem* in the app shows an email address and the *Documentation* link, and the routes under `/api/v2/support` answer 404, except `/api/v2/support/summary`, which tells the app that support is off. The address defaults to `support@plan4better.de`; set your own with `NEXT_PUBLIC_SUPPORT_EMAIL`, see the [configuration reference](./configuration.md#integrations).
+GOAT can hand problem reports and questions from its users to an Odoo Helpdesk, where they appear as tickets with replies. This is optional and **off by default**. Without it, *Report a problem* in the app shows an email address and the *Documentation* link, and the routes under `/api/v2/support` answer 404, except `/api/v2/support/summary`, which tells the app that support is off. The AI assistant's *Feedback* link opens the same address. It defaults to `support@plan4better.de`; set your own with `NEXT_PUBLIC_SUPPORT_EMAIL`, see the [configuration reference](./configuration.md#integrations).
 
 | Setting | Meaning |
 |---|---|
@@ -201,6 +203,61 @@ Everybody who opens GOAT then acts as one built-in administrator.
 With `AUTH=False`, anyone who can reach the URL has full access to all data. Use it only for local or demo installations.
 :::
 
+## AI assistant {#assistant}
+
+The assistant is part of every installation. It stays hidden until a language model is configured, in one of two ways:
+
+- **GOAT AI for every organization.** Set the built-in connection in `.env`, for example:
+
+  ```bash
+  ASSISTANT_DEFAULT_PROVIDER=openai_compatible
+  ASSISTANT_DEFAULT_MODEL=<model ID>
+  ASSISTANT_DEFAULT_BASE_URL=https://llm.example.org/v1
+  ASSISTANT_DEFAULT_API_KEY=<key>
+  ```
+
+  Which of `ASSISTANT_DEFAULT_API_KEY`, `ASSISTANT_DEFAULT_BASE_URL` and `ASSISTANT_DEFAULT_REGION` a provider needs is listed in the [configuration reference](./configuration.md#assistant).
+- **A connection of the organization's own.** An organization admin adds it under <code>Settings</code> → <code>AI</code>. The credentials are stored encrypted with `ASSISTANT_SECRETS_KEY`, which `setup.sh` creates.
+
+Apply changes with `docker compose up -d`. Users then find <code>Ask AI</code> in the upper bar.
+
+**Amazon Bedrock and Google Vertex AI** without an API key use their own credentials. Put them into a file `assistant.env` next to `.env`; only the assistant reads it:
+
+```bash
+# assistant.env
+AWS_ACCESS_KEY_ID=<key id>
+AWS_SECRET_ACCESS_KEY=<secret>
+# or, for Vertex AI, a service account file in ./certs:
+# GOOGLE_APPLICATION_CREDENTIALS=/certs/vertex.json
+```
+
+These credentials apply to GOAT AI only, never to organizations' own connections. The assistant runs as the user `appuser` in its container, so a key file in `./certs` must be readable by it (for example `chmod 644`).
+
+**Long answers and Keycloak.** An answer keeps running when the browser closes. When it outlasts the user's login, the assistant renews the login with the web app's Keycloak client, the one in `KEYCLOAK_CLIENT_ID`. Your own Keycloak's realm must therefore have **Revoke Refresh Token** off (Realm settings, Tokens); the bundled realm is set up that way.
+
+With Keycloak 26.2 or later you can use token exchange instead (`ASSISTANT_TOKEN_EXCHANGE_ENABLED=true`). Create a confidential client for the assistant and enter it in `ASSISTANT_KEYCLOAK_CLIENT_ID` and `ASSISTANT_KEYCLOAK_CLIENT_SECRET`. Two settings are required, and without them every answer fails at its start:
+
+- On the assistant's client, switch on **Allow refresh token in Standard Token Exchange**.
+- On the web app's client, add an audience mapper that puts the assistant's client into the `aud` claim of the access token.
+
+With token exchange, **Revoke Refresh Token** is not required, because the assistant gets a refresh token of its own. The bundled Keycloak is version 22 and does not support token exchange.
+
+**Company CA.** The assistant trusts `GOAT_CA_BUNDLE` in addition to the public CAs, for model servers, GOAT's services and Keycloak, like the other services; see [Company CA](./https.md#company-ca). No further setting is needed.
+
+**Model servers in your own network.** An organization's connection may not reach private or internal addresses unless `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS=true`. GOAT AI is configured by you and is not restricted.
+
+**External agents** reach GOAT's MCP endpoint at `<GOAT_PUBLIC_URL>/assistant/mcp` with a GOAT login token. The endpoint answers requests for GOAT's host name only (`GOAT_HOSTNAME`), and the catalog's former address `/catalog/mcp` is no longer served. The records of tool calls made over MCP are kept for `ASSISTANT_MCP_AUDIT_RETENTION_DAYS` days.
+
+**Database.** The assistant connects with GOAT's database user, which owns the database. It needs that, because GOAT's permission checks run with the caller's privileges and read many tables of GOAT. To check the privileges, run:
+
+```bash
+docker compose exec assistant python -m assistant.dbcheck
+```
+
+It prints `ok` or lists every missing privilege.
+
+**Data processing.** User questions and, depending on the organization's data policy, data from GOAT go to the model provider of the connection in use. For GOAT AI that is the provider you configure; for an organization's own connection, the organization's provider. An organization's data policy is **Restricted** until one of its admins selects **Standard** under **Settings → AI**: until then only field names, types, counts and statistics leave GOAT, never rows or geometries.
+
 ## Optional integrations {#integrations}
 
 GOAT works without any of these. Each one switches on a feature that needs an outside service.
@@ -209,8 +266,14 @@ GOAT works without any of these. Each one switches on a feature that needs an ou
 |---|---|---|
 | `NEXT_PUBLIC_MAPTILER_KEY` | The satellite/hybrid basemap from MapTiler | That basemap is hidden; the other basemaps work |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Place search in the map's search box (Mapbox) | The search box finds no places |
-| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | The GOAT data catalog: a read-only bucket with the harmonised datasets, mirrored on a schedule | The catalog stays empty, and its sync is switched off |
+| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | The GOAT data catalog: a read-only bucket with the harmonised datasets, mirrored on a schedule. It also holds the OpenStreetMap and Overture Maps mirror ([details](#open-data-mirror)) | The catalog stays empty, its sync is switched off, and the OpenStreetMap and Overture Maps panes find no data |
 | `GEOCODING_URL`, `GEOCODING_AUTHORIZATION` | The geocoding service used by analysis tools | Analysis steps that need geocoding cannot run |
 | `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` | Export of traces, metrics and logs to your OpenTelemetry collector | Nothing is exported |
 
 Links shown in the app and the source of the product artwork are listed in the [configuration reference](./configuration.md#integrations). The source of the routing base data is described under [Routing base data](./operations.md#base-data).
+
+### OpenStreetMap and Overture Maps {#open-data-mirror}
+
+The OpenStreetMap and Overture Maps panes under *Add layer › Fetch / Connect data* copy the features of an area into a GOAT layer. They read from a mirror of both datasets, stored as GeoParquet in the catalog bucket (`CATALOG_S3_*`) under `mirror/osm` and `mirror/overture`. The mirror is not part of a GOAT installation; it is published there by a separate pipeline, next to the catalog. Two parts of GOAT read it: `processes` fills the attribute and value lists in the dialog, and the Windmill `tools` worker runs the copy. Nothing else needs setting: without a catalog bucket, the two panes find no data.
+
+The licence is recorded on each new layer: ODbL 1.0 for OpenStreetMap, CDLA-Permissive 2.0 for Overture places and ODbL 1.0 for the other Overture types.

@@ -130,6 +130,9 @@ import Container from "@/components/map/panels/Container";
 import LayerFieldSelector from "@/components/map/common/LayerFieldSelector";
 import Selector from "@/components/map/panels/common/Selector";
 import ToolsHeader from "@/components/map/panels/common/ToolsHeader";
+import StepIssuesSummary from "@/components/workflows/issues/StepIssuesSummary";
+import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
+import { useStepFieldFocus } from "@/hooks/workflows/useStepFieldFocus";
 import { useNodeExecutionStatus } from "@/components/workflows/context/WorkflowExecutionContext";
 import WorkflowVariableMenuItem from "@/components/workflows/inputs/WorkflowVariableMenuItem";
 
@@ -586,6 +589,8 @@ export default function IfNodeSettings({
   onBack,
 }: IfNodeSettingsProps) {
   const { t } = useTranslation("common");
+  const stepIssues = useStepIssues(node.id);
+  const settingsRef = useStepFieldFocus(node.id);
   const dispatch = useDispatch<AppDispatch>();
   const edges = useEdges();
   const nodes = useSelector((state: RootState) => selectNodes(state));
@@ -882,12 +887,15 @@ export default function IfNodeSettings({
       }
       disablePadding={false}
       body={
-        <Box>
+        <Box ref={settingsRef}>
           <Typography variant="body2" sx={{ fontStyle: "italic", mb: 2 }}>
             {t("conditional_description", {
               defaultValue: "Evaluate a rule and decide how the workflow continues.",
             })}
           </Typography>
+
+          {/* The step's issues */}
+          <StepIssuesSummary issues={stepIssues} />
 
           {/* Execution Status Section */}
           <Box sx={{ mb: 2 }}>

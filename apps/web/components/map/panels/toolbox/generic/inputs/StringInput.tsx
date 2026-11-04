@@ -46,7 +46,7 @@ export default function StringInput({ input, value, onChange, disabled, formValu
 
   return (
     <Stack>
-      <FormLabelHelper label={input.title} tooltip={input.description} color="inherit" />
+      <FormLabelHelper label={input.title} tooltip={input.description} color="inherit" required={input.required} />
       <TextField
         size="small"
         value={value ?? ""}

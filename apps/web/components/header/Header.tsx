@@ -1,10 +1,22 @@
 "use client";
 
 import Info from "@mui/icons-material/Info";
-import { Box, Button, Chip, Link, Stack, Typography, useMediaQuery, useTheme } from "@mui/material";
+import {
+  Box,
+  Button,
+  Chip,
+  IconButton,
+  Link,
+  Stack,
+  Tooltip,
+  Typography,
+  useMediaQuery,
+  useTheme,
+} from "@mui/material";
 import Divider from "@mui/material/Divider";
+import { visuallyHidden } from "@mui/utils";
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMap } from "react-map-gl/maplibre";
 
@@ -14,6 +26,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { useDateFnsLocale } from "@/i18n/utils";
 
 import { useFeatures, useOrganization, useUserProfile } from "@/lib/api/users";
+import { useDockState } from "@/lib/assistant/store";
 import { CONTACT_URL, privacyPolicyUrl } from "@/lib/constants";
 import { setSelectedLayers } from "@/lib/store/layer/slice";
 import { setMapMode } from "@/lib/store/map/slice";
@@ -25,6 +38,7 @@ import { useAuthZ } from "@/hooks/auth/AuthZ";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import UserInfoMenu from "@/components/UserInfoMenu";
+import AskAiButton from "@/components/assistant/AskAiButton";
 import EditableTypography from "@/components/common/EditableTypography";
 import type { PopperMenuItem } from "@/components/common/PopperMenu";
 import MoreMenu from "@/components/common/PopperMenu";
@@ -39,7 +53,7 @@ import ProjectShareDialog from "@/components/modals/content/ProjectShareDialog";
 import SupportMenu from "@/components/support/SupportMenu";
 import SaveTemplateDialog from "@/components/templates/SaveTemplateDialog";
 
-import { Toolbar } from "./Toolbar";
+import { TOOLBAR_HEIGHT, Toolbar } from "./Toolbar";
 
 export type HeaderProps = {
   title?: string;
@@ -51,13 +65,34 @@ export type HeaderProps = {
   viewOnly?: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onProjectUpdate?: (key: string, value: any, refresh?: boolean) => void;
+  /** false: no Ask AI (the dashboard builder's preview, below the project header that has one). */
+  askAi?: boolean;
 };
 
 export default function Header(props: HeaderProps) {
   const theme = useTheme();
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down("md"));
+  const belowXl = useMediaQuery(theme.breakpoints.down("xl"));
+  // The docked dock takes width from the page (below md it opens full screen): the project
+  // header's right-hand buttons show their icons alone, so they stay clear of the mode toggle.
+  const dock = useDockState();
+  const dockDocked = dock.enabled && dock.open && !dock.expanded && !isSmallScreen;
+  const compactProjectActions = !!props.mapHeader && dockDocked;
+  // Labelled as on Home where there is room; the icon alone on small screens, and in a project
+  // header (with its centred mode toggle) beside the docked dock or in a window narrower than xl.
+  const compactAskAi = isSmallScreen || (!!props.mapHeader && (dockDocked || belowXl));
+  const askAi = props.askAi !== false && <AskAiButton compact={compactAskAi} />;
   const { map } = useMap();
   const { t, i18n } = useTranslation(["common"]);
-  const { onMenuIconClick, showHambugerMenu, height = 52, title, project, onProjectUpdate, viewOnly } = props;
+  const {
+    onMenuIconClick,
+    showHambugerMenu,
+    height = TOOLBAR_HEIGHT,
+    title,
+    project,
+    onProjectUpdate,
+    viewOnly,
+  } = props;
   const { organization } = useOrganization();
   // trials exist only where billing is on (SaaS); a self-hosted install never shows the chip
   const { features } = useFeatures();
@@ -65,14 +100,26 @@ export default function Header(props: HeaderProps) {
   const { userProfile } = useUserProfile();
   const isLoggedIn = !!userProfile;
   const dateLocale = useDateFnsLocale();
+  /** The trial notice in exact days (an extension shows at once); the compact header names it on its icon. */
+  const trialEndsLabel = (renewal: string) => {
+    const days = differenceInCalendarDays(parseApiDate(renewal), new Date());
+    if (days < 0) return t("trial_expired");
+    return days > 0 ? t("trial_days_left", { count: days }) : t("trial_ends_today");
+  };
   const lng = i18n.language === "de" ? "/de" : "";
+  const lastSaved = project?.updated_at
+    ? `${t("common:last_saved")}: ${format(parseISO(project.updated_at), "Pp", { locale: dateLocale })}`
+    : null;
+  // Beside the docked dock the last save is the title's tooltip, and the description of the
+  // title's input for keyboard and screen reader users (the tooltip describes only its wrapper).
+  const lastSavedInTitle = compactProjectActions && !!lastSaved;
+  const lastSavedId = useId();
   const dispatch = useAppDispatch();
-  // Below `md` the header has no room for another icon: the support entry moves into the user menu.
-  // The header icon is hidden there by CSS, so the server-rendered first paint (before this media
-  // query is known) never shows it on a phone; the user menu entries only render once opened.
-  const phone = useMediaQuery(theme.breakpoints.down("md"));
-  // Shown to everyone, read-only viewers included: without support tickets (or logged out) it
-  // offers an email and the docs.
+  // Below `md` (`isSmallScreen`) the header has no room for another icon: the support entry moves
+  // into the user menu. The header icon is hidden there by CSS, so the server-rendered first paint
+  // (before the media query is known) never shows it on a phone; the user menu entries only render
+  // once opened. Shown to everyone, read-only viewers included: without support tickets (or logged
+  // out) it offers an email and the docs.
   const supportEntry = (
     <Box sx={{ display: { xs: "none", md: "inline-flex" } }}>
       <SupportMenu />
@@ -221,6 +268,8 @@ export default function Header(props: HeaderProps) {
         showHambugerMenu={showHambugerMenu}
         onMenuIconClick={onMenuIconClick}
         height={height}
+        // The project menu (logo and chevron) or the logo link: never truncated away.
+        leftMinWidth={props.mapHeader ? 64 : 32}
         LeftToolbarChild={
           <>
             {!props.mapHeader && (
@@ -275,22 +324,34 @@ export default function Header(props: HeaderProps) {
                 <Divider orientation="vertical" flexItem />
               </>
             )}
-            <EditableTypography
-              variant="body1"
-              fontWeight="bold"
-              value={title || project?.name}
-              readOnly={!props.mapHeader || !!title || viewOnly}
-              isEditing={isEditingProjectName}
-              onBlur={async (value) => {
-                setIsEditingProjectName(false);
-                if (value === project?.name || !project) return;
-                await onProjectUpdate?.("name", value);
-              }}
-            />
-            {props.mapHeader && <Divider orientation="vertical" flexItem />}
-            {project?.updated_at && (
-              <Typography variant="caption" noWrap>
-                {`${t("common:last_saved")}: ${format(parseISO(project.updated_at), "Pp", { locale: dateLocale })}`}
+            {/* The title shrinks to an ellipsis inside the column; the last save beside it gives
+                way first. Beside the docked dock the last save moves into the title's tooltip. */}
+            <Tooltip title={lastSavedInTitle ? lastSaved : ""} describeChild>
+              <Box sx={{ display: "flex", minWidth: 0 }}>
+                <EditableTypography
+                  variant="body1"
+                  fontWeight="bold"
+                  aria-describedby={lastSavedInTitle ? lastSavedId : undefined}
+                  value={title || project?.name}
+                  readOnly={!props.mapHeader || !!title || viewOnly}
+                  isEditing={isEditingProjectName}
+                  onBlur={async (value) => {
+                    setIsEditingProjectName(false);
+                    if (value === project?.name || !project) return;
+                    await onProjectUpdate?.("name", value);
+                  }}
+                />
+              </Box>
+            </Tooltip>
+            {lastSavedInTitle && (
+              <Box component="span" id={lastSavedId} sx={visuallyHidden}>
+                {lastSaved}
+              </Box>
+            )}
+            {props.mapHeader && !compactProjectActions && <Divider orientation="vertical" flexItem />}
+            {lastSaved && !compactProjectActions && (
+              <Typography variant="caption" noWrap sx={{ flexShrink: 100 }}>
+                {lastSaved}
               </Typography>
             )}
             {project?.tags &&
@@ -333,21 +394,24 @@ export default function Header(props: HeaderProps) {
                 {features?.billing &&
                   organization?.on_trial &&
                   organization.plan_renewal_date &&
-                  isOrgAdmin && (
+                  isOrgAdmin &&
+                  (compactProjectActions ? (
+                    <Tooltip title={trialEndsLabel(organization.plan_renewal_date)}>
+                      <IconButton
+                        size="small"
+                        color="warning"
+                        aria-label={trialEndsLabel(organization.plan_renewal_date)}
+                        onClick={CONTACT_URL ? () => window.open(CONTACT_URL, "_blank") : undefined}>
+                        <Info fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  ) : (
                     <Chip
                       icon={<Info />}
                       variant="outlined"
                       color="warning"
                       size="small"
-                      // Exact days, not "about a month": an extension shows at once.
-                      label={(() => {
-                        const days = differenceInCalendarDays(
-                          parseApiDate(organization.plan_renewal_date),
-                          new Date()
-                        );
-                        if (days < 0) return t("trial_expired");
-                        return days > 0 ? t("trial_days_left", { count: days }) : t("trial_ends_today");
-                      })()}
+                      label={trialEndsLabel(organization.plan_renewal_date)}
                       title={t("trial_ends_on", {
                         date: format(parseApiDate(organization.plan_renewal_date), "PP", {
                           locale: dateLocale,
@@ -367,23 +431,39 @@ export default function Header(props: HeaderProps) {
                           : undefined
                       }
                     />
-                  )}
+                  ))}
                 {props.mapHeader && (
                   <>
                     <Divider orientation="vertical" flexItem />
-                    <Stack sx={{ px: 4 }} spacing={2} direction="row">
-                      <Button
-                        startIcon={
+                    {compactProjectActions ? (
+                      <Tooltip title={t("common:share")}>
+                        <IconButton
+                          size="small"
+                          aria-label={t("common:share")}
+                          onClick={() => setShowShareDialog(true)}
+                          sx={{
+                            bgcolor: "primary.main",
+                            color: "primary.contrastText",
+                            "&:hover": { bgcolor: "primary.dark" },
+                          }}>
                           <Icon iconName={ICON_NAME.GLOBE} style={{ fontSize: 16, color: "inherit" }} />
-                        }
-                        onClick={() => setShowShareDialog(true)}
-                        variant="contained"
-                        size="small">
-                        <Typography variant="body2" color="inherit" fontWeight="bold">
-                          {t("common:share")}
-                        </Typography>
-                      </Button>
-                    </Stack>
+                        </IconButton>
+                      </Tooltip>
+                    ) : (
+                      <Stack sx={{ px: 4 }} spacing={2} direction="row">
+                        <Button
+                          startIcon={
+                            <Icon iconName={ICON_NAME.GLOBE} style={{ fontSize: 16, color: "inherit" }} />
+                          }
+                          onClick={() => setShowShareDialog(true)}
+                          variant="contained"
+                          size="small">
+                          <Typography variant="body2" color="inherit" fontWeight="bold">
+                            {t("common:share")}
+                          </Typography>
+                        </Button>
+                      </Stack>
+                    )}
                     <Divider orientation="vertical" flexItem />
                   </>
                 )}
@@ -391,17 +471,19 @@ export default function Header(props: HeaderProps) {
                 {!props.mapHeader && <OnboardingTray />}
                 {!props.mapHeader && <StatusDot />}
                 {!props.mapHeader && <WhatsNewPopper />}
+                {askAi}
                 {supportEntry}
                 <JobsPopper />
                 <Divider orientation="vertical" flexItem />
-                <UserInfoMenu withSupport={phone} />
+                <UserInfoMenu withSupport={isSmallScreen} />
               </Stack>
             )}
             {props.viewOnly && isLoggedIn && (
               <Stack direction="row" spacing={2} justifyContent="center" alignItems="center">
+                {askAi}
                 {supportEntry}
                 <Divider orientation="vertical" flexItem />
-                <UserInfoMenu withSupport={phone} />
+                <UserInfoMenu withSupport={isSmallScreen} />
               </Stack>
             )}
           </>

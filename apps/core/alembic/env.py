@@ -30,7 +30,7 @@ target_metadata = SQLModel.metadata
 
 
 # Autogenerate only considers tables in the configurable data schema.
-MANAGED_SCHEMAS = [settings.SCHEMA]
+MANAGED_SCHEMAS = [settings.SCHEMA, settings.ASSISTANT_SCHEMA]
 
 
 def include_object(object, name, type_, reflected, compare_to):

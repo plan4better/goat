@@ -1,0 +1,38 @@
+{{- if and .Values.assistant.enabled .Values.assistant.ingress.enabled -}}
+{{- $component := "assistant" -}}
+{{- $ctx := dict "context" . "component" $component -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "goat.serviceFullname" $ctx }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" $ctx | nindent 4 }}
+  {{- with .Values.assistant.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.assistant.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.assistant.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.assistant.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "goat.serviceFullname" $ctx }}
+                port:
+                  number: {{ $.Values.assistant.service.port }}
+          {{- end }}
+    {{- end }}
+{{- end }}

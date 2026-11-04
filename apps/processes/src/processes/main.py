@@ -22,6 +22,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from processes.config import settings
 from processes.deps.auth import decode_token
 from processes.ducklake import (
+    close_mirror_db,
     ducklake_manager,
     preview_ducklake_manager,
     search_ducklake_manager,
@@ -72,6 +73,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     ducklake_manager.close()
     preview_ducklake_manager.close()
     search_ducklake_manager.close()
+    close_mirror_db()
     logger.info("Processes API shutdown complete")
 
 

@@ -14,7 +14,7 @@ from pydantic import Field, field_validator, model_validator
 from goatlib.analysis.geoanalysis.aggregate_polygon import AggregatePolygonTool
 from goatlib.analysis.schemas.aggregate import (
     AGGREGATION_AREA_TYPE_LABELS,
-    AggregateFieldStatistic,
+    AggregatePolygonFieldStatistic,
     AggregatePolygonParams,
     AggregationAreaType,
     validate_area_type_config,
@@ -28,6 +28,10 @@ from goatlib.analysis.schemas.ui import (
     ui_sections,
 )
 from goatlib.models.io import DatasetMetadata
+from goatlib.tools.aggregate_points import (
+    operation_first_statistic_name,
+    predict_aggregation_columns,
+)
 from goatlib.tools.base import BaseToolRunner
 from goatlib.tools.schemas import (
     ToolInputBase,
@@ -118,7 +122,7 @@ class AggregatePolygonToolParams(ToolInputBase, AggregatePolygonParams):
         ),
     )
 
-    column_statistics: List[AggregateFieldStatistic] = Field(
+    column_statistics: List[AggregatePolygonFieldStatistic] = Field(
         ...,
         description="Statistical operations to perform on the aggregated polygons.",
         min_length=1,
@@ -142,7 +146,13 @@ class AggregatePolygonToolParams(ToolInputBase, AggregatePolygonParams):
 
     weighted_by_intersecting_area: bool = Field(
         False,
-        description="If true, statistics are weighted by the intersection area ratio between source and area polygons.",
+        description=(
+            "If enabled, the value of each source polygon is weighted by its share "
+            "inside the area (the share of each source polygon's area that lies in "
+            "it). A plain count stays unweighted; min and max, the standard "
+            "deviation, and an H3 grid (each polygon goes to the cell of its "
+            "centroid), are not weighted either."
+        ),
         json_schema_extra=ui_field(
             section="statistics",
             field_order=3,
@@ -208,56 +218,13 @@ class AggregatePolygonToolRunner(BaseToolRunner[AggregatePolygonToolParams]):
         input_schemas: dict[str, dict[str, str]],
         params: dict[str, Any],
     ) -> dict[str, str]:
-        """Predict aggregate polygon output schema.
-
-        Aggregate outputs:
-        - h3_index (if area_type is h3) or area layer columns
-        - group_by_field columns (if specified)
-        - count column (always present)
-        - Statistics columns (operation_field for each statistic)
-        - geometry column
-        """
-        columns = {}
-
-        # Add h3_index for H3 aggregation
-        area_type = params.get("area_type", "polygon")
-        if area_type == "h3":
-            columns["h3_index"] = "VARCHAR"
-        else:
-            # For polygon aggregation, area layer columns are preserved
-            area_layer = input_schemas.get("area_layer_id", {})
-            for col, dtype in area_layer.items():
-                if col != "geometry":
-                    columns[col] = dtype
-
-        # Add group_by_field columns
-        group_by_fields = params.get("group_by_field") or []
-        source_layer = input_schemas.get("source_layer_id", {})
-        for field in group_by_fields:
-            if field in source_layer:
-                columns[field] = source_layer[field]
-
-        # Add count column (always present)
-        count_col = cls.unique_column_name(columns, "count")
-        columns[count_col] = "BIGINT"
-
-        # Add statistics columns
-        column_statistics = params.get("column_statistics") or []
-        for stat in column_statistics:
-            operation = stat.get("operation", "count")
-            field = stat.get("field")
-            result_name = stat.get("result_name")
-            if operation == "count":
-                continue  # count already added
-            elif field:
-                base_name = result_name if result_name else f"{operation}_{field}"
-                col_name = cls.unique_column_name(columns, base_name)
-                columns[col_name] = "DOUBLE"
-
-        # Add geometry
-        columns["geometry"] = "GEOMETRY"
-
-        return columns
+        """The columns the run writes (``predict_aggregation_columns``), each
+        statistic named ``{operation}_{field}``, as
+        ``FieldStatistic.get_operation_first_column_name`` names it in the
+        run."""
+        return predict_aggregation_columns(
+            input_schemas, params, operation_first_statistic_name
+        )
 
     def get_layer_properties(
         self: Self,
@@ -267,18 +234,8 @@ class AggregatePolygonToolRunner(BaseToolRunner[AggregatePolygonToolParams]):
         parquet_path: Path | str | None = None,
     ) -> dict[str, Any] | None:
         """Return style for aggregated output with quantile breaks."""
-        # Determine the value field based on the statistics operation
-        # Use first statistic for styling
-        stat_op = params.column_statistics[0].operation
-        stat_field = params.column_statistics[0].field
-
-        if stat_op.value == "count":
-            color_field = "count"
-        else:
-            # For sum/mean/min/max, the output column is named after the operation
-            color_field = (
-                f"{stat_op.value}_{stat_field}" if stat_field else stat_op.value
-            )
+        # Style by the column the first statistic wrote
+        color_field = params.column_statistics[0].get_operation_first_column_name()
 
         # Compute quantile breaks from the DuckLake table
         color_scale_breaks = None

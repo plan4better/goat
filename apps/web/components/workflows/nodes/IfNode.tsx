@@ -21,6 +21,9 @@ import {
   type IfNodeData,
 } from "@/lib/validations/workflow";
 
+import StepIssueBadge from "@/components/workflows/issues/StepIssueBadge";
+import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
+
 import { useNodeExecutionStatus } from "../context/WorkflowExecutionContext";
 import {
   AnimatedBorderWrapper,
@@ -44,6 +47,10 @@ const IfNode: React.FC<IfNodeProps> = ({ id, data, selected }) => {
 
   const { status: nodeStatus } = useNodeExecutionStatus(id);
   const isCompleted = nodeStatus === "completed";
+  // No incoming connection at all: the input's handle gets the amber ring.
+  const inputUnconnected = useStepIssues(id).some(
+    (issue) => issue.code === "if_input_count" && issue.params.count === 0
+  );
 
   const handleDuplicate = useCallback(
     (event: React.MouseEvent) => {
@@ -98,6 +105,9 @@ const IfNode: React.FC<IfNodeProps> = ({ id, data, selected }) => {
       </NodeToolbar>
 
       <NodeContainer selected={selected}>
+        {/* The step's issues; stays after a run, next to the run status */}
+        <StepIssueBadge nodeId={id} />
+
         {/* Input handle — carries the layer through to the active branch */}
         <Tooltip
           title={t("if_input_handle_tooltip", {
@@ -110,6 +120,7 @@ const IfNode: React.FC<IfNodeProps> = ({ id, data, selected }) => {
             position={Position.Left}
             id="input"
             selected={selected}
+            data-issue={inputUnconnected ? "true" : undefined}
           />
         </Tooltip>
 

@@ -113,6 +113,24 @@ CASES = [
         },
     ),
     (
+        "spatial left join without a field list takes every join field",
+        "poi_points",
+        "districts",
+        {**SPATIAL, "join_type": "left"},
+    ),
+    (
+        "join fields on without a field list takes every join field",
+        "employees",
+        "salary_bands",
+        {**ATTRIBUTE, "add_join_fields": True},
+    ),
+    (
+        "join fields on with every field unticked takes none",
+        "employees",
+        "salary_bands",
+        {**ATTRIBUTE, "add_join_fields": True, "join_fields": []},
+    ),
+    (
         "disjoint keeps the target columns alone",
         "poi_points",
         "districts",
@@ -136,6 +154,23 @@ def _schema(path: Path) -> dict[str, str]:
     return {r[0]: r[1] for r in rows}
 
 
+def _run(tmp_path: Path, target: str, join: str, config: dict) -> list[str]:
+    target_path, join_path = DATA / f"{target}.parquet", DATA / f"{join}.parquet"
+    tool = JoinTool()
+    try:
+        result_path, _ = tool.run(
+            JoinToolRunner.analysis_params(
+                JoinToolParams(**IDS, **config),
+                target_path,
+                join_path,
+                tmp_path / "out.parquet",
+            )
+        )[0]
+    finally:
+        tool.cleanup()
+    return [c for c, t in _schema(Path(result_path)).items() if not is_bbox_struct(t)]
+
+
 @pytest.mark.parametrize(
     ("target", "join", "config"),
     [c[1:] for c in CASES],
@@ -144,27 +179,14 @@ def _schema(path: Path) -> dict[str, str]:
 def test_prediction_matches_the_written_columns(
     tmp_path: Path, target: str, join: str, config: dict
 ) -> None:
-    target_path, join_path = DATA / f"{target}.parquet", DATA / f"{join}.parquet"
-    params = JoinToolParams(**IDS, **config)
-    tool = JoinTool()
-    try:
-        result_path, _ = tool.run(
-            JoinToolRunner.analysis_params(
-                params, target_path, join_path, tmp_path / "out.parquet"
-            )
-        )[0]
-    finally:
-        tool.cleanup()
-
     predicted = JoinToolRunner.predict_output_schema(
-        {"target_layer_id": _schema(target_path), "join_layer_id": _schema(join_path)},
+        {
+            "target_layer_id": _schema(DATA / f"{target}.parquet"),
+            "join_layer_id": _schema(DATA / f"{join}.parquet"),
+        },
         config,
     )
-
-    written = [
-        c for c, t in _schema(Path(result_path)).items() if not is_bbox_struct(t)
-    ]
-    assert list(predicted) == written
+    assert list(predicted) == _run(tmp_path, target, join, config)
 
 
 def test_join_fields_are_prefixed() -> None:
@@ -183,3 +205,19 @@ def test_join_fields_are_prefixed() -> None:
         "geometry": "GEOMETRY",
         "join_total_accessibility": "DOUBLE",
     }
+
+
+def test_join_fields_left_unset_are_every_field_of_the_join_layer(
+    tmp_path: Path,
+) -> None:
+    """The form pre-ticks every field of the join layer (`default_all`), so a
+    join drafted without the form adds them all, its geometry aside."""
+    written = _run(
+        tmp_path, "poi_points", "districts", {**SPATIAL, "join_type": "left"}
+    )
+    assert [c for c in written if c.startswith("join_")] == [
+        "join_district_id",
+        "join_district_name",
+        "join_zone_type",
+        "join_population",
+    ]

@@ -56,19 +56,23 @@ import {
   isSectionEnabled,
   processInputsWithSections,
 } from "@/lib/utils/ogc-utils";
+import { isToolNode } from "@/lib/utils/workflowDatasets";
 import type { ContentItem } from "@/lib/validations/content";
 import type { ProjectLayer } from "@/lib/validations/project";
 import type { ExportNodeData, WorkflowNode } from "@/lib/validations/workflow";
+import { INTEGRATE_PROCESS_ID, integrationColumns } from "@/lib/workflows/datasetConnection";
 
 import type { SelectorItem } from "@/types/map/common";
 import { OPPORTUNITY_LAYER_HANDLES } from "@/types/map/ogc-processes";
-import type { ProcessedSection } from "@/types/map/ogc-processes";
+import type { ProcessedInput, ProcessedSection } from "@/types/map/ogc-processes";
 
 import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
 import { useProcessDescription } from "@/hooks/map/useOgcProcesses";
 import { useProjectBundleKinds } from "@/hooks/map/useProjectBundleKinds";
+import { useStepFieldFocus } from "@/hooks/workflows/useStepFieldFocus";
 
 import DatasetPickerDialog from "@/components/addLayer/DatasetPickerDialog";
+import RequiredMark from "@/components/common/RequiredMark";
 import Container from "@/components/map/panels/Container";
 import SectionHeader from "@/components/map/panels/common/SectionHeader";
 import SectionOptions from "@/components/map/panels/common/SectionOptions";
@@ -83,8 +87,12 @@ import {
 import { useWorkflowExecutionContext } from "@/components/workflows/context/WorkflowExecutionContext";
 import SaveDatasetDialog from "@/components/workflows/dialogs/SaveDatasetDialog";
 import VariableAwareInput from "@/components/workflows/inputs/VariableAwareInput";
+import StepIssuesSummary from "@/components/workflows/issues/StepIssuesSummary";
+import StepSettingField from "@/components/workflows/issues/StepSettingField";
+import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
 import DatasetNodeSettings from "@/components/workflows/panels/DatasetNodeSettings";
 import IfNodeSettings from "@/components/workflows/panels/IfNodeSettings";
+import IntegrateDatasetSettings from "@/components/workflows/panels/IntegrateDatasetSettings";
 import SqlToolSettings from "@/components/workflows/panels/SqlToolSettings";
 
 // Map section icons from backend to ICON_NAME
@@ -791,6 +799,13 @@ export default function WorkflowNodeSettings({
           const targetNode = nodes.find((n) => n.id === nodeId);
           if (!targetNode) return {};
 
+          // An integration's columns were read from the mirror when its choice was saved.
+          const integrated = isToolNode(targetNode) ? integrationColumns(targetNode.data) : undefined;
+          if (integrated) {
+            cache[nodeId] = integrated;
+            return integrated;
+          }
+
           // Dataset node: use layer_id for prediction
           if (targetNode.data?.type === "dataset" && targetNode.data.layerId) {
             const layerIdValue = targetNode.data.layerId as string;
@@ -988,6 +1003,27 @@ export default function WorkflowNodeSettings({
     }));
   }, []);
 
+  // The step's issues: a setting on screen shows its own under it, the rest
+  // are listed at the top of the panel.
+  const stepIssues = useStepIssues(node.id);
+
+  // Asked to show a setting: open its section, and its advanced options when
+  // it is one, so the field is mounted when the focus hook looks for it. The
+  // updates leave state as it is once open: the hook calls this on every
+  // render until the field shows.
+  const revealField = useCallback(
+    (field: string) => {
+      const section = sections.find((s) => s.inputs.some((input) => input.name === field));
+      if (!section) return;
+      setCollapsedSections((prev) => (prev[section.id] === false ? prev : { ...prev, [section.id]: false }));
+      if (section.inputs.some((input) => input.name === field && input.advanced)) {
+        setAdvancedCollapsed((prev) => (prev[section.id] === false ? prev : { ...prev, [section.id]: false }));
+      }
+    },
+    [sections]
+  );
+  const settingsRef = useStepFieldFocus(node.id, revealField);
+
   // Render dataset node settings
   if (node.type === "dataset" && node.data.type === "dataset") {
     return <DatasetNodeSettings node={node} projectLayers={layers} onBack={onBack} />;
@@ -1053,9 +1089,12 @@ export default function WorkflowNodeSettings({
           header={<ToolsHeader onBack={onBack} title={node.data.label} />}
           disablePadding={false}
           body={
-            <Typography variant="body2" color="text.secondary">
-              {t("process_not_found")}
-            </Typography>
+            <Box ref={settingsRef}>
+              <StepIssuesSummary issues={stepIssues} />
+              <Typography variant="body2" color="text.secondary">
+                {t("process_not_found")}
+              </Typography>
+            </Box>
           }
         />
       );
@@ -1073,198 +1112,250 @@ export default function WorkflowNodeSettings({
       ...bundleChoiceValues,
     };
 
+    // Its settings are a choice made in Add layer's dialog; status and results are any tool's.
+    const isIntegration = processId === INTEGRATE_PROCESS_ID;
+    const title = isIntegration ? t("fetch_data") : process.title;
+    // Its status says nothing until it has run.
+    const showStatus = !isIntegration || !!nodeStatus;
+
+    // In workflows, skip sections that are handled by node connections or not
+    // applicable. Result sections are not supported in workflows. Tools whose
+    // opportunity layers arrive on numbered canvas handles get that section
+    // hidden; ones with non-repeatable opportunity fields (huff_model) must
+    // keep it visible.
+    const workflowHiddenSections = takesOpportunityHandles ? ["result", "opportunities"] : ["result"];
+    // Layer inputs come from node connections
+    const workflowHiddenWidgets = ["layer-selector", "starting-points"];
+    const sectionViews = sections
+      .filter((section) => !workflowHiddenSections.includes(section.id))
+      .map((section) => {
+        const visibleInputs = getVisibleInputs(section.inputs, effectiveValues)
+          .filter((input) => !workflowHiddenWidgets.includes(input.uiMeta?.widget || ""))
+          // Repeatable layer inputs come from connections; don't pad to min_items.
+          .map((input) =>
+            layerRepeatableInputNames.has(input.name)
+              ? { ...input, uiMeta: { ...input.uiMeta, min_items: 0 } }
+              : input
+          );
+        return {
+          section,
+          visibleInputs,
+          baseInputs: visibleInputs.filter((input) => !input.advanced),
+          advancedInputs: visibleInputs.filter((input) => input.advanced),
+          isDisabled: !isSectionEnabled(section, effectiveValues),
+          isCollapsed: collapsedSections[section.id] ?? section.collapsed,
+          isAdvancedCollapsed: advancedCollapsed[section.id] ?? true,
+        };
+      })
+      // Skip empty sections
+      .filter((view) => view.visibleInputs.length > 0);
+
+    // Per-opportunity values and visible fields for heatmap tools
+    const opportunityViews = connectedOpportunities.map((opp) => {
+      const prefix = `opportunity_${opp.oppNum}_`;
+
+      // Build per-opportunity values from flat config
+      const oppValues: Record<string, unknown> = { input_path: "__connected__" };
+      for (const [key, val] of Object.entries(values)) {
+        if (key.startsWith(prefix)) {
+          oppValues[key.slice(prefix.length)] = val;
+        }
+      }
+      // Apply defaults for missing values
+      for (const [key, val] of Object.entries(opportunityDefaults)) {
+        if (
+          key !== "input_path" &&
+          key !== "input_layer_filter" &&
+          key !== "name" &&
+          oppValues[key] === undefined
+        ) {
+          oppValues[key] = val;
+        }
+      }
+
+      // Card fields resolve their conditions (visibility, per-mode
+      // limits) against the node's own fields too, as in the toolbox.
+      const oppFormValues = { ...defaultValues, ...values, ...oppValues };
+      return {
+        opp,
+        prefix,
+        oppValues,
+        oppFormValues,
+        visibleFields: getVisibleInputs(opportunityFields, oppFormValues),
+      };
+    });
+
+    // A setting on screen shows its own issues; the step's other issues (no
+    // setting, a connection, a setting in a closed or disabled section) are
+    // listed at the top of the panel.
+    const shownFields = new Set<string>();
+    for (const view of sectionViews) {
+      if (view.isCollapsed || view.isDisabled) continue;
+      for (const input of view.baseInputs) shownFields.add(input.name);
+      if (!view.isAdvancedCollapsed) {
+        for (const input of view.advancedInputs) shownFields.add(input.name);
+      }
+    }
+    if (takesOpportunityHandles) {
+      for (const view of opportunityViews) {
+        for (const field of view.visibleFields) shownFields.add(`${view.prefix}${field.name}`);
+      }
+    }
+    const unplacedIssues = stepIssues.filter((issue) => !issue.field || !shownFields.has(issue.field));
+
+    const renderSetting = (input: ProcessedInput) => (
+      <StepSettingField key={input.name} name={input.name} issues={stepIssues}>
+        <VariableAwareInput
+          input={input}
+          value={effectiveValues[input.name]}
+          onChange={(value) => handleInputChange(input.name, value)}
+          onFilterChange={
+            input.inputType === "layer" ? (filter) => handleFilterChange(input.name, filter) : undefined
+          }
+          onNestedFiltersChange={
+            input.inputType === "repeatable-object"
+              ? (filters) => handleNestedFiltersChange(input.name, filters)
+              : undefined
+          }
+          formValues={effectiveValues}
+          schemaDefs={process.$defs}
+          layerDatasetIds={layerDatasetIds}
+          predictedColumns={predictedColumns}
+          variables={variables}
+        />
+      </StepSettingField>
+    );
+
     // Render sections with inputs (matching GenericTool pattern)
     return (
       <>
         <Container
-          header={<ToolsHeader onBack={onBack} title={process.title} />}
+          header={<ToolsHeader onBack={onBack} title={title} />}
           disablePadding={false}
           body={
-            <Box sx={{ display: "flex", flexDirection: "column" }}>
+            <Box ref={settingsRef} sx={{ display: "flex", flexDirection: "column" }}>
               {/* Description */}
               <Typography variant="body2" sx={{ fontStyle: "italic", mb: theme.spacing(4) }}>
-                {process.description}
+                {isIntegration ? t("fetch_data_description") : process.description}
               </Typography>
 
+              {/* The step's issues that no setting on screen carries */}
+              <StepIssuesSummary issues={unplacedIssues} />
+
               {/* Execution Status Section */}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
-                  {t("execution_status")}
-                </Typography>
-                <Divider sx={{ mb: 1.5 }} />
-                <Chip
-                  label={nodeStatus ? t(nodeStatus, { defaultValue: nodeStatus }) : t("idle")}
-                  size="small"
-                  icon={nodeStatus === "skipped" ? <BlockIcon sx={{ fontSize: 14 }} /> : undefined}
-                  color={
-                    nodeStatus === "completed"
-                      ? "primary"
-                      : nodeStatus === "failed"
-                        ? "error"
-                        : nodeStatus === "running"
-                          ? "warning"
-                          : "default"
-                  }
-                  variant={nodeStatus ? "filled" : "outlined"}
-                  sx={{ fontWeight: 600, textTransform: "uppercase" }}
-                />
-              </Box>
+              {showStatus && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
+                    {t("execution_status")}
+                  </Typography>
+                  <Divider sx={{ mb: 1.5 }} />
+                  <Chip
+                    label={nodeStatus ? t(nodeStatus, { defaultValue: nodeStatus }) : t("idle")}
+                    size="small"
+                    icon={nodeStatus === "skipped" ? <BlockIcon sx={{ fontSize: 14 }} /> : undefined}
+                    color={
+                      nodeStatus === "completed"
+                        ? "primary"
+                        : nodeStatus === "failed"
+                          ? "error"
+                          : nodeStatus === "running"
+                            ? "warning"
+                            : "default"
+                    }
+                    variant={nodeStatus ? "filled" : "outlined"}
+                    sx={{ fontWeight: 600, textTransform: "uppercase" }}
+                  />
+                </Box>
+              )}
 
               {/* Parameters Section */}
-              <Box sx={{ mt: 3, mb: 2 }}>
-                <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
-                  {t("parameters")}
-                </Typography>
-                <Divider sx={{ mb: 1.5 }} />
-              </Box>
+              {isIntegration ? (
+                <IntegrateDatasetSettings nodeId={node.id} data={node.data} />
+              ) : (
+                <Box sx={{ mt: 3, mb: 2 }}>
+                  <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
+                    {t("parameters")}
+                  </Typography>
+                  <Divider sx={{ mb: 1.5 }} />
+                </Box>
+              )}
 
               {/* Render sections dynamically */}
-              {sections.map((section) => {
-                // In workflows, skip sections that are handled by node connections or not applicable
-                // Result sections are not supported in workflows
-                const workflowHiddenSections = ["result"];
-                // Tools whose opportunity layers arrive on numbered canvas handles
-                // get the section hidden; ones with non-repeatable opportunity
-                // fields (huff_model) must keep it visible.
-                if (takesOpportunityHandles) {
-                  workflowHiddenSections.push("opportunities");
-                }
-                if (workflowHiddenSections.includes(section.id)) {
-                  return null;
-                }
+              {(isIntegration ? [] : sectionViews).map(
+                ({
+                  section,
+                  visibleInputs,
+                  baseInputs,
+                  advancedInputs,
+                  isDisabled,
+                  isCollapsed,
+                  isAdvancedCollapsed,
+                }) => {
+                  const hasAdvancedOptions = advancedInputs.length > 0;
+                  const shouldRenderOevStationConfigFallback =
+                    processId === "oev_gueteklassen" &&
+                    section.id === "configuration" &&
+                    !visibleInputs.some((input) => input.name === "station_config");
+                  const isFirstSection = sections.indexOf(section) === 0;
 
-                // Filter out layer inputs that should come from node connections
-                const workflowHiddenWidgets = ["layer-selector", "starting-points"];
-                const visibleInputs = getVisibleInputs(section.inputs, effectiveValues)
-                  .filter((input) => !workflowHiddenWidgets.includes(input.uiMeta?.widget || ""))
-                  // Repeatable layer inputs come from connections; don't pad to min_items.
-                  .map((input) =>
-                    layerRepeatableInputNames.has(input.name)
-                      ? { ...input, uiMeta: { ...input.uiMeta, min_items: 0 } }
-                      : input
-                  );
-                const sectionEnabled = isSectionEnabled(section, effectiveValues);
-
-                // Skip empty sections
-                if (visibleInputs.length === 0) {
-                  return null;
-                }
-
-                // Split into base and advanced inputs
-                const baseInputs = visibleInputs.filter((input) => !input.advanced);
-                const advancedInputs = visibleInputs.filter((input) => input.advanced);
-                const hasAdvancedOptions = advancedInputs.length > 0;
-                const shouldRenderOevStationConfigFallback =
-                  processId === "oev_gueteklassen" &&
-                  section.id === "configuration" &&
-                  !visibleInputs.some((input) => input.name === "station_config");
-
-                const isCollapsed = collapsedSections[section.id] ?? section.collapsed;
-                const isAdvancedCollapsed = advancedCollapsed[section.id] ?? true;
-                const isFirstSection = sections.indexOf(section) === 0;
-                const isDisabled = !sectionEnabled;
-
-                return (
-                  <Box
-                    key={section.id}
-                    sx={{
-                      opacity: isDisabled ? 0.5 : 1,
-                      pointerEvents: isDisabled ? "none" : "auto",
-                      transition: "opacity 0.2s ease",
-                    }}>
-                    <SectionHeader
-                      active={!isCollapsed && !isDisabled}
-                      alwaysActive={!section.collapsible || isFirstSection}
-                      label={section.label}
-                      icon={getSectionIcon(section)}
-                      disableAdvanceOptions={!hasAdvancedOptions}
-                      collapsed={hasAdvancedOptions ? isAdvancedCollapsed : isCollapsed || isDisabled}
-                      setCollapsed={
-                        hasAdvancedOptions
-                          ? () => toggleAdvanced(section.id)
-                          : section.collapsible
-                            ? () => toggleSection(section.id)
-                            : undefined
-                      }
-                      onToggleChange={
-                        section.collapsible && !isFirstSection ? () => toggleSection(section.id) : undefined
-                      }
-                    />
-                    {!isCollapsed && !isDisabled && (
-                      <SectionOptions
-                        active={true}
-                        collapsed={isAdvancedCollapsed}
-                        baseOptions={
-                          <Stack spacing={2}>
-                            {baseInputs.map((input) => (
-                              <VariableAwareInput
-                                key={input.name}
-                                input={input}
-                                value={effectiveValues[input.name]}
-                                onChange={(value) => handleInputChange(input.name, value)}
-                                onFilterChange={
-                                  input.inputType === "layer"
-                                    ? (filter) => handleFilterChange(input.name, filter)
-                                    : undefined
-                                }
-                                onNestedFiltersChange={
-                                  input.inputType === "repeatable-object"
-                                    ? (filters) => handleNestedFiltersChange(input.name, filters)
-                                    : undefined
-                                }
-                                formValues={effectiveValues}
-                                schemaDefs={process.$defs}
-                                layerDatasetIds={layerDatasetIds}
-                                predictedColumns={predictedColumns}
-                                variables={variables}
-                              />
-                            ))}
-                            {shouldRenderOevStationConfigFallback && (
-                              <OevStationConfigInput
-                                input={{ name: "station_config", title: "Station configuration" }}
-                                value={effectiveValues.station_config}
-                                onChange={(value) => handleInputChange("station_config", value)}
-                              />
-                            )}
-                          </Stack>
+                  return (
+                    <Box
+                      key={section.id}
+                      sx={{
+                        opacity: isDisabled ? 0.5 : 1,
+                        pointerEvents: isDisabled ? "none" : "auto",
+                        transition: "opacity 0.2s ease",
+                      }}>
+                      <SectionHeader
+                        active={!isCollapsed && !isDisabled}
+                        alwaysActive={!section.collapsible || isFirstSection}
+                        label={section.label}
+                        icon={getSectionIcon(section)}
+                        disableAdvanceOptions={!hasAdvancedOptions}
+                        collapsed={hasAdvancedOptions ? isAdvancedCollapsed : isCollapsed || isDisabled}
+                        setCollapsed={
+                          hasAdvancedOptions
+                            ? () => toggleAdvanced(section.id)
+                            : section.collapsible
+                              ? () => toggleSection(section.id)
+                              : undefined
                         }
-                        advancedOptions={
-                          hasAdvancedOptions ? (
-                            <Stack spacing={2}>
-                              {advancedInputs.map((input) => (
-                                <VariableAwareInput
-                                  key={input.name}
-                                  input={input}
-                                  value={effectiveValues[input.name]}
-                                  onChange={(value) => handleInputChange(input.name, value)}
-                                  onFilterChange={
-                                    input.inputType === "layer"
-                                      ? (filter) => handleFilterChange(input.name, filter)
-                                      : undefined
-                                  }
-                                  onNestedFiltersChange={
-                                    input.inputType === "repeatable-object"
-                                      ? (filters) => handleNestedFiltersChange(input.name, filters)
-                                      : undefined
-                                  }
-                                  formValues={effectiveValues}
-                                  schemaDefs={process.$defs}
-                                  layerDatasetIds={layerDatasetIds}
-                                  predictedColumns={predictedColumns}
-                                  variables={variables}
-                                />
-                              ))}
-                            </Stack>
-                          ) : undefined
+                        onToggleChange={
+                          section.collapsible && !isFirstSection ? () => toggleSection(section.id) : undefined
                         }
                       />
-                    )}
-                  </Box>
-                );
-              })}
+                      {!isCollapsed && !isDisabled && (
+                        <SectionOptions
+                          active={true}
+                          collapsed={isAdvancedCollapsed}
+                          baseOptions={
+                            <Stack spacing={2}>
+                              {baseInputs.map(renderSetting)}
+                              {shouldRenderOevStationConfigFallback && (
+                                <StepSettingField name="station_config" issues={stepIssues}>
+                                  <OevStationConfigInput
+                                    input={{ name: "station_config", title: "Station configuration" }}
+                                    value={effectiveValues.station_config}
+                                    onChange={(value) => handleInputChange("station_config", value)}
+                                  />
+                                </StepSettingField>
+                              )}
+                            </Stack>
+                          }
+                          advancedOptions={
+                            hasAdvancedOptions ? (
+                              <Stack spacing={2}>{advancedInputs.map(renderSetting)}</Stack>
+                            ) : undefined
+                          }
+                        />
+                      )}
+                    </Box>
+                  );
+                }
+              )}
 
               {/* Per-opportunity config for heatmap tools */}
-              {takesOpportunityHandles && connectedOpportunities.length > 0 && (
+              {takesOpportunityHandles && opportunityViews.length > 0 && (
                 <Box>
                   <SectionHeader
                     active={true}
@@ -1279,51 +1370,23 @@ export default function WorkflowNodeSettings({
                     collapsed={false}
                     baseOptions={
                       <Stack spacing={2}>
-                        {connectedOpportunities.map((opp, index) => {
-                          const prefix = `opportunity_${opp.oppNum}_`;
-
-                          // Build per-opportunity values from flat config
-                          const oppValues: Record<string, unknown> = { input_path: "__connected__" };
-                          for (const [key, val] of Object.entries(values)) {
-                            if (key.startsWith(prefix)) {
-                              oppValues[key.slice(prefix.length)] = val;
-                            }
-                          }
-                          // Apply defaults for missing values
-                          for (const [key, val] of Object.entries(opportunityDefaults)) {
-                            if (
-                              key !== "input_path" &&
-                              key !== "input_layer_filter" &&
-                              key !== "name" &&
-                              oppValues[key] === undefined
-                            ) {
-                              oppValues[key] = val;
-                            }
-                          }
-
-                          // Card fields resolve their conditions (visibility, per-mode
-                          // limits) against the node's own fields too, as in the toolbox.
-                          const oppFormValues = { ...defaultValues, ...values, ...oppValues };
-                          const visibleFields = getVisibleInputs(opportunityFields, oppFormValues);
-
-                          return (
-                            <Box key={opp.handle}>
-                              {/* Opportunity header with source node label */}
-                              <Typography
-                                variant="body2"
-                                fontWeight="bold"
-                                color="text.secondary"
-                                sx={{ mb: 1 }}>
-                                {t("opportunity")} {index + 1}:{" "}
-                                <Typography component="span" variant="body2" fontWeight="normal">
-                                  {t(opp.sourceLabel, { defaultValue: opp.sourceLabel })}
-                                </Typography>
+                        {opportunityViews.map(({ opp, prefix, oppValues, oppFormValues, visibleFields }, index) => (
+                          <Box key={opp.handle}>
+                            {/* Opportunity header with source node label */}
+                            <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
+                              {t("opportunity")} {index + 1}:{" "}
+                              <Typography component="span" variant="body2" fontWeight="normal">
+                                {t(opp.sourceLabel, { defaultValue: opp.sourceLabel })}
                               </Typography>
+                            </Typography>
 
-                              <Stack spacing={2}>
-                                {visibleFields.map((field) => (
+                            <Stack spacing={2}>
+                              {visibleFields.map((field) => (
+                                <StepSettingField
+                                  key={`${prefix}${field.name}`}
+                                  name={`${prefix}${field.name}`}
+                                  issues={stepIssues}>
                                   <VariableAwareInput
-                                    key={`${prefix}${field.name}`}
                                     input={field}
                                     value={oppValues[field.name] ?? field.defaultValue}
                                     onChange={(value) => handleInputChange(`${prefix}${field.name}`, value)}
@@ -1335,20 +1398,18 @@ export default function WorkflowNodeSettings({
                                     }}
                                     predictedColumns={{
                                       ...predictedColumns,
-                                      ...(opp.sourcePredictedCols
-                                        ? { input_path: opp.sourcePredictedCols }
-                                        : {}),
+                                      ...(opp.sourcePredictedCols ? { input_path: opp.sourcePredictedCols } : {}),
                                     }}
                                     variables={variables}
                                   />
-                                ))}
-                              </Stack>
+                                </StepSettingField>
+                              ))}
+                            </Stack>
 
-                              {/* Divider between opportunities */}
-                              {index < connectedOpportunities.length - 1 && <Divider sx={{ mt: 2 }} />}
-                            </Box>
-                          );
-                        })}
+                            {/* Divider between opportunities */}
+                            {index < opportunityViews.length - 1 && <Divider sx={{ mt: 2 }} />}
+                          </Box>
+                        ))}
                       </Stack>
                     }
                   />
@@ -1455,7 +1516,7 @@ export default function WorkflowNodeSettings({
           open={saveDialogOpen}
           onClose={() => setSaveDialogOpen(false)}
           onSave={handleSaveDataset}
-          defaultName={process.title || node.data.label || ""}
+          defaultName={(isIntegration ? node.data.label : process.title) || node.data.label || ""}
           isSaving={isSaving}
         />
       </>
@@ -1501,9 +1562,10 @@ function ExportExistingTarget({ data, onChange }: ExportExistingTargetProps) {
   const { canWrite } = useLayerWriteAccess(data.targetLayerId);
 
   return (
-    <Stack spacing={1} sx={{ mb: 2 }}>
+    <Stack spacing={1}>
       <Typography variant="body2" color="text.secondary">
-        {t("append_target_layer")} *
+        {t("append_target_layer")}
+        <RequiredMark />
       </Typography>
       {data.targetLayerId && (
         <Stack direction="row" alignItems="center" spacing={1}>
@@ -1570,6 +1632,8 @@ function ExportNodeSettingsInline({
   const { t } = useTranslation("common");
   const theme = useTheme();
   const dispatch = useDispatch<AppDispatch>();
+  const stepIssues = useStepIssues(node.id);
+  const settingsRef = useStepFieldFocus(node.id);
 
   // Local state for form values — provides instant UI updates.
   // Redux is updated as a side effect (same pattern as tool nodes).
@@ -1630,11 +1694,18 @@ function ExportNodeSettingsInline({
       header={<ToolsHeader onBack={onBack} title={t("export_dataset")} />}
       disablePadding={false}
       body={
-        <Box sx={{ display: "flex", flexDirection: "column" }}>
+        <Box ref={settingsRef} sx={{ display: "flex", flexDirection: "column" }}>
           {/* Description */}
           <Typography variant="body2" sx={{ fontStyle: "italic", mb: theme.spacing(4) }}>
             {t("export_dataset_description")}
           </Typography>
+
+          {/* The step's issues that no setting below carries: the target picker shows for an existing dataset, the name field for a new one */}
+          <StepIssuesSummary
+            issues={stepIssues.filter(
+              (issue) => issue.field !== (isExisting ? "targetLayerId" : "datasetName")
+            )}
+          />
 
           {/* Execution Status Section */}
           <Box sx={{ mb: 2 }}>
@@ -1693,28 +1764,34 @@ function ExportNodeSettingsInline({
             />
           </Box>
 
-          {isExisting && <ExportExistingTarget data={exportData} onChange={saveChanges} />}
+          {/* The dataset the rows go into: none chosen is the `export_target_missing` issue, shown under the picker */}
+          {isExisting && (
+            <StepSettingField name="targetLayerId" issues={stepIssues} sx={{ mb: 2 }}>
+              <ExportExistingTarget data={exportData} onChange={saveChanges} />
+            </StepSettingField>
+          )}
 
-          {/* Dataset name */}
+          {/* Dataset name, for a new dataset: an empty one is the `export_name_missing` issue, shown under the field */}
           {!isExisting && (
-            <Stack spacing={1} sx={{ mb: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                {t("dataset_name")} *
-              </Typography>
-              <TextField
-                fullWidth
-                size="small"
-                required
-                placeholder={t("enter_dataset_name")}
-                value={datasetName}
-                onChange={handleDatasetNameChange}
-                error={!datasetName.trim()}
-                helperText={!datasetName.trim() ? t("dataset_name_required") : undefined}
-                inputProps={{
-                  style: { fontSize: "0.875rem" },
-                }}
-              />
-            </Stack>
+            <StepSettingField name="datasetName" issues={stepIssues} sx={{ mb: 2 }}>
+              <Stack spacing={1}>
+                <Typography variant="body2" color="text.secondary">
+                  {t("dataset_name")}
+                  <RequiredMark />
+                </Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  required
+                  placeholder={t("enter_dataset_name")}
+                  value={datasetName}
+                  onChange={handleDatasetNameChange}
+                  inputProps={{
+                    style: { fontSize: "0.875rem" },
+                  }}
+                />
+              </Stack>
+            </StepSettingField>
           )}
 
           {/* Options */}

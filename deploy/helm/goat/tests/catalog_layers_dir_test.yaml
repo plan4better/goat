@@ -1,0 +1,238 @@
+suite: where catalog layer copies live (catalog.layersDir, catalog.tilesDir)
+# The tools worker's catalog_materialize job writes a promoted catalog layer's
+# parquet copy to CATALOG_LAYERS_DIR and its PMTiles to CATALOG_TILES_DIR;
+# geoapi reads both, processes and core read the parquet copy. One value moves
+# the writer and every reader together.
+templates:
+  - geoapi/configmap.yaml
+  - core/configmap.yaml
+  - processes/configmap.yaml
+  - windmill/worker-print/deployment.yaml
+  - windmill/worker-tools/deployment.yaml
+  - windmill/worker-workflows/deployment.yaml
+  - windmill/worker-default/deployment.yaml
+  - windmill/worker-print/configmap.yaml
+  - windmill/worker-tools/configmap.yaml
+  - windmill/worker-workflows/configmap.yaml
+  - windmill/worker-default/configmap.yaml
+set:
+  postgresql.cluster.enabled: false
+  postgresql.external.host: "pg.example.com"
+  postgresql.external.existingSecret: "pg-secret"
+  windmill.db.reuseGoatConnection: false
+  windmill.db.external.host: "pg.example.com"
+  windmill.db.external.existingSecret: "windmill-pg-secret"
+  windmill.workers.print.enabled: true
+  windmill.workers.tools.enabled: true
+  windmill.workers.workflows.enabled: true
+  windmill.workers.legacyPersistence.acknowledgeDeletion: true
+tests:
+  # ── Defaults: the paths GOAT's code derives from DATA_DIR ──────────────────
+  - it: geoapi reads both directories at their defaults
+    template: geoapi/configmap.yaml
+    asserts:
+      - equal:
+          path: data.CATALOG_LAYERS_DIR
+          value: /app/data/catalog/layers
+      - equal:
+          path: data.CATALOG_TILES_DIR
+          value: /app/data/catalog/tiles
+
+  - it: core checks layer copies at the default directory and gets no tiles directory
+    template: core/configmap.yaml
+    asserts:
+      - equal:
+          path: data.CATALOG_LAYERS_DIR
+          value: /app/data/catalog/layers
+      - notExists:
+          path: data.CATALOG_TILES_DIR
+
+  - it: processes reads layer copies at the default directory
+    template: processes/configmap.yaml
+    asserts:
+      - equal:
+          path: data.CATALOG_LAYERS_DIR
+          value: /app/data/catalog/layers
+
+  - it: the workers that run GOAT's jobs write to the default directories
+    templates:
+      - windmill/worker-print/deployment.yaml
+      - windmill/worker-tools/deployment.yaml
+      - windmill/worker-workflows/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_LAYERS_DIR
+            value: /app/data/catalog/layers
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_TILES_DIR
+            value: /app/data/catalog/tiles
+
+  - it: the workers pass both directories on to their jobs
+    templates:
+      - windmill/worker-print/deployment.yaml
+      - windmill/worker-tools/deployment.yaml
+      - windmill/worker-workflows/deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name == "WHITELIST_ENVS")].value
+          pattern: (^|,)CATALOG_LAYERS_DIR(,|$)
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name == "WHITELIST_ENVS")].value
+          pattern: (^|,)CATALOG_TILES_DIR(,|$)
+
+  - it: leaves the default worker alone
+    template: windmill/worker-default/deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_LAYERS_DIR
+          any: true
+
+  # ── One value moves the writer and every reader ────────────────────────────
+  - it: catalog.layersDir and catalog.tilesDir reach geoapi
+    template: geoapi/configmap.yaml
+    set:
+      catalog.layersDir: /app/data/catalog/copies
+      catalog.tilesDir: /app/data/catalog/pmtiles
+    asserts:
+      - equal:
+          path: data.CATALOG_LAYERS_DIR
+          value: /app/data/catalog/copies
+      - equal:
+          path: data.CATALOG_TILES_DIR
+          value: /app/data/catalog/pmtiles
+
+  - it: catalog.layersDir reaches core
+    template: core/configmap.yaml
+    set:
+      catalog.layersDir: /app/data/catalog/copies
+    asserts:
+      - equal:
+          path: data.CATALOG_LAYERS_DIR
+          value: /app/data/catalog/copies
+
+  - it: catalog.layersDir reaches processes
+    template: processes/configmap.yaml
+    set:
+      catalog.layersDir: /app/data/catalog/copies
+    asserts:
+      - equal:
+          path: data.CATALOG_LAYERS_DIR
+          value: /app/data/catalog/copies
+
+  - it: catalog.layersDir and catalog.tilesDir reach the workers
+    templates:
+      - windmill/worker-print/deployment.yaml
+      - windmill/worker-tools/deployment.yaml
+      - windmill/worker-workflows/deployment.yaml
+    set:
+      catalog.layersDir: /app/data/catalog/copies
+      catalog.tilesDir: /app/data/catalog/pmtiles
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_LAYERS_DIR
+            value: /app/data/catalog/copies
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_TILES_DIR
+            value: /app/data/catalog/pmtiles
+
+  - it: the directories describe the data volume, not the catalog service
+    template: windmill/worker-tools/deployment.yaml
+    set:
+      catalog.enabled: false
+      catalog.layersDir: /app/data/catalog/copies
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_LAYERS_DIR
+            value: /app/data/catalog/copies
+
+  # ── A component's own setting wins, rendered once ──────────────────────────
+  # helm-unittest's YAML decoder fails on a duplicate mapping key, so these
+  # pass only when the chart's value is left out, not merely rendered first.
+  - it: geoapi.config wins over catalog.*
+    template: geoapi/configmap.yaml
+    set:
+      catalog.layersDir: /app/data/catalog/copies
+      catalog.tilesDir: /app/data/catalog/pmtiles
+      geoapi.config.CATALOG_LAYERS_DIR: /mnt/layers
+      geoapi.config.CATALOG_TILES_DIR: /mnt/tiles
+    asserts:
+      - equal:
+          path: data.CATALOG_LAYERS_DIR
+          value: /mnt/layers
+      - equal:
+          path: data.CATALOG_TILES_DIR
+          value: /mnt/tiles
+
+  - it: core.config wins over catalog.layersDir
+    template: core/configmap.yaml
+    set:
+      catalog.layersDir: /app/data/catalog/copies
+      core.config.CATALOG_LAYERS_DIR: /mnt/layers
+    asserts:
+      - equal:
+          path: data.CATALOG_LAYERS_DIR
+          value: /mnt/layers
+
+  - it: CATALOG_LAYERS_DIR set in core.extraEnv is not rendered twice
+    template: core/configmap.yaml
+    set:
+      core.extraEnv:
+        - name: CATALOG_LAYERS_DIR
+          value: /mnt/layers
+    asserts:
+      - notExists:
+          path: data.CATALOG_LAYERS_DIR
+
+  - it: processes.config wins over catalog.layersDir
+    template: processes/configmap.yaml
+    set:
+      catalog.layersDir: /app/data/catalog/copies
+      processes.config.CATALOG_LAYERS_DIR: /mnt/layers
+    asserts:
+      - equal:
+          path: data.CATALOG_LAYERS_DIR
+          value: /mnt/layers
+
+  - it: a worker's own config wins over catalog.* and stays whitelisted
+    template: windmill/worker-tools/deployment.yaml
+    set:
+      catalog.tilesDir: /app/data/catalog/pmtiles
+      windmill.workers.tools.config.CATALOG_TILES_DIR: /mnt/tiles
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_TILES_DIR
+          any: true
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name == "WHITELIST_ENVS")].value
+          pattern: (^|,)CATALOG_TILES_DIR(,|$)
+
+  # ── Values the schema refuses ──────────────────────────────────────────────
+  - it: refuses an empty catalog.layersDir
+    template: geoapi/configmap.yaml
+    set:
+      catalog.layersDir: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "layersDir"
+
+  - it: refuses a relative catalog.tilesDir
+    template: geoapi/configmap.yaml
+    set:
+      catalog.tilesDir: data/catalog/tiles
+    asserts:
+      - failedTemplate:
+          errorPattern: "tilesDir"

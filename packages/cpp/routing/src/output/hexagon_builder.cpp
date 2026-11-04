@@ -1,5 +1,6 @@
 #include "hexagon_builder.h"
 #include "hex_resolution.h"
+#include "sql_export.h"
 
 #include "../geometry/field_sampler.h"
 
@@ -84,7 +85,8 @@ int64_t materialize_hexagon_features_table(ReachabilityField const &field,
         else
         {
             std::ostringstream expr;
-            expr << "CEIL(min_cost / " << step_size << ") * " << step_size;
+            expr << "CEIL(min_cost / " << sql_double(step_size) << ") * "
+                 << sql_double(step_size);
             step_cost_expr = expr.str();
         }
     }

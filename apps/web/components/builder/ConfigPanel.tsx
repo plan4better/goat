@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { removeTemporaryFilter, setSelectedBuilderItem } from "@/lib/store/map/slice";
 import type { BuilderPanelSchema, BuilderWidgetSchema, Project, ProjectLayer, ProjectLayerGroup } from "@/lib/validations/project";
-import { builderConfigSchema } from "@/lib/validations/project";
+import { builderConfigSchema, readBuilderConfig } from "@/lib/validations/project";
 import { widgetTypesWithoutConfig } from "@/lib/validations/widget";
 
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
@@ -41,21 +41,12 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({
   const projectLayerGroups = propProjectLayerGroups ?? reduxProjectLayerGroups;
   const [value, setValue] = useState(0);
   const { t } = useTranslation("common");
-  const builderConfig = useMemo(() => {
-    const parsed = builderConfigSchema.safeParse(project?.builder_config);
-    if (!parsed.success) {
-      return builderConfigSchema.safeParse({ settings: {}, interface: [] }).data;
-    }
-    return parsed.data;
-  }, [project]);
+  const builderConfig = useMemo(() => readBuilderConfig(project?.builder_config), [project]);
   const handleChange = (_event: React.SyntheticEvent, newValue: number) => {
     setValue(newValue);
   };
 
   const handleMapSettingsChange = async (name: string, value: unknown) => {
-    if (!builderConfig) {
-      return;
-    }
     builderConfig.settings[name] = value;
     await onProjectUpdate?.("builder_config", builderConfig);
   };
@@ -69,9 +60,6 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({
   };
 
   const handleMapInterfaceChange = async (builderInterface: BuilderPanelSchema[]) => {
-    if (!builderConfig) {
-      return;
-    }
     const updatedBuilderConfig = { ...builderConfig, interface: builderInterface };
     try {
       await onProjectUpdate?.("builder_config", updatedBuilderConfig);
@@ -111,7 +99,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({
   };
 
   const onWidgetChange = (widget: BuilderWidgetSchema) => {
-    if (!selectedBuilderItem || selectedBuilderItem.type !== "widget" || !builderConfig) {
+    if (!selectedBuilderItem || selectedBuilderItem.type !== "widget") {
       return;
     }
     dispatch(setSelectedBuilderItem(widget));

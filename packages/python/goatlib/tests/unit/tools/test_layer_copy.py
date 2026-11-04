@@ -294,7 +294,8 @@ class TestRegistration:
     def test_the_windmill_script_takes_the_entries_as_a_list(self) -> None:
         script = generate_windmill_script("goatlib.tools.layer_copy", LayerCopyParams)
         assert "layer_project_ids: list[int]" in script
-        assert "copy_content: bool = True" in script
+        # Absent unless given: the model applies its own default (True).
+        assert "copy_content: bool | None = None" in script
         assert (
             "from goatlib.tools.layer_copy import LayerCopyParams, main as _main"
             in script

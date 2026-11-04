@@ -209,7 +209,7 @@ def _q_predicate(terms: list[list[str]], add: Any) -> str:
     whose first word is common reported *every* row in ``numberMatched`` while
     showing exact hits on page one. A count no caller can trust is worse than a
     query they have to retry, and a caller that wants alternatives has commas,
-    plus ``suggest_terms``/``describe_catalog`` to find the right words.
+    plus ``/stac/suggest`` and the facet aggregations to find the right words.
     """
     per_term = [
         " AND ".join(f"contains(search_text, {add(word)})" for word in term)

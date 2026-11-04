@@ -572,7 +572,9 @@ services:
     image: ${GOAT_REGISTRY:-ghcr.io/plan4better/goat}/processes:${GOAT_VERSION:-latest}
     user: "0"
     environment:
-      <<: [*env-db, *env-s3, *env-auth, *env-service]
+      # The catalog bucket also holds the OpenStreetMap and Overture mirror
+      # that Add layer › Connect service reads.
+      <<: [*env-db, *env-s3, *env-catalog-s3, *env-auth, *env-service]
       ROOT_PATH: /processes
       WINDMILL_URL: http://windmill-server:8000
       WINDMILL_WORKSPACE: goat
@@ -580,7 +582,8 @@ services:
       TRAVELTIME_MATRICES_DIR: /app/data/traveltime_matrices
       PRINT_BASE_URL: http://web:3000
       # Three DuckDB connections (analytics, SQL previews, layer search) get
-      # this budget each; together they fit the memory limit below.
+      # this budget each; with the mirror lists' fixed 256 MB they fit the
+      # memory limit below.
       PROCESSES_DUCKDB_MEMORY_LIMIT: 384MB
     volumes:
       - goat-data:/app/data
@@ -609,7 +612,6 @@ services:
       ROOT_PATH: /catalog
       DATA_DIR: /app/data
       CATALOG_GOAT_UI_BASE_URL: ${GOAT_PUBLIC_URL}
-      CATALOG_MCP_ALLOWED_HOSTS: '["${GOAT_HOSTNAME:-goat.localhost}"]'
       CATALOG_DUCKDB_MEMORY_LIMIT: 1GB
       CATALOG_DUCKDB_THREADS: "2"
       OTEL_ENABLED: ${OTEL_ENABLED:-false}
@@ -634,6 +636,84 @@ services:
         limits:
           memory: 1536m
 
+  assistant:
+    <<: *restart
+    image: ${GOAT_REGISTRY:-ghcr.io/plan4better/goat}/assistant:${GOAT_VERSION:-latest}
+    # The image stops waiting for open answer streams after 20 s
+    # (UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN); the remaining time is for the
+    # lifespan shutdown. Docker's default of 10 s would kill it first.
+    stop_grace_period: 30s
+    # GOAT AI's cloud credentials for Bedrock or Vertex AI, when used (see
+    # .env.example). Nothing is set while the file does not exist.
+    env_file:
+      - path: ./assistant.env
+        required: false
+    environment:
+      <<: [*env-db, *env-auth, *env-service]
+      ROOT_PATH: /assistant
+      REDIS_URL: redis://redis:6379/0
+      # Links back into the app and the default CORS origin (the web app and
+      # the assistant share the public URL, so no other origin is needed)
+      NEXT_PUBLIC_APP_URL: ${GOAT_PUBLIC_URL}
+      # The services the assistant's tools call (GOAT_PROCESSES_URL comes
+      # from x-env-service)
+      ASSISTANT_CORE_URL: http://core:8000
+      ASSISTANT_GEOAPI_URL: http://geoapi:8000
+      ASSISTANT_CATALOG_URL: http://catalog:8400
+      # A long answer outlives the browser's access token: the assistant
+      # refreshes it with the web app's client (refresh tokens belong to it).
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-goat}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
+      ASSISTANT_TOKEN_EXCHANGE_ENABLED: ${ASSISTANT_TOKEN_EXCHANGE_ENABLED:-false}
+      ASSISTANT_KEYCLOAK_CLIENT_ID: ${ASSISTANT_KEYCLOAK_CLIENT_ID:-}
+      ASSISTANT_KEYCLOAK_CLIENT_SECRET: ${ASSISTANT_KEYCLOAK_CLIENT_SECRET:-}
+      ASSISTANT_DEFAULT_PROVIDER: ${ASSISTANT_DEFAULT_PROVIDER:-none}
+      ASSISTANT_DEFAULT_MODEL: ${ASSISTANT_DEFAULT_MODEL:-}
+      ASSISTANT_DEFAULT_BASE_URL: ${ASSISTANT_DEFAULT_BASE_URL:-}
+      ASSISTANT_DEFAULT_API_KEY: ${ASSISTANT_DEFAULT_API_KEY:-}
+      ASSISTANT_DEFAULT_REGION: ${ASSISTANT_DEFAULT_REGION:-}
+      ASSISTANT_DEFAULT_HOSTED_IN: ${ASSISTANT_DEFAULT_HOSTED_IN:-}
+      ASSISTANT_ALLOW_ORG_CONNECTIONS: ${ASSISTANT_ALLOW_ORG_CONNECTIONS:-true}
+      # Never empty: an empty list would allow no provider at all.
+      ASSISTANT_ALLOWED_PROVIDERS: ${ASSISTANT_ALLOWED_PROVIDERS:-anthropic,bedrock,vertex,azure_openai,openai,mistral,openai_compatible}
+      ASSISTANT_ALLOW_PRIVATE_ENDPOINTS: ${ASSISTANT_ALLOW_PRIVATE_ENDPOINTS:-false}
+      ASSISTANT_SECRETS_KEY: ${ASSISTANT_SECRETS_KEY:-}
+      ASSISTANT_RUN_MAX_TOOL_CALLS: ${ASSISTANT_RUN_MAX_TOOL_CALLS:-40}
+      ASSISTANT_RUN_MAX_TOKENS: ${ASSISTANT_RUN_MAX_TOKENS:-200000}
+      ASSISTANT_RUN_MAX_SECONDS: ${ASSISTANT_RUN_MAX_SECONDS:-900}
+      ASSISTANT_RUN_WAIT_MAX_SECONDS: ${ASSISTANT_RUN_WAIT_MAX_SECONDS:-1800}
+      ASSISTANT_USER_MAX_CONCURRENT_RUNS: ${ASSISTANT_USER_MAX_CONCURRENT_RUNS:-3}
+      ASSISTANT_TOOL_TIMEOUT_SECONDS: ${ASSISTANT_TOOL_TIMEOUT_SECONDS:-30}
+      ASSISTANT_DISABLED_SURFACES: ${ASSISTANT_DISABLED_SURFACES:-}
+      ASSISTANT_ENABLE_MCP: ${ASSISTANT_ENABLE_MCP:-true}
+      ASSISTANT_MCP_AUDIT_RETENTION_DAYS: ${ASSISTANT_MCP_AUDIT_RETENTION_DAYS:-30}
+      # DNS-rebinding protection of the MCP endpoint: the public host only.
+      # Listed bare and with any port: `host:*` does not match the bare host.
+      ASSISTANT_MCP_ALLOWED_HOSTS: '["${GOAT_HOSTNAME:-goat.localhost}","${GOAT_HOSTNAME:-goat.localhost}:*"]'
+      # Company CA for model servers, the services and Keycloak, trusted in
+      # addition to the public CAs (GOAT_TLS=internal: Caddy's root)
+      GOAT_CA_BUNDLE: ${GOAT_CA_BUNDLE:-}
+    volumes:
+      # For GOAT_CA_BUNDLE and GOOGLE_APPLICATION_CREDENTIALS=/certs/<file>.json
+      - ./certs:/certs:ro
+      - caddy-data:/caddy-data:ro
+    networks: [goat]
+    healthcheck:
+      <<: *healthcheck
+      # Readiness: Postgres and Redis reachable, so `docker compose ps` and
+      # smoke.sh report a dependency outage as unhealthy.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8500/readyz', timeout=5)"]
+    depends_on:
+      # The assistant schema comes from core's migration.
+      core-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
   web:
     <<: *restart
     image: ${GOAT_REGISTRY:-ghcr.io/plan4better/goat}/web:${GOAT_VERSION:-latest}
@@ -647,6 +727,7 @@ services:
       NEXT_PUBLIC_GEOAPI_URL: ${GOAT_PUBLIC_URL}/geoapi
       NEXT_PUBLIC_PROCESSES_URL: ${GOAT_PUBLIC_URL}/processes
       NEXT_PUBLIC_CATALOG_URL: ${GOAT_PUBLIC_URL}/catalog/stac
+      NEXT_PUBLIC_ASSISTANT_URL: ${GOAT_PUBLIC_URL}/assistant
       NEXT_PUBLIC_KEYCLOAK_ISSUER: ${KEYCLOAK_PUBLIC_URL:-${GOAT_PUBLIC_URL}/keycloak}/realms/${REALM_NAME:-goat}
       NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-goat}
       NEXT_PUBLIC_APP_ENVIRONMENT: prod

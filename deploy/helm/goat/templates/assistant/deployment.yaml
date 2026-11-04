@@ -1,0 +1,180 @@
+{{- if .Values.assistant.enabled -}}
+{{- $component := "assistant" -}}
+{{- $ctx := dict "context" . "component" $component -}}
+{{- $values := .Values.assistant -}}
+{{- $auth := dict "values" $values "root" . -}}
+{{- if lt (int $values.terminationGracePeriodSeconds) 25 -}}
+{{- fail "assistant.terminationGracePeriodSeconds must be at least 25: the image drains answer streams for 20 s before its lifespan shutdown" -}}
+{{- end -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "goat.serviceFullname" $ctx }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "goat.serviceLabels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ $values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "goat.serviceSelectorLabels" $ctx | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "goat.serviceSelectorLabels" $ctx | nindent 8 }}
+        {{- with $values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # The ConfigMap is read at start: a changed setting rolls the pods.
+        checksum/config: {{ include (print $.Template.BasePath "/assistant/configmap.yaml") . | sha256sum }}
+        {{- with $values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ $values.terminationGracePeriodSeconds }}
+      containers:
+        - name: assistant
+          image: {{ include "goat.image" (dict "image" $values.image "global" .Values.global "root" $) }}
+          imagePullPolicy: {{ $values.image.pullPolicy }}
+          {{- with $values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $values.service.targetPort }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "goat.serviceFullname" $ctx }}
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "goat.postgresql.secretName" . }}
+                  key: {{ include "goat.postgresql.userKey" . }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "goat.postgresql.secretName" . }}
+                  key: {{ include "goat.postgresql.passwordKey" . }}
+            {{- if include "goat.redis.authEnabled" . }}
+            # Must precede REDIS_URL: $(VAR) only resolves against earlier entries.
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "goat.redis.secretName" . }}
+                  key: {{ include "goat.redis.passwordKey" . }}
+            {{- end }}
+            - name: REDIS_URL
+              value: {{ include "goat.redis.url" . | quote }}
+            {{- /* fallback false, as catalog: without a Secret the ConfigMap carries
+                   KEYCLOAK_SERVER_URL / REALM_NAME from core.config. */}}
+            {{- include "goat.auth.backendEnv" (dict "values" $values "root" $ "fallback" false) | trim | nindent 12 }}
+            {{- if include "goat.auth.wired" $auth }}
+            {{- range $pair := list (list "KEYCLOAK_CLIENT_ID" "clientId") (list "KEYCLOAK_CLIENT_SECRET" "clientSecret") }}
+            {{- if not (include "goat.env.userSet" (dict "values" $values "key" (index $pair 0))) }}
+            - name: {{ index $pair 0 }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "goat.auth.secretName" $auth }}
+                  key: {{ include "goat.auth.secretKey" (merge (dict "key" (index $pair 1)) $auth) }}
+            {{- end }}
+            {{- end }}
+            {{- else }}
+            {{- /* Auth on without a Secret of its own: the web app's client from
+                   the web app's Secret or extraEnv (web.config: the ConfigMap). */}}
+            {{- $webAuth := dict "values" .Values.web "root" $ }}
+            {{- range $pair := list (list "KEYCLOAK_CLIENT_ID" "clientId") (list "KEYCLOAK_CLIENT_SECRET" "clientSecret") }}
+            {{- $name := index $pair 0 }}
+            {{- $source := include "goat.assistant.webClientSource" (dict "root" $ "key" $name) }}
+            {{- if eq $source "secret" }}
+            - name: {{ $name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "goat.auth.secretName" $webAuth }}
+                  key: {{ include "goat.auth.secretKey" (merge (dict "key" (index $pair 1)) $webAuth) }}
+            {{- else if eq $source "extraEnv" }}
+            {{- range $.Values.web.extraEnv }}
+            {{- if and (kindIs "map" .) (eq (toString .name) $name) }}
+            {{- toYaml (list .) | nindent 12 }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- with $values.defaultConnection.existingSecret }}
+            - name: ASSISTANT_DEFAULT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $values.defaultConnection.existingSecretKey }}
+            {{- end }}
+            {{- with $values.secretsKey.existingSecret }}
+            - name: ASSISTANT_SECRETS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $values.secretsKey.existingSecretKey }}
+            {{- end }}
+            {{- with $values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if $values.livenessProbe.enabled }}
+          livenessProbe:
+            {{- toYaml (omit $values.livenessProbe "enabled") | nindent 12 }}
+          {{- end }}
+          {{- if $values.readinessProbe.enabled }}
+          readinessProbe:
+            {{- toYaml (omit $values.readinessProbe "enabled") | nindent 12 }}
+          {{- end }}
+          {{- with $values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- $caBundle := include "goat.caBundle.enabled" $ }}
+          {{- if or $values.extraVolumeMounts $caBundle }}
+          volumeMounts:
+            {{- if $caBundle }}
+            {{- include "goat.caBundle.mount" $ | nindent 12 }}
+            {{- end }}
+            {{- with $values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+      {{- if or $values.extraVolumes $caBundle }}
+      volumes:
+        {{- if $caBundle }}
+        {{- include "goat.caBundle.volume" $ | nindent 8 }}
+        {{- end }}
+        {{- with $values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- with $values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -47,6 +47,7 @@ from goatlib.io.bbox_columns import BBOX_COLUMN, star_excluding, stray_bbox_colu
 from goatlib.io.config import (
     PARQUET_COMPRESSION,
     PARQUET_ROW_GROUP_SIZE,
+    parquet_copy_options,
 )
 
 if TYPE_CHECKING:
@@ -127,11 +128,10 @@ def write_optimized_parquet(
     )
 
     # Execute COPY with optimization
-    # Use PARQUET_VERSION V2 for better compression (DELTA_BINARY_PACKED, etc.)
     copy_sql = f"""
         COPY ({optimized_query})
         TO '{output_path}'
-        (FORMAT PARQUET, COMPRESSION {compression}, ROW_GROUP_SIZE {row_group_size}, PARQUET_VERSION V2)
+        {_copy_options(compression, row_group_size)}
     """
 
     logger.debug("Writing optimized GeoParquet: %s", output_path)
@@ -157,6 +157,16 @@ def write_optimized_parquet(
 
 # Alias for backward compatibility
 write_optimized_geoparquet = write_optimized_parquet
+
+
+def _copy_options(compression: str, row_group_size: int) -> str:
+    """The COPY options of an optimized file. PARQUET_VERSION V2 for its
+    encodings (DELTA_BINARY_PACKED, etc.), which compress better."""
+    return parquet_copy_options(
+        f"COMPRESSION {compression}",
+        f"ROW_GROUP_SIZE {row_group_size}",
+        "PARQUET_VERSION V2",
+    )
 
 
 def _normalize_source(source: str) -> str:
@@ -209,9 +219,21 @@ def _check_geometry_column(
     source_query: str,
     geometry_column: str,
 ) -> bool:
-    """Check if the source has a valid geometry column with data."""
+    """Check if the source has a geometry column: one of a GEOMETRY type, or
+    one holding values.
+
+    The type decides for a source without rows, so an empty result gets the
+    bbox and the column order of a full one.
+    """
     try:
-        # Check if column exists and has geometry type
+        columns = con.execute(f"DESCRIBE {source_query}").fetchall()
+        column_type = next(
+            (str(c[1]) for c in columns if c[0] == geometry_column), None
+        )
+        if column_type is None:
+            return False
+        if "GEOMETRY" in column_type.upper():
+            return True
         result = con.execute(
             f"""
             SELECT COUNT(*) FROM ({source_query}) t
@@ -289,11 +311,10 @@ def _write_plain_parquet(
     compression: str,
 ) -> int:
     """Write plain parquet with V2 format (no spatial optimization)."""
-    # Use PARQUET_VERSION V2 for better compression (DELTA_BINARY_PACKED, etc.)
     copy_sql = f"""
         COPY ({source_query})
         TO '{output_path}'
-        (FORMAT PARQUET, COMPRESSION {compression}, ROW_GROUP_SIZE {row_group_size}, PARQUET_VERSION V2)
+        {_copy_options(compression, row_group_size)}
     """
     con.execute(copy_sql)
 

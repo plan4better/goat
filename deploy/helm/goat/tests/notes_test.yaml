@@ -118,3 +118,67 @@ tests:
     asserts:
       - matchRegexRaw:
           pattern: get secret goat-redis -o jsonpath='\{\.data\.redis-password\}'
+  # The assistant's default CORS origin is the web app's public URL. Ruling 28:
+  # warn only while the dock is shown and that origin is the localhost default.
+  - it: warns that the assistant refuses the browser when its origin is the localhost default
+    set:
+      web.publicUrls.assistant: https://goat.example.org/assistant
+    asserts:
+      - matchRegexRaw:
+          pattern: "WARNING: the AI assistant will refuse the web app"
+  - it: does not warn about the assistant's CORS origin without an assistant URL (the dock is hidden)
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "AI assistant will refuse"
+  - it: does not warn about the assistant's CORS origin with web.config.NEXTAUTH_URL set
+    set:
+      web.publicUrls.assistant: https://goat.example.org/assistant
+      web.config.NEXTAUTH_URL: https://goat.example.org
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "AI assistant will refuse"
+  - it: does not warn about the assistant's CORS origin with a web ingress host
+    set:
+      web.publicUrls.assistant: https://goat.example.org/assistant
+      web.ingress.enabled: true
+      web.ingress.hosts:
+        - host: goat.example.org
+          paths:
+            - path: /
+              pathType: Prefix
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "AI assistant will refuse"
+  - it: does not warn about the assistant's CORS origin with web.auth.publicUrl
+    set:
+      web.publicUrls.assistant: https://goat.example.org/assistant
+      web.auth.publicUrl: https://goat.example.org
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "AI assistant will refuse"
+  - it: does not warn about the assistant's CORS origin when the operator sets the origins
+    set:
+      web.publicUrls.assistant: https://goat.example.org/assistant
+      assistant.config.ASSISTANT_CORS_ORIGINS: '["https://goat.example.org"]'
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "AI assistant will refuse"
+  - it: does not warn about the assistant's CORS origin when the assistant is off
+    set:
+      assistant.enabled: false
+      web.publicUrls.assistant: https://goat.example.org/assistant
+    asserts:
+      - notMatchRegexRaw:
+          pattern: "AI assistant will refuse"
+  - it: names the assistant's URL with its path prefix
+    set:
+      assistant.ingress.enabled: true
+      assistant.ingress.hosts:
+        - host: goat.example.org
+          paths: [{ path: /assistant, pathType: Prefix }]
+      assistant.ingress.tls:
+        - secretName: goat-tls
+          hosts: [goat.example.org]
+    asserts:
+      - matchRegexRaw:
+          pattern: "reachable for the web app at https://goat\\.example\\.org/assistant\\."

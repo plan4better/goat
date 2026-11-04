@@ -209,6 +209,8 @@ This glossary lists the English and German labels of the main tools, features an
 | Fit View | Ansicht anpassen | Fit all nodes into view |
 | Lock | Sperren | Lock the canvas |
 | Unlock | Entsperren | Unlock the canvas |
+| Undo | Rückgängig | Take back the last change on the canvas |
+| Redo | Wiederholen | Restore the last undone change |
 | Minimap | Minimap | Canvas overview navigator |
 | New | Neu | Create a new workflow |
 | From scratch | Neu erstellen | Start an empty workflow |
@@ -300,7 +302,8 @@ This glossary lists the English and German labels of the main tools, features an
 | Upload dataset | Datensatz hochladen | Upload a data file as a dataset (Add layer, Add new, Home) |
 | My datasets | Meine Datensätze | Browse your datasets when adding a layer |
 | Create layer | Layer erstellen | Create an empty layer |
-| Connect service | Dienst verbinden | Add a layer from an external web service |
+| Fetch / Connect data | Daten abrufen / verbinden | Add a layer from data GOAT provides (OpenStreetMap, Overture Maps, the street network) or from an external web service |
+| Fetch data | Daten abrufen | Workflow node that fetches OpenStreetMap or Overture Maps data for a study area on every run |
 | **Catalog** | **Katalog** | Data catalog |
 | Metadata | Metadaten | Data information |
 | Data source | Datenquelle | Data source information |
@@ -565,6 +568,8 @@ This glossary lists the English and German labels of the main tools, features an
 | **Export** | **Exportieren** | Export data |
 | **New** | **Neu** | Create a new item |
 | Select all | Alle auswählen | Select all items in a list |
+| Reload | Neu laden | Load the saved version after it was changed elsewhere |
+| Keep mine | Meine behalten | Save your version over a change made elsewhere |
 
 ## User Preferences
 
@@ -647,6 +652,41 @@ This glossary lists the English and German labels of the main tools, features an
 | Flat | Flach | Flat buffer end style |
 | Mitre Limit | Gehrungsgrenze | Mitre join limit parameter |
 | Curve Smoothness | Kurvenglättung | Number of segments for curves |
+
+## AI Assistant
+
+| English | German | Description |
+|---------|--------|-------------|
+| **AI** | **KI** | GOAT's AI features and the AI page in the organization settings |
+| AI assistant | KI-Assistent | The assistant that answers questions in GOAT |
+| GOAT AI (included) | GOAT AI (inklusive) | The built-in model connection |
+| Active connection | Aktive Verbindung | The model connection the organization uses |
+| Test connection | Verbindung testen | Checks authentication, streaming and tool calling of a connection |
+| Data policy | Datenrichtlinie | What the assistant may send to the model |
+| Standard | Standard | Data policy level: everything a member can see |
+| Restricted | Eingeschränkt | Data policy level: field names, types, counts and statistics only |
+| Provider | Anbieter | The model provider of a connection |
+| Model ID | Modell-ID | The model name as the provider uses it |
+| API key | API-Schlüssel | The credential of a connection |
+| Ask AI | KI fragen | Button in the upper bar that opens the AI assistant |
+| Conversation | Unterhaltung | One exchange with the AI assistant, listed in its history |
+| New conversation | Neue Unterhaltung | Starts an empty conversation |
+| This project | Dieses Projekt | History filter: conversations of the open project |
+| Context | Kontext | What a message tells the assistant about the open page |
+| Source | Quelle | Another project the assistant may read, added with @ |
+| Suggestion card | Vorschlag | A change the assistant suggests; nothing happens until you apply it |
+| Apply to page | Auf Seite anwenden | Applies catalog filters suggested by the assistant |
+| Apply to map | Auf Karte anwenden | Moves the map to the view the assistant suggests |
+| Open in project to review | Im Projekt öffnen und prüfen | Opens the project a suggestion applies to |
+| Answer details | Details zur Antwort | Model, provider and token counts of an answer |
+| Steps | Schritte | The tools the assistant used for an answer |
+| Recommended | Empfohlen | The option the assistant suggests in a card with questions |
+| Type your own answer | Eigene Antwort eingeben | Your own answer to a question of the assistant, in a field that opens when you pick it |
+| Send answer | Antwort senden | Sends your choices in the assistant's card with questions |
+| Undo | Rückgängig | Takes back the changes an answer made to workflows |
+| Undone | Rückgängig gemacht | The changes of an answer were taken back |
+| Undo anyway | Trotzdem rückgängig machen | Takes back an answer's changes and the changes made since |
+| Open in Workflows | In Workflows öffnen | Opens the workflow an answer runs |
 
 ## Data Formats
 

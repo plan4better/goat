@@ -23,6 +23,8 @@ from core.schemas.template import (
     TemplatePreviewRequest,
     TemplateRead,
     TemplateUpdate,
+    TemplateUsePreview,
+    TemplateUsePreviewRequest,
     TemplateUseRequest,
     TemplateUseResult,
 )
@@ -278,6 +280,31 @@ async def use_template(
         headers=request.headers,
         peer=request.client.host if request.client else None,
         access_token=access_token,
+    )
+
+
+@router.post(
+    "/{template_id}/use/preview",
+    summary="Preview a template use",
+    response_model=TemplateUsePreview,
+    status_code=200,
+    dependencies=[Depends(auth_z)],
+)
+async def preview_template_use(
+    *,
+    async_session: AsyncSession = Depends(get_db),
+    user_id: UUID4 = Depends(get_user_id),
+    template_id: UUID4,
+    req: TemplateUsePreviewRequest = Body(...),
+) -> TemplateUsePreview:
+    """What using a workflow template in `project_id` with `bindings` would
+    write, without writing anything: the bound workflow config and the
+    inputs left unresolved. The assistant checks that config before it uses
+    the template. Requires read on the template and write on the project,
+    as the use does; 422 for a template that is not a workflow template.
+    """
+    return await crud_template.preview_use(
+        async_session, template_id=template_id, user_id=user_id, req=req
     )
 
 

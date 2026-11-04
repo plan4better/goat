@@ -4,6 +4,7 @@ from typing import List, Self, Tuple
 
 from goatlib.analysis.core.base import AnalysisTool
 from goatlib.analysis.schemas.geoprocessing import ClipParams
+from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.io.parquet import write_optimized_parquet
 from goatlib.models.io import DatasetMetadata
 
@@ -13,15 +14,16 @@ logger = logging.getLogger(__name__)
 class ClipTool(AnalysisTool):
     """Tool for clipping features from input layer using overlay layer geometry.
 
-    This tool implements the standard clip operation using DuckDB views with bbox optimization.
-    Automatically handles bbox columns for spatial indexing - creates them if needed or uses
-    existing ones. Follows GeoParquet spatial indexing specification.
+    Each input row is intersected with the dissolved overlay. The overlay is
+    cut into small pieces first and each row is tested against those, so a
+    large overlay polygon is not copied for every row (see
+    AnalysisTool.subdivide_polygons).
     """
 
     def _run_implementation(
         self: Self, params: ClipParams
     ) -> List[Tuple[Path, DatasetMetadata]]:
-        """Perform clip operation using views with bbox spatial optimization.
+        """Clip the input rows to the dissolved overlay.
 
         Args:
             params: ClipParams object with input_path, overlay_path, and other options.
@@ -40,14 +42,10 @@ class ClipTool(AnalysisTool):
         overlay_geom = overlay_meta.geometry_column
 
         if not input_geom:
-            raise ValueError(
-                f"Could not detect geometry column for input: {params.input_path}"
-            )
+            raise ValueError("The input layer has no geometry column.")
 
         if not overlay_geom:
-            raise ValueError(
-                f"Could not detect geometry column for overlay: {params.overlay_path}"
-            )
+            raise ValueError("The overlay layer has no geometry column.")
 
         # Validate geometry types
         self.validate_geometry_types(
@@ -80,81 +78,63 @@ class ClipTool(AnalysisTool):
             )
         output_path = Path(params.output_path)
 
-        # Perform clipping operation using views with bbox optimization
-        # Both views now have bbox columns (either pre-existing or created by import_input)
-        logger.info("Performing view-based clipping with bbox spatial filtering")
-
-        # Detect input geometry type to filter output appropriately
-        input_geom_type = self.con.execute(f"""
-            SELECT ST_GeometryType({input_geom})
-            FROM {input_view}
-            LIMIT 1
-        """).fetchone()[0]
-
-        # Determine allowed output geometry types based on input type
-        # Accept both single and multi versions of the same geometry family
-        input_geom_upper = input_geom_type.upper()
-        if "POLYGON" in input_geom_upper:  # Matches POLYGON or MULTIPOLYGON
-            allowed_types = "('POLYGON', 'MULTIPOLYGON')"
-        elif "LINESTRING" in input_geom_upper:  # Matches LINESTRING or MULTILINESTRING
-            allowed_types = "('LINESTRING', 'MULTILINESTRING')"
-        elif "POINT" in input_geom_upper:  # Matches POINT or MULTIPOINT
-            allowed_types = "('POINT', 'MULTIPOINT')"
-        else:
-            # Fallback: allow any geometry type
-            allowed_types = None
-
-        logger.info(
-            f"Input geometry type: {input_geom_type}, filtering output to: {allowed_types}"
-        )
-
-        # First, create a unified overlay geometry from all overlay features
-        logger.info("Creating unified overlay geometry from all overlay features")
-        self.con.execute(f"""
-            CREATE OR REPLACE TABLE unified_overlay AS
-            WITH unified AS (
-                SELECT ST_Union_Agg({overlay_geom}) as geom
-                FROM {overlay_view}
-                WHERE ST_IsValid({overlay_geom})
-            )
-            SELECT
-                geom as unified_geom,
-                {{
-                    'xmin': ST_XMin(geom),
-                    'xmax': ST_XMax(geom),
-                    'ymin': ST_YMin(geom),
-                    'ymax': ST_YMax(geom)
-                }} AS bbox
-            FROM unified
-        """)
-
-        # Then clip each input feature against the unified overlay
-        logger.info(
-            "Performing clipping against unified overlay geometry with bbox optimization"
-        )
-
-        # Build geometry type filter clause
+        # Keep the input's geometry family (degenerate pieces are dropped)
+        allowed_types = self.get_allowed_output_geometry_types(input_view, input_geom)
+        logger.info(f"Filtering output to geometry types: {allowed_types or 'all'}")
+        g = quote_identifier(input_geom)
         geom_type_filter = (
-            f"AND ST_GeometryType(ST_Intersection(i.{input_geom}, u.unified_geom)) IN {allowed_types}"
-            if allowed_types
-            else ""
+            f"AND ST_GeometryType({g}) IN {allowed_types}" if allowed_types else ""
         )
 
+        # The overlay, dissolved, in small pieces. Each input row is
+        # intersected once with the union of the pieces it touches, which is
+        # its share of the dissolved overlay.
+        logger.info("Clipping against the pieces of the dissolved overlay")
+        cut = self.create_overlay_pieces("overlay_pieces", overlay_view, overlay_geom)
+        self.con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE input_numbered AS
+            SELECT row_number() OVER () AS __overlay_row, * EXCLUDE (bbox)
+            FROM {input_view}
+            WHERE ST_IsValid({g})
+        """)
+        self.create_touched_pieces(
+            "clip_pairs",
+            "input_numbered",
+            "__overlay_row",
+            input_geom,
+            "overlay_pieces",
+        )
+        # Materialised, so the intersection runs once per row; a point that
+        # touches a piece lies in the overlay and is its own intersection.
+        self.con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE clip_rows AS
+            WITH {self.local_union_cte("clip_pairs", "overlay_pieces", "__overlay_row")}
+            SELECT
+                i.* EXCLUDE ({g}),
+                CASE
+                    WHEN l.local_overlay IS NULL THEN i.{g}
+                    ELSE ST_Intersection(i.{g}, l.local_overlay)
+                END AS {g}
+            FROM input_numbered i
+            JOIN local_overlays l ON l.__overlay_row = i.__overlay_row
+        """)
+        # A sliver along an edge the cut lines bend is recomputed against the
+        # whole dissolved overlay, as before the pieces.
+        if cut:
+            self.recompute_slivers(
+                "clip_rows",
+                input_geom,
+                ["__overlay_row"],
+                "input_numbered",
+                input_geom,
+                "ST_Intersection({row}, {whole})",
+                "overlay_pieces_whole",
+                "geom",
+            )
         self.con.execute(f"""
             CREATE OR REPLACE VIEW clipped_result AS
-            SELECT
-                i.* EXCLUDE ({input_geom}, bbox),
-                ST_Intersection(i.{input_geom}, u.unified_geom) AS {input_geom}
-            FROM {input_view} i
-            CROSS JOIN unified_overlay u
-            WHERE ST_IsValid(i.{input_geom})
-                AND ST_Intersects(i.{input_geom}, u.unified_geom)
-                -- Bbox-based spatial filter for performance (GeoParquet spatial indexing)
-                AND i.bbox.xmin <= u.bbox.xmax
-                AND i.bbox.xmax >= u.bbox.xmin
-                AND i.bbox.ymin <= u.bbox.ymax
-                AND i.bbox.ymax >= u.bbox.ymin
-                AND NOT ST_IsEmpty(ST_Intersection(i.{input_geom}, u.unified_geom))
+            SELECT * EXCLUDE (__overlay_row) FROM clip_rows
+            WHERE NOT ST_IsEmpty({g})
                 -- Filter out degenerate geometries - keep only same type as input (ArcGIS/QGIS behavior)
                 {geom_type_filter}
         """)

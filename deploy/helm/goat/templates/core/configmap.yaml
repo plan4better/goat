@@ -51,6 +51,12 @@ data:
   {{- if not (include "goat.env.userSet" (dict "values" .Values.core "key" "ALLOW_ORGANIZATION_CREATION")) }}
   ALLOW_ORGANIZATION_CREATION: {{ ternary "false" "true" (eq (toString .Values.global.auth.allowOrganizationCreation) "false") | quote }}
   {{- end }}
+  {{- /* Where the workers write materialized catalog layers; core checks that
+         a layer's copy exists there when a dataset is added again. A key set
+         in core.config / core.extraEnv is used as is. */}}
+  {{- if not (include "goat.env.userSet" (dict "values" .Values.core "key" "CATALOG_LAYERS_DIR")) }}
+  CATALOG_LAYERS_DIR: {{ .Values.catalog.layersDir | quote }}
+  {{- end }}
   {{- /* Token client allow-list (global.auth.allowedClients); left out while
          empty, so core accepts every client of the realm. */}}
   {{- $allowedClients := include "goat.auth.allowedClients" . }}

@@ -22,12 +22,15 @@ web:
     geoapi: "http://goat-smoke.test/geoapi"
     processes: "http://goat-smoke.test/processes"
     catalog: "http://goat-smoke.test/catalog/stac"
+    assistant: "http://goat-smoke.test/assistant"
 
 geoapi:
   enabled: true
 processes:
   enabled: true
 catalog:
+  enabled: true
+assistant:
   enabled: true
 
 postgresql:

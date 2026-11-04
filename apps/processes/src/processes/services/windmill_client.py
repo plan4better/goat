@@ -11,6 +11,7 @@ import logging
 from functools import partial
 from typing import Any, Literal
 
+from goatlib.workflows.run_errors import error_message
 from wmill import Windmill
 
 from processes.config import settings
@@ -518,17 +519,10 @@ class WindmillClient:
                                 or full_job.get("success") is False
                             ):
                                 job["result"] = full_job.get("result")
-                            # For workflow_runner jobs, fetch child job status for real-time tracking
-                            if job.get("script_path", "").endswith("workflow_runner"):
-                                # For running jobs, query child jobs directly from Windmill
-                                if full_job.get("running"):
-                                    node_status = await self._get_child_jobs_status(
-                                        job["id"]
-                                    )
-                                    if node_status:
-                                        job["node_status"] = node_status
-                                # For failed jobs, result already contains node_results with timing
-                                # No need for flow_user_state - it doesn't work for scripts
+                            # A running workflow's steps, from its child jobs
+                            # (see get_job_with_result)
+                            if full_job.get("node_status"):
+                                job["node_status"] = full_job["node_status"]
                         except Exception as e:
                             logger.warning(
                                 f"Failed to fetch details for job {job['id']}: {e}"
@@ -569,6 +563,15 @@ class WindmillClient:
                 job["result"] = await self.get_job_result(job_id)
             except Exception as e:
                 logger.warning(f"Failed to fetch result for job {job_id}: {e}")
+
+        # A running workflow reports its steps from their child jobs, the
+        # same for the job list and a single job's status.
+        if job.get("running") and str(job.get("script_path", "")).endswith(
+            "workflow_runner"
+        ):
+            node_status = await self._get_child_jobs_status(job_id)
+            if node_status:
+                job["node_status"] = node_status
 
         return job
 
@@ -670,6 +673,17 @@ class WindmillClient:
 
                     # Build status object
                     status_obj: dict[str, Any] = {"status": status}
+
+                    # A failed step's own message, never its stack: a tool
+                    # job that raised stores {"error": {"name", "message",
+                    # "stack", ...}} as its result.
+                    if status == "failed":
+                        child_result = full_job.get("result")
+                        status_obj["error"] = error_message(
+                            child_result.get("error")
+                            if isinstance(child_result, dict)
+                            else None
+                        )
 
                     # Add timing info if available
                     if full_job.get("started_at"):

@@ -24,6 +24,18 @@ export type CatalogQueryState = {
   facetSelections: Record<string, string[]>;
 };
 
+/** The URL values of a catalog search: what an applied assistant proposal replaces and Undo restores. */
+export type CatalogSearchSnapshot = {
+  q: string | null;
+  sortby: string;
+  from: string | null;
+  to: string | null;
+  nuts: string | null;
+  pt: string | null;
+  poly: string | null;
+  facets: Record<string, string[]>;
+};
+
 /** `2020-01-01` + `2024-12-31` -> `2020-01-01T00:00:00Z/2024-12-31T23:59:59Z`. */
 const toDatetimeInterval = (
   from?: string | null,

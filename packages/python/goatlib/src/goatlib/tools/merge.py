@@ -140,6 +140,7 @@ class MergeToolRunner(BaseToolRunner[MergeToolParams]):
 
     tool_class = MergeTool
     output_geometry_type = None
+    output_geometry_follows_input = True
     default_output_name = get_default_layer_name("merge", "en")
 
     @classmethod

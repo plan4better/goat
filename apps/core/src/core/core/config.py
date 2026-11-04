@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     # Schemas
     # ------------------------------------------------------------------
     SCHEMA: str = "customer"
+    #: Schema of the AI assistant's tables (apps/assistant). Owned by this
+    #: migration chain, read and written only by the assistant service.
+    ASSISTANT_SCHEMA: str = "assistant"
 
     # ------------------------------------------------------------------
     # Auth / Keycloak
@@ -123,6 +126,14 @@ class Settings(BaseSettings):
     # read-only; user data on that volume is not core's business. The default
     # derives from DATA_DIR so a whole-volume mount keeps working unconfigured.
     CATALOG_DATA_DIR: str = os.path.join(os.getenv("DATA_DIR", "/app/data"), "catalog")
+    # Where the catalog_materialize job writes a promoted catalog layer's
+    # parquet copy, resolved as the job and geoapi resolve it (an explicit
+    # CATALOG_LAYERS_DIR wins). Inside the catalog subtree by default, so the
+    # mount above covers it. Core only checks that a copy exists, when a
+    # dataset is added again (`services.materialize_heal`).
+    CATALOG_LAYERS_DIR: str = os.path.join(
+        os.getenv("DATA_DIR", "/app/data"), "catalog", "layers"
+    )
     # The geo database directory (a .mmdb written by goatlib sync_geoip), used
     # to open a new project near whoever created it. Read-only, like the
     # catalog mirror, and entirely optional: with no file here the lookup is

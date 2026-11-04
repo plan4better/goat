@@ -70,3 +70,31 @@ def test_one_failing_organization_does_not_stop_the_others(monkeypatch):
     assert core.updated == ["a", "c"]
     assert result["reset"] == 2
     assert [e["organization_id"] for e in result["errors"]] == ["b"]
+
+
+def test_a_reset_zeroes_the_ai_credits_with_the_credits(monkeypatch):
+    import asyncpg
+    from goatlib.tasks import credit_reset
+
+    statements = []
+
+    class Core:
+        async def fetch(self, sql, now):
+            return [{"id": "a", "credits_reset_at": datetime(2026, 7, 1)}]
+
+        async def execute(self, sql, org_id, when):
+            statements.append(sql)
+
+        async def close(self):
+            pass
+
+    async def connect(dsn, timeout=None):
+        return Core()
+
+    monkeypatch.setenv("BILLING_ENABLED", "1")
+    monkeypatch.setattr(asyncpg, "connect", connect)
+    monkeypatch.setattr(credit_reset, "core_dsn", lambda: "core")
+    monkeypatch.setattr(credit_reset, "_redis", lambda: None)
+    assert credit_reset.main()["reset"] == 1
+    [sql] = statements
+    assert "used_credits = 0" in sql and "used_ai_credits = 0" in sql

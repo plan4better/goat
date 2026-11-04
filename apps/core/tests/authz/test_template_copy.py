@@ -1843,6 +1843,20 @@ async def test_using_a_workflow_copy_template_again_reuses_its_entry_and_copy(
     # The project already shows the dataset under its own name.
     await _add_layers(client, target, layer.id)
 
+    async def preview() -> tuple[str, int | None]:
+        """What a use would bind the node to, written by nobody."""
+        resp = await client.post(
+            f"{API}/template/{tid}/use/preview", json={"project_id": target}
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()["config"]["nodes"][0]["data"]
+        return data["layerId"], data.get("projectLayerId")
+
+    # The copy would get an entry of its own, which does not exist yet.
+    assert await preview() == (str(layer.id), None)
+    assert len((await _links(db_session, target))[layer.id]) == 1
+    assert processes.await_count == 0
+
     first = await client.post(f"{API}/template/{tid}/use", json={"project_id": target})
     (job,) = first.json()["copy_jobs"]
     (entry,) = job["layer_project_ids"]
@@ -1852,6 +1866,9 @@ async def test_using_a_workflow_copy_template_again_reuses_its_entry_and_copy(
         )
     ).scalar_one()
     assert name == layer.name  # not "Copy from …"
+    # The entry the first use made, still on the source: no job is started.
+    assert await preview() == (str(layer.id), entry)
+    assert processes.await_count == 1
 
     # Not copied yet: using the template again gives the same entry its job.
     second = await client.post(f"{API}/template/{tid}/use", json={"project_id": target})
@@ -1866,6 +1883,7 @@ async def test_using_a_workflow_copy_template_again_reuses_its_entry_and_copy(
 
     # Copied: a third use binds the new workflow to the entry and its copy,
     # with no new entry, no new copy and no job.
+    assert await preview() == (str(output.layer_id), entry)
     third = await client.post(f"{API}/template/{tid}/use", json={"project_id": target})
     assert third.status_code == 200, third.text
     assert third.json()["added_layer_project_ids"] == []
@@ -1879,3 +1897,124 @@ async def test_using_a_workflow_copy_template_again_reuses_its_entry_and_copy(
     links = await _links(db_session, target)
     assert links[UUID(str(output.layer_id))] == [entry]
     assert len(links[layer.id]) == 1  # the project's own entry, unchanged
+
+
+@pytest.mark.asyncio
+async def test_a_use_preview_clears_the_settings_naming_an_empty_copys_entry(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: UUID,
+    fixture_get_home_folder: dict[str, object],
+    make_layer: MakeLayer,
+    roles: dict[str, UUID],
+    processes: AsyncMock,
+) -> None:
+    """A use points the tool settings naming an empty copy's dataset by the
+    author's entry at the entry it makes for the copy. Before the use there
+    is no such entry, so the preview clears those settings, as a step still
+    to be chosen has them, instead of naming the author's entry, or the
+    entry of a copy that has not arrived: both show the template's dataset,
+    which the user may not read. A shipped dataset's settings name the
+    entry the user reads it through, and a copy that arrived names its own."""
+    owner, folder, home = await _setup(
+        client, db_session, fixture_create_user, fixture_get_home_folder, make_layer
+    )
+    planned = await make_layer(owner, folder)
+    shipped = await make_layer(owner, folder)
+    await db_session.commit()
+    source_project = await _create_project(client, home, name="source")
+    await _add_layers(client, source_project, planned.id, shipped.id)
+    source_links = await _links(db_session, source_project)
+    (planned_entry,) = source_links[planned.id]
+    (shipped_entry,) = source_links[shipped.id]
+    config = _dataset_workflow_config(planned.id)
+    config["nodes"][0]["data"]["projectLayerId"] = planned_entry
+    second = _dataset_workflow_config(shipped.id, node_id="dataset-2")["nodes"][0]
+    second["data"]["projectLayerId"] = shipped_entry
+    heat = {
+        "id": "heat",
+        "type": "tool",
+        "position": {"x": 300, "y": 0},
+        "data": {
+            "type": "tool",
+            "processId": "heatmap_gravity",
+            "config": {
+                "routing_mode": "walking",
+                "opportunities": [
+                    {"layer_project_id": planned_entry, "max_cost": 10},
+                    {"layer_project_id": shipped_entry, "max_cost": 10},
+                ],
+            },
+        },
+    }
+    config["nodes"] += [{**second, "position": {"x": 0, "y": 200}}, heat]
+    config["edges"] = [
+        {
+            "id": f"e{n}",
+            "source": f"dataset-{n}",
+            "target": "heat",
+            "targetHandle": f"opportunity_layer_{n}_id",
+        }
+        for n in (1, 2)
+    ]
+    workflow_id = await _create_workflow(client, source_project, config)
+    template = await client.post(
+        f"{API}/template",
+        json={
+            "name": "Erreichbarkeit",
+            "folder_id": home,
+            "source": {
+                "kind": "workflow",
+                "project_id": source_project,
+                "workflow_id": workflow_id,
+            },
+            "inputs": [
+                {
+                    "key": "node:dataset-1",
+                    "label": "Planned",
+                    "mode": "copy",
+                    "copy_content": False,
+                    "layer_id": str(planned.id),
+                },
+                {
+                    "key": "node:dataset-2",
+                    "label": "Shipped",
+                    "mode": "ship",
+                    "layer_id": str(shipped.id),
+                },
+            ],
+        },
+    )
+    assert template.status_code == 201, template.text
+    tid = template.json()["id"]
+    target = await _create_project(client, home, name="target")
+
+    async def preview() -> tuple[str, list[Any]]:
+        """The planned step's layer and the heatmap's opportunity entries."""
+        resp = await client.post(
+            f"{API}/template/{tid}/use/preview", json={"project_id": target}
+        )
+        assert resp.status_code == 200, resp.text
+        nodes = {node["id"]: node["data"] for node in resp.json()["config"]["nodes"]}
+        entries = [
+            o["layer_project_id"] for o in nodes["heat"]["config"]["opportunities"]
+        ]
+        return nodes["dataset-1"]["layerId"], entries
+
+    # Before the first use: no entry of the copy's yet, and the shipped
+    # dataset keeps the author's entry, as before (a use links it anew).
+    assert await preview() == (str(planned.id), [None, shipped_entry])
+
+    first = await client.post(f"{API}/template/{tid}/use", json={"project_id": target})
+    assert first.status_code == 200, first.text
+    (job,) = first.json()["copy_jobs"]
+    (entry,) = job["layer_project_ids"]
+    used = (await _workflow_nodes(db_session, target))["heat"]["config"]
+    assert used["opportunities"][0]["layer_project_id"] == entry
+    (shipped_link,) = (await _links(db_session, target))[shipped.id]
+
+    # The copy has not arrived: its entry still shows the template's dataset.
+    assert await preview() == (str(planned.id), [None, shipped_link])
+
+    output = await _run_copy_job(processes.await_args.kwargs["inputs"], owner.id)
+    assert await preview() == (str(output.layer_id), [entry, shipped_link])

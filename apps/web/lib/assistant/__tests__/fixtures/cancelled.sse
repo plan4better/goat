@@ -1,0 +1,16 @@
+data: {"type":"start","messageId":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1"}
+
+data: {"type":"text-delta","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1","delta":"Partial"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"data-run-status","data":{"status":"cancelled","error":null,"code":null}}
+
+data: {"type":"abort"}
+
+data: [DONE]
+

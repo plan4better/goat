@@ -7,12 +7,15 @@ update replaces every field it does not receive.
 """
 
 import json
+import logging
 from typing import Any
 
 import httpx
 import pytest
 from goatlib.tasks.registry import TASK_REGISTRY
-from goatlib.tasks.sync_windmill import WindmillTaskSyncer
+from goatlib.tasks.sync_windmill import WindmillTaskSyncer, generate_task_script
+
+from ..windmill_fake import GENERATE_THUMBNAILS_AS_READ, FakeWindmill
 
 SCHEDULED = next(t for t in TASK_REGISTRY if t.schedule)
 
@@ -128,6 +131,134 @@ def test_a_new_schedule_starts_with_no_arguments() -> None:
     ((path, body),) = sent
     assert "/schedules/create" in path
     assert body["args"] == {}
+
+
+# A task's script is written in place, as a tool's is: never deleted, a new
+# version only when it changed (tests/unit/tools/test_windmill_scripts.py).
+
+TASK_PATHS = [t.windmill_path for t in TASK_REGISTRY]
+SCHEDULE_PATH = f"f/goat/schedules/{SCHEDULED.name}"
+UNCHANGED_SCHEDULE = {"schedule": SCHEDULED.schedule, "timezone": "UTC"}
+
+
+def _task_syncer(windmill: FakeWindmill) -> WindmillTaskSyncer:
+    syncer = WindmillTaskSyncer("http://windmill.test", "token")
+    syncer.client = windmill.client()
+    return syncer
+
+
+def _scheduled_as_read(**changes: Any) -> dict[str, Any]:
+    """The scheduled task's script as Windmill reads it back once the sync
+    wrote it from this goatlib, with ``changes`` made to it since."""
+    assert GENERATE_THUMBNAILS_AS_READ["path"] == SCHEDULED.windmill_path
+    return {
+        **GENERATE_THUMBNAILS_AS_READ,
+        "content": generate_task_script(SCHEDULED),
+        **changes,
+    }
+
+
+@pytest.mark.unit
+def test_a_missing_task_script_is_created_without_a_parent() -> None:
+    windmill = FakeWindmill()
+
+    result = _task_syncer(windmill).sync_task(SCHEDULED)
+
+    assert result["status"] == "synced"
+    (body,) = windmill.created
+    assert body["path"] == SCHEDULED.windmill_path
+    assert "parent_hash" not in body
+    assert "auto_parent" not in body
+    assert windmill.writes() == ["scripts/create", "schedules/create"]
+
+
+@pytest.mark.unit
+def test_an_unchanged_task_script_is_not_written_but_its_schedule_is_synced() -> None:
+    windmill = FakeWindmill({SCHEDULED.windmill_path: _scheduled_as_read()})
+
+    result = _task_syncer(windmill).sync_task(SCHEDULED)
+
+    assert result["status"] == "unchanged"
+    assert windmill.writes() == ["schedules/create"]
+    assert result["schedule"]["path"] == SCHEDULE_PATH
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "change",
+    [{"content": "def main(): pass\n"}, {"tag": "other"}],
+    ids=["content", "tag"],
+)
+def test_a_changed_task_script_is_a_new_version_on_the_current_one(
+    change: dict[str, Any],
+) -> None:
+    windmill = FakeWindmill(
+        {SCHEDULED.windmill_path: _scheduled_as_read(**change)},
+        {SCHEDULE_PATH: UNCHANGED_SCHEDULE},
+    )
+
+    result = _task_syncer(windmill).sync_task(SCHEDULED)
+
+    assert result["status"] == "synced"
+    (body,) = windmill.created
+    assert body["parent_hash"] == GENERATE_THUMBNAILS_AS_READ["hash"]
+    assert body["auto_parent"] is True
+    assert body["tag"] == SCHEDULED.worker_tag
+    assert windmill.writes() == ["scripts/create"]
+
+
+@pytest.mark.unit
+def test_the_task_sync_never_deletes_a_script() -> None:
+    windmill = FakeWindmill()
+    _task_syncer(windmill).sync_all()
+    for script in windmill.scripts.values():
+        script["content"] = "old"
+    windmill.requests.clear()
+
+    results = _task_syncer(windmill).sync_all()
+
+    assert {r["status"] for r in results} == {"synced"}
+    assert windmill.writes() == ["scripts/create"] * len(TASK_PATHS)
+
+
+@pytest.mark.unit
+def test_a_second_task_sync_writes_nothing(caplog: pytest.LogCaptureFixture) -> None:
+    windmill = FakeWindmill()
+    _task_syncer(windmill).sync_all()
+    windmill.requests.clear()
+
+    with caplog.at_level(logging.INFO):
+        results = _task_syncer(windmill).sync_all()
+
+    assert {r["status"] for r in results} == {"unchanged"}
+    assert windmill.writes() == []
+    assert f"Done: {len(TASK_PATHS)} unchanged" in caplog.text
+
+
+@pytest.mark.unit
+def test_a_refused_task_script_is_logged_with_its_reason_and_the_others_still_sync(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    reason = "Bad request: Path conflict"
+    windmill = FakeWindmill(refuse={SCHEDULED.windmill_path: (400, reason)})
+
+    with caplog.at_level(logging.INFO):
+        results = {r["path"]: r for r in _task_syncer(windmill).sync_all()}
+
+    assert results.pop(SCHEDULED.windmill_path)["status"] == "failed"
+    assert {r["status"] for r in results.values()} == {"synced"}
+    assert {body["path"] for body in windmill.created} == set(results)
+    assert "400" in caplog.text and reason in caplog.text
+
+
+@pytest.mark.unit
+def test_a_task_dry_run_writes_nothing() -> None:
+    windmill = FakeWindmill()
+
+    results = _task_syncer(windmill).sync_all(dry_run=True)
+
+    assert {r["status"] for r in results} == {"dry-run"}
+    assert windmill.requests == []
 
 
 @pytest.mark.unit
