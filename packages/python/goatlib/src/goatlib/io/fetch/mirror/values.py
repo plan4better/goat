@@ -108,8 +108,13 @@ def _sample_rows(
     if where:
         prefilter, exact = "TRUE", checked_where(con, files, src, where)
     else:
+        # As the fetch does: a tag with its own column is tested on that column.
+        filters = _filters_of(tag_filters)
+        own = frozenset(
+            f.key for f in filters if src.tagged and _key_column(con, files, f.key)
+        )
         prefilter, exact = filter_sql(
-            _filters_of(tag_filters), src, match_mode, feature_type, storage
+            filters, src, match_mode, feature_type, storage, own
         )
     prefilter = f"({prefilter}) AND {src.geometry_filter(feature_type, files)}"
     selected = [
