@@ -132,8 +132,11 @@ export interface LoadProgress {
   loaded: string[];
 }
 
-/** The files that list the network, before which nothing can be shown. */
-export const FIRST_TABLES = ["agencies", "routes", "stops", "services", "calendar_dates"];
+/** The files that list the network, before which nothing can be shown:
+ * everything the lists read. The stations list reads the patterns too (which
+ * lines call where); loaded smallest first, they can come after the stops, as
+ * on a rail network with a pattern for almost every train. */
+export const FIRST_TABLES = ["agencies", "routes", "stops", "services", "calendar_dates", "patterns"];
 
 /**
  * Download and load every file of `manifest` into `db`, three at a time,
