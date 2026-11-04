@@ -57,7 +57,7 @@ Your data must follow the **[GTFS](https://www.plan4better.de/en/glossary/gtfs)*
 The member layers follow the GTFS feed itself: **Stops**, **Routes**, **Trips** and **Stop times** are always present, and **Agency**, **Calendar** and **Shapes** are added when the feed provides them.
 
 :::info A Public Transport Network needs a Street Network
-GOAT connects stops to streets so that it can route the walk to and from a stop. You therefore choose a Street Network while uploading the GTFS file, either GOAT's built-in `Default (Europe)` network or one of your own, which then has to be imported first.
+GOAT connects stops to streets so that it can route the walk to and from a stop. You therefore choose a Street Network while uploading the GTFS file, either GOAT's built-in `Default` network or one of your own, which then has to be imported first.
 :::
 
 Public transport networks power GOAT's [Public Transport](../routing/public_transport) routing. To import one, see [Adding content](../workspace/content.md#adding-content); for what GOAT's built-in network contains and how to bring your own, see [Network Datasets](./builtin_datasets.md#bringing-your-own-networks).
