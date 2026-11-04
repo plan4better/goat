@@ -107,6 +107,8 @@ Der Standard-Worker von Windmill übernimmt nur kleine Jobs. **Analyse-Werkzeuge
 
 Das gemeinsame Daten-Volume verwendet standardmäßig `ReadWriteOnce`, was auf einem einzelnen Node funktioniert. In einem Cluster mit mehreren Nodes setzen Sie `data.accessMode: ReadWriteMany` mit einer RWX-fähigen Storage-Class (`data.storageClassName`) oder stellen mit `data.existingClaim` Ihren eigenen Claim bereit.
 
+Ist dieses Volume ein NFS-Volume und laufen mehrere `geoapi`-Pods, binden Sie es mit der Option `lookupcache=positive` ein (`mountOptions` an der Storage-Class oder am Persistent Volume). Sonst merkt sich NFS bis zu einer Minute lang, dass eine Datei nicht existierte: Ein Pod sieht dann eine Datei, die ein anderer gerade geschrieben hat, noch nicht, und der Explorer schlägt beim ersten Öffnen eines Datenpakets gelegentlich fehl.
+
 geoapi, processes und die Windmill-Worker schreiben alle in dieses Volume, und ein neues RWX-Volume gehört root, deshalb laufen sie als root. Erlaubt Ihr Cluster das nicht, finden Sie die Alternative in der README des Charts („The shared data volume“).
 
 ### KI-Assistent {#assistant}
