@@ -77,7 +77,7 @@ Our street network represents real-world transportation infrastructure including
 
 The networks described above are GOAT's built-in ones, and they are used by default. You can also **import your own**: a network you maintain yourself, a region you want to analyse with your own data, or a planned network you want to test before it is built.
 
-Once imported, your network is used exactly like the built-in one: the routing and accessibility tools offer it alongside the built-in one (`Default (Europe)` for street networks, `Default` for public transport), and you pick which one an analysis should run on.
+Once imported, your network is used exactly like the built-in one: the routing and accessibility tools offer it alongside the built-in one (listed as `Default`), and you pick which one an analysis should run on.
 
 ### Your own street network
 
@@ -107,10 +107,10 @@ Your data must be a feed following the [official GTFS specification](https://gtf
 
 **Use an aggregator.** The [Mobility Database](https://mobilitydatabase.org/) and [transit.land](https://www.transit.land/) index feeds from operators worldwide, which is the easiest way to find one when you do not already know who publishes it.
 
-Because GOAT routes the walk to and from each stop, a public transport network has to be **linked to a street network**. You choose that network while uploading: the built-in `Default (Europe)`, or one you have imported beforehand.
+Because GOAT routes the walk to and from each stop, a public transport network has to be **linked to a street network**. You choose that network while uploading: the built-in `Default`, or one you have imported beforehand.
 
 :::info Outside Europe, upload a street network first
-The built-in `Default (Europe)` network covers Europe only. If your transit data is for a region outside that, import a street network for the region before importing the feed. There will otherwise be nothing to connect the stops to.
+The built-in `Default` network covers Europe only. If your transit data is for a region outside that, import a street network for the region before importing the feed. There will otherwise be nothing to connect the stops to.
 :::
 
 Linking to your own street network is also what lets a timetable analysis account for streets you changed.
