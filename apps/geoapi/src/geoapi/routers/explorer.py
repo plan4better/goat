@@ -159,6 +159,20 @@ async def _revision_and_snapshot(
     return int(revision), int(snapshot)
 
 
+def _ensure_dir(path: Path) -> None:
+    """``path`` as a folder, a folder already there included.
+
+    ``mkdir(exist_ok=True)`` can still raise "File exists": after the server
+    says the folder exists, Python checks it is one, and that check can be told
+    it is gone, by a shared volume's cached lookup (NFS) or by the hourly
+    cleanup removing the empty folder just then. The folder exists; were it
+    really removed, the first write into it says so."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except FileExistsError:
+        pass
+
+
 def _build_sync(
     bundle_id: str,
     revision: int,
@@ -168,7 +182,7 @@ def _build_sync(
 ) -> None:
     """Build and publish one snapshot. Runs on the build thread."""
     bundle_dir = EXPLORER_DIR / bundle_id
-    bundle_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_dir(bundle_dir)
     target = _snapshot_dir(bundle_id, revision)
     tmp = bundle_dir / f".tmp-r{revision}-{uuid.uuid4().hex}"
     tmp.mkdir()
@@ -268,7 +282,7 @@ async def _build(bundle_id: str, revision: int, members: dict[str, str]) -> None
         await loop.run_in_executor(_executor, manager.init, settings)
         revision, snapshot = await _revision_and_snapshot(bundle_id, manager)
         marker = _marker(bundle_id, revision)
-        marker.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_dir(marker.parent)
         marker.write_text(f"{os.uname().nodename} {os.getpid()} {time.time()}")
         await loop.run_in_executor(
             _executor, _build_sync, bundle_id, revision, snapshot, members, manager

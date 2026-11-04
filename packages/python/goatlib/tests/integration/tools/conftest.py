@@ -349,6 +349,7 @@ async def test_schemas(postgres_pool: asyncpg.Pool) -> None:
                 position TEXT NOT NULL DEFAULT 'top',
                 time_value JSONB,
                 legend_expanded BOOLEAN NOT NULL DEFAULT true,
+                shareable BOOLEAN NOT NULL DEFAULT TRUE,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
                 UNIQUE(layer_id, project_id)

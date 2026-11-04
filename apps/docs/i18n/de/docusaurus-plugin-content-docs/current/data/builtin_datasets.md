@@ -78,7 +78,7 @@ Unser Straßennetzwerk repräsentiert reale Verkehrsinfrastruktur einschließlic
 
 Die oben beschriebenen Netze sind die integrierten Netze von GOAT und werden standardmäßig verwendet. Sie können auch **eigene Netze importieren**: ein Netz, das Sie selbst pflegen, eine Region, die Sie mit Ihren eigenen Daten analysieren möchten, oder ein geplantes Netz, das Sie testen möchten, bevor es gebaut wird.
 
-Nach dem Import wird Ihr Netz genauso verwendet wie das integrierte: Die Routing- und Erreichbarkeitswerkzeuge bieten es neben dem integrierten an (`Standard (Europa)` bei Straßennetzen, `Standard` bei ÖPNV-Netzen), und Sie wählen aus, auf welchem Netz eine Analyse laufen soll.
+Nach dem Import wird Ihr Netz genauso verwendet wie das integrierte: Die Routing- und Erreichbarkeitswerkzeuge bieten es neben dem integrierten an (als `Standard`), und Sie wählen aus, auf welchem Netz eine Analyse laufen soll.
 
 ### Eigenes Straßennetz
 
@@ -108,10 +108,10 @@ Ihre Daten müssen ein Feed nach der [offiziellen GTFS-Spezifikation](https://gt
 
 **Nutzen Sie einen Aggregator.** Die [Mobility Database](https://mobilitydatabase.org/) und [transit.land](https://www.transit.land/) erfassen Feeds von Betreibern weltweit. Das ist der einfachste Weg, einen Feed zu finden, wenn Sie nicht wissen, wer ihn veröffentlicht.
 
-Da GOAT den Weg zu und von jeder Haltestelle routet, muss ein ÖPNV-Netz mit einem **Straßennetz verknüpft** sein. Sie wählen dieses Netz beim Hochladen aus: das integrierte `Standard (Europa)` oder eines, das Sie vorher importiert haben.
+Da GOAT den Weg zu und von jeder Haltestelle routet, muss ein ÖPNV-Netz mit einem **Straßennetz verknüpft** sein. Sie wählen dieses Netz beim Hochladen aus: das integrierte `Standard` oder eines, das Sie vorher importiert haben.
 
 :::info Außerhalb Europas zuerst ein Straßennetz hochladen
-Das integrierte Netz `Standard (Europa)` deckt nur Europa ab. Liegen Ihre Fahrplandaten außerhalb, importieren Sie zuerst ein Straßennetz für diese Region. Sonst gibt es nichts, womit sich die Haltestellen verbinden ließen.
+Das integrierte Netz `Standard` deckt nur Europa ab. Liegen Ihre Fahrplandaten außerhalb, importieren Sie zuerst ein Straßennetz für diese Region. Sonst gibt es nichts, womit sich die Haltestellen verbinden ließen.
 :::
 
 Die Verknüpfung mit Ihrem eigenen Straßennetz sorgt außerdem dafür, dass eine Fahrplananalyse die Straßen berücksichtigt, die Sie geändert haben.

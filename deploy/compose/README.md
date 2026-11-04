@@ -99,7 +99,7 @@ More in the docs: [External services](https://goat.plan4better.de/docs/self_host
 ## Optional integrations
 
 In `.env`: `NEXT_PUBLIC_MAPTILER_KEY` (satellite basemap), `NEXT_PUBLIC_MAPBOX_TOKEN`
-(place search), `SMTP_*` (email, below), `CATALOG_S3_*` (GOAT data catalog),
+(place search), `SMTP_*` (email, below), `CATALOG_S3_*` (GOAT data catalog, and the OpenStreetMap and Overture mirror for Add layer › Connect service),
 `GEOCODING_URL` / `GEOCODING_AUTHORIZATION`, `ODOO_*` (Odoo connection and support tickets, below),
 `NEXT_PUBLIC_SUPPORT_EMAIL` (address of "Report a problem" and the AI assistant's "Feedback" link without tickets, default `support@plan4better.de`),
 `OTEL_*` (telemetry export).
@@ -164,6 +164,10 @@ full set is tens of GB, so choose the region you work in.
 ./base-data.sh --bbox 11.3,48.0,11.8,48.3             # download (min_lon,min_lat,max_lon,max_lat)
 ./base-data.sh --bbox 11.3,48.0,11.8,48.3 --weekly on # same, and repeat it every week
 ```
+
+The public-transport data also holds the network as tables, which the
+"Public transport network" source in Add layer cuts to an area; until they are
+installed, that source asks for a base data update.
 
 The data comes from `GOAT_BASE_DATA_URL` (Plan4Better's public base-data
 server by default; point it at an internal mirror if needed).

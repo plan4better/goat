@@ -59,7 +59,12 @@ function useQuery<T>(db: SqlRunner | undefined, key: string, query: (db: SqlRunn
     setState((s) => ({ ...s, loading: true }));
     remembered(db, key, query)
       .then((data) => current && setState({ data, loading: false }))
-      .catch((e: unknown) => current && setState({ error: String(e), loading: false }));
+      .catch((e: unknown) => {
+        // Said, not only stored: a view waiting on a failed answer shows no
+        // error of its own.
+        console.error(`Explorer query "${key}" failed`, e);
+        if (current) setState({ error: String(e), loading: false });
+      });
     return () => {
       current = false;
     };

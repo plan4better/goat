@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import useSWR from "swr";
 
 import { CATALOG_API_BASE_URL } from "@/lib/api/catalog";
@@ -35,15 +36,22 @@ export const useCatalogNutsGeometries = (nutsIds: string[]) => {
     { revalidateOnFocus: false, revalidateIfStale: false, keepPreviousData: true }
   );
 
-  const shapes = data ?? {};
+  // Memoised on the response: a new object every render made every area built from
+  // them new too, and the fetch preview re-fitted its map on each keystroke.
+  const { shapes, geometries, names } = useMemo(() => {
+    const shapes = data ?? {};
+    return {
+      shapes,
+      geometries: Object.fromEntries(Object.entries(shapes).map(([id, shape]) => [id, shape.geometry])),
+      names: Object.fromEntries(
+        Object.entries(shapes).flatMap(([id, shape]) => (shape.name ? [[id, shape.name]] : []))
+      ),
+    };
+  }, [data]);
   return {
     shapes,
-    geometries: Object.fromEntries(
-      Object.entries(shapes).map(([id, shape]) => [id, shape.geometry])
-    ),
-    names: Object.fromEntries(
-      Object.entries(shapes).flatMap(([id, shape]) => (shape.name ? [[id, shape.name]] : []))
-    ),
+    geometries,
+    names,
     isLoading,
     isError: error,
   };

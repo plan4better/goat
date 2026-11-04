@@ -2,13 +2,13 @@
 writes what the editor writes; everything else stays byte for byte."""
 
 import json
-import signal
 from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
+from goatlib.workflows import ops
 from goatlib.workflows.ops import OperationError, apply
 
 pytestmark = pytest.mark.unit
@@ -1097,19 +1097,27 @@ def test_add_node_refuses_a_node_the_editor_cannot_draw(node: Any, needle: str) 
 
 
 @contextmanager
-def _within(seconds: float) -> Iterator[None]:
-    """Fails the block when it runs longer than `seconds` instead of hanging."""
+def _overlap_checks(budget: int) -> Iterator[None]:
+    """Fails the block once placement makes more than `budget` overlap checks.
 
-    def stop(signum: int, frame: Any) -> None:
-        raise TimeoutError(f"took longer than {seconds} s")
+    The work of placing a node is its overlap checks, so a budget holds it to
+    the passes `_free_spot` promises, however fast the machine, and a runaway
+    loop fails at once instead of hanging."""
+    original = ops._Box.overlaps
+    calls = 0
 
-    previous = signal.signal(signal.SIGALRM, stop)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
+    def counted(box: Any, other: Any) -> bool:
+        nonlocal calls
+        calls += 1
+        if calls > budget:
+            raise AssertionError(f"placement made more than {budget} overlap checks")
+        return original(box, other)
+
+    setattr(ops._Box, "overlaps", counted)
     try:
         yield
     finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous)
+        setattr(ops._Box, "overlaps", original)
 
 
 @pytest.mark.parametrize(
@@ -1186,7 +1194,7 @@ def test_add_node_refuses_a_note_size_out_of_bounds(size: Any) -> None:
 
 def test_a_huge_note_set_by_operations_is_refused_quickly() -> None:
     """The review's probe: a note under the new step's spot made very tall."""
-    with _within(2), pytest.raises(OperationError) as raised:
+    with _overlap_checks(1_000), pytest.raises(OperationError) as raised:
         apply(
             _stored(),
             [
@@ -1219,7 +1227,7 @@ def test_a_huge_stored_note_counts_with_the_default_size_when_placing() -> None:
     note = _node(config, "text-1")
     note["position"] = {"x": 1080, "y": 150}
     note["data"]["height"] = 1e300
-    with _within(2):
+    with _overlap_checks(1_000):
         result = apply(
             config,
             [
@@ -1239,7 +1247,7 @@ def test_a_huge_stored_note_counts_with_the_default_size_when_placing() -> None:
 def test_a_stored_position_out_of_bounds_is_left_out_when_placing() -> None:
     config = _stored()
     _node(config, "export-1")["position"] = {"x": 10**400, "y": 0}
-    with _within(2):
+    with _overlap_checks(1_000):
         result = apply(config, [{"op": "add_node", "node": _buffer()}])
     # Right of if-1, the rightmost node left; export-1 as stored.
     assert _node(result, "tool-new")["position"] == {"x": 1480, "y": -340}
@@ -1258,7 +1266,8 @@ def test_placement_goes_below_a_tall_column() -> None:
                 "data": {"type": "dataset", "label": f"Stack {row}"},
             }
         )
-    with _within(2):
+    nodes = len(config["nodes"])
+    with _overlap_checks((nodes + 1) * nodes):
         result = apply(
             config,
             [
@@ -1914,7 +1923,8 @@ def test_placement_jumps_below_what_it_overlaps_instead_of_stepping_row_by_row()
         }
         for row in range(90)
     ]
-    with _within(1):
+    nodes = len(config["nodes"])
+    with _overlap_checks((90 + 2) * nodes):
         result = apply(
             config,
             [

@@ -79,6 +79,8 @@ The download runs as a job in the running GOAT stack; `base-data.sh` follows it 
 | `--dry-run` | Report what would be fetched, without writing anything |
 | `--weekly on\|off` | Also repeat this run (with the same region and data sets) every week, on Tuesdays at 03:00 UTC, or stop repeating it |
 
+The public transport data also holds the network as tables, which the `Public transport network` source in `Add layer` cuts to an area. Until a server has installed a public transport version with these tables, that source reports that the base data needs updating.
+
 The data comes from `GOAT_BASE_DATA_URL`, by default Plan4Better's public base data server. If your server has no access to it, point the setting at an internal mirror.
 
 ## Backups {#backups}

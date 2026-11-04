@@ -16,6 +16,7 @@ import httpx
 
 from goatlib.tools.codegen import generate_windmill_script
 from goatlib.tools.registry import TOOL_REGISTRY, ToolDefinition
+from goatlib.windmill_scripts import deploy_script, summarize
 
 logging.basicConfig(
     level=logging.INFO,
@@ -135,42 +136,6 @@ class WindmillSyncer:
         """Close HTTP client."""
         self.client.close()
 
-    def _delete_script(self: Self, path: str) -> bool:
-        """Delete existing script if it exists."""
-        try:
-            self.client.post(
-                f"{self.base_url}/api/w/{self.workspace}/scripts/delete/p/{path}"
-            )
-            return True
-        except Exception:
-            return False
-
-    def _create_script(
-        self: Self,
-        path: str,
-        content: str,
-        summary: str,
-        description: str,
-        tag: str | None = None,
-    ) -> dict[str, Any]:
-        """Create a script in Windmill."""
-        script_data: dict[str, Any] = {
-            "path": path,
-            "content": content,
-            "summary": summary,
-            "description": description,
-            "language": "python3",
-        }
-        if tag:
-            script_data["tag"] = tag
-
-        response = self.client.post(
-            f"{self.base_url}/api/w/{self.workspace}/scripts/create",
-            json=script_data,
-        )
-        response.raise_for_status()
-        return {"path": path, "status": "synced"}
-
     def sync_tool(
         self: Self, tool_def: ToolDefinition, dry_run: bool = False
     ) -> dict[str, Any]:
@@ -192,19 +157,18 @@ class WindmillSyncer:
             return {"path": tool_def.windmill_path, "status": "dry-run"}
 
         try:
-            # Delete existing script first
-            self._delete_script(tool_def.windmill_path)
-
-            # Create new script
-            result = self._create_script(
+            status = deploy_script(
+                self.client,
+                self.base_url,
+                self.workspace,
                 path=tool_def.windmill_path,
                 content=content,
                 summary=tool_def.display_name,
                 description=tool_def.description or "",
                 tag=tool_def.worker_tag,
             )
-            logger.info(f"✓ Synced: {tool_def.windmill_path}")
-            return result
+            logger.info(f"✓ {status.capitalize()}: {tool_def.windmill_path}")
+            return {"path": tool_def.windmill_path, "status": status}
 
         except Exception as e:
             logger.error(f"✗ Failed: {tool_def.windmill_path} - {e}")
@@ -241,16 +205,18 @@ class WindmillSyncer:
             return {"path": path, "status": "dry-run"}
 
         try:
-            self._delete_script(path)
-            result = self._create_script(
+            status = deploy_script(
+                self.client,
+                self.base_url,
+                self.workspace,
                 path=path,
                 content=content,
                 summary=summary,
                 description=description,
                 tag=tag,
             )
-            logger.info(f"✓ Synced special script: {path}")
-            return result
+            logger.info(f"✓ {status.capitalize()} special script: {path}")
+            return {"path": path, "status": status}
         except Exception as e:
             logger.error(f"✗ Failed special script: {path} - {e}")
             return {"path": path, "status": "failed", "error": str(e)}
@@ -305,10 +271,7 @@ class WindmillSyncer:
         workflow_results = self.sync_workflow_scripts(dry_run=dry_run)
         results.extend(workflow_results)
 
-        # Summary
-        synced = sum(1 for r in results if r["status"] == "synced")
-        failed = sum(1 for r in results if r["status"] == "failed")
-        logger.info(f"Done: {synced} synced, {failed} failed")
+        logger.info(summarize(results))
 
         return results
 

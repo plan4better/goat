@@ -18,7 +18,7 @@ Diese Seite beschreibt die Chart-Version **0.8.0**, die standardmäßig GOAT **v
 
 ```bash
 helm install goat oci://ghcr.io/plan4better/charts/goat \
-  --version 0.7.0 \
+  --version 0.8.0 \
   --namespace goat --create-namespace \
   --values your-values.yaml \
   --wait --timeout 25m
@@ -91,19 +91,25 @@ Ohne Tickets öffnen *Problem melden* und der Link *Feedback* des KI-Assistenten
 
 Nachrichten zu einem Ticket können Anhänge von bis zu 55 MiB in einer Anfrage enthalten. Das Ingress vor core muss für `/api/v2/support` Anfragekörper von mindestens 56 MB annehmen und großzügige Lese-Timeouts erlauben. ingress-nginx begrenzt Anfragekörper standardmäßig auf 1 MB; erhöhen Sie das mit `nginx.ingress.kubernetes.io/proxy-body-size: "56m"` und `proxy-read-timeout` in `core.ingress.annotations`.
 
+### OpenStreetMap und Overture Maps {#open-data-mirror}
+
+Optional. Die Bereiche OpenStreetMap und Overture Maps unter *Layer hinzufügen › Daten abrufen / verbinden* lesen aus einem Spiegel beider Datensätze, den eine eigene Pipeline im Katalog-Bucket unter `mirror/osm` und `mirror/overture` ablegt; er gehört nicht zum Chart. Das Chart gibt `catalog.s3` an processes und die Worker `tools`, `workflows` und `print` weiter, mehr ist nicht einzustellen. Ohne `catalog.s3.bucket` finden die beiden Bereiche keine Daten; siehe [OpenStreetMap und Overture Maps](./docker_compose/external_services.md#open-data-mirror).
+
 ### Analyse-Worker {#workers}
 
 Der Standard-Worker von Windmill übernimmt nur kleine Jobs. **Analyse-Werkzeuge, Datensatz-Importe und Workflows benötigen die Worker `tools` und `workflows`, der PDF-Druck benötigt den Worker `print`.** Alle drei sind standardmäßig aus. So nutzen Sie sie:
 
 - Schalten Sie sie mit `windmill.workers.tools.enabled`, `windmill.workers.workflows.enabled` und `windmill.workers.print.enabled` ein.
 - Die Worker `tools` und `workflows` sind an Nodes mit dem Label `node.kubernetes.io/server-usage: geodata` und der Toleration `geodata=true:NoSchedule` gebunden. Bereiten Sie solche Nodes vor oder überschreiben Sie `nodeSelector` und `tolerations` für diese Worker. Andernfalls bleiben ihre Pods im Zustand `Pending`, und `helm install --wait` läuft in den Timeout.
-- Das Chart gibt diesen Workern, was GOATs Jobs brauchen: die GOAT-Datenbank, den S3-Speicher, den Katalog-Bucket, den Ort auf dem gemeinsamen Daten-Volume, an dem die Kopien hinzugefügter Katalog-Datensätze und ihre Kacheln liegen (`catalog.layersDir`, `catalog.tilesDir`; geoapi, processes und core lesen sie am selben Ort), die Adresse der Web-App für den Druck und, bei eingeschalteter Anmeldung, den Keycloak-Client, mit dem sich der Druck-Worker anmeldet. Windmill reicht nur die Variablen an die Jobs weiter, die in `WHITELIST_ENVS` stehen; das Chart stellt diese Liste zusammen, einschließlich jeder Variable, die Sie in `config` oder `extraEnv` eines Workers ergänzen.
+- Das Chart gibt diesen Workern, was GOATs Jobs brauchen: die GOAT-Datenbank, den S3-Speicher, den Katalog-Bucket (mit dem Spiegel von OpenStreetMap und Overture), den Ort auf dem gemeinsamen Daten-Volume, an dem die Kopien hinzugefügter Katalog-Datensätze und ihre Kacheln liegen (`catalog.layersDir`, `catalog.tilesDir`; geoapi, processes und core lesen sie am selben Ort), die Adresse der Web-App für den Druck und, bei eingeschalteter Anmeldung, den Keycloak-Client, mit dem sich der Druck-Worker anmeldet. Windmill reicht nur die Variablen an die Jobs weiter, die in `WHITELIST_ENVS` stehen; das Chart stellt diese Liste zusammen, einschließlich jeder Variable, die Sie in `config` oder `extraEnv` eines Workers ergänzen.
 - Schalten Sie `windmill.scriptSync.enabled` ein, um GOATs Analyse-Werkzeuge und Aufgaben nach der Installation in Windmill zu registrieren. Die Einstellung ist standardmäßig aus.
 - Jeder Windmill-Container hält höchstens wenige Verbindungen zu seiner Datenbank: der Server 10 und jeder Worker 3 (`windmill.server.config.DATABASE_CONNECTIONS`, `windmill.workers.databaseConnections`). Ein Update auf ein GOAT-Release mit neuerem Windmill migriert die Windmill-Datenbank beim Start, und zwar nur vorwärts: Sichern Sie sie vorher.
 
 ### Speicher für mehrere Nodes {#rwx}
 
 Das gemeinsame Daten-Volume verwendet standardmäßig `ReadWriteOnce`, was auf einem einzelnen Node funktioniert. In einem Cluster mit mehreren Nodes setzen Sie `data.accessMode: ReadWriteMany` mit einer RWX-fähigen Storage-Class (`data.storageClassName`) oder stellen mit `data.existingClaim` Ihren eigenen Claim bereit.
+
+Ist dieses Volume ein NFS-Volume und laufen mehrere `geoapi`-Pods, binden Sie es mit der Option `lookupcache=positive` ein (`mountOptions` an der Storage-Class oder am Persistent Volume). Sonst merkt sich NFS bis zu einer Minute lang, dass eine Datei nicht existierte: Ein Pod sieht dann eine Datei, die ein anderer gerade geschrieben hat, noch nicht, und der Explorer schlägt beim ersten Öffnen eines Datenpakets gelegentlich fehl.
 
 geoapi, processes und die Windmill-Worker schreiben alle in dieses Volume, und ein neues RWX-Volume gehört root, deshalb laufen sie als root. Erlaubt Ihr Cluster das nicht, finden Sie die Alternative in der README des Charts („The shared data volume“).
 

@@ -18,7 +18,7 @@ This page describes chart version **0.8.0**, which installs GOAT **v3.1.0** by d
 
 ```bash
 helm install goat oci://ghcr.io/plan4better/charts/goat \
-  --version 0.7.0 \
+  --version 0.8.0 \
   --namespace goat --create-namespace \
   --values your-values.yaml \
   --wait --timeout 25m
@@ -91,19 +91,25 @@ Without tickets, *Report a problem* and the AI assistant's *Feedback* link open 
 
 Ticket messages can carry attachments of up to 55 MiB in one request. The Ingress in front of core must accept bodies of at least 56 MB on `/api/v2/support` and allow generous read timeouts. ingress-nginx limits bodies to 1 MB by default; raise it with `nginx.ingress.kubernetes.io/proxy-body-size: "56m"` and `proxy-read-timeout` in `core.ingress.annotations`.
 
+### OpenStreetMap and Overture Maps {#open-data-mirror}
+
+Optional. The OpenStreetMap and Overture Maps panes under *Add layer › Fetch / Connect data* read from a mirror of both datasets that a separate pipeline publishes in the catalog bucket, under `mirror/osm` and `mirror/overture`; it is not part of the chart. The chart hands `catalog.s3` to processes and the `tools`, `workflows` and `print` workers, so nothing else needs setting. Without `catalog.s3.bucket`, the two panes find no data; see [OpenStreetMap and Overture Maps](./docker_compose/external_services.md#open-data-mirror).
+
 ### Analysis workers {#workers}
 
 The default Windmill worker only handles small jobs. **Analysis tools, dataset imports and workflows need the `tools` and `workflows` workers, and PDF printing needs the `print` worker.** All three are off by default. To use them:
 
 - Enable them with `windmill.workers.tools.enabled`, `windmill.workers.workflows.enabled` and `windmill.workers.print.enabled`.
 - The `tools` and `workflows` workers are pinned to nodes labelled `node.kubernetes.io/server-usage: geodata` with the toleration `geodata=true:NoSchedule`. Prepare such nodes, or override `nodeSelector` and `tolerations` for these workers. Otherwise their pods stay `Pending` and `helm install --wait` times out.
-- The chart gives these workers what GOAT's jobs need: the GOAT database, the S3 store, the catalog bucket, where the copies of added catalog datasets and their tiles are stored on the shared data volume (`catalog.layersDir`, `catalog.tilesDir`; geoapi, processes and core read them from the same place), the address of the web app for printing and, with login on, the Keycloak client the print worker signs in with. Windmill passes only the variables listed in `WHITELIST_ENVS` on to the jobs; the chart builds that list, including every variable you add to a worker's `config` or `extraEnv`.
+- The chart gives these workers what GOAT's jobs need: the GOAT database, the S3 store, the catalog bucket (which also holds the OpenStreetMap and Overture mirror), where the copies of added catalog datasets and their tiles are stored on the shared data volume (`catalog.layersDir`, `catalog.tilesDir`; geoapi, processes and core read them from the same place), the address of the web app for printing and, with login on, the Keycloak client the print worker signs in with. Windmill passes only the variables listed in `WHITELIST_ENVS` on to the jobs; the chart builds that list, including every variable you add to a worker's `config` or `extraEnv`.
 - Enable `windmill.scriptSync.enabled` to register GOAT's analysis tools and tasks in Windmill after the install. It is off by default.
 - Each Windmill container holds at most a few connections to its database: the server 10 and every worker 3 (`windmill.server.config.DATABASE_CONNECTIONS`, `windmill.workers.databaseConnections`). Upgrading to a GOAT release with a newer Windmill migrates the Windmill database on start, one way: back it up first.
 
 ### Storage for several nodes {#rwx}
 
 The shared data volume defaults to `ReadWriteOnce`, which works on a single node. On a cluster with several nodes, set `data.accessMode: ReadWriteMany` with an RWX-capable storage class (`data.storageClassName`), or supply your own claim with `data.existingClaim`.
+
+If that volume is NFS and you run more than one `geoapi` pod, mount it with the option `lookupcache=positive` (`mountOptions` on the storage class or the persistent volume). NFS otherwise remembers for up to a minute that a file did not exist, so one pod can miss a file another has just written, and the Explorer fails now and then when a bundle is first opened.
 
 geoapi, processes and the Windmill workers all write to this volume, and a fresh RWX volume belongs to root, so they run as root. If your cluster does not allow that, see the chart README ("The shared data volume").
 

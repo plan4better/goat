@@ -25,7 +25,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDispatch, useSelector } from "react-redux";
 
-import { ICON_NAME } from "@p4b/ui/components/Icon";
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { type TOOL_ICON_NAME, toolIconMap } from "@p4b/ui/assets/svg/ToolIcons";
 
 import { type JobStatusType, dismissJob, useJobs } from "@/lib/api/processes";
@@ -34,6 +34,7 @@ import { selectNodes } from "@/lib/store/workflow/selectors";
 import { selectNode } from "@/lib/store/workflow/slice";
 import type { ProjectLayer } from "@/lib/validations/project";
 import type { WorkflowConfig, WorkflowNode } from "@/lib/validations/workflow";
+import { INTEGRATE_PROCESS_ID } from "@/lib/workflows/datasetConnection";
 
 import type { SelectorItem } from "@/types/map/common";
 import type { ToolCategory } from "@/types/map/ogc-processes";
@@ -41,6 +42,7 @@ import type { ToolCategory } from "@/types/map/ogc-processes";
 import { useCategorizedProcesses } from "@/hooks/map/useOgcProcesses";
 
 import SettingsGroupHeader from "@/components/builder/widgets/common/SettingsGroupHeader";
+import { addLayerSource } from "@/components/addLayer/sources";
 import BetaSectionDivider from "@/components/common/BetaSectionDivider";
 import {
   SIDE_PANEL_WIDTH,
@@ -94,6 +96,8 @@ const CATEGORY_CONFIG: Record<ToolCategory, { name: string; icon: ICON_NAME; ord
 interface ToolItem {
   id: string;
   title: string;
+  /** Already translated, for an entry whose id is not a translation key. */
+  label?: string;
   description?: string;
   beta?: boolean;
 }
@@ -149,14 +153,17 @@ const DraggableToolCard: React.FC<DraggableToolCardProps> = ({ tool, onDragStart
           alignItems: "center",
           justifyContent: "center",
         }}>
-        {ToolIconComponent ? <ToolIconComponent sx={{ fontSize: 44 }} /> : <SettingsIcon sx={{ fontSize: 44, color: "text.secondary" }} />}
+        {/* Integrate dataset looks like Add layer › Connect service, which it opens. */}
+        {tool.id === INTEGRATE_PROCESS_ID ? (
+          <Icon iconName={addLayerSource("connect").icon} sx={{ fontSize: 44, color: "text.secondary" }} />
+        ) : ToolIconComponent ? <ToolIconComponent sx={{ fontSize: 44 }} /> : <SettingsIcon sx={{ fontSize: 44, color: "text.secondary" }} />}
       </Card>
       <Typography
         variant="caption"
         fontWeight="bold"
         color={isDragging ? "primary.main" : "text.secondary"}
         sx={{ textAlign: "center", lineHeight: 1.2, wordBreak: "break-word", whiteSpace: "normal" }}>
-        {t(tool.id, { defaultValue: tool.title })}
+        {tool.label ?? t(tool.id, { defaultValue: tool.title })}
       </Typography>
     </Stack>
   );
@@ -178,6 +185,8 @@ const ToolsTabContent: React.FC<ToolsTabContentProps> = ({ onDragStart }) => {
   const dataIoItems: ToolItem[] = useMemo(
     () => [
       { id: "add_dataset", title: t("add_dataset") },
+      // A tool node, offered here because it is a source: the fetch tool is hidden from the toolbox.
+      { id: INTEGRATE_PROCESS_ID, title: t("fetch_data"), label: t("fetch_data") },
       { id: "export_dataset", title: t("export_dataset") },
     ],
     [t]
@@ -220,7 +229,7 @@ const ToolsTabContent: React.FC<ToolsTabContentProps> = ({ onDragStart }) => {
     (tool: ToolItem) => {
       if (!searchTerm) return true;
       const lower = searchTerm.toLowerCase();
-      const translatedName = t(tool.id, { defaultValue: tool.title }).toLowerCase();
+      const translatedName = (tool.label ?? t(tool.id, { defaultValue: tool.title })).toLowerCase();
       return translatedName.includes(lower) || tool.id.toLowerCase().includes(lower);
     },
     [searchTerm, t]
@@ -310,6 +319,7 @@ const ToolsTabContent: React.FC<ToolsTabContentProps> = ({ onDragStart }) => {
                       tool={item}
                       onDragStart={(event) => {
                         if (item.id === "add_dataset") handleDatasetDragStart(event);
+                        else if (item.id === INTEGRATE_PROCESS_ID) handleToolDragStart(event, item.id);
                         else if (item.id === "export_dataset") handleExportDragStart(event);
                       }}
                     />

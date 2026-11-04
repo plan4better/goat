@@ -23,7 +23,11 @@ from pydantic import BaseModel
 from goatlib.bundles.artifacts.build_mixin import BundleArtifactBuildMixin
 from goatlib.bundles.artifacts.storage import delete_bundle_artifacts
 from goatlib.bundles.importers import get_importer
-from goatlib.bundles.importers.base import ValidationResult, bound_duckdb
+from goatlib.bundles.importers.base import (
+    ExtractedLayer,
+    ValidationResult,
+    bound_duckdb,
+)
 from goatlib.io.converter import IOConverter
 from goatlib.models.bundle import (
     BundleStatus,
@@ -223,14 +227,17 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         user_id: str,
         folder_id: str,
         bundle_id: str,
+        layers: Optional[List[ExtractedLayer]] = None,
     ) -> List[ImportedLayer]:
         """Extract, ingest to DuckLake, and link each member layer. Assumes the
         bundle row already exists (FK target for the membership links).
 
+        ``layers`` are members a job has already written itself (a cut of GOAT's
+        own network); then nothing is extracted from ``source_path``.
+
         Member creation isn't a single transaction (DuckLake tables + separate
         Postgres rows), so on any failure we roll back the layers created so far
         to avoid orphaned tables/rows, then re-raise."""
-        importer = get_importer(bundle_type)
         converter = IOConverter()
         imported: List[ImportedLayer] = []
         created_layer_ids: List[str] = []
@@ -244,7 +251,8 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
             # worker with everything else the import holds, so both are
             # bounded and spill into the workdir.
             bound_duckdb(converter.con, workdir)
-            layers = importer.extract_layers(source_path, workdir)
+            if layers is None:
+                layers = get_importer(bundle_type).extract_layers(source_path, workdir)
             stages.done("Extract", f"{len(layers)} layer(s)")
             try:
                 for i, extracted in enumerate(layers):
@@ -451,6 +459,87 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
             project_id,
             len(imported),
         )
+
+    async def create_bundle_from_layers(
+        self,
+        db: ToolDatabaseService,
+        *,
+        bundle_type: "BundleTypeName | str",
+        name: str,
+        dataset_metadata: Dict[str, Any],
+        layers: List[ExtractedLayer],
+        user_id: str,
+        folder_id: str,
+        project_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """A bundle from member layers a job wrote itself (a cut of GOAT's own
+        networks): created, ingested and built as an import is, then added to
+        ``project_id``. The layers' files must exist until this returns.
+
+        A failure rolls the bundle back. Adding it to the project is
+        best-effort: the bundle is complete without it."""
+        bundle_id = str(uuid4())
+        await db.create_bundle(
+            bundle_id=bundle_id,
+            user_id=user_id,
+            folder_id=folder_id,
+            name=name,
+            bundle_type=bundle_type,
+            status=BundleStatus.processing,
+            dataset_metadata=dataset_metadata,
+        )
+        imported: List[ImportedLayer] = []
+        try:
+            # The import's own ingestion: it drops what a failing layer
+            # created, bounds DuckDB and fills computed columns.
+            imported = await self._ingest_layers(
+                db,
+                source_path="",
+                bundle_type=bundle_type,
+                user_id=user_id,
+                folder_id=folder_id,
+                bundle_id=bundle_id,
+                layers=layers,
+            )
+            await self.build_and_store_artifacts(
+                db,
+                bundle_id=bundle_id,
+                bundle_type=bundle_type,
+                source_path="",
+                user_id=user_id,
+                members=_as_members(imported),
+            )
+            await db.update_bundle_status(
+                bundle_id=bundle_id, status=BundleStatus.ready
+            )
+        except Exception:
+            await self._rollback_bundle(
+                db, user_id=user_id, bundle_id=bundle_id, imported=imported
+            )
+            raise
+
+        type_value = getattr(bundle_type, "value", bundle_type)
+        if project_id:
+            try:
+                await self._add_bundle_to_project(
+                    db,
+                    project_id=project_id,
+                    bundle_id=bundle_id,
+                    bundle_type=type_value,
+                    imported=imported,
+                )
+            except Exception as e:  # noqa: BLE001 - the bundle matters more
+                logger.warning(
+                    "Bundle %s created but not added to project %s: %s",
+                    bundle_id,
+                    project_id,
+                    e,
+                )
+        return {
+            "bundle_id": bundle_id,
+            "bundle_type": type_value,
+            "layers": [layer.model_dump() for layer in imported],
+        }
 
     async def ingest_into_bundle(
         self,

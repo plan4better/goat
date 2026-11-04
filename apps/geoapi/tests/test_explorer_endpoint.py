@@ -241,3 +241,30 @@ def test_an_older_schemas_snapshot_goes_once_superseded(
     os.utime(tmp_path / BUNDLE / f"r3.s{S - 1}", (old, old))
     explorer._prune(BUNDLE, 3)
     assert [p.name for p in (tmp_path / BUNDLE).iterdir()] == [f"r3.s{S}"]
+
+
+def test_a_folder_the_filesystem_half_reports_is_still_used(tmp_path: Path) -> None:
+    """A shared volume (NFS) can say a folder exists and, a moment later,
+    that it is not there: mkdir's own check then raises "File exists". The
+    folder is there, so the build carries on."""
+    from geoapi.routers import explorer
+
+    target = tmp_path / "bundle"
+    target.mkdir()
+    real = Path.is_dir
+
+    def stale(self: Path) -> bool:
+        return False if self == target else real(self)
+
+    with patch.object(Path, "is_dir", stale):
+        with pytest.raises(FileExistsError):
+            target.mkdir(parents=True, exist_ok=True)
+        explorer._ensure_dir(target)
+    assert target.is_dir()
+
+
+def test_a_folder_is_made_where_none_is(tmp_path: Path) -> None:
+    from geoapi.routers import explorer
+
+    explorer._ensure_dir(tmp_path / "a" / "b")
+    assert (tmp_path / "a" / "b").is_dir()

@@ -88,6 +88,7 @@ from goatlib.utils.layer import (
     resolve_layer_schema,
     table_path_parts,
 )
+from goatlib.utils.shared_disk import wait_for
 
 logger = logging.getLogger(__name__)
 
@@ -793,8 +794,42 @@ class SimpleToolRunner:
             return layer_table_path(layer_id)
 
         if schema is None:
+            # No DuckLake table: a catalog layer whose copy another node has
+            # just written and this one cannot see yet (goatlib.utils
+            # .shared_disk). Waited for only when the layer row says the copy
+            # is ready, so a layer that is really missing fails at once.
+            if self._catalog_copy_ready(layer_id):
+                found = wait_for(lambda: _catalog_layer_parquet(layer_id))
+                if found is None:
+                    raise ValueError(
+                        f"The catalog copy of layer {layer_id} cannot be read on "
+                        "this server yet. Please try again in a minute."
+                    )
+                return self._ensure_catalog_view(layer_id, found)
             return layer_table_path(layer_id)
         return f"lake.{schema}.{layer_id_to_table_name(layer_id)}"
+
+    def _catalog_copy_ready(self: Self, layer_id: str) -> bool:
+        """Whether the layer row says its catalog copy has been written."""
+        if self.settings is None:
+            return False
+
+        async def status() -> str | None:
+            pool = await self.get_postgres_pool()
+            try:
+                return await pool.fetchval(
+                    "SELECT other_properties -> 'catalog_materialize' ->> 'status' "
+                    f"FROM {self.settings.customer_schema}.layer WHERE id = $1",
+                    uuid_module.UUID(layer_id),
+                )
+            finally:
+                await pool.close()
+
+        try:
+            return _get_or_create_event_loop().run_until_complete(status()) == "ready"
+        except Exception as e:
+            logger.warning("Could not read the catalog status of %s: %s", layer_id, e)
+            return False
 
     def _ensure_catalog_view(self: Self, layer_id: str, path: "Path") -> str:
         """A rowid-bearing view over a catalog layer's file, on this runner's
@@ -1288,22 +1323,22 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
 
         base_path = temp_step_folder(user_id, workflow_id, node_id)
 
-        # Find the parquet file
         if temp_file_uuid:
             # Specific file requested
-            temp_parquet_path = base_path / f"t_{temp_file_uuid}.parquet"
-        else:
-            # Find any parquet file (should only be one per node)
-            parquet_files = list(base_path.glob("t_*.parquet"))
-            if not parquet_files:
-                raise FileNotFoundError(
-                    f"The result of step {node_id} was not found. "
-                    f"The upstream tool may not have completed successfully."
-                )
-            # Use the first (and typically only) parquet file
-            temp_parquet_path = parquet_files[0]
+            requested = base_path / f"t_{temp_file_uuid}.parquet"
 
-        if not temp_parquet_path.exists():
+            def find() -> Path | None:
+                return requested if requested.exists() else None
+
+        else:
+            # Any parquet file (there is one per node)
+            def find() -> Path | None:
+                return next(iter(base_path.glob("t_*.parquet")), None)
+
+        # The step that wrote it may have run on another node
+        # (goatlib.utils.shared_disk).
+        temp_parquet_path = wait_for(find)
+        if temp_parquet_path is None:
             raise FileNotFoundError(
                 f"The result of step {node_id} was not found. "
                 f"The upstream tool may not have completed successfully."

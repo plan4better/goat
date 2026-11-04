@@ -113,10 +113,8 @@ const AddLayerMenu = ({
                 px: 4,
                 py: 1,
                 lineHeight: 2,
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 700,
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
                 color: theme.palette.text.secondary,
                 backgroundColor: "transparent",
               }}>

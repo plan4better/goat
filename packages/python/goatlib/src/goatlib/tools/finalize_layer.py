@@ -65,6 +65,7 @@ from goatlib.utils.layer import (
     layer_schema_name,
     table_path_parts,
 )
+from goatlib.utils.shared_disk import wait_for
 
 logger = logging.getLogger(__name__)
 
@@ -179,12 +180,17 @@ class FinalizeLayerRunner(
         base_path = self.get_temp_base_path(user_id, workflow_id, node_id)
         metadata_path = base_path / "metadata.json"
 
-        parquet_files = list(base_path.glob("t_*.parquet"))
-        if not parquet_files:
+        def newest() -> Path | None:
+            files = list(base_path.glob("t_*.parquet"))
+            return max(files, key=lambda p: p.stat().st_mtime) if files else None
+
+        # The step that wrote it may have run on another node
+        # (goatlib.utils.shared_disk).
+        parquet_path = wait_for(newest)
+        if parquet_path is None:
             raise FileNotFoundError(
                 f"Temp layer not found: workflow={workflow_id}, node={node_id}"
             )
-        parquet_path = max(parquet_files, key=lambda p: p.stat().st_mtime)
 
         metadata: dict = {}
         if metadata_path.exists():
@@ -527,6 +533,18 @@ class FinalizeLayerRunner(
         )
         return link_id
 
+    async def _record_provenance(self, layer_id: str, provenance: dict) -> None:
+        from goatlib.tools.db import ToolDatabaseService
+
+        assert self.settings is not None
+        pool = await self.get_postgres_pool()
+        try:
+            await ToolDatabaseService(
+                pool, schema=self.settings.customer_schema
+            ).record_provenance(layer_id, provenance)
+        finally:
+            await pool.close()
+
     def process(self, params: FinalizeLayerParams) -> str:
         """Finalize a temporary layer to permanent storage.
 
@@ -559,6 +577,12 @@ class FinalizeLayerRunner(
                 params=params,
                 parquet_path=parquet_path,
                 metadata=metadata,
+            )
+        if metadata.get("provenance"):
+            # Where the step's data came from (fetch_data: its licence), which
+            # has to travel with the layer.
+            loop.run_until_complete(
+                self._record_provenance(layer_id, metadata["provenance"])
             )
 
         if params.delete_temp:

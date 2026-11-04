@@ -1100,6 +1100,24 @@ class ToolDatabaseService:
             int(group_id),
         )
 
+    async def record_provenance(self: Self, layer_id: str, provenance: dict) -> None:
+        """Write where a layer's data came from under
+        ``other_properties.provenance``, on the layer and its project entries.
+
+        A layer has no metadata column of its own (only a bundle does), and
+        ``catalog_item`` means a link to a catalog record, which a copy drops:
+        this has to survive a copy. A project entry keeps its own copy of the
+        layer's other_properties, taken when it was made, so it gets it too.
+        """
+        for table, column in (("layer", "id"), ("layer_project", "layer_id")):
+            await self.pool.execute(
+                f"UPDATE {self.schema}.{table} "
+                "SET other_properties = COALESCE(other_properties, '{}'::jsonb) "
+                f"|| jsonb_build_object('provenance', $1::jsonb) WHERE {column} = $2",
+                json.dumps(provenance),
+                uuid_module.UUID(layer_id),
+            )
+
     async def delete_layer(self: Self, layer_id: str) -> None:
         """Delete a layer record from customer.layer.
 

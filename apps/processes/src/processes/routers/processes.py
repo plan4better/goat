@@ -62,6 +62,7 @@ from processes.services.access import (
 )
 from processes.services.analytics_registry import (
     LayerSearchProcessInput,
+    MirrorValuesProcessInput,
     StyleCheckProcessInput,
     analytics_registry,
 )
@@ -101,6 +102,20 @@ _analytics_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="anal
 # unauthenticated search fan-outs can never starve authenticated analytics.
 _search_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="layer-search")
 
+# Dedicated pool for the mirror's key and value lists (OSM tags, Overture
+# attributes, any source the mirror holds), for the same reason: one reads up to
+# a million features from remote storage, and two of them would otherwise hold
+# half the analytics slots while a user pans the map.
+_mirror_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mirror")
+
+# The size check answers whether an area can be fetched at all and is asked on every
+# map move; behind the slower key and value lists it waited for seconds, so it has
+# threads of its own: two, so one slow area does not hold everyone else's check
+# (a timed-out query is interrupted, see mirror_query).
+_mirror_size_executor = ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix="mirror-size"
+)
+
 # Non-standard exception type URIs (same namespace convention as the OGC-defined
 # ones) for guard responses that OGC API - Processes doesn't itself define.
 OGC_EXCEPTION_NOT_AUTHORIZED = (
@@ -138,14 +153,17 @@ PUBLIC_ALLOWED_PROCESSES = frozenset(
 )
 
 # Every sync-analytics process handled inline below (the public subset above
-# plus the two authenticated-only SQL helpers and style-check, which core calls
-# with the user's token when a style is saved or read; public maps never
-# compute). Membership here routes a request into `_execute_analytics_sync`;
-# `PUBLIC_ALLOWED_PROCESSES` then decides whether it may run without a caller.
+# plus the two authenticated-only SQL helpers, style-check, which core calls
+# with the user's token when a style is saved or read, and mirror-values;
+# public maps never compute). Membership here routes a request into
+# `_execute_analytics_sync`; `PUBLIC_ALLOWED_PROCESSES` then decides whether
+# it may run without a caller.
 SYNC_ANALYTICS_PROCESSES = PUBLIC_ALLOWED_PROCESSES | {
     "preview-sql",
     "validate-sql",
     "style-check",
+    # Reads the mirror for an area the caller draws, so it is sync but not public.
+    "mirror-values",
 }
 
 
@@ -268,6 +286,11 @@ def _execute_analytics_sync(
                 filter_expr=inputs.get("filter"),
                 limit=inputs.get("limit", 100),
                 offset=inputs.get("offset", 0),
+            )
+        elif process_id == "mirror-values":
+            # Checked against what it declares: a ValidationError is a 400.
+            return analytics_service.mirror_values(
+                **MirrorValuesProcessInput.model_validate(inputs).model_dump()
             )
         elif process_id == "class-breaks":
             return analytics_service.class_breaks(
@@ -753,7 +776,21 @@ async def execute_process(
             # Apply timeout to prevent runaway queries
             # layer-search runs on its own pool so it can't starve authenticated
             # analytics (see _search_executor).
-            executor = _search_executor if is_search else _analytics_executor
+            # The size check gets its own threads only for the area alone: with
+            # filters it counts their matches, a scan as long as a list, which
+            # would hold up the plain checks every map move asks for.
+            inputs = execute_request.inputs or {}
+            executor = (
+                _search_executor
+                if is_search
+                else (
+                    _mirror_size_executor
+                    if inputs.get("size_only") and not inputs.get("tag_filters")
+                    else _mirror_executor
+                )
+                if process_id == "mirror-values"
+                else _analytics_executor
+            )
             loop = asyncio.get_event_loop()
             try:
                 result = await asyncio.wait_for(

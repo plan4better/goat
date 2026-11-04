@@ -58,6 +58,97 @@ class UniqueValuesProcessInput(UniqueValuesInput):
     collection: str = Field(description="Layer ID (UUID)")
 
 
+class MirrorValuesProcessInput(BaseModel):
+    """Which attributes, or which values of one attribute, occur in the mirror for an area."""
+
+    area: dict = Field(description="GeoJSON polygon the question is about")
+    source: str = Field(
+        "osm",
+        description="Which source: osm, overture, street_network or pt_network (the networks answer their size only)",
+    )
+    feature_type: str = Field(
+        "points", description="OSM layer, or Overture type when source is overture"
+    )
+    key: str | None = Field(
+        None, description="Attribute whose values to list; omitted lists the attributes"
+    )
+    limit: int = Field(100, ge=1, le=1000, description="Maximum entries")
+    quick: bool = Field(
+        False, description="Read a small sample first, without counts, for a fast list"
+    )
+    size_only: bool = Field(
+        False, description="Only the estimate of features in the area, no list"
+    )
+    columns_only: bool = Field(
+        False, description="Only the columns a fetch would write, no list"
+    )
+    sample_only: bool = Field(
+        False,
+        description="A few rows a fetch would write (limit up to 50), no list",
+    )
+    tag_filters: list[dict] | None = Field(
+        None,
+        description="With sample_only or size_only: the fetch's tag or attribute "
+        "filters; with size_only, chosen values the mirror counts can make a large "
+        "area fit",
+    )
+    match_mode: Literal["all", "any"] = Field(
+        "all", description="With sample_only or size_only: all or any of the filters"
+    )
+    where: str | None = Field(
+        None, max_length=4000, description="With sample_only: a SQL condition instead"
+    )
+
+
+class MirrorValue(BaseModel):
+    value: str
+    count: int
+
+
+class MirrorColumn(BaseModel):
+    name: str
+    type: str
+
+
+class MirrorValuesResult(BaseModel):
+    key: str | None = None
+    total: int = 0
+    sampled: bool = Field(
+        False, description="Counts are of a capped sample of the area, not totals"
+    )
+    complete: bool = Field(
+        False, description="A quick read that saw the whole area: no full read needed"
+    )
+    estimate: int | None = Field(
+        None, description="Features in the area, guessed from the mirror's index"
+    )
+    too_large: bool = Field(
+        False, description="More in the area than one fetch reads: a fetch is refused"
+    )
+    matches: int | None = Field(
+        None,
+        description="With size_only and filters: the features matching them in the area",
+    )
+    matches_bound: bool = Field(
+        False,
+        description="matches is an upper bound from the mirror's counts, not a count",
+    )
+    filters_can_fit: bool = Field(
+        True,
+        description="With size_only: filters with values can still make the area fit",
+    )
+    columns: list[MirrorColumn] | None = Field(
+        None, description="The columns a fetch would write (columns_only)"
+    )
+    geometry_type: str | None = Field(
+        None, description="point, line or polygon (columns_only, sample_only)"
+    )
+    rows: list[list[str]] | None = Field(
+        None, description="Sample rows, as text, in the order of columns (sample_only)"
+    )
+    values: list[MirrorValue] = Field(default_factory=list)
+
+
 class ClassBreaksProcessInput(ClassBreaksInput):
     """Class breaks input with collection (layer ID)."""
 
@@ -179,6 +270,17 @@ ANALYTICS_DEFINITIONS: dict[str, dict[str, Any]] = {
         "output_model": UniqueValuesResult,
         "keywords": ["analytics", "statistics", "unique", "values"],
         "tool_key": "unique_values",
+        "hidden": True,
+    },
+    "mirror-values": {
+        "title": "Mirror Values",
+        "description": (
+            "Attributes, or the values of one attribute, in the mirror for an area"
+        ),
+        "input_model": MirrorValuesProcessInput,
+        "output_model": MirrorValuesResult,
+        "keywords": ["analytics", "osm", "tags", "values"],
+        "tool_key": "mirror_values",
         "hidden": True,
     },
     "class-breaks": {

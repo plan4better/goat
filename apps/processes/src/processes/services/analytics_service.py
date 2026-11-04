@@ -57,6 +57,7 @@ from processes.dependencies import (
 )
 from processes.ducklake import (
     ducklake_manager,
+    mirror_query,
     preview_ducklake_manager,
     search_ducklake_manager,
 )
@@ -309,6 +310,50 @@ class AnalyticsService:
             )
 
         return result.model_dump()
+
+    def mirror_values(
+        self,
+        area: dict,
+        feature_type: str = "points",
+        key: str | None = None,
+        limit: int = 100,
+        source: str = "osm",
+        quick: bool = False,
+        size_only: bool = False,
+        columns_only: bool = False,
+        sample_only: bool = False,
+        tag_filters: list[dict] | None = None,
+        match_mode: str = "all",
+        where: str | None = None,
+    ) -> dict[str, Any]:
+        """Attributes, or one attribute's values, in the mirror for an area."""
+        from goatlib.io.fetch import pt_network, street_network
+        from goatlib.io.fetch.mirror.values import mirror_values
+
+        networks = {"street_network": street_network, "pt_network": pt_network}
+        if source in networks:
+            if not size_only:
+                raise ValueError(
+                    "A network answers only its size: it has no attributes or columns to list."
+                )
+            with mirror_query() as con:
+                return networks[source].size(con, area)
+        with mirror_query() as con:
+            return mirror_values(
+                con,
+                area=area,
+                feature_type=feature_type,
+                key=key,
+                limit=limit,
+                source_name=source,
+                quick=quick,
+                size_only=size_only,
+                columns_only=columns_only,
+                sample_only=sample_only,
+                tag_filters=tag_filters,
+                match_mode=match_mode,
+                where=where,
+            )
 
     def class_breaks(
         self,
