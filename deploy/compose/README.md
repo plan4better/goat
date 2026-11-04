@@ -158,6 +158,10 @@ full set is tens of GB, so choose the region you work in.
 ./base-data.sh --bbox 11.3,48.0,11.8,48.3 --weekly on # same, and repeat it every week
 ```
 
+The public-transport data also holds the network as tables, which the
+"Public transport network" source in Add layer cuts to an area; until they are
+installed, that source asks for a base data update.
+
 The data comes from `GOAT_BASE_DATA_URL` (Plan4Better's public base-data
 server by default; point it at an internal mirror if needed).
 
