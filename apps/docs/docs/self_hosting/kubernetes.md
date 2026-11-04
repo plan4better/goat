@@ -103,6 +103,8 @@ The default Windmill worker only handles small jobs. **Analysis tools, dataset i
 
 The shared data volume defaults to `ReadWriteOnce`, which works on a single node. On a cluster with several nodes, set `data.accessMode: ReadWriteMany` with an RWX-capable storage class (`data.storageClassName`), or supply your own claim with `data.existingClaim`.
 
+If that volume is NFS and you run more than one `geoapi` pod, mount it with the option `lookupcache=positive` (`mountOptions` on the storage class or the persistent volume). NFS otherwise remembers for up to a minute that a file did not exist, so one pod can miss a file another has just written, and the Explorer fails now and then when a bundle is first opened.
+
 geoapi, processes and the Windmill workers all write to this volume, and a fresh RWX volume belongs to root, so they run as root. If your cluster does not allow that, see the chart README ("The shared data volume").
 
 ## Further reading {#further-reading}

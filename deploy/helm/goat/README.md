@@ -755,6 +755,13 @@ keeps root.
 > `ReadWriteOnce` and more than one component would mount the shared volume —
 > it cannot detect your node count, so review it on every install.
 
+> **On NFS, mount the volume with `lookupcache=positive`.** NFS caches a
+> lookup that found nothing for up to a minute, so with more than one `geoapi`
+> pod a pod can miss a file another pod has just written. The Explorer then
+> fails now and then on a bundle's first opening, with a 404 for one of its
+> snapshot files. `lookupcache=positive` (in `mountOptions` on the StorageClass
+> or the PV) keeps caching files that exist and stops caching ones that do not.
+
 
 ```yaml
 data:
