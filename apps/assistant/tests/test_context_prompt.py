@@ -18,6 +18,7 @@ from assistant.context import (
 from assistant.prompt import (
     ANSWER_IN_MESSAGE_LANGUAGE,
     INSTRUCTIONS,
+    RESTRICTED_POLICY,
     SELECTION_LABEL,
     SKILLS_INDEX,
     SOURCES_LABEL,
@@ -125,6 +126,17 @@ def _state(note: str) -> dict[str, object]:
     [line] = [line for line in note.splitlines() if line.startswith(STATE_LABEL)]
     state: dict[str, object] = json.loads(line[len(STATE_LABEL) :])
     return state
+
+
+def test_the_note_says_what_restricted_keeps_back() -> None:
+    """Known before the answer plans: a card then offers no choice the tools
+    would refuse. Standard sends what the user can see and needs no line."""
+    page = parse_context({"surface": "catalog"})
+    assert RESTRICTED_POLICY in render_note(page, None, "en", data_policy="restricted")
+    assert RESTRICTED_POLICY not in render_note(
+        page, None, "en", data_policy="standard"
+    )
+    assert RESTRICTED_POLICY not in render_note(page, None, "en")
 
 
 def test_the_note_carries_the_language_and_the_page() -> None:
