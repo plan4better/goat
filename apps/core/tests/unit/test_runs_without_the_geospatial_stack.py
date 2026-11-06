@@ -124,11 +124,11 @@ def test_the_dataset_endpoints_import(
     """An upload's file name is checked against `goatlib.io.formats`, which
     core's image loads from goatlib's base install; the converters stay out."""
     for name in list(sys.modules):
-        if name.startswith("goatlib.io"):
+        if name.split(".")[:2] == ["goatlib", "io"]:
             monkeypatch.delitem(sys.modules, name)
     importlib.reload(importlib.import_module("core.schemas.datasets"))
     module = importlib.reload(importlib.import_module("core.endpoints.v2.datasets"))
 
     assert hasattr(module, "request_upload")
-    for heavy in ("goatlib.io.converter", "goatlib.io.ingest", "goatlib.io.discover"):
-        assert heavy not in sys.modules
+    converters = {"goatlib.io.converter", "goatlib.io.ingest", "goatlib.io.discover"}
+    assert converters.isdisjoint(sys.modules)
