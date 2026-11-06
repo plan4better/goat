@@ -29,6 +29,7 @@ from goatlib.bundles.importers.base import (
     bound_duckdb,
 )
 from goatlib.io.converter import IOConverter
+from goatlib.io.sql import sql_identifier
 from goatlib.models.bundle import (
     BundleStatus,
     BundleTypeName,
@@ -324,8 +325,8 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                         for column, kind in computed.items():
                             if column not in existing:
                                 self.duckdb_con.execute(
-                                    f'ALTER TABLE {table} ADD COLUMN "{column}" '
-                                    f"{kind.duckdb_type}"
+                                    f"ALTER TABLE {table} ADD COLUMN "
+                                    f"{sql_identifier(column)} {kind.duckdb_type}"
                                 )
                                 unfilled = True
                             else:
@@ -334,12 +335,12 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                                 unfilled = bool(
                                     self.duckdb_con.execute(
                                         f"SELECT 1 FROM {table} "
-                                        f'WHERE "{column}" IS NULL LIMIT 1'
+                                        f"WHERE {sql_identifier(column)} IS NULL LIMIT 1"
                                     ).fetchone()
                                 )
                             if unfilled:
                                 self.duckdb_con.execute(
-                                    f'UPDATE {table} SET "{column}" = '
+                                    f"UPDATE {table} SET {sql_identifier(column)} = "
                                     f"{kind.compute_sql()}"
                                 )
 

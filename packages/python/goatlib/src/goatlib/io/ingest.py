@@ -4,7 +4,13 @@ from pathlib import Path
 
 from goatlib.io.converter import IOConverter
 from goatlib.io.discover import discover_inputs
-from goatlib.io.formats import RASTER_EXTS, TABULAR_EXTS, VECTOR_EXTS, FileFormat
+from goatlib.io.formats import (
+    RASTER_EXTS,
+    TABULAR_EXTS,
+    VECTOR_EXTS,
+    FileFormat,
+    refuse_unsupported_format,
+)
 from goatlib.models.io import (
     ConversionFailure,
     ConversionReport,
@@ -235,22 +241,9 @@ def _convert_single_item(
     Convert a single discovered item to the appropriate format.
     """
     base_path = item.split("::")[0]
+    refuse_unsupported_format(base_path)
     suffix = Path(base_path).suffix.lower()
     stem = Path(base_path).stem
-
-    # Handle WFS XML datasource
-    if _is_wfs_xml_datasource(base_path):
-        logger.info("Processing WFS XML datasource: %s", base_path)
-        out = dest_dir / f"{stem}{FileFormat.PARQUET.value}"
-        meta = converter.to_parquet(
-            base_path,
-            out,
-            geometry_col=geometry_col,
-            target_crs=target_crs,
-            has_header=has_header,
-            sheet_name=sheet_name,
-        )
-        return out, meta
 
     # Handle raster files
     if suffix in RASTER_EXTS:
@@ -281,19 +274,6 @@ def _convert_single_item(
     # Unsupported format
     logger.warning("Skipping unsupported file: %s", item)
     raise ValueError(f"Unsupported file format: {suffix}")
-
-
-def _is_wfs_xml_datasource(file_path: str) -> bool:
-    """Check if a file is a WFS XML datasource."""
-    path = Path(file_path)
-    if path.suffix.lower() != ".xml" or not path.exists():
-        return False
-
-    try:
-        head = path.read_text(encoding="utf-8", errors="ignore")[:200]
-        return "<OGRWFSDataSource" in head
-    except Exception:
-        return False
 
 
 def _get_layer_suffix(item: str) -> str:
