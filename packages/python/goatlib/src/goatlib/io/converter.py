@@ -15,9 +15,15 @@ from pyproj import CRS
 from pyproj.exceptions import CRSError
 
 from goatlib.config import settings
-from goatlib.io.formats import ALL_EXTS, FileFormat
+from goatlib.io.formats import (
+    ALL_EXTS,
+    FileFormat,
+    allowed_drivers_sql,
+    refuse_unsupported_format,
+)
 from goatlib.io.parquet import write_optimized_parquet
-from goatlib.io.utils import detect_path_type, download_if_remote
+from goatlib.io.sql import sql_identifier, sql_literal
+from goatlib.io.utils import detect_path_type, download_if_remote, geometry_type_crs
 from goatlib.models.io import DatasetMetadata
 from goatlib.storage.s3_config import apply_duckdb_s3_settings
 
@@ -30,6 +36,18 @@ ColumnMapping = dict[str, str]
 
 _GEOJSON_CRS_KEY = re.compile(r'"crs"\s*:\s*')
 
+# A CRS named by its authority and code (`EPSG:4326`), the form ST_Read gives
+# a layer whose CRS GDAL identified.
+_AUTH_CODE = re.compile(r"^[A-Za-z][\w.]*:[\w.]+$")
+
+# Text tables DuckDB's own CSV reader takes, sniffing the delimiter.
+_TEXT_TABLES = (
+    FileFormat.CSV.value,
+    FileFormat.TSV.value,
+    FileFormat.TXT.value,
+    FileFormat.DSV.value,
+)
+
 
 @dataclass
 class SourceInfo:
@@ -39,7 +57,6 @@ class SourceInfo:
     is_remote: bool
     path_obj: Path | None
     layer_name: str | None = None
-    is_wfs_xml: bool = False
 
 
 @dataclass
@@ -49,7 +66,6 @@ class GeometryInfo:
     has_geometry: bool = False
     source_column: str | None = None
     output_column: str | None = None
-    geom_type: str | None = None
     srid: str | None = None
     is_wkt: bool = False  # True if geometry is WKT text that needs conversion
 
@@ -115,6 +131,9 @@ class IOConverter:
         try:
             # Preprocess source
             src_info = self._preprocess_source(src_path, timeout)
+            # Before any reader is built: GDAL picks a driver by a file's
+            # content, so only a format with a reader here is read at all.
+            refuse_unsupported_format(src_info.path)
             out = Path(out_path)
             out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -179,15 +198,11 @@ class IOConverter:
             else None
         )
 
-        # Detect WFS XML
-        is_wfs_xml = self._is_wfs_xml_datasource(path_obj) if path_obj else False
-
         return SourceInfo(
             path=base_path,
             is_remote=path_obj is None,
             path_obj=path_obj,
             layer_name=layer_name,
-            is_wfs_xml=is_wfs_xml,
         )
 
     def _parse_virtual_dataset(self: Self, path: str) -> tuple[str, str | None]:
@@ -196,17 +211,6 @@ class IOConverter:
             base, layer_name = path.split("::", 1)
             return base, layer_name
         return path, None
-
-    def _is_wfs_xml_datasource(self: Self, path_obj: Path | None) -> bool:
-        """Check if file is a WFS XML datasource."""
-        if not path_obj or path_obj.suffix.lower() != ".xml" or not path_obj.exists():
-            return False
-
-        try:
-            head = path_obj.read_text(encoding="utf-8", errors="ignore")[:200]
-            return "<OGRWFSDataSource" in head
-        except Exception:
-            return False
 
     def _strip_unresolvable_geojson_crs(
         self: Self, src_info: SourceInfo
@@ -275,7 +279,9 @@ class IOConverter:
 
         bbox = self.con.execute(
             f"SELECT ST_XMin(e), ST_YMin(e), ST_XMax(e), ST_YMax(e) "
-            f"FROM (SELECT ST_Extent_Agg(geom) AS e FROM ST_Read('{dest}'))"
+            f"FROM (SELECT ST_Extent_Agg(geom) AS e "
+            f"FROM ST_Read(?, {allowed_drivers_sql(dest.suffix)}))",
+            [str(dest)],
         ).fetchone()
         if bbox and all(v is not None for v in bbox):
             min_x, min_y, max_x, max_y = bbox
@@ -433,7 +439,11 @@ class IOConverter:
         # Build metadata
         logger.debug("Finalizing metadata for: %s", out_path)
         return self._build_parquet_metadata(
-            out_path, src_info.path, geom_info, target_crs
+            out_path,
+            src_info.path,
+            geom_info,
+            target_crs,
+            self._output_geometry_column(geom_info, target_crs, column_mapping),
         )
 
     def _build_source_reader(
@@ -442,24 +452,22 @@ class IOConverter:
         has_header: bool | None = None,
         sheet_name: str | None = None,
     ) -> str:
-        """Build appropriate source reader SQL fragment."""
-        if src_info.is_wfs_xml:
-            return f"ST_Read('{src_info.path}', allowed_drivers=ARRAY['WFS'])"
+        """Build appropriate source reader SQL fragment.
 
-        # CSV/TSV/TXT: use read_csv_auto with header param
-        if src_info.path_obj and src_info.path_obj.suffix.lower() in (
-            FileFormat.TXT.value,
-            FileFormat.CSV.value,
-            FileFormat.TSV.value,
-        ):
+        The fragment goes into several statements, so the path and the layer
+        are written in as literals (`sql_literal`), not bound.
+        """
+        path = sql_literal(src_info.path)
+        # CSV/TSV/TXT/DSV: use read_csv_auto with header param
+        if src_info.path_obj and src_info.path_obj.suffix.lower() in _TEXT_TABLES:
             header_val = "True" if has_header is not False else "False"
-            return f"read_csv_auto('{src_info.path}', header={header_val})"
+            return f"read_csv_auto({path}, header={header_val})"
 
         if (
             src_info.path_obj
             and src_info.path_obj.suffix.lower() == FileFormat.PARQUET.value
         ):
-            return f"read_parquet('{src_info.path}')"
+            return f"read_parquet({path})"
 
         # XLSX or other ST_Read formats
         effective_layer = sheet_name or src_info.layer_name
@@ -471,12 +479,14 @@ class IOConverter:
         if is_xlsx and has_header is not None:
             return self._build_xlsx_reader(src_info.path, effective_layer, has_header)
 
-        # Default ST_Read (no explicit header control)
+        # Default ST_Read (no explicit header control), with the drivers of the
+        # source's format only.
+        drivers = allowed_drivers_sql(Path(src_info.path).suffix)
         if effective_layer:
-            safe_layer = effective_layer.replace("'", "''")
-            reader = f"ST_Read('{src_info.path}', layer='{safe_layer}')"
+            layer = sql_literal(effective_layer)
+            reader = f"ST_Read({path}, layer={layer}, {drivers})"
         else:
-            reader = f"ST_Read('{src_info.path}')"
+            reader = f"ST_Read({path}, {drivers})"
         # XLSX auto-detect path also surfaces GDAL's synthetic OGC_FID column.
         if is_xlsx:
             reader = self._strip_ogc_fid(reader)
@@ -491,10 +501,11 @@ class IOConverter:
         When has_header=True, we read with HEADERS=DISABLE and manually
         extract column names from the first row via SQL.
         """
-        safe_layer = layer.replace("'", "''") if layer else None
-        layer_arg = f", layer='{safe_layer}'" if safe_layer else ""
+        layer_arg = f", layer={sql_literal(layer)}" if layer else ""
+        drivers = allowed_drivers_sql(Path(path).suffix)
         base_read = self._strip_ogc_fid(
-            f"ST_Read('{path}'{layer_arg}, " f"open_options=ARRAY['HEADERS=DISABLE'])"
+            f"ST_Read({sql_literal(path)}{layer_arg}, "
+            f"open_options=ARRAY['HEADERS=DISABLE'], {drivers})"
         )
 
         if not has_header:
@@ -514,7 +525,7 @@ class IOConverter:
         # Build column aliases: "Field1" AS "actual_name"
         # Escape double quotes in cell values to prevent SQL injection.
         aliases = ", ".join(
-            f'"{raw}" AS "{str(val).replace(chr(34), chr(34) + chr(34))}"'
+            f"{sql_identifier(raw)} AS {sql_identifier(val)}"
             for raw, val in zip(raw_cols, first_row)
         )
         return (
@@ -544,7 +555,7 @@ class IOConverter:
         data_cols = [c for c in cols if c.upper() != "OGC_FID"]
         if len(data_cols) == len(cols):
             return read_fragment
-        col_list = ", ".join(f'"{c}"' for c in data_cols)
+        col_list = ", ".join(map(sql_identifier, data_cols))
         return f"(SELECT {col_list} FROM {read_fragment})"
 
     @staticmethod
@@ -554,9 +565,7 @@ class IOConverter:
             return False
         return src_info.path_obj.suffix.lower() in (
             FileFormat.XLSX.value,
-            FileFormat.CSV.value,
-            FileFormat.TSV.value,
-            FileFormat.TXT.value,
+            *_TEXT_TABLES,
         )
 
     def _wrap_strip_empty_rows(self: Self, query: str) -> str:
@@ -576,7 +585,8 @@ class IOConverter:
 
         # Build condition: at least one column must be non-null and non-empty
         conditions = " OR ".join(
-            f'("{col}" IS NOT NULL AND CAST("{col}" AS VARCHAR) != \'\')'
+            f"({sql_identifier(col)} IS NOT NULL "
+            f"AND CAST({sql_identifier(col)} AS VARCHAR) != '')"
             for col in cols
         )
         return f"SELECT * FROM ({query}) WHERE {conditions}"
@@ -609,52 +619,37 @@ class IOConverter:
         if not st_read.startswith("ST_Read("):
             return geom_info
 
+        # From the reader itself, which names the drivers of the source's format
+        # (and its layer). Not ST_Read_Meta: it takes no driver list, so GDAL
+        # would pick a driver by the file's content.
         try:
-            meta_row = self.con.execute(
-                f"SELECT * FROM ST_Read_Meta('{src_info.path}')"
-            ).fetchone()
-            if not meta_row or len(meta_row) < 4:
-                return geom_info
-
-            layer_list = meta_row[3]
-            if not isinstance(layer_list, list) or not layer_list:
-                return geom_info
-
-            # Find target layer
-            target_layer = None
-            if src_info.layer_name:
-                target_layer = next(
-                    (
-                        layer
-                        for layer in layer_list
-                        if layer.get("name") == src_info.layer_name
-                    ),
-                    None,
-                )
-            else:
-                target_layer = layer_list[0]
-
-            if target_layer:
-                geom_fields = target_layer.get("geometry_fields") or []
-                if geom_fields:
-                    gf = geom_fields[0]
-                    geom_info.has_geometry = True
-                    geom_info.source_column = user_geometry_col or gf.get("name")
-                    geom_info.geom_type = gf.get("type")
-
-                    # Determine output column name
-                    if geom_info.source_column:
-                        geom_info.output_column = "geometry"  # Standardize output name
-
-                    # Extract CRS info
-                    crs_info = gf.get("crs") or {}
-                    auth_name = crs_info.get("auth_name")
-                    auth_code = crs_info.get("auth_code")
-                    if auth_name and auth_code:
-                        geom_info.srid = f"{auth_name}:{auth_code}"
-
+            columns = self.con.execute(f"DESCRIBE SELECT * FROM {st_read}").fetchall()
         except Exception as e:
-            logger.debug("ST_Read_Meta parse failed for %s: %s", src_info.path, e)
+            # The conversion reads with this same reader, and GDAL reports a
+            # second failed open of a file only as a recursive call: this is the
+            # error worth showing.
+            raise ValueError(f"Failed to execute query: {e}") from e
+        geom_column = next(
+            (
+                (name, col_type)
+                for name, col_type, *_ in columns
+                if col_type.upper().startswith("GEOMETRY")
+            ),
+            None,
+        )
+        if geom_column is None:
+            return geom_info
+        name, col_type = geom_column
+        geom_info.has_geometry = True
+        geom_info.source_column = user_geometry_col or name
+        geom_info.output_column = "geometry"  # Standardize output name
+
+        # DuckDB carries the layer's CRS in the column type, GEOMETRY('EPSG:4326');
+        # taken when it names an authority and code, as GDAL's metadata did.
+        # The geometry type is read from the output (`_build_parquet_metadata`).
+        crs = geometry_type_crs(col_type)
+        if crs and _AUTH_CODE.match(crs):
+            geom_info.srid = crs
 
         return geom_info
 
@@ -699,8 +694,9 @@ class IOConverter:
 
             # Verify it contains WKT by checking first non-null value
             try:
+                geom = sql_identifier(geom_col)
                 sample = self.con.execute(
-                    f'SELECT "{geom_col}" FROM {st_read} WHERE "{geom_col}" IS NOT NULL LIMIT 1'
+                    f"SELECT {geom} FROM {st_read} WHERE {geom} IS NOT NULL LIMIT 1"
                 ).fetchone()
                 if sample and sample[0]:
                     val = str(sample[0]).strip().upper()
@@ -769,9 +765,9 @@ class IOConverter:
                     ST_XMax(ST_Extent_Agg(geom)) as max_x,
                     ST_YMax(ST_Extent_Agg(geom)) as max_y
                 FROM (
-                    SELECT ST_GeomFromText("{geom_col}") as geom
+                    SELECT ST_GeomFromText({sql_identifier(geom_col)}) as geom
                     FROM {st_read}
-                    WHERE "{geom_col}" IS NOT NULL
+                    WHERE {sql_identifier(geom_col)} IS NOT NULL
                 )
                 """
             ).fetchone()
@@ -819,69 +815,91 @@ class IOConverter:
         column_mapping: ColumnMapping | None,
     ) -> str:
         """Build the conversion query with proper column handling."""
-        # Build select list with column mapping
-        select_list = self._build_select_list(st_read, column_mapping)
+        # The source's columns as selected (renamed by column_mapping), or None
+        # to select them all as they are.
+        select_parts = self._build_select_parts(st_read, column_mapping)
 
         # Handle geometry conversion/transformation if needed
         if geom_info.has_geometry and geom_info.source_column:
-            from_crs = geom_info.srid or "EPSG:4326"
+            from_crs = sql_literal(geom_info.srid or "EPSG:4326")
+            to_crs = sql_literal(target_crs or "")
+            source = sql_identifier(geom_info.source_column)
+            output = sql_identifier(geom_info.output_column)
 
-            # Build geometry expression: WKT text → geometry, optionally transform
+            # Build geometry expression: WKT text → geometry, optionally transform.
+            # always_xy keeps a consistent X,Y (lon,lat) axis order: many WFS
+            # services return lat,lon.
             if geom_info.is_wkt:
-                # Convert WKT text to geometry
-                geom_expr = f'ST_GeomFromText("{geom_info.source_column}")'
-                if target_crs and target_crs != from_crs:
-                    # Use always_xy to ensure consistent X,Y (lon,lat) axis order
-                    geom_expr = f"ST_Transform({geom_expr}, '{from_crs}', '{target_crs}', always_xy := true)"
-                geom_expr = f'{geom_expr} AS "{geom_info.output_column}"'
+                geom_expr = f"ST_GeomFromText({source})"
+                if target_crs and target_crs != (geom_info.srid or "EPSG:4326"):
+                    geom_expr = (
+                        f"ST_Transform({geom_expr}, {from_crs}, {to_crs}, "
+                        f"always_xy := true)"
+                    )
+                geom_expr = f"{geom_expr} AS {output}"
             elif target_crs:
                 # Already geometry, just transform
-                # Use always_xy to ensure consistent X,Y (lon,lat) axis order
-                # Many WFS services return lat,lon order which causes issues
-                geom_expr = f"ST_Transform(\"{geom_info.source_column}\", '{from_crs}', '{target_crs}', always_xy := true) AS \"{geom_info.output_column}\""
+                geom_expr = (
+                    f"ST_Transform({source}, {from_crs}, {to_crs}, "
+                    f"always_xy := true) AS {output}"
+                )
             else:
                 # No transformation needed
                 geom_expr = None
 
             if geom_expr:
-                if select_list == "*":
-                    return f'SELECT * EXCLUDE ("{geom_info.source_column}"), {geom_expr} FROM {st_read}'
-                else:
-                    # Remove original geometry column from select list and add converted one
-                    filtered_cols = [
-                        col
-                        for col in select_list.split(", ")
-                        if f'"{geom_info.source_column}"' not in col
-                    ]
-                    filtered_cols.append(geom_expr)
-                    return f"SELECT {', '.join(filtered_cols)} FROM {st_read}"
+                if select_parts is None:
+                    return f"SELECT * EXCLUDE ({source}), {geom_expr} FROM {st_read}"
+                # Replace the original geometry column with the converted one
+                parts = [
+                    part
+                    for column, part in select_parts
+                    if column != geom_info.source_column
+                ]
+                return f"SELECT {', '.join([*parts, geom_expr])} FROM {st_read}"
 
-        return f"SELECT {select_list} FROM {st_read}"
+        if select_parts is None:
+            return f"SELECT * FROM {st_read}"
+        return f"SELECT {', '.join(part for _, part in select_parts)} FROM {st_read}"
 
-    def _build_select_list(
+    @staticmethod
+    def _output_geometry_column(
+        geom_info: GeometryInfo,
+        target_crs: str | None,
+        column_mapping: ColumnMapping | None,
+    ) -> str | None:
+        """The output column holding the geometry `_build_conversion_query`
+        selected: the converted one, else the source column under its
+        (possibly mapped) name."""
+        if not geom_info.has_geometry or not geom_info.source_column:
+            return None
+        if geom_info.is_wkt or target_crs:
+            return geom_info.output_column
+        return (column_mapping or {}).get(
+            geom_info.source_column, geom_info.source_column
+        )
+
+    def _build_select_parts(
         self: Self, st_read: str, column_mapping: ColumnMapping | None
-    ) -> str:
-        """Build SELECT list with optional column renaming."""
+    ) -> list[tuple[str, str]] | None:
+        """Each source column with its SELECT item, renamed by `column_mapping`;
+        None (select all as they are) without a mapping or columns to read."""
         if not column_mapping:
-            return "*"
+            return None
 
         try:
             col_info = self.con.execute(f"SELECT * FROM {st_read} LIMIT 0").description
-            all_cols = [c[0] for c in col_info]
-
-            select_parts = []
-            for col in all_cols:
-                col_quoted = f'"{col}"'
-                if col in column_mapping:
-                    select_parts.append(f'{col_quoted} AS "{column_mapping[col]}"')
-                else:
-                    select_parts.append(col_quoted)
-
-            return ", ".join(select_parts)
-
         except Exception as e:
             logger.warning("Could not introspect source columns for renaming: %s", e)
-            return "*"
+            return None
+
+        parts = []
+        for col in (c[0] for c in col_info):
+            part = sql_identifier(col)
+            if col in column_mapping:
+                part = f"{part} AS {sql_identifier(column_mapping[col])}"
+            parts.append((col, part))
+        return parts
 
     def _validate_query_returns_data(self: Self, query: str) -> None:
         """Validate that the query returns at least one row."""
@@ -923,11 +941,12 @@ class IOConverter:
         src_path: str,
         geom_info: GeometryInfo,
         target_crs: str | None,
+        geometry_column: str | None,
     ) -> DatasetMetadata:
         """Build metadata for Parquet conversion result."""
         try:
             count = self.con.execute(
-                f"SELECT COUNT(*) FROM read_parquet('{out_path}')"
+                "SELECT COUNT(*) FROM read_parquet(?)", [str(out_path)]
             ).fetchone()[0]
         except Exception:
             count = 0
@@ -937,10 +956,30 @@ class IOConverter:
             source_type="vector" if geom_info.has_geometry else "tabular",
             format="parquet",
             storage_backend=detect_path_type(str(out_path)),
-            geometry_type=geom_info.geom_type,
+            geometry_type=(
+                self._output_geometry_type(out_path, geometry_column)
+                if geometry_column
+                else None
+            ),
             crs=target_crs or geom_info.srid or None,
             feature_count=count,
         )
+
+    def _output_geometry_type(self: Self, out_path: Path, column: str) -> str | None:
+        """The type of the first geometry in `column` of the output, as
+        ST_GeometryType names it (`POINT`, `MULTIPOLYGON`), read from the parquet
+        just written rather than from the source a second time."""
+        try:
+            geom = sql_identifier(column)
+            first = self.con.execute(
+                f"SELECT ST_GeometryType({geom}) FROM read_parquet(?) "
+                f"WHERE {geom} IS NOT NULL LIMIT 1",
+                [str(out_path)],
+            ).fetchone()
+        except Exception as e:
+            logger.debug("Reading the geometry type of %s failed: %s", out_path, e)
+            return None
+        return first[0] if first else None
 
     # ------------------------------------------------------------------
     # Raster → COG TIFF
@@ -960,7 +999,11 @@ class IOConverter:
         out = Path(out_path)
         out.parent.mkdir(parents=True, exist_ok=True)
 
-        ds = gdal.Open(str(src_path))
+        # The GeoTIFF drivers only: as for ST_Read, GDAL would otherwise pick
+        # the driver by the file's content.
+        ds = gdal.OpenEx(
+            str(src_path), gdal.OF_RASTER, allowed_drivers=["GTiff", "COG"]
+        )
         if ds is None:
             raise FileNotFoundError(f"Cannot open raster {src_path}")
 

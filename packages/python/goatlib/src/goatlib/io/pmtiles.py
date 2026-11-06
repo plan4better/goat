@@ -40,6 +40,7 @@ import duckdb
 from pmtiles.reader import MmapSource
 from pmtiles.reader import Reader as PMTilesReader
 
+from goatlib.io.sql import sql_identifier, sql_literal
 from goatlib.utils.layer import layer_id_to_table_name
 
 logger = logging.getLogger(__name__)
@@ -500,10 +501,11 @@ class PMTilesGenerator:
         try:
             # Query the geometry type directly from data
             # (avoids DESCRIBE which can fail with some DuckLake configurations)
+            geom = sql_identifier(geometry_column)
             result = duckdb_con.execute(f"""
-                SELECT DISTINCT ST_GeometryType("{geometry_column}")
+                SELECT DISTINCT ST_GeometryType({geom})
                 FROM {table_name}
-                WHERE "{geometry_column}" IS NOT NULL
+                WHERE {geom} IS NOT NULL
                 LIMIT 1
             """).fetchone()
             if result:
@@ -540,7 +542,7 @@ class PMTilesGenerator:
         try:
             mins = duckdb_con.execute(
                 "SELECT "
-                + ", ".join(f'min("{name}")' for name in ordered)
+                + ", ".join(f"min({sql_identifier(name)})" for name in ordered)
                 + f" FROM {table_name}"
             ).fetchone()
         except Exception as e:  # noqa: BLE001 - a probe, never a reason to fail
@@ -561,7 +563,10 @@ class PMTilesGenerator:
         )
         return (
             "REPLACE ("
-            + ", ".join(f'CAST("{name}" AS VARCHAR) AS "{name}"' for name in affected)
+            + ", ".join(
+                f"CAST({sql_identifier(name)} AS VARCHAR) AS {sql_identifier(name)}"
+                for name in affected
+            )
             + ")"
         )
 
@@ -635,7 +640,8 @@ class PMTilesGenerator:
         # Build exclusion clause for columns that exist
         exclude_clause = ""
         if columns_to_exclude:
-            exclude_clause = f"EXCLUDE({', '.join(sorted(columns_to_exclude))})"
+            excluded = ", ".join(map(sql_identifier, sorted(columns_to_exclude)))
+            exclude_clause = f"EXCLUDE({excluded})"
             logger.debug(f"Excluding columns from GeoJSON export: {columns_to_exclude}")
 
         replace_clause = self._pre_epoch_date_replacements(
@@ -648,7 +654,7 @@ class PMTilesGenerator:
             COPY (
                 SELECT rowid + 1 AS _rowid, * {exclude_clause} {replace_clause}
                 FROM {table_name}
-            ) TO '{output_path}' WITH (FORMAT GDAL, DRIVER 'GeoJSON')
+            ) TO {sql_literal(output_path)} WITH (FORMAT GDAL, DRIVER 'GeoJSON')
         """
 
         logger.debug(f"Exporting to GeoJSON: {sql}")
