@@ -122,11 +122,6 @@ def generate_catalog_pmtiles(
     """
     from goatlib.io.pmtiles import PMTilesGenerator
 
-    # External-file column name → untrusted identifier; escape embedded
-    # quotes so every quoted interpolation (in the generator's SQL, which
-    # quotes it) stays a single identifier.
-    geom_col_sql = geometry_column.replace('"', '""')
-
     relation = catalog_layer_relation(layer_id)
     # A long-lived connection may hold the view from an earlier file
     con.execute(f"DROP VIEW IF EXISTS {relation}")
@@ -138,7 +133,7 @@ def generate_catalog_pmtiles(
         duckdb_con=con,
         table_name=relation,
         layer_id=layer_id,
-        geometry_column=geom_col_sql,
+        geometry_column=geometry_column,
         exclude_columns=["rowid"],
     )
 

@@ -34,6 +34,7 @@ from typing import Any, Self
 import duckdb
 from pydantic import BaseModel, Field
 
+from goatlib.io.sql import sql_identifier, sql_literal
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
 
 logger = logging.getLogger(__name__)
@@ -267,13 +268,13 @@ class TempLayerWriter:
 
             # Get column info
             cols = con.execute(
-                f"DESCRIBE SELECT * FROM read_parquet('{parquet_path_str}')"
+                "DESCRIBE SELECT * FROM read_parquet(?)", [parquet_path_str]
             ).fetchall()
             columns = {row[0]: row[1] for row in cols}
 
             # Get row count
             count_result = con.execute(
-                f"SELECT COUNT(*) FROM read_parquet('{parquet_path_str}')"
+                "SELECT COUNT(*) FROM read_parquet(?)", [parquet_path_str]
             ).fetchone()
             feature_count = count_result[0] if count_result else 0
 
@@ -288,13 +289,18 @@ class TempLayerWriter:
                     break
 
             if geom_col:
+                # The column's name comes from the data: quoted.
+                geom = sql_identifier(geom_col)
                 # Get geometry type
-                type_result = con.execute(f"""
-                    SELECT DISTINCT ST_GeometryType({geom_col})
-                    FROM read_parquet('{parquet_path_str}')
-                    WHERE {geom_col} IS NOT NULL
+                type_result = con.execute(
+                    f"""
+                    SELECT DISTINCT ST_GeometryType({geom})
+                    FROM read_parquet(?)
+                    WHERE {geom} IS NOT NULL
                     LIMIT 1
-                """).fetchone()
+                """,
+                    [parquet_path_str],
+                ).fetchone()
                 if type_result:
                     geometry_type = type_result[0]
                 else:
@@ -302,14 +308,17 @@ class TempLayerWriter:
 
                 # Get bounding box
                 try:
-                    extent_result = con.execute(f"""
+                    extent_result = con.execute(
+                        f"""
                         SELECT
-                            ST_XMin(ST_Extent_Agg({geom_col})),
-                            ST_YMin(ST_Extent_Agg({geom_col})),
-                            ST_XMax(ST_Extent_Agg({geom_col})),
-                            ST_YMax(ST_Extent_Agg({geom_col}))
-                        FROM read_parquet('{parquet_path_str}')
-                    """).fetchone()
+                            ST_XMin(ST_Extent_Agg({geom})),
+                            ST_YMin(ST_Extent_Agg({geom})),
+                            ST_XMax(ST_Extent_Agg({geom})),
+                            ST_YMax(ST_Extent_Agg({geom}))
+                        FROM read_parquet(?)
+                    """,
+                        [parquet_path_str],
+                    ).fetchone()
                     if extent_result and all(v is not None for v in extent_result):
                         bbox = list(extent_result)
                 except Exception as e:
@@ -371,7 +380,7 @@ class TempLayerWriter:
 
             parquet_path_str = str(self.parquet_path)
             cols = con.execute(
-                f"DESCRIBE SELECT * FROM read_parquet('{parquet_path_str}')"
+                "DESCRIBE SELECT * FROM read_parquet(?)", [parquet_path_str]
             ).fetchall()
             geom_col = next(
                 (name for name, col_type, *_ in cols if "GEOMETRY" in col_type.upper()),
@@ -383,9 +392,9 @@ class TempLayerWriter:
 
             # A temporary view: the caller's connection may have DuckLake attached
             con.execute(f"""
-                CREATE OR REPLACE TEMP VIEW "{view}" AS
+                CREATE OR REPLACE TEMP VIEW {sql_identifier(view)} AS
                 SELECT file_row_number AS rowid, * EXCLUDE (file_row_number)
-                FROM read_parquet('{parquet_path_str}', file_row_number = true)
+                FROM read_parquet({sql_literal(parquet_path_str)}, file_row_number = true)
             """)
             generator = PMTilesGenerator(
                 tiles_data_dir=self.base_path,
@@ -393,9 +402,9 @@ class TempLayerWriter:
             )
             pmtiles_path = generator.generate_from_table(
                 duckdb_con=con,
-                table_name=f'"{view}"',
+                table_name=sql_identifier(view),
                 layer_id=self.temp_file_id,
-                geometry_column=geom_col.replace('"', '""'),
+                geometry_column=geom_col,
                 exclude_columns=["rowid"],
             )
             if pmtiles_path is None:

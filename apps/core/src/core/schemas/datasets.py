@@ -1,6 +1,9 @@
 from typing import Dict
 
-from pydantic import BaseModel, Field
+from goatlib.io.formats import ALL_EXTS, refuse_unsupported_format
+from pydantic import BaseModel, Field, field_validator
+
+from core.utils import sanitize_filename
 
 
 class DatasetImportRequest(BaseModel):
@@ -18,6 +21,19 @@ class DatasetImportRequest(BaseModel):
         description="Size of the file in bytes",
         examples=[1048576],
     )
+
+    @field_validator("filename")
+    @classmethod
+    def _format_the_import_reads(cls, filename: str) -> str:
+        """Only a file of a format the import reads is presigned; the importer
+        refuses any other. Checked on the name the upload is stored under."""
+        try:
+            refuse_unsupported_format(sanitize_filename(filename))
+        except ValueError as e:
+            raise ValueError(
+                f"{e}. Accepted formats: {', '.join(sorted(ALL_EXTS))}"
+            ) from e
+        return filename
 
 
 class PresignedUploadResponse(BaseModel):

@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING
 
 from goatlib.io.bbox_columns import BBOX_COLUMN, star_excluding, stray_bbox_columns
 from goatlib.io.config import parquet_copy_options
+from goatlib.io.sql import sql_identifier, sql_literal
 
 if TYPE_CHECKING:
     import duckdb
@@ -133,7 +134,7 @@ def write_optimized_parquet(
     # Use PARQUET_VERSION V2 for better compression (DELTA_BINARY_PACKED, etc.)
     copy_sql = f"""
         COPY ({optimized_query})
-        TO '{output_path}'
+        TO {sql_literal(output_path)}
         {_copy_options(compression, row_group_size)}
     """
 
@@ -143,7 +144,7 @@ def write_optimized_parquet(
     # Get row count for return value
     try:
         count = con.execute(
-            f"SELECT COUNT(*) FROM read_parquet('{output_path}')"
+            "SELECT COUNT(*) FROM read_parquet(?)", [str(output_path)]
         ).fetchone()[0]
     except Exception:
         count = 0
@@ -228,7 +229,7 @@ def _check_geometry_column(
         result = con.execute(
             f"""
             SELECT COUNT(*) FROM ({source_query}) t
-            WHERE "{geometry_column}" IS NOT NULL
+            WHERE {sql_identifier(geometry_column)} IS NOT NULL
             LIMIT 1
             """
         ).fetchone()
@@ -261,16 +262,18 @@ def _build_optimized_query(
     Returns:
         Optimized SQL query string
     """
+    geom_expr = sql_identifier(geometry_column)
+
     # Build bbox expression
     # Using a struct for GeoParquet 1.1 compatibility
     bbox_expr = ""
     if add_bbox:
         bbox_expr = f""",
             {{
-                'xmin': ST_XMin("{geometry_column}"),
-                'ymin': ST_YMin("{geometry_column}"),
-                'xmax': ST_XMax("{geometry_column}"),
-                'ymax': ST_YMax("{geometry_column}")
+                'xmin': ST_XMin({geom_expr}),
+                'ymin': ST_YMin({geom_expr}),
+                'xmax': ST_XMax({geom_expr}),
+                'ymax': ST_YMax({geom_expr})
             }} AS bbox"""
 
     # Build ORDER BY for Hilbert sorting
@@ -279,7 +282,7 @@ def _build_optimized_query(
     order_by = ""
     if hilbert_sort:
         # ST_Hilbert(geometry) computes Hilbert index for the geometry
-        order_by = f'ORDER BY ST_Hilbert("{geometry_column}")'
+        order_by = f"ORDER BY ST_Hilbert({geom_expr})"
 
     # Leave out the source's bounding-box columns (see _bbox_columns_to_drop).
     star = star_excluding(exclude_columns)
@@ -303,14 +306,14 @@ def _write_plain_parquet(
     # Use PARQUET_VERSION V2 for better compression (DELTA_BINARY_PACKED, etc.)
     copy_sql = f"""
         COPY ({source_query})
-        TO '{output_path}'
+        TO {sql_literal(output_path)}
         {_copy_options(compression, row_group_size)}
     """
     con.execute(copy_sql)
 
     try:
         count = con.execute(
-            f"SELECT COUNT(*) FROM read_parquet('{output_path}')"
+            "SELECT COUNT(*) FROM read_parquet(?)", [str(output_path)]
         ).fetchone()[0]
     except Exception:
         count = 0
@@ -355,20 +358,20 @@ def verify_geoparquet_optimization(
     try:
         # Check for bbox column
         schema = con.execute(
-            f"DESCRIBE SELECT * FROM read_parquet('{parquet_path}')"
+            "DESCRIBE SELECT * FROM read_parquet(?)", [parquet_path]
         ).fetchall()
         column_names = [row[0] for row in schema]
         result["has_bbox"] = "bbox" in column_names
 
         # Get row count
         result["row_count"] = con.execute(
-            f"SELECT COUNT(*) FROM read_parquet('{parquet_path}')"
+            "SELECT COUNT(*) FROM read_parquet(?)", [parquet_path]
         ).fetchone()[0]
 
         # Get parquet metadata for row groups
         try:
             metadata = con.execute(
-                f"SELECT * FROM parquet_metadata('{parquet_path}')"
+                "SELECT * FROM parquet_metadata(?)", [parquet_path]
             ).fetchall()
             if metadata:
                 result["row_group_count"] = len(
@@ -382,14 +385,15 @@ def verify_geoparquet_optimization(
             # Sample check: are nearby rows also nearby spatially?
             # This is a heuristic - true verification would need Hilbert values
             sample = con.execute(
-                f"""
+                """
                 SELECT
                     bbox.xmin, bbox.ymin,
                     LEAD(bbox.xmin) OVER () as next_xmin,
                     LEAD(bbox.ymin) OVER () as next_ymin
-                FROM read_parquet('{parquet_path}')
+                FROM read_parquet(?)
                 LIMIT 1000
-                """
+                """,
+                [parquet_path],
             ).fetchall()
 
             # Calculate average distance to next row

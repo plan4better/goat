@@ -49,6 +49,7 @@ from pmtiles.reader import MmapSource
 from pmtiles.reader import Reader as PMTilesReader
 
 from goatlib.io.config import parquet_copy_options
+from goatlib.io.sql import sql_identifier, sql_literal
 from goatlib.utils.container_cpu import container_cpu_count
 from goatlib.utils.container_memory import MANBY_MEMORY_SHARE, container_memory_limit
 from goatlib.utils.layer import layer_id_to_table_name
@@ -621,7 +622,6 @@ class PMTilesGenerator:
         crawled under the small budget that left it.
         """
         started = time.monotonic()
-        target = str(path).replace("'", "''")
         # DuckDB keeps the memory of the sort until the connection closes,
         # next to manby's budget, unless its allocator's background threads
         # hand it back. Set as on the DuckLake connections (storage/ducklake.py);
@@ -629,7 +629,9 @@ class PMTilesGenerator:
         duckdb_con.execute("SET allocator_flush_threshold='64MB'")
         duckdb_con.execute("SET allocator_background_threads=true")
         try:
-            duckdb_con.execute(f"COPY ({query}) TO '{target}' {parquet_copy_options()}")
+            duckdb_con.execute(
+                f"COPY ({query}) TO {sql_literal(path)} {parquet_copy_options()}"
+            )
         except BaseException:
             path.unlink(missing_ok=True)
             raise
@@ -807,7 +809,7 @@ class PMTilesGenerator:
         Args:
             duckdb_con: DuckDB connection
             table_name: Full table path
-            geometry_column: Name of the geometry column, quotes doubled
+            geometry_column: Name of the geometry column
             exclude_columns: Columns to exclude from tiles
             id_expression: SQL of the feature id. rowid + 1 by default: MVT
                 feature id 0 is treated as "unset" by MapLibre.
@@ -817,7 +819,7 @@ class PMTilesGenerator:
         Returns:
             The query
         """
-        geometry = f'"{geometry_column}"'
+        geometry = sql_identifier(geometry_column)
         skip = {*exclude_columns, *_HIDDEN_COLUMNS, "_rowid", "geometry"}
         # SELECT LIMIT 0 works better with DuckLake than DESCRIBE
         description = duckdb_con.execute(
@@ -828,7 +830,7 @@ class PMTilesGenerator:
         for col_info in description:
             name = col_info[0]
             col_type = str(col_info[1]).strip().upper()
-            column = '"' + name.replace('"', '""') + '"'
+            column = sql_identifier(name)
             if name in skip or column == geometry or _NON_PLAIN_TYPE.search(col_type):
                 continue
             value = self._tile_value(column, col_type)
@@ -881,7 +883,7 @@ class PMTilesGenerator:
         Geometries spread over less than ONE_LOCATION_DEGREES in both axes
         count as one location. min and max stream in constant memory.
         """
-        geometry = f'"{geometry_column}"'
+        geometry = sql_identifier(geometry_column)
         result = duckdb_con.execute(f"""
             SELECT
                 count(*),
@@ -916,10 +918,11 @@ class PMTilesGenerator:
             # (avoids DESCRIBE which can fail with some DuckLake configurations).
             # A collection's type only when there is no other: the recipe and
             # the parts kept from collections follow the layer's own type.
+            geom = sql_identifier(geometry_column)
             result = duckdb_con.execute(f"""
-                SELECT DISTINCT ST_GeometryType("{geometry_column}") AS geometry_type
+                SELECT DISTINCT ST_GeometryType({geom}) AS geometry_type
                 FROM {table_name}
-                WHERE "{geometry_column}" IS NOT NULL
+                WHERE {geom} IS NOT NULL
                 ORDER BY geometry_type = 'GEOMETRYCOLLECTION'
                 LIMIT 1
             """).fetchone()

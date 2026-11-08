@@ -368,6 +368,32 @@ asyncpg's statement cache and the keepalive settings; every tool and task
 connection goes through it (`ToolSettings.postgres_connect_args`). DuckLake's
 catalog connections go to the database itself (`DUCKLAKE_POSTGRES_SERVER`).
 
+## A file is read as the format it is named
+
+`ALL_EXTS` (`io/formats.py`) is the one list of accepted formats: core
+presigns an upload only under such a name (`apps/core/src/core/schemas/datasets.py`),
+the import refuses any other before downloading the file, and the converter
+refuses it before reading (all through `refuse_unsupported_format`). Each
+accepted suffix has a reader, which a unit test keeps true: GDAL drivers in
+`READ_DRIVERS`, DuckDB's own readers or unpacking (`NON_GDAL_EXTS`), or the
+raster path.
+
+GDAL picks a driver by a file's content, not its name. Every `ST_Read` of a
+user file therefore names the drivers of its suffix (`allowed_drivers_sql`):
+only the drivers of the file's format may open it, and a new format needs its
+drivers listed before it imports. `ST_Read_Meta` takes no driver list, so a
+user file's schema and CRS come from a `DESCRIBE` of its reader; only a
+GeoPackage's layers are listed with it, and only once the file has the SQLite
+header (`io/discover.py`).
+
+A file's name (an archive member's is the uploader's own text), its layer and
+its column names are data, never SQL: each is a bound parameter where DuckDB
+takes one, otherwise written through `sql_literal` or `sql_identifier`
+(`io/sql.py`). That holds past the converter too, wherever an upload's file or
+columns reach a statement: the DuckLake ingest and replace
+(`tools/base.py`, `tools/layer_replace.py`), the workflow preview
+(`tools/temp_writer.py`) and the tiles export (`io/pmtiles.py`).
+
 ## Files another pod just wrote
 
 The data volume is shared over NFS, and each node remembers for a while that a file name did not exist. A
