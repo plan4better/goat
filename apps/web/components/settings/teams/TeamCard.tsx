@@ -1,13 +1,12 @@
 "use client";
 
-import { Box, Skeleton, Typography, useTheme } from "@mui/material";
+import { Box, Typography, useTheme } from "@mui/material";
 import NextLink from "next/link";
-import { useId, useMemo } from "react";
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { useTeamMembers } from "@/lib/api/teams";
 import { settingsTeamPath } from "@/lib/settingsRoutes";
 import type { Team } from "@/lib/validations/team";
 
@@ -17,30 +16,52 @@ import UserAvatar from "@/components/dashboard/common/UserAvatar";
 import { warningTextInk } from "@/components/modals/content/ContentDialogChrome";
 import { personName } from "@/components/settings/common/personName";
 import TeamAvatar from "@/components/settings/teams/TeamAvatar";
+import { isOwnerless } from "@/components/settings/teams/teamName";
 
 const PLAIN = { interpolation: { escapeValue: false } } as const;
 
-/** A team as a card that opens its page. Phase 1 reads the faces and the count
- * per card (`GET /teams/{id}/members`, the key the team page uses too). */
-export default function TeamCard({ team }: { team: Team }) {
-  const { t, i18n } = useTranslation("common");
+const Badge = ({ label, owner = false }: { label: string; owner?: boolean }) => {
   const theme = useTheme();
-  const { teamMembers, isLoading, isError } = useTeamMembers(team.id);
-  // A failed read leaves the faces and the count out rather than saying
-  // "0 members": the card is a link, so a retry button cannot sit in it, and
-  // SWR retries the read on its own.
-  const failed = !!isError && teamMembers.length === 0;
-  const collator = useMemo(() => new Intl.Collator(i18n.language), [i18n.language]);
-  const faces = [...teamMembers]
-    .sort((a, b) =>
-      a.role === b.role ? collator.compare(personName(a), personName(b)) : a.role === "team-owner" ? -1 : 1
-    )
-    .slice(0, 4);
-  const owner = team.role === "team-owner";
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 1,
+        px: 2,
+        py: "2px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+        // The owner's amber in its shade that reads as text on the card (warning.main does not).
+        border: `1px solid ${owner ? warningTextInk(theme) : theme.palette.divider}`,
+        color: owner ? warningTextInk(theme) : "text.secondary",
+      }}>
+      {owner && <Icon iconName={ICON_NAME.CROWN} style={{ fontSize: 11 }} htmlColor="inherit" />}
+      {label}
+    </Box>
+  );
+};
+
+/** A team as a card that opens its page. The faces (owner first, at most four)
+ * and the count come with the list (core's `members_preview`, `member_count`),
+ * so no card reads its members. `adminView` (owners and admins, who see every
+ * team) adds the badge of a team without an owner. */
+export default function TeamCard({ team, adminView = false }: { team: Team; adminView?: boolean }) {
+  const { t } = useTranslation("common");
+  const theme = useTheme();
+  const faces = team.members_preview ?? [];
+  // An answer without the count (an older core) leaves it out rather than
+  // saying "0 members".
+  const counted = team.member_count !== undefined;
+  const ownerless = adminView && isOwnerless(team);
+  const hasBadge = ownerless || !!team.role;
   // The link keeps the spec's name ("Team {Name} öffnen"); what the card
   // shows besides is its description.
   const id = useId();
-  const describedBy = [`${id}-description`, !failed && `${id}-count`, team.role && `${id}-badge`]
+  const describedBy = [`${id}-description`, counted && `${id}-count`, hasBadge && `${id}-badge`]
     .filter(Boolean)
     .join(" ");
 
@@ -93,35 +114,24 @@ export default function TeamCard({ team }: { team: Team }) {
             />
           ))}
         </Box>
-        {!failed && (
+        {counted && (
           <Typography id={`${id}-count`} variant="caption" color="text.secondary">
-            {isLoading ? (
-              <Skeleton variant="text" width={60} />
-            ) : (
-              t("settings_teams_member_count", { count: teamMembers.length })
-            )}
+            {t("settings_teams_member_count", { count: team.member_count })}
           </Typography>
         )}
-        {team.role && (
+        {hasBadge && (
           <Box
             id={`${id}-badge`}
-            component="span"
-            sx={{
-              ml: "auto",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 1,
-              px: 2,
-              py: "2px",
-              borderRadius: 999,
-              fontSize: 12,
-              fontWeight: 700,
-              // The owner's amber in its shade that reads as text on the card (warning.main does not).
-              border: `1px solid ${owner ? warningTextInk(theme) : theme.palette.divider}`,
-              color: owner ? warningTextInk(theme) : "text.secondary",
-            }}>
-            {owner && <Icon iconName={ICON_NAME.CROWN} style={{ fontSize: 11 }} htmlColor="inherit" />}
-            {t(owner ? "settings_teams_badge_owner" : "settings_teams_badge_member")}
+            sx={{ ml: "auto", display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 1 }}>
+            {ownerless && <Badge label={t("settings_teams_badge_ownerless")} />}
+            {team.role && (
+              <Badge
+                owner={team.role === "team-owner"}
+                label={t(
+                  team.role === "team-owner" ? "settings_teams_badge_owner" : "settings_teams_badge_member"
+                )}
+              />
+            )}
           </Box>
         )}
       </Box>

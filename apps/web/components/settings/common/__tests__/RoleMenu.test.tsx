@@ -12,24 +12,27 @@ const de = commonI18n("de");
 
 describe("RoleMenu", () => {
   it("shows the role, checks it in the menu and explains every role", async () => {
+    // A viewer while every editor seat is taken: Admin and Bearbeiter need one.
     render(
       <I18nextProvider i18n={de}>
         <RoleMenu
-          value="organization-editor"
+          value="organization-viewer"
           label="Rolle von Anna Weber"
           onChange={vi.fn()}
           options={[
             { role: "organization-admin", disabledReason: "Kein Bearbeiter-Platz frei" },
-            { role: "organization-editor" },
+            { role: "organization-editor", disabledReason: "Kein Bearbeiter-Platz frei" },
             { role: "organization-viewer" },
           ]}
         />
       </I18nextProvider>
     );
-    await userEvent.click(screen.getByRole("button", { name: "Rolle von Anna Weber: Bearbeiter" }));
-    const editor = screen.getByRole("menuitemradio", { name: /^Bearbeiter/ });
-    await expect(editor).toHaveAttribute("aria-checked", "true");
-    expect(editor).toHaveTextContent("Erstellt und bearbeitet Projekte, Workflows, Layouts und Dashboards.");
+    await userEvent.click(screen.getByRole("button", { name: "Rolle von Anna Weber: Betrachter" }));
+    const viewer = screen.getByRole("menuitemradio", { name: /^Betrachter/ });
+    await expect(viewer).toHaveAttribute("aria-checked", "true");
+    expect(viewer).toHaveTextContent(
+      "Öffnet, was mit der Person geteilt wird. Belegt keinen Bearbeiter-Platz."
+    );
     const admin = screen.getByRole("menuitemradio", { name: /^Admin/ });
     await expect(admin).toHaveAttribute("aria-disabled", "true");
     expect(admin).toHaveTextContent("Kein Bearbeiter-Platz frei");

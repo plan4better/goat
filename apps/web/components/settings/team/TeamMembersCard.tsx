@@ -16,7 +16,7 @@ import { DialogLoadFailed, orLoadFailed } from "@/components/assistant/LoadFaile
 import UserAvatar from "@/components/dashboard/common/UserAvatar";
 import CardSkeleton from "@/components/settings/common/CardSkeleton";
 import type { Person } from "@/components/settings/common/PeoplePicker";
-import RowMenu from "@/components/settings/common/RowMenu";
+import RowMenu, { type RowMenuItem } from "@/components/settings/common/RowMenu";
 import SettingsCard from "@/components/settings/common/SettingsCard";
 import SettingsLoadError from "@/components/settings/common/SettingsLoadError";
 import { personName } from "@/components/settings/common/personName";
@@ -32,6 +32,10 @@ const RemoveTeamMemberDialog = dynamic(
   () => orLoadFailed(import("@/components/settings/team/RemoveTeamMemberDialog"), DialogLoadFailed),
   { ssr: false }
 );
+const MakeOwnerDialog = dynamic(
+  () => orLoadFailed(import("@/components/settings/team/MakeOwnerDialog"), DialogLoadFailed),
+  { ssr: false }
+);
 const PLAIN = { interpolation: { escapeValue: false } } as const;
 
 /**
@@ -40,20 +44,27 @@ const PLAIN = { interpolation: { escapeValue: false } } as const;
  * show as soon as the team's members are read; the role column and the
  * people to add need the organization's members, so until those are there the
  * column is left out and "Mitglieder hinzufügen" is disabled, and a failed
- * read offers a retry beside it. Reloading reads the key the team cards on
- * Teams use too (`GET /teams/{id}/members`), so their count follows.
+ * read offers a retry beside it. Who may rename the team may also make a
+ * member its owner (B7), not a Betrachter, who cannot own a team (decision 5):
+ * the item waits for the organization's roles, so nobody is offered who core
+ * then refuses. Every change reads the team and the team lists again, so the
+ * Teams cards' count and faces follow.
  */
 export default function TeamMembersCard({
   teamId,
   teamName,
   selfId,
   permissions,
+  onTeamChanged,
 }: {
   teamId: string;
   teamName: string;
   /** Unknown until the profile answers: no "Sie" and no menus till then. */
   selfId?: string;
   permissions: TeamPermissions;
+  /** After a member or the owner changed: reads the team (the caller's role in
+   * it, its preview) and the team lists again. */
+  onTeamChanged: () => Promise<unknown>;
 }) {
   const { t, i18n } = useTranslation("common");
   const theme = useTheme();
@@ -67,6 +78,7 @@ export default function TeamMembersCard({
   } = useOrganizationMembers(organizationId ?? "");
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<{ id: string; name: string } | null>(null);
+  const [naming, setNaming] = useState<{ id: string; name: string } | null>(null);
 
   const collator = useMemo(() => new Intl.Collator(i18n.language), [i18n.language]);
   const rows = useMemo(
@@ -101,6 +113,34 @@ export default function TeamMembersCard({
         }),
     [orgMembers, teamMembers, words]
   );
+
+  // The team's owner's row has none; the remove item is not on the caller's
+  // own row (leaving is its own card).
+  const actionsOf = (row: { id: string; name: string }, orgRole: string | undefined): RowMenuItem[] => {
+    const items: RowMenuItem[] = [];
+    if (permissions.canEditTeam) {
+      const viewer = orgRole === "organization-viewer";
+      items.push({
+        key: "owner",
+        label: t("settings_team_make_owner"),
+        icon: ICON_NAME.CROWN,
+        // Until the organization's roles are read, a Betrachter cannot be told apart.
+        disabled: !orgMembers || viewer,
+        reason: viewer ? t("settings_team_make_owner_viewer") : undefined,
+        onClick: () => setNaming({ id: row.id, name: row.name }),
+      });
+    }
+    if (permissions.canManageMembers && row.id !== selfId) {
+      items.push({
+        key: "remove",
+        label: t("settings_team_remove_member"),
+        icon: ICON_NAME.TRASH,
+        danger: true,
+        onClick: () => setRemoving({ id: row.id, name: row.name }),
+      });
+    }
+    return items;
+  };
 
   const title = t("settings_team_members_title");
   const hint = permissions.canManageMembers ? undefined : t("settings_team_members_by_owner");
@@ -230,18 +270,10 @@ export default function TeamMembersCard({
               )}
               {/* The row menu's button: 40px below `md`, 28px from it. */}
               <Box sx={{ width: { xs: 40, md: 34 }, flexShrink: 0 }}>
-                {permissions.canManageMembers && !owner && selfId && row.id !== selfId && (
+                {!owner && selfId && (
                   <RowMenu
                     label={t("settings_more_actions_for", { name: row.name, ...PLAIN })}
-                    items={[
-                      {
-                        key: "remove",
-                        label: t("settings_team_remove_member"),
-                        icon: ICON_NAME.TRASH,
-                        danger: true,
-                        onClick: () => setRemoving({ id: row.id, name: row.name }),
-                      },
-                    ]}
+                    items={actionsOf(row, orgRole)}
                   />
                 )}
               </Box>
@@ -255,7 +287,7 @@ export default function TeamMembersCard({
           teamName={teamName}
           candidates={candidates}
           onClose={() => setAdding(false)}
-          onChanged={() => mutate()}
+          onChanged={() => Promise.all([mutate(), onTeamChanged()])}
         />
       )}
       {removing && (
@@ -264,7 +296,17 @@ export default function TeamMembersCard({
           teamName={teamName}
           person={removing}
           onClose={() => setRemoving(null)}
-          onRemoved={() => mutate()}
+          onRemoved={() => Promise.all([mutate(), onTeamChanged()])}
+        />
+      )}
+      {naming && (
+        <MakeOwnerDialog
+          teamId={teamId}
+          teamName={teamName}
+          person={naming}
+          callerIsOwner={permissions.isTeamOwner}
+          onClose={() => setNaming(null)}
+          onChanged={() => Promise.all([mutate(), mutateOrgMembers(), onTeamChanged()])}
         />
       )}
     </SettingsCard>

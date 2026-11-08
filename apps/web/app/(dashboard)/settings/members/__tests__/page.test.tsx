@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { I18nextProvider } from "react-i18next";
@@ -22,6 +22,7 @@ const api = vi.hoisted(() => ({
   deleteMember: vi.fn(),
   deleteInvitation: vi.fn(),
   inviteMember: vi.fn(),
+  resendInvitation: vi.fn(),
   refreshOrganizationMembers: vi.fn(),
   profile: undefined as Record<string, unknown> | undefined,
   profileError: undefined as unknown,
@@ -47,6 +48,7 @@ vi.mock("@/lib/api/organizations", () => ({
   deleteMember: api.deleteMember,
   deleteInvitation: api.deleteInvitation,
   inviteMember: api.inviteMember,
+  resendInvitation: api.resendInvitation,
   refreshOrganizationMembers: api.refreshOrganizationMembers,
 }));
 
@@ -81,9 +83,9 @@ const ORG = {
   total_viewers: 10,
 };
 
-const renderPage = () =>
+const renderPage = (language: "en" | "de" = "en") =>
   render(
-    <I18nextProvider i18n={commonI18n("en")}>
+    <I18nextProvider i18n={commonI18n(language)}>
       <MembersPage />
     </I18nextProvider>
   );
@@ -117,6 +119,8 @@ const clipboard = (value: { writeText: (text: string) => Promise<void> } | undef
   Object.defineProperty(window.navigator, "clipboard", { value, configurable: true });
 
 afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
   window.matchMedia = realMatchMedia;
   if (realClipboard) Object.defineProperty(window.navigator, "clipboard", realClipboard);
   else delete (window.navigator as { clipboard?: unknown }).clipboard;
@@ -134,6 +138,7 @@ describe("Members page", () => {
       fn.mockReset().mockResolvedValue(undefined);
     }
     api.inviteMember.mockReset().mockResolvedValue(new Response("{}"));
+    api.resendInvitation.mockReset().mockResolvedValue({ account_setup: null });
     for (const fn of [
       api.updateOrganizationMemberRole,
       api.updateOrganizationInvitationRole,
@@ -144,6 +149,7 @@ describe("Members page", () => {
     }
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
+    vi.mocked(toast.warning).mockReset();
   });
 
   it("asks for the list at once with the cookie's organization id, before the organization answers", () => {
@@ -500,5 +506,230 @@ describe("Members page", () => {
     await userEvent.click(screen.getByRole("button", { name: "Roles explained" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("table")).toHaveTextContent("Delete the organization");
+  });
+
+  // Naive UTC, as core sends it.
+  const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString().replace("Z", "");
+
+  it("shows when members joined and invitations were made and last sent", () => {
+    api.members = [
+      { ...person("e1", "Emil", "organization-editor"), joined_at: "2024-03-05T09:30:00" },
+      {
+        ...person("i1", "", "organization-editor", true),
+        invited_at: ago(3 * 24 * 60),
+        last_sent_at: ago(3 * 24 * 60),
+      },
+    ];
+    renderPage();
+    expect(rowOf("Emil Muster")).toHaveTextContent("Member since March 2024");
+    expect(rowOf("i1@example.com")).toHaveTextContent("Invited 3 days ago");
+    expect(rowOf("i1@example.com")).toHaveTextContent("sent 3 days ago");
+  });
+
+  it("writes the dates in the reader's language", () => {
+    api.members = [
+      { ...person("e1", "Emil", "organization-editor"), joined_at: "2024-03-05T09:30:00" },
+      {
+        ...person("i1", "", "organization-editor", true),
+        invited_at: ago(3 * 24 * 60),
+        last_sent_at: ago(3 * 24 * 60),
+      },
+    ];
+    renderPage("de");
+    const rows = within(screen.getByRole("table", { name: "Mitglieder" })).getAllByRole("row");
+    const row = (text: string) => rows.find((candidate) => candidate.textContent?.includes(text))!;
+    expect(row("Emil Muster")).toHaveTextContent("Mitglied seit März 2024");
+    expect(row("i1@example.com")).toHaveTextContent("Eingeladen vor 3 Tagen");
+    expect(row("i1@example.com")).toHaveTextContent("gesendet vor 3 Tagen");
+  });
+
+  it("never dates a send in the future when the browser's clock is behind core's", () => {
+    api.members = [
+      ...BASE.filter((member) => member.id !== "i1"),
+      { ...person("i1", "", "organization-editor", true), invited_at: ago(-2), last_sent_at: ago(-2) },
+    ];
+    renderPage();
+    expect(rowOf("i1@example.com")).toHaveTextContent("Invited less than a minute ago");
+    expect(rowOf("i1@example.com")).toHaveTextContent("sent less than a minute ago");
+    // Not "in less than a minute" or "in 2 minutes".
+    expect(rowOf("i1@example.com")).not.toHaveTextContent(/\bin (less than|\d)/);
+  });
+
+  it("leaves out a date it cannot read instead of failing the list", async () => {
+    api.members = [
+      { ...person("e1", "Emil", "organization-editor"), joined_at: "not a date" },
+      {
+        ...person("i1", "", "organization-editor", true),
+        invited_at: "not a date",
+        last_sent_at: "not a date",
+      },
+    ];
+    renderPage();
+    expect(rowOf("Emil Muster")).toHaveTextContent("Member");
+    expect(rowOf("Emil Muster")).not.toHaveTextContent("Member since");
+    expect(within(rowOf("i1@example.com")).getByText("Invited")).toBeInTheDocument();
+    expect(rowOf("i1@example.com")).not.toHaveTextContent("sent");
+    // Core decides whether it may go out again.
+    await userEvent.click(
+      within(rowOf("i1@example.com")).getByRole("button", { name: "More actions for i1@example.com" })
+    );
+    await expect(screen.getByRole("menuitem", { name: "Resend invitation" })).not.toHaveAttribute(
+      "aria-disabled"
+    );
+  });
+
+  it("offers to resend an invitation only ten minutes after its last send, and says from when", async () => {
+    api.members = [...BASE, { ...person("i2", "", "organization-viewer", true), last_sent_at: ago(3) }];
+    renderPage();
+    await userEvent.click(
+      within(rowOf("i2@example.com")).getByRole("button", { name: "More actions for i2@example.com" })
+    );
+    const item = screen.getByRole("menuitem", { name: /^Resend invitation/ });
+    await expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(within(item).getByText(/^Resending possible from \d{2}:\d{2}\.$/)).toBeInTheDocument();
+  });
+
+  it("turns the resend item on at the tenth minute after the last send, without a reload", async () => {
+    // A reader east of UTC, where reading core's naive time as local is an hour off.
+    vi.stubEnv("TZ", "Europe/Berlin");
+    expect(new Date("2026-11-02T14:25:00").toISOString()).toBe("2026-11-02T13:25:00.000Z");
+    // An exact clock: fireEvent, as user-event waits on timers of its own.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-02T14:30:00Z"));
+    api.members = [
+      ...BASE,
+      { ...person("i2", "", "organization-viewer", true), last_sent_at: "2026-11-02T14:25:00" },
+    ];
+    renderPage();
+    fireEvent.click(
+      within(rowOf("i2@example.com")).getByRole("button", { name: "More actions for i2@example.com" })
+    );
+    const item = () => screen.getByRole("menuitem", { name: /^Resend invitation/ });
+    await expect(item()).toHaveAttribute("aria-disabled", "true");
+    // Core's 14:25 is UTC: the reason names 14:35 UTC in the reader's time.
+    expect(item()).toHaveTextContent("Resending possible from 15:35.");
+
+    // A moment before the tenth minute it still waits.
+    act(() => {
+      vi.advanceTimersByTime(5 * 60_000 - 1);
+    });
+    await expect(item()).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(item());
+    expect(api.resendInvitation).not.toHaveBeenCalled();
+
+    // The page's clock reaches 14:35 in the open menu.
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    await expect(item()).not.toHaveAttribute("aria-disabled");
+    expect(item()).not.toHaveTextContent("Resending possible");
+    fireEvent.click(item());
+    expect(api.resendInvitation).toHaveBeenCalledWith("org-cookie", "i2");
+  });
+
+  it("resends an invitation and says so", async () => {
+    api.members = [...BASE, { ...person("i2", "", "organization-viewer", true), last_sent_at: ago(11) }];
+    renderPage();
+    await userEvent.click(
+      within(rowOf("i2@example.com")).getByRole("button", { name: "More actions for i2@example.com" })
+    );
+    await userEvent.click(screen.getByRole("menuitem", { name: "Resend invitation" }));
+    expect(api.resendInvitation).toHaveBeenCalledWith("org-cookie", "i2");
+    expect(toast.success).toHaveBeenCalledWith("Invitation to i2@example.com sent again.");
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(api.mutateMembers).toHaveBeenCalled();
+  });
+
+  it("only warns, with a text of its own, when the setup mail of a resend could not go out", async () => {
+    api.members = [...BASE, { ...person("i2", "", "organization-viewer", true), last_sent_at: ago(11) }];
+    api.resendInvitation.mockResolvedValue({ account_setup: "manual" });
+    renderPage();
+    await userEvent.click(
+      within(rowOf("i2@example.com")).getByRole("button", { name: "More actions for i2@example.com" })
+    );
+    await userEvent.click(screen.getByRole("menuitem", { name: "Resend invitation" }));
+    expect(api.resendInvitation).toHaveBeenCalledWith("org-cookie", "i2");
+    // Nothing went out: no "sent again", and not the invite's "Member invited."
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith(
+      "The email to set a password could not be sent to i2@example.com. Set the password in the Keycloak admin console."
+    );
+    // The send still took the 10 minute slot.
+    expect(api.mutateMembers).toHaveBeenCalled();
+  });
+
+  it("words the failed setup mail of a resend in German too", async () => {
+    api.members = [...BASE, { ...person("i2", "", "organization-viewer", true), last_sent_at: ago(11) }];
+    api.resendInvitation.mockResolvedValue({ account_setup: "manual" });
+    renderPage("de");
+    const table = screen.getByRole("table", { name: "Mitglieder" });
+    const row = within(table)
+      .getAllByRole("row")
+      .find((candidate) => candidate.textContent?.includes("i2@example.com"))!;
+    await userEvent.click(within(row).getByRole("button", { name: "Weitere Aktionen für i2@example.com" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Einladung erneut senden" }));
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Die E-Mail zum Festlegen des Passworts an i2@example.com konnte nicht gesendet werden. Legen Sie das Passwort in der Keycloak-Administrationskonsole fest."
+    );
+  });
+
+  it("says so when another admin sent the invitation a moment ago", async () => {
+    api.resendInvitation.mockRejectedValue(
+      new ApiError(429, "The invitation was sent less than 10 minutes ago")
+    );
+    renderPage();
+    await userEvent.click(
+      within(rowOf("i1@example.com")).getByRole("button", { name: "More actions for i1@example.com" })
+    );
+    await userEvent.click(screen.getByRole("menuitem", { name: "Resend invitation" }));
+    expect(toast.error).toHaveBeenCalledWith(
+      "This invitation was sent just now. Try again in a few minutes."
+    );
+    expect(api.mutateMembers).toHaveBeenCalled(); // its new last send turns the item off
+  });
+
+  it("reads every member list again when the invitation was withdrawn meanwhile", async () => {
+    api.resendInvitation.mockRejectedValue(new ApiError(400, "Invitation not found"));
+    renderPage();
+    await userEvent.click(
+      within(rowOf("i1@example.com")).getByRole("button", { name: "More actions for i1@example.com" })
+    );
+    await userEvent.click(screen.getByRole("menuitem", { name: "Resend invitation" }));
+    expect(toast.error).toHaveBeenCalledWith("The invitation could not be sent again.");
+    // The withdrawn invitation leaves the list, and its seat the tiles.
+    expect(api.refreshOrganizationMembers).toHaveBeenCalledWith("org-cookie");
+    expect(api.mutateOrganization).toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("says an expired invitation is to be withdrawn and sent anew", async () => {
+    api.resendInvitation.mockRejectedValue(new ApiError(409, "The invitation has expired"));
+    renderPage();
+    await userEvent.click(
+      within(rowOf("i1@example.com")).getByRole("button", { name: "More actions for i1@example.com" })
+    );
+    await userEvent.click(screen.getByRole("menuitem", { name: "Resend invitation" }));
+    expect(toast.error).toHaveBeenCalledWith(
+      "This invitation has expired. Withdraw it and invite the person again."
+    );
+  });
+
+  it("lets an editor become admin while every editor seat is taken", async () => {
+    api.organization = { ...ORG, used_editors: 5 };
+    renderPage();
+    await userEvent.click(within(rowOf("Emil Muster")).getByRole("button", { name: /Role of Emil Muster/ }));
+    await expect(screen.getByRole("menuitemradio", { name: /^Admin/ })).not.toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+  });
+
+  it("explains that owners and admins manage every team", async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole("button", { name: "Roles explained" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("table")).toHaveTextContent("Manage all teams of the organization");
   });
 });

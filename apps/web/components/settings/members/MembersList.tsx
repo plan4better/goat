@@ -1,8 +1,15 @@
 "use client";
 
 import { Box, Typography, useMediaQuery, useTheme } from "@mui/material";
+import { format, formatDistance } from "date-fns";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+
+import { useDateFnsLocale } from "@/i18n/utils";
+
+import { parseApiDate } from "@/lib/utils/credits";
+
+import { useNow } from "@/hooks/assistant/useNow";
 
 import StatusPill from "@/components/common/StatusPill";
 import UserAvatar from "@/components/dashboard/common/UserAvatar";
@@ -76,6 +83,24 @@ export default function MembersList({
 }) {
   const { t } = useTranslation("common");
   const theme = useTheme();
+  const locale = useDateFnsLocale();
+  // Read again every 30 seconds, so "3 minutes ago" moves on.
+  const now = useNow();
+  // Core's dates (naive UTC): none for one that does not parse. A browser
+  // clock behind core's would put a fresh send in the future ("in less than
+  // a minute"): it is never later than now.
+  const ago = (value: string | null | undefined) => {
+    const date = value ? parseApiDate(value).getTime() : NaN;
+    return Number.isNaN(date) ? null : formatDistance(Math.min(date, now), now, { addSuffix: true, locale });
+  };
+  const monthOf = (value: string | null | undefined) => {
+    const date = value ? parseApiDate(value) : null;
+    return date && !Number.isNaN(date.getTime()) ? format(date, "LLLL yyyy", { locale }) : null;
+  };
+  const invitedText = (row: MemberRow) => {
+    const time = ago(row.invitedAt);
+    return time ? t("settings_members_invited_ago", { time }) : t("settings_members_invited");
+  };
   // The Status column shows from `lg`: from `md` the settings nav takes its
   // width, and Rolle, Status and the menu would leave the member no room.
   const narrow = useMediaQuery(theme.breakpoints.down("lg"));
@@ -117,7 +142,7 @@ export default function MembersList({
             {/* A member without a name is already named by the address. */}
             {(row.pending || row.email !== row.name) && (
               <Typography noWrap sx={{ fontSize: 11.5, color: "text.secondary" }}>
-                {row.pending ? t("settings_members_invited") : row.email}
+                {row.pending ? invitedText(row) : row.email}
               </Typography>
             )}
             {row.pending && narrow && (
@@ -151,14 +176,30 @@ export default function MembersList({
             key: "status",
             label: t("settings_members_col_status"),
             width: "180px",
-            render: (row: MemberRow) =>
-              row.pending ? (
-                <PendingPill />
-              ) : (
+            render: (row: MemberRow) => {
+              if (row.pending) {
+                const sent = ago(row.lastSentAt);
+                return (
+                  <Box
+                    sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "2px" }}>
+                    <PendingPill />
+                    {sent && (
+                      <Typography sx={{ fontSize: 11.5, color: "text.secondary" }}>
+                        {t("settings_members_sent_ago", { time: sent })}
+                      </Typography>
+                    )}
+                  </Box>
+                );
+              }
+              const since = monthOf(row.joinedAt);
+              return (
                 <Typography sx={{ fontSize: 12.5, color: "text.secondary" }}>
-                  {t("settings_members_status_member")}
+                  {since
+                    ? t("settings_members_member_since", { date: since })
+                    : t("settings_members_status_member")}
                 </Typography>
-              ),
+              );
+            },
           },
         ]),
     // The header is read out, not shown: the ⋮ buttons say what they are.

@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { useTeams } from "@/lib/api/teams";
+import { teamsScopeOf, useTeams } from "@/lib/api/teams";
 import { useUserProfile } from "@/lib/api/users";
 import { settingsTeamPath } from "@/lib/settingsRoutes";
 
@@ -33,13 +33,19 @@ const GRID = {
   gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
 } as const;
 
-/** Organisation › Teams: the caller's teams as cards (phase 1: only the teams
- * they are in, for every role); Bearbeiter and up create new ones. */
+/** Organisation › Teams: the teams as cards (owners and admins: every team of
+ * the organization, with the badge of a team without an owner; everyone else:
+ * the teams they are in); Bearbeiter and up create new ones. */
 export default function TeamsPage() {
   const { t, i18n } = useTranslation("common");
   const router = useRouter();
-  const { teams, isLoading, isError, mutate } = useTeams();
   const { userProfile, isError: profileError, mutate: mutateProfile } = useUserProfile();
+  // Owners and admins see every team of the organization (core B1); nothing
+  // is asked for until the roles are known, so no list is replaced by another.
+  const scope = teamsScopeOf(userProfile?.roles);
+  const adminView = scope === "organization";
+  const { teams, isLoading, isError, mutate } = useTeams({ scope, enabled: scope !== undefined });
+  const profileFailed = !!profileError && !userProfile;
   const role = orgRoleOf(userProfile?.roles);
   const canCreate = role !== undefined && role !== "organization-viewer";
   const [query, setQuery] = useState("");
@@ -60,7 +66,9 @@ export default function TeamsPage() {
         team.name.toLowerCase().includes(needle) ||
         (team.description ?? "").toLowerCase().includes(needle))
   );
-  const loading = isLoading && !isError && teams.length === 0;
+  // A profile that fails says so at the top instead of the skeletons: no list
+  // is read without the role.
+  const loading = (scope === undefined && !profileFailed) || (isLoading && !isError && teams.length === 0);
 
   const newTeam = (
     <Button
@@ -80,13 +88,21 @@ export default function TeamsPage() {
           responsive
           eyebrow={t("settings_nav_group_organization")}
           title={t("settings_teams_title")}
-          subtitle={t("settings_teams_subtitle")}
+          // Which teams the page lists waits for the role: a placeholder holds
+          // the line, so the editor's subtitle is not replaced by the admin's.
+          subtitle={
+            scope !== undefined ? (
+              t(adminView ? "settings_teams_subtitle_admin" : "settings_teams_subtitle")
+            ) : profileFailed ? undefined : (
+              <Skeleton variant="text" width={360} sx={{ maxWidth: "100%" }} />
+            )
+          }
           action={canCreate ? newTeam : undefined}
         />
       }>
-      {/* Without the profile the role is unknown, so "Neues Team" stays away:
-          a profile that keeps failing says so in its place, with its retry. */}
-      {!!profileError && !userProfile && <SettingsLoadError onRetry={() => void mutateProfile()} />}
+      {/* Without the profile the role is unknown, so "Neues Team" and the list
+          stay away: a profile that keeps failing says so in their place, with its retry. */}
+      {profileFailed && <SettingsLoadError onRetry={() => void mutateProfile()} />}
       {role === "organization-viewer" && (
         <Alert severity="info" role="note">
           {t("settings_teams_viewer_note")}
@@ -122,14 +138,15 @@ export default function TeamsPage() {
             <Skeleton key={index} variant="rounded" height={148} sx={{ borderRadius: "12px" }} />
           ))}
         </Box>
-      ) : teams.length === 0 ? (
+      ) : scope === undefined ? null : teams.length === 0 ? (
         <EmptyState
           icon={ICON_NAME.USERS}
-          title={t("settings_teams_empty_title")}
-          // Until the role is known the hint would guess: an editor would read
-          // the viewer's line for a moment, or a viewer the editor's.
+          // Owners and admins see every team: none means the organization has none.
+          title={t(adminView ? "settings_teams_empty_title_admin" : "settings_teams_empty_title")}
+          // The hints speak to editors and viewers ("have a team owner add
+          // you"); a profile whose roles hold no organization role gets none.
           hint={
-            role === undefined
+            adminView || role === undefined
               ? undefined
               : t(canCreate ? "settings_teams_empty_hint" : "settings_teams_empty_hint_viewer")
           }
@@ -148,7 +165,7 @@ export default function TeamsPage() {
       ) : (
         <Box sx={GRID}>
           {shown.map((team) => (
-            <TeamCard key={team.id} team={team} />
+            <TeamCard key={team.id} team={team} adminView={adminView} />
           ))}
         </Box>
       )}

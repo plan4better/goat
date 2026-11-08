@@ -10,11 +10,12 @@ import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
 import { ORG_ROLE_ORDER, type OrgRole, roleWords } from "@/components/settings/common/roleWords";
 
 /** Each row: the key of what is allowed, then owner, admin, editor, viewer.
- * "Alle Teams der Organisation verwalten" joins in phase 2 (decision 2). */
+ * Owners and admins manage every team of the organization (decision 2). */
 const ROWS: [string, boolean, boolean, boolean, boolean][] = [
   ["settings_members_matrix_view", true, true, true, true],
   ["settings_members_matrix_edit", true, true, true, false],
   ["settings_members_matrix_teams", true, true, true, false],
+  ["settings_members_matrix_all_teams", true, true, false, false],
   ["settings_members_matrix_members", true, true, false, false],
   ["settings_members_matrix_org", true, true, false, false],
   ["settings_members_matrix_delete", true, false, false, false],

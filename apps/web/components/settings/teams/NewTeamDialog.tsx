@@ -35,6 +35,7 @@ export default function NewTeamDialog({
     register,
     handleSubmit,
     watch,
+    setError,
     formState: { errors, isValid, isSubmitting, dirtyFields, touchedFields },
   } = useForm<TeamFormValues>({
     mode: "onChange",
@@ -55,7 +56,9 @@ export default function NewTeamDialog({
       toast.success(t("settings_teams_created", { name: team.name, ...PLAIN }));
       onCreated(team);
     } catch (error) {
-      toast.error(t(statusOf(error) === 409 ? "settings_teams_name_taken" : "settings_teams_create_error"));
+      // Core checks every team of the organization, also those the caller does not see.
+      if (statusOf(error) === 409) setError("name", { type: "server", message: "settings_teams_name_taken" });
+      else toast.error(t("settings_teams_create_error"));
     }
   });
 

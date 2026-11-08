@@ -2,12 +2,14 @@
 
 import { Box, Skeleton, Stack, Typography } from "@mui/material";
 import type { ReactNode } from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 import * as z from "zod";
 
-import { updateTeam, useTeamMembers, useTeams } from "@/lib/api/teams";
+import { statusOf } from "@/lib/api/apiError";
+import { teamsScopeOf, updateTeam, useTeamMembers, useTeams } from "@/lib/api/teams";
+import { useUserProfile } from "@/lib/api/users";
 import type { Team } from "@/lib/validations/team";
 
 import LabeledField from "@/components/common/LabeledField";
@@ -33,7 +35,8 @@ const Detail = ({ children }: { children: ReactNode }) => (
 );
 
 /** Teamprofil: editable for those who may rename the team (`canEditTeam`),
- * read-only otherwise. The name must not be another team's the caller sees. */
+ * read-only otherwise. The name must not be another team's the caller sees
+ * (owners and admins see every team of the organization); core checks them all. */
 export default function TeamProfileCard({
   team,
   canEdit,
@@ -48,13 +51,22 @@ export default function TeamProfileCard({
   onSaved: () => Promise<unknown>;
 }) {
   const { t } = useTranslation("common");
-  const { teams } = useTeams();
+  const { userProfile } = useUserProfile();
+  const scope = teamsScopeOf(userProfile?.roles);
+  const { teams } = useTeams({ scope, enabled: scope !== undefined });
   const { teamMembers, isLoading: membersLoading } = useTeamMembers(team.id);
+  // Names core refused as taken (409: a team the caller does not see) count as
+  // taken too, so the field says so as Neues Team does, until the name changes.
+  const [refused, setRefused] = useState<string[]>([]);
   const taken = useMemo(
-    () => teams.filter((other) => other.id !== team.id).map((other) => other.name),
-    [teams, team.id]
+    () => [...teams.filter((other) => other.id !== team.id).map((other) => other.name), ...refused],
+    [teams, team.id, refused]
   );
-  const schema = useMemo(() => teamFormSchema(taken).extend({ avatar: z.string() }), [taken]);
+  // The saved name stays valid even when another team shares it (P2-15).
+  const schema = useMemo(
+    () => teamFormSchema(taken, team.name).extend({ avatar: z.string() }),
+    [taken, team.name]
+  );
   const values = useMemo(
     () => ({ name: team.name ?? "", description: team.description ?? "", avatar: team.avatar ?? "" }),
     [team.name, team.description, team.avatar]
@@ -66,11 +78,18 @@ export default function TeamProfileCard({
       await onSaved();
       toast.success(t("settings_team_saved"));
       return true;
-    } catch {
-      toast.error(t("settings_team_save_error"));
+    } catch (error) {
+      // Core checks every team of the organization, also those the caller does not see.
+      if (statusOf(error) === 409) setRefused((names) => [...names, rest.name]);
+      else toast.error(t("settings_team_save_error"));
       return false;
     }
   });
+  // The schema with the refused name checks the field again.
+  const { trigger } = card.form;
+  useEffect(() => {
+    if (refused.length > 0) void trigger("name");
+  }, [refused, trigger]);
   const title = t("settings_team_profile_title");
 
   if (!canEdit) {
@@ -92,7 +111,7 @@ export default function TeamProfileCard({
           <Detail>{team.name}</Detail>
           <Term>{t("settings_teams_description")}</Term>
           <Detail>{team.description || t("settings_team_no_description")}</Detail>
-          {/* A team whose owner left the organization has none (until B7). */}
+          {/* A team whose owner left the organization has none until an owner or admin names one. */}
           {(membersLoading || owner) && (
             <>
               <Term>{t("settings_team_owner_label")}</Term>

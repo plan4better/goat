@@ -15,7 +15,8 @@ import {
  * Inviting someone into the organization, end to end: the owner invites from
  * the members page, the invitee is taken to the invitation on first login,
  * nobody else can use it, and accepting makes them a member with the role
- * they were invited with.
+ * they were invited with. A fresh invitation cannot be resent until 10 minutes
+ * after its send.
  *
  * The invitee is provisioned in Keycloak without an organization. Accepting
  * is one-way, so a retry would find them already a member: retries are off.
@@ -42,6 +43,20 @@ test("the owner invites a user as a viewer from the members page", async ({ page
   await expect(page.getByText(`Invitation sent to ${email}.`)).toBeVisible();
   const row = page.getByRole("row").filter({ hasText: email });
   await expect(row).toContainText("Invitation pending");
+});
+
+// A successful resend is covered by core's tests (tests/api/test_invitation_resend.py),
+// not here: it would mail the invitee again.
+test("the new invitation cannot be resent yet, and says from when", async ({ page }) => {
+  const email = userOf("invitee").email.toLowerCase();
+  await page.goto("/settings/members");
+  const row = page.getByRole("row").filter({ hasText: email });
+  await row.getByRole("button", { name: `More actions for ${email}` }).click();
+  // Disabled for 10 minutes after the last send, with the time under its label.
+  const resend = page.getByRole("menuitem", { name: /^Resend invitation/ });
+  await expect(resend).toHaveAttribute("aria-disabled", "true");
+  await expect(resend).toContainText(/Resending possible from \d{2}:\d{2}\./);
+  await page.keyboard.press("Escape");
 });
 
 test.describe("the invitee", () => {

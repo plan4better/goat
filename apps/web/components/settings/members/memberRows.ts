@@ -15,6 +15,10 @@ export interface MemberRow {
   role: OrgRole;
   pending: boolean;
   isSelf: boolean;
+  /** Core B5, naive UTC: a member's join date; an invitation's creation and last send. */
+  joinedAt?: string | null;
+  invitedAt?: string | null;
+  lastSentAt?: string | null;
 }
 
 export type MemberSort = { key: "member" | "role"; dir: "asc" | "desc" };
@@ -28,6 +32,9 @@ export const toMemberRows = (members: OrganizationMember[], selfId: string | und
     role: orgRoleOf(member.roles) ?? "organization-viewer",
     pending: member.invitation_status === "pending",
     isSelf: member.id === selfId,
+    joinedAt: member.joined_at ?? null,
+    invitedAt: member.invited_at ?? null,
+    lastSentAt: member.last_sent_at ?? null,
   }));
 
 const ROLE_MATCH: Record<Exclude<RoleFilter, "all">, OrgRole[]> = {

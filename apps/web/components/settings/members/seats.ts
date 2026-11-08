@@ -52,20 +52,14 @@ export interface RoleOption {
 /**
  * Admin, Bearbeiter, Betrachter for a member or an invitation now in
  * `current`: a role that needs a seat of a full pool is disabled with the
- * reason. Core still refuses an editor and admin swap while no editor seat is
- * free (F7), so `swapNeedsSeat` stays on until phase 2 fixes the check.
+ * reason. Owners, admins and editors share the editor pool, so a swap between
+ * admin and editor needs no free seat; core checks the same (B4).
  */
-export const roleOptions = (
-  current: AssignableRole,
-  seats: Seats,
-  t: TFunction,
-  { swapNeedsSeat = true }: { swapNeedsSeat?: boolean } = {}
-): RoleOption[] =>
+export const roleOptions = (current: AssignableRole, seats: Seats, t: TFunction): RoleOption[] =>
   (["organization-admin", "organization-editor", "organization-viewer"] as AssignableRole[]).map((role) => {
     if (role === current) return { role };
     if (takesEditorSeat(role)) {
-      const needsSeat = !takesEditorSeat(current) || swapNeedsSeat;
-      return needsSeat && !hasFree(seats.editors.free)
+      return !takesEditorSeat(current) && !hasFree(seats.editors.free)
         ? { role, disabledReason: t("settings_members_no_editor_seat") }
         : { role };
     }

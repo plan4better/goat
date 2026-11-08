@@ -215,4 +215,35 @@ describe("settings texts", () => {
       "gültig, erneuert sich selbst",
     ]);
   });
+
+  it("carry the phase 2 texts and say that admins manage every team", () => {
+    for (const key of [
+      "settings_teams_subtitle_admin",
+      "settings_teams_badge_ownerless",
+      "settings_team_you_manage",
+      "settings_team_ownerless",
+      "settings_team_make_owner",
+      "settings_team_make_owner_viewer",
+      "settings_team_owner_body",
+      "settings_team_owner_changed",
+      "settings_members_member_since",
+      "settings_members_sent_ago",
+      "settings_members_resend_from",
+      "settings_members_resend_too_soon",
+      "settings_members_matrix_all_teams",
+    ]) {
+      expect(EN[key], key).toBeTruthy();
+      expect(DE[key], key).toBeTruthy();
+    }
+    expect(DE.settings_teams_badge_ownerless).toBe("Ohne Eigentümer");
+    expect(DE.settings_team_members_by_owner).toBe(
+      "Mitglieder fügt der Eigentümer des Teams oder ein Admin hinzu."
+    );
+    expect(DE.settings_team_profile_readonly_hint).toBe(
+      "Nur der Eigentümer des Teams und Admins können das Profil ändern."
+    );
+    expect(DE.settings_team_leave_point_back).toBe(
+      "Zurück ins Team bringt Sie der Eigentümer des Teams oder ein Admin."
+    );
+  });
 });

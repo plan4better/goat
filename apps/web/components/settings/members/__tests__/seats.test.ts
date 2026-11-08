@@ -56,15 +56,9 @@ describe("roleOptions", () => {
     ).toBeNull();
   });
 
-  it("refuses editor and admin swaps while the editor pool is full in phase 1 (F7), not when told otherwise", () => {
-    expect(reasons(roleOptions("organization-editor", org(5, 5, 1, 10), t))["organization-admin"]).toBe(
-      "Kein Bearbeiter-Platz frei"
-    );
-    expect(
-      reasons(roleOptions("organization-editor", org(5, 5, 1, 10), t, { swapNeedsSeat: false }))[
-        "organization-admin"
-      ]
-    ).toBeNull();
+  it("lets editors and admins swap while every editor seat is taken: they keep theirs (B4)", () => {
+    expect(reasons(roleOptions("organization-editor", org(5, 5, 1, 10), t))["organization-admin"]).toBeNull();
+    expect(reasons(roleOptions("organization-admin", org(5, 5, 1, 10), t))["organization-editor"]).toBeNull();
   });
 
   it("needs a viewer seat to make someone a viewer", () => {

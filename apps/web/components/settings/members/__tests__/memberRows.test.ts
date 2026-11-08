@@ -76,4 +76,35 @@ describe("member rows", () => {
     expect(ids(filterMemberRows(rows, { ...all, query: "BERT" }))).toEqual(["e2"]);
     expect(ids(filterMemberRows(rows, { ...all, query: "i1@ex" }))).toEqual(["i1"]);
   });
+
+  it("carries the dates core sends", () => {
+    const [row] = toMemberRows(
+      [
+        {
+          ...member("i9", "", "organization-viewer", true),
+          invited_at: "2026-10-01T08:00:00",
+          last_sent_at: "2026-10-30T12:00:00",
+          expires_at: null,
+        },
+      ],
+      undefined
+    );
+    expect(row).toMatchObject({
+      invitedAt: "2026-10-01T08:00:00",
+      lastSentAt: "2026-10-30T12:00:00",
+      joinedAt: null,
+    });
+  });
+
+  it("carries a member's join date, and no dates where core sends none", () => {
+    const [joined, older] = toMemberRows(
+      [
+        { ...member("e9", "Eva", "organization-editor"), joined_at: "2024-03-05T09:30:00" },
+        member("v9", "Vito", "organization-viewer"),
+      ],
+      undefined
+    );
+    expect(joined).toMatchObject({ joinedAt: "2024-03-05T09:30:00", invitedAt: null, lastSentAt: null });
+    expect(older).toMatchObject({ joinedAt: null, invitedAt: null, lastSentAt: null });
+  });
 });

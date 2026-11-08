@@ -11,10 +11,12 @@ import type {
   PostOrganization,
 } from "@/lib/validations/organization";
 
-export const ORG_API_BASE_URL = new URL("api/v2/organizations", process.env.NEXT_PUBLIC_API_URL)
-  .href;
+export const ORG_API_BASE_URL = new URL("api/v2/organizations", process.env.NEXT_PUBLIC_API_URL).href;
 
-export const useOrganizationMembers = (organizationId: string, queryParams?: OrganizationMemberQueryParams) => {
+export const useOrganizationMembers = (
+  organizationId: string,
+  queryParams?: OrganizationMemberQueryParams
+) => {
   const { data, isLoading, error, mutate, isValidating } = useSWR<OrganizationMember[]>(
     () => (organizationId ? [`${ORG_API_BASE_URL}/${organizationId}/users`, queryParams] : null),
 
@@ -131,6 +133,24 @@ export const deleteInvitation = async (organization_id: string, invitation_id: s
   );
   if (!response.ok) throw await apiErrorOf(response);
   return response;
+};
+
+/** Send a pending invitation's mail again (core B6): the account setup mail
+ * for an invitee still without a password (`account_setup` "email_sent" or
+ * "manual"), else GOAT's invitation mail (null). Core refuses with 429 when it
+ * went out less than 10 minutes ago (also when another admin just sent it),
+ * 409 when it has expired, and 400 when it was withdrawn meanwhile ("Invitation
+ * not found") or the invitee joined an organization. */
+export const resendInvitation = async (
+  organizationId: string,
+  invitationId: string
+): Promise<{ account_setup: "email_sent" | "manual" | null }> => {
+  const response = await apiRequestAuth(
+    `${ORG_API_BASE_URL}/${organizationId}/invitations/${invitationId}/resend`,
+    { method: "POST" }
+  );
+  if (!response.ok) throw await apiErrorOf(response);
+  return await response.json();
 };
 
 export const updateMember = async (organization_id: string, user_id: string, role: string) => {

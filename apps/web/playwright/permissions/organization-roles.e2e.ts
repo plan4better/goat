@@ -11,7 +11,8 @@ import { API_URL, type Role, actAs, apiAs, castOf, needsAuth } from "../fixtures
  * the Usage page is not there). Editors and viewers see Profile and Teams and
  * the organization read-only, and the API refuses them the organization's
  * management routes even when called directly. Only the owner deletes the
- * organization.
+ * organization. Viewers cannot create teams, and only owners and admins list
+ * every team of the organization; everyone else lists their own.
  */
 needsAuth(test);
 
@@ -108,6 +109,36 @@ for (const role of ["editor", "viewer"] as Role[]) {
     });
   });
 }
+
+test.describe("viewer, by the API", () => {
+  test("is refused creating a team (decision 5)", async () => {
+    const api = await apiAs("viewer");
+    try {
+      // Unique: team names are unique within the organization, and a wrong 2xx
+      // would leave the team behind.
+      const created = await api.post(`${API_URL}/api/v2/teams`, {
+        data: { name: `E2E team by a viewer ${Date.now().toString(36)}` },
+      });
+      expect([401, 403]).toContain(created.status());
+    } finally {
+      await api.dispose();
+    }
+  });
+});
+
+test.describe("editor, by the API", () => {
+  test("is refused the list of every team, but keeps their own (B1)", async () => {
+    const api = await apiAs("editor");
+    try {
+      const all = await api.get(`${API_URL}/api/v2/teams`, { params: { scope: "organization" } });
+      expect([401, 403]).toContain(all.status());
+      const own = await api.get(`${API_URL}/api/v2/teams`);
+      expect(own.status()).toBe(200);
+    } finally {
+      await api.dispose();
+    }
+  });
+});
 
 test("the organization still exists, unrenamed, afterwards", async () => {
   const owner = await apiAs("owner");

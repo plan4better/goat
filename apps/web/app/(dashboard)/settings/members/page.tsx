@@ -1,6 +1,7 @@
 "use client";
 
 import { Alert, Button, Skeleton } from "@mui/material";
+import { format } from "date-fns";
 import dynamic from "next/dynamic";
 import NextLink from "next/link";
 import { useMemo, useState } from "react";
@@ -12,6 +13,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { detailOf, statusOf } from "@/lib/api/apiError";
 import {
   refreshOrganizationMembers,
+  resendInvitation,
   updateOrganizationInvitationRole,
   updateOrganizationMemberRole,
   useOrganizationMembers,
@@ -20,6 +22,7 @@ import { PAGE_SIZE } from "@/lib/api/usage";
 import { useOrganization, useUserProfile } from "@/lib/api/users";
 import { undoToast } from "@/lib/toasts";
 
+import { useNow } from "@/hooks/assistant/useNow";
 import { useOrganizationId } from "@/hooks/settings/useOrganizationId";
 
 import { DialogLoadFailed, orLoadFailed } from "@/components/assistant/LoadFailed";
@@ -29,7 +32,7 @@ import SearchInput from "@/components/dashboard/common/SearchInput";
 import ToolPill from "@/components/dashboard/common/ToolPill";
 import RoleMenu from "@/components/settings/common/RoleMenu";
 import RolePill from "@/components/settings/common/RolePill";
-import RowMenu from "@/components/settings/common/RowMenu";
+import RowMenu, { type RowMenuItem } from "@/components/settings/common/RowMenu";
 import SeatTiles, { type SeatFilter } from "@/components/settings/common/SeatTiles";
 import SettingsLoadError from "@/components/settings/common/SettingsLoadError";
 import SettingsPage, { pageActionSx } from "@/components/settings/common/SettingsPage";
@@ -44,6 +47,7 @@ import {
   sortMemberRows,
   toMemberRows,
 } from "@/components/settings/members/memberRows";
+import { resendState } from "@/components/settings/members/resend";
 import { type Seats, roleOptions, seatLevel, seatsOf } from "@/components/settings/members/seats";
 import { UsageToolbar } from "@/components/settings/usage/UsageToolbar";
 import { useReportProblemHref } from "@/components/support/SupportMenu";
@@ -95,6 +99,9 @@ export default function MembersPage() {
     include_invitations: true,
   });
   const supportHref = useReportProblemHref();
+  // The resend item turns on 10 minutes after a send without a reload: the
+  // shared 30-second clock (epoch ms).
+  const now = useNow();
 
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<RoleFilter>("all");
@@ -255,6 +262,57 @@ export default function MembersPage() {
     }
   };
 
+  const resend = async (row: MemberRow) => {
+    if (!organizationId) return;
+    try {
+      const answer = await resendInvitation(organizationId, row.id);
+      // Only this list: a resend moves no seat and no member, but the
+      // invitation's new last send turns the item off for 10 minutes.
+      await mutateMembers();
+      // The setup mail failed and a resend sends one mail only, so nothing
+      // went out (the 10 minutes still run): only the warning, which says so.
+      if (answer?.account_setup === "manual") {
+        toast.warning(t("settings_members_resend_manual", { email: row.email, ...PLAIN }));
+      } else {
+        toast.success(t("settings_members_resent", { email: row.email, ...PLAIN }));
+      }
+    } catch (error) {
+      const status = statusOf(error);
+      // Another admin (or a clock that runs differently) sent it a moment ago:
+      // reload, so the item shows from when it can go out again.
+      if (status === 429) void mutateMembers();
+      // Withdrawn meanwhile ("Invitation not found"): the invitation leaves
+      // the list and its seat the tiles.
+      if (status === 400) void refresh();
+      toast.error(
+        t(
+          status === 429
+            ? "settings_members_resend_too_soon"
+            : status === 409
+              ? "settings_members_resend_expired"
+              : "settings_members_resend_error"
+        )
+      );
+    }
+  };
+
+  // Disabled until 10 minutes after the last send, with the time it can go
+  // out again under its label (a disabled item opens no tooltip).
+  const resendItem = (row: MemberRow): RowMenuItem => {
+    const state = resendState(row.lastSentAt, new Date(now));
+    return {
+      key: "resend",
+      label: t("settings_members_resend"),
+      icon: ICON_NAME.EMAIL,
+      disabled: !state.allowed,
+      reason:
+        !state.allowed && state.from
+          ? t("settings_members_resend_from", { time: format(state.from, "HH:mm") })
+          : undefined,
+      onClick: () => void resend(row),
+    };
+  };
+
   // None until the profile answers: one's own row could not be told apart.
   const renderActions = (row: MemberRow) =>
     !userProfile || row.role === "organization-owner" || row.isSelf ? null : (
@@ -263,6 +321,7 @@ export default function MembersPage() {
         items={
           row.pending
             ? [
+                resendItem(row),
                 {
                   key: "withdraw",
                   label: t("settings_members_withdraw"),
