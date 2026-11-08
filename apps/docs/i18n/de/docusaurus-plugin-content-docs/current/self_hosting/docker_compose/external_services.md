@@ -217,7 +217,7 @@ Der Assistent gehört zu jeder Installation. Er bleibt verborgen, bis ein Sprach
   ```
 
   Welche von `ASSISTANT_DEFAULT_API_KEY`, `ASSISTANT_DEFAULT_BASE_URL` und `ASSISTANT_DEFAULT_REGION` ein Anbieter braucht, steht in der [Konfigurationsreferenz](./configuration.md#assistant).
-- **Eine eigene Verbindung der Organisation.** Ein Administrator der Organisation legt sie unter <code>Einstellungen</code> → <code>KI</code> an. Die Zugangsdaten werden mit `ASSISTANT_SECRETS_KEY` verschlüsselt gespeichert, den `setup.sh` erzeugt.
+- **Eine eigene Verbindung der Organisation.** Ein Admin der Organisation legt sie unter <code>Einstellungen</code> → <code>KI</code> an. Die Zugangsdaten werden mit `ASSISTANT_SECRETS_KEY` verschlüsselt gespeichert, den `setup.sh` erzeugt.
 
 Übernehmen Sie Änderungen mit `docker compose up -d`. Danach finden die Benutzer <code>KI fragen</code> in der oberen Leiste.
 
@@ -256,7 +256,7 @@ docker compose exec assistant python -m assistant.dbcheck
 
 Der Befehl gibt `ok` aus oder listet jedes fehlende Recht auf.
 
-**Datenverarbeitung.** Fragen von Benutzern und, je nach Datenrichtlinie der Organisation, Daten aus GOAT gehen an den Modellanbieter der verwendeten Verbindung. Bei GOAT AI ist das der Anbieter, den Sie einrichten; bei einer eigenen Verbindung der Anbieter der Organisation. Die Datenrichtlinie einer Organisation ist **Eingeschränkt**, bis eine Administratorin oder ein Administrator der Organisation unter **Einstellungen → KI** **Standard** wählt: Bis dahin verlassen nur Feldnamen, Typen, Anzahlen und Statistiken GOAT, niemals Zeilen oder Geometrien.
+**Datenverarbeitung.** Fragen von Benutzern und, je nach Datenrichtlinie der Organisation, Daten aus GOAT gehen an den Modellanbieter der verwendeten Verbindung. Bei GOAT AI ist das der Anbieter, den Sie einrichten; bei einer eigenen Verbindung der Anbieter der Organisation. Die Datenrichtlinie einer Organisation ist **Eingeschränkt**, bis ein Admin der Organisation unter **Einstellungen → KI** **Standard** wählt: Bis dahin verlassen nur Feldnamen, Typen, Anzahlen und Statistiken GOAT, niemals Zeilen oder Geometrien.
 
 ## Optionale Integrationen {#integrations}
 

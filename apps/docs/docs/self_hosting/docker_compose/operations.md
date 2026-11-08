@@ -14,7 +14,7 @@ User accounts live in Keycloak; organizations, teams and roles live in GOAT.
 
 The Keycloak admin console is at `<GOAT URL>/keycloak/admin`. Sign in with the user `admin` and the password `KEYCLOAK_ADMIN_PASSWORD` from `.env`. GOAT's users are in the realm `goat` (`REALM_NAME`).
 
-To add a user, invite them in GOAT: open <code>Settings</code> → <code>Organization</code> → <code>Members</code>, click <code>New Member</code>, enter the email address, choose the role and click <code>Send Invite</code>.
+To add a user, invite them in GOAT: open <code>Settings</code> → <code>Organization</code> → <code>Members</code>, click <code>Invite members</code>, enter one or more email addresses, choose the role and click <code>Send invitation</code>.
 
 Self-registration is switched off in the bundled realm, so GOAT creates the login account for an address that does not have one yet:
 
@@ -29,7 +29,7 @@ A user belongs to exactly one organization. Whoever signs in without an organiza
 
 To prevent this, set `ALLOW_ORGANIZATION_CREATION=false`. Only accounts with the Keycloak realm role `superuser` can then create organizations; everyone else sees the page <code>Waiting for an invitation</code> until an invitation arrives, which then opens by itself. The bundled realm gives no account that role, so set up your organization before you switch creation off, or create the realm role `superuser` in the admin console and assign it to your account.
 
-If someone already set up an organization by mistake, a superuser can delete it permanently with `DELETE /api/v2/organizations/{organization_id}/permanent` (`GET /api/v2/organizations` lists all organizations with their ids). This works only while the organization has at most one member and nothing in it: no content in its space or in the member's personal space (trash included), no teams, no pending invitations, no custom domains and no analytics settings. Otherwise GOAT answers `409` and names what is left. The person keeps their account and can then be invited. An organization whose last member is gone can be deleted the same way. <code>Delete Organization</code> in the organization settings only suspends an organization.
+If someone already set up an organization by mistake, a superuser can delete it permanently with `DELETE /api/v2/organizations/{organization_id}/permanent` (`GET /api/v2/organizations` lists all organizations with their ids). This works only while the organization has at most one member and nothing in it: no content in its space or in the member's personal space (trash included), no teams, no pending invitations, no custom domains and no analytics settings. Otherwise GOAT answers `409` and names what is left. The person keeps their account and can then be invited. An organization whose last member is gone can be deleted the same way. <code>Delete organization</code> in the organization settings only suspends an organization.
 
 Billing is not touched. With Stripe billing on, the organization's Stripe customer and its subscription stay in Stripe; the answer names the customer in `stripe_id`. Cancel that customer in Stripe. Until then, Stripe's events for it find no organization to change, and its former owner gets no email.
 
