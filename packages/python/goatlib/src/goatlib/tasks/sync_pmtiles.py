@@ -68,10 +68,6 @@ class PMTilesSyncParams(BaseModel):
         default=True,
         description="Process smaller layers first (default: True)",
     )
-    show_progress: bool = Field(
-        default=True,
-        description="Show tippecanoe progress (only when tippecanoe builds the tiles, as the fallback when manby fails)",
-    )
     geometry_type_filter: str | None = Field(
         default=None,
         description="Only process layers matching this geometry type (e.g. 'polygon', 'point', 'line')",
@@ -467,7 +463,6 @@ class PMTilesSyncTask:
         layer: LayerInfo,
         force: bool = False,
         dry_run: bool = False,
-        show_progress: bool = True,
         skip_existing_anchors: bool = False,
         anchor_only: bool = False,
     ) -> SyncResult:
@@ -477,9 +472,9 @@ class PMTilesSyncTask:
         try:
             # A layer with no rows is a normal state — the Create flow makes
             # empty layers to draw into, and a filter or join can match
-            # nothing. Both tilers (manby and the tippecanoe fallback) reject
-            # the empty input that would produce ("Did not read any valid
-            # geometries"), which reads as a failure when nothing is wrong.
+            # nothing. manby rejects the empty input that would produce ("Did
+            # not read any valid geometries"), which reads as a failure when
+            # nothing is wrong.
             # The count comes from the catalog, so this costs no table access.
             if layer.record_count == 0:
                 return SyncResult(
@@ -518,7 +513,6 @@ class PMTilesSyncTask:
                         layer_id=layer.layer_id,
                         geometry_column=layer.geometry_column,
                         snapshot_id=layer.snapshot_id,
-                        show_progress=show_progress,
                     )
                 if output:
                     size_mb = output.stat().st_size / 1024 / 1024
@@ -574,7 +568,6 @@ class PMTilesSyncTask:
                     layer_id=layer.layer_id,
                     geometry_column=layer.geometry_column,
                     snapshot_id=layer.snapshot_id,
-                    show_progress=show_progress,
                 )
 
             if output:
@@ -662,7 +655,6 @@ class PMTilesSyncTask:
                     result = self._process_layer(
                         layer,
                         dry_run=params.dry_run,
-                        show_progress=params.show_progress,
                         anchor_only=True,
                     )
                     if result.status == "generated":
@@ -696,9 +688,8 @@ class PMTilesSyncTask:
                 # Clean up any leftover temp files from interrupted generations
                 # These patterns are from previous implementations:
                 # - .tmp_filename.pmtiles (old prefix pattern)
-                # - filename.pmtiles.tmp (old suffix pattern)
-                # - filename.pmtiles.tmp (tippecanoe's own temp file, from when
-                #   it built in the tiles directory)
+                # - filename.pmtiles.tmp (old suffix pattern, and the tiler's
+                #   own temp file from when it built in the tiles directory)
                 temp_patterns = [
                     pmtiles_path.parent / f".tmp_{pmtiles_path.name}",
                     pmtiles_path.with_suffix(".pmtiles.tmp"),
@@ -773,7 +764,6 @@ class PMTilesSyncTask:
                     layer,
                     force=params.force,
                     dry_run=params.dry_run,
-                    show_progress=params.show_progress,
                     skip_existing_anchors=params.geometry_type_filter == "polygon",
                 )
 

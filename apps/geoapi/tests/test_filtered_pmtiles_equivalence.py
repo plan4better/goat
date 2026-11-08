@@ -195,7 +195,7 @@ def city(tmp_path_factory: pytest.TempPathFactory) -> City:
         )
         con.unregister("source")
         layer_id = f"{seed + 1:032x}"
-        path = generator.generate_from_table(con, kind, layer_id, show_progress=False)
+        path = generator.generate_from_table(con, kind, layer_id)
         assert path is not None
         with open(path, "rb") as f:
             stored = {

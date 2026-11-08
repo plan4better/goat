@@ -185,7 +185,7 @@ def test_a_failed_tile_build_leaves_the_preview_without_tiles(
     if failure == "no tiler":
 
         def no_tiler(self: PMTilesGenerator) -> bool:
-            raise RuntimeError("manby or tippecanoe is required")
+            raise RuntimeError("manby is required")
 
         monkeypatch.setattr(PMTilesGenerator, "_check_dependencies", no_tiler)
     else:

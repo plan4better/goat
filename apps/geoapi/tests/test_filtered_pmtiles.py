@@ -144,7 +144,7 @@ def _build(
     """The layer's tiles and label points, built with goatlib's manby recipe.
 
     Without `marker` the description lacks the manby marker, as in tiles
-    tippecanoe built. Returns the main file.
+    built before manby. Returns the main file.
     """
     anchor_marker = marker if anchor_marker is None else anchor_marker
     generator = PMTilesGenerator(tiles_data_dir=folder, config=PMTilesConfig())

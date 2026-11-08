@@ -3,16 +3,10 @@
 The builder writes the query's features to a GeoParquet file, runs manby on it
 once DuckDB is done, and records MANBY_MARKER in the tileset's description;
 geoapi filters stored tiles only when it finds the marker. A failed manby
-build falls back to tippecanoe, and a failed tippecanoe build returns None: a
-tile build never fails the tool.
-
-tippecanoe from the distribution's packages (CI, dev hosts) predates
-`--generate-variable-depth-tile-pyramid`, so the fallback tests stand in for
-it; the worker image builds a version that has it.
+build returns None: a tile build never fails the tool.
 """
 
 import json
-import logging
 import os
 import subprocess
 import sys
@@ -271,9 +265,9 @@ def test_tile_query_takes_another_id(
 def test_temporal_columns_keep_their_text_format(
     generator: PMTilesGenerator, con: duckdb.DuckDBPyConnection, tmp_path: Path
 ) -> None:
-    """The strings tiles built through GDAL's GeoJSON and tippecanoe carry
-    (decoded from a tile the worker image built on 2026-11-08, in UTC as the
-    workers run), whatever the session's time zone."""
+    """The strings the tiles built before manby carry, whatever the session's
+    time zone (decoded from a tile the worker image built through GDAL's
+    GeoJSON on 2026-11-08, in UTC as the workers run)."""
     con.execute("SET TimeZone = 'Europe/Berlin'")
     con.execute(
         """
@@ -290,7 +284,7 @@ def test_temporal_columns_keep_their_text_format(
         """
     )
 
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
+    path = generator.generate_from_table(con, "layer", "layer1")
 
     assert path is not None
     assert generator.read_marker(path)["tiler"] == "manby"
@@ -364,7 +358,6 @@ def test_build_points_lines_polygons(
         "layer1",
         geometry_column="geom",
         snapshot_id=17,
-        show_progress=False,
     )
 
     assert path == generator.get_pmtiles_path("layer1")
@@ -409,7 +402,7 @@ def test_a_point_count_column_keeps_its_values(
         """
     )
 
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
+    path = generator.generate_from_table(con, "layer", "layer1")
 
     assert path is not None
     assert generator.read_marker(path)["tiler"] == "manby"
@@ -425,7 +418,7 @@ def test_points_at_one_location_still_build(
         "FROM range(3) r(i)"
     )
 
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
+    path = generator.generate_from_table(con, "layer", "layer1")
 
     assert path is not None
     assert generator.read_marker(path)["tiler"] == "manby"
@@ -465,7 +458,7 @@ def test_points_on_one_grid_cell_build_with_manby(
     )
     calls = _spy_manby(generator, monkeypatch)
 
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
+    path = generator.generate_from_table(con, "layer", "layer1")
 
     assert path is not None
     assert generator.read_marker(path)["tiler"] == "manby"
@@ -487,17 +480,17 @@ def test_a_failed_zg_build_is_retried_at_the_max_zoom(
     )
     calls = _spy_manby(generator, monkeypatch, zg_exit=110)
 
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
+    path = generator.generate_from_table(con, "layer", "layer1")
 
     assert path is not None
-    assert generator.read_marker(path)["tiler"] == "manby"  # not tippecanoe
+    assert generator.read_marker(path)["tiler"] == "manby"
     assert len(calls) == 2
     assert _has(calls[0], "-zg", "-rp")
     assert _has(calls[1], "-z14", "-r1")
     assert set(_features(path)) == {1, 2}
 
 
-def test_a_zg_build_that_failed_otherwise_goes_to_tippecanoe(
+def test_a_zg_build_that_failed_otherwise_is_not_retried(
     generator: PMTilesGenerator,
     con: duckdb.DuckDBPyConnection,
     monkeypatch: pytest.MonkeyPatch,
@@ -510,19 +503,10 @@ def test_a_zg_build_that_failed_otherwise_goes_to_tippecanoe(
         ") AS v(n, geometry)"
     )
     calls = _spy_manby(generator, monkeypatch, zg_exit=-9)
-    runs: list[dict] = []
 
-    def tippecanoe(**kwargs: object) -> None:
-        runs.append(kwargs)
-        Path(str(kwargs["output_path"])).write_bytes(b"tippecanoe tiles")
-
-    monkeypatch.setattr(generator, "_run_tippecanoe", tippecanoe)
-
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
-
-    assert path is not None and path.read_bytes() == b"tippecanoe tiles"
+    assert generator.generate_from_table(con, "layer", "layer1") is None
     assert len(calls) == 1 and _has(calls[0], "-zg", "-rp")
-    assert len(runs) == 1
+    assert not generator.get_pmtiles_path("layer1").exists()
 
 
 def test_manby_builds_from_a_geoparquet_written_first(
@@ -555,7 +539,7 @@ def test_manby_builds_from_a_geoparquet_written_first(
 
     monkeypatch.setattr(generator, "_run_manby", run)
 
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
+    path = generator.generate_from_table(con, "layer", "layer1")
 
     assert generator.read_marker(path)["tiler"] == "manby"
     assert len(inputs) == 2 and inputs[0] == inputs[1]  # layer and label points
@@ -574,7 +558,7 @@ def test_the_connection_hands_back_its_memory_before_manby_runs(
     setting = "SELECT current_setting('allocator_background_threads')"
     assert con.execute(setting).fetchone()[0] is False
 
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
+    path = generator.generate_from_table(con, "layer", "layer1")
 
     assert generator.read_marker(path)["tiler"] == "manby"
     assert con.execute(setting).fetchone()[0] is True
@@ -594,11 +578,7 @@ def test_the_input_file_goes_when_the_build_fails(
         inputs.append(input_path)
         raise manby.ManbyError(1, ["-o", "out.pmtiles"])
 
-    def tippecanoe(**_kwargs: object) -> None:
-        raise subprocess.CalledProcessError(1, ["tippecanoe"])
-
     monkeypatch.setattr(generator, "_run_manby", run)
-    monkeypatch.setattr(generator, "_run_tippecanoe", tippecanoe)
 
     assert generator.generate_from_table(con, "layer", "layer1") is None
     assert inputs and not inputs[0].exists()
@@ -627,7 +607,7 @@ def test_manby_runs_with_the_container_cpu_count(
     monkeypatch.setattr(pmtiles, "container_cpu_count", lambda: 3)
     monkeypatch.delenv("TIPPECANOE_MAX_THREADS", raising=False)
 
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
+    path = generator.generate_from_table(con, "layer", "layer1")
 
     assert generator.read_marker(path)["tiler"] == "manby"
     assert seen.read_text() == "3"
@@ -644,7 +624,7 @@ def test_uuid_columns_are_text(
         f"{GEOMETRIES['lines'][0]} AS geometry"
     )
 
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
+    path = generator.generate_from_table(con, "layer", "layer1")
 
     assert _features(path)[1]["uid"] == "8584b3f2-e1ce-457c-be76-180b0f362f90"
 
@@ -662,8 +642,8 @@ COLLECTION_PARTS = {
 def test_geometry_collections_keep_the_parts_of_the_layer_type(
     kind: str, generator: PMTilesGenerator, con: duckdb.DuckDBPyConnection
 ) -> None:
-    """tippecanoe split collections; manby skips them, so the query hands it
-    the parts of the layer's type (overlay and clip results hold collections)."""
+    """manby skips geometry collections, so the query hands it the parts of
+    the layer's type (overlay and clip results hold collections)."""
     tile_types, other = COLLECTION_PARTS[kind]
     con.execute(
         f"""
@@ -678,7 +658,7 @@ def test_geometry_collections_keep_the_parts_of_the_layer_type(
         """
     )
 
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
+    path = generator.generate_from_table(con, "layer", "layer1")
 
     assert path is not None
     assert generator.read_marker(path)["tiler"] == "manby"
@@ -700,9 +680,7 @@ def test_anchor_only_build(
         f"{GEOMETRIES['polygons'][0]} AS geometry"
     )
 
-    path = generator.generate_anchor_from_table(
-        con, "layer", "layer1", snapshot_id=3, show_progress=False
-    )
+    path = generator.generate_anchor_from_table(con, "layer", "layer1", snapshot_id=3)
 
     assert path == generator.get_anchor_pmtiles_path("layer1")
     marker = generator.read_marker(path)
@@ -724,68 +702,56 @@ def test_read_marker_without_a_description(
 
 
 # =====================================================================
-#  Fallback
+#  Failed builds
 # =====================================================================
 
 
-def _manby_fails(*_args: object, **_kwargs: object) -> None:
-    raise manby.ManbyError(1, ["-o", "out.pmtiles"])
-
-
-def test_falls_back_to_tippecanoe_when_manby_fails(
+def test_a_failed_manby_run_fails_the_build(
     generator: PMTilesGenerator,
     con: duckdb.DuckDBPyConnection,
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
 ) -> None:
+    """No other program takes over: the build raises manby's error, and the
+    builder's callers get None, as from any failed tile build."""
     con.execute(
         "CREATE TABLE layer AS SELECT 1 AS n, "
         f"{GEOMETRIES['polygons'][0]} AS geometry"
     )
-    monkeypatch.setattr(generator, "_run_manby", _manby_fails)
-    runs: list[dict] = []
+    failing = tmp_path / "manby"
+    failing.write_text("#!/bin/sh\nexit 1\n")
+    failing.chmod(0o755)
+    monkeypatch.setattr(manby, "binary", lambda: str(failing))
+    real_run = subprocess.run
+    programs: list[str] = []
 
-    def tippecanoe(**kwargs: object) -> None:
-        # today's GeoJSON export feeds it
-        assert Path(str(kwargs["input_path"])).stat().st_size > 0
-        runs.append(kwargs)
-        Path(str(kwargs["output_path"])).write_bytes(b"tippecanoe tiles")
+    def run(argv: list[str], *args: object, **kwargs: object) -> object:
+        programs.append(argv[0])
+        return real_run(argv, *args, **kwargs)
 
-    monkeypatch.setattr(generator, "_run_tippecanoe", tippecanoe)
+    monkeypatch.setattr(pmtiles.subprocess, "run", run)
+    work = tmp_path / "work"
+    work.mkdir()
 
-    with caplog.at_level(logging.WARNING, logger="goatlib.io.pmtiles"):
-        path = generator.generate_from_table(
-            con, "layer", "layer1", snapshot_id=5, show_progress=False
+    with pytest.raises(manby.ManbyError) as failed:
+        generator._build(
+            duckdb_con=con,
+            table_name="layer",
+            layer_id="layer1",
+            geometry_column="geometry",
+            exclude_columns=[],
+            geometry_type="POLYGON",
+            snapshot_id=None,
+            output_path=work / "t_layer1.pmtiles",
         )
+    assert failed.value.returncode == 1
+    assert programs == [str(failing)]
 
-    assert path == generator.get_pmtiles_path("layer1")
-    assert path.read_bytes() == b"tippecanoe tiles"
-    anchor = generator.get_anchor_pmtiles_path("layer1")
-    assert anchor.read_bytes() == b"tippecanoe tiles"
-    assert [r.get("label_anchor", False) for r in runs] == [False, True]
-    assert all(r["snapshot_id"] == 5 for r in runs)
-    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
-    assert warnings and all("layer1" in w for w in warnings)
-
-
-def test_build_failure_returns_none(
-    generator: PMTilesGenerator,
-    con: duckdb.DuckDBPyConnection,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    con.execute(
-        "CREATE TABLE layer AS SELECT 1 AS n, "
-        f"{GEOMETRIES['polygons'][0]} AS geometry"
-    )
-    monkeypatch.setattr(generator, "_run_manby", _manby_fails)
-
-    def tippecanoe(**_kwargs: object) -> None:
-        raise subprocess.CalledProcessError(1, ["tippecanoe"])
-
-    monkeypatch.setattr(generator, "_run_tippecanoe", tippecanoe)
-
+    programs.clear()
     assert generator.generate_from_table(con, "layer", "layer1") is None
     assert generator.generate_anchor_from_table(con, "layer", "layer1") is None
+    # one run each: the layer's tiles failed, so its label points never ran
+    assert programs == [str(failing), str(failing)]
     assert not generator.get_pmtiles_path("layer1").exists()
     assert not generator.get_anchor_pmtiles_path("layer1").exists()
 
@@ -810,10 +776,9 @@ con.execute(
     "'POLYGON((7.6 47.5, 7.7 47.5, 7.7 47.6, 7.6 47.5))') AS geometry"
 )
 for layer_id in ("first", "second"):
-    path = generator.generate_from_table(con, "layer", layer_id, show_progress=False)
+    path = generator.generate_from_table(con, "layer", layer_id)
     anchor = generator.get_anchor_pmtiles_path(layer_id)
     assert path is not None, layer_id
-    # built by manby, not by the tippecanoe fallback
     assert generator.read_marker(path).get("tiler") == "manby", layer_id
     assert generator.read_marker(anchor).get("tiler") == "manby", layer_id
 print("ok")

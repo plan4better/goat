@@ -12,12 +12,10 @@ The generation pipeline:
     2. For polygon layers: generate a separate anchor PMTiles file with label
        anchor points (--convert-polygons-to-label-points). The tile service
        concatenates MVT bytes from both files at serving time.
-    3. If manby fails, build that file as before manby: export to GeoJSON and
-       run tippecanoe. Those tiles have no manby marker.
-    4. Store PMTiles in a separate tiles directory (cache/derived data)
-    5. Embed DuckLake snapshot_id in PMTiles metadata for sync tracking, and
-       for manby builds MANBY_MARKER: geoapi filters stored tiles only when it
-       finds the marker.
+    3. Store PMTiles in a separate tiles directory (cache/derived data)
+    4. Embed DuckLake snapshot_id and MANBY_MARKER in PMTiles metadata: the
+       snapshot for sync tracking, the marker because geoapi filters stored
+       tiles only when it finds it.
 
 Usage:
     from goatlib.io.pmtiles import PMTilesGenerator
@@ -40,7 +38,7 @@ import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Self
 
@@ -57,8 +55,9 @@ from goatlib.utils.layer import layer_id_to_table_name
 logger = logging.getLogger(__name__)
 
 # Recorded in the description of every tileset manby built, next to the
-# snapshot id. geoapi filters stored tiles only when it finds it: tippecanoe's
-# point tiles merged nearby points at every zoom, and some had no feature ids.
+# snapshot id. geoapi filters stored tiles only when it finds it: the point
+# tiles built before manby merged nearby points at every zoom, and some had no
+# feature ids.
 MANBY_MARKER: dict = {"tiler": "manby", "recipe": 1}
 
 # Columns geoapi hides from tiles (its HIDDEN_FIELDS default): the GeoParquet
@@ -77,7 +76,7 @@ _TIMESTAMP_TEXT = r"regexp_replace(strftime({}, '%Y-%m-%dT%H:%M:%S.%g'), '\.000$
 # to manby, whose grid is 360 / 2**32 degrees: -zg cannot guess a max zoom.
 ONE_LOCATION_DEGREES = 1e-6
 # manby's exit status when -zg finds no two locations to guess a max zoom
-# from. Any other failure (a build killed for its memory) goes to tippecanoe.
+# from. Any other failure (a build killed for its memory) fails the build.
 MANBY_EXIT_NO_ZOOM_GUESS = 110
 
 
@@ -85,7 +84,7 @@ def _part_type(geometry_type: str | None) -> int:
     """A layer's kind, as OGC type codes: 1 points, 2 lines, 3 polygons.
 
     It picks the recipe and the parts kept from geometry collections. Any
-    other type gets the polygon recipe, as with tippecanoe.
+    other type gets the polygon recipe.
     """
     geom_upper = geometry_type.upper() if geometry_type else ""
     if "POINT" in geom_upper:
@@ -98,9 +97,8 @@ def _part_type(geometry_type: str | None) -> int:
 def publish_tiles(built: Path, final: Path) -> None:
     """Move tiles built on local disk into place, atomically.
 
-    Tiles are built on local disk: manby spills to its temporary directory,
-    and tippecanoe (the fallback) builds PMTiles in an SQLite database at its
-    output path, which is unsafe on network file systems. The finished file
+    Tiles are built on local disk, with manby's input and spill, rather than
+    in the tiles directory, which may be network storage. The finished file
     is copied next to `final` under a pid-tagged temp name (concurrent runs
     for one layer don't share it) and renamed over `final`, so readers never
     see a partial file.
@@ -182,27 +180,21 @@ class PMTilesGenerator:
         self._check_dependencies()
 
     def _check_dependencies(self: Self) -> bool:
-        """Check if a tiler is available.
-
-        manby builds the tiles; tippecanoe is the fallback when a manby
-        build fails.
+        """Check that manby's program is available.
 
         Returns:
-            True if manby's program or tippecanoe is available
+            True if it is
 
         Raises:
-            RuntimeError: If neither is installed
+            RuntimeError: If it is not installed
         """
         try:
             manby.binary()
-            return True
-        except FileNotFoundError:
-            pass
-        if not shutil.which("tippecanoe"):
+        except FileNotFoundError as e:
             raise RuntimeError(
-                "manby or tippecanoe is required for PMTiles generation. "
+                "manby is required for PMTiles generation. "
                 "Install goatlib's full extra, which includes manby"
-            )
+            ) from e
         return True
 
     def get_pmtiles_path(self: Self, layer_id: str) -> Path:
@@ -356,13 +348,11 @@ class PMTilesGenerator:
         geometry_column: str = "geometry",
         exclude_columns: list[str] | None = None,
         snapshot_id: int | None = None,
-        show_progress: bool = True,
     ) -> Path | None:
         """Generate PMTiles from a DuckLake table.
 
         manby tiles the table from a GeoParquet copy of it with the recipe
-        of its geometry type; a file manby fails to build is built with
-        tippecanoe from a GeoJSON export instead (see _build).
+        of its geometry type (see _build).
 
         Args:
             duckdb_con: DuckDB connection with DuckLake attached
@@ -372,8 +362,6 @@ class PMTilesGenerator:
             exclude_columns: Columns to exclude from tiles (e.g., ["bbox"])
             snapshot_id: DuckLake snapshot ID for sync tracking. If provided,
                 will be embedded in PMTiles metadata.
-            show_progress: If True, stream tippecanoe progress to stdout
-                (manby runs quietly)
 
         Returns:
             Path to generated PMTiles file, or None if generation failed
@@ -404,8 +392,8 @@ class PMTilesGenerator:
 
         try:
             # Everything is built on local disk and only the finished files
-            # are published (see publish_tiles). manby and tippecanoe pick the
-            # output format by extension, so the built files keep the final names.
+            # are published (see publish_tiles). manby picks the output format
+            # by extension, so the built files keep the final names.
             with tempfile.TemporaryDirectory(prefix="pmtiles_") as work:
                 work_dir = Path(work)
                 built_path = work_dir / pmtiles_path.name
@@ -420,7 +408,6 @@ class PMTilesGenerator:
                     exclude_columns=exclude_columns,
                     geometry_type=geometry_type,
                     snapshot_id=snapshot_id,
-                    show_progress=show_progress,
                     output_path=built_path,
                 )
 
@@ -435,7 +422,6 @@ class PMTilesGenerator:
                         exclude_columns=exclude_columns,
                         geometry_type=geometry_type,
                         snapshot_id=snapshot_id,
-                        show_progress=show_progress,
                         output_path=built_anchor_path,
                         label_anchor=True,
                     )
@@ -468,12 +454,11 @@ class PMTilesGenerator:
         geometry_column: str = "geometry",
         exclude_columns: list[str] | None = None,
         snapshot_id: int | None = None,
-        show_progress: bool = True,
     ) -> Path | None:
         """Generate only anchor PMTiles for a polygon layer.
 
         Generates label anchor point tiles without regenerating the main
-        geometry tiles, with manby or, if that fails, tippecanoe.
+        geometry tiles.
 
         Args:
             duckdb_con: DuckDB connection with DuckLake attached
@@ -482,7 +467,6 @@ class PMTilesGenerator:
             geometry_column: Name of the geometry column
             exclude_columns: Columns to exclude from tiles (e.g., ["bbox"])
             snapshot_id: DuckLake snapshot ID for sync tracking
-            show_progress: If True, stream tippecanoe progress to stdout
 
         Returns:
             Path to generated anchor PMTiles file, or None if generation failed
@@ -522,7 +506,6 @@ class PMTilesGenerator:
                     exclude_columns=exclude_columns,
                     geometry_type=geometry_type,
                     snapshot_id=snapshot_id,
-                    show_progress=show_progress,
                     output_path=built_anchor_path,
                     label_anchor=True,
                 )
@@ -547,82 +530,53 @@ class PMTilesGenerator:
         exclude_columns: list[str],
         geometry_type: str | None,
         snapshot_id: int | None,
-        show_progress: bool,
         output_path: Path,
         label_anchor: bool = False,
     ) -> None:
-        """Build one PMTiles file with manby, or with tippecanoe if manby fails.
+        """Build one PMTiles file with manby.
 
         `output_path` lies in the build's work directory on local disk, which
-        also holds manby's input and spill, and the GeoJSON export tippecanoe
-        reads; the inputs are shared by both files of a polygon layer and go
-        with the directory when the build ends.
+        also holds manby's input and spill; the input is shared by both files
+        of a polygon layer and goes with the directory when the build ends.
 
         Raises:
-            Exception: If tippecanoe fails too
+            manby.ManbyError: If manby fails. Its own messages went to stderr;
+                the error has its exit status.
         """
         work_dir = output_path.parent
-        try:
-            distinct_locations = None
-            if _part_type(geometry_type) == 1 and not label_anchor:
-                distinct_locations = self._distinct_locations(
-                    duckdb_con, table_name, geometry_column
-                )
-            flags = self.manby_flags(
-                geometry_type, snapshot_id, label_anchor, distinct_locations
+        distinct_locations = None
+        if _part_type(geometry_type) == 1 and not label_anchor:
+            distinct_locations = self._distinct_locations(
+                duckdb_con, table_name, geometry_column
             )
-            # Shared by both files of a polygon layer
-            tile_input = work_dir / "input.parquet"
-            if not tile_input.exists():
-                query = self.tile_query(
-                    duckdb_con,
-                    table_name,
-                    geometry_column,
-                    exclude_columns,
-                    geometry_type=geometry_type,
-                )
-                self._write_tile_input(duckdb_con, query, tile_input)
-            # manby has no time limit: it runs until it finishes or fails
-            try:
-                self._run_manby(tile_input, output_path, [*flags, "-t", str(work_dir)])
-            except manby.ManbyError as e:
-                if "-zg" not in flags or e.returncode != MANBY_EXIT_NO_ZOOM_GUESS:
-                    raise
-                # -zg found no two locations it can tell apart: build to the
-                # configured max zoom, as for points at one location
-                logger.warning(
-                    f"manby could not guess a max zoom for layer {layer_id}, "
-                    "building it to the configured one"
-                )
-                flags = self.manby_flags(geometry_type, snapshot_id, label_anchor, 1)
-                self._run_manby(tile_input, output_path, [*flags, "-t", str(work_dir)])
-            return
-        except Exception as e:
-            # manby's own messages went to stderr; the error has its exit status
-            logger.warning(
-                f"manby could not build the tiles of layer {layer_id} "
-                f"({output_path.name}), building them with tippecanoe: {e}"
-            )
-
-        geojson_path = work_dir / "features.geojson"
-        if not geojson_path.exists():
-            # GeoJSON preserves attribute types. FlatGeobuf is faster but
-            # tippecanoe converts its integers to strings.
-            self._export_to_geojson(
-                duckdb_con=duckdb_con,
-                table_name=table_name,
-                output_path=str(geojson_path),
-                geometry_column=geometry_column,
-                exclude_columns=exclude_columns,
-            )
-        self._run_tippecanoe(
-            input_path=str(geojson_path),
-            output_path=str(output_path),
-            geometry_type=geometry_type,
-            snapshot_id=snapshot_id,
-            show_progress=show_progress,
-            label_anchor=label_anchor,
+        flags = self.manby_flags(
+            geometry_type, snapshot_id, label_anchor, distinct_locations
         )
+        # Shared by both files of a polygon layer
+        tile_input = work_dir / "input.parquet"
+        if not tile_input.exists():
+            query = self.tile_query(
+                duckdb_con,
+                table_name,
+                geometry_column,
+                exclude_columns,
+                geometry_type=geometry_type,
+            )
+            self._write_tile_input(duckdb_con, query, tile_input)
+        # manby has no time limit: it runs until it finishes or fails
+        try:
+            self._run_manby(tile_input, output_path, [*flags, "-t", str(work_dir)])
+        except manby.ManbyError as e:
+            if "-zg" not in flags or e.returncode != MANBY_EXIT_NO_ZOOM_GUESS:
+                raise
+            # -zg found no two locations it can tell apart: build to the
+            # configured max zoom, as for points at one location
+            logger.warning(
+                f"manby could not guess a max zoom for layer {layer_id}, "
+                "building it to the configured one"
+            )
+            flags = self.manby_flags(geometry_type, snapshot_id, label_anchor, 1)
+            self._run_manby(tile_input, output_path, [*flags, "-t", str(work_dir)])
 
     @staticmethod
     def _write_tile_input(
@@ -656,7 +610,7 @@ class PMTilesGenerator:
     def _run_manby(input_path: Path, output_path: Path, flags: list[str]) -> None:
         """Run manby on a GeoParquet file. Its messages go to stderr.
 
-        manby takes one thread per core of the machine, like tippecanoe, unless
+        manby takes one thread per core of the machine unless
         TIPPECANOE_MAX_THREADS says otherwise: on a big node a container with
         two CPUs would run dozens, which costs memory.
 
@@ -807,13 +761,12 @@ class PMTilesGenerator:
 
         `_rowid` becomes the MVT feature id, and the features come in its
         order (--preserve-input-order). Attributes are the plain columns, as
-        tippecanoe's GeoJSON input had them: no nested types or arrays, no
+        the tiles built before manby had them: no nested types or arrays, no
         `exclude_columns` and none of the columns geoapi hides. Dates and
         timestamps become the text they were in those tiles. manby skips
-        geometry collections (tippecanoe split them): with `geometry_type`, a
-        collection is replaced by its parts of the layer's kind. Rows without
-        a geometry, or with an empty one (or nothing of that kind), are left
-        out.
+        geometry collections: with `geometry_type`, a collection is replaced
+        by its parts of the layer's kind. Rows without a geometry, or with an
+        empty one (or nothing of that kind), are left out.
 
         Args:
             duckdb_con: DuckDB connection
@@ -866,9 +819,10 @@ class PMTilesGenerator:
     def _tile_value(column: str, col_type: str) -> str:
         """SQL of a column's value in the tiles.
 
-        Dates and timestamps as text, as GDAL's GeoJSON export wrote them for
-        tippecanoe on the workers, whose time zone is UTC. UUIDs as text too:
-        GeoParquet stores them as bytes, which manby leaves out.
+        Dates and timestamps as text, as the tiles built before manby carried
+        them (GDAL's GeoJSON export, on the workers, whose time zone is UTC).
+        UUIDs as text too: GeoParquet stores them as bytes, which manby
+        leaves out.
         """
         if col_type == "UUID":
             return f"CAST({column} AS VARCHAR)"
@@ -942,309 +896,6 @@ class PMTilesGenerator:
         except Exception as e:
             logger.warning(f"Could not detect geometry type: {e}")
         return None
-
-    @staticmethod
-    def _pre_epoch_date_replacements(
-        duckdb_con: "duckdb.DuckDBPyConnection",
-        table_name: str,
-        date_columns: set[str],
-    ) -> str:
-        """A ``REPLACE`` clause casting pre-1970 DATE columns to text, or "".
-
-        GDAL's GeoJSON writer puts a DATE through a unix-time conversion that
-        rejects anything before the epoch (`Invalid unixTime = …`), and the
-        error fails the whole export -- so one historical date costs the layer
-        every tile it would have had. A public catalog is full of them.
-
-        Only columns that actually hold such a date are rewritten: GDAL renders
-        a DATE as `YYYY-MM-DD` and so does the cast, but leaving the untouched
-        ones alone keeps every layer that works today byte-identical.
-        """
-        if not date_columns:
-            return ""
-
-        ordered = sorted(date_columns)
-        try:
-            mins = duckdb_con.execute(
-                "SELECT "
-                + ", ".join(f'min("{name}")' for name in ordered)
-                + f" FROM {table_name}"
-            ).fetchone()
-        except Exception as e:  # noqa: BLE001 - a probe, never a reason to fail
-            logger.debug(f"Could not check date ranges for {table_name}: {e}")
-            return ""
-
-        epoch = date(1970, 1, 1)
-        affected = [
-            name
-            for name, oldest in zip(ordered, mins or (), strict=False)
-            if isinstance(oldest, date) and oldest < epoch
-        ]
-        if not affected:
-            return ""
-
-        logger.debug(
-            f"Casting pre-epoch date columns to text for GeoJSON export: {affected}"
-        )
-        return (
-            "REPLACE ("
-            + ", ".join(f'CAST("{name}" AS VARCHAR) AS "{name}"' for name in affected)
-            + ")"
-        )
-
-    def _export_to_geojson(
-        self: Self,
-        duckdb_con: duckdb.DuckDBPyConnection,
-        table_name: str,
-        output_path: str,
-        geometry_column: str = "geometry",
-        exclude_columns: list[str] | None = None,
-    ) -> None:
-        """Export a DuckLake table to GeoJSON format.
-
-        GeoJSON is used as an intermediate format because:
-        - tippecanoe reads it natively
-        - GeoJSON preserves attribute types (integers stay integers)
-        - DuckDB can write it directly via GDAL driver
-
-        Note: We use GeoJSON instead of FlatGeobuf because tippecanoe
-        converts FlatGeobuf attributes to strings, breaking numeric styles.
-
-        Args:
-            duckdb_con: DuckDB connection
-            table_name: Full table path
-            output_path: Output GeoJSON file path
-            geometry_column: Name of geometry column
-            exclude_columns: Columns to exclude (e.g., bbox struct)
-        """
-        exclude_columns = exclude_columns or []
-
-        # Types that are not supported by GeoJSON/tippecanoe
-        unsupported_type_prefixes = ("struct", "map", "list", "union")
-
-        # Get actual columns and their types from the table
-        columns_to_exclude: set[str] = set(exclude_columns)
-        date_columns: set[str] = set()
-        try:
-            # Use SELECT LIMIT 0 to get column info without fetching data
-            # This works better with DuckLake than DESCRIBE
-            result = duckdb_con.execute(
-                f"SELECT * FROM {table_name} LIMIT 0"
-            ).description
-
-            for col_info in result:
-                col_name = col_info[0]
-                col_type = col_info[1] if len(col_info) > 1 else ""
-                if str(col_type).strip().upper() == "DATE":
-                    date_columns.add(col_name)
-
-                col_type_lower = str(col_type).lower()
-                # Exclude complex types that GeoJSON/tippecanoe can't handle
-                if col_type_lower.startswith(unsupported_type_prefixes):
-                    columns_to_exclude.add(col_name)
-                    logger.debug(
-                        f"Excluding column '{col_name}' with unsupported type: {col_type}"
-                    )
-                # Also exclude array types (e.g., VARCHAR[], INTEGER[])
-                elif col_type_lower.endswith("[]"):
-                    columns_to_exclude.add(col_name)
-                    logger.debug(f"Excluding array column '{col_name}': {col_type}")
-
-            actual_columns = {col_info[0] for col_info in result}
-            # Only keep exclusions for columns that actually exist
-            columns_to_exclude = columns_to_exclude & actual_columns
-
-        except Exception as e:
-            logger.warning(f"Could not get column list for {table_name}: {e}")
-            columns_to_exclude = set()
-            date_columns = set()
-
-        # Build exclusion clause for columns that exist
-        exclude_clause = ""
-        if columns_to_exclude:
-            exclude_clause = f"EXCLUDE({', '.join(sorted(columns_to_exclude))})"
-            logger.debug(f"Excluding columns from GeoJSON export: {columns_to_exclude}")
-
-        replace_clause = self._pre_epoch_date_replacements(
-            duckdb_con, table_name, date_columns - columns_to_exclude
-        )
-
-        # Include rowid+1 as _rowid — tippecanoe will promote it to MVT feature ID.
-        # +1 because MVT feature ID 0 is treated as "unset" by MapLibre.
-        sql = f"""
-            COPY (
-                SELECT rowid + 1 AS _rowid, * {exclude_clause} {replace_clause}
-                FROM {table_name}
-            ) TO '{output_path}' WITH (FORMAT GDAL, DRIVER 'GeoJSON')
-        """
-
-        logger.debug(f"Exporting to GeoJSON: {sql}")
-        duckdb_con.execute(sql)
-
-    def _run_tippecanoe(
-        self: Self,
-        input_path: str,
-        output_path: str,
-        geometry_type: str | None = None,
-        snapshot_id: int | None = None,
-        show_progress: bool = True,
-        label_anchor: bool = False,
-    ) -> None:
-        """Run tippecanoe to generate PMTiles (the fallback when manby fails).
-
-        Uses different settings based on geometry type:
-        - Points: Cluster on a Hilbert curve for even distribution at low zooms
-        - Polygons/Lines: Use drop-densest to preserve shapes
-
-        Args:
-            input_path: Input GeoJSON file path
-            output_path: Output PMTiles file path
-            geometry_type: Geometry type (e.g., "POINT", "POLYGON")
-            snapshot_id: DuckLake snapshot ID to embed in PMTiles metadata
-            show_progress: If True, stream tippecanoe progress to stdout
-            label_anchor: If True, generate label anchor points from polygons
-                using --convert-polygons-to-label-points. The output layer
-                will be named using anchor_layer_name config.
-
-        Raises:
-            subprocess.CalledProcessError: If tippecanoe fails
-        """
-        # Use defaults if config values are None (safety check)
-        min_zoom = self.config.min_zoom if self.config.min_zoom is not None else 0
-        max_zoom = self.config.max_zoom if self.config.max_zoom is not None else 14
-
-        # Detect geometry type category
-        geom_upper = geometry_type.upper() if geometry_type else ""
-        is_point_layer = "POINT" in geom_upper
-        is_line_layer = "LINE" in geom_upper or "LINESTRING" in geom_upper
-
-        # Use anchor layer name when generating label anchor points
-        layer_name = (
-            self.config.anchor_layer_name if label_anchor else self.config.layer_name
-        )
-
-        cmd = [
-            "tippecanoe",
-            "-o",
-            output_path,
-            input_path,
-            "--force",
-            "-l",
-            layer_name,
-            f"-Z{min_zoom}",
-            f"-z{max_zoom}",
-            "--generate-variable-depth-tile-pyramid",  # Only generate tiles where needed
-            "--full-detail=16",
-            "--use-attribute-for-id=_rowid",  # Promote _rowid to MVT feature ID
-            "--exclude=_rowid",  # Ensure _rowid is removed from properties
-        ]
-
-        # For label anchor generation, convert polygons to optimal label points
-        if label_anchor:
-            cmd.append("--convert-polygons-to-label-points")
-
-        # Embed snapshot_id in PMTiles metadata via description field
-        if snapshot_id is not None:
-            description_data = {
-                "snapshot_id": snapshot_id,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
-            }
-            cmd.extend(["--description", json.dumps(description_data)])
-
-        if label_anchor:
-            # Label anchor settings: one point per polygon, no clustering.
-            # tippecanoe's --convert-polygons-to-label-points already handles
-            # optimal placement. Drop densest labels at low zooms when tiles
-            # are too full (e.g. 200k+ polygons) — they appear at higher zooms.
-            cmd.extend(
-                [
-                    "-r1",  # Minimal drop rate (keep as much as possible)
-                    "--drop-densest-as-needed",
-                    "--extend-zooms-if-still-dropping",
-                ]
-            )
-            logger.info("Using label anchor tippecanoe settings (no clustering)")
-        elif is_point_layer:
-            # Point-specific settings:
-            # - Higher limits for dense/attribute-heavy POI datasets
-            # - Use -r1 to guarantee at least 1 feature per tile at all zooms
-            # - Coalesce smallest for even distribution at low zooms
-            cmd.extend(
-                [
-                    "-r1",
-                    "--cluster-distance=5",
-                    "--hilbert",
-                    "--extend-zooms-if-still-dropping",
-                ]
-            )
-            logger.info("Using point-optimized tippecanoe settings (-r1, high limits)")
-        elif is_line_layer:
-            # LineString settings (e.g., roads):
-            # - Higher limits for denser output
-            # - Allow line simplification at low zooms (default behavior)
-            # - Only drop smallest lines when absolutely needed
-            cmd.extend(
-                [
-                    "-M",
-                    "2000000",  # 2MB tile size limit (default 500KB)
-                    "-O",
-                    "300000",  # 300K features per tile (default 200K)
-                    "--drop-smallest-as-needed",  # Drop tiny road segments only if needed
-                    "--extend-zooms-if-still-dropping",
-                    "--simplify-only-low-zooms",
-                    "--no-simplification-of-shared-nodes",
-                ]
-            )
-            logger.info(
-                "Using line-optimized tippecanoe settings (high density, simplify)"
-            )
-        else:
-            # Polygon settings:
-            # - Higher limits for dense polygon datasets (buildings, parcels)
-            # - Preserve geometry detail
-            # - Avoid tiny polygon reduction (keeps small buildings visible)
-            # - Drop/coalesce densest areas first
-            cmd.extend(
-                [
-                    "-M",
-                    "2000000",  # 2MB tile size limit (default 500KB)
-                    "-O",
-                    "300000",  # 300K features per tile (default 200K)
-                    "--no-tiny-polygon-reduction",
-                    "--coalesce-densest-as-needed",
-                    "--drop-densest-as-needed",
-                    "--extend-zooms-if-still-dropping",
-                    "--simplify-only-low-zooms",
-                    "--no-simplification-of-shared-nodes",
-                ]
-            )
-            logger.debug("Using polygon-optimized tippecanoe settings")
-
-        logger.debug(f"Running tippecanoe: {' '.join(cmd)}")
-
-        if show_progress:
-            # Let tippecanoe write progress directly to terminal
-            result = subprocess.run(cmd, capture_output=False)
-            if result.returncode != 0:
-                raise subprocess.CalledProcessError(result.returncode, cmd)
-        else:
-            # Capture output silently
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                error_msg = (
-                    result.stderr.strip() if result.stderr else "No error message"
-                )
-                logger.error(
-                    f"tippecanoe failed (exit {result.returncode}): {error_msg}\n"
-                    f"Command: {' '.join(cmd)}"
-                )
-                raise subprocess.CalledProcessError(
-                    result.returncode, cmd, result.stdout, result.stderr
-                )
-            if result.stderr:
-                for line in result.stderr.strip().split("\n"):
-                    if line.strip():
-                        logger.debug(f"tippecanoe: {line}")
 
     def delete_pmtiles(self: Self, layer_id: str) -> bool:
         """Delete PMTiles file, anchor file, and metadata for a layer.

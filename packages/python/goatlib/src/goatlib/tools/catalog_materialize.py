@@ -308,7 +308,6 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 layer_id=layer_id,
                 geometry_column=geom_col_sql,
                 exclude_columns=["rowid"],
-                show_progress=False,
             )
             if pmtiles is None:
                 raise RuntimeError("PMTiles generation returned no file")

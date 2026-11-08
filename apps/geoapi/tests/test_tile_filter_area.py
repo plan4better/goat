@@ -341,7 +341,7 @@ def woods(tmp_path_factory: pytest.TempPathFactory) -> Woods:
     )
     tmp = tmp_path_factory.mktemp("woods")
     generator = PMTilesGenerator(tiles_data_dir=tmp, config=PMTilesConfig())
-    archive = generator.generate_from_table(con, "woods", "1" * 32, show_progress=False)
+    archive = generator.generate_from_table(con, "woods", "1" * 32)
     assert archive is not None
     with open(archive, "rb") as f:
         tiles = {

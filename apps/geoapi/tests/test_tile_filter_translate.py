@@ -569,7 +569,7 @@ def layer(tmp_path_factory: pytest.TempPathFactory) -> Layer:
     ]
     tmp = tmp_path_factory.mktemp("tiles")
     generator = PMTilesGenerator(tiles_data_dir=tmp, config=PMTilesConfig())
-    path = generator.generate_from_table(con, "layer", "layer1", show_progress=False)
+    path = generator.generate_from_table(con, "layer", "layer1")
     assert path is not None
     with open(path, "rb") as f:
         (vector_layer,) = Reader(MmapSource(f)).metadata()["vector_layers"]

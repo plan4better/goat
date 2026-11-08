@@ -397,7 +397,6 @@ class TempLayerWriter:
                 layer_id=self.temp_file_id,
                 geometry_column=geom_col.replace('"', '""'),
                 exclude_columns=["rowid"],
-                show_progress=False,
             )
             if pmtiles_path is None:
                 logger.warning("PMTiles generation failed, the preview has no tiles")

@@ -1,9 +1,9 @@
 """Thread counts derived from the container's CPU limit.
 
-Programs that size their thread pools by the machine's cores (manby, like
-tippecanoe, unless TIPPECANOE_MAX_THREADS says otherwise) start one thread per
-core of a big node in a container that may use two of them: each thread costs
-memory, and the quota throttles them anyway.
+Programs that size their thread pools by the machine's cores (manby, unless
+TIPPECANOE_MAX_THREADS says otherwise) start one thread per core of a big node
+in a container that may use two of them: each thread costs memory, and the
+quota throttles them anyway.
 """
 
 import math
