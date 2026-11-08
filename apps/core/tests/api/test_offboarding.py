@@ -309,3 +309,49 @@ async def test_reassign_to_outside_organization_is_refused(
         params={"reassign_to": str(outsider.id)},
     )
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_removing_a_member_without_a_name_answers_like_any_other(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """An invitee who never entered a name is removed and answered like
+    anyone else. The route answers the user row `remove_user` loaded, an
+    instance of its `User` response model, so missing names are passed
+    through as null rather than validated against the model's `str`."""
+    org = make_organization(id=uuid4())
+    db_session.add(org)
+    await db_session.flush()
+    nameless_id = uuid4()
+    db_session.add(
+        User(
+            id=nameless_id,
+            email=f"nameless-{uuid4().hex[:6]}@goat.test",
+            firstname=None,
+            lastname=None,
+            avatar=None,
+            organization_id=org.id,
+        )
+    )
+    await db_session.commit()
+    viewer = await _role_id(db_session, "organization-viewer", "organization")
+    await db_session.execute(
+        text(f"INSERT INTO {S}.user_role (user_id, role_id) VALUES (:u, :r)"),
+        {"u": nameless_id, "r": viewer},
+    )
+    await db_session.commit()
+
+    response = await client.delete(
+        f"{settings.API_V2_STR}/organizations/{org.id}/users/{nameless_id}"
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["id"], body["firstname"], body["lastname"]) == (
+        str(nameless_id),
+        None,
+        None,
+    )
+    gone = await db_session.execute(
+        text(f"SELECT 1 FROM {S}.user WHERE id = :id"), {"id": nameless_id}
+    )
+    assert gone.first() is None

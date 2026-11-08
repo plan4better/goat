@@ -10,7 +10,7 @@ import base64
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from core.core.config import settings
@@ -106,6 +106,46 @@ async def test_only_the_owner_adds_members(
 
 
 @pytest.mark.asyncio
+async def test_adding_someone_without_a_name_answers_the_member(
+    client: AsyncClient, db_session: AsyncSession, team_setup: dict[str, Any]
+) -> None:
+    """An invitee who never entered a name is added like anyone else, and the
+    answer is the member as `GET .../members` lists them (the user shape
+    refused the missing names with a 500 after the member was already in)."""
+    team = team_setup["team"]
+    owner = (await db_session.get(User, team_setup["owner"])).organization_id
+    nameless = User(
+        id=uuid4(),
+        email=f"nameless-{uuid4().hex[:8]}@goat.test",
+        firstname=None,
+        lastname=None,
+        avatar=None,
+        organization_id=owner,
+    )
+    db_session.add(nameless)
+    await db_session.commit()
+
+    added = await client.post(
+        f"{TEAMS}/{team}/users/{nameless.id}", headers=_as(team_setup["owner"])
+    )
+    assert added.status_code == 200, added.text
+    assert added.json() == {
+        "id": str(nameless.id),
+        "firstname": None,
+        "lastname": None,
+        "email": nameless.email,
+        "role": "team-member",
+        "avatar": None,
+        "invitation_status": "accepted",
+    }
+    members = await client.get(
+        f"{TEAMS}/{team}/members", headers=_as(team_setup["owner"])
+    )
+    assert members.status_code == 200, members.text
+    assert added.json() in members.json()
+
+
+@pytest.mark.asyncio
 async def test_a_user_of_another_organization_cannot_be_added(
     client: AsyncClient, db_session: AsyncSession, team_setup: dict[str, Any]
 ) -> None:
@@ -148,6 +188,10 @@ async def test_the_owner_removes_members_but_not_themselves(
         headers=_as(team_setup["owner"]),
     )
     assert removes_self.status_code == 400, removes_self.text
+    # Since B7 the owner hands the team over instead of deleting it.
+    assert removes_self.json()["detail"] == (
+        "The team's owner cannot leave the team; make another member the owner first."
+    )
     assert team_setup["owner"] in await _members(db_session, team)
 
     removes_member = await client.delete(

@@ -35,6 +35,7 @@ REQUESTS = [
     ("PUT", f"organizations/{ORG}/analytics/{ITEM}/dashboards"),
     ("PATCH", f"organizations/{ORG}/profile"),
     ("DELETE", f"organizations/{ORG}"),
+    ("POST", f"organizations/{ORG}/invitations/{ITEM}/resend"),
 ]
 
 

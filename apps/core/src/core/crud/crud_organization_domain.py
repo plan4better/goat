@@ -77,11 +77,15 @@ class CRUDOrganizationDomain(CRUDBase[OrganizationDomain, Any, Any]):
     async def list_pending_dns(
         self, async_session: AsyncSession, *, max_age_days: int = 7
     ) -> List[OrganizationDomain]:
-        """List domains awaiting DNS verification that were created within max_age_days."""
+        """List domains awaiting DNS verification that were created within max_age_days.
+
+        A failed check (a record pointing elsewhere) counts: once the customer
+        fixes the record, the next pass verifies it.
+        """
         cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
         statement = select(self.model).where(
             and_(
-                self.model.dns_status == DnsStatus.PENDING,
+                self.model.dns_status.in_([DnsStatus.PENDING, DnsStatus.FAILED]),
                 self.model.created_at >= cutoff,
             )
         )

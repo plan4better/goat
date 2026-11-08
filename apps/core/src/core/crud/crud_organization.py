@@ -4,11 +4,10 @@ from typing import Any, List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func, not_, or_, select, update
+from sqlalchemy import and_, func, not_, or_, select, text, update
 from sqlalchemy import delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, load_only
-from sqlalchemy.orm.attributes import flag_modified
 
 from core.accounts import report_suspension, report_trial
 from core.core.config import settings
@@ -16,6 +15,7 @@ from core.crud.base import CRUDBase
 from core.crud.crud_billing_terms import DEFAULT_AI_CREDITS_PER_EDITOR, trial_terms
 from core.crud.crud_folder import folder as crud_folder
 from core.crud.crud_invitation import invitation as crud_invitations
+from core.crud.crud_invitation import last_sent_at
 from core.crud.crud_role import role as crud_role
 from core.crud.crud_space import space as crud_space
 from core.db.models import Organization, UserRoleLink
@@ -460,6 +460,7 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
                 roles.append(role)
             user_dict["roles"] = roles
             user_dict["invitation_status"] = InvitationStatusEnum.accepted
+            user_dict["joined_at"] = user.created_at
             member = OrganizationUser(**user_dict)
             members.append(member)
 
@@ -480,6 +481,9 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
                         roles=[invitation.payload["role"]],
                         invitation_status=invitation.status,
                         avatar="",
+                        invited_at=invitation.created_at,
+                        expires_at=invitation.expires,
+                        last_sent_at=last_sent_at(invitation),
                     )
                     members.append(member)
 
@@ -756,35 +760,71 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
             if role_link.role.name in allowed_org_roles:
                 organization_role = role_link.role.name
 
+        no_role = Exception(_("User is not part of the organization or has no role"))
         if not organization_role:
-            raise Exception(_("User is not part of the organization or has no role"))
+            raise no_role
 
         # check if user has the role
         if role not in allowed_org_roles:
             raise Exception(_("Invalid role"))
-        if role == organization_role:
-            return user
-
-        # check if organization has enough seats
-        self.check_seats_quota(role=role, organization=organization_obj)
-        for role_link in user.role_links:
-            if role_link.role.name in allowed_org_roles:
-                await db.delete(role_link)
-
-        # add user to new role
-        role_obj = await crud_role.get_by_key(db=db, key="name", value=role)
-        role_obj = role_obj[0]
-        user_role = UserRoleLink(role=role_obj, user=user)
-
-        db.add(user_role)
-
-        await db.commit()
-        organization_user = OrganizationUser(
+        if role != organization_role:
+            # check if organization has enough seats
+            self.check_seats_quota(
+                role=role, organization=organization_obj, current_role=organization_role
+            )
+            role_obj = await crud_role.get_by_key(db=db, key="name", value=role)
+            role_obj = role_obj[0]
+            org_role_ids = (
+                (
+                    await db.execute(
+                        select(Role.id).where(Role.name.in_(allowed_org_roles))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            # A member the old delete-then-insert left with two organization
+            # roles keeps the first link, which the UPDATE below changes, so
+            # the member never has none (both changed would break the unique
+            # index on user and role).
+            extra_links = sorted(
+                link.id
+                for link in user.role_links
+                if link.role.name in allowed_org_roles
+            )[1:]
+            if extra_links:
+                await db.execute(
+                    sql_delete(UserRoleLink).where(UserRoleLink.id.in_(extra_links))
+                )
+            # The link changes in one statement (each commits on its own): a
+            # delete and an insert let two changes at once both insert, leaving
+            # two organization roles. A second UPDATE waits for the first and
+            # then writes the same row, so the last writer's role stays. The
+            # role ids are values, not a join with `role`: re-checking the row
+            # after the wait, Postgres would reuse the role row it joined first,
+            # which no longer matches, and skip it. No row: the member was
+            # removed since the read above.
+            written = await db.execute(
+                update(UserRoleLink)
+                .where(
+                    UserRoleLink.user_id == user.id,
+                    UserRoleLink.role_id.in_(org_role_ids),
+                )
+                .values(role_id=role_obj.id)
+                .returning(UserRoleLink.id)
+                .execution_options(synchronize_session=False)
+            )
+            changed = written.first() is not None
+            await db.commit()
+            if not changed:
+                raise no_role
+        # The member as the member list shows them, also when the role stays.
+        return OrganizationUser(
             **user.model_dump(),
             roles=[role],
             invitation_status=InvitationStatusEnum.accepted,
+            joined_at=user.created_at,
         )
-        return organization_user
 
     async def update_invitation_role(
         self,
@@ -793,7 +833,14 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
         invitation_id: str,
         role: OrganizationMemberRoleUpdateEnum,
     ) -> Invitation:
+        # Withdrawn or accepted since the route read it: 400, as the resend.
+        not_found = HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invitation not found",
+        )
         invitation = await crud_invitations.get(db=db, id=invitation_id)
+        if invitation is None:
+            raise not_found
         allowed_org_roles = [
             OrganizationMemberRoleUpdateEnum.admin.value,
             OrganizationMemberRoleUpdateEnum.editor.value,
@@ -808,15 +855,60 @@ class CRUDOrganization(CRUDBase[Organization, OrganizationCreate, OrganizationUp
 
         organization_obj = await self.get(db, id=organization_id)
         # check if organization has enough seats
-        self.check_seats_quota(role=role, organization=organization_obj)
-        invitation.payload["role"] = role.value
-        flag_modified(invitation, "payload")
+        self.check_seats_quota(
+            role=role, organization=organization_obj, current_role=organization_role
+        )
+        # Only the role key is merged, in one statement: a `last_sent_at` a
+        # resend stamped since the read stays (the resend's claim_send merges
+        # its key the same way). No row: withdrawn or accepted meanwhile.
+        written = await db.execute(
+            text(
+                f"UPDATE {settings.SCHEMA}.invitation "
+                "SET payload = payload || jsonb_build_object('role', CAST(:role AS text)) "
+                "WHERE id = :id AND status = :pending "
+                "RETURNING id"
+            ),
+            {
+                "role": role.value,
+                "id": invitation.id,
+                "pending": InvitationStatusEnum.pending.value,
+            },
+        )
+        changed = written.first() is not None
         await db.commit()
+        if not changed:
+            raise not_found
+        # The answer is the invitation as stored, the resend's stamp included.
+        await db.refresh(invitation)
         return invitation
 
     def check_seats_quota(
-        self, *, role: OrganizationRolesEnum, organization: Organization
+        self,
+        *,
+        role: OrganizationRolesEnum,
+        organization: Organization,
+        current_role: str | None = None,
     ) -> None:
+        """400 when the pool `role` takes a seat of is full. Owners, admins and
+        editors share the editor pool, viewers have their own. A member or an
+        invitation that already holds a seat of that pool (`current_role`, for
+        an editor made admin or back) keeps it, so nothing is checked."""
+
+        def pool(name: str | None) -> str | None:
+            if name in (
+                OrganizationRolesEnum.owner,
+                OrganizationRolesEnum.admin,
+                OrganizationRolesEnum.editor,
+            ):
+                return "editors"
+            if name == OrganizationRolesEnum.viewer:
+                return "viewers"
+            return None
+
+        if current_role is not None and pool(current_role) is not None:
+            if pool(current_role) == pool(role):
+                return
+
         role_limits = {
             OrganizationRolesEnum.viewer: (
                 "total_viewers",
