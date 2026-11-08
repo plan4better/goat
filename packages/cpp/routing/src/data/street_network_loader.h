@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace duckdb
@@ -34,5 +35,12 @@ namespace routing::data
                                  std::vector<std::string> const &valid_classes,
                                  RoutingMode mode,
                                  bool load_geometry = false);
+
+    // coordinates_3857 of the given edges; edges without 2 usable points are absent.
+    std::unordered_map<int64_t, std::vector<Point3857>> load_edge_geometry(
+        duckdb::Connection &con,
+        std::string const &edge_dir,
+        SpatialFilter const &filter,
+        std::vector<int64_t> const &edge_ids);
 
 } // namespace routing::data

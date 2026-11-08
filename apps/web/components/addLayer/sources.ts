@@ -39,6 +39,9 @@ export type AddLayerSource = {
   width?: number | string;
 };
 
+/** Connect data: a settings column beside a map, a little wider than a form dialog. */
+const CONNECT_WIDTH = "min(1320px, 94vw)";
+
 export const ADD_LAYER_SOURCES: AddLayerSource[] = [
   {
     id: "upload",
@@ -83,13 +86,15 @@ export const ADD_LAYER_SOURCES: AddLayerSource[] = [
   },
   {
     id: "connect",
+    // A rail of what can be connected — a web service, or open data GOAT hosts — beside
+    // the chosen one.
     labelKey: "connect_service",
     group: "new",
     icon: ICON_NAME.LINK,
     // A layer list beside a preview map, both reaching the frame's edges; a folder is all
     // it needs, so the Content page offers it too.
     wide: true,
-    width: "min(1100px, 94vw)",
+    width: CONNECT_WIDTH,
   },
 ];
 

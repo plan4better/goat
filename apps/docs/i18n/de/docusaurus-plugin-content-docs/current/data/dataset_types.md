@@ -57,7 +57,7 @@ Ihre Daten müssen dem **[GTFS](https://www.plan4better.de/de/glossar/gtfs)**-Fo
 Die enthaltenen Layer entsprechen dem GTFS-Feed selbst: **Stops**, **Routes**, **Trips** und **Stop times** sind immer vorhanden, **Agency**, **Calendar** und **Shapes** kommen hinzu, sofern der Feed sie bereitstellt.
 
 :::info Ein ÖPNV-Netz benötigt ein Straßennetz
-GOAT verbindet Haltestellen mit Straßen, um den Weg zur und von der Haltestelle routen zu können. Deshalb wählen Sie beim Hochladen der GTFS-Datei ein Straßennetz aus, entweder das integrierte Netz `Standard (Europa)` oder eines Ihrer eigenen, das dann zuerst importiert sein muss.
+GOAT verbindet Haltestellen mit Straßen, um den Weg zur und von der Haltestelle routen zu können. Deshalb wählen Sie beim Hochladen der GTFS-Datei ein Straßennetz aus, entweder das integrierte Netz `Standard` oder eines Ihrer eigenen, das dann zuerst importiert sein muss.
 :::
 
 ÖPNV-Netze sind die Grundlage für das [ÖPNV](../routing/public_transport)-Routing in GOAT. Zum Importieren siehe [Inhalte hinzufügen](../workspace/content.md#inhalte-hinzufügen); was das integrierte Netz von GOAT enthält und wie Sie eigene importieren, finden Sie unter [Netz-Datensätze](./builtin_datasets.md#eigene-netze-importieren).

@@ -120,7 +120,7 @@ class TestAnalyticsRegistry:
     def test_get_all_summaries(self):
         """Test getting all process summaries."""
         summaries = analytics_registry.get_all_summaries("http://localhost:8000")
-        assert len(summaries) == 8
+        assert len(summaries) == 9
         process_ids = [s.id for s in summaries]
         assert "feature-count" in process_ids
         assert "unique-values" in process_ids
@@ -130,6 +130,7 @@ class TestAnalyticsRegistry:
         assert "aggregation-stats" in process_ids
         assert "histogram" in process_ids
         assert "layer-search" in process_ids
+        assert "mirror-values" in process_ids
 
     def test_get_process_summary(self):
         """Test getting process summary."""
@@ -223,3 +224,72 @@ def test_aggregation_stats_takes_up_to_1000_groups():
     schema = desc.inputs["limit"].model_dump(by_alias=True)["schema"]
     assert schema["maximum"] == 1000
     assert schema["default"] == 100
+
+
+class TestMirrorSample:
+    """mirror-values' sample: a few rows a fetch would write, with its filters."""
+
+    def test_the_input_takes_the_fetch_filters(self):
+        from processes.services.analytics_registry import (
+            MirrorValuesProcessInput,
+            MirrorValuesResult,
+        )
+
+        area = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}
+        parsed = MirrorValuesProcessInput(
+            area=area,
+            sample_only=True,
+            limit=20,
+            tag_filters=[{"key": "amenity", "values": ["school"]}],
+            match_mode="any",
+        )
+        assert parsed.sample_only and parsed.tag_filters[0]["key"] == "amenity"
+        assert MirrorValuesResult(rows=[["a", "b"]]).rows == [["a", "b"]]
+
+    def test_the_router_hands_them_on(self, monkeypatch):
+        from processes.routers import processes as router
+
+        seen = {}
+        monkeypatch.setattr(
+            router.analytics_service,
+            "mirror_values",
+            lambda **kwargs: seen.update(kwargs) or {},
+        )
+        area = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}
+        router._execute_analytics_sync(
+            "mirror-values",
+            {
+                "area": area,
+                "sample_only": True,
+                "where": "tags['amenity'] = 'school'",
+                "limit": 10,
+            },
+        )
+        assert (
+            seen["sample_only"] is True
+            and seen["where"] == "tags['amenity'] = 'school'"
+        )
+        assert (
+            seen["match_mode"] == "all"
+            and seen["tag_filters"] is None
+            and seen["limit"] == 10
+        )
+
+    def test_wrong_inputs_are_refused_as_a_bad_request(self, monkeypatch):
+        import pytest
+        from fastapi import HTTPException
+
+        from processes.routers import processes as router
+
+        monkeypatch.setattr(
+            router.analytics_service, "mirror_values", lambda **kwargs: {}
+        )
+        area = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}
+        for inputs in (
+            {"area": area, "limit": 5000},
+            {"area": area, "sample_only": True, "where": "x" * 5000},
+            {"source": "osm"},
+        ):
+            with pytest.raises(HTTPException) as refused:
+                router._execute_analytics_sync("mirror-values", inputs)
+            assert refused.value.status_code == 400

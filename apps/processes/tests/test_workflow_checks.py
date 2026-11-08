@@ -310,6 +310,18 @@ async def test_required_settings_left_empty() -> None:
     assert required[0].params == {"step": "Aggregate Points", "label": "Area Type"}
 
 
+async def test_a_fetch_step_without_an_area() -> None:
+    # The area is a hidden setting, chosen in Add layer's dialog.
+    area = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}
+
+    missing = await check([tool("fetch", "fetch_data", {"source": "osm"})], [])
+    chosen = await check([tool("fetch", "fetch_data", {"area": area})], [])
+
+    assert codes(missing) == ["setting_required"]
+    assert missing[0].field == "area"
+    assert "setting_required" not in codes(chosen)
+
+
 async def test_a_required_setting_counts_only_while_it_is_shown() -> None:
     # demand_field is shown once the demand layer is connected.
     heatmap = tool("heat", "heatmap_2sfca", {"routing_mode": "walking"}, label="Supply")

@@ -54,6 +54,7 @@ from assistant.events import (
     RunStarted,
     RunStatus,
     ToolCalled,
+    ToolFailed,
     ToolReturned,
     UsageReported,
     fold_parts,
@@ -81,6 +82,7 @@ from assistant.runs.translate import EventTranslator
 from assistant.runs.turn import run_turn
 from assistant.surfaces import Locale, Surface
 from assistant.tools.http import ServiceClients
+from assistant.tools.registry import BY_WIRE_NAME
 from assistant.tools.runtime import ToolEnv, client_secrets
 from assistant.tools.toolset import earlier_writes
 from assistant.workflows.runs import ConversationRuns
@@ -271,47 +273,106 @@ def usage_event(
     )
 
 
-def _partial_history(text: str, events: list[RunEvent]) -> list[dict[str, Any]]:
+#: How a turn that did not succeed ends in the model history. Without it the
+#: next answer read the user's last request as still open and carried it out
+#: before the new one, also after the user had stopped it.
+ENDED_NOTES: dict[str, str] = {
+    "cancelled": (
+        "(The user stopped this answer before it was finished. What it did above "
+        "stays done. Do not continue this request unless the user asks for it again.)"
+    ),
+    "interrupted": (
+        "(This answer was interrupted before it was finished. What it did above "
+        "stays done. Do not continue this request unless the user asks for it again.)"
+    ),
+    "failed": (
+        "(This answer failed before it was finished. What it did above stays done. "
+        "Do not continue this request unless the user asks for it again.)"
+    ),
+}
+
+
+#: The result a write gets in the history when the answer ended while it ran:
+#: the change may exist (the request reached the service) although its result
+#: never came back.
+UNFINISHED_WRITE: dict[str, str] = {
+    "status": "unfinished",
+    "note": (
+        "The answer ended before this call's result came back, so it may have "
+        "been carried out. Check before doing it again."
+    ),
+}
+
+
+def _is_write(tool_name: str) -> bool:
+    spec = BY_WIRE_NAME.get(tool_name)
+    return spec is not None and spec.risk == "write"
+
+
+def _kept_call(tool_name: str) -> bool:
+    """A call the next answer has to know about: a result the user was shown
+    (a card, a created workflow), or a write, whose change exists whether the
+    answer finished or not."""
+    return tool_name in SHOWN_TOOLS or _is_write(tool_name)
+
+
+def _partial_history(
+    text: str, events: list[RunEvent], status: str = "cancelled"
+) -> list[dict[str, Any]]:
     """Model history for a turn that did not succeed: the user's prompt, the
-    finished calls whose results the user was shown (a card, a created
-    workflow), and whatever answer text was streamed, so the next turn still
-    sees the exchange: an answer to the card, a workflow not to create twice."""
+    finished calls the next turn must know about (``_kept_call``), a write it
+    ended in the middle of (``UNFINISHED_WRITE``), whatever
+    answer text was streamed, and how the turn ended (``ENDED_NOTES``), so the
+    next turn still sees the exchange: an answer to the card, a layer or
+    workflow not to create twice, a request not to take up again."""
     messages: list[ModelRequest | ModelResponse] = [
         ModelRequest(parts=[UserPromptPart(content=text)])
     ]
-    shown = {
+    kept = {
         event.tool_call_id: event
         for event in events
-        if isinstance(event, ToolCalled) and event.tool_name in SHOWN_TOOLS
+        if isinstance(event, ToolCalled) and _kept_call(event.tool_name)
     }
+
+    def pair(call: ToolCalled, output: Any) -> None:
+        messages.append(
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name=call.tool_name,
+                        args=call.args,
+                        tool_call_id=call.tool_call_id,
+                    )
+                ]
+            )
+        )
+        messages.append(
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name=call.tool_name,
+                        content=output,
+                        tool_call_id=call.tool_call_id,
+                    )
+                ]
+            )
+        )
+
+    ended: set[str] = set()
     for event in events:
-        if isinstance(event, ToolReturned) and event.tool_call_id in shown:
-            call = shown[event.tool_call_id]
-            messages.append(
-                ModelResponse(
-                    parts=[
-                        ToolCallPart(
-                            tool_name=call.tool_name,
-                            args=call.args,
-                            tool_call_id=call.tool_call_id,
-                        )
-                    ]
-                )
-            )
-            messages.append(
-                ModelRequest(
-                    parts=[
-                        ToolReturnPart(
-                            tool_name=call.tool_name,
-                            content=event.output,
-                            tool_call_id=call.tool_call_id,
-                        )
-                    ]
-                )
-            )
+        if isinstance(event, ToolReturned | ToolFailed):
+            ended.add(event.tool_call_id)
+        if isinstance(event, ToolReturned) and event.tool_call_id in kept:
+            pair(kept[event.tool_call_id], event.output)
+    # A write the answer ended in the middle of; a failed one changed nothing.
+    for call_id, call in kept.items():
+        if call_id not in ended and _is_write(call.tool_name):
+            pair(call, UNFINISHED_WRITE)
     answer = _assistant_text(events)
-    if answer:
-        messages.append(ModelResponse(parts=[TextPart(content=answer)]))
+    note = ENDED_NOTES.get(status)
+    ending = "\n\n".join(part for part in (answer, note) if part)
+    if ending:
+        messages.append(ModelResponse(parts=[TextPart(content=ending)]))
     history: list[dict[str, Any]] = to_jsonable_python(messages)
     return history
 
@@ -498,7 +559,7 @@ class RunManager:
             "interrupted",
             None,
             fold_parts([ended]),
-            _partial_history(text, []),
+            _partial_history(text, [], "interrupted"),
         ):
             await _Emitter(self.repo, self.bus, run_id)(ended)
 
@@ -754,7 +815,7 @@ class RunManager:
                 active=active,
             )
             if status != "succeeded":
-                model_messages = _partial_history(text, emit.events)
+                model_messages = _partial_history(text, emit.events, status)
             ended = RunEnded(status=status, error=error, code=code)
             won = await self.repo.finish_run(
                 run_id, status, error, fold_parts([*emit.events, ended]), model_messages
@@ -1058,7 +1119,9 @@ class RunManager:
                 # The interrupted turn stays in the model history, as for a
                 # cancelled run: the question and whatever answer was streamed.
                 prompt = await self.repo.prompt_of(run["assistant_message_id"])
-                history = _partial_history(prompt, stored) if prompt else []
+                history = (
+                    _partial_history(prompt, stored, "interrupted") if prompt else []
+                )
                 if not await self.repo.finish_run(
                     run_id, "interrupted", None, fold_parts([*stored, ended]), history
                 ):

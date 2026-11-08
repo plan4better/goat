@@ -46,7 +46,7 @@ Each section lists the values the catalog actually holds, commonest first, with 
 `Set spatial filter` narrows the catalog to datasets covering an area you care about. There are three ways to describe it:
 
 - **Region**: search for a country, state or district by name. Several can be combined, and a dataset covering any of them matches.
-- **Point + buffer**: click the map to place a point, then set a radius around it
+- **Buffer**: click the map to place a point, then set a radius around it
 - **Polygon**: click the map to draw the corners of an area
 
 Results are ranked by how much of each dataset falls inside your area, so the datasets that cover it best come first.

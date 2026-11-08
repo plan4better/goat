@@ -79,6 +79,8 @@ Der Download läuft als Job im laufenden GOAT-Stack; `base-data.sh` verfolgt ihn
 | `--dry-run` | Anzeigen, was geladen würde, ohne etwas zu schreiben |
 | `--weekly on\|off` | Diesen Lauf (mit derselben Region und denselben Datensätzen) zusätzlich jede Woche wiederholen, dienstags um 03:00 UTC, oder die Wiederholung beenden |
 
+Die ÖPNV-Daten enthalten außerdem das Netz als Tabellen, die die Quelle `ÖPNV-Netz` unter `Layer hinzufügen` auf ein Gebiet zuschneidet. Solange ein Server keine ÖPNV-Version mit diesen Tabellen installiert hat, meldet diese Quelle, dass die Basisdaten aktualisiert werden müssen.
+
 Die Daten stammen von `GOAT_BASE_DATA_URL`, standardmäßig vom öffentlichen Basisdaten-Server von Plan4Better. Hat Ihr Server keinen Zugriff darauf, richten Sie die Einstellung auf einen internen Mirror.
 
 ## Backups {#backups}

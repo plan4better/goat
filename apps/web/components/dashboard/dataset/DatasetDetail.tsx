@@ -40,10 +40,17 @@ type DatasetDetailProps = {
 };
 
 /** The catalog record a promoted layer carries verbatim — the catalog's own
- * vocabulary, not an enum we mapped it into. */
-const catalogItemOf = (dataset: Layer) =>
-  (dataset.other_properties as { catalog_item?: Record<string, string | number | null> } | undefined)
-    ?.catalog_item;
+ * vocabulary, not an enum we mapped it into — or, for a fetched layer, what it
+ * states about its source in the same keys. */
+const catalogItemOf = (dataset: Layer) => {
+  const other = dataset.other_properties as
+    | {
+        catalog_item?: Record<string, string | number | null>;
+        provenance?: Record<string, string | number | null>;
+      }
+    | undefined;
+  return other?.catalog_item ?? other?.provenance;
+};
 
 /** The frame a dataset map is drawn in: a bordered, rounded surface of its own
  * height, which the map fills. */

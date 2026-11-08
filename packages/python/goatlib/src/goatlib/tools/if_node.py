@@ -26,6 +26,7 @@ from goatlib.utils.layer import (
     layer_id_to_table_name,
     layer_table_path,
 )
+from goatlib.utils.shared_disk import wait_for
 
 logger = logging.getLogger(__name__)
 
@@ -205,13 +206,15 @@ def _resolve_layer_sql_ref(
         if temp_uuid:
             parquet_path = base / f"t_{temp_uuid}.parquet"
         else:
-            matches = list(base.glob("t_*.parquet"))
-            if not matches:
+            # The step that wrote it may have run on another node
+            # (goatlib.utils.shared_disk).
+            found = wait_for(lambda: next(iter(base.glob("t_*.parquet")), None))
+            if found is None:
                 raise FileNotFoundError(
                     f"The result of step {node_id} was not found. "
                     f"The upstream tool may not have completed successfully."
                 )
-            parquet_path = matches[0]
+            parquet_path = found
         return f"read_parquet('{parquet_path}')"
 
     # A promoted catalog layer is one parquet file, not a DuckLake table. Same

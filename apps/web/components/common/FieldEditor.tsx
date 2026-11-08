@@ -24,6 +24,7 @@ import {
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { v4 as uuidv4 } from "uuid";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
@@ -466,7 +467,7 @@ const FieldEditor: React.FC<FieldEditorProps> = ({
       counter++;
     }
     const newField: FieldDefinition = {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       name: fieldName,
       kind: "string",
       is_computed: false,
@@ -486,7 +487,7 @@ const FieldEditor: React.FC<FieldEditorProps> = ({
       counter++;
     }
     const copy: FieldDefinition = {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       name: copyName,
       kind: field.kind,
       is_computed: field.is_computed,

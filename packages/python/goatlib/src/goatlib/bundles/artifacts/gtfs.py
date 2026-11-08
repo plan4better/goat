@@ -68,8 +68,9 @@ DEFAULT_LINKAGE_MODES: Tuple[str, ...] = ("walking",)
 
 #: Reachability budget baked into a table, in minutes. A tool may cap lower at
 #: request time but never higher, so this is the ceiling for access and egress
-#: legs. Matches the global tables' 20.
-LINKAGE_MAX_MINUTES = 20.0
+#: legs. Matches the global tables' 30 and the analysis layer's
+#: ``MAX_LEG_TIME_LOOKUP_MIN``, which must not exceed it.
+LINKAGE_MAX_MINUTES = 30.0
 
 
 #: Columns the import adds to a member that has a geometry, dropped when the

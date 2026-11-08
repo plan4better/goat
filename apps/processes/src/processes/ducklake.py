@@ -4,7 +4,13 @@ Creates a read-only singleton instance of BaseDuckLakeManager from goatlib.
 Processes API only reads data for sync analytics - all writes happen through the core app.
 """
 
-from goatlib.storage import BaseDuckLakeManager
+import tempfile
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+import duckdb
+from goatlib.storage import BaseDuckLakeManager, load_extensions
 
 from processes.config import settings
 
@@ -37,3 +43,54 @@ search_ducklake_manager = BaseDuckLakeManager(
     refresh_interval=settings.DUCKLAKE_SNAPSHOT_REFRESH_SECONDS,
     application_name="goat-processes-ducklake",
 )
+
+# mirror-values reads only S3, so it gets its own database, off the analytics lock.
+_mirror_db: duckdb.DuckDBPyConnection | None = None
+_mirror_db_lock = threading.Lock()
+
+
+def mirror_cursor() -> duckdb.DuckDBPyConnection:
+    """A cursor on the mirror database, made on first use."""
+    global _mirror_db
+    with _mirror_db_lock:
+        if _mirror_db is None:
+            from goatlib.io.fetch.mirror.reader import ensure_s3
+
+            db = duckdb.connect()
+            db.execute("SET memory_limit = '256MB'")
+            db.execute(f"SET threads = {int(settings.DUCKDB_THREADS)}")
+            db.execute(
+                f"SET temp_directory = '{tempfile.gettempdir()}/goat_mirror_duckdb'"
+            )
+            # The image's baked extensions: images must not download them.
+            load_extensions(db, "httpfs", "spatial")
+            # Once here: cursors creating the secret together conflict.
+            ensure_s3(db)
+            _mirror_db = db
+        return _mirror_db.cursor()
+
+
+@contextmanager
+def mirror_query() -> Iterator[duckdb.DuckDBPyConnection]:
+    """A mirror cursor whose query is interrupted once the request has timed out.
+
+    The request answers 504 at ANALYTICS_QUERY_TIMEOUT, but the thread running
+    the query is not cancelled with it: without the interrupt it would go on
+    reading, and every size check queued behind it would wait.
+    """
+    with mirror_cursor() as con:
+        timer = threading.Timer(settings.ANALYTICS_QUERY_TIMEOUT, con.interrupt)
+        timer.daemon = True
+        timer.start()
+        try:
+            yield con
+        finally:
+            timer.cancel()
+
+
+def close_mirror_db() -> None:
+    global _mirror_db
+    with _mirror_db_lock:
+        if _mirror_db is not None:
+            _mirror_db.close()
+            _mirror_db = None

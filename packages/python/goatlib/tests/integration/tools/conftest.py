@@ -256,6 +256,7 @@ async def test_schemas(postgres_pool: asyncpg.Pool) -> None:
                 properties JSONB,
                 other_properties JSONB,
                 layer_project_group_id INTEGER,
+                shareable BOOLEAN NOT NULL DEFAULT TRUE,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
                 UNIQUE(layer_id, project_id)

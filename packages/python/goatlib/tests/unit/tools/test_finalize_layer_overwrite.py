@@ -173,6 +173,24 @@ class TestProcess:
                 r.process(_params(overwrite_previous=False, export_node_id=None))
         mock_create.assert_not_called()
 
+    def test_a_steps_provenance_goes_onto_the_layer(self, tmp_path: Path) -> None:
+        """fetch_data's licence travels from the temp result to the layer."""
+        r = _runner()
+        base, parquet, _ = _temp(tmp_path)
+        provenance = {"license": "ODbL-1.0"}
+        with (
+            patch.object(
+                r,
+                "_resolve_temp_parquet",
+                return_value=(base, parquet, {"provenance": provenance}),
+            ),
+            patch.object(r, "_authorize", new=AsyncMock()),
+            patch.object(r, "_create_new_layer", return_value="new-layer-id"),
+            patch.object(r, "_record_provenance", new=AsyncMock()) as record,
+        ):
+            r.process(_params(overwrite_previous=False, export_node_id=None))
+        record.assert_awaited_once_with("new-layer-id", provenance)
+
     def test_no_target_creates_a_layer(self, tmp_path: Path) -> None:
         layer_id, mock_create, mock_overwrite = self._run(tmp_path, _params(), None)
         assert layer_id == "new-layer-id"
@@ -504,3 +522,29 @@ class TestMainSignature:
         sig = inspect.signature(main)
         assert sig.parameters["overwrite_previous"].default is False
         assert sig.parameters["export_node_id"].default is None
+
+
+class TestTempResultOnAnotherNode:
+    """The step that wrote the result may have run on another node, whose file
+    this one sees only a moment later (goatlib.utils.shared_disk)."""
+
+    def test_a_result_that_appears_late_is_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import threading
+
+        from goatlib.utils import shared_disk
+
+        monkeypatch.setattr(shared_disk, "WAIT_SECONDS", 5)
+        r = _runner()
+        parquet = tmp_path / "t_x.parquet"
+        threading.Timer(0.1, parquet.write_bytes, args=(b"data",)).start()
+        with patch.object(r, "get_temp_base_path", return_value=tmp_path):
+            _, found, _ = r._resolve_temp_parquet(USER, WORKFLOW, NODE)
+        assert found == parquet
+
+    def test_a_result_that_never_appears_is_reported(self, tmp_path: Path) -> None:
+        r = _runner()
+        with patch.object(r, "get_temp_base_path", return_value=tmp_path):
+            with pytest.raises(FileNotFoundError, match="Temp layer not found"):
+                r._resolve_temp_parquet(USER, WORKFLOW, NODE)
