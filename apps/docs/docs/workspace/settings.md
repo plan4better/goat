@@ -53,7 +53,7 @@ Only owners and admins see this page. It shows who belongs to the organization a
 
 **Seats.** The tiles at the top show the **Editors** seats (taken by the owner, admins and editors), the **Viewers** seats and the **Open invitations**. An open invitation holds its seat until it is accepted or withdrawn. When all seats of a kind are taken, a notice says how to free one, with <code>Ask for more seats</code> where your instance offers support. A tile also filters the list.
 
-**The list** can be searched by name or email and filtered by <code>Role</code> and <code>Status</code>. Each member's role is a menu: choose <code>Admin</code>, <code>Editor</code> or <code>Viewer</code> and the role changes at once; the message that confirms it has <code>Undo</code>. A role that needs a seat while none is free is greyed out with the reason. The owner's role cannot be changed, and your own role is changed by another admin.
+**The list** can be searched by name or email and filtered by <code>Role</code> and <code>Status</code>. Each member's role is a menu: choose <code>Admin</code>, <code>Editor</code> or <code>Viewer</code> and the role changes at once; the message that confirms it has <code>Undo</code>. A role that needs a seat while none is free is greyed out with the reason. The owner's role cannot be changed, and your own role is changed by another admin. Each member's row says since when they are a member (<code>Member since</code> month and year), each invitation when it was sent. Admin and editor share the editor seats, so switching between them needs no free seat.
 
 **Inviting people.** Click <code>Invite members</code>, enter one or more email addresses (separated by a comma, a space or Enter, at most 20 at once), choose the role and click <code>Send invitation</code>. Each person gets an email of their own with the link to the organization. A role is greyed out while fewer of its seats are free than there are addresses. If some invitations fail, the dialog keeps those addresses and names the reason for each.
 
@@ -61,21 +61,23 @@ Only owners and admins see this page. It shows who belongs to the organization a
 
 - <code>Copy email address</code>.
 - <code>Remove from organization</code>: the person loses access to the organization and its teams, and their seat is free at once. Under <code>Hand personal content to</code> you choose who gets what the person has under <code>My Content</code> (you, unless you choose someone else). Content in teams and in the organization stays where it is.
+- For an invitation, <code>Resend invitation</code>: sends the invitation again, at most once every 10 minutes; until then the item says from when. While the invitee has not set a password yet, GOAT sends the email to set it, otherwise the invitation email.
 - For an invitation, <code>Withdraw invitation</code>: the link in the email no longer works, and the seat is free at once.
 
 ### Teams
 
-A team shares projects and data: each team has a space of its own under <code>Content</code>. The Teams page lists the teams you are a member of, with a search and the filter <code>All</code> | <code>I am owner</code>.
+A team shares projects and data: each team has a space of its own under <code>Content</code>. The Teams page lists the teams you are a member of, with a search and the filter <code>All</code> | <code>I am owner</code>; owners and admins see every team of the organization, and a team whose owner has left shows <code>No owner</code>.
 
 **Creating a team.** Owners, admins and editors create teams with <code>New team</code>: enter a <code>Team name</code> (at most 50 characters), optionally a <code>Description</code>, and click <code>Create team</code>. You become the team's owner. Viewers can be members of teams but cannot create them.
 
 **A team's page** opens when you click its card:
 
-- **Members**: the team's owner adds people of the organization with <code>Add members</code> and removes someone with <code>Remove from the team</code> in the row's menu. The person stays a member of the organization. The team's owner cannot be removed.
-- **Team profile**: the name, description and picture. The team's owner changes them (unless they are a viewer in the organization), and so do the organization's owner and admins in teams they are in. Everyone else sees them read-only.
+- **Members**: the team's owner and the organization's owners and admins add people of the organization with <code>Add members</code> and remove someone with <code>Remove from the team</code> in the row's menu. The person stays a member of the organization. The team's owner cannot be removed; a new owner comes first.
+- <code>Make owner</code> in a member's row makes that member the team's owner (for those who may change the team profile). The previous owner stays a member. Viewers cannot own a team. Owners and admins use it to name an owner for a team whose owner has left the organization; the team's page says when a team has none.
+- **Team profile**: the name, description and picture. The team's owner changes them (unless they are a viewer in the organization), and so do the organization's owners and admins, in every team. Everyone else sees them read-only.
 - <code>Team space under Content</code> opens the team's space.
 - **Delete team** (for those who may change the profile): deletes the team and all shares with the team. Content in the team's space must be moved or transferred first; content in the trash counts until it is deleted for good. The members' personal content stays.
-- **Leave team** (for every member except the team's owner): you lose access to the team's space, and what you put there stays in the team. The team's owner can bring you back.
+- **Leave team** (for every member except the team's owner): you lose access to the team's space, and what you put there stays in the team. The team's owner or an admin can bring you back. The team's owner cannot leave; they first make another member the owner.
 
 ## White Label
 
@@ -107,7 +109,7 @@ The card **How a domain points to GOAT** shows the DNS record a domain needs:
   <div class="content">Once DNS is confirmed, the SSL certificate is created on the first visit to the address, usually in under 2 minutes. Then assign the domain in a project's <code>Share</code> dialog.</div>
 </div>
 
-**Each domain** shows its status (<code>Active</code>, <code>Waiting for DNS</code>, <code>Certificate being issued</code> or <code>Failed</code>), when it was added and the project it is assigned to. A domain that waits for DNS or failed has <code>Check again</code> or <code>Try again</code>. <code>Show details</code> shows the DNS record, what GOAT found and when it last checked; for a domain that waits or failed the details are open from the start. The domain's menu offers <code>Remove assignment</code> (for an active, assigned domain; the message has <code>Undo</code>), <code>Check again</code> and <code>Delete domain</code>. A deleted domain serves nothing any more, so a dashboard assigned to it is no longer reachable at that address.
+**Each domain** shows its status (<code>Active</code>, <code>Waiting for DNS</code>, <code>Certificate being issued</code> or <code>Failed</code>), when it was added and the project it is assigned to. A domain that waits for DNS or failed has <code>Check again</code> or <code>Try again</code>. <code>Failed</code> also means the DNS record points somewhere else; fix it and click <code>Try again</code>. <code>Show details</code> shows the DNS record, what GOAT found and when it last checked; for a domain that waits or failed the details are open from the start. The domain's menu offers <code>Remove assignment</code> (for an active, assigned domain; the message has <code>Undo</code>), <code>Check again</code> and <code>Delete domain</code>. A deleted domain serves nothing any more, so a dashboard assigned to it is no longer reachable at that address.
 
 If custom domains are not set up on your instance, the page says so and no domain can be added.
 
