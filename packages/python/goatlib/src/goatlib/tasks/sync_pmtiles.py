@@ -19,6 +19,7 @@ Usage as library:
 """
 
 import logging
+import tempfile
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Self
 
@@ -34,6 +35,7 @@ from goatlib.io.pmtiles import PMTilesConfig, PMTilesGenerator
 from goatlib.storage import BaseDuckLakeManager
 from goatlib.storage.ducklake import catalog_libpq
 from goatlib.tools.base import ToolSettings
+from goatlib.utils.container_memory import JOB_DUCKLAKE_MEMORY_SHARE, set_memory_share
 from goatlib.utils.credentials import postgres_attach_target
 
 logger = logging.getLogger(__name__)
@@ -68,7 +70,7 @@ class PMTilesSyncParams(BaseModel):
     )
     show_progress: bool = Field(
         default=True,
-        description="Show tippecanoe progress during tile generation",
+        description="Show tippecanoe progress (only when tippecanoe builds the tiles, as the fallback when manby fails)",
     )
     geometry_type_filter: str | None = Field(
         default=None,
@@ -163,6 +165,7 @@ class PMTilesSyncTask:
         self.settings: ToolSettings | None = None
         self._manager: BaseDuckLakeManager | None = None
         self._generator: PMTilesGenerator | None = None
+        self._spill_dir: tempfile.TemporaryDirectory | None = None
 
     @staticmethod
     def _configure_logging_for_windmill() -> None:
@@ -195,12 +198,33 @@ class PMTilesSyncTask:
             self._manager = BaseDuckLakeManager(
                 read_only=True, application_name=TASKS_APPLICATION_NAME
             )
+            # Registered before the first connection exists, so every one the
+            # manager builds is bounded, a replacement for a stale one too.
+            self._manager.add_connection_hook(self._bound_connection)
             self._manager.init_from_params(
                 postgres_uri=self.settings.ducklake_postgres_uri,
                 storage_path=self.settings.ducklake_data_dir,
                 catalog_schema=self.settings.ducklake_catalog_schema,
             )
         return self._manager
+
+    def _bound_connection(self: Self, con: "duckdb.DuckDBPyConnection") -> None:
+        """Cap the connection that feeds the tile builder, as a tool run does.
+
+        The builder sorts the whole layer on this connection before it hands
+        the file to manby, and DuckDB spills a sort only when it reaches its
+        own memory_limit, which by default is 80% of the container. The share
+        is the one a tool run gives its DuckLake connection: this connection
+        is one too, it stays open (and holds whatever it cached) while manby
+        runs on its own half of the container, and the rest is left for Python
+        and the worker. DuckDB spills into a directory made here: its default,
+        `.tmp` in the working directory, need not be writable.
+        """
+        set_memory_share(con, JOB_DUCKLAKE_MEMORY_SHARE)
+        if self._spill_dir is None:
+            self._spill_dir = tempfile.TemporaryDirectory(prefix="duckdb_spill_")
+        spill_dir = self._spill_dir.name.replace("'", "''")
+        con.execute(f"SET temp_directory='{spill_dir}'")
 
     def _get_generator(self: Self) -> PMTilesGenerator:
         """Get or create PMTiles generator."""
@@ -217,6 +241,9 @@ class PMTilesSyncTask:
         if self._manager is not None:
             self._manager.close()
             self._manager = None
+        if self._spill_dir is not None:
+            self._spill_dir.cleanup()
+            self._spill_dir = None
 
     def _attach_postgres(self: Self, con: "duckdb.DuckDBPyConnection") -> None:
         """Attach PostgreSQL as 'pg' for querying catalog tables."""
@@ -450,10 +477,10 @@ class PMTilesSyncTask:
         try:
             # A layer with no rows is a normal state — the Create flow makes
             # empty layers to draw into, and a filter or join can match
-            # nothing. tippecanoe rejects the empty GeoJSON that would
-            # produce ("Did not read any valid geometries"), which reads as a
-            # failure when nothing is wrong. The count comes from the
-            # catalog, so this costs no table access.
+            # nothing. Both tilers (manby and the tippecanoe fallback) reject
+            # the empty input that would produce ("Did not read any valid
+            # geometries"), which reads as a failure when nothing is wrong.
+            # The count comes from the catalog, so this costs no table access.
             if layer.record_count == 0:
                 return SyncResult(
                     layer_id=layer.layer_id,
@@ -670,7 +697,8 @@ class PMTilesSyncTask:
                 # These patterns are from previous implementations:
                 # - .tmp_filename.pmtiles (old prefix pattern)
                 # - filename.pmtiles.tmp (old suffix pattern)
-                # - filename.pmtiles.tmp (tippecanoe's own temp file)
+                # - filename.pmtiles.tmp (tippecanoe's own temp file, from when
+                #   it built in the tiles directory)
                 temp_patterns = [
                     pmtiles_path.parent / f".tmp_{pmtiles_path.name}",
                     pmtiles_path.with_suffix(".pmtiles.tmp"),

@@ -2,7 +2,7 @@
 
 A new layer and a temp result without rows get no PMTiles; their tiles come
 from the table itself. An overwrite (a workflow re-run, a layer refresh) with
-no rows does the same, rather than run tippecanoe on an empty GeoJSON.
+no rows does the same, rather than build tiles of an empty table.
 """
 
 from pathlib import Path

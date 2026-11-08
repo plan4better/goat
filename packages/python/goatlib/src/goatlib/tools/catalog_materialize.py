@@ -301,6 +301,7 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                     max_zoom=self.settings.pmtiles_max_zoom,
                 ),
             )
+            # A polygon layer's label anchors are built with it
             pmtiles = generator.generate_from_table(
                 duckdb_con=con,
                 table_name=f'"{view}"',
@@ -311,20 +312,6 @@ class CatalogMaterializeRunner(SimpleToolRunner):
             )
             if pmtiles is None:
                 raise RuntimeError("PMTiles generation returned no file")
-
-            geom_type = con.execute(
-                f'SELECT ST_GeometryType("{geom_col_sql}") FROM "{view}" '
-                f'WHERE "{geom_col_sql}" IS NOT NULL LIMIT 1'
-            ).fetchone()
-            if geom_type and "POLYGON" in str(geom_type[0]).upper():
-                generator.generate_anchor_from_table(
-                    duckdb_con=con,
-                    table_name=f'"{view}"',
-                    layer_id=layer_id,
-                    geometry_column=geom_col_sql,
-                    exclude_columns=["rowid"],
-                    show_progress=False,
-                )
         finally:
             con.close()
 
@@ -364,7 +351,7 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 )
                 # Ready the moment the DATA is on disk: geoapi serves tiles
                 # dynamically until the PMTiles cache exists, so a big layer
-                # is usable while tippecanoe still runs.
+                # is usable while its tiles are being built.
                 loop.run_until_complete(
                     self._finish_vector(params.layer_id, out_path, count, bounds)
                 )

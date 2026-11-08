@@ -121,12 +121,24 @@ def test_delete_pmtiles_file_not_exists() -> None:
 
 
 @patch("shutil.which")
-def test_check_dependencies_missing(mock_which: MagicMock) -> None:
-    """Test that missing tippecanoe raises RuntimeError."""
+def test_tippecanoe_is_optional_with_manby(mock_which: MagicMock) -> None:
+    """manby builds the tiles; tippecanoe is only the fallback."""
     mock_which.return_value = None
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        with pytest.raises(RuntimeError, match="tippecanoe is required"):
+        PMTilesGenerator(tiles_data_dir=tmpdir)
+
+
+@patch("shutil.which")
+def test_check_dependencies_missing(mock_which: MagicMock) -> None:
+    """Without manby's program and tippecanoe nothing can build tiles."""
+    mock_which.return_value = None
+
+    with (
+        tempfile.TemporaryDirectory() as tmpdir,
+        patch("manby.binary", side_effect=FileNotFoundError("no manby")),
+    ):
+        with pytest.raises(RuntimeError, match="manby or tippecanoe is required"):
             PMTilesGenerator(tiles_data_dir=tmpdir)
 
 
@@ -147,7 +159,7 @@ def test_generate_disabled() -> None:
 
 
 def test_tippecanoe_command_default_zoom() -> None:
-    """Test tippecanoe command uses -z14 by default for polygons."""
+    """Test the fallback's tippecanoe command uses -z14 by default for polygons."""
     with tempfile.TemporaryDirectory() as tmpdir:
         config = PMTilesConfig()  # Uses default max_zoom=14
         generator = PMTilesGenerator(tiles_data_dir=tmpdir, config=config)
@@ -168,7 +180,7 @@ def test_tippecanoe_command_default_zoom() -> None:
 
 
 def test_tippecanoe_command_custom_zoom() -> None:
-    """Test tippecanoe command generation with custom max zoom."""
+    """Test the fallback's tippecanoe command with custom max zoom."""
     with tempfile.TemporaryDirectory() as tmpdir:
         config = PMTilesConfig(max_zoom=12)
         generator = PMTilesGenerator(tiles_data_dir=tmpdir, config=config)
@@ -183,7 +195,7 @@ def test_tippecanoe_command_custom_zoom() -> None:
 
 
 def test_tippecanoe_command_point_layer() -> None:
-    """Test tippecanoe uses point-optimized settings for point layers."""
+    """Test the fallback's tippecanoe uses point-optimized settings for points."""
     with tempfile.TemporaryDirectory() as tmpdir:
         config = PMTilesConfig()
         generator = PMTilesGenerator(tiles_data_dir=tmpdir, config=config)
@@ -207,9 +219,10 @@ def test_tippecanoe_command_point_layer() -> None:
 
 
 def test_tiles_are_built_on_local_disk_and_published_whole() -> None:
-    """tippecanoe builds PMTiles in an SQLite database at its output path, which
-    is unsafe on network storage: it writes to a local work directory, and only
-    the finished file lands in the tiles directory."""
+    """manby reads its input file and spills to its temporary directory, and
+    tippecanoe (the fallback) builds PMTiles in an SQLite database at its output
+    path, which is unsafe on network storage: all of it is in a local work
+    directory, and only the finished file lands in the tiles directory."""
     import duckdb
 
     con = duckdb.connect()
@@ -222,13 +235,16 @@ def test_tiles_are_built_on_local_disk_and_published_whole() -> None:
         tiles_dir = pathlib.Path(tmpdir)
         generator = PMTilesGenerator(tiles_data_dir=tiles_dir)
         outputs: list[pathlib.Path] = []
+        temp_dirs: list[pathlib.Path] = []
 
-        def fake_tippecanoe(**kwargs: object) -> None:
-            output = pathlib.Path(str(kwargs["output_path"]))
-            outputs.append(output)
+        def fake_manby(
+            input_path: pathlib.Path, output: pathlib.Path, flags: list[str]
+        ) -> None:
+            outputs.extend([input_path, output])
+            temp_dirs.append(pathlib.Path(flags[flags.index("-t") + 1]))
             output.write_bytes(b"tiles")
 
-        with patch.object(generator, "_run_tippecanoe", side_effect=fake_tippecanoe):
+        with patch.object(generator, "_run_manby", side_effect=fake_manby):
             path = generator.generate_from_table(
                 duckdb_con=con,
                 table_name="lines",
@@ -239,4 +255,5 @@ def test_tiles_are_built_on_local_disk_and_published_whole() -> None:
         assert path == generator.get_pmtiles_path("layer1")
         assert path.read_bytes() == b"tiles"
         assert outputs and all(tiles_dir not in p.parents for p in outputs)
+        assert temp_dirs and all(tiles_dir not in [p, *p.parents] for p in temp_dirs)
         assert [p.name for p in tiles_dir.iterdir()] == [path.name]

@@ -108,7 +108,8 @@ RUN uv build --wheel /src/routing --out-dir /wheels \
     --config-setting=cmake.define.FETCHCONTENT_SOURCE_DIR_NIGIRI_SDK=/opt/nigiri-sdk
 
 # =============================================================================
-# Stage: Tippecanoe Build - PMTiles generation for worker-tools
+# Stage: Tippecanoe Build - the PMTiles fallback of worker-tools (manby, from the
+# Python environment, builds the tiles; tippecanoe takes over when manby fails)
 # =============================================================================
 FROM linux-base AS tippecanoe-build
 
@@ -255,13 +256,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     libgeos-dev \
     libproj-dev \
-    # Build toolchain, and the libraries tippecanoe links against
+    # Build toolchain, and the libraries tippecanoe (the PMTiles fallback) links against
     build-essential \
     libsqlite3-dev \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# tippecanoe for PMTiles generation
+# tippecanoe, the PMTiles fallback for when manby fails (goatlib.io.pmtiles)
 COPY --from=tippecanoe-build /opt/tippecanoe/ /usr/local/
 
 # Python, venv and extensions last (see worker-base)

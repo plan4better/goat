@@ -21,6 +21,7 @@ dependencies = [
     "redis>=5.0.0",
     "shapely>=2.0.0",
     "pyproj>=3.6.0",
+    "manby==0.1.6",
 ]
 
 [build-system]
@@ -48,6 +49,13 @@ markers = [
     "unit: Unit tests",
     "integration: Integration tests",
     "network: Tests that access external network services (WFS, HTTP, etc.)",
+]
+# lark 0.12 (pinned <1.0 by pygeofilter, which parses our CQL2 filters) imports
+# the stdlib modules Python 3.11 deprecated. Not actionable here; scoped to
+# these two messages in that one module so our own warnings still surface.
+filterwarnings = [
+    "ignore:module 'sre_parse' is deprecated:DeprecationWarning:lark.utils",
+    "ignore:module 'sre_constants' is deprecated:DeprecationWarning:lark.utils",
 ]
 
 [tool.ruff]
