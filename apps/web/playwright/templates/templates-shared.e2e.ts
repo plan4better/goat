@@ -240,8 +240,10 @@ test.describe("the owner", () => {
       timeout: 30000,
     });
 
-    // The project menu behind the logo in the map's header.
-    await page.locator("header").getByRole("button").first().click();
+    // The project menu behind the logo in the map's header. By its name: until the
+    // menu's code arrives the header holds only a placeholder, and the first button
+    // would be another one.
+    await page.locator("header").getByRole("button", { name: "Project menu", exact: true }).click();
     await page.getByText("Save project as template…", { exact: true }).click();
     const dialog = page.getByRole("dialog").filter({ has: page.getByLabel("Name", { exact: true }) });
     await expect(dialog).toBeVisible();

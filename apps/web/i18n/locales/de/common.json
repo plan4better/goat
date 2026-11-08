@@ -93,6 +93,7 @@
   "run_first_analysis_title": "Führen Sie Ihre erste Analyse durch",
   "save_as_template": "Als Vorlage speichern…",
   "save_project_as_template": "Projekt als Vorlage speichern…",
+  "project_menu": "Projektmenü",
   "scale_elements": "Elemente skalieren",
   "scale_elements_prompt": "Die Seite ist jetzt {{page}}. Sollen die {{count}} Elemente an die neue Seite angepasst werden oder ihre Größe und Position behalten?",
   "scale_elements_title": "Elemente an die neue Seite anpassen?",

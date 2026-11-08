@@ -91,6 +91,7 @@
   "run_first_analysis_title": "Run your first analysis",
   "save_as_template": "Save as template…",
   "save_project_as_template": "Save project as template…",
+  "project_menu": "Project menu",
   "scale_elements": "Scale elements",
   "scale_elements_prompt": "The page is now {{page}}. Scale the {{count}} elements to the new page, or keep their sizes and positions?",
   "scale_elements_title": "Scale elements to the new page?",
