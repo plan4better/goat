@@ -726,6 +726,61 @@ def test_anchors_are_published_before_the_main_file(
     assert published == ["t_layer1_anchor.pmtiles", "t_layer1.pmtiles"]
 
 
+def test_label_tiles_take_the_tile_size_limit_of_the_other_recipes(
+    generator: PMTilesGenerator,
+) -> None:
+    assert _has(generator.manby_flags("POLYGON", 42, True, None), "-M", "2000000")
+
+
+def test_a_polygon_with_large_attributes_gets_its_label_tiles(
+    generator: PMTilesGenerator, con: duckdb.DuckDBPyConnection
+) -> None:
+    """Its one label carries more than manby's default tile size limit,
+    compressed (hex text, as a WKT copy of a large geometry is)."""
+    con.execute(
+        "CREATE TABLE layer AS SELECT "
+        "(SELECT string_agg(md5(i::VARCHAR), '') FROM range(50000) t(i)) AS wkt, "
+        f"{GEOMETRIES['polygons'][0]} AS geometry"
+    )
+
+    assert generator.generate_from_table(con, "layer", "layer1") is not None
+
+    anchors = generator.get_anchor_pmtiles_path("layer1")
+    assert anchors.exists()
+    assert generator.read_marker(anchors)["tiler"] == "manby"
+
+
+def test_failed_label_tiles_keep_the_main_tiles(
+    generator: PMTilesGenerator,
+    con: duckdb.DuckDBPyConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The main tiles still draw the layer, and anchors from an older build
+    go: next to the new main file they would leave the layer stale on every
+    sync."""
+    con.execute(
+        "CREATE TABLE layer AS SELECT 1 AS n, "
+        f"{GEOMETRIES['polygons'][0]} AS geometry"
+    )
+    older_anchors = generator.get_anchor_pmtiles_path("layer1")
+    older_anchors.parent.mkdir(parents=True, exist_ok=True)
+    older_anchors.write_bytes(b"anchors of an older build")
+    real_build = generator._build
+
+    def build(*args: object, label_anchor: bool = False, **kwargs: object) -> None:
+        if label_anchor:
+            raise manby.ManbyError(100, ["--convert-polygons-to-label-points"])
+        real_build(*args, label_anchor=label_anchor, **kwargs)
+
+    monkeypatch.setattr(generator, "_build", build)
+
+    path = generator.generate_from_table(con, "layer", "layer1")
+
+    assert path is not None and path.exists()
+    assert generator.read_marker(path)["tiler"] == "manby"
+    assert not older_anchors.exists()
+
+
 # =====================================================================
 #  In sync
 # =====================================================================

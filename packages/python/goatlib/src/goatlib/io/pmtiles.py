@@ -427,25 +427,39 @@ class PMTilesGenerator:
                 )
 
                 # For polygon layers, separate anchor PMTiles
+                anchors_built = False
                 if is_polygon:
                     logger.info("Generating label anchor point tiles...")
-                    self._build(
-                        duckdb_con=duckdb_con,
-                        table_name=table_name,
-                        layer_id=layer_id,
-                        geometry_column=geometry_column,
-                        exclude_columns=exclude_columns,
-                        geometry_type=geometry_type,
-                        snapshot_id=snapshot_id,
-                        output_path=built_anchor_path,
-                        label_anchor=True,
-                    )
+                    try:
+                        self._build(
+                            duckdb_con=duckdb_con,
+                            table_name=table_name,
+                            layer_id=layer_id,
+                            geometry_column=geometry_column,
+                            exclude_columns=exclude_columns,
+                            geometry_type=geometry_type,
+                            snapshot_id=snapshot_id,
+                            output_path=built_anchor_path,
+                            label_anchor=True,
+                        )
+                        anchors_built = True
+                    except manby.ManbyError as e:
+                        # The main tiles still draw the layer; its label
+                        # requests go to DuckDB
+                        logger.warning(
+                            f"Label anchor tiles failed for layer {layer_id}, "
+                            f"publishing the main tiles without them: {e}"
+                        )
 
                 # The anchors first: a main file in sync then has its anchors
                 # next to it, which sync_pmtiles relies on, and a build stopped
                 # in between leaves a main file that is stale itself.
-                if is_polygon and built_anchor_path.exists():
+                if anchors_built:
                     publish_tiles(built_anchor_path, anchor_pmtiles_path)
+                elif is_polygon:
+                    # Older anchors would be stale next to the new main file,
+                    # and sync_pmtiles would rebuild the layer on every run
+                    anchor_pmtiles_path.unlink(missing_ok=True)
                 publish_tiles(built_path, pmtiles_path)
 
             size_mb = pmtiles_path.stat().st_size / 1024 / 1024
@@ -699,11 +713,15 @@ class PMTilesGenerator:
         if label_anchor:
             # Today's anchor recipe: one point per polygon, no clustering.
             # Drop densest labels at low zooms when tiles are too full (e.g.
-            # 200k+ polygons); they appear at higher zooms.
+            # 200k+ polygons); they appear at higher zooms. The tile size
+            # limit of the other recipes: a label carries all its polygon's
+            # attributes, and one that cannot be dropped must still fit.
             return [
                 *flags,
                 f"-z{max_zoom}",
                 "--full-detail=16",
+                "-M",
+                "2000000",
                 "--convert-polygons-to-label-points",
                 "-r1",
                 "--drop-densest-as-needed",
