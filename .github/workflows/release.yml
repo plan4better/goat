@@ -153,7 +153,7 @@ jobs:
         export AUTH=false
         python -c "import geoapi.main"
         python -c "import duckdb; c = duckdb.connect(config={'autoinstall_known_extensions': False}); [c.execute(f'LOAD {e}') for e in ('spatial', 'httpfs', 'postgres', 'ducklake', 'h3')]"
-        command -v tippecanoe-overzoom
+        manby --version
 
   release-docker-catalog:
     needs: [file-changes, lint, test]
