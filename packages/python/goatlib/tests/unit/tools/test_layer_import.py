@@ -225,6 +225,37 @@ class TestLayerImportS3:
         call_kwargs = runner._converter.to_parquet.call_args[1]
         assert call_kwargs["target_crs"] == "EPSG:4326"
 
+    def test_import_from_s3_refuses_unknown_suffix(self, runner, tmp_path):
+        """A format no reader takes is refused before the upload is fetched."""
+        runner.download_uploaded_object = MagicMock()
+
+        with pytest.raises(ValueError, match=r"^Unsupported file format: \.xml$"):
+            runner._import_from_s3(
+                s3_key="users/u/imports/uploads/data.xml",
+                temp_dir=tmp_path,
+                output_path=tmp_path / "output.parquet",
+            )
+
+        runner.download_uploaded_object.assert_not_called()
+        runner._converter.to_parquet.assert_not_called()
+
+    def test_convert_upload_refuses_unknown_suffix(self, runner, tmp_path):
+        """The same for the upload path every new import takes."""
+        runner.download_uploaded_object = MagicMock()
+        params = LayerImportParams(
+            user_id="00000000-0000-0000-0000-000000000001",
+            s3_key="users/u/imports/uploads/data.xml",
+        )
+
+        with (
+            patch("goatlib.tools.layer_import.convert_all") as convert_all,
+            pytest.raises(ValueError, match=r"^Unsupported file format: \.xml$"),
+        ):
+            runner._convert_upload(params, tmp_path)
+
+        runner.download_uploaded_object.assert_not_called()
+        convert_all.assert_not_called()
+
 
 class TestLayerImportWFS:
     """Test WFS import path."""

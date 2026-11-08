@@ -23,6 +23,7 @@ import asyncpg
 import duckdb
 
 from goatlib.io.bbox_columns import star_excluding, stray_bbox_columns
+from goatlib.io.sql import sql_identifier
 from goatlib.storage.ducklake import fetch_one
 
 logger = logging.getLogger(__name__)
@@ -199,8 +200,10 @@ class LayerReplaceMixin:
             # Ensure user schema exists (first export into this schema otherwise fails)
             con.execute(f"CREATE SCHEMA IF NOT EXISTS lake.{schema}")
 
+            # The file's name and its column names come from the upload: the
+            # path is bound, the column quoted.
             cols = con.execute(
-                f"DESCRIBE SELECT * FROM read_parquet('{parquet_path}')"
+                "DESCRIBE SELECT * FROM read_parquet(?)", [str(parquet_path)]
             ).fetchall()
             geom_col = None
             for col_name, col_type, *_ in cols:
@@ -212,16 +215,22 @@ class LayerReplaceMixin:
             columns = star_excluding(stray_bbox_columns(cols))
 
             if geom_col:
-                con.execute(f"""
+                con.execute(
+                    f"""
                     CREATE TABLE {full_table} AS
-                    SELECT {columns} FROM read_parquet('{parquet_path}')
-                    ORDER BY ST_Hilbert({geom_col})
-                """)
+                    SELECT {columns} FROM read_parquet(?)
+                    ORDER BY ST_Hilbert({sql_identifier(geom_col)})
+                """,
+                    [str(parquet_path)],
+                )
             else:
-                con.execute(f"""
+                con.execute(
+                    f"""
                     CREATE TABLE {full_table} AS
-                    SELECT {columns} FROM read_parquet('{parquet_path}')
-                """)
+                    SELECT {columns} FROM read_parquet(?)
+                """,
+                    [str(parquet_path)],
+                )
             con.execute("COMMIT")
         except BaseException:
             # A failed COMMIT has already ended the transaction; the ROLLBACK
@@ -260,12 +269,13 @@ class LayerReplaceMixin:
 
         for col_name, col_type in columns.items():
             if "GEOMETRY" in col_type.upper():
+                geom = sql_identifier(col_name)
                 type_result = fetch_one(
                     con,
                     f"""
-                    SELECT ST_GeometryType({col_name})
+                    SELECT ST_GeometryType({geom})
                     FROM {table_name}
-                    WHERE {col_name} IS NOT NULL
+                    WHERE {geom} IS NOT NULL
                     LIMIT 1
                 """,
                 )
@@ -275,7 +285,7 @@ class LayerReplaceMixin:
                 extent_result = fetch_one(
                     con,
                     f"""
-                    SELECT ST_Extent({col_name})::VARCHAR
+                    SELECT ST_Extent({geom})::VARCHAR
                     FROM {table_name}
                 """,
                 )

@@ -38,6 +38,7 @@ from goatlib.analysis.schemas.ui import (
     ui_sections,
 )
 from goatlib.io.converter import IOConverter
+from goatlib.io.formats import refuse_unsupported_format
 from goatlib.models.io import DatasetMetadata
 from goatlib.tools.base import SimpleToolRunner
 from goatlib.tools.layer_replace import LayerReplaceMixin
@@ -141,6 +142,7 @@ class LayerUpdateRunner(LayerReplaceMixin, SimpleToolRunner):
         """
         if self.settings is None:
             raise RuntimeError("Settings not initialized")
+        refuse_unsupported_format(s3_key)
 
         logger.info(
             "S3 Settings: provider=%s, endpoint=%s, bucket=%s, region=%s",

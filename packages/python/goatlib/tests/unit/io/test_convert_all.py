@@ -72,6 +72,45 @@ def test_convert_any_returns_what_converted_when_only_some_did(tmp_path):
     assert len(outputs) == 1
 
 
+# A WFS connection file.
+WFS_CONNECTION_FILE = "<OGRWFSDataSource></OGRWFSDataSource>"
+
+
+def test_an_xml_member_beside_a_dataset_is_ignored(tmp_path, recorded):
+    """`.xml` is no format of an archive member, so a WFS connection file next
+    to a dataset is ignored, and on its own it leaves nothing to convert."""
+    archive = _archive(
+        tmp_path / "layers.zip",
+        {
+            "layers/wfs.xml": WFS_CONNECTION_FILE,
+            "layers/counts.csv": "id,value\n1,42\n",
+        },
+    )
+
+    report = convert_all(str(archive), tmp_path / "out")
+
+    assert [o.name for o in report.outputs] == ["counts"]
+    assert report.failures == []
+    assert [s for s in recorded if "ST_Read" in s] == []
+
+    only_xml = _archive(tmp_path / "only.zip", {"layers/wfs.xml": WFS_CONNECTION_FILE})
+    with pytest.raises(ValueError, match="No convertible datasets found"):
+        convert_all(str(only_xml), tmp_path / "out2")
+    assert [s for s in recorded if "ST_Read" in s] == []
+
+
+def test_an_xml_file_uploaded_on_its_own_is_refused(tmp_path, recorded):
+    """A WFS connection file is no upload format: refused before any read."""
+    source = tmp_path / "wfs.xml"
+    source.write_text(WFS_CONNECTION_FILE)
+
+    report = convert_all(str(source), tmp_path / "out")
+
+    assert report.outputs == []
+    assert [f.reason for f in report.failures] == ["Unsupported file format: .xml"]
+    assert [s for s in recorded if "ST_Read" in s] == []
+
+
 @pytest.mark.parametrize(
     ("discovered", "expected"),
     [

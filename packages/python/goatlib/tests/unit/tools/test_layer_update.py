@@ -127,6 +127,21 @@ class TestLayerUpdateRunner:
         runner.settings = mock_settings
         return runner
 
+    def test_import_from_s3_refuses_unknown_suffix(self, runner, tmp_path):
+        """A format no reader takes is refused before the upload is fetched."""
+        runner.download_uploaded_object = MagicMock()
+        runner._converter = MagicMock()
+
+        with pytest.raises(ValueError, match=r"^Unsupported file format: \.xml$"):
+            runner._import_from_s3(
+                s3_key="users/u/imports/uploads/data.xml",
+                temp_dir=tmp_path,
+                output_path=tmp_path / "output.parquet",
+            )
+
+        runner.download_uploaded_object.assert_not_called()
+        runner._converter.to_parquet.assert_not_called()
+
     def test_get_table_info(self, runner):
         """Test _get_table_info extracts metadata correctly."""
         # Mock DuckDB connection

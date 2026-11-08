@@ -65,6 +65,7 @@ from goatlib.io.config import (
     PARQUET_VERSION,
     parquet_copy_options,
 )
+from goatlib.io.sql import sql_identifier, sql_literal
 from goatlib.models.bundle import BundleArtifactState, artifact_state
 from goatlib.models.io import DatasetMetadata
 from goatlib.storage.ducklake import (
@@ -1203,7 +1204,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         """
         # Allow computing from parquet file directly (for temp mode)
         if not table_name and parquet_path:
-            table_name = f"read_parquet('{parquet_path}')"
+            table_name = f"read_parquet({sql_literal(parquet_path)})"
         if not table_name:
             return None
         from goatlib.analysis.schemas.statistics import ClassBreakMethod
@@ -2011,9 +2012,11 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 # Ensure user schema exists
                 con.execute(f"CREATE SCHEMA IF NOT EXISTS lake.{schema}")
 
-                # Detect geometry column for Hilbert ordering
+                # Detect geometry column for Hilbert ordering. The file's name
+                # and its column names come from the upload: the path is bound,
+                # the column quoted.
                 cols = con.execute(
-                    f"DESCRIBE SELECT * FROM read_parquet('{parquet_path}')"
+                    "DESCRIBE SELECT * FROM read_parquet(?)", [str(parquet_path)]
                 ).fetchall()
                 geom_col = None
                 for col_name, col_type, *_ in cols:
@@ -2028,11 +2031,14 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 # This ensures spatially-close rows are stored together in row groups,
                 # enabling efficient bbox-based row group pruning during queries
                 if geom_col:
-                    con.execute(f"""
+                    con.execute(
+                        f"""
                         CREATE TABLE {table_name} AS
-                        SELECT {columns} FROM read_parquet('{parquet_path}')
-                        ORDER BY ST_Hilbert({geom_col})
-                    """)
+                        SELECT {columns} FROM read_parquet(?)
+                        ORDER BY ST_Hilbert({sql_identifier(geom_col)})
+                    """,
+                        [str(parquet_path)],
+                    )
                     logger.info(
                         "Created DuckLake table: %s from %s (Hilbert-sorted by %s)",
                         table_name,
@@ -2040,10 +2046,13 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                         geom_col,
                     )
                 else:
-                    con.execute(f"""
+                    con.execute(
+                        f"""
                         CREATE TABLE {table_name} AS
-                        SELECT {columns} FROM read_parquet('{parquet_path}')
-                    """)
+                        SELECT {columns} FROM read_parquet(?)
+                    """,
+                        [str(parquet_path)],
+                    )
                     logger.info(
                         "Created DuckLake table: %s from %s", table_name, parquet_path
                     )
@@ -2110,13 +2119,14 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         extent_wkt = None
 
         if geom_col:
+            geom = sql_identifier(geom_col)
             # Get geometry type
             type_result = fetch_one(
                 con,
                 f"""
-                SELECT DISTINCT ST_GeometryType({geom_col})
+                SELECT DISTINCT ST_GeometryType({geom})
                 FROM {table_name}
-                WHERE {geom_col} IS NOT NULL
+                WHERE {geom} IS NOT NULL
                 LIMIT 1
             """,
             )
@@ -2128,10 +2138,10 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 con,
                 f"""
                 SELECT
-                    ST_XMin(ST_Extent_Agg({geom_col})),
-                    ST_YMin(ST_Extent_Agg({geom_col})),
-                    ST_XMax(ST_Extent_Agg({geom_col})),
-                    ST_YMax(ST_Extent_Agg({geom_col}))
+                    ST_XMin(ST_Extent_Agg({geom})),
+                    ST_YMin(ST_Extent_Agg({geom})),
+                    ST_XMax(ST_Extent_Agg({geom})),
+                    ST_YMax(ST_Extent_Agg({geom}))
                 FROM {table_name}
             """,
             )
