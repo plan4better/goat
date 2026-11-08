@@ -78,6 +78,8 @@ def create_app(settings: CatalogSettings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
+        # Chromium caps preflight caching at two hours (Safari keeps 600 s, Firefox allows more).
+        max_age=7200,
     )
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 
