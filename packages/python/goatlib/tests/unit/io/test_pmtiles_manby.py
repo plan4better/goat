@@ -701,6 +701,106 @@ def test_read_marker_without_a_description(
     assert generator.read_marker(archive) == {}
 
 
+def test_anchors_are_published_before_the_main_file(
+    generator: PMTilesGenerator,
+    con: duckdb.DuckDBPyConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A main file in sync then has its anchors: a build stopped in between
+    leaves a main file that is stale itself, which sync_pmtiles rebuilds."""
+    con.execute(
+        "CREATE TABLE layer AS SELECT 1 AS n, "
+        f"{GEOMETRIES['polygons'][0]} AS geometry"
+    )
+    published: list[str] = []
+    real_publish = pmtiles.publish_tiles
+
+    def publish(built: Path, final: Path) -> None:
+        published.append(final.name)
+        real_publish(built, final)
+
+    monkeypatch.setattr(pmtiles, "publish_tiles", publish)
+
+    assert generator.generate_from_table(con, "layer", "layer1") is not None
+
+    assert published == ["t_layer1_anchor.pmtiles", "t_layer1.pmtiles"]
+
+
+# =====================================================================
+#  In sync
+# =====================================================================
+
+
+def _tileset(path: Path, description: dict | None) -> Path:
+    """A one-point tileset whose description is `description`, as JSON."""
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    flags = ["-z5"]
+    if description is not None:
+        flags.append(f"--description={json.dumps(description)}")
+    manby.tile(con.sql("SELECT ST_Point(7.6, 47.5) AS geometry"), path, *flags)
+    return path
+
+
+@pytest.mark.parametrize(
+    ("description", "snapshot_id", "in_sync"),
+    [
+        # Built before manby: no description at all, or only the snapshot,
+        # which is current
+        (None, 7, False),
+        ({"snapshot_id": 7, "generated_at": "2026-01-01T00:00:00"}, 7, False),
+        # Built by manby with an older recipe
+        ({"snapshot_id": 7, "tiler": "manby", "recipe": 0}, 7, False),
+        # The current marker, from the current snapshot or another one
+        ({"snapshot_id": 7, **MANBY_MARKER}, 7, True),
+        ({"snapshot_id": 6, **MANBY_MARKER}, 7, False),
+        # No snapshot recorded, as for a catalog layer's tiles
+        (MANBY_MARKER, None, True),
+        (MANBY_MARKER, 7, False),
+    ],
+)
+def test_in_sync_needs_the_snapshot_and_the_current_marker(
+    generator: PMTilesGenerator,
+    tmp_path: Path,
+    description: dict | None,
+    snapshot_id: int | None,
+    in_sync: bool,
+) -> None:
+    """Old tiles are stale whatever their snapshot, so a plain sync after a
+    deploy rebuilds them, and a recipe bump rolls out the same way."""
+    path = _tileset(tmp_path / "t.pmtiles", description)
+
+    assert generator.is_pmtiles_in_sync(path, snapshot_id) is in_sync
+    assert (generator.stale_reason(path, snapshot_id) is None) is in_sync
+
+
+def test_stale_reasons_name_what_differs(
+    generator: PMTilesGenerator, tmp_path: Path
+) -> None:
+    old = _tileset(tmp_path / "old.pmtiles", {"snapshot_id": 7})
+    recipe = _tileset(
+        tmp_path / "recipe.pmtiles", {"snapshot_id": 7, "tiler": "manby", "recipe": 0}
+    )
+    snapshot = _tileset(
+        tmp_path / "snapshot.pmtiles", {"snapshot_id": 6, **MANBY_MARKER}
+    )
+
+    current = MANBY_MARKER["recipe"]
+    assert generator.stale_reason(old, 7) == "tiler None, current manby"
+    assert generator.stale_reason(recipe, 7) == f"recipe 0, current {current}"
+    assert generator.stale_reason(snapshot, 7) == "snapshot 6, current 7"
+
+
+def test_a_sidecar_snapshot_does_not_make_old_tiles_in_sync(
+    generator: PMTilesGenerator, tmp_path: Path
+) -> None:
+    """Only builds from before manby wrote the sidecar file."""
+    path = _tileset(tmp_path / "t.pmtiles", None)
+    path.with_suffix(".pmtiles.meta.json").write_text('{"snapshot_id": 7}')
+
+    assert not generator.is_pmtiles_in_sync(path, 7)
+
+
 # =====================================================================
 #  Failed builds
 # =====================================================================

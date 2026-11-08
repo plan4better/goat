@@ -15,7 +15,8 @@ The generation pipeline:
     3. Store PMTiles in a separate tiles directory (cache/derived data)
     4. Embed DuckLake snapshot_id and MANBY_MARKER in PMTiles metadata: the
        snapshot for sync tracking, the marker because geoapi filters stored
-       tiles only when it finds it.
+       tiles only when it finds it and sync_pmtiles rebuilds tiles without
+       the current one.
 
 Usage:
     from goatlib.io.pmtiles import PMTilesGenerator
@@ -57,7 +58,9 @@ logger = logging.getLogger(__name__)
 # Recorded in the description of every tileset manby built, next to the
 # snapshot id. geoapi filters stored tiles only when it finds it: the point
 # tiles built before manby merged nearby points at every zoom, and some had no
-# feature ids.
+# feature ids. A tileset counts as in sync only with this marker
+# (is_pmtiles_in_sync), so bumping `recipe` after a change to manby_flags
+# makes the next sync_pmtiles run rebuild every tileset built with the old one.
 MANBY_MARKER: dict = {"tiler": "manby", "recipe": 1}
 
 # Columns geoapi hides from tiles (its HIDDEN_FIELDS default): the GeoParquet
@@ -306,39 +309,51 @@ class PMTilesGenerator:
         """
         return self.read_marker(pmtiles_path).get("snapshot_id")
 
+    def stale_reason(
+        self: Self, pmtiles_path: Path | str, current_snapshot_id: int | None
+    ) -> str | None:
+        """Why a PMTiles file needs a rebuild, None when it is in sync.
+
+        In sync means built with the current recipe (every key of
+        MANBY_MARKER matches) from the current snapshot. A file from before
+        manby, or from an older recipe, is stale whatever its snapshot, in its
+        description or in a sidecar `.pmtiles.meta.json` (which only builds
+        from before manby wrote).
+
+        Args:
+            pmtiles_path: Path to PMTiles file
+            current_snapshot_id: Current DuckLake snapshot ID for the table;
+                None for tiles of a source without snapshots (a catalog
+                layer's parquet), which record none
+
+        Returns:
+            The reason, such as "recipe 1, current 2", or None
+        """
+        marker = self.read_marker(pmtiles_path)
+        for key, current in MANBY_MARKER.items():
+            if marker.get(key) != current:
+                return f"{key} {marker.get(key)}, current {current}"
+        if marker.get("snapshot_id") != current_snapshot_id:
+            return (
+                f"snapshot {marker.get('snapshot_id')}, current {current_snapshot_id}"
+            )
+        return None
+
     def is_pmtiles_in_sync(
-        self: Self, pmtiles_path: Path | str, current_snapshot_id: int
+        self: Self, pmtiles_path: Path | str, current_snapshot_id: int | None
     ) -> bool:
         """Check if PMTiles is in sync with the DuckLake table.
-
-        Checks both embedded PMTiles metadata and sidecar files for
-        backwards compatibility.
 
         Args:
             pmtiles_path: Path to PMTiles file
             current_snapshot_id: Current DuckLake snapshot ID for the table
+                (see stale_reason)
 
         Returns:
-            True if PMTiles was generated from the current snapshot
+            True if manby built it with the current recipe from the current
+            snapshot
         """
-        # First check embedded metadata
-        stored_snapshot = self.get_pmtiles_snapshot_id(pmtiles_path)
-        if stored_snapshot is not None:
-            return stored_snapshot == current_snapshot_id
-
-        # Fall back to sidecar file for backwards compatibility
-        try:
-            meta_path = Path(pmtiles_path).with_suffix(".pmtiles.meta.json")
-            if meta_path.exists():
-                with open(meta_path) as f:
-                    meta = json.load(f)
-                    stored_snapshot = meta.get("snapshot_id")
-                    return stored_snapshot == current_snapshot_id
-        except Exception:
-            pass
-
-        # No snapshot info found - not in sync
-        return False
+        return self.stale_reason(pmtiles_path, current_snapshot_id) is None
 
     def generate_from_table(
         self: Self,
@@ -426,9 +441,12 @@ class PMTilesGenerator:
                         label_anchor=True,
                     )
 
-                publish_tiles(built_path, pmtiles_path)
+                # The anchors first: a main file in sync then has its anchors
+                # next to it, which sync_pmtiles relies on, and a build stopped
+                # in between leaves a main file that is stale itself.
                 if is_polygon and built_anchor_path.exists():
                     publish_tiles(built_anchor_path, anchor_pmtiles_path)
+                publish_tiles(built_path, pmtiles_path)
 
             size_mb = pmtiles_path.stat().st_size / 1024 / 1024
             logger.info(

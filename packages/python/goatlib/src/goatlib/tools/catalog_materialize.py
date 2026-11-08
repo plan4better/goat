@@ -31,7 +31,7 @@ import tempfile
 import uuid as uuid_module
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 import duckdb
 from pydantic import Field
@@ -40,7 +40,15 @@ from goatlib.io.config import parquet_copy_options
 from goatlib.tools.base import SimpleToolRunner
 from goatlib.tools.schemas import ToolInputBase
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
-from goatlib.utils.layer import catalog_tiles_dir, layer_id_to_table_name
+from goatlib.utils.layer import (
+    catalog_layer_relation,
+    catalog_tiles_dir,
+    catalog_view_sql,
+    layer_id_to_table_name,
+)
+
+if TYPE_CHECKING:
+    from goatlib.io.pmtiles import PMTilesConfig
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +79,68 @@ def catalog_layers_dir() -> Path:
     from goatlib.utils.layer import catalog_layers_dir as _shared
 
     return _shared()
+
+
+def parquet_geometry_column(
+    con: duckdb.DuckDBPyConnection, parquet_path: Path
+) -> str | None:
+    """The first geometry column of a parquet file, None for a table.
+
+    The name comes from an external catalog file's schema: treat it as
+    untrusted when splicing it as a SQL identifier.
+    """
+    cols = con.execute(
+        f"DESCRIBE SELECT * FROM read_parquet('{parquet_path}')"
+    ).fetchall()
+    return next((c[0] for c in cols if "GEOMETRY" in c[1].upper()), None)
+
+
+def generate_catalog_pmtiles(
+    con: duckdb.DuckDBPyConnection,
+    layer_id: str,
+    parquet_path: Path,
+    geometry_column: str,
+    config: PMTilesConfig,
+) -> Path | None:
+    """Tiles for a catalog layer's materialized file, written beside its parquet.
+
+    Not the user tiles directory: everything a catalog layer produces is
+    derived from a dataset every deployment harvests, so it lives under the
+    catalog tree -- wipeable, rebuildable, shippable prebuilt -- while the
+    tiles tree stays the user's own data. In its own directory beside the
+    parquet, because tiles are a cache OF that parquet and get cleared on
+    their own.
+
+    The generator's SQL selects ``rowid`` from its source, which a parquet
+    scan does not have — the catalog layer view (``catalog_view_sql``)
+    provides it from ``file_row_number``, and the column is excluded from
+    tile properties. Used by the materialize job and by sync_pmtiles, on a
+    connection with spatial loaded.
+
+    Returns:
+        The PMTiles path, None if the build failed
+    """
+    from goatlib.io.pmtiles import PMTilesGenerator
+
+    # External-file column name → untrusted identifier; escape embedded
+    # quotes so every quoted interpolation (in the generator's SQL, which
+    # quotes it) stays a single identifier.
+    geom_col_sql = geometry_column.replace('"', '""')
+
+    relation = catalog_layer_relation(layer_id)
+    # A long-lived connection may hold the view from an earlier file
+    con.execute(f"DROP VIEW IF EXISTS {relation}")
+    for statement in catalog_view_sql(layer_id, parquet_path):
+        con.execute(statement)
+    generator = PMTilesGenerator(tiles_data_dir=catalog_tiles_dir(), config=config)
+    # A polygon layer's label anchors are built with it
+    return generator.generate_from_table(
+        duckdb_con=con,
+        table_name=relation,
+        layer_id=layer_id,
+        geometry_column=geom_col_sql,
+        exclude_columns=["rowid"],
+    )
 
 
 class CatalogMaterializeRunner(SimpleToolRunner):
@@ -206,15 +276,9 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                     src.stat().st_size,
                 )
 
-                cols = con.execute(
-                    f"DESCRIBE SELECT * FROM read_parquet('{src}')"
-                ).fetchall()
-                geom_col = next(
-                    (c[0] for c in cols if "GEOMETRY" in c[1].upper()), None
-                )
-                # The column name comes from an external catalog file's schema,
-                # so treat it as untrusted when splicing it as a SQL identifier:
-                # double any embedded quote so it stays inside its "..." quoting.
+                geom_col = parquet_geometry_column(con, src)
+                # Double any embedded quote of the untrusted name so it stays
+                # inside its "..." quoting.
                 geom_col_sql = geom_col.replace('"', '""') if geom_col else None
 
                 staged = Path(tmp) / "staged.parquet"
@@ -261,53 +325,25 @@ class CatalogMaterializeRunner(SimpleToolRunner):
     def _generate_catalog_pmtiles(
         self: Self, layer_id: str, parquet_path: Path, geom_col: str
     ) -> None:
-        """Tiles for the materialized file, written beside its parquet.
-
-        Not the user tiles directory: everything a catalog layer produces is
-        derived from a dataset every deployment harvests, so it lives under the
-        catalog tree -- wipeable, rebuildable, shippable prebuilt -- while the
-        tiles tree stays the user's own data. In its own directory beside the
-        parquet, because tiles are a cache OF that parquet and get cleared on
-        their own.
-
-        The generator's SQL selects ``rowid`` from its source, which a parquet
-        scan does not have — a view naming ``file_row_number`` provides it,
-        and the column is excluded from tile properties.
-        """
-        from goatlib.io.pmtiles import PMTilesConfig, PMTilesGenerator
+        """Tiles for the materialized file (see generate_catalog_pmtiles)."""
+        from goatlib.io.pmtiles import PMTilesConfig
 
         if not (self.settings and self.settings.pmtiles_enabled):
             return
-
-        # External-file column name → untrusted identifier; escape embedded
-        # quotes so every quoted interpolation (here and in the generator's own
-        # SQL, which also quotes it) stays a single identifier.
-        geom_col_sql = geom_col.replace('"', '""')
 
         con = duckdb.connect()
         set_memory_share(con, JOB_WORK_MEMORY_SHARE)
         try:
             con.execute("INSTALL spatial; LOAD spatial;")
-            view = f"cat_{layer_id_to_table_name(layer_id)}"
-            con.execute(f"""
-                CREATE VIEW "{view}" AS
-                SELECT file_row_number AS rowid, * EXCLUDE (file_row_number)
-                FROM read_parquet('{parquet_path}', file_row_number=true)
-            """)
-            generator = PMTilesGenerator(
-                tiles_data_dir=catalog_tiles_dir(),
-                config=PMTilesConfig(
+            pmtiles = generate_catalog_pmtiles(
+                con,
+                layer_id,
+                parquet_path,
+                geom_col,
+                PMTilesConfig(
                     min_zoom=self.settings.pmtiles_min_zoom,
                     max_zoom=self.settings.pmtiles_max_zoom,
                 ),
-            )
-            # A polygon layer's label anchors are built with it
-            pmtiles = generator.generate_from_table(
-                duckdb_con=con,
-                table_name=f'"{view}"',
-                layer_id=layer_id,
-                geometry_column=geom_col_sql,
-                exclude_columns=["rowid"],
             )
             if pmtiles is None:
                 raise RuntimeError("PMTiles generation returned no file")

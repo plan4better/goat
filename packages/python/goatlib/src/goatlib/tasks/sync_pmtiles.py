@@ -1,11 +1,23 @@
 """PMTiles synchronization task for Windmill.
 
-This task synchronizes PMTiles files with DuckLake geometry layers.
-It can be run as a scheduled Windmill job or triggered manually.
+This task synchronizes PMTiles files with DuckLake geometry layers and with
+promoted catalog layers. It can be run as a scheduled Windmill job or
+triggered manually.
+
+A layer's tiles are in sync when manby built them with the current recipe
+(MANBY_MARKER) from the current data: the layer's DuckLake snapshot, or for a
+catalog layer its local GeoParquet copy, when that is no newer than the tiles.
+Tiles from before manby or from an older recipe are stale like tiles of old
+data, so a plain run after a deploy that brings a new recipe rebuilds them,
+without `force` (which rebuilds the layers already done too). A run stopped on
+the way goes on with the layers still stale when it is started again.
 
 Architecture:
 - All queries via DuckDB with postgres_scanner (no separate psycopg dependency)
 - Data queries: DuckLake via BaseDuckLakeManager (proper catalog access)
+- Catalog layers: their local GeoParquet copy, read through the catalog layer
+  view on the same connection; never downloaded from the catalog bucket and
+  never changed
 
 Usage as Windmill script:
     # Called by Windmill with PMTilesSyncParams
@@ -20,14 +32,14 @@ Usage as library:
 
 import logging
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import duckdb
 
 from goatlib.config.postgres import TASKS_APPLICATION_NAME
@@ -35,8 +47,17 @@ from goatlib.io.pmtiles import PMTilesConfig, PMTilesGenerator
 from goatlib.storage import BaseDuckLakeManager
 from goatlib.storage.ducklake import catalog_libpq
 from goatlib.tools.base import ToolSettings
+from goatlib.tools.catalog_materialize import (
+    generate_catalog_pmtiles,
+    parquet_geometry_column,
+)
 from goatlib.utils.container_memory import JOB_DUCKLAKE_MEMORY_SHARE, set_memory_share
 from goatlib.utils.credentials import postgres_attach_target
+from goatlib.utils.layer import (
+    catalog_layers_dir,
+    catalog_tiles_dir,
+    layer_id_to_table_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +71,7 @@ class PMTilesSyncParams(BaseModel):
     )
     limit: int | None = Field(
         default=None,
-        description="Maximum number of layers to process",
+        description="Maximum number of layers to process (DuckLake and catalog layers each)",
     )
     force: bool = Field(
         default=False,
@@ -76,6 +97,15 @@ class PMTilesSyncParams(BaseModel):
         default=False,
         description="Only generate anchor PMTiles for polygon layers (skip main tile regeneration)",
     )
+    layers: Literal["all", "ducklake", "catalog"] = Field(
+        default="all",
+        description=(
+            "Which layers to sync: all, DuckLake layers only, or promoted catalog "
+            "layers only (tiled from their local GeoParquet copy). user_id, "
+            "geometry_type_filter and anchor_only select DuckLake layers: with "
+            "one of them set, catalog layers are left out"
+        ),
+    )
 
 
 __all__ = ["PMTilesSyncParams", "PMTilesSyncTask", "main"]
@@ -98,6 +128,16 @@ class LayerInfo:
     def full_table_name(self: Self) -> str:
         """Get the full DuckLake table name (lake.schema.table)."""
         return f"lake.{self.schema_name}.{self.table_name}"
+
+
+@dataclass
+class CatalogLayerInfo:
+    """A promoted catalog layer and its local GeoParquet copy."""
+
+    layer_id: str
+    parquet_path: Path
+    size_bytes: int = 0
+    modified_ns: int = 0
 
 
 @dataclass
@@ -135,13 +175,19 @@ class SyncStats:
             "failed": self.failed,
         }
 
+    def add(self: Self, other: "SyncStats") -> None:
+        """Count the layers of another pass in these."""
+        for name, value in other.to_dict().items():
+            setattr(self, name, getattr(self, name) + value)
+
 
 class PMTilesSyncTask:
-    """Synchronize PMTiles for all DuckLake geometry layers.
+    """Synchronize PMTiles for all DuckLake geometry layers and catalog layers.
 
-    This task ensures all geometry layers in DuckLake have corresponding
-    PMTiles files for efficient tile serving. It tracks DuckLake snapshots
-    to only regenerate tiles when source data changes.
+    This task ensures all geometry layers in DuckLake, and the promoted
+    catalog layers, have corresponding PMTiles files for efficient tile
+    serving. It tracks DuckLake snapshots (for a catalog layer, its file) and
+    the recipe, to only regenerate tiles when source data or recipe changes.
 
     Example (Windmill):
         def main(params: PMTilesSyncParams) -> dict:
@@ -161,6 +207,7 @@ class PMTilesSyncTask:
         self.settings: ToolSettings | None = None
         self._manager: BaseDuckLakeManager | None = None
         self._generator: PMTilesGenerator | None = None
+        self._catalog_generator: PMTilesGenerator | None = None
         self._spill_dir: tempfile.TemporaryDirectory | None = None
 
     @staticmethod
@@ -230,7 +277,23 @@ class PMTilesSyncTask:
             config = PMTilesConfig(enabled=True)
             self._generator = PMTilesGenerator(self.settings.tiles_data_dir, config)
         return self._generator
-        return self._generator
+
+    def _catalog_config(self: Self) -> PMTilesConfig:
+        """The config catalog_materialize builds a catalog layer's tiles with."""
+        if not self.settings:
+            raise RuntimeError("Call init_from_env() before running task")
+        return PMTilesConfig(
+            min_zoom=self.settings.pmtiles_min_zoom,
+            max_zoom=self.settings.pmtiles_max_zoom,
+        )
+
+    def _get_catalog_generator(self: Self) -> PMTilesGenerator:
+        """Get or create the PMTiles generator of the catalog tiles directory."""
+        if self._catalog_generator is None:
+            self._catalog_generator = PMTilesGenerator(
+                str(catalog_tiles_dir()), self._catalog_config()
+            )
+        return self._catalog_generator
 
     def close(self: Self) -> None:
         """Close connections and cleanup resources."""
@@ -267,7 +330,8 @@ class PMTilesSyncTask:
             TASKS_APPLICATION_NAME,
         )
         target = postgres_attach_target(con, libpq_str)
-        con.execute(f"ATTACH '{target}' AS pg (TYPE postgres, READ_ONLY)")
+        # Both listings attach it, on the manager's one connection
+        con.execute(f"ATTACH IF NOT EXISTS '{target}' AS pg (TYPE postgres, READ_ONLY)")
 
     def get_geometry_layers(
         self: Self,
@@ -419,6 +483,83 @@ class PMTilesSyncTask:
 
         return layers
 
+    def _promoted_layer_ids(self: Self) -> list[str]:
+        """Ids of the promoted catalog layers whose tiles the sync keeps.
+
+        Only layers a project uses: an unused one is what catalog_gc deletes,
+        with its tiles. Only feature layers, as a table has no geometry. None
+        whose materialize job is queued or running: the job writes the copy
+        and builds its tiles itself.
+        """
+        if not self.settings:
+            raise RuntimeError("Call init_from_env() before running task")
+
+        customer_schema = self.settings.customer_schema
+        query = f"""
+            SELECT layer_id FROM postgres_query('pg',
+                'SELECT l.id::text AS layer_id
+                 FROM {customer_schema}.layer l
+                 WHERE l.catalog_external_uid IS NOT NULL
+                 AND l.type = ''feature''
+                 AND COALESCE(
+                     l.other_properties->''catalog_materialize''->>''status'', ''''
+                 ) NOT IN (''pending'', ''running'')
+                 AND EXISTS (
+                     SELECT 1 FROM {customer_schema}.layer_project lp
+                     WHERE lp.layer_id = l.id
+                 )')
+        """
+        manager = self._get_manager()
+        with manager.connection() as con:
+            self._attach_postgres(con)
+            rows = con.execute(query).fetchall()
+        return [layer_id for (layer_id,) in rows]
+
+    def get_catalog_layers(
+        self: Self,
+        limit: int | None = None,
+        order_by_size: bool = False,
+    ) -> list[CatalogLayerInfo]:
+        """Get the promoted catalog layers to sync, with their local copy.
+
+        Taken from the layer rows, never by listing the directory: a parquet
+        without a row is no layer anyone uses (catalog_gc deletes the row
+        before the files). A layer without its copy is skipped; core's heal
+        materializes it again when it is added.
+
+        Args:
+            limit: Maximum number of layers to return
+            order_by_size: If True, smallest copy first, else the newest
+
+        Returns:
+            List of CatalogLayerInfo for each layer with a copy
+        """
+        layers = []
+        without_copy = 0
+        for layer_id in self._promoted_layer_ids():
+            path = catalog_layers_dir() / f"{layer_id_to_table_name(layer_id)}.parquet"
+            try:
+                stat = path.stat()
+            except FileNotFoundError:
+                without_copy += 1
+                continue
+            layers.append(
+                CatalogLayerInfo(
+                    layer_id=layer_id,
+                    parquet_path=path,
+                    size_bytes=stat.st_size,
+                    modified_ns=stat.st_mtime_ns,
+                )
+            )
+        if without_copy:
+            logger.info(f"Skipping {without_copy} catalog layers without a local copy")
+
+        if order_by_size:
+            layers.sort(key=lambda layer: layer.size_bytes)
+        else:
+            layers.sort(key=lambda layer: layer.modified_ns, reverse=True)
+        return layers[:limit] if limit else layers
+
     def _detect_geometry_type(
         self: Self,
         layer: LayerInfo,
@@ -453,17 +594,50 @@ class PMTilesSyncTask:
         return "unknown"
 
     @staticmethod
-    def _has_anchor_layer(pmtiles_path: "Path") -> bool:
-        """Check if a layer already has a separate anchor PMTiles file."""
-        anchor_path = pmtiles_path.with_name(pmtiles_path.stem + "_anchor.pmtiles")
-        return anchor_path.exists()
+    def _stale_reason(
+        generator: PMTilesGenerator,
+        layer_id: str,
+        snapshot_id: int | None,
+        source_modified_ns: int | None = None,
+    ) -> str | None:
+        """Why a layer's existing tiles need a rebuild, None when they are in sync.
+
+        Each file of the layer must be in sync (PMTilesGenerator.stale_reason):
+        the main file and, when there is one, its label anchor file. A main
+        file in sync without an anchor file is complete: generate_from_table
+        publishes a polygon layer's anchors first.
+
+        Args:
+            generator: Generator of the tiles directory the files are in
+            layer_id: Layer UUID
+            snapshot_id: The layer's DuckLake snapshot, None for a catalog layer
+            source_modified_ns: For a catalog layer, the mtime of its parquet:
+                tiles older than the file are of the data it replaced
+
+        Returns:
+            The reason, or None
+        """
+        main_path = generator.get_pmtiles_path(layer_id)
+        anchor_path = generator.get_anchor_pmtiles_path(layer_id)
+        for path, prefix in ((main_path, ""), (anchor_path, "label anchors: ")):
+            if path == anchor_path and not path.exists():
+                continue
+            reason = generator.stale_reason(path, snapshot_id)
+            if (
+                reason is None
+                and source_modified_ns is not None
+                and path.stat().st_mtime_ns < source_modified_ns
+            ):
+                reason = "parquet newer than the tiles"
+            if reason is not None:
+                return prefix + reason
+        return None
 
     def _process_layer(
         self: Self,
         layer: LayerInfo,
         force: bool = False,
         dry_run: bool = False,
-        skip_existing_anchors: bool = False,
         anchor_only: bool = False,
     ) -> SyncResult:
         """Process a single layer - generate PMTiles if needed."""
@@ -493,11 +667,14 @@ class PMTilesSyncTask:
                         status="skipped",
                         message="No main PMTiles file, skipping anchor generation",
                     )
-                if self._has_anchor_layer(pmtiles_path):
+                anchor_path = generator.get_anchor_pmtiles_path(layer.layer_id)
+                if anchor_path.exists() and generator.is_pmtiles_in_sync(
+                    anchor_path, layer.snapshot_id
+                ):
                     return SyncResult(
                         layer_id=layer.layer_id,
                         status="skipped",
-                        message="Already has anchor layer",
+                        message="Anchor layer in sync",
                     )
                 if dry_run:
                     return SyncResult(
@@ -528,28 +705,19 @@ class PMTilesSyncTask:
                         message="Not a polygon layer",
                     )
 
-            # Skip if already has anchor layer (for resumable polygon migration)
-            if skip_existing_anchors and pmtiles_path.exists():
-                if self._has_anchor_layer(pmtiles_path):
-                    return SyncResult(
-                        layer_id=layer.layer_id,
-                        status="skipped",
-                        message="Already has anchor layer",
-                    )
-
             # Check if regeneration is needed
+            stale_msg = ""
             if pmtiles_path.exists() and not force:
-                if generator.is_pmtiles_in_sync(pmtiles_path, layer.snapshot_id):
+                reason = self._stale_reason(
+                    generator, layer.layer_id, layer.snapshot_id
+                )
+                if reason is None:
                     return SyncResult(
                         layer_id=layer.layer_id,
                         status="in_sync",
                         message=f"In sync (snapshot={layer.snapshot_id})",
                     )
-                else:
-                    stored = generator.get_pmtiles_snapshot_id(pmtiles_path)
-                    stale_msg = f"Stale: stored={stored}, current={layer.snapshot_id}"
-            else:
-                stale_msg = ""
+                stale_msg = f"Stale: {reason}"
 
             if dry_run:
                 status = "would_regenerate" if pmtiles_path.exists() else "would_create"
@@ -570,19 +738,7 @@ class PMTilesSyncTask:
                     snapshot_id=layer.snapshot_id,
                 )
 
-            if output:
-                size_mb = output.stat().st_size / 1024 / 1024
-                return SyncResult(
-                    layer_id=layer.layer_id,
-                    status="generated",
-                    message=f"Generated {size_mb:.1f} MB",
-                )
-            else:
-                return SyncResult(
-                    layer_id=layer.layer_id,
-                    status="failed",
-                    message="Generation returned None",
-                )
+            return self._generated(layer.layer_id, output, stale_msg)
 
         except Exception as e:
             return SyncResult(
@@ -590,6 +746,83 @@ class PMTilesSyncTask:
                 status="error",
                 message=str(e),
             )
+
+    def _process_catalog_layer(
+        self: Self,
+        layer: CatalogLayerInfo,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> SyncResult:
+        """Process a single catalog layer - build its tiles from its copy if needed."""
+        generator = self._get_catalog_generator()
+
+        try:
+            pmtiles_path = generator.get_pmtiles_path(layer.layer_id)
+
+            stale_msg = ""
+            if pmtiles_path.exists() and not force:
+                reason = self._stale_reason(
+                    generator, layer.layer_id, None, layer.modified_ns
+                )
+                if reason is None:
+                    return SyncResult(
+                        layer_id=layer.layer_id,
+                        status="in_sync",
+                        message="In sync",
+                    )
+                stale_msg = f"Stale: {reason}"
+
+            # On the manager's connection, bounded and spilling as for a
+            # DuckLake layer. The copy is read where it is, never changed.
+            manager = self._get_manager()
+            with manager.connection() as con:
+                geometry_column = parquet_geometry_column(con, layer.parquet_path)
+                if geometry_column is None:
+                    return SyncResult(
+                        layer_id=layer.layer_id,
+                        status="skipped",
+                        message="No geometry column",
+                    )
+                if dry_run:
+                    status = (
+                        "would_regenerate" if pmtiles_path.exists() else "would_create"
+                    )
+                    return SyncResult(
+                        layer_id=layer.layer_id,
+                        status=status,
+                        message=stale_msg or "Would create new PMTiles",
+                    )
+                output = generate_catalog_pmtiles(
+                    con,
+                    layer.layer_id,
+                    layer.parquet_path,
+                    geometry_column,
+                    self._catalog_config(),
+                )
+
+            return self._generated(layer.layer_id, output, stale_msg)
+
+        except Exception as e:
+            return SyncResult(
+                layer_id=layer.layer_id,
+                status="error",
+                message=str(e),
+            )
+
+    @staticmethod
+    def _generated(layer_id: str, output: Path | None, stale_msg: str) -> SyncResult:
+        """The result of a build, with why the old tiles were stale."""
+        if output:
+            size_mb = output.stat().st_size / 1024 / 1024
+            message = f"Generated {size_mb:.1f} MB"
+            if stale_msg:
+                message += f" ({stale_msg})"
+            return SyncResult(layer_id=layer_id, status="generated", message=message)
+        return SyncResult(
+            layer_id=layer_id,
+            status="failed",
+            message="Generation returned None",
+        )
 
     def run(
         self: Self,
@@ -601,200 +834,289 @@ class PMTilesSyncTask:
             params: Task parameters
 
         Returns:
-            Dict with sync statistics for Windmill output
+            Dict with sync statistics for Windmill output, both passes counted
         """
         stats = SyncStats()
 
         try:
-            # Query metadata from PostgreSQL
-            logger.info("Querying geometry layers from PostgreSQL...")
-            layers = self.get_geometry_layers(
-                user_id=params.user_id,
-                limit=params.limit,
-                order_by_size=params.small_first,
-            )
-
-            stats.total_layers = len(layers)
-            logger.info(f"Found {len(layers)} geometry layers")
-
-            if not layers:
-                logger.info("No layers to process")
-                return stats.to_dict()
-
-            # Filter by geometry type if requested (anchor_only implies polygon)
-            geom_filter = params.geometry_type_filter
-            if params.anchor_only and not geom_filter:
-                geom_filter = "polygon"
-
-            if geom_filter:
-                filter_type = geom_filter.lower()
-                filtered = []
-                for layer in layers:
-                    geom_type = self._detect_geometry_type(layer)
-                    if geom_type == filter_type:
-                        filtered.append(layer)
-                    else:
-                        logger.info(
-                            f"  Skipping {layer.full_table_name} "
-                            f"(geometry={geom_type}, filter={filter_type})"
-                        )
-                logger.info(
-                    f"Filtered to {len(filtered)}/{len(layers)} "
-                    f"{filter_type} layers"
-                )
-                layers = filtered
-
-            # Anchor-only mode: process all polygon layers, skip categorization
-            if params.anchor_only:
-                to_process = layers
-                logger.info(
-                    f"Anchor-only mode: processing {len(to_process)} polygon layers..."
-                )
-                for i, layer in enumerate(to_process, 1):
-                    logger.info(f"Processing {i}/{len(to_process)}: {layer.layer_id}")
-                    result = self._process_layer(
-                        layer,
-                        dry_run=params.dry_run,
-                        anchor_only=True,
-                    )
-                    if result.status == "generated":
-                        stats.generated += 1
-                    elif result.status == "error":
-                        stats.errors += 1
-                    elif result.status in ("skipped", "would_create"):
-                        stats.skipped += 1
-                    logger.info(f"  [{result.status}] {result.message}")
-
-                logger.info("\n--- Summary ---")
-                logger.info(f"  Total polygon layers: {len(to_process)}")
-                if stats.generated > 0:
-                    logger.info(f"  Generated anchors: {stats.generated}")
-                if stats.skipped > 0:
-                    logger.info(f"  Skipped: {stats.skipped}")
-                if stats.errors > 0:
-                    logger.info(f"  Errors: {stats.errors}")
-                return stats.to_dict()
-
-            # Categorize layers
-            generator = self._get_generator()
-            missing = []
-            stale = []
-            in_sync = []
-            corrupted = []
-
-            for layer in layers:
-                pmtiles_path = generator.get_pmtiles_path(layer.layer_id)
-
-                # Clean up any leftover temp files from interrupted generations
-                # These patterns are from previous implementations:
-                # - .tmp_filename.pmtiles (old prefix pattern)
-                # - filename.pmtiles.tmp (old suffix pattern, and the tiler's
-                #   own temp file from when it built in the tiles directory)
-                temp_patterns = [
-                    pmtiles_path.parent / f".tmp_{pmtiles_path.name}",
-                    pmtiles_path.with_suffix(".pmtiles.tmp"),
-                    pmtiles_path.parent / f"{pmtiles_path.name}.tmp",
-                ]
-                for temp_path in temp_patterns:
-                    if temp_path.exists():
-                        logger.debug(f"Cleaning up interrupted generation: {temp_path}")
-                        try:
-                            temp_path.unlink()
-                        except OSError:
-                            pass
-
-                if not pmtiles_path.exists():
-                    missing.append(layer)
-                elif not generator.is_pmtiles_valid(pmtiles_path):
-                    # Corrupted file - delete it and treat as missing
-                    logger.warning(f"Corrupted PMTiles file, deleting: {pmtiles_path}")
-                    try:
-                        pmtiles_path.unlink()
-                    except OSError as e:
-                        logger.error(f"Failed to delete corrupted file: {e}")
-                    corrupted.append(layer)
-                    missing.append(layer)
-                elif not generator.is_pmtiles_in_sync(pmtiles_path, layer.snapshot_id):
-                    stale.append(layer)
-                else:
-                    in_sync.append(layer)
-
-            stats.in_sync = len(in_sync)
-            stats.missing = len(missing)
-            stats.stale = len(stale)
-
-            status_msg = (
-                f"Status: {stats.in_sync} in sync, {stats.missing} missing, "
-                f"{stats.stale} stale"
-            )
-            if corrupted:
-                status_msg += f" ({len(corrupted)} corrupted files deleted)"
-            logger.info(status_msg)
-
-            # Determine what to process
-            if params.force:
-                to_process = layers
-            elif params.missing_only:
-                to_process = missing
-                if stale:
-                    logger.info(f"Skipping {len(stale)} stale layers (--missing-only)")
-            else:
-                to_process = missing + stale
-
-            if not to_process:
-                logger.info("All PMTiles are up to date!")
-                return stats.to_dict()
-
-            logger.info(f"Processing {len(to_process)} layers...")
-
-            # Process layers
-            for i, layer in enumerate(to_process, 1):
-                size_str = (
-                    f"{layer.size_bytes / 1024 / 1024:.1f}MB"
-                    if layer.size_bytes >= 1024 * 1024
-                    else f"{layer.size_bytes / 1024:.1f}KB"
-                    if layer.size_bytes > 0
-                    else "?"
-                )
-                logger.info(
-                    f"Processing {i}/{len(to_process)}: {layer.layer_id} ({size_str})"
-                )
-
-                result = self._process_layer(
-                    layer,
-                    force=params.force,
-                    dry_run=params.dry_run,
-                    skip_existing_anchors=params.geometry_type_filter == "polygon",
-                )
-
-                if result.status == "generated":
-                    stats.generated += 1
-                elif result.status == "error":
-                    stats.errors += 1
-                elif result.status == "failed":
-                    stats.failed += 1
-                elif result.status in ("skipped", "would_create", "would_regenerate"):
-                    stats.skipped += 1
-
-                logger.info(f"  [{result.status}] {result.message}")
-
-            # Summary
-            logger.info("\n--- Summary ---")
-            logger.info(f"  Total layers: {stats.total_layers}")
-            logger.info(f"  In sync: {stats.in_sync}")
-            if stats.generated > 0:
-                logger.info(f"  Generated: {stats.generated}")
-            if stats.errors > 0:
-                logger.info(f"  Errors: {stats.errors}")
-            if stats.failed > 0:
-                logger.info(f"  Failed: {stats.failed}")
-            if stats.skipped > 0:
-                logger.info(f"  Skipped: {stats.skipped}")
-
+            if params.layers != "catalog":
+                stats.add(self._sync_ducklake_layers(params))
+            if params.layers != "ducklake":
+                stats.add(self._sync_catalog_layers(params))
             return stats.to_dict()
 
         finally:
             self.close()
+
+    def _sync_ducklake_layers(self: Self, params: PMTilesSyncParams) -> SyncStats:
+        """Sync the PMTiles of the DuckLake geometry layers."""
+        stats = SyncStats()
+
+        # Query metadata from PostgreSQL
+        logger.info("Querying geometry layers from PostgreSQL...")
+        layers = self.get_geometry_layers(
+            user_id=params.user_id,
+            limit=params.limit,
+            order_by_size=params.small_first,
+        )
+
+        stats.total_layers = len(layers)
+        logger.info(f"Found {len(layers)} geometry layers")
+
+        if not layers:
+            logger.info("No layers to process")
+            return stats
+
+        # Filter by geometry type if requested (anchor_only implies polygon)
+        geom_filter = params.geometry_type_filter
+        if params.anchor_only and not geom_filter:
+            geom_filter = "polygon"
+
+        if geom_filter:
+            filter_type = geom_filter.lower()
+            filtered = []
+            for layer in layers:
+                geom_type = self._detect_geometry_type(layer)
+                if geom_type == filter_type:
+                    filtered.append(layer)
+                else:
+                    logger.info(
+                        f"  Skipping {layer.full_table_name} "
+                        f"(geometry={geom_type}, filter={filter_type})"
+                    )
+            logger.info(
+                f"Filtered to {len(filtered)}/{len(layers)} {filter_type} layers"
+            )
+            layers = filtered
+
+        # Anchor-only mode: process all polygon layers, skip categorization
+        if params.anchor_only:
+            to_process = layers
+            logger.info(
+                f"Anchor-only mode: processing {len(to_process)} polygon layers..."
+            )
+            for i, layer in enumerate(to_process, 1):
+                logger.info(f"Processing {i}/{len(to_process)}: {layer.layer_id}")
+                result = self._process_layer(
+                    layer,
+                    dry_run=params.dry_run,
+                    anchor_only=True,
+                )
+                if result.status == "generated":
+                    stats.generated += 1
+                elif result.status == "error":
+                    stats.errors += 1
+                elif result.status in ("skipped", "would_create"):
+                    stats.skipped += 1
+                logger.info(f"  [{result.status}] {result.message}")
+
+            logger.info("\n--- Summary ---")
+            logger.info(f"  Total polygon layers: {len(to_process)}")
+            if stats.generated > 0:
+                logger.info(f"  Generated anchors: {stats.generated}")
+            if stats.skipped > 0:
+                logger.info(f"  Skipped: {stats.skipped}")
+            if stats.errors > 0:
+                logger.info(f"  Errors: {stats.errors}")
+            return stats
+
+        generator = self._get_generator()
+        self._sync_layers(
+            "DuckLake",
+            layers,
+            generator,
+            lambda layer: self._stale_reason(
+                generator, layer.layer_id, layer.snapshot_id
+            ),
+            lambda layer: self._process_layer(
+                layer, force=params.force, dry_run=params.dry_run
+            ),
+            params,
+            stats,
+        )
+        return stats
+
+    def _sync_catalog_layers(self: Self, params: PMTilesSyncParams) -> SyncStats:
+        """Sync the PMTiles of the promoted catalog layers.
+
+        A catalog layer has no DuckLake snapshot. Its tiles are in sync when
+        built with the current recipe and no older than its copy, which the
+        materialize job writes before it builds the tiles: a copy written
+        again (a new version of the dataset) makes the old tiles stale.
+        """
+        stats = SyncStats()
+
+        narrowed = [
+            name
+            for name in ("user_id", "geometry_type_filter", "anchor_only")
+            if getattr(params, name)
+        ]
+        if narrowed:
+            logger.info(
+                f"Catalog layers left out: {', '.join(narrowed)} select DuckLake layers"
+            )
+            return stats
+
+        logger.info("Querying catalog layers from PostgreSQL...")
+        layers = self.get_catalog_layers(
+            limit=params.limit,
+            order_by_size=params.small_first,
+        )
+
+        stats.total_layers = len(layers)
+        logger.info(f"Found {len(layers)} catalog layers")
+
+        if not layers:
+            logger.info("No catalog layers to process")
+            return stats
+
+        generator = self._get_catalog_generator()
+        self._sync_layers(
+            "Catalog",
+            layers,
+            generator,
+            lambda layer: self._stale_reason(
+                generator, layer.layer_id, None, layer.modified_ns
+            ),
+            lambda layer: self._process_catalog_layer(
+                layer, force=params.force, dry_run=params.dry_run
+            ),
+            params,
+            stats,
+        )
+        return stats
+
+    def _sync_layers(
+        self: Self,
+        kind: str,
+        layers: list[Any],
+        generator: PMTilesGenerator,
+        stale_reason: Callable[[Any], str | None],
+        process: Callable[[Any], SyncResult],
+        params: PMTilesSyncParams,
+        stats: SyncStats,
+    ) -> None:
+        """Categorize layers by their tiles and process those that need it.
+
+        Args:
+            kind: The layers' kind, for the log
+            layers: LayerInfo or CatalogLayerInfo
+            generator: Generator of the tiles directory the layers' tiles are in
+            stale_reason: Why a layer's existing tiles are stale, None if not
+            process: Builds a layer's tiles, see _process_layer
+            params: Task parameters
+            stats: Filled in with the layers' counts
+        """
+        # Categorize layers
+        missing = []
+        stale = []
+        in_sync = []
+        corrupted = []
+
+        for layer in layers:
+            pmtiles_path = generator.get_pmtiles_path(layer.layer_id)
+
+            # Clean up any leftover temp files from interrupted generations
+            # These patterns are from previous implementations:
+            # - .tmp_filename.pmtiles (old prefix pattern)
+            # - filename.pmtiles.tmp (old suffix pattern, and the tiler's
+            #   own temp file from when it built in the tiles directory)
+            temp_patterns = [
+                pmtiles_path.parent / f".tmp_{pmtiles_path.name}",
+                pmtiles_path.with_suffix(".pmtiles.tmp"),
+                pmtiles_path.parent / f"{pmtiles_path.name}.tmp",
+            ]
+            for temp_path in temp_patterns:
+                if temp_path.exists():
+                    logger.debug(f"Cleaning up interrupted generation: {temp_path}")
+                    try:
+                        temp_path.unlink()
+                    except OSError:
+                        pass
+
+            if not pmtiles_path.exists():
+                missing.append(layer)
+            elif not generator.is_pmtiles_valid(pmtiles_path):
+                # Corrupted file - delete it and treat as missing
+                logger.warning(f"Corrupted PMTiles file, deleting: {pmtiles_path}")
+                try:
+                    pmtiles_path.unlink()
+                except OSError as e:
+                    logger.error(f"Failed to delete corrupted file: {e}")
+                corrupted.append(layer)
+                missing.append(layer)
+            elif stale_reason(layer) is not None:
+                # Old data, or built before manby or with an older recipe
+                stale.append(layer)
+            else:
+                in_sync.append(layer)
+
+        stats.in_sync = len(in_sync)
+        stats.missing = len(missing)
+        stats.stale = len(stale)
+
+        status_msg = (
+            f"{kind} layers: {stats.in_sync} in sync, {stats.missing} missing, "
+            f"{stats.stale} stale"
+        )
+        if corrupted:
+            status_msg += f" ({len(corrupted)} corrupted files deleted)"
+        logger.info(status_msg)
+
+        # Determine what to process
+        if params.force:
+            to_process = layers
+        elif params.missing_only:
+            to_process = missing
+            if stale:
+                logger.info(f"Skipping {len(stale)} stale layers (--missing-only)")
+        else:
+            to_process = missing + stale
+
+        if not to_process:
+            logger.info(f"All PMTiles of {kind} layers are up to date!")
+            return
+
+        logger.info(f"Processing {len(to_process)} {kind} layers...")
+
+        # Process layers
+        for i, layer in enumerate(to_process, 1):
+            size_str = (
+                f"{layer.size_bytes / 1024 / 1024:.1f}MB"
+                if layer.size_bytes >= 1024 * 1024
+                else f"{layer.size_bytes / 1024:.1f}KB"
+                if layer.size_bytes > 0
+                else "?"
+            )
+            logger.info(
+                f"Processing {i}/{len(to_process)}: {layer.layer_id} ({size_str})"
+            )
+
+            result = process(layer)
+
+            if result.status == "generated":
+                stats.generated += 1
+            elif result.status == "error":
+                stats.errors += 1
+            elif result.status == "failed":
+                stats.failed += 1
+            elif result.status in ("skipped", "would_create", "would_regenerate"):
+                stats.skipped += 1
+
+            logger.info(f"  [{result.status}] {result.message}")
+
+        # Summary
+        logger.info(f"\n--- Summary ({kind} layers) ---")
+        logger.info(f"  Total layers: {stats.total_layers}")
+        logger.info(f"  In sync: {stats.in_sync}")
+        if stats.generated > 0:
+            logger.info(f"  Generated: {stats.generated}")
+        if stats.errors > 0:
+            logger.info(f"  Errors: {stats.errors}")
+        if stats.failed > 0:
+            logger.info(f"  Failed: {stats.failed}")
+        if stats.skipped > 0:
+            logger.info(f"  Skipped: {stats.skipped}")
 
 
 def main(params: PMTilesSyncParams) -> dict:
@@ -828,7 +1150,7 @@ if __name__ == "__main__":
     )
 
     parser = argparse.ArgumentParser(
-        description="Sync PMTiles for DuckLake geometry layers"
+        description="Sync PMTiles for DuckLake geometry layers and catalog layers"
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Show what would be done"
@@ -851,6 +1173,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Only generate anchor PMTiles for polygon layers (skip main tiles)",
     )
+    parser.add_argument(
+        "--layers",
+        choices=["all", "ducklake", "catalog"],
+        default="all",
+        help="Sync all layers, DuckLake layers only or catalog layers only",
+    )
 
     args = parser.parse_args()
 
@@ -862,6 +1190,7 @@ if __name__ == "__main__":
         dry_run=args.dry_run,
         small_first=args.small_first,
         anchor_only=args.anchor_only,
+        layers=args.layers,
     )
 
     result = main(params)
