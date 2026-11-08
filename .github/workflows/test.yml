@@ -70,7 +70,12 @@ jobs:
       # more memory, which a CI runner has room for and a laptop may not, so the
       # pool is chosen here rather than in vitest.config.ts.
       - name: 🧪 Vitest
-        run: pnpm --filter web exec vitest run --pool=vmForks --maxWorkers=4
+        run: pnpm --filter web exec vitest run --pool=vmForks --maxWorkers=4 --exclude "**/*.next.test.ts"
+      # Tests named *.next.test.ts run Next's own server code (next.config
+      # redirects, the proxy matcher), which needs Node's CommonJS globals that
+      # the vmForks pool does not give it; they run on the default pool.
+      - name: 🧪 Vitest (Next's server code)
+        run: pnpm --filter web exec vitest run next.test.ts
 
   core:
     name: core (pytest)
