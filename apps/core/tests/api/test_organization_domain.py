@@ -5,6 +5,7 @@ the user-facing CRUD endpoints. The k8s side is mocked via FakeProvisioner;
 DNS resolution is monkeypatched via ``_resolve``.
 """
 
+import re
 from datetime import datetime, timezone
 from typing import Generator
 from uuid import UUID
@@ -328,7 +329,10 @@ async def test_recheck_tells_a_wrong_record_from_a_missing_one(
     assert r.status_code == 201, r.text
     body = r.json()
     assert (body["dns_status"], body["cert_status"]) == ("failed", "pending")
-    assert "old-host.example.net" in body["dns_status_message"]
+    assert re.fullmatch(
+        r"CNAME points to old-host\.example\.net\.? \(expected .+\)",
+        body["dns_status_message"],
+    ), body["dns_status_message"]
     recheck = f"/api/v2/organizations/{seeded_org}/domains/{body['id']}/recheck"
 
     monkeypatch.setattr(
