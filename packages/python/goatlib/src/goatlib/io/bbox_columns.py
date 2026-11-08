@@ -14,6 +14,8 @@ Where data is written, all but the canonical ``bbox`` are dropped.
 from collections.abc import Iterable, Sequence
 from typing import Any
 
+from goatlib.io.sql import sql_identifier
+
 BBOX_COLUMN = "bbox"
 _BBOX_FIELDS = ["xmax", "xmin", "ymax", "ymin"]
 
@@ -54,5 +56,4 @@ def star_excluding(columns: Iterable[str]) -> str:
     names = list(columns)
     if not names:
         return "*"
-    quoted = ", ".join('"' + name.replace('"', '""') + '"' for name in names)
-    return f"* EXCLUDE ({quoted})"
+    return f"* EXCLUDE ({', '.join(map(sql_identifier, names))})"

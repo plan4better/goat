@@ -27,10 +27,12 @@ SPELLED_OUT = {
 
 _FORMAT_PARQUET = re.compile(r"FORMAT\s+'?PARQUET\b", re.IGNORECASE)
 
-#: A COPY's target (`TO '<file>'`, possibly closing one f-string and opening
-#: the next) and what follows it.
+#: A COPY's target (`TO '<file>'`, or `TO {sql_literal(<file>)}`, possibly
+#: closing one f-string and opening the next) and what follows it.
 _COPY_TARGET = re.compile(
-    r"\bTO\s+'[^']*'\s*(?:\"\s*f?\"\s*)?(?P<options>.{0,40})", re.S
+    r"\bTO\s+(?:'[^']*'|\{sql_literal\([^)]*\)\})\s*(?:\"\s*f?\"\s*)?"
+    r"(?P<options>.{0,40})",
+    re.S,
 )
 
 #: What may follow a target: the helper (in the optimized writers, their
@@ -77,6 +79,7 @@ def test_the_guard_sees_a_parquet_copy_however_it_is_spelled() -> None:
         "without options": "COPY t TO 'out.parquet'",
         "as parquet": "COPY t TO '{out}' (FORMAT PARQUET)",
         "across f-strings": 'f"COPY t TO \'{out}\' "\n    f"(COMPRESSION ZSTD)"',
+        "to a quoted path": "COPY t TO {sql_literal(out)} (COMPRESSION ZSTD)",
     }
     for name, text in spelled.items():
         assert unchecked_copies(text, "tools/x.py") == [1], name
