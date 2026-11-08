@@ -47,12 +47,14 @@ def _settings(con) -> tuple[str, str]:
 
 
 @pytest.mark.unit
-def test_the_connection_gets_the_ducklake_share_of_the_container(task) -> None:
+def test_the_connection_gets_the_work_share_of_the_container(task) -> None:
     with task._get_manager().connection() as con:
         memory_limit, _ = _settings(con)
 
-    # A quarter of 4 GiB, the share a tool run gives its DuckLake connection.
-    assert memory_limit == "1.0 GiB"
+    # Half of 4 GiB, the share of a tool run's work connection: this one does
+    # the task's work, and manby only starts once it has written its input.
+    # A quarter failed the sort of a layer of large country borders.
+    assert memory_limit == "2.0 GiB"
 
 
 @pytest.mark.unit
@@ -78,7 +80,7 @@ def test_a_replacement_connection_is_bounded_too(task) -> None:
     with manager.connection() as con:
         again = _settings(con)
     assert again == first
-    assert again[0] == "1.0 GiB"
+    assert again[0] == "2.0 GiB"
 
 
 @pytest.mark.unit

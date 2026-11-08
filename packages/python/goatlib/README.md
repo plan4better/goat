@@ -342,9 +342,10 @@ one takes 80% of the container. A job's connections therefore take shares of
 the container's memory limit (`goatlib.utils.container_memory`): half for its
 work connection (an analysis, or a tool's own DuckDB), a quarter for the
 runner's DuckLake connection. The scheduled tile tasks (`sync_pmtiles`,
-`rebuild_edited_pmtiles`) bound their DuckLake connection the same way and make
-its spill directory themselves, as DuckDB's default is `.tmp` in the working
-directory, which need not be writable.
+`rebuild_edited_pmtiles`) give their DuckLake connection the work share, as it
+does their work (it sorts each layer for manby, which starts only once the sort
+is written), and make its spill directory themselves, as DuckDB's default is
+`.tmp` in the working directory, which need not be writable.
 
 Sessions carry an `application_name` (`goat-geoapi-ducklake`, `goat-tools`,
 …) so operators can tell them apart in `pg_stat_activity`.

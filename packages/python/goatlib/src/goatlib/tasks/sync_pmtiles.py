@@ -51,7 +51,7 @@ from goatlib.tools.catalog_materialize import (
     generate_catalog_pmtiles,
     parquet_geometry_column,
 )
-from goatlib.utils.container_memory import JOB_DUCKLAKE_MEMORY_SHARE, set_memory_share
+from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
 from goatlib.utils.credentials import postgres_attach_target
 from goatlib.utils.layer import (
     catalog_layers_dir,
@@ -257,13 +257,15 @@ class PMTilesSyncTask:
         The builder sorts the whole layer on this connection before it hands
         the file to manby, and DuckDB spills a sort only when it reaches its
         own memory_limit, which by default is 80% of the container. The share
-        is the one a tool run gives its DuckLake connection: this connection
-        is one too, it stays open (and holds whatever it cached) while manby
-        runs on its own half of the container, and the rest is left for Python
-        and the worker. DuckDB spills into a directory made here: its default,
-        `.tmp` in the working directory, need not be writable.
+        is the one a tool run gives its work connection: this connection does
+        the task's work, and manby only starts on its half of the container
+        once the sort is written and its memory handed back. A quarter, the
+        share of a tool run's DuckLake connection, was too little for layers of
+        large polygons: a sort of them cannot spill every buffer. DuckDB spills
+        into a directory made here: its default, `.tmp` in the working
+        directory, need not be writable.
         """
-        set_memory_share(con, JOB_DUCKLAKE_MEMORY_SHARE)
+        set_memory_share(con, JOB_WORK_MEMORY_SHARE)
         if self._spill_dir is None:
             self._spill_dir = tempfile.TemporaryDirectory(prefix="duckdb_spill_")
         spill_dir = self._spill_dir.name.replace("'", "''")
