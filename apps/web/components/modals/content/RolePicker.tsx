@@ -6,6 +6,8 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { focusRing } from "@/components/assistant/styles";
+
 export type RolePrefix = "layer" | "project" | "folder" | "bundle" | "template";
 
 interface RolePickerProps {
@@ -48,6 +50,8 @@ const RolePicker = ({ value, prefix, onChange, disabled }: RolePickerProps) => {
       <ButtonBase
         ref={anchorRef}
         disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
         onClick={() => setOpen(true)}
         sx={{
           display: "inline-flex",
@@ -60,9 +64,13 @@ const RolePicker = ({ value, prefix, onChange, disabled }: RolePickerProps) => {
           border: `1px solid ${accent || open ? theme.palette.primary.main : alpha(theme.palette.text.primary, 0.24)}`,
           backgroundColor: accent ? alpha(theme.palette.primary.main, 0.12) : "transparent",
           color: accent ? theme.palette.primary.main : theme.palette.text.primary,
+          // The app's font: a bare button would fall back to the browser's.
+          fontFamily: "inherit",
           fontSize: 12.5,
           fontWeight: 700,
           opacity: disabled ? 0.5 : 1,
+          // A bare ButtonBase draws no focus of its own: the keyboard's ring.
+          ...focusRing(theme),
         }}>
         {current.label}
         <Icon
