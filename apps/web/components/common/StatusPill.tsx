@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, alpha, useTheme } from "@mui/material";
+import { Box, alpha, getContrastRatio, useTheme } from "@mui/material";
 import type { Theme } from "@mui/material";
 import type { ReactNode } from "react";
 
@@ -16,16 +16,22 @@ export const statusTint = (theme: Theme, tone: StatusTone): string =>
   alpha(tone === "neutral" ? theme.palette.text.secondary : theme.palette[tone].main, TINT);
 
 /** The ink of a status's label: the tone's nearest shade that reads at 4.5:1
- * on the pill's own tint (12px text), in both modes; neutral is the body
- * text, as the muted ink stays under that on a tint. */
-export const statusInk = (theme: Theme, tone: StatusTone): string =>
-  tone === "neutral"
-    ? theme.palette.text.primary
-    : readableText(
-        theme,
-        theme.palette[tone].main,
-        solidOn(statusTint(theme, tone), theme.palette.background.paper)
-      );
+ * on the pill's own tint (12px text), in both modes, whether the pill sits on
+ * a card (paper) or on the page (a ticket's head); neutral is the body text,
+ * as the muted ink stays under that on a tint. */
+export const statusInk = (theme: Theme, tone: StatusTone): string => {
+  if (tone === "neutral") return theme.palette.text.primary;
+  const tint = statusTint(theme, tone);
+  const onPaper = solidOn(tint, theme.palette.background.paper);
+  const onPage = solidOn(tint, theme.palette.background.default);
+  const ink = readableText(theme, theme.palette[tone].main, onPaper);
+  // The page is the darker ground in both modes (light #F4F5FA under white
+  // paper, dark #18202B under #283648 paper). A darkened ink (light mode)
+  // reads worst on the page, a lightened one (dark mode) on the paper: the
+  // shade found on the paper is kept when it reads on the page too, else the
+  // page's own shade is taken, which reads on the paper as well.
+  return getContrastRatio(ink, onPage) >= 4.5 ? ink : readableText(theme, theme.palette[tone].main, onPage);
+};
 
 /**
  * A status as a small tinted pill with a dot: the shape the support pages

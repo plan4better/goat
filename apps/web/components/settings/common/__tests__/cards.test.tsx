@@ -1,3 +1,4 @@
+import { ThemeProvider, alpha } from "@mui/material";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
@@ -5,6 +6,7 @@ import { I18nextProvider } from "react-i18next";
 import { describe, expect, it, vi } from "vitest";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
+import { createAppTheme } from "@p4b/ui/theme/ThemeProvider";
 
 import { commonI18n } from "@/i18n/__tests__/commonI18n";
 
@@ -53,6 +55,71 @@ describe("SettingsCard", () => {
     // under them; from `md` they take the room left of it, at least 220px.
     expect(declaredStyle(title, "flex", "(min-width:0px)")).toBe("1 0 100%");
     expect(declaredStyle(title, "min-width", "(min-width:900px)")).toBe("220px");
+  });
+
+  it("tints a danger card: its border and its title in error ink", () => {
+    const theme = createAppTheme({ mode: "light", locale: "de" });
+    render(
+      <ThemeProvider theme={theme}>
+        <SettingsCard title="Konto löschen" tone="danger">
+          <p>body</p>
+        </SettingsCard>
+        <SettingsCard title="Persönliche Angaben">
+          <p>body</p>
+        </SettingsCard>
+      </ThemeProvider>
+    );
+    const danger = screen.getByRole("region", { name: "Konto löschen" });
+    expect(within(danger).getByRole("heading", { level: 3 })).toHaveStyle({
+      color: theme.palette.error.main,
+    });
+    expect(declaredStyle(danger, "border-color")).toBe(alpha(theme.palette.error.main, 0.45));
+    const plain = screen.getByRole("region", { name: "Persönliche Angaben" });
+    expect(within(plain).getByRole("heading", { level: 3 })).toHaveStyle({
+      color: theme.palette.text.primary,
+    });
+    expect(declaredStyle(plain, "border-color")).not.toBe(alpha(theme.palette.error.main, 0.45));
+  });
+
+  it("draws the icon before the title and the footer below the body", () => {
+    wrap(
+      <SettingsCard
+        title="So richten Sie es ein"
+        icon={ICON_NAME.CIRCLEINFO}
+        footer={<div>Speicherleiste</div>}>
+        <p>body</p>
+      </SettingsCard>
+    );
+    const section = screen.getByRole("region", { name: "So richten Sie es ein" });
+    const heading = within(section).getByRole("heading", { level: 3 });
+    expect(heading.firstElementChild?.tagName.toLowerCase()).toBe("svg");
+    expect(
+      within(section).getByText("body").compareDocumentPosition(within(section).getByText("Speicherleiste"))
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("pads the body by 24px on the sides and below and 16px under the header, and leaves a body that draws its own rows to them", () => {
+    // GOAT's spacing unit is 4px (MUI's default 8px would double it): 24px is 1.5rem, 16px 1rem.
+    render(
+      <ThemeProvider theme={createAppTheme({ mode: "light", locale: "de" })}>
+        <SettingsCard title="Padded">
+          <p>padded body</p>
+        </SettingsCard>
+        <SettingsCard title="Rows" bodyPadding={false}>
+          <p>rows body</p>
+        </SettingsCard>
+      </ThemeProvider>
+    );
+    const padded = screen.getByText("padded body").parentElement as HTMLElement;
+    expect(declaredStyle(padded, "padding-left")).toBe("1.5rem");
+    expect(declaredStyle(padded, "padding-right")).toBe("1.5rem");
+    expect(declaredStyle(padded, "padding-bottom")).toBe("1.5rem");
+    expect(declaredStyle(padded, "padding-top")).toBe("1rem");
+    // Only a 12px gap under the header: the rows bring their own padding.
+    const rows = screen.getByText("rows body").parentElement as HTMLElement;
+    expect(declaredStyle(rows, "padding-top")).toBe("0.75rem");
+    expect(declaredStyle(rows, "padding-left")).toBeUndefined();
+    expect(declaredStyle(rows, "padding-bottom")).toBeUndefined();
   });
 });
 
@@ -159,6 +226,33 @@ describe("RowMenu", () => {
     expect(screen.getByText("Erneut senden ab 14:35 möglich.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitem", { name: "E-Mail-Adresse kopieren" }));
     expect(copy).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws nothing when there is nothing to offer", () => {
+    wrap(<RowMenu label="Weitere Aktionen für Anna" items={[]} />);
+    expect(screen.queryByRole("button", { name: "Weitere Aktionen für Anna" })).toBeNull();
+  });
+
+  it("writes a destructive item in error ink and the others muted", async () => {
+    const theme = createAppTheme({ mode: "light", locale: "de" });
+    render(
+      <ThemeProvider theme={theme}>
+        <RowMenu
+          label="Weitere Aktionen für Anna"
+          items={[
+            { key: "copy", label: "E-Mail-Adresse kopieren", onClick: vi.fn() },
+            { key: "remove", label: "Aus Organisation entfernen", onClick: vi.fn(), danger: true },
+          ]}
+        />
+      </ThemeProvider>
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Weitere Aktionen für Anna" }));
+    expect(screen.getByRole("menuitem", { name: "Aus Organisation entfernen" })).toHaveStyle({
+      color: theme.palette.error.main,
+    });
+    expect(screen.getByRole("menuitem", { name: "E-Mail-Adresse kopieren" })).toHaveStyle({
+      color: theme.palette.text.secondary,
+    });
   });
 
   it("draws an item's icon before its label, as Content's row menus do", async () => {

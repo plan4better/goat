@@ -17,7 +17,7 @@ export interface CardForm<V extends FieldValues> {
   dirty: boolean;
   valid: boolean;
   saving: boolean;
-  /** A field's error, translated, once it was touched or changed or a save was tried. */
+  /** A field's error, translated, once it was touched or changed, the form has a draft, or a save was tried. */
   errorOf: (name: Path<V>) => string | undefined;
   /** Puts the saved values back. */
   discard: () => void;
@@ -49,7 +49,7 @@ export function useCardForm<V extends FieldValues>(
     resolver: zodResolver(schema),
     defaultValues: values as DefaultValues<V> | undefined,
   });
-  const { formState, reset, getFieldState, handleSubmit } = form;
+  const { formState, reset, getFieldState, handleSubmit, trigger } = form;
   const [saving, setSaving] = useState(false);
   const [tried, setTried] = useState(false);
   const dirty = formState.isDirty;
@@ -63,6 +63,14 @@ export function useCardForm<V extends FieldValues>(
     applied.current = values;
     reset(values);
   }, [values, dirty, reset]);
+
+  // A draft that cannot be saved says why: a saved value that is invalid (an
+  // account saved without a name) is checked, and its error shown, once
+  // anything else changes, not only once its own field is touched.
+  const valid = formState.isValid;
+  useEffect(() => {
+    if (dirty && !valid) void trigger();
+  }, [dirty, valid, trigger]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -99,14 +107,14 @@ export function useCardForm<V extends FieldValues>(
   const errorOf = (name: Path<V>): string | undefined => {
     const state = getFieldState(name, formState);
     const message = state.error?.message;
-    if (!message || !(state.isTouched || state.isDirty || tried)) return undefined;
+    if (!message || !(state.isTouched || state.isDirty || tried || dirty)) return undefined;
     return t(message);
   };
 
   return {
     form,
     dirty,
-    valid: formState.isValid,
+    valid,
     saving,
     errorOf,
     discard: () => {

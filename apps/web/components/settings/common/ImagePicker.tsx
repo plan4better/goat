@@ -54,20 +54,28 @@ export default function ImagePicker({
 }) {
   const { t } = useTranslation("common");
   const input = useRef<HTMLInputElement>(null);
-  const [problem, setProblem] = useState<"type" | "size" | "read" | null>(null);
+  /** The last file chosen: a read that finishes after a later choice is dropped. */
+  const latest = useRef(0);
+  // A problem belongs to the picture it was found at: it goes when the
+  // picture changes (another file read, or Verwerfen putting the saved one back).
+  const [found, setFound] = useState<{ kind: "type" | "size" | "read"; at: typeof value } | null>(null);
+  const problem = found && found.at === value ? found.kind : null;
   const hintId = `${id}-hint`;
   const problemId = `${id}-problem`;
 
   const pick = (file: File | undefined) => {
     if (!file) return;
+    const choice = ++latest.current;
     const issue = imageProblem(file);
-    setProblem(issue);
+    setFound(issue ? { kind: issue, at: value } : null);
     if (issue) return;
     const reader = new FileReader();
     reader.onload = () => {
-      if (typeof reader.result === "string") onChange(reader.result);
+      if (choice === latest.current && typeof reader.result === "string") onChange(reader.result);
     };
-    reader.onerror = () => setProblem("read");
+    reader.onerror = () => {
+      if (choice === latest.current) setFound({ kind: "read", at: value });
+    };
     reader.readAsDataURL(file);
   };
 

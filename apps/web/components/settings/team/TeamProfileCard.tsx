@@ -136,7 +136,8 @@ export default function TeamProfileCard({
           {...register("name")}
           error={card.errorOf("name")}
           help={t("settings_teams_name_help")}
-          counter={{ value: (watch("name") ?? "").length, max: 50 }}
+          // As it is saved (and as NewTeamDialog counts it): without the spaces around it.
+          counter={{ value: (watch("name") ?? "").trim().length, max: 50 }}
         />
         <LabeledField
           id="team-description"

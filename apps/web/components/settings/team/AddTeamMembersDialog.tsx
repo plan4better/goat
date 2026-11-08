@@ -1,5 +1,6 @@
 "use client";
 
+import { Alert } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
@@ -15,8 +16,9 @@ const PLAIN = { interpolation: { escapeValue: false } } as const;
 
 /** "Mitglieder hinzufügen": people of the organization not in the team yet
  * (invitations cannot be added), one request each. Who was added is reported
- * and leaves the picker once the list reloads; who failed is named and stays
- * chosen, so a second click tries only them. */
+ * and leaves the picker once the list reloads; who failed is named in the
+ * dialog (as the invite dialog's failures) and stays chosen, so a second
+ * click tries only them. */
 export default function AddTeamMembersDialog({
   teamId,
   teamName,
@@ -35,9 +37,13 @@ export default function AddTeamMembersDialog({
   const [selected, setSelected] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Who was not added by the last click, until the choice changes. */
+  const [failures, setFailures] = useState<Person[]>([]);
   // Only who is still offered counts as chosen: after the reload, someone who
   // failed because they are in the team by now drops out of the choice.
   const chosen = selected.filter((id) => candidates.some((candidate) => candidate.id === id));
+  // And is no longer named as not added.
+  const notAdded = failures.filter((person) => chosen.includes(person.id));
 
   const add = async () => {
     setBusy(true);
@@ -65,9 +71,7 @@ export default function AddTeamMembersDialog({
       onClose();
       return;
     }
-    toast.error(
-      t("settings_team_add_failed", { names: failed.map((person) => person.name).join(", "), ...PLAIN })
-    );
+    setFailures(failed);
     setSelected(failed.map((person) => person.id));
   };
 
@@ -80,6 +84,16 @@ export default function AddTeamMembersDialog({
       subtitle={t("settings_team_add_subtitle", { team: teamName, ...PLAIN })}
       maxWidth={560}
       closeDisabled={busy}
+      notice={
+        notAdded.length > 0 ? (
+          <Alert severity="error" role="alert">
+            {t("settings_team_add_failed", {
+              names: notAdded.map((person) => person.name).join(", "),
+              ...PLAIN,
+            })}
+          </Alert>
+        ) : undefined
+      }
       footer={
         <AppDialogFooter
           onCancel={onClose}
@@ -97,11 +111,12 @@ export default function AddTeamMembersDialog({
       <PeoplePicker
         people={candidates}
         selected={chosen}
-        onToggle={(id) =>
+        onToggle={(id) => {
+          setFailures([]);
           setSelected((current) =>
             current.includes(id) ? current.filter((other) => other !== id) : [...current, id]
-          )
-        }
+          );
+        }}
         query={query}
         onQuery={setQuery}
       />

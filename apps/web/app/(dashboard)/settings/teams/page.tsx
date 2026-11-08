@@ -39,7 +39,7 @@ export default function TeamsPage() {
   const { t, i18n } = useTranslation("common");
   const router = useRouter();
   const { teams, isLoading, isError, mutate } = useTeams();
-  const { userProfile } = useUserProfile();
+  const { userProfile, isError: profileError, mutate: mutateProfile } = useUserProfile();
   const role = orgRoleOf(userProfile?.roles);
   const canCreate = role !== undefined && role !== "organization-viewer";
   const [query, setQuery] = useState("");
@@ -84,6 +84,9 @@ export default function TeamsPage() {
           action={canCreate ? newTeam : undefined}
         />
       }>
+      {/* Without the profile the role is unknown, so "Neues Team" stays away:
+          a profile that keeps failing says so in its place, with its retry. */}
+      {!!profileError && !userProfile && <SettingsLoadError onRetry={() => void mutateProfile()} />}
       {role === "organization-viewer" && (
         <Alert severity="info" role="note">
           {t("settings_teams_viewer_note")}

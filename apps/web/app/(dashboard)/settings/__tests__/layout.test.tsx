@@ -206,6 +206,25 @@ describe("SettingsLayout", () => {
     expect(within(sheet).queryByRole("button", { name: "White Label" })).toBeNull();
   });
 
+  it("gives the sections button below md a navigation landmark, as the desktop nav has one", () => {
+    renderAt("/settings/members");
+    const phone = screen.getByRole("navigation", { name: "Settings sections" });
+    expect(within(phone).getByRole("button", { name: "Organization › Members" })).toBeInTheDocument();
+  });
+
+  it("marks White Label as unavailable while a child is current, and only then", async () => {
+    const { unmount } = renderAt("/settings/domains");
+    await expect(within(nav()).getByRole("button", { name: "White Label" })).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    );
+    unmount();
+    renderAt("/settings/profile");
+    await expect(within(nav()).getByRole("button", { name: "White Label" })).not.toHaveAttribute(
+      "aria-disabled"
+    );
+  });
+
   it("closes the sheet from its close button", async () => {
     renderAt("/settings/members");
     await userEvent.click(screen.getByRole("button", { name: "Organization › Members" }));

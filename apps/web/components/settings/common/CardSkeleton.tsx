@@ -43,7 +43,8 @@ export default function CardSkeleton({
               borderTop: 1,
               borderColor: "divider",
             }}>
-            <Skeleton variant="rounded" width={112} height={36} sx={{ borderRadius: 999 }} />
+            {/* CardSaveBar's Speichern: a contained button with a body2 label. */}
+            <Skeleton variant="rounded" width={112} height={39} sx={{ borderRadius: 999 }} />
           </Box>
         ) : undefined
       }>

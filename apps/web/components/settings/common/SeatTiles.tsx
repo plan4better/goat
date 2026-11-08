@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, useTheme } from "@mui/material";
+import { Box, useMediaQuery, useTheme } from "@mui/material";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -10,13 +10,14 @@ import { levelColors } from "@/components/settings/usage/quotaLevels";
 
 export type SeatFilter = "editors" | "viewers" | "invitations";
 
-/** The long note from `md`, the short one below. */
+/** The long note from `lg`, the short one below: from `md` the settings nav
+ * takes 312px beside the tiles, so they are narrow until `lg`. */
 const sized = (long: string, short: string): ReactNode => (
   <>
-    <Box component="span" sx={{ display: { xs: "none", md: "inline" } }}>
+    <Box component="span" sx={{ display: { xs: "none", lg: "inline" } }}>
       {long}
     </Box>
-    <Box component="span" sx={{ display: { xs: "inline", md: "none" } }}>
+    <Box component="span" sx={{ display: { xs: "inline", lg: "none" } }}>
       {short}
     </Box>
   </>
@@ -37,6 +38,9 @@ export default function SeatTiles({
 }) {
   const { t, i18n } = useTranslation("common");
   const theme = useTheme();
+  // Narrow tiles until `lg` (a phone, or beside the settings nav): a label
+  // may wrap and the figure is smaller, as Usage's phone tiles.
+  const compact = useMediaQuery(theme.breakpoints.down("lg"));
   const count = (n: number) => new Intl.NumberFormat(i18n.language).format(n);
   const toggle = (key: SeatFilter) => onChange(value === key ? null : key);
 
@@ -61,6 +65,7 @@ export default function SeatTiles({
         label={label}
         aria-pressed={value === key}
         selected={value === key}
+        compact={compact}
         onClick={() => toggle(key)}
         attention={level === "ok" ? null : level}
         attentionText={t("usage_needs_attention")}
@@ -108,6 +113,7 @@ export default function SeatTiles({
         label={t("settings_members_tile_invitations")}
         aria-pressed={value === "invitations"}
         selected={value === "invitations"}
+        compact={compact}
         onClick={() => toggle("invitations")}
         attentionText={t("usage_needs_attention")}
         figure={

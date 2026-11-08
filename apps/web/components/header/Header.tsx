@@ -52,7 +52,9 @@ import SupportMenu from "@/components/support/SupportMenu";
 
 import { TOOLBAR_HEIGHT, Toolbar } from "./Toolbar";
 
-/** The GOAT logo, linking home: the left end of the workspace header. */
+/** The GOAT logo, linking home: the left end of the workspace header, and of
+ * the map header when the project menu's code did not load
+ * (`ProjectMenuLoadFailed`). */
 function HomeLogoLink() {
   return (
     <Link

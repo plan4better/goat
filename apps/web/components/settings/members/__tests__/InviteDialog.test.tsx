@@ -161,6 +161,36 @@ describe("InviteDialog", () => {
     await expect(screen.getByRole("button", { name: "Send invitation" })).toBeEnabled();
   });
 
+  it("says once, in amber, that an address someone else invited meanwhile belongs already", async () => {
+    // b@x.de was invited from elsewhere while this dialog was open: core refuses
+    // it, and the refreshed list knows it now.
+    api.inviteMember.mockRejectedValueOnce(new ApiError(400, "User has already been invited"));
+    const Page = () => {
+      const [known, setKnown] = useState(new Set<string>(["otto@example.com"]));
+      return (
+        <InviteDialog
+          organizationId="org-1"
+          organizationName="Stadt Musterhausen"
+          seats={seatsOf({ used_editors: 3, total_editors: 5, used_viewers: 0, total_viewers: null })}
+          known={known}
+          onClose={vi.fn()}
+          onChanged={async () => setKnown(new Set(["otto@example.com", "b@x.de"]))}
+        />
+      );
+    };
+    render(
+      <I18nextProvider i18n={commonI18n("en")}>
+        <Page />
+      </I18nextProvider>
+    );
+    await userEvent.type(addresses(), "b@x.de,");
+    await userEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent("b@x.de already belongs to the organization or is invited.");
+    expect(screen.queryByText(/User has already been invited/)).toBeNull();
+  });
+
   it("keeps what failed, with its reason, and reports what went out (and a manual account setup)", async () => {
     api.inviteMember
       .mockResolvedValueOnce(answer({ account_setup: "manual" }))

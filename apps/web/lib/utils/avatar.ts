@@ -24,12 +24,13 @@ const LETTER = new RegExp("\\p{L}", "u");
 
 /** Up to two initials from a display name — "Marie Klein" → "MK". Words
  * without a letter (a team name's "-", a year) are skipped — "Harthof - P4B"
- * → "HP" — unless no word has one. */
+ * → "HP" — unless no word has one. A word's initial is its first letter, not
+ * a bracket or a quote before it — "(P4B)" → "P". */
 export const initialsOf = (name: string): string => {
   const words = name.trim().split(/\s+/).filter(Boolean);
   const lettered = words.filter((word) => LETTER.test(word));
   return (lettered.length ? lettered : words)
     .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? "")
+    .map((word) => (word.match(LETTER)?.[0] ?? word[0] ?? "").toUpperCase())
     .join("");
 };

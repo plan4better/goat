@@ -78,7 +78,11 @@ export default function InviteDialog({
           ? t("settings_members_invite_limit")
           : null;
 
-  const failed = Object.keys(failures).filter((address) => addresses.includes(address));
+  // A failure of an address the list knows by now (invited from elsewhere
+  // meanwhile) is not repeated in red: the amber line and its chip say it.
+  const failed = Object.keys(failures).filter(
+    (address) => addresses.includes(address) && !known.has(address)
+  );
   const problems: Record<string, string> = {
     ...Object.fromEntries(invalid.map((address) => [address, t("settings_members_reason_invalid")])),
     ...Object.fromEntries(knownHere.map((address) => [address, t("settings_members_reason_known")])),

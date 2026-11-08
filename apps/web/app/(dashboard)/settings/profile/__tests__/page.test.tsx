@@ -262,17 +262,20 @@ describe("Profile page", () => {
     expect(api.mutateProfile).toHaveBeenCalled();
   });
 
-  it("keeps the organization and the role and leaves the teams row out when the teams cannot be read", () => {
+  it("keeps the organization and the role, and the teams row with its own retry, when the teams cannot be read", async () => {
+    // A user in no team, or a list that never arrived: `teams` is `[]` either way.
     api.teams = [];
     api.teamsError = new Error("500");
     renderPage();
     const card = screen.getByRole("region", { name: "Your organization" });
     expect(card).toHaveTextContent("Stadt Musterhausen");
     expect(card).toHaveTextContent("Editor");
-    // No row that would claim "Not in a team yet" for a list that never arrived.
-    expect(within(card).queryByText("Teams")).toBeNull();
+    // The row stays, but does not claim "Not in a team yet" for a list it does not have.
+    expect(within(card).getByText("Teams")).toBeInTheDocument();
     expect(card).not.toHaveTextContent("Not in a team yet");
-    expect(within(card).queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(card).toHaveTextContent("That could not be loaded.");
+    await userEvent.click(within(card).getByRole("button", { name: "Try again" }));
+    expect(api.mutateTeams).toHaveBeenCalledTimes(1);
   });
 
   it("deletes the sign-in account after the address is typed, then signs out", async () => {

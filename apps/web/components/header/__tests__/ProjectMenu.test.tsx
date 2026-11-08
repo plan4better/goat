@@ -7,10 +7,6 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
 }));
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({ map: undefined }) }));
-vi.mock("@/hooks/store/ContextHooks", () => ({
-  useAppDispatch: () => vi.fn(),
-  useAppSelector: () => undefined,
-}));
 vi.mock("@/components/common/PopperMenu", () => ({
   default: ({ menuItems }: { menuItems: { id: string; label: string }[] }) => (
     <ul>
@@ -44,5 +40,19 @@ describe("ProjectMenu", () => {
     render(<ProjectMenu project={project} viewOnly isLoggedIn />);
     expect(screen.getByText("common:home")).toBeInTheDocument();
     expect(screen.queryByText("common:edit_metadata")).toBeNull();
+  });
+
+  it("offers a logged-out viewer the sign-in, not the way home", () => {
+    render(<ProjectMenu project={project} viewOnly isLoggedIn={false} />);
+    expect(screen.getByText("common:login")).toBeInTheDocument();
+    expect(screen.queryByText("common:home")).toBeNull();
+    expect(screen.queryByText("common:edit_metadata")).toBeNull();
+  });
+
+  it("offers to unlock a map view that is locked", () => {
+    const locked = { id: "p1", name: "Radverkehr", max_extent: [5, 47, 15, 55] } as never;
+    render(<ProjectMenu project={locked} isLoggedIn />);
+    expect(screen.getByText("common:unlock_map_view")).toBeInTheDocument();
+    expect(screen.queryByText("common:lock_map_view")).toBeNull();
   });
 });

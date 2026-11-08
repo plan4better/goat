@@ -8,7 +8,7 @@ export type OrgRole =
 export type AssignableRole = Exclude<OrgRole, "organization-owner">;
 
 /** Highest first: the order of the members list's Role column and the matrix. */
-export const ORG_ROLE_ORDER: OrgRole[] = [
+export const ORG_ROLE_ORDER: readonly OrgRole[] = [
   "organization-owner",
   "organization-admin",
   "organization-editor",

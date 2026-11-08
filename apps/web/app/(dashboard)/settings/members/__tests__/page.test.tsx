@@ -24,6 +24,8 @@ const api = vi.hoisted(() => ({
   inviteMember: vi.fn(),
   refreshOrganizationMembers: vi.fn(),
   profile: undefined as Record<string, unknown> | undefined,
+  profileError: undefined as unknown,
+  mutateProfile: vi.fn(),
 }));
 
 vi.mock("react-toastify", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
@@ -32,7 +34,7 @@ vi.mock("@/components/support/SupportMenu", () => ({
   useReportProblemHref: () => "/support/new?from=/settings/members",
 }));
 vi.mock("@/lib/api/users", () => ({
-  useUserProfile: () => ({ userProfile: api.profile }),
+  useUserProfile: () => ({ userProfile: api.profile, isError: api.profileError, mutate: api.mutateProfile }),
   useOrganization: () => ({ organization: api.organization, mutate: api.mutateOrganization }),
 }));
 vi.mock("@/lib/api/organizations", () => ({
@@ -126,6 +128,8 @@ describe("Members page", () => {
     api.organization = ORG;
     api.membersCalls = [];
     api.profile = { id: "a1", roles: ["organization-admin"] };
+    api.profileError = undefined;
+    api.mutateProfile.mockReset().mockResolvedValue(undefined);
     for (const fn of [api.mutateMembers, api.mutateOrganization, api.refreshOrganizationMembers]) {
       fn.mockReset().mockResolvedValue(undefined);
     }
@@ -304,6 +308,31 @@ describe("Members page", () => {
       ).toBeDisabled();
     }
     expect(within(list()).queryByRole("button", { name: /More actions/ })).toBeNull();
+  });
+
+  it("says above the list that the profile could not be read, and retries it, while it keeps failing", async () => {
+    api.profile = undefined;
+    api.profileError = new Error("HTTP 500");
+    renderPage();
+    // One notice for the dead controls (no role change, no row menus), above the list.
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent("That could not be loaded.");
+    expect(alerts[0].compareDocumentPosition(list())).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    await userEvent.click(within(alerts[0]).getByRole("button", { name: "Try again" }));
+    expect(api.mutateProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it("says nothing about the profile while it loads, or once it is there", () => {
+    api.profile = undefined;
+    const { unmount } = renderPage();
+    expect(screen.queryByRole("alert")).toBeNull();
+    unmount();
+    // A later read that fails keeps the profile it had (SWR): nothing to say.
+    api.profile = { id: "a1", roles: ["organization-admin"] };
+    api.profileError = new Error("HTTP 500");
+    renderPage();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("changes a role and undoes it with the old role", async () => {

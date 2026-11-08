@@ -1,9 +1,11 @@
 "use client";
 
-import { Box, Link, Skeleton, Typography } from "@mui/material";
+import { Box, Button, Link, Skeleton, Typography } from "@mui/material";
 import NextLink from "next/link";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { useTeams } from "@/lib/api/teams";
 import { useOrganization, useUserProfile } from "@/lib/api/users";
@@ -56,8 +58,9 @@ export default function YourOrganizationCard() {
   const words = roleWords(t);
   const collator = new Intl.Collator(i18n.language);
   const teamNames = teams.map((team) => team.name).sort(collator.compare);
-  // `teams` is `[]` until the list arrives (as on the Teams page): a list that
-  // never came leaves its row out rather than say "Noch in keinem Team".
+  // `teams` is `[]` until the list arrives, and for a user in no team (as on
+  // the Teams page): a failed read without a team to show says so in the row,
+  // with its own retry, rather than claim "Noch in keinem Team".
   const teamsMissing = Boolean(teamsError) && teams.length === 0;
 
   return (
@@ -89,27 +92,35 @@ export default function YourOrganizationCard() {
             </>
           )}
         </Detail>
-        {!teamsMissing && (
-          <>
-            <Term>{t("settings_profile_teams_label")}</Term>
-            <Detail>
-              {teamsLoading ? (
-                <Skeleton variant="text" width={200} />
-              ) : teamNames.length ? (
-                teamNames.join(", ")
-              ) : (
-                t("settings_profile_no_teams")
-              )}{" "}
-              <Link
-                component={NextLink}
-                href={SETTINGS_ROUTES.teams}
-                underline="hover"
-                sx={{ fontWeight: 700 }}>
-                {t("settings_profile_open_teams")}
-              </Link>
-            </Detail>
-          </>
-        )}
+        <Term>{t("settings_profile_teams_label")}</Term>
+        <Detail>
+          {teamsMissing ? (
+            <>
+              <Box component="span" sx={{ color: "error.main" }}>
+                {t("settings_card_load_error")}
+              </Box>{" "}
+              {/* The shape of the team members card's retry of the organization's members. */}
+              <Button
+                variant="text"
+                size="small"
+                color="error"
+                startIcon={<Icon iconName={ICON_NAME.REFRESH} style={{ fontSize: 12 }} htmlColor="inherit" />}
+                onClick={() => void mutateTeams()}
+                sx={{ whiteSpace: "nowrap", verticalAlign: "baseline" }}>
+                {t("settings_card_retry")}
+              </Button>
+            </>
+          ) : teamsLoading ? (
+            <Skeleton variant="text" width={200} />
+          ) : teamNames.length ? (
+            teamNames.join(", ")
+          ) : (
+            t("settings_profile_no_teams")
+          )}{" "}
+          <Link component={NextLink} href={SETTINGS_ROUTES.teams} underline="hover" sx={{ fontWeight: 700 }}>
+            {t("settings_profile_open_teams")}
+          </Link>
+        </Detail>
       </Box>
     </SettingsCard>
   );

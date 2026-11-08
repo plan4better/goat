@@ -209,6 +209,8 @@ function WhiteLabelRow({ item }: { item: SettingsNavItem }) {
         disableGutters
         aria-expanded={open}
         aria-controls={childrenId}
+        // Open while a child is current, and a click there does nothing: say so.
+        aria-disabled={item.containsCurrent || undefined}
         onClick={() => {
           // Open while a child is current: a click there would only store
           // "closed" for every other settings page.

@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { commonI18n } from "@/i18n/__tests__/commonI18n";
 
+import { declaredStyle } from "@/lib/__tests__/declaredStyle";
+
 import SeatTiles from "@/components/settings/common/SeatTiles";
 import { seatsOf } from "@/components/settings/members/seats";
 
@@ -104,6 +106,50 @@ describe("SeatTiles", () => {
     await expect(viewers).toHaveAttribute("aria-pressed", "true");
     await userEvent.click(viewers);
     expect(onChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("lets a tile's label wrap below lg, where the settings nav leaves the tiles narrow", () => {
+    const real = window.matchMedia;
+    const at = (width: number) => {
+      window.matchMedia = ((query: string) => {
+        const max = /max-width:\s*([\d.]+)px/.exec(query);
+        const min = /min-width:\s*([\d.]+)px/.exec(query);
+        return {
+          matches: (!max || width <= Number(max[1])) && (!min || width >= Number(min[1])),
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        };
+      }) as unknown as typeof window.matchMedia;
+    };
+    try {
+      // 900px: three tiles beside the 312px nav, "Offene Einladungen" would be cut.
+      at(900);
+      const { unmount } = renderTiles();
+      expect(getComputedStyle(screen.getByText("Offene Einladungen")).whiteSpace).not.toBe("nowrap");
+      unmount();
+      // From lg there is room: one line, cut only if it ever ran out.
+      at(1200);
+      renderTiles();
+      expect(getComputedStyle(screen.getByText("Offene Einladungen")).whiteSpace).toBe("nowrap");
+    } finally {
+      window.matchMedia = real;
+    }
+  });
+
+  it("takes the editors' long note from lg and the short one below", () => {
+    renderTiles();
+    const long = screen.getByText("2 frei, inklusive Eigentümer und Admins");
+    const short = screen.getByText("2 frei");
+    expect(declaredStyle(long, "display", "(min-width:0px)")).toBe("none");
+    expect(declaredStyle(long, "display", "(min-width:900px)")).toBeUndefined();
+    expect(declaredStyle(long, "display", "(min-width:1200px)")).toBe("inline");
+    expect(declaredStyle(short, "display", "(min-width:0px)")).toBe("inline");
+    expect(declaredStyle(short, "display", "(min-width:1200px)")).toBe("none");
   });
 
   it("draws skeletons while the organization loads", () => {

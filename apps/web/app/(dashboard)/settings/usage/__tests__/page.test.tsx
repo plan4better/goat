@@ -257,7 +257,7 @@ describe("Usage page", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("leaves for the account settings when billing is off", () => {
+  it("leaves for the profile page when billing is off", () => {
     state.features = { billing: false };
     renderPage();
     expect(state.replace).toHaveBeenCalledWith("/settings/profile");

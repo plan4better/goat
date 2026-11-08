@@ -48,7 +48,7 @@ export async function deleteCustomDomain(organizationId: string, domainId: strin
     method: "DELETE",
   });
   if (!response.ok) {
-    throw new Error(`Failed to delete custom domain ${domainId}`);
+    throw await apiErrorOf(response);
   }
 }
 
@@ -57,7 +57,7 @@ export async function recheckCustomDomain(organizationId: string, domainId: stri
     method: "POST",
   });
   if (!response.ok) {
-    throw new Error(`Failed to recheck custom domain ${domainId}`);
+    throw await apiErrorOf(response);
   }
   return await response.json();
 }
@@ -69,7 +69,7 @@ export async function assignDomainToProject(projectId: string, domainId: string)
     body: JSON.stringify({ domain_id: domainId }),
   });
   if (!response.ok) {
-    throw new Error("Failed to assign domain to project");
+    throw await apiErrorOf(response);
   }
 }
 
@@ -78,6 +78,6 @@ export async function unassignDomainFromProject(projectId: string): Promise<void
     method: "DELETE",
   });
   if (!response.ok) {
-    throw new Error("Failed to unassign domain from project");
+    throw await apiErrorOf(response);
   }
 }

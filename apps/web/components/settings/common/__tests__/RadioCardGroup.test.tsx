@@ -66,6 +66,48 @@ describe("RadioCardGroup", () => {
     expect(document.activeElement).toBe(radio(/^Bearbeiter/));
   });
 
+  it("moves backwards with ArrowUp and ArrowLeft, wrapping past the first enabled card", async () => {
+    render(<Group />);
+    radio(/^Bearbeiter/).focus();
+    // Admin, before Bearbeiter, is disabled: back from the first enabled card is the last.
+    await userEvent.keyboard("{ArrowUp}");
+    expect(document.activeElement).toBe(radio(/^Betrachter/));
+    expect(radio(/^Betrachter/).getAttribute("aria-checked")).toBe("true");
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(document.activeElement).toBe(radio(/^Bearbeiter/));
+    expect(radio(/^Bearbeiter/).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("picks a card on a plain click", async () => {
+    render(<Group />);
+    await userEvent.click(radio(/^Betrachter/));
+    expect(radio(/^Betrachter/).getAttribute("aria-checked")).toBe("true");
+    expect(radio(/^Bearbeiter/).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("moves on from a clicked disabled card to its neighbour, not to the first enabled one", async () => {
+    const options: RadioCardOption<"a" | "b" | "c" | "d">[] = [
+      { value: "a", label: "A" },
+      { value: "b", label: "B" },
+      { value: "c", label: "C", disabled: true, disabledReason: "Voll" },
+      { value: "d", label: "D" },
+    ];
+    function Four() {
+      const [value, setValue] = useState<"a" | "b" | "c" | "d">("a");
+      return <RadioCardGroup label="Vier" value={value} options={options} onChange={setValue} />;
+    }
+    render(<Four />);
+    // A click focuses the disabled card (it says why on a click), then the arrows go on from there.
+    await userEvent.click(radio(/^C/));
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(radio(/^D/));
+    expect(radio(/^D/).getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(radio(/^C/));
+    await userEvent.keyboard("{ArrowUp}");
+    expect(document.activeElement).toBe(radio(/^B/));
+    expect(radio(/^B/).getAttribute("aria-checked")).toBe("true");
+  });
+
   it("draws a focus ring on the card MUI marks as keyboard-focused", () => {
     render(<Group />);
     const viewer = radio(/^Betrachter/);

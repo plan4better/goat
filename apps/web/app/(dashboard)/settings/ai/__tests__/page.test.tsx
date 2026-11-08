@@ -701,6 +701,25 @@ describe("AI page", () => {
     expect(screen.getByText("On. All members see the assistant.")).toBeInTheDocument();
   });
 
+  it("keeps the nameless line and the retry while SWR tries the connections again", () => {
+    // SWR keeps the error while it retries, and sets isLoading again.
+    api.settings = { ...SETTINGS, active_connection_id: "c1" };
+    api.connections = [];
+    api.connectionsError = new Error("down");
+    api.connectionsLoading = true;
+    renderPage();
+    expect(screen.getByText("On. All members see the assistant.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading" })).toBeNull();
+  });
+
+  it("keeps the connections it has when reading them again fails", () => {
+    api.connectionsError = new Error("down");
+    renderPage();
+    expect(within(choices()).getByRole("radio", { name: /^Own vLLM/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
   it("waits for the active connection's name while the connections load", async () => {
     api.settings = { ...SETTINGS, active_connection_id: "c1" };
     api.connections = [];

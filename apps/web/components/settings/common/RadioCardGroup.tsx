@@ -49,10 +49,14 @@ export default function RadioCardGroup<V extends string>({
   const checkedIndex = options.findIndex((option) => option.value === value);
   const tabStop = checkedIndex >= 0 && !options[checkedIndex].disabled ? checkedIndex : (enabled[0] ?? -1);
 
+  // The next enabled card after (or before) `from`, wrapping round. `from`
+  // may be a disabled card: a click focuses it to say why it is disabled.
   const move = (from: number, step: 1 | -1) => {
     if (enabled.length === 0) return;
-    const at = enabled.indexOf(from);
-    const next = enabled[at === -1 ? 0 : (at + step + enabled.length) % enabled.length];
+    const next =
+      step === 1
+        ? (enabled.find((index) => index > from) ?? enabled[0])
+        : (enabled.findLast((index) => index < from) ?? enabled[enabled.length - 1]);
     refs.current[next]?.focus();
     onChange(options[next].value);
   };

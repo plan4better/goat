@@ -17,6 +17,8 @@ const api = vi.hoisted(() => ({
   isLoading: false,
   isError: undefined as unknown,
   roles: ["organization-editor"] as string[] | undefined,
+  profileError: undefined as unknown,
+  mutateProfile: vi.fn(),
   members: {} as Record<string, unknown[]>,
   memberErrors: {} as Record<string, unknown>,
   createTeam: vi.fn(),
@@ -27,7 +29,11 @@ const api = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: api.push, prefetch: vi.fn() }) }));
 vi.mock("react-toastify", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/api/users", () => ({
-  useUserProfile: () => ({ userProfile: api.roles ? { id: "u1", roles: api.roles } : undefined }),
+  useUserProfile: () => ({
+    userProfile: api.roles ? { id: "u1", roles: api.roles } : undefined,
+    isError: api.profileError,
+    mutate: api.mutateProfile,
+  }),
 }));
 vi.mock("@/lib/api/teams", () => ({
   useTeams: () => ({ teams: api.teams, isLoading: api.isLoading, isError: api.isError, mutate: api.mutate }),
@@ -72,6 +78,8 @@ describe("Teams page", () => {
     api.isLoading = false;
     api.isError = undefined;
     api.roles = ["organization-editor"];
+    api.profileError = undefined;
+    api.mutateProfile.mockReset().mockResolvedValue(undefined);
     api.members = {
       t1: [member("u1", "Anna", "team-owner"), member("u2", "Ben")],
       t2: [member("u3", "Carl")],
@@ -198,6 +206,21 @@ describe("Teams page", () => {
     expect(screen.queryByText(/Create one or have a team owner add you/)).toBeNull();
     expect(screen.queryByRole("button", { name: "New team" })).toBeNull();
     expect(screen.queryByRole("note")).toBeNull();
+  });
+
+  it("says at the top of the page that the profile could not be read, and retries it", async () => {
+    api.roles = undefined;
+    api.profileError = new Error("HTTP 500");
+    renderPage();
+    expect(screen.queryByRole("button", { name: "New team" })).toBeNull();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("That could not be loaded.");
+    // Above the teams, which still show.
+    expect(alert.compareDocumentPosition(screen.getByRole("link", { name: /Stadtplanung/ }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    await userEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(api.mutateProfile).toHaveBeenCalledTimes(1);
   });
 
   it("draws card skeletons while the teams load", () => {

@@ -24,11 +24,18 @@ describe("StatusPill", () => {
 
   it.each(["light", "dark"] as const)("reads at 4.5:1 on its own tint in every tone, %s mode", (mode) => {
     const theme = createAppTheme({ mode, locale: "en" });
-    for (const tone of TONES) {
-      // What the eye sees: the tint over the card's paper, the ink over that.
-      const background = solidOn(statusTint(theme, tone), theme.palette.background.paper);
-      const ink = solidOn(statusInk(theme, tone), background);
-      expect(getContrastRatio(ink, background), `${tone} in ${mode} mode`).toBeGreaterThanOrEqual(4.5);
+    // On a card (paper) and on the page itself (a ticket's head sits on the
+    // page's background).
+    for (const surface of [theme.palette.background.paper, theme.palette.background.default]) {
+      for (const tone of TONES) {
+        // What the eye sees: the tint over the surface, the ink over that.
+        const background = solidOn(statusTint(theme, tone), surface);
+        const ink = solidOn(statusInk(theme, tone), background);
+        expect(
+          getContrastRatio(ink, background),
+          `${tone} on ${surface} in ${mode} mode`
+        ).toBeGreaterThanOrEqual(4.5);
+      }
     }
   });
 });

@@ -22,6 +22,7 @@ import PillMenu from "@/components/dashboard/common/PillMenu";
 import SearchInput from "@/components/dashboard/common/SearchInput";
 import ToolPill from "@/components/dashboard/common/ToolPill";
 import UserAvatar from "@/components/dashboard/common/UserAvatar";
+import { personName } from "@/components/settings/common/personName";
 import { DetailFrame, DetailList, figureColumn } from "@/components/settings/usage/UsageDetailFrame";
 import type { UsageDetailHeaderProps } from "@/components/settings/usage/UsageDetailHeader";
 import {
@@ -131,7 +132,7 @@ export const EditorsDetail = ({
             const used = usageOf.get(member.id);
             return {
               id: member.id,
-              name: [member.firstname, member.lastname].filter(Boolean).join(" ") || member.email,
+              name: personName(member),
               email: member.email,
               role: member.roles.find((name) => name.startsWith("organization-")) ?? null,
               invited: member.invitation_status === "pending",

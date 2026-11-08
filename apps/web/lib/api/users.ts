@@ -109,6 +109,6 @@ export const declineInvitation = async (invitationId: string) => {
 
 export const deleteAccount = async () => {
   const response = await apiRequestAuth(`${USERS_API_BASE_URL}`, { method: "DELETE" });
-  if (!response.ok) throw await response.json();
+  if (!response.ok) throw await apiErrorOf(response);
   return response;
 };

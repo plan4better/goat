@@ -55,7 +55,7 @@ const ConfirmModal: React.FC<ConfirmDialogProps> = ({
       footer={
         <AppDialogFooter
           cancelLabel={closeText || "Close"}
-          onCancel={onClose}
+          onCancel={close}
           cancelDisabled={loading}
           primaryLabel={confirmText || "Confirm"}
           onPrimary={() => onConfirm?.()}

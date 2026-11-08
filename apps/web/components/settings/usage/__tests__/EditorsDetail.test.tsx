@@ -202,6 +202,17 @@ describe("EditorsDetail", () => {
     }
   });
 
+  it("names a member whose names are only spaces by the address, as every settings list does", () => {
+    api.members = [
+      member("u1", "Anna", "Weber", "organization-admin"),
+      { ...member("u6", " ", "  ", "organization-viewer"), email: "blank@example.org" },
+    ];
+    renderDetail();
+    const blank = tableRows().find((tableRow) => tableRow.textContent?.includes("blank@example.org"));
+    expect(blank).toBeDefined();
+    expect(within(blank as HTMLElement).getByText("blank@example.org")).toBeInTheDocument();
+  });
+
   it("marks open invitations", () => {
     renderDetail();
     const invited = tableRows().find((tableRow) => tableRow.textContent?.includes("neu@example.org"));

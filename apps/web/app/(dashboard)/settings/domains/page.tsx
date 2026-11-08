@@ -54,8 +54,6 @@ export default function DomainsPage() {
   const { domains, isError, mutate } = useOrganizationDomains(organizationId);
   const { config, isError: configFailed, mutate: rereadConfig } = useCustomDomainConfigRead();
   const off = customDomainsOff(config);
-  // Core refuses adding while custom domains are off: nothing to add until
-  // its config says they are on.
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<CustomDomain | null>(null);
 
@@ -78,6 +76,8 @@ export default function DomainsPage() {
     }
   };
 
+  // Core refuses adding while custom domains are off: nothing to add until
+  // its config says they are on.
   const add = (label: string) => (
     <Button
       variant="contained"

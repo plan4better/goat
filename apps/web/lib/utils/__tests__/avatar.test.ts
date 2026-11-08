@@ -19,6 +19,12 @@ describe("initialsOf", () => {
     expect(initialsOf("2026 Verkehr & Umwelt")).toBe("VU");
   });
 
+  it("takes a word's first letter, not a bracket or a quote before it", () => {
+    expect(initialsOf("(P4B)")).toBe("P");
+    expect(initialsOf("Stadtwerke (Nord)")).toBe("SN");
+    expect(initialsOf('"Planung" Team')).toBe("PT");
+  });
+
   it("keeps a name without any letter as it is, and gives nothing for an empty one", () => {
     expect(initialsOf("2026")).toBe("2");
     expect(initialsOf("   ")).toBe("");

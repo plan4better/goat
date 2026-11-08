@@ -50,9 +50,9 @@ const LabeledField = forwardRef<HTMLInputElement, LabeledFieldProps>(function La
       <Typography
         component="label"
         id={labelId}
-        // A select's id lands on MUI's hidden native input: the label names
-        // the combobox through `labelId` instead, which also focuses it on a
-        // click.
+        // A select's id lands on MUI's combobox div (its
+        // `SelectDisplayProps.id`), which a `<label for>` cannot name: the
+        // label names the combobox through `labelId` instead.
         htmlFor={select ? undefined : id}
         variant="body2"
         sx={{ display: "block", fontWeight: 700, mb: 1.5 }}>

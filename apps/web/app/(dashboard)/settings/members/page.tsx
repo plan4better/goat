@@ -85,7 +85,7 @@ export default function MembersPage() {
   const words = roleWords(t);
   // The cookie's id until the organization answers, so the list starts at once (L4).
   const organizationId = useOrganizationId();
-  const { userProfile } = useUserProfile();
+  const { userProfile, isError: profileError, mutate: mutateProfile } = useUserProfile();
   const { organization, isError: organizationError, mutate: mutateOrganization } = useOrganization();
   const {
     members,
@@ -382,6 +382,10 @@ export default function MembersPage() {
           onClick={() => setExplaining(true)}
         />
       </UsageToolbar>
+      {/* Without the profile no row can be told to be one's own: the role
+          menus stay disabled and no row has a menu. SWR retries on its own;
+          a profile that keeps failing says so here, once, with its retry. */}
+      {!!profileError && !userProfile && <SettingsLoadError onRetry={() => void mutateProfile()} />}
       {isError && !members ? (
         <SettingsLoadError onRetry={() => void mutateMembers()} />
       ) : (

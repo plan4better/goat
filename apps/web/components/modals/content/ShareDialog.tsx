@@ -470,6 +470,9 @@ const ShareDialog = ({ item, space, folders, onClose, onTransfer }: ShareDialogP
           {tabItems.map((tabItem, index) => (
             <Tab
               key={tabItem.value}
+              // The ids the tab panel below names itself by and is controlled from.
+              id={`simple-tab-${tabItem.value}`}
+              aria-controls={tab === index ? `simple-tabpanel-${tabItem.value}` : undefined}
               aria-label={tabItem.label}
               label={
                 <Box sx={{ display: "inline-flex", alignItems: "center", gap: "7px" }}>
@@ -629,8 +632,9 @@ const ShareDialog = ({ item, space, folders, onClose, onTransfer }: ShareDialogP
             showTransfer={space.kind === "personal" && !!onTransfer}
           />
         )}
-        {activeTabValue === "public" &&
-          item.type === "layer" && <ShareDatasetPublicTab item={item} canToggle={canActOn(item)} />}
+        {activeTabValue === "public" && item.type === "layer" && (
+          <ShareDatasetPublicTab item={item} canToggle={canActOn(item)} />
+        )}
         {activeTabValue === "public" &&
           item.type === "project" &&
           (fullProject ? (

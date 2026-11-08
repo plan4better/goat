@@ -82,4 +82,42 @@ describe("ConfirmModal", () => {
     // A list in the body is valid markup: the body is a div, not a <p>.
     expect(screen.getByText("eins").closest("p")).toBeNull();
   });
+
+  it("forgets the typed text on Abbrechen, as on the close button", async () => {
+    // A caller that keeps the dialog mounted and only toggles `open`.
+    function Kept() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>Öffnen</button>
+          <ConfirmModal
+            open={open}
+            title="Konto löschen"
+            body="Text"
+            matchText="anna@example.com"
+            matchLabel="Geben Sie zur Bestätigung anna@example.com ein."
+            confirmText="Konto endgültig löschen"
+            closeText="Abbrechen"
+            onClose={() => setOpen(false)}
+            onConfirm={vi.fn()}
+          />
+        </>
+      );
+    }
+    render(
+      <I18nextProvider i18n={commonI18n("de")}>
+        <Kept />
+      </I18nextProvider>
+    );
+    const field = () =>
+      screen.getByLabelText("Geben Sie zur Bestätigung anna@example.com ein.") as HTMLInputElement;
+    await userEvent.type(field(), "anna@");
+    // The footer's Abbrechen (the X in the head is named by the same text).
+    const cancel = screen
+      .getAllByRole("button", { name: "Abbrechen" })
+      .find((button) => button.textContent === "Abbrechen") as HTMLElement;
+    await userEvent.click(cancel);
+    await userEvent.click(screen.getByRole("button", { name: "Öffnen", hidden: true }));
+    expect(field().value).toBe("");
+  });
 });

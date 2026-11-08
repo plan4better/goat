@@ -112,6 +112,49 @@ describe("useCardForm and CardSaveBar", () => {
     expect(saveButton().disabled).toBe(true);
   });
 
+  it("says why Speichern is off when a saved value is invalid and another field changes", async () => {
+    // An account saved without a name: only the picture changes, the name is untouched.
+    const pictureSchema = schema.extend({ avatar: z.string() });
+    const saved = { name: "", avatar: "" };
+    const save = vi.fn().mockResolvedValue(true);
+    function PictureHarness() {
+      const card = useCardForm(pictureSchema, saved, save);
+      return (
+        <form id="card" onSubmit={card.submit}>
+          <button
+            type="button"
+            onClick={() =>
+              card.form.setValue("avatar", "data:image/png;base64,x", {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }>
+            Bild
+          </button>
+          <LabeledField
+            id="name"
+            label="Teamname"
+            {...card.form.register("name")}
+            error={card.errorOf("name")}
+          />
+          <CardSaveBar
+            formId="card"
+            dirty={card.dirty}
+            valid={card.valid}
+            saving={card.saving}
+            onDiscard={card.discard}
+          />
+        </form>
+      );
+    }
+    render(wrap(<PictureHarness />));
+    // Nothing changed yet: no error is pressed on the reader.
+    expect(screen.queryByText("Geben Sie einen Namen ein.")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Bild" }));
+    expect(saveButton().disabled).toBe(true);
+    expect(screen.getByText("Geben Sie einen Namen ein.")).toBeInTheDocument();
+  });
+
   it("saves the trimmed values and returns to saved", async () => {
     const save = vi.fn().mockResolvedValue(true);
     renderHarness(save);

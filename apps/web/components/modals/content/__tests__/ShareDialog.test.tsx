@@ -366,6 +366,13 @@ describe("ShareDialog", () => {
     expect(screen.queryByText("transfer_ownership")).not.toBeInTheDocument();
   });
 
+  it("names its tab panel by the tab that shows it", () => {
+    render(<ShareDialog item={projectItem} space={teamSpace} folders={[]} onClose={noop} />);
+    expect(screen.getByRole("tabpanel", { name: "people" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "teams" }));
+    expect(screen.getByRole("tabpanel", { name: "teams" })).toBeInTheDocument();
+  });
+
   it("shows the not-supported message on the People tab for a folder", () => {
     render(<ShareDialog item={folderItem} space={personalSpace} folders={[]} onClose={noop} />);
 

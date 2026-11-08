@@ -62,14 +62,18 @@ describe("AddTeamMembersDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("names the people who were not added and keeps them chosen", async () => {
+  it("names the people who were not added in the dialog and keeps them chosen", async () => {
     api.createTeamMember.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("400"));
     const { onClose } = renderDialog();
     await userEvent.click(screen.getByRole("checkbox", { name: "Ben Muster" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "Dora Muster" }));
     await userEvent.click(screen.getByRole("button", { name: "Add 2" }));
     expect(toast.success).toHaveBeenCalledWith("Ben Muster is now in the team.");
-    expect(toast.error).toHaveBeenCalledWith("Not added: Dora Muster.");
+    // In the dialog, where it stays, not in a toast that goes.
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent(
+      "Not added: Dora Muster."
+    );
+    expect(toast.error).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
     await expect(
       within(screen.getByRole("dialog")).getByRole("checkbox", { name: "Dora Muster" })
@@ -96,9 +100,9 @@ describe("AddTeamMembersDialog", () => {
     ]);
     expect(onChanged).toHaveBeenCalledTimes(1);
     expect(toast.success).toHaveBeenCalledWith("2 people are now in the team.");
-    expect(toast.error).toHaveBeenCalledWith("Not added: cara@x.de.");
-    expect(onClose).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Not added: cara@x.de.");
+    expect(onClose).not.toHaveBeenCalled();
     await expect(within(dialog).getByRole("checkbox", { name: "cara@x.de" })).toBeChecked();
     await expect(within(dialog).getByRole("checkbox", { name: "Ben Muster" })).not.toBeChecked();
     await expect(within(dialog).getByRole("checkbox", { name: "Dora Muster" })).not.toBeChecked();
@@ -112,13 +116,25 @@ describe("AddTeamMembersDialog", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: "Ben Muster" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "Dora Muster" }));
     await userEvent.click(screen.getByRole("button", { name: "Add 2" }));
-    expect(toast.error).toHaveBeenCalledWith("Not added: Ben Muster, Dora Muster.");
     expect(onClose).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog");
+    // Dora is in the team by now: only Ben is named as not added.
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Not added: Ben Muster.");
     expect(within(dialog).queryByRole("checkbox", { name: "Dora Muster" })).toBeNull();
     await expect(within(dialog).getByRole("checkbox", { name: "Ben Muster" })).toBeChecked();
     await expect(within(dialog).getByRole("button", { name: "Add" })).toBeEnabled();
     expect(within(dialog).getByRole("status")).toHaveTextContent("1 selected, 2 not in the team");
+  });
+
+  it("drops the names of who was not added once the choice changes", async () => {
+    api.createTeamMember.mockRejectedValueOnce(new Error("400"));
+    renderDialog();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Ben Muster" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Not added: Ben Muster.");
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Dora Muster" }));
+    expect(within(dialog).queryByRole("alert")).toBeNull();
   });
 
   it("is no longer busy when the reload fails, and still says who was added", async () => {

@@ -271,6 +271,14 @@ describe("Team page", () => {
     expect(toast.success).toHaveBeenCalledWith("Team profile saved.");
   });
 
+  it("counts the team's name as it is saved, without the spaces around it", async () => {
+    await renderPage();
+    const name = screen.getByLabelText(/^Team name/);
+    await userEvent.clear(name);
+    await userEvent.type(name, "  Umwelt  ");
+    expect(screen.getByText("6/50")).toBeInTheDocument();
+  });
+
   it("keeps the delete dialog open on a 409 and says why, with the way to the space", async () => {
     api.deleteTeam.mockRejectedValue(new ApiError(409, "The team still owns content"));
     await renderPage();

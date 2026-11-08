@@ -22,7 +22,7 @@ export interface QuotaTileProps extends Omit<SurfaceCardProps, "children" | "sel
   bar?: { percent: number; color: string } | null;
   note?: { text: ReactNode; color?: string } | null;
   selected: boolean;
-  /** A phone's tile: a smaller figure; the label may wrap. */
+  /** A narrow tile (a phone's, or a seat tile beside the settings nav): a smaller figure; the label may wrap. */
   compact?: boolean;
 }
 
@@ -71,7 +71,10 @@ export const QuotaTile = forwardRef<HTMLDivElement, QuotaTileProps>(function Quo
           fontWeight: 700,
           color: selected ? accentText(theme) : "text.secondary",
         }}>
-        <Box component="span" sx={{ ...ellipsis, minWidth: 0 }}>
+        {/* A compact tile's label wraps rather than losing its end. */}
+        <Box
+          component="span"
+          sx={compact ? { minWidth: 0, overflowWrap: "anywhere" } : { ...ellipsis, minWidth: 0 }}>
           {label}
         </Box>
         {badge}

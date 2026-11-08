@@ -140,7 +140,11 @@ export default function AiPage() {
   }
 
   const view: AssistantSettings = { ...settings, ...pending };
-  const connectionsFailed = !!connectionsError && !connectionsLoading;
+  // SWR keeps the error while it tries again (and sets isLoading then): the
+  // retry and the nameless switch line stay instead of flipping to skeletons.
+  // A failed re-read keeps the list it has (SWR keeps the old data).
+  const connectionsFailed = !!connectionsError && connections.length === 0;
+  const connectionsWaiting = connectionsLoading && !connectionsError;
   // A read that fails keeps its error in SWR; the change itself is saved.
   const refreshOthers = () =>
     Promise.all([mutateConnections(), refreshAssistantStatus()]).catch(() => undefined);
@@ -276,7 +280,7 @@ export default function AiPage() {
       <AiSwitchCard
         enabled={view.enabled}
         answeringName={nameOf(view.active_connection_id)}
-        nameLoading={connectionsLoading}
+        nameLoading={connectionsWaiting}
         credits={credits}
         disabled={pending !== null}
         onToggle={(enabled) => void toggle(enabled)}
@@ -284,7 +288,7 @@ export default function AiPage() {
       <ConnectionsCard
         settings={view}
         connections={connections}
-        loading={connectionsLoading}
+        loading={connectionsWaiting}
         saving={pending !== null}
         onRetry={connectionsFailed ? () => void mutateConnections() : null}
         testingId={testingId}

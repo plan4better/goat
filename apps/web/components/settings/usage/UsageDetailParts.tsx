@@ -18,6 +18,7 @@ import { type UsageRange, daySpanLabel, rangeLabel, rangeSpan } from "@/lib/util
 import { useOrganizationId } from "@/hooks/settings/useOrganizationId";
 
 import SurfaceCard from "@/components/dashboard/common/SurfaceCard";
+import { personName } from "@/components/settings/common/personName";
 import { type OrgRole, roleWords } from "@/components/settings/common/roleWords";
 import type { UsageChip } from "@/components/settings/usage/UsageList";
 
@@ -161,7 +162,7 @@ export const useMemberDirectory = () => {
         (members ?? []).map((member) => [
           member.id,
           {
-            name: [member.firstname, member.lastname].filter(Boolean).join(" ") || member.email,
+            name: personName(member),
             role: member.roles.find((role) => role.startsWith("organization-")) ?? null,
           },
         ])

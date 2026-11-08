@@ -55,7 +55,11 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
       <Box sx={{ padding: { xs: "16px 14px 0", md: "40px 40px 0" }, flexShrink: 0 }}>
         <PageHeader title={t("settings_nav_title")} titleId="settings-navigation" responsive />
       </Box>
-      <Box sx={{ display: { xs: "block", md: "none" }, padding: "12px 14px 10px", flexShrink: 0 }}>
+      {/* A landmark of its own below `md`, as the desktop nav is one. */}
+      <Box
+        component="nav"
+        aria-label={t("settings_nav_sheet_title")}
+        sx={{ display: { xs: "block", md: "none" }, padding: "12px 14px 10px", flexShrink: 0 }}>
         <SettingsNavSheet groups={phoneGroups} memberCount={memberCount} needsAttention={needsAttention} />
       </Box>
       <Box sx={{ flex: 1, display: "flex", minHeight: 0 }}>
