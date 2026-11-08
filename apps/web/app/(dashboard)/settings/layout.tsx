@@ -1,177 +1,88 @@
 "use client";
 
-import {
-  Box,
-  Container,
-  Grid,
-  Link,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Paper,
-  Skeleton,
-  useTheme,
-} from "@mui/material";
-import NextLink from "next/link";
-import { usePathname } from "next/navigation";
-import React, { useMemo } from "react";
+import { Box, useTheme } from "@mui/material";
+import { usePathname, useRouter } from "next/navigation";
+import { type ReactNode, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
-
-import { useFeatures } from "@/lib/api/users";
-import { ASSISTANT_BASE_URL } from "@/lib/constants";
-
-import { useAuthZ } from "@/hooks/auth/AuthZ";
+import { SETTINGS_ROUTES } from "@/lib/settingsRoutes";
 
 import PageHeader from "@/components/dashboard/common/PageHeader";
+import SettingsNav from "@/components/settings/nav/SettingsNav";
+import SettingsNavSheet from "@/components/settings/nav/SettingsNavSheet";
+import { settingsNav, settingsPageAllowed } from "@/components/settings/nav/settingsNav";
+import { useSettingsNavInput } from "@/components/settings/nav/useSettingsNavInput";
 
-interface SettingsLayoutProps {
-  children: React.ReactNode;
-}
-
-/** Pages that lay their content on the page background under their own
- * header, as the catalog and content pages do; every other settings page sits
- * on a card. */
-const BARE_PAGES = ["/settings/usage"];
-
-const SettingsLayout = (props: SettingsLayoutProps) => {
-  const { children } = props;
-  const pathname = usePathname();
-  const theme = useTheme();
+/**
+ * The settings shell (decision 14): the title, the nav (or its sheet below
+ * `md`) and the page on the page background. A page the caller may not open
+ * sends them to Profil once the roles are known; the API refuses them anyway,
+ * this only spares an empty page.
+ */
+export default function SettingsLayout({ children }: { children: ReactNode }) {
   const { t } = useTranslation("common");
-  const { isOrgAdmin, isLoading: isUserProfileLoading } = useAuthZ();
-  const { features } = useFeatures();
-  const navigation = useMemo(() => {
-    return [
-      {
-        link: "/settings/account",
-        icon: ICON_NAME.USER,
-        label: t("account"),
-        current: pathname?.includes("/account"),
-      },
-      {
-        link: "/settings/teams",
-        icon: ICON_NAME.USERS,
-        label: t("teams"),
-        current: pathname?.includes("/teams"),
-      },
-      {
-        link: "/settings/organization",
-        icon: ICON_NAME.ORGANIZATION,
-        label: t("organization"),
-        current:
-          pathname?.includes("/organization") &&
-          !pathname?.includes("/white-label") &&
-          !pathname?.includes("/organization/ai"),
-        auth: isOrgAdmin,
-      },
-      {
-        link: "/settings/organization/white-label/domains",
-        icon: ICON_NAME.GLOBE,
-        label: t("white_label"),
-        current: pathname?.includes("/white-label"),
-        auth: isOrgAdmin,
-      },
-      ...(ASSISTANT_BASE_URL
-        ? [
-            {
-              link: "/settings/organization/ai",
-              icon: ICON_NAME.SPARKLES,
-              label: t("ai_settings_nav"),
-              current: pathname?.includes("/organization/ai"),
-              auth: isOrgAdmin,
-            },
-          ]
-        : []),
-      {
-        link: "/settings/usage",
-        icon: ICON_NAME.CHART_PIE,
-        label: t("usage_and_quotas"),
-        current: pathname?.includes("/usage"),
-        // Credits and quotas exist only where billing runs (not self-hosted).
-        auth: isOrgAdmin && features?.billing === true,
-      },
-    ];
-  }, [pathname, t, isOrgAdmin, features?.billing]);
+  const pathname = usePathname() ?? "";
+  const router = useRouter();
+  const { input, organization, memberCount, needsAttention, isError } = useSettingsNavInput();
+  const desktopGroups = settingsNav({ ...input, pathname, phone: false, failed: isError });
+  const phoneGroups = settingsNav({ ...input, pathname, phone: true, failed: isError });
+  const allowed = settingsPageAllowed(pathname, input);
+
+  const theme = useTheme();
+
+  useEffect(() => {
+    if (allowed === false) router.replace(SETTINGS_ROUTES.profile);
+  }, [allowed, router]);
 
   return (
-    <Container sx={{ py: 10, px: 10 }} maxWidth="xl">
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          mb: 8,
-        }}>
-        <PageHeader title={t("settings")} />
+    // Content's frame (`components/dashboard/content/ContentPage.tsx`): the
+    // title and the nav stay where they are; each page, heading included,
+    // scrolls as one inside its `SettingsPage`. `width` because the dashboard's
+    // main is a flex column: a centred item without one shrinks to its
+    // content, and the nav would move with each page.
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+        width: "100%",
+        // Content's measure, the theme's `xl` (GOAT's is 1432px).
+        maxWidth: theme.breakpoints.values.xl,
+        mx: "auto",
+        bgcolor: "background.default",
+      }}>
+      <Box sx={{ padding: { xs: "16px 14px 0", md: "40px 40px 0" }, flexShrink: 0 }}>
+        <PageHeader title={t("settings_nav_title")} titleId="settings-navigation" responsive />
       </Box>
-      <Grid container justifyContent="space-between" spacing={4}>
-        <Grid
-          item
-          xs={3}
+      <Box sx={{ display: { xs: "block", md: "none" }, padding: "12px 14px 10px", flexShrink: 0 }}>
+        <SettingsNavSheet groups={phoneGroups} memberCount={memberCount} needsAttention={needsAttention} />
+      </Box>
+      <Box sx={{ flex: 1, display: "flex", minHeight: 0 }}>
+        {/* Content's panel column: a 272px card inset 40px from the frame's
+            edge, 18px below the title, running to the bottom. */}
+        <Box
           sx={{
-            [theme.breakpoints.down("md")]: {
-              display: "none",
-            },
+            display: { xs: "none", md: "flex" },
+            width: 312,
+            flexShrink: 0,
+            padding: "18px 0 18px 40px",
+            boxSizing: "border-box",
           }}>
-          <Paper elevation={3}>
-            {isUserProfileLoading && <Skeleton variant="rectangular" width="100%" height={200} />}
-            {!isUserProfileLoading && (
-              <List sx={{ width: "100%" }} component="nav" aria-labelledby="settings-navigation">
-                {navigation.map((item) =>
-                  item.auth !== false ? (
-                    <Link
-                      key={item.icon}
-                      href={item.link}
-                      component={NextLink}
-                      passHref
-                      style={{ textDecoration: "none" }}>
-                      <ListItem
-                        disablePadding
-                        sx={{
-                          display: "block",
-                        }}>
-                        <ListItemButton
-                          selected={item.current}
-                          sx={{
-                            minHeight: 48,
-                          }}>
-                          <ListItemIcon
-                            sx={{
-                              minWidth: 0,
-                              ml: 0,
-                              mr: 6,
-                              justifyContent: "center",
-                            }}>
-                            <Icon
-                              iconName={item.icon}
-                              fontSize="small"
-                              htmlColor={item.current ? theme.palette.primary.main : "inherit"}
-                            />
-                          </ListItemIcon>
-                          <ListItemText primary={item.label} />
-                        </ListItemButton>
-                      </ListItem>
-                    </Link>
-                  ) : null
-                )}
-              </List>
-            )}
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={9}>
-          {BARE_PAGES.some((page) => pathname === page || pathname?.startsWith(`${page}/`)) ? (
-            children
-          ) : (
-            <Paper elevation={3}>{children}</Paper>
-          )}
-        </Grid>
-      </Grid>
-    </Container>
+          <SettingsNav
+            groups={desktopGroups}
+            organization={organization}
+            failed={isError}
+            memberCount={memberCount}
+            needsAttention={needsAttention}
+          />
+        </Box>
+        {/* Content's right column: the page fills it and, heading included,
+            scrolls as one inside its `SettingsPage`. */}
+        <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          {allowed === false ? null : children}
+        </Box>
+      </Box>
+    </Box>
   );
-};
-
-export default SettingsLayout;
+}

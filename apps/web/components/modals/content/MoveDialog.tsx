@@ -2,7 +2,7 @@
 
 import { LoadingButton } from "@mui/lab";
 import { Box, Button, Dialog, Typography, useMediaQuery, useTheme } from "@mui/material";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
@@ -148,6 +148,8 @@ export const folderDepthViolation = (
  */
 const MoveDialog = ({ items, space, folders, homeFolderId, onClose, onMoved }: MoveDialogProps) => {
   const { t } = useTranslation("common");
+  // Named by its title, as every AppDialog is.
+  const titleId = useId();
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("md"));
 
@@ -209,9 +211,11 @@ const MoveDialog = ({ items, space, folders, homeFolderId, onClose, onMoved }: M
     <Dialog
       open
       onClose={onClose}
+      aria-labelledby={titleId}
       fullScreen={fullScreen}
       PaperProps={{ sx: contentDialogPaperSx(480, fullScreen) }}>
       <ContentDialogHeader
+        titleId={titleId}
         icon={ICON_NAME.FOLDER}
         title={t("move_title", { name: primaryName, more })}
         subline={

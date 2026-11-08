@@ -2,15 +2,17 @@ import * as z from "zod";
 
 export const analyticsProviderSchema = z.enum(["matomo"]);
 
-/** Mirrors the backend MatomoConfig validator. */
+/** Mirrors the backend MatomoConfig validator. The messages are i18n keys
+ * (`settings_analytics_error_*`), shown by Settings › Analytics. */
 export const matomoConfigSchema = z.object({
   provider: z.literal("matomo").default("matomo"),
   url: z
     .string()
-    .min(1)
-    .transform((v) => v.trim())
-    .pipe(z.string().url("Must be a valid URL"))
-    .refine((v) => v.startsWith("https://"), "Must use https://")
+    // Trimmed first, so an address of spaces alone counts as missing.
+    .trim()
+    .min(1, "settings_analytics_error_required")
+    .url("settings_analytics_error_https")
+    .refine((v) => v.startsWith("https://"), "settings_analytics_error_https")
     .refine((v) => {
       try {
         const u = new URL(v);
@@ -18,16 +20,16 @@ export const matomoConfigSchema = z.object({
       } catch {
         return false;
       }
-    }, "Must not contain a query or fragment")
+    }, "settings_analytics_error_query")
     // A path is fine (self-hosted Matomo often lives under one, e.g.
     // https://host.de/matomo/); the tracker appends matomo.php/matomo.js,
     // so normalize to a trailing slash.
     .transform((v) => (v.endsWith("/") ? v : `${v}/`)),
   site_id: z
     .string()
-    .min(1)
-    .max(16)
-    .regex(/^\d+$/, "Must be a numeric site ID"),
+    .min(1, "settings_analytics_error_required")
+    .max(16, "settings_analytics_error_site_id_long")
+    .regex(/^\d+$/, "settings_analytics_error_digits"),
 });
 
 export type AnalyticsProvider = z.infer<typeof analyticsProviderSchema>;
@@ -35,7 +37,11 @@ export type MatomoConfig = z.infer<typeof matomoConfigSchema>;
 
 /** Request body for POST/PUT /organizations/{org_id}/analytics. */
 export const organizationAnalyticsCreateSchema = z.object({
-  name: z.string().trim().min(1, "Name is required").max(120),
+  name: z
+    .string()
+    .trim()
+    .min(1, "settings_analytics_error_required")
+    .max(120, "settings_analytics_error_name_long"),
   provider: analyticsProviderSchema,
   config: matomoConfigSchema,
 });

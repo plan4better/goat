@@ -27,7 +27,10 @@ vi.mock("@/hooks/store/ContextHooks", () => ({
   useAppDispatch: () => vi.fn(),
   useAppSelector: (select: (state: unknown) => unknown) => select({ map: { mapMode: "data" } }),
 }));
-vi.mock("@/components/assistant/dockLoader", () => ({ prefetchAssistant: vi.fn() }));
+vi.mock("@/components/assistant/dockLoader", () => ({
+  prefetchAssistant: vi.fn(),
+  whenIdle: () => () => undefined,
+}));
 vi.mock("@/components/UserInfoMenu", () => ({ default: () => null }));
 vi.mock("@/components/support/SupportMenu", () => ({ default: () => null }));
 vi.mock("@/components/header/OnboardingTray", () => ({ default: () => null }));

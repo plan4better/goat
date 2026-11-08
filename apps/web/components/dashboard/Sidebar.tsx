@@ -15,6 +15,8 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { SETTINGS_ROUTES } from "@/lib/settingsRoutes";
+
 import type { NavItem } from "@/types/common/navigation";
 
 const openedMixin = (theme: Theme): CSSObject => ({
@@ -80,7 +82,7 @@ const DashboardSidebar = (props: Props) => {
       current: pathname?.includes("/catalog"),
     },
     {
-      link: "/settings",
+      link: SETTINGS_ROUTES.profile,
       icon: ICON_NAME.SETTINGS,
       label: t("settings"),
       current: pathname?.includes("/settings"),

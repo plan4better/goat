@@ -79,9 +79,10 @@ const lastCall = (group: string) =>
     | Record<string, unknown>
     | undefined;
 
-const renderDetail = (balance: CreditBalance = BALANCE, searchParams = "") => {
+/** `null`: the balance has not answered yet. */
+const renderDetail = (balance: CreditBalance | null = BALANCE, searchParams = "") => {
   const Nuqs = withNuqsTestingAdapter({ searchParams });
-  return render(<AiCreditsDetail balance={balance} />, {
+  return render(<AiCreditsDetail balance={balance ?? undefined} />, {
     wrapper: ({ children }: { children: ReactNode }) => (
       <Nuqs>
         <ThemeProvider theme={theme}>
@@ -148,6 +149,9 @@ afterEach(() => {
 describe("AiCreditsDetail", () => {
   it("lists members by AI credits with their share", () => {
     renderDetail();
+    // This period: core counts from its start, so the requests name none.
+    expect(lastCall("member")?.since).toBeUndefined();
+    expect(lastCall("day")?.since).toBeUndefined();
     expect(screen.getByText("1–2 of 2 members")).toBeInTheDocument();
     const table = screen.getByRole("table");
     const rows = within(table).getAllByRole("row").slice(1);
@@ -172,6 +176,46 @@ describe("AiCreditsDetail", () => {
         { exact: false }
       )
     ).toBeInTheDocument();
+  });
+
+  it("asks for this period's breakdowns before the balance answers, and draws the frame meanwhile", async () => {
+    renderDetail(null);
+    expect(lastCall("day")).toBeDefined();
+    expect(lastCall("day")?.since).toBeUndefined();
+    expect(lastCall("member")).toBeDefined();
+    expect(lastCall("member")?.since).toBeUndefined();
+    // The members list is there; the figures wait for the balance.
+    expect(screen.getByText("1–2 of 2 members")).toBeInTheDocument();
+    expect(screen.queryByText("412")).toBeNull();
+    expect(screen.queryByText(/out of/)).toBeNull();
+    // The range pill names no range yet: a trial's period is the whole trial.
+    expect(screen.queryByRole("button", { name: "This period" })).toBeNull();
+    const pill = screen.getByRole("button", { name: "Period" });
+    await expect(pill).toBeDisabled();
+    // Nothing to describe: the pill waits for the period, it is not whole periods.
+    expect(pill.getAttribute("aria-describedby")).toBeNull();
+    // Without the period's start the export would hold the whole ledger.
+    await expect(screen.getByRole("button", { name: "Export CSV" })).toBeDisabled();
+  });
+
+  it("names the days by day while the balance loads, and lists them once it is there", () => {
+    const view = renderDetail(null, `?member=${ANNA}`);
+    expect(groupBy().getByRole("button", { name: "Days" }).getAttribute("aria-pressed")).toBe("true");
+    expect(groupBy().queryByRole("button", { name: "Months" })).not.toBeInTheDocument();
+    expect(screen.queryByText("November 2026")).not.toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    view.rerender(<AiCreditsDetail balance={BALANCE} />);
+    expect(screen.getByText("1–2 of 2 days")).toBeInTheDocument();
+    expect(screen.getByText("20 Nov 2026")).toBeInTheDocument();
+  });
+
+  it("holds an empty list of this period until the balance says whether the period is empty", () => {
+    api.rows.day = [];
+    api.rows.member = [];
+    const view = renderDetail(null);
+    expect(screen.queryByText("No members in this range")).toBeNull();
+    view.rerender(<AiCreditsDetail balance={{ ...BALANCE, used_ai_credits: 0 }} />);
+    expect(screen.getByText("No answers from GOAT AI in this period yet")).toBeInTheDocument();
   });
 
   it("searches the members as one types and names a search that finds none", async () => {

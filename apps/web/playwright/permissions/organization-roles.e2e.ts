@@ -1,45 +1,89 @@
-import { expect, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 
 import { API_URL, type Role, actAs, apiAs, castOf, needsAuth } from "../fixtures/users";
 
 /**
  * What each organization role may do with the organization itself.
  *
- * Owners and admins manage the organization: its profile, members and white
- * label (and its usage where billing runs; the e2e stack runs without it, so
- * the Usage page is not there). Editors and viewers see only their account and
- * teams in Settings, and the API refuses them the organization's management
- * routes even when called directly.
+ * Owners and admins manage the organization: in Settings they see Profile,
+ * Members, Teams and White Label with the pages under it, Domains and
+ * Analytics (and Usage where billing runs; the e2e stack runs without it, so
+ * the Usage page is not there). Editors and viewers see Profile and Teams and
+ * the organization read-only, and the API refuses them the organization's
+ * management routes even when called directly. Only the owner deletes the
+ * organization.
  */
 needsAuth(test);
 
-const ADMIN_ONLY = ["Organization", "White Label"];
+const ORGANIZATION_ADMIN_LINKS = ["Members", "Domains", "Analytics"];
+
+const settingsNav = (page: Page) => page.getByRole("navigation", { name: "Settings", exact: true });
 
 for (const role of ["owner", "admin"] as Role[]) {
   test.describe(`${role}`, () => {
     actAs(test, role);
 
-    test("sees the organization's settings", async ({ page }) => {
-      await page.goto("/settings/account");
-      for (const name of ["Account", "Teams", ...ADMIN_ONLY]) {
-        await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
+    test("sees the organization's settings, White Label with Domains and Analytics", async ({ page }) => {
+      await page.goto("/settings/profile");
+      const organization = settingsNav(page).getByRole("group", { name: "Organization" });
+      for (const name of ["Profile", "Teams", ...ORGANIZATION_ADMIN_LINKS]) {
+        await expect(organization.getByRole("link", { name, exact: true })).toBeVisible();
       }
+      await expect(organization.getByRole("button", { name: "White Label" })).toBeVisible();
     });
   });
 }
+
+test.describe("admin, unlike the owner", () => {
+  actAs(test, "admin");
+
+  test("sees Delete organization disabled, for the owner only", async ({ page }) => {
+    await page.goto("/settings/organization");
+    await expect(page.getByRole("button", { name: "Delete organization" })).toBeDisabled();
+    await expect(page.getByText("Only the owner can delete the organization.")).toBeVisible();
+  });
+
+  test("is refused the organization delete by the API (F1)", async () => {
+    const api = await apiAs("admin");
+    try {
+      const remove = await api.delete(`${API_URL}/api/v2/organizations/${castOf().organization_id}`);
+      expect([401, 403]).toContain(remove.status());
+    } finally {
+      await api.dispose();
+    }
+  });
+});
 
 for (const role of ["editor", "viewer"] as Role[]) {
   test.describe(`${role}`, () => {
     actAs(test, role);
 
-    test("sees only their account and teams in Settings", async ({ page }) => {
-      await page.goto("/settings/account");
-      for (const name of ["Account", "Teams"]) {
-        await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
+    test("sees only the profiles and teams in Settings", async ({ page }) => {
+      await page.goto("/settings/profile");
+      const nav = settingsNav(page);
+      const organization = nav.getByRole("group", { name: "Organization" });
+      for (const name of ["Profile", "Teams"]) {
+        await expect(organization.getByRole("link", { name, exact: true })).toBeVisible();
       }
-      for (const name of ADMIN_ONLY) {
-        await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
+      // Until the roles are known, the rows only owners and admins get are
+      // skeletons without a link or a button, so the checks below would pass
+      // before the roles arrive: wait for the nav to settle first.
+      await expect(nav.locator(".MuiSkeleton-root")).toHaveCount(0);
+      for (const name of ORGANIZATION_ADMIN_LINKS) {
+        await expect(nav.getByRole("link", { name, exact: true })).toHaveCount(0);
       }
+      await expect(nav.getByRole("button", { name: "White Label" })).toHaveCount(0);
+    });
+
+    test("sees the organization read-only", async ({ page }) => {
+      await page.goto("/settings/organization");
+      await expect(page.getByRole("heading", { level: 2, name: "Profile" })).toBeVisible();
+      // The members' subtitle: the roles are known, so the cards below are final.
+      await expect(
+        page.getByText("Your organization in GOAT. Owners and admins can change it.")
+      ).toBeVisible();
+      await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Delete organization" })).toHaveCount(0);
     });
 
     test("is refused the organization's management routes", async () => {

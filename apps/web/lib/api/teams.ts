@@ -1,9 +1,9 @@
 import useSWR from "swr";
 
-import { API_BASE_URL } from "@/lib/constants";
-
+import { apiErrorOf } from "@/lib/api/apiError";
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import { useAuthedSWR } from "@/lib/api/useAuthedSWR";
+import { API_BASE_URL } from "@/lib/constants";
 import type { Team, TeamBase, TeamMember, TeamUpdate } from "@/lib/validations/team";
 
 export const TEAMS_API_BASE_URL = new URL("api/v2/teams", API_BASE_URL).href;
@@ -60,13 +60,7 @@ export const createTeam = async (payload: TeamBase) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!response.ok) {
-    try {
-      throw await response.json();
-    } catch {
-      throw new Error("Failed to create team");
-    }
-  }
+  if (!response.ok) throw await apiErrorOf(response);
   return await response.json();
 };
 
@@ -76,7 +70,7 @@ export const updateTeam = async (teamId: string, organization: TeamUpdate) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(organization),
   });
-  if (!response.ok) throw await response.json();
+  if (!response.ok) throw await apiErrorOf(response);
   return response;
 };
 
@@ -84,13 +78,7 @@ export const deleteTeam = async (teamId: string) => {
   const response = await apiRequestAuth(`${TEAMS_API_BASE_URL}/${teamId}`, {
     method: "DELETE",
   });
-  if (!response.ok) {
-    try {
-      throw await response.json();
-    } catch {
-      throw new Error("Failed to delete team");
-    }
-  }
+  if (!response.ok) throw await apiErrorOf(response);
   return await response.json();
 };
 
@@ -98,7 +86,7 @@ export const deleteMember = async (teamId: string, memberId: string) => {
   const response = await apiRequestAuth(`${TEAMS_API_BASE_URL}/${teamId}/users/${memberId}`, {
     method: "DELETE",
   });
-  if (!response.ok) throw await response.json();
+  if (!response.ok) throw await apiErrorOf(response);
   return response;
 };
 
@@ -107,12 +95,6 @@ export const createTeamMember = async (teamId: string, memberId: string) => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
-  if (!response.ok) {
-    try {
-      throw await response.json();
-    } catch {
-      throw new Error("Failed to add team member");
-    }
-  }
+  if (!response.ok) throw await apiErrorOf(response);
   return await response.json();
 };

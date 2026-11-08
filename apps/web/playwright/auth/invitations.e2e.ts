@@ -26,18 +26,22 @@ test.describe.configure({ mode: "serial", retries: 0 });
 let invitationPath: string;
 
 test("the owner invites a user as a viewer from the members page", async ({ page }) => {
-  await page.goto("/settings/organization/members");
-  await page.getByRole("button", { name: "New Member" }).click();
+  await page.goto("/settings/members");
+  await page.getByRole("button", { name: "Invite members" }).click();
 
-  const dialog = page.getByRole("dialog").filter({ hasText: "Invite Member" });
-  await dialog.getByLabel("Email").fill(userOf("invitee").email);
-  await dialog.getByRole("combobox", { name: /Role/ }).click();
-  await page.getByRole("option", { name: "Viewer", exact: true }).click();
-  await dialog.getByRole("button", { name: "Send Invite" }).click();
+  // The field makes a chip of each address, trimmed and lowercased as core
+  // stores it, so the toast and the row name it lowercased.
+  const email = userOf("invitee").email.toLowerCase();
+  const dialog = page.getByRole("dialog").filter({ hasText: "Invite members" });
+  const addresses = dialog.getByLabel("Email addresses");
+  await addresses.fill(userOf("invitee").email);
+  await addresses.press("Enter");
+  await dialog.getByRole("radio", { name: /^Viewer/ }).click();
+  await dialog.getByRole("button", { name: "Send invitation" }).click();
 
-  await expect(page.getByText("Member invited")).toBeVisible();
-  const row = page.getByRole("row").filter({ hasText: userOf("invitee").email });
-  await expect(row).toContainText("Invitation Pending");
+  await expect(page.getByText(`Invitation sent to ${email}.`)).toBeVisible();
+  const row = page.getByRole("row").filter({ hasText: email });
+  await expect(row).toContainText("Invitation pending");
 });
 
 test.describe("the invitee", () => {

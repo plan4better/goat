@@ -1,409 +1,289 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
-import { LoadingButton } from "@mui/lab";
-import { Box, Divider, IconButton, Stack, Tab, Tabs, TextField, Typography, useTheme } from "@mui/material";
+import { Box, Button, Link, Skeleton, Stack, Typography, useTheme } from "@mui/material";
+import dynamic from "next/dynamic";
+import NextLink from "next/link";
 import { useRouter } from "next/navigation";
-import { use, useEffect, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
-import { Trans, useTranslation } from "react-i18next";
-import { toast } from "react-toastify";
+import { use, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { useOrganizationMembers } from "@/lib/api/organizations";
-import { deleteTeam, updateTeam, useTeam, useTeamMembers } from "@/lib/api/teams";
-import { useOrganization } from "@/lib/api/users";
-import type { Team, TeamMember, TeamUpdate } from "@/lib/validations/team";
-import { teamRoleEnum, teamUpdateSchema } from "@/lib/validations/team";
+import { statusOf } from "@/lib/api/apiError";
+import { useSpaces } from "@/lib/api/content";
+import { useTeam, useTeams } from "@/lib/api/teams";
+import { useUserProfile } from "@/lib/api/users";
+import { SETTINGS_ROUTES } from "@/lib/settingsRoutes";
+import { readableText } from "@/lib/utils/credits";
 
-import type { TeamMemberActions } from "@/types/common";
+import { contentPath } from "@/hooks/dashboard/content/useContentPageState";
 
-import { useAuthZ } from "@/hooks/auth/AuthZ";
-import { useMemberSettingsMoreMenu } from "@/hooks/dashboard/SettingsHooks";
+import { DialogLoadFailed, orLoadFailed } from "@/components/assistant/LoadFailed";
+import CardSkeleton from "@/components/settings/common/CardSkeleton";
+import DangerCard from "@/components/settings/common/DangerCard";
+import SettingsCard from "@/components/settings/common/SettingsCard";
+import SettingsLoadError from "@/components/settings/common/SettingsLoadError";
+import SettingsPage from "@/components/settings/common/SettingsPage";
+import TeamMembersCard from "@/components/settings/team/TeamMembersCard";
+import TeamProfileCard from "@/components/settings/team/TeamProfileCard";
+import { teamPermissions } from "@/components/settings/team/teamPermissions";
+import TeamAvatar from "@/components/settings/teams/TeamAvatar";
 
-import { CustomTabPanel, a11yProps } from "@/components/common/CustomTabPanel";
-import { RhfAvatar } from "@/components/common/form-inputs/AvatarUpload";
-import MembersTable from "@/components/dashboard/settings/MembersTable";
-import ConfirmModal from "@/components/modals/Confirm";
-import TeamMemberInviteModal from "@/components/modals/settings/InviteTeamMember";
-import TeamMemberDialogWrapper from "@/components/modals/settings/TeamMembersDialogWrapper";
+// Loaded on first open (L5); a dialog whose code does not load shows a notice.
+const DeleteTeamDialog = dynamic(
+  () => orLoadFailed(import("@/components/settings/team/DeleteTeamDialog"), DialogLoadFailed),
+  { ssr: false }
+);
+const LeaveTeamDialog = dynamic(
+  () => orLoadFailed(import("@/components/settings/team/LeaveTeamDialog"), DialogLoadFailed),
+  { ssr: false }
+);
 
-// Seed the edit form from the team. Optional fields can come back null/empty
-// from the API, so coerce to "" rather than running the read object through the
-// update schema (whose fields don't accept null).
-const toTeamFormDefaults = (team: Team): TeamUpdate => ({
-  name: team.name ?? "",
-  description: team.description ?? "",
-  avatar: team.avatar ?? "",
-});
-
-function TeamProfile({ team }: { team: Team }) {
-  const theme = useTheme();
-  const { t } = useTranslation("common");
-  const [isDeleteOrLeaveTeamBusy, setIsDeleteOrLeaveTeamBusy] = useState<boolean>(false);
-  const [isTeamUpdateBusy, setIsTeamUpdateBusy] = useState<boolean>(false);
-  const [confirmDeleteOrLeaveTeamDialogOpen, setConfirmDeleteOrLeaveTeamDialogOpen] = useState(false);
-  const router = useRouter();
-  const { isTeamOwner } = useAuthZ({
-    team,
-  });
-
-  const {
-    register: registerTeamUpdate,
-    handleSubmit: handleTeamUpdateSubmit,
-    formState: { errors, isDirty, isValid },
-    control,
-    reset,
-  } = useForm<TeamUpdate>({
-    mode: "onChange",
-    resolver: zodResolver(teamUpdateSchema),
-    defaultValues: useMemo(() => {
-      if (team) {
-        return toTeamFormDefaults(team);
-      }
-      return {};
-    }, [team]),
-  });
-
-  useEffect(() => {
-    if (team) {
-      reset(toTeamFormDefaults(team));
-    }
-  }, [team, reset]);
-
-  async function _updateTeam(data: TeamUpdate) {
-    setIsTeamUpdateBusy(true);
-    try {
-      if (team) {
-        await updateTeam(team.id, data);
-        toast.success(t("team_update_success"));
-        reset({}, { keepValues: true });
-      }
-    } catch (_error) {
-      toast.error(t("team_update_error"));
-    } finally {
-      setIsTeamUpdateBusy(false);
-    }
-  }
-
-  async function onTeamUpdateSubmit(data: TeamUpdate) {
-    await _updateTeam(data);
-  }
-
-  async function _deleteOrLeaveTeam() {
-    setIsDeleteOrLeaveTeamBusy(true);
-    try {
-      if (team) {
-        await deleteTeam(team.id);
-        toast.success(t("team_delete_success"));
-        router.push(`/settings/teams`);
-      }
-    } catch (_error) {
-      toast.error(t("team_delete_error"));
-    } finally {
-      setIsDeleteOrLeaveTeamBusy(false);
-    }
-  }
-  return (
-    <>
-      <Box component="form" onSubmit={handleTeamUpdateSubmit(onTeamUpdateSubmit)}>
-        <Stack spacing={theme.spacing(6)}>
-          <Divider />
-          <Box>
-            <Typography variant="body1" fontWeight="bold">
-              {t("team_information")}
-            </Typography>
-            <Typography variant="caption">
-              {isTeamOwner
-                ? t("update_team_information_description")
-                : t("overview_team_information_description")}
-            </Typography>
-          </Box>
-          <Divider />
-          <>
-            <RhfAvatar
-              name="avatar"
-              control={control}
-              title={t("team_avatar")}
-              avatar={team?.avatar ?? ""}
-              readOnly={!isTeamOwner}
-            />
-
-            <TextField
-              required
-              InputProps={{ readOnly: !isTeamOwner }}
-              helperText={errors.name ? errors.name?.message : ""}
-              label={t("team_name")}
-              id="name"
-              {...registerTeamUpdate("name")}
-              error={errors.name ? true : false}
-            />
-
-            <TextField
-              InputProps={{ readOnly: !isTeamOwner }}
-              InputLabelProps={{ shrink: true }}
-              helperText={errors.description ? errors.description?.message : ""}
-              label={t("team_description")}
-              id="description"
-              {...registerTeamUpdate("description")}
-              error={errors.description ? true : false}
-            />
-
-            {isTeamOwner && (
-              <Stack direction="row" alignItems="center" justifyContent="flex-end">
-                <LoadingButton
-                  loading={isTeamUpdateBusy}
-                  variant="contained"
-                  startIcon={<Icon fontSize="small" iconName={ICON_NAME.SAVE} />}
-                  aria-label={t("update")}
-                  name="update-profile"
-                  disabled={isTeamUpdateBusy || !isDirty || !isValid}
-                  type="submit">
-                  {t("update")}
-                </LoadingButton>
-              </Stack>
-            )}
-          </>
-        </Stack>
-      </Box>
-      <Box sx={{ mt: 16 }}>
-        <Stack spacing={theme.spacing(6)}>
-          <Divider />
-          <ConfirmModal
-            open={confirmDeleteOrLeaveTeamDialogOpen}
-            title={isTeamOwner ? t("delete_team") : t("leave_team")}
-            body={
-              <Trans
-                i18nKey={
-                  isTeamOwner ? "common:delete_team_confirmation_body" : "common:leave_team_confirmation_body"
-                }
-                components={{ b: <b />, ul: <ul />, li: <li /> }}
-              />
-            }
-            onClose={() => {
-              setConfirmDeleteOrLeaveTeamDialogOpen(false);
-            }}
-            onConfirm={async () => {
-              setConfirmDeleteOrLeaveTeamDialogOpen(false);
-              await _deleteOrLeaveTeam();
-            }}
-            closeText={t("close")}
-            confirmText={isTeamOwner ? t("delete_team") : t("leave_team")}
-          />
-          <Box>
-            <Typography variant="body1" fontWeight="bold" color={theme.palette.error.main}>
-              {t("danger_zone")}
-            </Typography>
-            <Typography variant="caption">
-              {isTeamOwner ? t("danger_zone_delete_team_description") : t("leave_team")}
-            </Typography>
-          </Box>
-          <Divider />
-          <Stack>
-            <Typography variant="body1">
-              <Trans
-                i18nKey={
-                  isTeamOwner ? "common:danger_zone_delete_team_body" : "common:danger_zone_leave_team_body"
-                }
-                components={{ b: <b />, a: <b /> }}
-              />
-            </Typography>
-          </Stack>
-          <Stack direction="row" alignItems="center" justifyContent="flex-end">
-            <LoadingButton
-              size="large"
-              startIcon={
-                <Icon fontSize="small" iconName={isTeamOwner ? ICON_NAME.TRASH : ICON_NAME.SIGNOUT} />
-              }
-              variant="outlined"
-              color="error"
-              aria-label={isTeamOwner ? t("delete_team") : t("leave_team")}
-              name="delete-team"
-              disabled={confirmDeleteOrLeaveTeamDialogOpen}
-              loading={isDeleteOrLeaveTeamBusy}
-              onClick={() => {
-                setConfirmDeleteOrLeaveTeamDialogOpen(true);
-              }}>
-              <Typography variant="body1" fontWeight="bold" color="inherit">
-                {isTeamOwner ? t("delete_team") : t("leave_team")}
-              </Typography>
-            </LoadingButton>
-          </Stack>
-        </Stack>
-      </Box>
-    </>
-  );
-}
-
-function TeamMembers({ team }: { team: Team }) {
-  const { t } = useTranslation("common");
-  const { id: teamId } = team;
-  const { teamMembers, mutate: mutateMembers } = useTeamMembers(teamId);
-  const theme = useTheme();
-  const [openInviteModal, setOpenInviteModal] = useState(false);
-  const { organization } = useOrganization();
-  const { members: organizationMembers } = useOrganizationMembers(organization?.id || "");
-
-  const membersNotInTeam = useMemo(() => {
-    const teamMemberIds = new Set((teamMembers || []).map((member) => member.id));
-    return (organizationMembers || []).filter((member) => !teamMemberIds.has(member.id));
-  }, [teamMembers, organizationMembers]);
-  const { isTeamOwner } = useAuthZ({
-    team,
-  });
-  const {
-    activeMemberMoreMenuOptions,
-    pendingInvitationMoreMenuOptions,
-    openMoreMenu,
-    activeMember,
-    moreMenuState,
-    closeMoreMenu,
-  } = useMemberSettingsMoreMenu("team");
-
-  return (
-    <>
-      <Stack spacing={theme.spacing(6)}>
-        {activeMember && moreMenuState && (
-          <TeamMemberDialogWrapper
-            member={activeMember as TeamMember}
-            action={moreMenuState.id as TeamMemberActions}
-            onClose={closeMoreMenu}
-            teamId={teamId}
-            onMemberDelete={() => {
-              mutateMembers();
-              closeMoreMenu();
-            }}
-          />
-        )}
-        {organizationMembers && teamMembers && isTeamOwner && (
-          <TeamMemberInviteModal
-            open={openInviteModal}
-            onClose={() => {
-              setOpenInviteModal(false);
-              mutateMembers();
-            }}
-            members={membersNotInTeam || []}
-            teamId={teamId}
-            onInvite={() => {}}
-          />
-        )}
-
-        <Divider />
-        <Box>
-          <Typography variant="body1" fontWeight="bold">
-            {isTeamOwner ? t("team_manage_members") : t("members")}
-          </Typography>
-          <Typography variant="caption">
-            {isTeamOwner ? t("team_manage_members_description") : t("team_members_description")}
-          </Typography>
-        </Box>
-        <Divider />
-
-        {isTeamOwner && (
-          <Stack alignItems="flex-end">
-            <LoadingButton
-              variant="contained"
-              disabled={!organizationMembers || !teamMembers}
-              sx={{ whiteSpace: "nowrap" }}
-              onClick={() => {
-                setOpenInviteModal(true);
-              }}
-              startIcon={<Icon fontSize="small" iconName={ICON_NAME.PLUS} />}
-              name="send-invite">
-              {t("new_org_member")}
-            </LoadingButton>
-          </Stack>
-        )}
-        <MembersTable
-          members={teamMembers || []}
-          memberRoles={teamRoleEnum.options}
-          activeMemberMoreMenuOptions={activeMemberMoreMenuOptions}
-          pendingInvitationMoreMenuOptions={pendingInvitationMoreMenuOptions}
-          onMoreMenuItemClick={openMoreMenu}
-          type="team"
-          viewOnly={!isTeamOwner}
-        />
-      </Stack>
-    </>
-  );
-}
-
+/**
+ * One team as one page: the path back to Teams, the head with the way to the
+ * team's space, its members, its profile, and deleting or leaving it. What
+ * depends on the caller's organization role (editing, deleting, leaving)
+ * waits for the profile, so nothing turns editable later or opens a dialog
+ * that a click queued before it loaded.
+ */
 export default function TeamPage(props: { params: Promise<{ teamId: string }> }) {
-  const params = use(props.params);
-
-  const { teamId } = params;
-
+  const { teamId } = use(props.params);
   const { t } = useTranslation("common");
-
-  const { team } = useTeam(teamId);
-
+  const theme = useTheme();
   const router = useRouter();
+  const { team, isLoading, isError, mutate } = useTeam(teamId);
+  const { mutate: mutateTeams } = useTeams();
+  const { userProfile, isError: profileError, mutate: mutateProfile } = useUserProfile();
+  const { spaces } = useSpaces();
+  const [deleting, setDeleting] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
-  const [value, setValue] = useState(0);
-  const handleChange = (_event: React.SyntheticEvent, newValue: number) => {
-    setValue(newValue);
+  const space = spaces.find((candidate) => candidate.team_id === teamId);
+  const spaceHref = space ? contentPath({ spaceId: space.id }) : undefined;
+  const permissions = teamPermissions({ teamRole: team?.role, orgRoles: userProfile?.roles });
+  // Core answers null for a team the caller is not in (F3).
+  const missing = team === null || statusOf(isError) === 404;
+  const profileTitle = t("settings_team_profile_title");
+
+  const path = (
+    <Box
+      component="nav"
+      aria-label={t("settings_team_path")}
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 1.5,
+        minWidth: 0,
+        fontSize: 13,
+        color: "text.secondary",
+      }}>
+      <Link component={NextLink} href={SETTINGS_ROUTES.teams} underline="hover" color="inherit">
+        {t("settings_nav_teams")}
+      </Link>
+      {/* A missing team has no name to go after the separator. */}
+      {!missing && <span aria-hidden>/</span>}
+      {team ? (
+        <Box
+          component="span"
+          aria-current="page"
+          sx={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {team.name}
+        </Box>
+      ) : (
+        !missing && <Skeleton variant="text" width={120} />
+      )}
+    </Box>
+  );
+
+  if (missing) {
+    return (
+      <SettingsPage header={path}>
+        <Typography>{t("settings_team_missing")}</Typography>
+        <Box>
+          <Link component={NextLink} href={SETTINGS_ROUTES.teams} sx={{ fontWeight: 700 }}>
+            {t("settings_team_back_to_teams")}
+          </Link>
+        </Box>
+      </SettingsPage>
+    );
+  }
+  if (!team) {
+    return (
+      <SettingsPage
+        header={
+          // While the team loads: the path and the head's placeholder, where
+          // the loaded heading will be.
+          <Stack spacing={4}>
+            {path}
+            {!(isError && !isLoading) && (
+              <Box
+                role="status"
+                aria-busy="true"
+                aria-label={t("settings_nav_loading")}
+                sx={{ display: "flex", alignItems: "flex-start", gap: 4 }}>
+                <Skeleton
+                  variant="rounded"
+                  width={56}
+                  height={56}
+                  sx={{ borderRadius: "14px", flexShrink: 0 }}
+                />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Skeleton variant="text" width={200} height={36} />
+                  <Skeleton variant="text" width="50%" />
+                </Box>
+              </Box>
+            )}
+          </Stack>
+        }>
+        {isError && !isLoading ? (
+          <SettingsLoadError onRetry={() => void mutate()} />
+        ) : (
+          <>
+            <CardSkeleton title={t("settings_team_members_title")} rows={2} variant="list" />
+            <CardSkeleton title={profileTitle} rows={2} help footer />
+          </>
+        )}
+      </SettingsPage>
+    );
+  }
+
+  const refresh = () => Promise.all([mutate(), mutateTeams()]);
+  // Teams opens without the team at once; the list is read again behind it.
+  const backToTeams = () => {
+    void mutateTeams((list) => list?.filter((other) => other.id !== teamId), { revalidate: true });
+    router.push(SETTINGS_ROUTES.teams);
   };
-
-  const tabItems = useMemo(() => {
-    return [
-      { label: t("profile"), value: "profile", icon: ICON_NAME.USERS },
-      { label: t("members"), value: "members", icon: ICON_NAME.ADD_USER },
-    ];
-  }, [t]);
+  // The head sits on the page's background, not on a card.
+  const ownerInk = readableText(theme, theme.palette.warning.main, theme.palette.background.default);
+  const badge = permissions.isTeamOwner
+    ? t("settings_team_you_own")
+    : permissions.isMember
+      ? t("settings_team_you_member")
+      : null;
 
   return (
-    <>
-      {team && (
-        <Box sx={{ p: 4 }}>
-          <Stack direction="row" alignItems="center" spacing={2}>
-            <IconButton
-              onClick={() => {
-                router.push(`/settings/teams`);
-              }}>
-              <Icon iconName={ICON_NAME.CHEVRON_LEFT} style={{ fontSize: "15px" }} />
-            </IconButton>
-            <Typography
-              variant="body1"
-              fontWeight="bold"
-              sx={{
-                display: "flex",
-              }}>
-              {team.name}
-            </Typography>
-          </Stack>
-          <Box sx={{ width: "100%", mt: 8 }}>
-            <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
-              <Tabs variant="fullWidth" value={value} scrollButtons onChange={handleChange}>
-                {tabItems.map((item) => (
-                  <Tab
-                    iconPosition="start"
-                    icon={
-                      <Box sx={{ pr: 2 }}>
-                        <Icon iconName={item.icon} htmlColor="inherit" style={{ fontSize: 15 }} />
-                      </Box>
-                    }
-                    key={item.value}
-                    label={item.label}
-                    {...a11yProps(item.value)}
-                  />
-                ))}
-              </Tabs>
+    <SettingsPage
+      header={
+        <Stack spacing={4}>
+          {path}
+          <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 4 }}>
+            <TeamAvatar name={team.name} src={team.avatar} size={56} />
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2 }}>
+                <Typography
+                  component="h2"
+                  sx={{
+                    m: 0,
+                    minWidth: 0,
+                    overflowWrap: "anywhere",
+                    fontSize: { xs: 21, md: 24 },
+                    fontWeight: 600,
+                    letterSpacing: "-0.3px",
+                  }}>
+                  {team.name}
+                </Typography>
+                {badge && (
+                  <Box
+                    component="span"
+                    sx={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 1,
+                      px: 2,
+                      py: "2px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      // The owner's amber in its shade that reads as text on the page (warning.main does not).
+                      border: `1px solid ${permissions.isTeamOwner ? ownerInk : theme.palette.divider}`,
+                      color: permissions.isTeamOwner ? ownerInk : "text.secondary",
+                    }}>
+                    {permissions.isTeamOwner && (
+                      <Icon iconName={ICON_NAME.CROWN} style={{ fontSize: 11 }} htmlColor="inherit" />
+                    )}
+                    {badge}
+                  </Box>
+                )}
+              </Box>
+              <Typography
+                variant="body2"
+                sx={{
+                  mt: 1,
+                  overflowWrap: "anywhere",
+                  color: team.description ? "text.secondary" : "text.disabled",
+                  fontStyle: team.description ? "normal" : "italic",
+                }}>
+                {team.description || t("settings_team_no_description")}
+              </Typography>
             </Box>
-
-            {tabItems.map((item) => (
-              <CustomTabPanel
-                disablePadding
-                key={item.value}
-                value={value}
-                index={tabItems.findIndex((tab) => tab.value === item.value)}>
-                {item.value === "profile" && <TeamProfile team={team} />}
-                {item.value === "members" && <TeamMembers team={team} />}
-              </CustomTabPanel>
-            ))}
+            {spaceHref && (
+              <Button
+                component={NextLink}
+                href={spaceHref}
+                variant="outlined"
+                startIcon={<Icon iconName={ICON_NAME.FOLDER} style={{ fontSize: 14 }} htmlColor="inherit" />}
+                sx={{ borderRadius: 999, whiteSpace: "nowrap" }}>
+                {t("settings_team_space_link")}
+              </Button>
+            )}
           </Box>
-        </Box>
+        </Stack>
+      }>
+      <TeamMembersCard
+        teamId={team.id}
+        teamName={team.name}
+        selfId={userProfile?.id}
+        permissions={permissions}
+      />
+      {userProfile ? (
+        <TeamProfileCard
+          team={team}
+          canEdit={permissions.canEditTeam}
+          isTeamOwner={permissions.isTeamOwner}
+          onSaved={refresh}
+        />
+      ) : profileError ? (
+        <SettingsCard title={profileTitle}>
+          <SettingsLoadError onRetry={() => void mutateProfile()} />
+        </SettingsCard>
+      ) : (
+        <CardSkeleton title={profileTitle} rows={2} help footer />
       )}
-    </>
+      {userProfile && permissions.canEditTeam && (
+        <DangerCard
+          title={t("settings_team_delete_title")}
+          text={t("settings_team_delete_text")}
+          buttonLabel={t("settings_team_delete_confirm")}
+          onClick={() => setDeleting(true)}
+        />
+      )}
+      {userProfile && permissions.canLeave && (
+        <DangerCard
+          title={t("settings_team_leave_title")}
+          text={t("settings_team_leave_text")}
+          buttonLabel={t("settings_team_leave_confirm")}
+          icon={ICON_NAME.SIGNOUT}
+          onClick={() => setLeaving(true)}
+        />
+      )}
+      {deleting && (
+        <DeleteTeamDialog
+          teamId={team.id}
+          teamName={team.name}
+          spaceHref={spaceHref}
+          onClose={() => setDeleting(false)}
+          onDeleted={backToTeams}
+        />
+      )}
+      {leaving && userProfile && (
+        <LeaveTeamDialog
+          teamId={team.id}
+          teamName={team.name}
+          selfId={userProfile.id}
+          onClose={() => setLeaving(false)}
+          onLeft={backToTeams}
+        />
+      )}
+    </SettingsPage>
   );
 }

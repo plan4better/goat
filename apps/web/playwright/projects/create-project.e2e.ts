@@ -18,7 +18,7 @@ test.describe("Project Management", () => {
     // the project files into the caller's personal home folder with no
     // destination field to fill in.
     const projectName = `E2E Test Project ${Date.now()}`;
-    const nameField = page.getByLabel("New project");
+    const nameField = page.getByRole("textbox", { name: "New project" });
     await nameField.click();
     await nameField.fill(projectName);
 
@@ -48,7 +48,7 @@ test.describe("Project Management", () => {
     await expect(page.getByRole("dialog").getByText("New project", { exact: true })).toBeVisible();
 
     const projectName = `E2E Project Page ${Date.now()}`;
-    await page.getByLabel("New project").fill(projectName);
+    await page.getByRole("textbox", { name: "New project" }).fill(projectName);
 
     await page.getByRole("button", { name: "Create project" }).click();
 

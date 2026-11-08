@@ -87,24 +87,27 @@ export const SHARED_TEAM_NAME = "Design QA";
  * that has never had it. Never deletes it.
  */
 export const ensureSharedTeam = async (page: Page): Promise<void> => {
-  // The list has no loading state of its own, so "no such team" and "the
-  // teams have not arrived yet" look identical in the DOM — wait for the
-  // request itself before reading the list, or a second team gets created.
+  // "No such team" and "the teams have not arrived yet" both lack the card —
+  // wait for the request itself, then for its cards to be drawn (the loading
+  // placeholder gone) before reading the list, or a second team gets created.
   const teamsLoaded = page.waitForResponse(
     (response) => /\/api\/v2\/teams(\?|$)/.test(response.url()) && response.ok()
   );
   await page.goto("/settings/teams");
   await teamsLoaded;
+  await expect(page.getByRole("status", { name: "Loading" })).toHaveCount(0);
 
   const row = page.getByText(SHARED_TEAM_NAME, { exact: true });
   if ((await row.count()) > 0) return;
 
-  await page.getByRole("button", { name: "New Team" }).click();
-  // The dialog's title is plain text, not a heading.
-  const dialog = page.getByRole("dialog").filter({ hasText: "Create team" });
+  // `first()`: a member without teams sees "New team" twice, in the header
+  // and in the empty state.
+  await page.getByRole("button", { name: "New team" }).first().click();
+  const dialog = page.getByRole("dialog").filter({ hasText: "New team" });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Team name").fill(SHARED_TEAM_NAME);
-  await dialog.getByRole("button", { name: "Create", exact: true }).click();
+  await dialog.getByRole("button", { name: "Create team", exact: true }).click();
   await expect(dialog).toBeHidden();
+  // Creating opens the new team's page, which names it in its heading.
   await expect(row.first()).toBeVisible({ timeout: 15000 });
 };

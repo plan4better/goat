@@ -55,6 +55,14 @@ describe("organizationAnalyticsCreateSchema", () => {
     }
   });
 
+  it("trims the url before it checks and saves it", () => {
+    const parsed = organizationAnalyticsCreateSchema.parse({
+      ...validCreate,
+      config: { ...validCreate.config, url: "  https://matomo.example.org  " },
+    });
+    expect(parsed.config.url).toBe("https://matomo.example.org/");
+  });
+
   it("rejects http urls", () => {
     expect(() =>
       organizationAnalyticsCreateSchema.parse({
@@ -62,6 +70,29 @@ describe("organizationAnalyticsCreateSchema", () => {
         config: { ...validCreate.config, url: "http://matomo.example.org/" },
       })
     ).toThrow();
+  });
+
+  it("says what is wrong with i18n keys, the first problem of each field first", () => {
+    const firstMessage = (over: Record<string, unknown>, config: Record<string, unknown> = {}) => {
+      const result = organizationAnalyticsCreateSchema.safeParse({
+        ...validCreate,
+        ...over,
+        config: { ...validCreate.config, ...config },
+      });
+      return result.success ? undefined : result.error.issues[0].message;
+    };
+    expect(firstMessage({ name: " " })).toBe("settings_analytics_error_required");
+    expect(firstMessage({ name: "x".repeat(121) })).toBe("settings_analytics_error_name_long");
+    expect(firstMessage({}, { url: "" })).toBe("settings_analytics_error_required");
+    expect(firstMessage({}, { url: "   " })).toBe("settings_analytics_error_required");
+    expect(firstMessage({}, { url: "matomo" })).toBe("settings_analytics_error_https");
+    expect(firstMessage({}, { url: "http://matomo.example.org/" })).toBe("settings_analytics_error_https");
+    expect(firstMessage({}, { url: "https://matomo.example.org/?x=1" })).toBe(
+      "settings_analytics_error_query"
+    );
+    expect(firstMessage({}, { site_id: "" })).toBe("settings_analytics_error_required");
+    expect(firstMessage({}, { site_id: "5a" })).toBe("settings_analytics_error_digits");
+    expect(firstMessage({}, { site_id: "1".repeat(17) })).toBe("settings_analytics_error_site_id_long");
   });
 });
 

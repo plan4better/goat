@@ -279,6 +279,8 @@ describe("ShareDialog", () => {
         onTransfer={onTransfer}
       />
     );
+    // Named by its title, as every AppDialog is.
+    expect(screen.getByRole("dialog", { name: /^share_item/ })).toBeInTheDocument();
 
     const search = screen.getByPlaceholderText("add_people_placeholder");
     fireEvent.change(search, { target: { value: "len" } });

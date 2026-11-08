@@ -71,11 +71,12 @@ describe("useHomeCreate", () => {
     expect(mutateMock).toHaveBeenCalledWith("http://core/api/v2/users/me/onboarding");
   });
 
-  it("revalidates the onboarding facts after the upload dialog closes", () => {
+  it("revalidates the onboarding facts after the upload dialog closes", async () => {
     render(<Harness />);
 
     fireEvent.click(screen.getByText("open-upload"));
-    fireEvent.click(screen.getByText("close-upload"));
+    // The dialog is a lazy `next/dynamic` chunk, so it lands a tick later.
+    fireEvent.click(await screen.findByText("close-upload"));
 
     expect(mutateMock).toHaveBeenCalledWith("http://core/api/v2/users/me/onboarding");
   });

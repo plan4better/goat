@@ -1,6 +1,7 @@
 "use client";
 
 import { useMediaQuery, useTheme } from "@mui/material";
+import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,17 +10,20 @@ import { ICON_NAME } from "@p4b/ui/components/Icon";
 import { useOrganizationMembers } from "@/lib/api/organizations";
 import { type CreditBalance, useCreditBreakdown } from "@/lib/api/usage";
 import { useOrganization } from "@/lib/api/users";
+import { SETTINGS_ROUTES } from "@/lib/settingsRoutes";
 import { formatCredits, formatRate } from "@/lib/utils/credits";
-import { rangeWindow } from "@/lib/utils/usageRange";
+import { requestWindow } from "@/lib/utils/usageRange";
 import { organizationRoles } from "@/lib/validations/organization";
 
 import { useLocalList } from "@/hooks/settings/useLocalList";
+import { useOrganizationId } from "@/hooks/settings/useOrganizationId";
 
 import PillMenu from "@/components/dashboard/common/PillMenu";
 import SearchInput from "@/components/dashboard/common/SearchInput";
 import ToolPill from "@/components/dashboard/common/ToolPill";
 import UserAvatar from "@/components/dashboard/common/UserAvatar";
 import { DetailFrame, DetailList, figureColumn } from "@/components/settings/usage/UsageDetailFrame";
+import type { UsageDetailHeaderProps } from "@/components/settings/usage/UsageDetailHeader";
 import {
   PLAIN,
   type SortState,
@@ -52,18 +56,56 @@ interface SeatRow {
 
 const searchText = (row: SeatRow) => `${row.name} ${row.email}`;
 
+/** The header: the editor seats against their limit, the viewers beside them. */
+const seatsHeader = (balance: CreditBalance, t: TFunction, language: string): UsageDetailHeaderProps => {
+  const count = (value: number) => value.toLocaleString(language);
+  const editors = balance.total_editors;
+  const viewers = balance.total_viewers;
+  const editorsText =
+    editors === null
+      ? t("usage_seats_editors", { count: balance.used_editors })
+      : t("usage_seats_editors_of", { limit: count(editors) });
+  const viewersText =
+    viewers === null
+      ? t("usage_seats_viewers", { count: balance.used_viewers, used: count(balance.used_viewers) })
+      : t("usage_seats_viewers_of", { used: count(balance.used_viewers), limit: count(viewers) });
+  return {
+    title: t("usage_seats_title"),
+    amount: count(balance.used_editors),
+    amountRest: t(editors === null && viewers === null ? "usage_seats_line_no_limit" : "usage_seats_line", {
+      editors: editorsText,
+      viewers: viewersText,
+    }),
+    // More editors than seats, as the tile's red dot says.
+    amountTone: editors !== null && balance.used_editors > editors ? "error" : undefined,
+    explain: [
+      t("usage_seats_explain"),
+      balance.ai_credits_per_editor
+        ? t("usage_seats_explain_ai", { perEditor: formatRate(balance.ai_credits_per_editor, language) })
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    limitLine: editors !== null || viewers !== null ? t("usage_seats_limit") : undefined,
+    action: (
+      <ToolPill icon={ICON_NAME.USERS} label={t("usage_manage_members")} href={SETTINGS_ROUTES.members} />
+    ),
+  };
+};
+
 /**
  * The editor and viewer seats: who holds them (open invitations too, as they
  * hold a seat) with the credits and AI credits each used this period, found
  * by name or email and filtered by role, all in the browser. A member with
  * credits opens Credits narrowed to them, one with AI credits only opens AI
- * credits.
+ * credits. `balance` is undefined until `/credits/balance` answers: the list
+ * is there before it, the header's seats fill in with it.
  */
 export const EditorsDetail = ({
   balance,
   onOpenUsage,
 }: {
-  balance: CreditBalance;
+  balance?: CreditBalance;
   onOpenUsage: (quota: "credits" | "ai", memberId: string) => void;
 }) => {
   const { t, i18n } = useTranslation("common");
@@ -72,10 +114,12 @@ export const EditorsDetail = ({
   const isPhone = useMediaQuery(useTheme().breakpoints.down("sm"));
   const list = useListControls();
   const [role, setRole] = useState<RoleFilter>("all");
-  const { organization, isError: organizationError } = useOrganization();
-  const members = useOrganizationMembers(organization?.id ?? "", { include_invitations: true });
-  const period = rangeWindow({ preset: "period" }, balance);
-  const usage = useCreditBreakdown("member", { since: period.since, until: period.until });
+  const { isError: organizationError } = useOrganization();
+  // The cookie's id: the members do not wait for GET /users/organization (L4).
+  const organizationId = useOrganizationId();
+  const members = useOrganizationMembers(organizationId ?? "", { include_invitations: true });
+  // This period: core counts from its start, so the usage does not wait for the balance.
+  const usage = useCreditBreakdown("member", requestWindow({ preset: "period" }, balance) ?? {});
   const sort = list.sort ?? DEFAULT_SORT;
 
   const usageOf = new Map((usage.breakdown?.rows ?? []).map((row) => [row.key, row]));
@@ -101,7 +145,6 @@ export const EditorsDetail = ({
   const failed = !!organizationError || !!members.isError || !!usage.isError;
 
   const credits = (value: number) => formatCredits(value, language);
-  const count = (value: number) => value.toLocaleString(language);
   const roleLabels: Record<RoleFilter, string> = {
     all: t("usage_all_roles"),
     admins: t("usage_role_admins"),
@@ -151,49 +194,12 @@ export const EditorsDetail = ({
     }),
   ];
 
-  const editors = balance.total_editors;
-  const viewers = balance.total_viewers;
-  const editorsText =
-    editors === null
-      ? t("usage_seats_editors", { count: balance.used_editors })
-      : t("usage_seats_editors_of", { limit: count(editors) });
-  const viewersText =
-    viewers === null
-      ? t("usage_seats_viewers", { count: balance.used_viewers, used: count(balance.used_viewers) })
-      : t("usage_seats_viewers_of", { used: count(balance.used_viewers), limit: count(viewers) });
   const noun = (value: number) => t("usage_noun_members", { count: value });
 
   return (
     <DetailFrame
-      header={{
-        title: t("usage_seats_title"),
-        amount: count(balance.used_editors),
-        amountRest: t(
-          editors === null && viewers === null ? "usage_seats_line_no_limit" : "usage_seats_line",
-          {
-            editors: editorsText,
-            viewers: viewersText,
-          }
-        ),
-        // More editors than seats, as the tile's red dot says.
-        amountTone: editors !== null && balance.used_editors > editors ? "error" : undefined,
-        explain: [
-          t("usage_seats_explain"),
-          balance.ai_credits_per_editor
-            ? t("usage_seats_explain_ai", { perEditor: formatRate(balance.ai_credits_per_editor, language) })
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" "),
-        limitLine: editors !== null || viewers !== null ? t("usage_seats_limit") : undefined,
-        action: (
-          <ToolPill
-            icon={ICON_NAME.USERS}
-            label={t("usage_manage_members")}
-            href="/settings/organization/members"
-          />
-        ),
-      }}
+      // The seats are the balance's: the header waits for it, the list does not.
+      header={balance ? seatsHeader(balance, t, language) : undefined}
       toolbar={
         <>
           <SearchInput

@@ -100,6 +100,8 @@ describe("TransferDialog", () => {
         onTransferred={noop}
       />
     );
+    // Named by its title, as every AppDialog is.
+    expect(screen.getByRole("dialog", { name: /^transfer_title/ })).toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByText(/transfer_line_grants/)).toBeInTheDocument());
 

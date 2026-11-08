@@ -67,7 +67,7 @@ describe("ContentAddMenu", () => {
     );
 
     pick("new_folder");
-    fireEvent.change(screen.getByLabelText("new_folder"), { target: { value: "Drafts" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "new_folder" }), { target: { value: "Drafts" } });
     fireEvent.click(screen.getByRole("button", { name: "create_folder" }));
 
     await waitFor(() => expect(createFolderMock).toHaveBeenCalledWith("Drafts", "folder-a", "space-1"));
@@ -77,7 +77,7 @@ describe("ContentAddMenu", () => {
     render(<ContentAddMenu folderId={null} homeFolderId="home-1" spaceId="space-1" spaceKind="personal" />);
 
     pick("new_folder");
-    fireEvent.change(screen.getByLabelText("new_folder"), { target: { value: "Drafts" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "new_folder" }), { target: { value: "Drafts" } });
     fireEvent.click(screen.getByRole("button", { name: "create_folder" }));
 
     await waitFor(() => expect(createFolderMock).toHaveBeenCalledWith("Drafts", null, "space-1"));
@@ -89,7 +89,9 @@ describe("ContentAddMenu", () => {
     );
 
     pick("blank_project");
-    fireEvent.change(screen.getByLabelText("new_project"), { target: { value: "Bus stops" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "new_project" }), {
+      target: { value: "Bus stops" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "create_project" }));
 
     await waitFor(() =>
@@ -111,7 +113,9 @@ describe("ContentAddMenu", () => {
     render(<ContentAddMenu folderId={null} homeFolderId="home-1" spaceId="space-1" spaceKind="personal" />);
 
     pick("blank_project");
-    fireEvent.change(screen.getByLabelText("new_project"), { target: { value: "Bus stops" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "new_project" }), {
+      target: { value: "Bus stops" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "create_project" }));
 
     await waitFor(() =>

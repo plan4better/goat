@@ -18,12 +18,18 @@ export const avatarPalette = (seed: string, theme: Theme): { bgcolor: string; co
     : { bgcolor: `hsl(${hue} 48% 88%)`, color: `hsl(${hue} 45% 30%)` };
 };
 
-/** Up to two initials from a display name — "Marie Klein" → "MK". */
-export const initialsOf = (name: string): string =>
-  name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
+// Built with the constructor: the shared tsconfig targets es5, so TypeScript
+// refuses the `u` flag in a literal; every browser GOAT supports runs it.
+const LETTER = new RegExp("\\p{L}", "u");
+
+/** Up to two initials from a display name — "Marie Klein" → "MK". Words
+ * without a letter (a team name's "-", a year) are skipped — "Harthof - P4B"
+ * → "HP" — unless no word has one. */
+export const initialsOf = (name: string): string => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const lettered = words.filter((word) => LETTER.test(word));
+  return (lettered.length ? lettered : words)
     .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
+    .map((word) => word[0]?.toUpperCase() ?? "")
     .join("");
+};
