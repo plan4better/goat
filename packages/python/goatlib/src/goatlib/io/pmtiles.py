@@ -127,10 +127,10 @@ def publish_tiles(built: Path, final: Path) -> None:
 class PMTilesConfig:
     """Configuration for PMTiles generation.
 
-    Points, lines and label points use variable-depth tile pyramids
+    Points and label points use variable-depth tile pyramids
     (--generate-variable-depth-tile-pyramid), which only generate tiles where
-    needed. Polygons get every zoom down to the one manby guesses, at most
-    max_zoom (see PMTilesGenerator.manby_flags).
+    needed. Lines and polygons get every zoom down to the one manby guesses,
+    at most max_zoom (see PMTilesGenerator.manby_flags).
 
     Attributes:
         enabled: Whether PMTiles generation is enabled
@@ -691,8 +691,8 @@ class PMTilesGenerator:
                 anchor_layer_name layer
             distinct_locations: For point layers, how many distinct locations
                 the points have, counted up to 2 (None: not counted; see
-                _distinct_locations). For polygons, 1 means manby found no
-                two locations to guess a max zoom from.
+                _distinct_locations). For lines and polygons, 1 means manby
+                found no two locations to guess a max zoom from.
 
         Returns:
             The flags, without the input and the output
@@ -764,12 +764,23 @@ class PMTilesGenerator:
                 "--low-detail=10",
                 "--preserve-point-density-threshold=64",
             ]
+        # Lines and polygons: every zoom down to the one manby guesses from
+        # the spacing of the vertices, at most max_zoom; geoapi overzooms past
+        # it. A variable depth pyramid would end where a tile holds its
+        # features whole, at full detail, which makes the zoomed out tiles of
+        # large polygons and of sparse networks heavy. --extra-detail=30
+        # keeps the deepest zoom at manby's full precision, which overzoomed
+        # tiles are cut from.
+        if distinct_locations is not None and distinct_locations < 2:
+            zooms = [f"-z{max_zoom}"]
+        else:
+            zooms = [f"--largest-maximum-zoom-guess={max_zoom}"]
         if part_type == 2:
             return [
                 *flags,
-                "--generate-variable-depth-tile-pyramid",
-                f"-z{max_zoom}",
-                "--full-detail=16",
+                *zooms,
+                "--full-detail=12",
+                "--extra-detail=30",
                 "-M",
                 "2000000",
                 "-O",
@@ -782,16 +793,6 @@ class PMTilesGenerator:
         # Polygons. Not --coalesce-densest-as-needed: a coalesced polygon
         # keeps one feature's attributes, so a filter could draw shapes that
         # do not match it.
-        # Every zoom down to the one manby guesses from the spacing of the
-        # vertices, at most max_zoom; geoapi overzooms past it. A variable
-        # depth pyramid would end where a tile holds its polygons whole, at
-        # full detail, which makes the zoomed out tiles of large polygons
-        # heavy. --extra-detail=30 keeps the deepest zoom at manby's full
-        # precision, which overzoomed tiles are cut from.
-        if distinct_locations is not None and distinct_locations < 2:
-            zooms = [f"-z{max_zoom}"]
-        else:
-            zooms = [f"--largest-maximum-zoom-guess={max_zoom}"]
         return [
             *flags,
             *zooms,

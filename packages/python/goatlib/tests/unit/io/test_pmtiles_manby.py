@@ -109,8 +109,9 @@ def test_flags_per_geometry_type(generator: PMTilesGenerator) -> None:
 
     lines = generator.manby_flags("MULTILINESTRING", 42, False, None)
     for flag in (
-        "-z14",
-        "--full-detail=16",
+        "--largest-maximum-zoom-guess=14",
+        "--full-detail=12",
+        "--extra-detail=30",
         "--drop-densest-as-needed",
         "--extend-zooms-if-still-dropping",
         "--simplify-only-low-zooms",
@@ -119,6 +120,15 @@ def test_flags_per_geometry_type(generator: PMTilesGenerator) -> None:
         assert flag in lines
     assert _has(lines, "-M", "2000000")
     assert _has(lines, "-O", "200000")
+    # every zoom down to the guessed one: no tile above it holds all the
+    # vertices of its lines
+    assert "--generate-variable-depth-tile-pyramid" not in lines
+    assert "-z14" not in lines
+
+    # manby found no two locations to guess from: the fixed max zoom
+    one_line = generator.manby_flags("LINESTRING", 42, False, 1)
+    assert "-z14" in one_line
+    assert not any(f.startswith("--largest-maximum-zoom-guess") for f in one_line)
 
     polygons = generator.manby_flags("POLYGON", 42, False, None)
     for flag in (
@@ -158,7 +168,7 @@ def test_flags_per_geometry_type(generator: PMTilesGenerator) -> None:
         assert flag in anchors
     assert _has(anchors, "-l", "default_anchor")
 
-    for flags in (points, one_location, lines, anchors):
+    for flags in (points, one_location, anchors):
         assert "--generate-variable-depth-tile-pyramid" in flags
     for flags in (points, one_location, lines, polygons, anchors):
         assert all(flag in flags for flag in COMMON)
@@ -185,8 +195,9 @@ def test_max_zoom_follows_the_config(tmp_path: Path) -> None:
         tiles_data_dir=tmp_path, config=PMTilesConfig(min_zoom=2, max_zoom=12)
     )
     flags = generator.manby_flags("LINESTRING", None, False, None)
-    assert "-z12" in flags
+    assert "--largest-maximum-zoom-guess=12" in flags
     assert "-Z2" in flags
+    assert "-z12" in generator.manby_flags("LINESTRING", None, False, 1)
 
 
 def test_memory_budget_is_a_share_of_the_container(
