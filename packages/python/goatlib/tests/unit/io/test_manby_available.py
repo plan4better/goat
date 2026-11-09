@@ -1,9 +1,8 @@
-"""manby is installed, and it is the plan4better build.
+"""manby is installed, in a version with what GOAT uses.
 
-The tile builder and geoapi's tile filter run manby; upstream 0.1.9 has no
+The tile builder and geoapi's tile filter run manby. Before 0.1.11 it had no
 `ilike` in its feature filter and no `--largest-maximum-zoom-guess`, which the
-polygon recipe uses, so both only work with our fork's wheel (pinned by URL
-in the root pyproject.toml).
+line and polygon recipes use.
 """
 
 import subprocess
@@ -14,7 +13,7 @@ import manby
 from pmtiles.reader import MmapSource, all_tiles
 
 
-def test_manby_is_our_build(tmp_path: Path) -> None:
+def test_manby_has_what_goat_uses(tmp_path: Path) -> None:
     # manby prints its version on stderr
     version = subprocess.run(
         [manby.binary(), "--version"],
@@ -23,7 +22,7 @@ def test_manby_is_our_build(tmp_path: Path) -> None:
         text=True,
         check=True,
     )
-    assert version.stdout.startswith("manby 0.1.9")
+    assert version.stdout.startswith("manby 0.1.11")
     usage = subprocess.run(
         [manby.binary(), "--help"],
         stdout=subprocess.PIPE,

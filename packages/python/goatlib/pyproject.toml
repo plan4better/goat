@@ -20,7 +20,7 @@ api = [
 ]
 full = [
   "routing>=0.1.0",
-  "manby==0.1.9",
+  "manby==0.1.11",
   "asyncpg>=0.29.0",
   "boto3>=1.35.0",
   "cachetools>=5.0.0",
