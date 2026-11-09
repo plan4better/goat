@@ -229,25 +229,6 @@ jobs:
         python -c "import processes.main"
         python -c "import duckdb; c = duckdb.connect(config={'autoinstall_known_extensions': False}); [c.execute(f'LOAD {e}') for e in ('spatial', 'httpfs', 'postgres', 'ducklake', 'h3')]"
 
-  release-docker-storybook:
-    needs: [file-changes, lint, test]
-    if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.storybook == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
-    uses: ./.github/workflows/reusable-docker-build.yml
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
-    with:
-      file: ./apps/storybook/Dockerfile
-      platforms: linux/amd64,linux/arm64
-      image-name: ghcr.io/${{ github.repository }}/storybook
-      title: "GOAT Storybook"
-      description: "GOAT's UI component library, as a Storybook site."
-      smoke-command: |
-        nginx -t
-        test -s /usr/share/nginx/html/storybook/index.html
-
   release-docker-docs:
     needs: [file-changes, lint, test]
     if: ${{ !failure() && !cancelled() && (needs.file-changes.outputs.docs == 'true' || startsWith(github.ref, 'refs/tags/v')) }}
