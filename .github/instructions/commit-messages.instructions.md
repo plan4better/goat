@@ -44,7 +44,6 @@ Use a scope to indicate which part of the monorepo is affected:
 | `ui`         | `packages/js/ui` — Shared UI components      |
 | `types`      | `packages/js/types` — Shared TypeScript types |
 | `docs`       | `apps/docs` — Documentation site             |
-| `storybook`  | `apps/storybook` — Storybook                 |
 | `docker`     | Docker/compose configuration                 |
 | `ci`         | GitHub Actions workflows                     |
 
