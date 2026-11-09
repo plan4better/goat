@@ -1,8 +1,9 @@
 """manby is installed, and it is the plan4better build.
 
-The tile builder and geoapi's tile filter run manby; upstream 0.1.6 has no
-`ilike` in its feature filter, so a filter on it only works with our fork's
-wheel (pinned by URL in the root pyproject.toml).
+The tile builder and geoapi's tile filter run manby; upstream 0.1.9 has no
+`ilike` in its feature filter and no `--largest-maximum-zoom-guess`, which the
+polygon recipe uses, so both only work with our fork's wheel (pinned by URL
+in the root pyproject.toml).
 """
 
 import subprocess
@@ -22,7 +23,14 @@ def test_manby_is_our_build(tmp_path: Path) -> None:
         text=True,
         check=True,
     )
-    assert version.stdout.startswith("manby 0.1.6")
+    assert version.stdout.startswith("manby 0.1.9")
+    usage = subprocess.run(
+        [manby.binary(), "--help"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    assert "--largest-maximum-zoom-guess" in usage.stdout
 
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
