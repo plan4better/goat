@@ -126,7 +126,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -180,7 +180,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -247,7 +247,7 @@ jobs:
       # first to finish saves it, which was never this one, the only job that
       # compiles a wheel (gdal) the cache is there to keep.
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -365,7 +365,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -408,7 +408,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -499,7 +499,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -520,7 +520,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -541,7 +541,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -564,7 +564,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -624,7 +624,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
