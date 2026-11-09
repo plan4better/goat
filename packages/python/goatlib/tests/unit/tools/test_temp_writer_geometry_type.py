@@ -168,7 +168,7 @@ def test_preview_uses_manby_recipe_with_ids(
         tiles_data_dir=tmp_path / "recipe", config=PMTilesConfig(max_zoom=12)
     ).manby_flags("LINESTRING", None, False, None)
     assert [_recipe(flags) for flags in calls] == [_recipe((*recipe, "-t", "x"))]
-    assert "-z12" in recipe
+    assert "--largest-maximum-zoom-guess=12" in recipe
     features = _features(writer.pmtiles_path)
     assert {id_: f["name"] for id_, f in features.items()} == {
         1: "Hauptstraße",
