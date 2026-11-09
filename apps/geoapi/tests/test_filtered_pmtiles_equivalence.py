@@ -9,11 +9,12 @@ tiles use (`build_filters`).
 - Points: each branch of the variable-depth pyramid ends at its own zoom, so
   the tiles compared are the archive's leaves (the stored tiles without
   children), each filtered as itself. They hold the ids DuckDB keeps.
-- Lines and polygons: the city fits one stored tile of zoom 0, which manby
-  cuts at detail 16 like every tile; at zoom 0 that drops streets and
-  buildings smaller than a tile unit (about 0.005 degrees). They are
-  compared on the tiles of zoom 13 cut from it, as a map of the city
-  requests them, and hold the ids DuckDB keeps. With an area a tile tests
+- Lines and polygons: the lines fit one stored tile of zoom 0, which manby
+  cuts at detail 16 like every tile; at zoom 0 that drops streets smaller
+  than a tile unit (about 0.005 degrees). The polygons are stored at every
+  zoom down to the one manby guesses, below CUT_ZOOM. Both are compared on
+  the tiles of zoom 13 cut from the deepest stored tiles, as a map of the
+  city requests them, and hold the ids DuckDB keeps. With an area a tile tests
   the feature's piece in it, so a feature crossing the area's border is
   missing from the tiles where its piece misses the area (spec 6.3), but not
   from all of them.
@@ -469,8 +470,10 @@ def test_the_points_end_at_several_zooms_and_drop_above(city: City) -> None:
 
 
 def test_lines_and_polygons_are_cut_from_the_stored_tiles(city: City) -> None:
-    for kind in ("lines", "polygons"):
-        assert list(city.layers[kind].leaves) == [(0, 0, 0)]
+    assert list(city.layers["lines"].leaves) == [(0, 0, 0)]
+    # every zoom is stored down to the guessed one, below CUT_ZOOM
+    deepest = max(z for z, _, _ in city.layers["polygons"].leaves)
+    assert 0 < deepest < CUT_ZOOM
 
 
 # =====================================================================

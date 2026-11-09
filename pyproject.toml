@@ -39,10 +39,10 @@ geoapi = { workspace = true }
 goatlib = { workspace = true }
 goatobs = { workspace = true }
 processes = { workspace = true }
-# plan4better build of manby (upstream 0.1.6 plus the feature filter operators, fixes to zooms and to `like` on values holding %, and a memory budget kept while reading the input), wheels from our fork's release.
+# plan4better build of manby (upstream 0.1.9 plus the feature filter operators, a fix to `like` on values holding %, a memory budget kept while reading the input, and a cap on the guessed max zoom), wheels from our fork's release.
 manby = [
-    { url = "https://github.com/plan4better/manby/releases/download/v0.1.6-goat.5/manby-0.1.6-py3-none-manylinux_2_28_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
-    { url = "https://github.com/plan4better/manby/releases/download/v0.1.6-goat.5/manby-0.1.6-py3-none-manylinux_2_28_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64'" },
+    { url = "https://github.com/plan4better/manby/releases/download/v0.1.9-goat.1/manby-0.1.9-py3-none-manylinux_2_28_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+    { url = "https://github.com/plan4better/manby/releases/download/v0.1.9-goat.1/manby-0.1.9-py3-none-manylinux_2_28_aarch64.whl", marker = "sys_platform == 'linux' and platform_machine == 'aarch64'" },
 ]
 
 [tool.uv.workspace]

@@ -81,7 +81,6 @@ COMMON = (
     "--preserve-input-order",
     "--use-attribute-for-id=_rowid",
     "--exclude=_rowid",
-    "--generate-variable-depth-tile-pyramid",
 )
 
 
@@ -123,8 +122,9 @@ def test_flags_per_geometry_type(generator: PMTilesGenerator) -> None:
 
     polygons = generator.manby_flags("POLYGON", 42, False, None)
     for flag in (
-        "-z14",
-        "--full-detail=16",
+        "--largest-maximum-zoom-guess=14",
+        "--full-detail=12",
+        "--extra-detail=30",
         "--drop-densest-as-needed",
         "--extend-zooms-if-still-dropping",
         "--simplify-only-low-zooms",
@@ -138,6 +138,15 @@ def test_flags_per_geometry_type(generator: PMTilesGenerator) -> None:
     # a coalesced polygon keeps one feature's attributes: a filter would draw
     # shapes that do not match it
     assert "--coalesce-densest-as-needed" not in polygons
+    # every zoom down to the guessed one: no tile above it holds whole
+    # polygons at full detail
+    assert "--generate-variable-depth-tile-pyramid" not in polygons
+    assert "-z14" not in polygons
+
+    # manby found no two locations to guess from: the fixed max zoom
+    one_polygon = generator.manby_flags("POLYGON", 42, False, 1)
+    assert "-z14" in one_polygon
+    assert not any(f.startswith("--largest-maximum-zoom-guess") for f in one_polygon)
 
     anchors = generator.manby_flags("POLYGON", 42, True, None)
     for flag in (
@@ -149,6 +158,8 @@ def test_flags_per_geometry_type(generator: PMTilesGenerator) -> None:
         assert flag in anchors
     assert _has(anchors, "-l", "default_anchor")
 
+    for flags in (points, one_location, lines, anchors):
+        assert "--generate-variable-depth-tile-pyramid" in flags
     for flags in (points, one_location, lines, polygons, anchors):
         assert all(flag in flags for flag in COMMON)
         assert "-Z0" in flags
@@ -437,7 +448,7 @@ def _spy_manby(
 
     def run(input_path: Path, output_path: Path, flags: list[str]) -> None:
         calls.append(flags)
-        if zg_exit is not None and "-zg" in flags:
+        if zg_exit is not None and pmtiles._guesses_max_zoom(flags):
             raise manby.ManbyError(zg_exit, ["-zg"])
         real_run(input_path, output_path, flags)
 
@@ -507,6 +518,28 @@ def test_a_zg_build_that_failed_otherwise_is_not_retried(
     assert generator.generate_from_table(con, "layer", "layer1") is None
     assert len(calls) == 1 and _has(calls[0], "-zg", "-rp")
     assert not generator.get_pmtiles_path("layer1").exists()
+
+
+def test_a_polygon_build_without_a_zoom_guess_is_retried_at_the_max_zoom(
+    generator: PMTilesGenerator,
+    con: duckdb.DuckDBPyConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    con.execute(
+        "CREATE TABLE layer AS SELECT * FROM (VALUES "
+        f"(1, {GEOMETRIES['polygons'][0]}), (2, {GEOMETRIES['polygons'][1]})"
+        ") AS v(n, geometry)"
+    )
+    calls = _spy_manby(generator, monkeypatch, zg_exit=110)
+
+    path = generator.generate_from_table(con, "layer", "layer1")
+
+    assert path is not None
+    main = [c for c in calls if "--convert-polygons-to-label-points" not in c]
+    assert len(main) == 2
+    assert "--largest-maximum-zoom-guess=14" in main[0]
+    assert "-z14" in main[1] and not pmtiles._guesses_max_zoom(main[1])
+    assert set(_features(path)) == {1, 2}
 
 
 def test_manby_builds_from_a_geoparquet_written_first(
