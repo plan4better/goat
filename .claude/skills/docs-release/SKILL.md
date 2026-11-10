@@ -1,6 +1,6 @@
 ---
 name: docs-release
-description: Use to keep apps/docs in step with GOAT releases, in two stages. "propose" lists every release since the last proposal, says which changes need docs, where and what, and posts that list as a GitHub issue for review; it edits nothing. "apply <issue>" makes only the changes agreed on that issue and opens a draft PR. Runs weekly from the docs-release routine (propose), or by hand (e.g. "docs-release apply #3901").
+description: Use to keep apps/docs in step with GOAT releases, in two stages. "propose" lists every release since the last proposal, says which changes need docs, where and what, and posts that list as a GitHub issue for review; it edits nothing. "apply <issue>" makes only the changes agreed on that issue and opens a PR for review. Runs weekly from the docs-release routine (propose), or by hand (e.g. "docs-release apply #3901").
 ---
 
 # Docs after releases
@@ -8,9 +8,9 @@ description: Use to keep apps/docs in step with GOAT releases, in two stages. "p
 Most releases and fixes need no docs change. So this works in two stages, and a person agrees on the list before any page is touched:
 
 1. **propose:** a GitHub issue that lists every release and commit, with a verdict per change. It edits nothing.
-2. **apply:** after the reviewer has agreed on the issue, it makes exactly the ticked changes and opens a draft PR.
+2. **apply:** after the reviewer has agreed on the issue, it makes exactly the ticked changes and opens a PR, ready for review.
 
-When in doubt, propose less. A missed change costs one line on the next issue; an unneeded edit costs the reviewer's time. Never push to `main`, never merge, never mark a PR ready.
+When in doubt, propose less. A missed change costs one line on the next issue; an unneeded edit costs the reviewer's time. Never push to `main` and never merge.
 
 The writing rules in `apps/docs/CLAUDE.md` and `apps/docs/docs/nerdy_content/documentation_writing_guide.md` apply to every edit. Read both before either stage.
 
@@ -75,7 +75,11 @@ Input: the issue number, after the reviewer has agreed on it.
    - Screenshots and recordings can't be taken from here. Leave the old ones in place and list them in the PR.
    - Use one commit per item: `docs(<area>): …`.
 4. Check: `pnpm install --filter @p4b/docs...` then `pnpm --filter @p4b/docs build`. The build must pass; it fails on broken links. If you added any images, also run `bash scripts/check-file-sizes.sh origin/main`.
-5. Push to the fork, since direct pushes to `plan4better/goat` are refused: add it if needed (`git remote add fork https://github.com/cnarbaitzsarsur/goat.git`), then `git push -u fork docs/release-<NEW>` and `gh pr create --repo plan4better/goat --head cnarbaitzsarsur:docs/release-<NEW> --draft --base main --title "docs: update for <BASE>..<NEW> (EN + DE)"`. Body:
+5. Push the branch and open the PR ready for review, not as a draft: a draft never reaches review.
+   - If you can push to `plan4better/goat` (`gh repo view plan4better/goat --json viewerPermission` says `WRITE`, `MAINTAIN` or `ADMIN`): `git push -u origin docs/release-<NEW>`, then `gh pr create --repo plan4better/goat --base main --title "docs: update for <BASE>..<NEW> (EN + DE)"`.
+   - Otherwise push to your own fork (`gh repo fork plan4better/goat --remote --remote-name fork` once, if there is none), `git push -u fork docs/release-<NEW>`, then the same `gh pr create` with `--head <your-login>:docs/release-<NEW>`.
+
+   Body:
    - `Closes #<issue>`
    - **Changed:** one bullet per item, naming the components and i18n keys it was checked against.
    - **Needs a person:** stale media (file path + what changed), and anywhere you departed from the issue, with the reason.
