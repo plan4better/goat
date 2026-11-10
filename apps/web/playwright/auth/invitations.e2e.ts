@@ -31,7 +31,7 @@ test("the owner invites a user as a viewer from the members page", async ({ page
   await page.getByRole("button", { name: "Invite members" }).click();
 
   // The field makes a chip of each address, trimmed and lowercased as core
-  // stores it, so the toast and the row name it lowercased.
+  // stores it, so the row names it lowercased.
   const email = userOf("invitee").email.toLowerCase();
   const dialog = page.getByRole("dialog").filter({ hasText: "Invite members" });
   const addresses = dialog.getByLabel("Email addresses");
@@ -40,7 +40,7 @@ test("the owner invites a user as a viewer from the members page", async ({ page
   await dialog.getByRole("radio", { name: /^Viewer/ }).click();
   await dialog.getByRole("button", { name: "Send invitation" }).click();
 
-  await expect(page.getByText(`Invitation sent to ${email}.`)).toBeVisible();
+  // No toast: the dialog closes and the invitation is in the list.
   const row = page.getByRole("row").filter({ hasText: email });
   await expect(row).toContainText("Invitation pending");
 });

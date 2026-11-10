@@ -61,9 +61,10 @@ test.describe("admin", () => {
     const picker = page.getByRole("dialog").filter({ hasText: "Add members" });
     await picker.getByRole("checkbox", { name: editor2Name, exact: true }).click();
     await picker.getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByText(`${editor2Name} is now in the team.`)).toBeVisible();
 
+    // No toast: the member is in the list.
     const members = page.getByRole("region", { name: /^Members/ });
+    await expect(members.getByRole("listitem").filter({ hasText: editor2Name })).toHaveCount(1);
     // The team's owner (the organization's owner) has no row actions for the admin.
     const ownerRow = members.getByRole("listitem").filter({ hasText: "Owner in the organization" });
     await expect(ownerRow).toHaveCount(1);
@@ -73,7 +74,6 @@ test.describe("admin", () => {
     await page.getByRole("menuitem", { name: "Remove from the team" }).click();
     const confirm = page.getByRole("dialog").filter({ hasText: "Remove from the team" });
     await confirm.getByRole("button", { name: "Remove", exact: true }).click();
-    await expect(page.getByText(`${editor2Name} is no longer in the team.`)).toBeVisible();
     await expect(members.getByRole("listitem").filter({ hasText: editor2Name })).toHaveCount(0);
   });
 });
