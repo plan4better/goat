@@ -368,3 +368,20 @@ async def test_a_plain_member_outside_the_team_reads_no_members(
         )
         assert listed.status_code == 200, (who, listed.text)
         assert listed.json() is None, who
+
+
+@pytest.mark.asyncio
+async def test_only_editors_and_up_create_a_team(
+    client: AsyncClient, org_teams: dict[str, Any]
+) -> None:
+    """The handler's own check. The permission table says the same, but a
+    database whose seed has not run yet still lets viewers through there."""
+    refused = await client.post(
+        TEAMS, json={"name": "Viewers"}, headers=as_user(org_teams["member"])
+    )
+    assert refused.status_code == 403, refused.text
+    for name in ("editor", "admin", "org_owner"):
+        created = await client.post(
+            TEAMS, json={"name": f"Team of {name}"}, headers=as_user(org_teams[name])
+        )
+        assert created.status_code == 200, (name, created.text)

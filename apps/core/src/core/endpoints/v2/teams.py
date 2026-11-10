@@ -163,9 +163,21 @@ async def create_team(
     team: TeamCreate = Body(..., examples=[request_examples["team"]["create"]]),
 ) -> Any:
     """
-    Create a new team
+    Create a new team, for Bearbeiter and up: a team brings a space for
+    content, and viewers create no content.
     """
     user_id = user_token["sub"]
+    # The permission table says the same (`create-team`), but it only changes
+    # when the seed runs: until then its older rule lets a viewer through.
+    # Someone with no organization role at all holds no permission in either
+    # version of the table, so only the viewer needs refusing here.
+    user = await crud_user.get_user_with_roles(db_session=db, user_id=user_id)
+    org_roles = {link.role.name for link in user.role_links} if user else set()
+    if org_roles and not org_roles & EDITOR_OR_UP:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A viewer cannot create a team",
+        )
     team = await crud_team.create_team(db=db, team_obj=team, user_id=user_id)
     return team
 
