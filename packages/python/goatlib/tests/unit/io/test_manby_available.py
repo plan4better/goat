@@ -22,7 +22,7 @@ def test_manby_has_what_goat_uses(tmp_path: Path) -> None:
         text=True,
         check=True,
     )
-    assert version.stdout.startswith("manby 0.1.11")
+    assert version.stdout.startswith("manby 0.2.0")
     usage = subprocess.run(
         [manby.binary(), "--help"],
         stdout=subprocess.PIPE,

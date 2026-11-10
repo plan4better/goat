@@ -930,7 +930,7 @@ requires-dist = [
     { name = "fastapi", extras = ["standard-no-fastapi-cloud-cli"], specifier = ">=0.115.0" },
     { name = "goatlib", editable = "packages/python/goatlib" },
     { name = "goatobs", editable = "packages/python/goatobs" },
-    { name = "manby", specifier = "==0.1.11" },
+    { name = "manby", specifier = "==0.2.0" },
     { name = "pmtiles", specifier = ">=3.5.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
@@ -1074,7 +1074,7 @@ requires-dist = [
     { name = "gdal", marker = "extra == 'full'", specifier = ">=3.6.0,<3.7.0" },
     { name = "geopandas", marker = "extra == 'full'", specifier = ">=1.0.0" },
     { name = "httpx", marker = "extra == 'full'", specifier = ">=0.27.0" },
-    { name = "manby", marker = "extra == 'full'", specifier = "==0.1.11" },
+    { name = "manby", marker = "extra == 'full'", specifier = "==0.2.0" },
     { name = "maxminddb", specifier = "==3.2.0" },
     { name = "numba", marker = "extra == 'full'", specifier = ">=0.60.0" },
     { name = "numpy", marker = "extra == 'full'", specifier = ">=1.26.0" },
@@ -1475,15 +1475,15 @@ wheels = [
 
 [[package]]
 name = "manby"
-version = "0.1.11"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cd/44/4c3b114a34e1328bbdb9981f3128ff25a5c54b1e3445363ebec9af0bcd87/manby-0.1.11-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:a656596218ed4fd4b7175bc10ed6e0e43b732b464297dc0dfc339fd3be8e3514", size = 10046879, upload-time = "2026-11-09T17:06:56.125Z" },
-    { url = "https://files.pythonhosted.org/packages/c7/b5/cf93adcdeba849bbd6dbb97ed3ec607d04625455f0f94ad7c80057586415/manby-0.1.11-py3-none-macosx_11_0_arm64.whl", hash = "sha256:193ca25e13301a5e2f370b8d55021d4a4faa5740da93c33d2a4e05befe63d0b7", size = 8833250, upload-time = "2026-11-09T17:06:58.197Z" },
-    { url = "https://files.pythonhosted.org/packages/a4/fe/306afb30b08b682dbcd980aa900ff645e654b7ddcf3ed78fef029da7be93/manby-0.1.11-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:440afc0c48653f60ad06d41d108c1f45cfa31c80d7f175f3338450a6652726df", size = 9654234, upload-time = "2026-11-09T17:07:00.444Z" },
-    { url = "https://files.pythonhosted.org/packages/de/b7/6b9f70642c388853cb32cbe37153015d17fe21c73c8d9a40be33883e8b6f/manby-0.1.11-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:5e782dbe9beadb9e9991985faf3084180b51f43a78bc05ce818ed3279b8d7ad1", size = 10413380, upload-time = "2026-11-09T17:07:02.525Z" },
-    { url = "https://files.pythonhosted.org/packages/9d/9c/efec578dfb0d927eca0f72909330c4e6aa6d3dcb8b1dbaec8262e4ab4a2d/manby-0.1.11-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:4a772e53b96fbd63e50e49088bf5d19dde6299b1f39f06006fa7fe93290529a6", size = 9807263, upload-time = "2026-11-09T17:07:04.742Z" },
-    { url = "https://files.pythonhosted.org/packages/68/73/62a13be832527259e9e212697995fdf518dfa28b1ea60fba93363b643e6f/manby-0.1.11-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:508f94f1ce2831f1530faafc519ff5167eef54a4be1a0b3bb355117644d51c03", size = 10496380, upload-time = "2026-11-09T17:07:06.982Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/26/30b5c62a30e49b7f2aa25e55982a13ddcf0063789ba02779ea5973aed01e/manby-0.2.0-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:2e35827032196dba97a022850cc3b97827feaca492b0d9e28ef4c616a2fb4400", size = 10046687, upload-time = "2026-11-09T23:14:56.649Z" },
+    { url = "https://files.pythonhosted.org/packages/52/85/6d2f1daf1386bbe5c1cf467878c4685957274c98737d4e52b33d4f07d63c/manby-0.2.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:f43ceac2f717a0a15179328242705299a9586fac400781dda7ed86b359712a58", size = 8833433, upload-time = "2026-11-09T23:14:59.035Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/cd/67e53a513a52f46e88bc8c486265a7da2e21d435a817b903b8e6c646ad7c/manby-0.2.0-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:21ee8cb9a2a1819e4da382cd984c21c17682d449476cbc1340fd71f70c001716", size = 9652019, upload-time = "2026-11-09T23:15:01.009Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/ac/906edd21c4e14479780635bd5e4a001e85c7ff6861d330974b35a82026c2/manby-0.2.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:c5669c8a88e24a45f3a5792d7f1fad7cde5858cf87178617c8cab5e7354584ac", size = 10413040, upload-time = "2026-11-09T23:15:03.357Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/4e/26d8979c8b3f21cd7ebc1c49c2da8dad31c9950f3ee6b1788c1b29ddec87/manby-0.2.0-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:a2acbc65ffa96bdf0e4e616fdde1f3ff4271a6231310e06fa5bbb731ad10b4ab", size = 9809018, upload-time = "2026-11-09T23:15:05.839Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/80/e02c19a8108404ae261fe14ac5671003cb8a86f42fb0c04993422be148dc/manby-0.2.0-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:753fad03d2d129c5c36c857d519286cff8fbd583b9f96ea96bd671aab3e7569b", size = 10496319, upload-time = "2026-11-09T23:15:08.122Z" },
 ]
 
 [[package]]
