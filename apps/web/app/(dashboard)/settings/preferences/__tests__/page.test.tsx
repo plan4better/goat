@@ -39,7 +39,7 @@ describe("Language and appearance", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it("saves a language at once and confirms in the new language", async () => {
+  it("saves a language at once and switches the page to it, without a toast", async () => {
     const i18n = renderPage();
     await expect(screen.getByRole("radio", { name: /^Deutsch/ })).toHaveAttribute("aria-checked", "true");
     await userEvent.click(screen.getByRole("radio", { name: /^English/ }));
@@ -53,7 +53,9 @@ describe("Language and appearance", () => {
       expect.objectContaining({ method: "POST" })
     );
     expect(i18n.language).toBe("en");
-    expect(toast.success).toHaveBeenCalledWith("Saved.");
+    await expect(screen.getByRole("radio", { name: /^English/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: /^Dark/ })).toBeInTheDocument();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("saves the appearance at once", async () => {
@@ -65,7 +67,8 @@ describe("Language and appearance", () => {
       unit: "metric",
     });
     expect(changeColorMode).toHaveBeenCalledWith("dark");
-    expect(toast.success).toHaveBeenCalledWith("Erscheinungsbild: Dunkel.");
+    await expect(screen.getByRole("radio", { name: /^Dunkel/ })).toHaveAttribute("aria-checked", "true");
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("puts the previous choice back when saving fails", async () => {
@@ -103,7 +106,8 @@ describe("Language and appearance", () => {
     await userEvent.click(screen.getByRole("radio", { name: /^English/ }));
     expect(api.updateSystemSettings).toHaveBeenCalledTimes(1);
     await act(async () => finish());
-    expect(toast.success).toHaveBeenCalledWith("Erscheinungsbild: Dunkel.");
+    expect(changeColorMode).toHaveBeenCalledWith("dark");
+    expect(toast.success).not.toHaveBeenCalled();
     await expect(screen.getByRole("radio", { name: /^Hell/ })).not.toHaveAttribute("aria-disabled");
     await expect(screen.getByRole("radio", { name: /^English/ })).not.toHaveAttribute("aria-disabled");
   });

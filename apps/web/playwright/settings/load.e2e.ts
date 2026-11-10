@@ -59,10 +59,8 @@ test("a typed /settings is one 307 to the profile, then one document", async ({ 
 test("the sidebar's Settings link costs one RSC request, to the profile itself", async ({ page }) => {
   await page.goto("/home");
   await expect(page.getByRole("heading", { level: 1, name: /Welcome/ })).toBeVisible();
-  // The sidebar has no landmark of its own: it is the list of the app's sections.
-  const sidebar = page
-    .getByRole("list")
-    .filter({ has: page.getByRole("link", { name: "Catalog", exact: true }) });
+  // The rail of the app's sections.
+  const sidebar = page.getByRole("navigation", { name: "Main navigation" });
   const settings = sidebar.getByRole("link", { name: "Settings", exact: true });
   await expect(settings).toHaveAttribute("href", "/settings/profile");
 

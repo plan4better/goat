@@ -113,6 +113,8 @@ const ProjectShareDialog = dynamic(
 export type HeaderProps = {
   title?: string;
   showHambugerMenu?: boolean;
+  /** Whether the menu the hamburger opens is open. */
+  menuOpen?: boolean;
   onMenuIconClick?: () => void;
   height?: number;
   mapHeader?: boolean;
@@ -200,6 +202,7 @@ export default function Header(props: HeaderProps) {
 
       <Toolbar
         showHambugerMenu={showHambugerMenu}
+        menuOpen={props.menuOpen}
         onMenuIconClick={onMenuIconClick}
         height={height}
         // The project menu (logo and chevron) or the logo link: never truncated away.

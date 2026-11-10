@@ -1,22 +1,13 @@
 "use client";
 
 import type { PaletteMode } from "@mui/material";
-import { Box, useTheme } from "@mui/material";
-import { useContext, useState } from "react";
+import { Box } from "@mui/material";
 import { useTranslation } from "react-i18next";
-import { toast } from "react-toastify";
 
-import { updateSystemSettings } from "@/lib/api/system/client";
+import { type PreferenceLanguage, usePreferenceChoice } from "@/hooks/settings/usePreferenceChoice";
 
-import { ColorModeContext } from "@/components/@mui/ThemeRegistry";
 import RadioCardGroup from "@/components/settings/common/RadioCardGroup";
 import SettingsCard from "@/components/settings/common/SettingsCard";
-
-type Language = "de" | "en";
-interface Choice {
-  language: Language;
-  mode: PaletteMode;
-}
 
 const Badge = ({ children }: { children: string }) => (
   <Box
@@ -66,57 +57,12 @@ const ModePreview = ({ mode }: { mode: PaletteMode }) => {
 };
 
 /**
- * Sprache and Erscheinungsbild: a pick saves at once (system settings, then
- * the preference cookie, then the UI follows) and says so in the new
- * language; a failure puts the previous card back. While a pick saves, the
- * other cards are disabled, so a second pick cannot overtake it.
+ * Sprache and Erscheinungsbild: a pick saves at once (`usePreferenceChoice`).
+ * While a pick saves, the other cards are disabled.
  */
 export default function PreferenceCards() {
-  const { t, i18n } = useTranslation("common");
-  const theme = useTheme();
-  const { changeColorMode } = useContext(ColorModeContext);
-  const [choice, setChoice] = useState<Choice>({
-    language: i18n.language?.startsWith("de") ? "de" : "en",
-    mode: theme.palette.mode,
-  });
-  const [saving, setSaving] = useState(false);
-
-  const save = async (next: Choice) => {
-    if (saving) return;
-    const previous = choice;
-    setChoice(next);
-    setSaving(true);
-    try {
-      const saved = await updateSystemSettings({
-        preferred_language: next.language,
-        client_theme: next.mode,
-        unit: "metric",
-      });
-      if (!saved) throw new Error("no settings returned");
-      const cookie = await fetch("/api/preferences/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lang: saved.preferred_language, theme: saved.client_theme }),
-      });
-      if (!cookie.ok) throw new Error("preference cookie not set");
-      if (next.language !== previous.language) {
-        await i18n.changeLanguage(next.language);
-        toast.success(i18n.getFixedT(next.language, "common")("settings_prefs_saved"));
-      } else {
-        changeColorMode(next.mode);
-        toast.success(
-          t("settings_prefs_theme_saved", {
-            theme: t(next.mode === "dark" ? "settings_prefs_dark" : "settings_prefs_light"),
-          })
-        );
-      }
-    } catch {
-      setChoice(previous);
-      toast.error(t("settings_prefs_error"));
-    } finally {
-      setSaving(false);
-    }
-  };
+  const { t } = useTranslation("common");
+  const { choice, saving, save } = usePreferenceChoice();
 
   // The picked card stays enabled (picking it again changes nothing).
   const held = (value: string, current: string) => saving && value !== current;
@@ -124,7 +70,7 @@ export default function PreferenceCards() {
   return (
     <>
       <SettingsCard title={t("settings_prefs_language_title")} hint={t("settings_prefs_language_hint")}>
-        <RadioCardGroup<Language>
+        <RadioCardGroup<PreferenceLanguage>
           label={t("settings_prefs_language_title")}
           value={choice.language}
           columns={{ xs: 1, md: 2 }}

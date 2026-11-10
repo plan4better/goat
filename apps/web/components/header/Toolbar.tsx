@@ -10,6 +10,7 @@ import {
   useTheme,
 } from "@mui/material";
 import React from "react";
+import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
@@ -25,6 +26,8 @@ export type MapToolbarProps = {
   RightToolbarChild?: React.ReactNode;
   height: number;
   showHambugerMenu?: boolean;
+  /** Whether the menu the hamburger opens is open. */
+  menuOpen?: boolean;
   onMenuIconClick?: () => void;
   /** What of the left column always stays visible (its first control), in px. */
   leftMinWidth?: number;
@@ -37,11 +40,13 @@ export function Toolbar(props: MapToolbarProps) {
     RightToolbarChild,
     height,
     showHambugerMenu,
+    menuOpen = false,
     onMenuIconClick,
     leftMinWidth = 0,
   } = props;
 
   const theme = useTheme();
+  const { t } = useTranslation("common");
 
   return (
     <AppBar
@@ -62,7 +67,11 @@ export function Toolbar(props: MapToolbarProps) {
         {showHambugerMenu && (
           <>
             {/* Shown below md by CSS so the server-rendered HTML is right before hydration. */}
-            <IconButton onClick={onMenuIconClick} sx={{ display: { xs: "inline-flex", md: "none" } }}>
+            <IconButton
+              onClick={onMenuIconClick}
+              aria-label={t("main_navigation")}
+              aria-expanded={menuOpen}
+              sx={{ display: { xs: "inline-flex", md: "none" } }}>
               <Icon iconName={ICON_NAME.HAMBURGER_MENU} fontSize="inherit" />
             </IconButton>
 
@@ -88,6 +97,11 @@ export function Toolbar(props: MapToolbarProps) {
             minWidth: leftMinWidth,
             overflow: "hidden",
             whiteSpace: "nowrap",
+            // Room inside the clip for the logo, which grows on hover; the
+            // negative margin keeps the column where it was.
+            py: "2px",
+            pl: "2px",
+            ml: "-2px",
           }}>
           {LeftToolbarChild}
         </Stack>
