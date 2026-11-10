@@ -24,7 +24,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   const { t } = useTranslation("common");
   const pathname = usePathname() ?? "";
   const router = useRouter();
-  const { input, organization, memberCount, isError } = useSettingsNavInput();
+  const { input, memberCount, isError } = useSettingsNavInput();
   const desktopGroups = settingsNav({ ...input, pathname, phone: false, failed: isError });
   const phoneGroups = settingsNav({ ...input, pathname, phone: true, failed: isError });
   const allowed = settingsPageAllowed(pathname, input);
@@ -99,12 +99,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
                 width: "100%",
                 height: "min(100%, calc(100cqh - 36px))",
               }}>
-              <SettingsNav
-                groups={desktopGroups}
-                organization={organization}
-                failed={isError}
-                memberCount={memberCount}
-              />
+              <SettingsNav groups={desktopGroups} memberCount={memberCount} />
             </Box>
           </Box>
           {/* Content's right column: the page fills it, heading included. */}

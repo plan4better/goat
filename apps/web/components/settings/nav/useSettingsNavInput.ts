@@ -3,7 +3,6 @@
 import { useOrganizationMembers } from "@/lib/api/organizations";
 import { useFeatures, useOrganization, useUserProfile } from "@/lib/api/users";
 import { ASSISTANT_BASE_URL } from "@/lib/constants";
-import type { Organization } from "@/lib/validations/organization";
 
 import { useOrganizationId } from "@/hooks/settings/useOrganizationId";
 
@@ -23,7 +22,6 @@ import {
  */
 export function useSettingsNavInput(): {
   input: Omit<SettingsNavInput, "pathname" | "phone">;
-  organization: Organization | undefined;
   memberCount: number | undefined;
   isError: boolean;
 } {
@@ -41,7 +39,6 @@ export function useSettingsNavInput(): {
       features: { billing: features?.billing, whiteLabel: whiteLabelEnabled(organization) },
       assistant: Boolean(ASSISTANT_BASE_URL),
     },
-    organization,
     memberCount: members
       ? members.filter((member) => member.invitation_status !== "pending").length
       : undefined,

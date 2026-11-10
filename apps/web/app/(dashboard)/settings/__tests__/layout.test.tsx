@@ -298,6 +298,17 @@ describe("SettingsLayout", () => {
     expect(screen.getByRole("button", { name: "White Label › Domains" })).toBeInTheDocument();
   });
 
+  it("heads the organization's pages with the group's name alone, never the organization's", () => {
+    renderAt("/settings/profile");
+    const organization = within(nav()).getByRole("group", { name: "Organization" });
+    expect(within(organization).getByText("Organization")).toBeInTheDocument();
+    // Its name is on its Profile page and in the account menu: a line with it
+    // here read as one more link.
+    expect(nav()).not.toHaveTextContent("Stadt Musterhausen");
+    // So the heading waits for nothing.
+    expect(nav().querySelectorAll(".MuiSkeleton-root")).toHaveLength(0);
+  });
+
   it("drops the skeletons when a request the nav waits on failed, names the group, and redirects nowhere", () => {
     state.roles = undefined;
     state.organization = undefined;

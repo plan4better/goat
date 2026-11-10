@@ -16,10 +16,7 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import type { Organization } from "@/lib/validations/organization";
-
 import { focusRing } from "@/components/assistant/styles";
-import UserAvatar from "@/components/dashboard/common/UserAvatar";
 import { selectedRowInk } from "@/components/dashboard/common/currentPlace";
 import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
 import type { SettingsNavGroup, SettingsNavItem } from "@/components/settings/nav/settingsNav";
@@ -225,42 +222,6 @@ function WhiteLabelRow({ item }: { item: SettingsNavItem }) {
   );
 }
 
-function GroupHeader({
-  group,
-  organization,
-  failed,
-}: {
-  group: SettingsNavGroup;
-  organization?: Organization;
-  failed: boolean;
-}) {
-  const { t } = useTranslation("common");
-  const theme = useTheme();
-  const heading = <NavHeading>{t(group.labelKey)}</NavHeading>;
-  if (group.key === "account" || (!organization && failed)) return heading;
-  return (
-    <>
-      {heading}
-      {/* Which organization: its avatar and name below the heading, as in
-          the approved prototype. */}
-      <Box
-        aria-hidden
-        sx={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 10px 6px", minHeight: 28 }}>
-        {organization ? (
-          <>
-            <UserAvatar id={organization.id} name={organization.name} src={organization.avatar} size={20} />
-            <Typography noWrap sx={{ fontSize: 12.5, color: theme.palette.text.secondary }}>
-              {organization.name}
-            </Typography>
-          </>
-        ) : (
-          <Skeleton variant="text" width={120} height={18} />
-        )}
-      </Box>
-    </>
-  );
-}
-
 /** A group's heading as Content's "Team spaces": small, bold, muted, in capitals. */
 export function NavHeading({ children }: { children: string }) {
   const theme = useTheme();
@@ -275,15 +236,9 @@ export function NavHeading({ children }: { children: string }) {
  * of the column, as Content's left menu; its body scrolls on its own. */
 export default function SettingsNav({
   groups,
-  organization,
-  failed = false,
   memberCount,
 }: {
   groups: SettingsNavGroup[];
-  organization?: Organization;
-  /** A request the nav waits on failed: the Organisation header shows the
-   * group's name instead of the organization's, and no skeleton. */
-  failed?: boolean;
   memberCount?: number;
 }) {
   const { t } = useTranslation("common");
@@ -309,7 +264,7 @@ export default function SettingsNav({
           <Box key={group.key}>
             {index > 0 && <NavDivider />}
             <Box role="group" aria-label={t(group.labelKey)}>
-              <GroupHeader group={group} organization={organization} failed={failed} />
+              <NavHeading>{t(group.labelKey)}</NavHeading>
               {group.items.map((item) =>
                 item.key === "whiteLabel" && !item.skeleton ? (
                   <WhiteLabelRow key={item.key} item={item} />
