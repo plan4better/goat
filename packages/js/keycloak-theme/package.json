@@ -37,15 +37,12 @@
     "@craco/craco": "^7.1.0",
     "@p4b/tsconfig": "workspace:*",
     "@p4b/types": "workspace:*",
-    "@storybook/react": "^7.4.0",
     "@types/node": "^20.1.5",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",
     "eslint-config-p4b": "workspace:*",
     "i18n-iso-countries": "^7.6.0",
-    "react-scripts": "5.0.1",
-    "storybook": "^7.4.0",
-    "storybook-dark-mode": "^3.0.0"
+    "react-scripts": "5.0.1"
   },
   "browserslist": [
     ">0.2%",

@@ -26,7 +26,7 @@ So sehen andere Mitglieder Sie in GOAT, zum Beispiel beim Teilen und in Teams.
 
 ### Sprache und Darstellung
 
-Wählen Sie die **Sprache** der Oberfläche (Deutsch oder English) und das **Erscheinungsbild** (Hell oder Dunkel). Eine Auswahl gilt sofort und für Ihr Konto auf jedem Gerät. Ihre Inhalte und Daten ändern sich nicht, und Karten behalten ihren eigenen Stil.
+Wählen Sie die **Sprache** der Oberfläche (Deutsch oder English) und das **Erscheinungsbild** (Hell oder Dunkel). Eine Auswahl gilt sofort und für Ihr Konto auf jedem Gerät. Ihre Inhalte und Daten ändern sich nicht, und Karten behalten ihren eigenen Stil. Die gewählte Sprache gilt auch für die Anmeldeseiten und für die E-Mails, die GOAT Ihnen sendet; ein neues Konto startet in der Sprache der Anmeldeseite oder Ihres Browsers.
 
 ## Organisation
 
@@ -134,7 +134,7 @@ Tragen Sie in Matomo jede Ihrer eigenen Domains in die URL-Liste der Site ein un
 
 ## KI
 
-Eigentümer und Admins richten hier den KI-Assistenten ein, wenn die Instanz ihn anbietet. Der Assistent arbeitet für alle Mitglieder mit ihren eigenen GOAT-Berechtigungen. Ist KI an, verarbeitet der gewählte Anbieter die Nachrichten und die Daten, die der Assistent liest; prüfen Sie also, ob Ihre Organisation das erlaubt. Jeder Schalter und jede Auswahl auf dieser Seite gilt sofort.
+Eigentümer und Admins richten hier den KI-Assistenten ein, wenn die Instanz ihn anbietet. Was der Assistent kann, beschreibt die Seite [GOAT AI](../goat_ai.md). Der Assistent arbeitet für alle Mitglieder mit ihren eigenen GOAT-Berechtigungen. Ist KI an, verarbeitet der gewählte Anbieter die Nachrichten und die Daten, die der Assistent liest; prüfen Sie also, ob Ihre Organisation das erlaubt. Jeder Schalter und jede Auswahl auf dieser Seite gilt sofort.
 
 - **KI für diese Organisation**: Der Schalter blendet den Assistenten für alle Mitglieder ein oder aus. Wird die Nutzung abgerechnet, zeigt die Karte auch die KI-Credits dieses Zeitraums und führt zu ihnen auf der Seite Nutzung.
 - **Womit der Assistent antwortet**: Eine Verbindung ist aktiv. <code>GOAT AI (inklusive)</code> nennt, wo es gehostet wird; das Modell wählt der Betreiber von GOAT. Mit <code>Eigene Verbindung</code> fügen Sie Ihren Anbieter, Ihren Schlüssel und Ihr Modell hinzu; <code>Speichern und testen</code> speichert die Verbindung und testet sie. Eine eigene Verbindung lässt sich erst nach einem bestandenen Test (<code>Testen</code>) wählen, und es gilt die Vereinbarung Ihrer Organisation mit dem Anbieter. Ist eine eigene Verbindung aktiv und GOAT AI verfügbar, lässt <code>Auf GOAT AI ausweichen, wenn Ihr Anbieter ausfällt</code> GOAT AI antworten, wenn Ihr Anbieter ausfällt; solche Antworten werden im Gespräch gekennzeichnet. Das Menü einer Verbindung bietet <code>Bearbeiten</code> und <code>Verbindung löschen</code> (nicht für die aktive).
@@ -142,10 +142,15 @@ Eigentümer und Admins richten hier den KI-Assistenten ein, wenn die Instanz ihn
 
 ## Nutzung
 
-Wird die Nutzung abgerechnet, sehen Eigentümer und Admins unter <code>Nutzung</code> die Kontingente der Organisation: Credits, KI-Credits, Speicher, Projekte und Bearbeiter, jeweils als Kachel, die ihre Details öffnet.
+Wird die Nutzung abgerechnet, sehen Eigentümer und Admins unter <code>Nutzung</code> die Kontingente der Organisation; selbst gehostete Instanzen haben diese Seite nicht. Sie zeigt fünf Kacheln: `Credits`, `KI-Credits`, `Speicher`, `Projekte` und `Bearbeiter`. Jede Kachel zeigt, wie viel ihres Limits genutzt ist; ein Kontingent, das 90 % seines Limits erreicht oder überschritten hat, zeigt das an der Farbe seiner Zahl und seines Balkens. Klicken Sie auf eine Kachel, um darunter ihre Details zu öffnen:
+
+- `Credits` und `KI-Credits`: die genutzte Menge, ein Diagramm pro Tag und eine Liste, die Sie über `Gruppierung` ordnen (`Workflows`, `Werkzeuge`, `Layer`, `Mitglieder` oder `Zeiträume` bei Credits; `Mitglieder`, `Tage` oder `Zeiträume` bei KI-Credits). Wählen Sie den Zeitraum, z. B. `Dieser Zeitraum`, `Letzte 30 Tage` oder `Eigener Zeitraum`, grenzen Sie die Details auf ein Mitglied ein und laden Sie die Liste mit `CSV exportieren` herunter.
+- `Speicher`: die Layer der Organisation, die größten zuerst. Filtern Sie sie nach Besitzer, Typ oder `In keinem Projekt` und laden Sie die Liste mit `CSV exportieren` herunter.
+- `Projekte`: die Projekte der Organisation, die neuesten zuerst. Durchsuchen Sie sie und filtern Sie sie nach Besitzer.
+- `Bearbeiter`: die Plätze für Bearbeiter und Betrachter, mit den Credits und KI-Credits, die jedes Mitglied in diesem Zeitraum genutzt hat. Klicken Sie auf ein Mitglied, um seine Nutzung unter `Credits` oder `KI-Credits` zu öffnen.
 
 :::info
 
-Bitte zögern Sie nicht, jederzeit den **[Support](https://plan4better.de/en/contact/ "Support kontaktieren")** zu kontaktieren, falls Sie Fragen zu Ihrem Plan haben.
+Um ein Limit zu erhöhen, klicken Sie in den Details einer Kachel auf `Mehr anfragen` oder kontaktieren Sie jederzeit den **[Support](https://plan4better.de/en/contact/ "Support kontaktieren")**.
 
 :::

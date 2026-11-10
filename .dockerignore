@@ -11,8 +11,6 @@ coverage
 # next.js
 **/.next
 apps/web/out
-apps/storybook/out
-apps/storybook/storybook-static
 apps/docs/build
 apps/docs/.docusaurus
 

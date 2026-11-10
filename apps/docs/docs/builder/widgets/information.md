@@ -33,6 +33,7 @@ This section contains **widgets that provide information about your project** la
     <li><code>Download</code>: allow viewers to download this layer's data</li>
   </ul>
   For groups, click the icon to <code>Change icon</code>, and click the ⓘ button to add or edit group info text (Markdown supported).
+  Below a group with two or more layers, choose how the group is shown: <code>List</code> shows its layers as before, while <code>Chips</code>, <code>Slider</code> and <code>Dropdown</code> show <b>one layer of the group at a time</b>. Picking a layer turns it on and the other layers of the group off, and the legend of the shown layer appears below. Check <code>Play</code> to add a play button that steps through the layers. Viewers of the published dashboard always see exactly one layer of such a group.
   </div>
 </div>
 

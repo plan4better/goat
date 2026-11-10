@@ -105,7 +105,11 @@ Dieser Tab enthält kategorisierte Werkzeuge, die für die Workflow-Konstruktion
 - **Daten I/O**
   - <code>+ Datensatz hinzufügen</code>: Erstellt Datensatz-Knoten
   - <code>Daten abrufen</code>: Ruft OpenStreetMap- oder Overture-Maps-Features aus der Kopie von GOAT ab, bei jeder Ausführung neu. Der Knoten hat keinen Eingang. Beschrieben unten unter **Knoten Daten abrufen**.
-  - <code>Als Datensatz speichern</code>: Speichert Workflow-Ergebnisse als permanente Datensätze. Konfigurieren Sie den **Datensatznamen** (Feld <code>Datensatzname</code>), aktivieren Sie **Zum Projekt hinzufügen**, um das Ergebnis automatisch zur Projektlayerliste hinzuzufügen, und aktivieren Sie **Bei erneutem Ausführen überschreiben**, um das zuvor exportierte Dataset bei jeder Ausführung des Workflows zu ersetzen, anstatt einen neuen Datensatz zu erstellen. Direkt mit einem Datensatz-Knoten verbunden, speichert der Knoten die Features, die dem Filter des Datensatz-Knotens entsprechen, im Stil des Datensatzes.
+  - <code>Als Datensatz speichern</code>: Speichert Workflow-Ergebnisse als permanente Datensätze. Wählen Sie unter **Speichern in** eine der beiden Optionen:
+    - `Neuer Datensatz`: Das Ergebnis wird ein eigener Datensatz. Geben Sie den **Datensatznamen** ein und aktivieren Sie **Bei erneutem Ausführen überschreiben**, um das vorherige Ergebnis bei jeder Ausführung des Workflows zu ersetzen, anstatt einen neuen Datensatz zu erstellen.
+    - `Bestehender Datensatz`: Die Zeilen werden an einen Datensatz angehängt, den Sie bearbeiten dürfen. Klicken Sie auf `Datensatz wählen` und wählen Sie den **Zieldatensatz**, einen Feature-Layer oder eine Tabelle. Ohne Bearbeitungsrechte schlägt der Schritt beim Ausführen des Workflows fehl.
+
+    In beiden Fällen fügt **Zum Projekt hinzufügen** das Ergebnis zur Projektlayerliste hinzu. Direkt mit einem Datensatz-Knoten verbunden, speichert der Knoten die Features, die dem Filter des Datensatz-Knotens entsprechen, im Stil des Datensatzes.
 
 :::tip Gute Praxis
 Vergeben Sie für jeden **Als Datensatz speichern**-Knoten einen aussagekräftigen Namen und aktivieren Sie **Bei erneutem Ausführen überschreiben**, wenn Sie denselben Workflow mehrfach ausführen. So bleibt Ihr Projekt übersichtlich und es entstehen keine doppelten Layer nach jeder Ausführung.

@@ -26,7 +26,7 @@ How other members see you in GOAT, for example when sharing and in teams.
 
 ### Language and appearance
 
-Choose the **language** of the interface (Deutsch or English) and the **appearance** (Light or Dark). A choice applies at once and to your account on every device. Your content and data do not change, and maps keep their own style.
+Choose the **language** of the interface (Deutsch or English) and the **appearance** (Light or Dark). A choice applies at once and to your account on every device. Your content and data do not change, and maps keep their own style. The language you choose is also used on the sign-in pages and in the emails GOAT sends you; a new account starts in the language of the sign-in page or of your browser.
 
 ## Organization
 
@@ -134,7 +134,7 @@ In Matomo, add each of your own domains to the site's URL list and set up custom
 
 ## AI
 
-Owners and admins set up the AI assistant here, where the instance runs it. The assistant works for all members with their own GOAT permissions. While AI is on, the chosen provider processes the messages and the data the assistant reads, so check that your organization allows this. Every switch and choice on this page applies at once.
+Owners and admins set up the AI assistant here, where the instance runs it. What the assistant can do is described on the [GOAT AI](../goat_ai.md) page. The assistant works for all members with their own GOAT permissions. While AI is on, the chosen provider processes the messages and the data the assistant reads, so check that your organization allows this. Every switch and choice on this page applies at once.
 
 - **AI for this organization**: the switch turns the assistant on or off for all members. Where usage is billed, the card also shows the AI credits used in this period and leads to them on the Usage page.
 - **What the assistant answers with**: one connection is active. <code>GOAT AI (included)</code> shows where it is hosted; the operator of GOAT chooses its model. With <code>Own connection</code> you add your provider, your key and your model; <code>Save and test</code> saves it and tests it. An own connection can be chosen only after a passed test (<code>Test</code>), and your organization's agreement with the provider applies. While an own connection is active and GOAT AI is available, <code>Fall back to GOAT AI if your provider fails</code> lets GOAT AI answer when your provider fails; such answers are marked in the conversation. A connection's menu offers <code>Edit</code> and <code>Delete connection</code> (not for the active one).
@@ -142,10 +142,15 @@ Owners and admins set up the AI assistant here, where the instance runs it. The 
 
 ## Usage
 
-Where usage is billed, owners and admins see the organization's quotas on <code>Usage</code>: credits, AI credits, storage, projects and editors, each as a tile that opens its details.
+Where usage is billed, owners and admins see the organization's quotas on <code>Usage</code>; self-hosted instances don't have this page. It shows five tiles: `Credits`, `AI credits`, `Storage`, `Projects` and `Editors`. Each tile shows what is used of its limit; a quota at 90 % of its limit or over it shows in the colour of its figure and bar. Click a tile to open its details below:
+
+- `Credits` and `AI credits`: the amount used, a chart per day and a list you arrange with `Group by` (`Workflows`, `Tools`, `Layers`, `Members` or `Periods` for credits; `Members`, `Days` or `Periods` for AI credits). Choose the date range, e.g. `This period`, `Last 30 days` or a `Custom range`, narrow the details to one member, and download the list with `Export CSV`.
+- `Storage`: the organization's layers, largest first. Filter them by owner, type or `Not in any project`, and download the list with `Export CSV`.
+- `Projects`: the organization's projects, newest first. Search them and filter them by owner.
+- `Editors`: the editor and viewer seats, with the credits and AI credits each member used this period. Click a member to open their usage under `Credits` or `AI credits`.
 
 :::info
 
-Please feel free to contact the **[Support](https://plan4better.de/en/contact/ "Contact support")** anytime in case you have questions regarding your plan.
+To raise a limit, click `Ask for more` in a tile's details, or contact the **[Support](https://plan4better.de/en/contact/ "Contact support")** anytime.
 
 :::
