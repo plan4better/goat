@@ -27,7 +27,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai.exceptions import ToolFailed
 
 from assistant.asks import RUN_PREFIX, AskHistory, recent_picked_ids
-from assistant.context import RECORD_ID_PATTERN, project_of
+from assistant.context import (
+    RECORD_ID_MAX_LENGTH,
+    RECORD_ID_PATTERN,
+    is_record_id,
+    project_of,
+)
 from assistant.surfaces import Locale
 from assistant.tools.ask import in_catalog, users_dataset
 from assistant.tools.core import ShownItem, ShownItemGroup
@@ -1606,7 +1611,6 @@ CREATE_FROM_TEMPLATE: ToolSpec[FromTemplateInput, WorkflowCreated] = ToolSpec(
 #: How many picked ids are looked up as bundles at most, the newest picks
 #: first.
 MAX_BUNDLE_LOOKUPS = 10
-_RECORD_ID = re.compile(RECORD_ID_PATTERN)
 
 
 def _may_be_bundle(item: str) -> bool:
@@ -1614,7 +1618,7 @@ def _may_be_bundle(item: str) -> bool:
     so only a record id that is no dot segment goes into a lookup's path, and
     a workflow run's value never names a dataset."""
     return (
-        _RECORD_ID.fullmatch(item) is not None
+        is_record_id(item)
         and item not in (".", "..")
         and not item.startswith(RUN_PREFIX)
     )
@@ -1678,6 +1682,7 @@ class AddCatalogLayerInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     catalog_id: str = Field(
+        max_length=RECORD_ID_MAX_LENGTH,
         pattern=RECORD_ID_PATTERN,
         description=(
             "The catalog dataset the user picked in your card, an id from "

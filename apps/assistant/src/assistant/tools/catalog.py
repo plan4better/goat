@@ -21,6 +21,7 @@ from pydantic_ai.exceptions import ToolFailed
 
 from assistant.context import (
     NUTS_ID_PATTERN,
+    RECORD_ID_MAX_LENGTH,
     RECORD_ID_PATTERN,
     SORTBY_PATTERN,
     FacetKey,
@@ -615,7 +616,9 @@ class GetRecordInput(BaseModel):
 
     #: Catalog ids are slugs; the pattern keeps an id a single path segment.
     item_id: str = Field(
-        pattern=RECORD_ID_PATTERN, description="An id from catalog_search results."
+        max_length=RECORD_ID_MAX_LENGTH,
+        pattern=RECORD_ID_PATTERN,
+        description="An id from catalog_search results.",
     )
 
     @field_validator("item_id")
@@ -1154,6 +1157,7 @@ class ShownEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(
+        max_length=RECORD_ID_MAX_LENGTH,
         pattern=RECORD_ID_PATTERN,
         description="An id from catalog_search or catalog_get_record results.",
     )
