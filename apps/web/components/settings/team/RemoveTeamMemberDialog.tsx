@@ -35,7 +35,6 @@ export default function RemoveTeamMemberDialog({
     try {
       await deleteMember(teamId, person.id);
       await onRemoved();
-      toast.success(t("settings_team_removed", { name: person.name, ...PLAIN }));
       onClose();
     } catch {
       toast.error(t("settings_team_remove_error", { name: person.name, ...PLAIN }));

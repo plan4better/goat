@@ -34,7 +34,6 @@ export default function LeaveTeamDialog({
     setBusy(true);
     try {
       await deleteMember(teamId, selfId);
-      toast.success(t("settings_team_left", { team: teamName, ...PLAIN }));
       onLeft();
     } catch {
       toast.error(t("settings_team_leave_error"));

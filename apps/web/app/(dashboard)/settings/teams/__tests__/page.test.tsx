@@ -278,8 +278,9 @@ describe("Teams page", () => {
     await userEvent.type(name, "Umwelt{Enter}");
     expect(api.createTeam).toHaveBeenCalledTimes(1);
     expect(api.createTeam).toHaveBeenCalledWith({ name: "Umwelt", description: undefined });
-    expect(toast.success).toHaveBeenCalledWith("Team “Umwelt” created.");
+    // The team's own page opens: no toast says it was created.
     expect(api.push).toHaveBeenCalledWith("/settings/teams/t9");
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("asks owners and admins for every team of the organization and says so", async () => {

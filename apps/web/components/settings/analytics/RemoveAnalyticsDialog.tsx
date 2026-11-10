@@ -37,7 +37,6 @@ export default function RemoveAnalyticsDialog({
     try {
       await deleteOrganizationAnalytics(organizationId, instance.id);
       await onRemoved();
-      toast.success(t("settings_analytics_removed", { name: instance.name, ...PLAIN }));
       onClose();
     } catch {
       toast.error(t("settings_analytics_remove_error", { name: instance.name, ...PLAIN }));

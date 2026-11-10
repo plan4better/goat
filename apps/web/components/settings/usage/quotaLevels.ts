@@ -40,10 +40,3 @@ export const levelColors = (theme: Theme, level: QuotaLevel) => {
     note: level === "ok" ? undefined : text,
   };
 };
-
-/** A quota over its limit or at 90 % or more: the dot of its tile, and of Nutzung in the settings nav. */
-export const quotaNeedsAttention = (balance: CreditBalance | undefined): boolean => {
-  if (!balance) return false;
-  const amounts = amountsOf(balance);
-  return QUOTA_KEYS.some((key) => levelOf(...amounts[key]) !== "ok");
-};

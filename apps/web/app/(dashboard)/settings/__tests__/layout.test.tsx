@@ -38,7 +38,6 @@ vi.mock("@/components/settings/nav/useSettingsNavInput", () => ({
     },
     organization: state.organization,
     memberCount: 12,
-    needsAttention: true,
     isError: state.isError,
   }),
 }));
@@ -73,7 +72,7 @@ describe("SettingsLayout", () => {
     expect(screen.getByText("page body").closest(".MuiPaper-root")).toBeNull();
   });
 
-  it("spans the width it is given, so the nav keeps its place whatever the page holds", async () => {
+  it("spans the width it is given and centres the frame at Content's measure inside", async () => {
     state.pathname = "/settings/teams";
     // GOAT's breakpoints: Content's frame is as wide as the theme's `xl`.
     const goat = createTheme({ breakpoints: breakpoints() });
@@ -86,18 +85,23 @@ describe("SettingsLayout", () => {
         </I18nextProvider>
       </ThemeProvider>
     );
-    // The dashboard's main is a flex column: a centred item without a width
-    // would shrink to its content and move the nav with every page.
-    await expect(container.firstElementChild).toHaveStyle({
-      width: "100%",
-      maxWidth: `${goat.breakpoints.values.xl}px`,
-    });
+    // The dashboard's main is a flex column: the scroll area takes its whole
+    // width, so its scrollbar sits at the window's edge.
+    const area = container.firstElementChild as HTMLElement;
+    await expect(area).toHaveStyle({ width: "100%", overflowY: "auto" });
+    expect(getComputedStyle(area).maxWidth).not.toBe(`${goat.breakpoints.values.xl}px`);
+    // Inside it, the title, the nav and the page keep Content's measure.
+    const frame = area.firstElementChild as HTMLElement;
+    await expect(frame).toHaveStyle({ maxWidth: `${goat.breakpoints.values.xl}px` });
+    expect(frame).toContainElement(screen.getByRole("heading", { level: 1, name: "Settings" }));
+    expect(frame).toContainElement(nav());
+    expect(frame).toContainElement(screen.getByText("page body"));
     expect(goat.breakpoints.values.xl).toBe(1432);
   });
 
-  it("scrolls the page as one under a title and a nav that stay", () => {
+  it("scrolls the whole area as one: the title scrolls away, the nav sticks", async () => {
     state.pathname = "/settings/members";
-    render(
+    const { container } = render(
       <I18nextProvider i18n={commonI18n("en")}>
         <SettingsLayout>
           <SettingsPage header={<PageHeader level={2} eyebrow="Organization" title="Members" />}>
@@ -112,15 +116,36 @@ describe("SettingsLayout", () => {
       }
       return null;
     };
-    const body = scrollerOf(screen.getByText("page body"));
-    expect(body).not.toBeNull();
-    // Nothing above the page's own scroll area scrolls: one scroll area only.
-    expect(scrollerOf(body as Element)).toBeNull();
-    for (const fixed of [screen.getByRole("heading", { level: 1, name: "Settings" }), nav()]) {
-      expect(scrollerOf(fixed)).toBeNull();
-    }
-    // The page's heading scrolls with its cards (RV1d).
-    expect(scrollerOf(screen.getByRole("heading", { level: 2, name: "Members" }))).toBe(body);
+    const area = container.firstElementChild as Element;
+    // One scroll area, the layout's: the page has none of its own.
+    expect(scrollerOf(screen.getByText("page body"))).toBe(area);
+    expect(scrollerOf(screen.getByRole("heading", { level: 2, name: "Members" }))).toBe(area);
+    expect(scrollerOf(screen.getByRole("heading", { level: 1, name: "Settings" }))).toBe(area);
+    expect(scrollerOf(nav())).toBe(area);
+    expect(scrollerOf(area)).toBeNull();
+    // The nav stays while the page scrolls, 18px below the area's top.
+    await expect(nav().parentElement).toHaveStyle({ position: "sticky", top: "18px" });
+  });
+
+  it("starts each page at its top: the area keeps no offset from the page before", () => {
+    const at = (pathname: string, body: string) => {
+      state.pathname = pathname;
+      return (
+        <I18nextProvider i18n={commonI18n("en")}>
+          <SettingsLayout>
+            <p>{body}</p>
+          </SettingsLayout>
+        </I18nextProvider>
+      );
+    };
+    const { container, rerender } = render(at("/settings/members", "page body"));
+    const area = container.firstElementChild as HTMLElement;
+    area.scrollTop = 400;
+    expect(area.scrollTop).toBe(400);
+    rerender(at("/settings/teams", "other page"));
+    // The same area (the layout outlives its pages), back at the top.
+    expect(container.firstElementChild).toBe(area);
+    expect(area.scrollTop).toBe(0);
   });
 
   it("gives an owner the organization's pages in the Organization group", async () => {
@@ -129,7 +154,7 @@ describe("SettingsLayout", () => {
     for (const name of ["Profile", "Members", "Teams", "Domains", "Analytics", "AI"]) {
       expect(within(organization).getByRole("link", { name }), name).toBeInTheDocument();
     }
-    expect(within(organization).getByRole("link", { name: /^Usage/ })).toHaveTextContent("needs attention");
+    expect(within(organization).getByRole("link", { name: "Usage" })).toBeInTheDocument();
     await expect(within(organization).getByRole("button", { name: "White Label" })).toHaveAttribute(
       "aria-expanded",
       "true"
@@ -258,9 +283,10 @@ describe("SettingsLayout", () => {
     );
   });
 
-  it("names Usage and its attention hint as one phrase", () => {
+  it("draws no mark on Usage, whatever the quotas say", () => {
     renderAt("/settings/profile");
-    expect(within(nav()).getByRole("link", { name: "Usage needs attention" })).toBeInTheDocument();
+    expect(within(nav()).getByRole("link", { name: "Usage" })).toBeInTheDocument();
+    expect(nav()).not.toHaveTextContent("needs attention");
   });
 
   it("names the current page on the phone button while the roles load", () => {

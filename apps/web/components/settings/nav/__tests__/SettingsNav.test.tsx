@@ -46,7 +46,6 @@ const renderNav = (pathname: string) =>
           assistant: true,
           phone: false,
         })}
-        needsAttention={false}
       />
     </I18nextProvider>
   );

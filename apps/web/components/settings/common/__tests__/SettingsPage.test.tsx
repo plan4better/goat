@@ -20,25 +20,25 @@ const page = (body = "first card") => (
 );
 
 describe("SettingsPage", () => {
-  it("scrolls the page as one: its heading first, then the cards, in a single scroll area", () => {
-    render(page());
+  it("lays out its heading first, then the cards, and scrolls with the layout's area, not on its own", () => {
+    const { container } = render(page());
     const heading = screen.getByRole("heading", { level: 2, name: "Profile" });
-    const body = scrollerOf(screen.getByText("first card"));
-    expect(body).not.toBeNull();
-    expect(scrollerOf(heading)).toBe(body);
-    expect(scrollerOf(screen.getByText("second card"))).toBe(body);
-    expect(scrollerOf(body as Element)).toBeNull();
+    for (const element of [heading, screen.getByText("first card"), screen.getByText("second card")]) {
+      expect(scrollerOf(element)).toBeNull();
+    }
+    expect(getComputedStyle(container.firstElementChild as Element).overflowY).not.toBe("auto");
     expect(
       heading.compareDocumentPosition(screen.getByText("first card")) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
   });
 
-  it("is only the scroll area when a page has no heading of its own", () => {
+  it("is the frame of a page without a heading of its own too, again without a scroll area", () => {
     const { container } = render(
       <SettingsPage>
         <section>only card</section>
       </SettingsPage>
     );
-    expect(scrollerOf(screen.getByText("only card"))).toBe(container.firstElementChild);
+    expect(container.firstElementChild).toContainElement(screen.getByText("only card"));
+    expect(scrollerOf(screen.getByText("only card"))).toBeNull();
   });
 });

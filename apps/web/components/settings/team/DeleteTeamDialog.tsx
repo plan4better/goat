@@ -38,7 +38,6 @@ export default function DeleteTeamDialog({
     setBusy(true);
     try {
       await deleteTeam(teamId);
-      toast.success(t("settings_team_deleted", { team: teamName, ...PLAIN }));
       onDeleted();
     } catch (error) {
       if (statusOf(error) === 409) setConflict(true);

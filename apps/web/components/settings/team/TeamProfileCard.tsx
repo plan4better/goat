@@ -76,7 +76,6 @@ export default function TeamProfileCard({
       // Without a picture the field is left out: core keeps NULL instead of storing "".
       await updateTeam(team.id, avatar ? { avatar, ...rest } : rest);
       await onSaved();
-      toast.success(t("settings_team_saved"));
       return true;
     } catch (error) {
       // Core checks every team of the organization, also those the caller does not see.

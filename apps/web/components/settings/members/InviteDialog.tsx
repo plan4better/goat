@@ -150,8 +150,6 @@ export default function InviteDialog({
         t("settings_members_invite_manual", { email, text: t("member_invited_account_manual"), ...PLAIN })
       );
     }
-    if (sent.length === 1) toast.success(t("settings_members_invite_sent", { email: sent[0], ...PLAIN }));
-    else if (sent.length > 1) toast.success(t("settings_members_invites_sent", { n: sent.length }));
     if (Object.keys(lines).length === 0) {
       onClose();
       return;

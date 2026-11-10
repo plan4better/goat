@@ -225,7 +225,6 @@ describe("settings texts", () => {
       "settings_team_make_owner",
       "settings_team_make_owner_viewer",
       "settings_team_owner_body",
-      "settings_team_owner_changed",
       "settings_members_member_since",
       "settings_members_sent_ago",
       "settings_members_resend_from",

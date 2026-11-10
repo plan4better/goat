@@ -294,7 +294,9 @@ describe("AI page", () => {
     expect(api.updateAssistantSettings).toHaveBeenCalledTimes(1);
     expect(toast.info).not.toHaveBeenCalled();
     save.resolve(undefined);
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Data policy: Restricted."));
+    // The save is over once the page frees its choices; the radio shows it, no toast.
+    await waitFor(() => expect(aiSwitch()).toBeEnabled());
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("locks every choice while a save runs, and frees them after", async () => {
@@ -316,7 +318,9 @@ describe("AI page", () => {
     await expect(screen.getByRole("switch", { name: FALLBACK })).toBeDisabled();
     await expect(aiSwitch()).toBeDisabled();
     save.resolve(SETTINGS);
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Data policy: Restricted."));
+    // The save is over once the page frees its choices; the radio shows it, no toast.
+    await waitFor(() => expect(aiSwitch()).toBeEnabled());
+    expect(toast.success).not.toHaveBeenCalled();
     await expect(within(choices()).getByRole("radio", { name: /^Second/ })).not.toHaveAttribute(
       "aria-disabled"
     );
@@ -333,7 +337,9 @@ describe("AI page", () => {
     await expect(api.undo?.()).rejects.toThrow();
     expect(api.updateAssistantSettings).toHaveBeenCalledTimes(2);
     save.resolve(SETTINGS);
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Data policy: Restricted."));
+    // The save is over once the page frees its choices; the radio shows it, no toast.
+    await waitFor(() => expect(aiSwitch()).toBeEnabled());
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("puts the saved settings from the answer into the cache and reads the rest again", async () => {
@@ -454,7 +460,9 @@ describe("AI page", () => {
     expect(api.updateAssistantSettings).toHaveBeenCalledWith(
       expect.objectContaining({ allow_default_fallback: true, active_connection_id: "c1" })
     );
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Falling back to GOAT AI is on."));
+    // The switch shows it: no toast, and no undo.
+    await waitFor(() => expect(aiSwitch()).toBeEnabled());
+    expect(toast.success).not.toHaveBeenCalled();
     expect(api.undo).toBeUndefined();
   });
 
@@ -469,13 +477,21 @@ describe("AI page", () => {
     expect(screen.queryByRole("switch", { name: FALLBACK })).toBeNull();
   });
 
-  it("tests a connection and says the result", async () => {
-    api.testAssistantConnection.mockResolvedValue({ ...CONNECTION, last_test_ok: true });
+  it("tests a connection and shows a pass in its row, without a toast", async () => {
+    api.testAssistantConnection.mockImplementation(async () => {
+      // The service stores the result: the list read again carries it.
+      api.connections = [{ ...CONNECTION, last_test_ok: true }];
+      return { ...CONNECTION, last_test_ok: true };
+    });
     renderPage();
     await userEvent.click(within(choices()).getByRole("button", { name: "Test" }));
     expect(api.testAssistantConnection).toHaveBeenCalledWith("c1");
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Test passed: Own vLLM answers."));
+    await waitFor(() =>
+      expect(within(choices()).getByRole("radio", { name: /^Own vLLM/ })).toHaveTextContent("Test passed")
+    );
     expect(api.refreshAssistantStatus).toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   it("shows the test running, and a failed test with the provider's answer", async () => {
@@ -562,6 +578,9 @@ describe("AI page", () => {
   });
 
   it("deletes a connection after asking", async () => {
+    api.deleteAssistantConnection.mockImplementation(async () => {
+      api.connections = [];
+    });
     renderPage();
     await userEvent.click(screen.getByRole("button", { name: "More actions for Own vLLM" }));
     await userEvent.click(screen.getByRole("menuitem", { name: /Delete connection/ }));
@@ -573,8 +592,10 @@ describe("AI page", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Delete connection" }));
     expect(api.deleteAssistantConnection).toHaveBeenCalledWith("c1");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(toast.success).toHaveBeenCalledWith("Connection deleted");
     expect(api.mutateConnections).toHaveBeenCalled();
+    // It leaves the list: no toast says so.
+    expect(within(choices()).queryByRole("radio", { name: /^Own vLLM/ })).toBeNull();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("keeps the delete dialog busy while it deletes, and open when it fails", async () => {
@@ -614,7 +635,10 @@ describe("AI page", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Save and test" }));
     await waitFor(() => expect(api.testAssistantConnection).toHaveBeenCalledWith("c2"));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Test passed: LAN model answers."));
+    await waitFor(() => expect(api.refreshAssistantStatus).toHaveBeenCalled());
+    await waitFor(() => expect(within(choices()).getByRole("button", { name: "Test" })).toBeEnabled());
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   it("edits a connection in the dialog", async () => {
@@ -634,7 +658,9 @@ describe("AI page", () => {
     expect(api.updateAssistantSettings).toHaveBeenCalledWith(
       expect.objectContaining({ data_policy: "restricted" })
     );
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Data policy: Restricted."));
+    // The radio shows it: no toast, and no undo.
+    await waitFor(() => expect(aiSwitch()).toBeEnabled());
+    expect(toast.success).not.toHaveBeenCalled();
     expect(api.undo).toBeUndefined();
   });
 

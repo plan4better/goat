@@ -36,7 +36,6 @@ export default function WithdrawInvitationDialog({
     try {
       await deleteInvitation(organizationId, invitation.id);
       await onWithdrawn();
-      toast.success(t("settings_members_withdrawn", { email: invitation.email, ...PLAIN }));
       onClose();
     } catch {
       toast.error(t("settings_members_withdraw_error"));

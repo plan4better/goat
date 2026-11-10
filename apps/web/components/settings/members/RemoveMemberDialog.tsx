@@ -47,7 +47,6 @@ export default function RemoveMemberDialog({
     try {
       await deleteMember(organizationId, person.id, heir);
       await onRemoved();
-      toast.success(t("settings_members_removed", { name: person.name, ...PLAIN }));
       onClose();
     } catch (error) {
       // A 400 says why (the heir is no member any more): core's detail follows.

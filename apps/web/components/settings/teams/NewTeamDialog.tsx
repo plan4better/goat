@@ -17,7 +17,6 @@ import LabeledField from "@/components/common/LabeledField";
 import { type TeamFormValues, teamFormSchema } from "@/components/settings/teams/teamName";
 
 const FORM_ID = "settings-new-team-form";
-const PLAIN = { interpolation: { escapeValue: false } } as const;
 
 /** "Neues Team": the caller becomes its owner; Enter in the name creates it. */
 export default function NewTeamDialog({
@@ -53,7 +52,6 @@ export default function NewTeamDialog({
         name: values.name,
         description: values.description.trim() || undefined,
       });
-      toast.success(t("settings_teams_created", { name: team.name, ...PLAIN }));
       onCreated(team);
     } catch (error) {
       // Core checks every team of the organization, also those the caller does not see.

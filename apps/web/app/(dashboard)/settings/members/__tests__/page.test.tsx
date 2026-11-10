@@ -400,7 +400,9 @@ describe("Members page", () => {
     // Every member list, so the settings nav's count follows too.
     expect(api.refreshOrganizationMembers).toHaveBeenCalledWith("org-cookie");
     expect(api.mutateOrganization).toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("Emil Muster was removed from the organization.");
+    // The list shows it: the dialog closes, no toast says so.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("offers active members other than the person as heirs and sends the one chosen", async () => {
@@ -440,13 +442,16 @@ describe("Members page", () => {
     await userEvent.click(screen.getByRole("menuitem", { name: "Copy email address" }));
   };
 
-  it("copies a member's address and says so", async () => {
+  it("copies a member's address without a toast, as GOAT's other copy buttons", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     clipboard({ writeText });
     renderPage();
     await copyEmailOf("Emil Muster");
-    expect(writeText).toHaveBeenCalledWith("e1@example.com");
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Email address copied."));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("e1@example.com"));
+    await act(async () => {
+      await writeText.mock.results[0].value;
+    });
+    expect(toast.success).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -485,7 +490,9 @@ describe("Members page", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Withdraw" }));
     expect(api.deleteInvitation).toHaveBeenCalledWith("org-cookie", "i1");
     expect(api.refreshOrganizationMembers).toHaveBeenCalledWith("org-cookie");
-    expect(toast.success).toHaveBeenCalledWith("Invitation to i1@example.com withdrawn.");
+    // The list shows it: the dialog closes, no toast says so.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("invites from the page and reads every member list again", async () => {
@@ -498,7 +505,9 @@ describe("Members page", () => {
       role: "organization-editor",
     });
     expect(api.refreshOrganizationMembers).toHaveBeenCalledWith("org-cookie");
-    expect(toast.success).toHaveBeenCalledWith("Invitation sent to neu@x.de.");
+    // The list shows it: the dialog closes, no toast says so.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("explains the roles", async () => {
@@ -627,7 +636,7 @@ describe("Members page", () => {
     expect(api.resendInvitation).toHaveBeenCalledWith("org-cookie", "i2");
   });
 
-  it("resends an invitation and says so", async () => {
+  it("resends an invitation and reads the list again, whose row shows the new send", async () => {
     api.members = [...BASE, { ...person("i2", "", "organization-viewer", true), last_sent_at: ago(11) }];
     renderPage();
     await userEvent.click(
@@ -635,9 +644,9 @@ describe("Members page", () => {
     );
     await userEvent.click(screen.getByRole("menuitem", { name: "Resend invitation" }));
     expect(api.resendInvitation).toHaveBeenCalledWith("org-cookie", "i2");
-    expect(toast.success).toHaveBeenCalledWith("Invitation to i2@example.com sent again.");
+    await waitFor(() => expect(api.mutateMembers).toHaveBeenCalled());
+    expect(toast.success).not.toHaveBeenCalled();
     expect(toast.warning).not.toHaveBeenCalled();
-    expect(api.mutateMembers).toHaveBeenCalled();
   });
 
   it("only warns, with a text of its own, when the setup mail of a resend could not go out", async () => {

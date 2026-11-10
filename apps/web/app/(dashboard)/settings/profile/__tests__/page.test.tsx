@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { signOut } from "next-auth/react";
 import { I18nextProvider } from "react-i18next";
@@ -126,7 +126,9 @@ describe("Profile page", () => {
       lastname: "Weber",
       email: "anna@example.com",
     });
-    expect(toast.success).toHaveBeenCalledWith("Profile saved.");
+    // The card's save bar says so; no toast.
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("All saved"));
+    expect(toast.success).not.toHaveBeenCalled();
     expect(signOut).not.toHaveBeenCalled();
   });
 

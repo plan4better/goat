@@ -216,23 +216,20 @@ export default function AiPage() {
   /** Testen: the result is stored by the service, so the list is read again either way. */
   const test = async (connection: AssistantConnection) => {
     setTestingId(connection.id);
-    let say: () => void;
+    // A pass shows in the row's pill; only a failure is said as well.
+    let failure: string | null = null;
     try {
       const result = await testAssistantConnection(connection.id);
-      say = result.last_test_ok
-        ? () => toast.success(t("settings_ai_test_passed", { name: connection.name, ...PLAIN }))
-        : () =>
-            toast.error(
-              result.last_test_error
-                ? t("settings_ai_test_failed", { error: result.last_test_error, ...PLAIN })
-                : t("ai_settings_test_failed")
-            );
+      if (!result.last_test_ok)
+        failure = result.last_test_error
+          ? t("settings_ai_test_failed", { error: result.last_test_error, ...PLAIN })
+          : t("ai_settings_test_failed");
     } catch (err) {
-      say = () => toast.error(assistantErrorText(err, t));
+      failure = assistantErrorText(err, t);
     }
     await refresh();
     setTestingId(null);
-    say();
+    if (failure) toast.error(failure);
   };
   const remove = async (connection: AssistantConnection) => {
     setRemoving(true);
@@ -246,7 +243,6 @@ export default function AiPage() {
     await refresh();
     setRemoving(false);
     setDeleting(null);
-    toast.success(t("ai_settings_connection_deleted"));
   };
 
   const active = connections.find((connection) => connection.id === view.active_connection_id) ?? null;
@@ -298,26 +294,12 @@ export default function AiPage() {
         onAdd={() => setDialog("new")}
         onEdit={(connection) => setDialog(connection)}
         onDelete={setDeleting}
-        onFallback={(on) => {
-          void put({ allow_default_fallback: on }).then(
-            (result) =>
-              result === "saved" &&
-              toast.success(t(on ? "settings_ai_fallback_on" : "settings_ai_fallback_off"))
-          );
-        }}
+        onFallback={(on) => void put({ allow_default_fallback: on })}
       />
       <DataPolicyCard
         value={view.data_policy}
         disabled={pending !== null}
-        onChange={(policy: DataPolicy) => {
-          void put({ data_policy: policy }).then(
-            (result) =>
-              result === "saved" &&
-              toast.success(
-                t("settings_ai_policy_saved", { name: t(`ai_settings_data_policy_${policy}`), ...PLAIN })
-              )
-          );
-        }}
+        onChange={(policy: DataPolicy) => void put({ data_policy: policy })}
       />
       <Typography variant="caption" color="text.secondary">
         {t("settings_ai_footnote")}

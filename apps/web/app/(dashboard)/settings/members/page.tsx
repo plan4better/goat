@@ -250,13 +250,13 @@ export default function MembersPage() {
     );
   };
 
-  // As the domain help's CopyButton: says so, or says that it could not (no
-  // clipboard outside a secure context, or the browser refused).
+  // As GOAT's other copy buttons, a copy that worked is not toasted (the menu
+  // closes, so there is no button to show it on); one that could not (no
+  // clipboard outside a secure context, or the browser refused) says so.
   const copyEmail = async (email: string) => {
     try {
       if (!navigator.clipboard) throw new Error("No clipboard");
       await navigator.clipboard.writeText(email);
-      toast.success(t("settings_members_email_copied"));
     } catch {
       toast.error(t("settings_card_copy_failed"));
     }
@@ -271,10 +271,9 @@ export default function MembersPage() {
       await mutateMembers();
       // The setup mail failed and a resend sends one mail only, so nothing
       // went out (the 10 minutes still run): only the warning, which says so.
+      // Else the row's "sent ... ago" line shows it went out.
       if (answer?.account_setup === "manual") {
         toast.warning(t("settings_members_resend_manual", { email: row.email, ...PLAIN }));
-      } else {
-        toast.success(t("settings_members_resent", { email: row.email, ...PLAIN }));
       }
     } catch (error) {
       const status = statusOf(error);

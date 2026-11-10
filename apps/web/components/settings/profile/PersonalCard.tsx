@@ -55,7 +55,6 @@ export default function PersonalCard() {
       // Without a picture the field is left out: core keeps NULL instead of storing "".
       await updateUserProfile(avatar ? { avatar, ...rest } : rest);
       await mutate();
-      toast.success(t("settings_profile_saved"));
       return true;
     } catch (error) {
       // 502: core could not write to Keycloak and saved nothing.

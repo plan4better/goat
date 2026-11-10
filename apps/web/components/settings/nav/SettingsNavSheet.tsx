@@ -17,11 +17,9 @@ import type { SettingsNavGroup } from "@/components/settings/nav/settingsNav";
 export default function SettingsNavSheet({
   groups,
   memberCount,
-  needsAttention,
 }: {
   groups: SettingsNavGroup[];
   memberCount?: number;
-  needsAttention: boolean;
 }) {
   const { t } = useTranslation("common");
   const [open, setOpen] = useState(false);
@@ -88,7 +86,6 @@ export default function SettingsNavSheet({
                     indent={!item.icon}
                     minHeight={44}
                     memberCount={memberCount}
-                    needsAttention={needsAttention}
                     onNavigate={() => setOpen(false)}
                   />
                 ))}

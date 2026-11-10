@@ -61,7 +61,6 @@ export default function MatomoDialog({
       if (instance) await updateOrganizationAnalytics(organizationId, instance.id, values);
       else await createOrganizationAnalytics(organizationId, values);
       await onSaved();
-      toast.success(t("settings_analytics_saved"));
       onClose();
     } catch {
       toast.error(t("settings_analytics_save_error"));

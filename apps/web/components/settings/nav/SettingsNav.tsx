@@ -10,7 +10,6 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import { visuallyHidden } from "@mui/utils";
 import NextLink from "next/link";
 import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,6 +20,7 @@ import type { Organization } from "@/lib/validations/organization";
 
 import { focusRing } from "@/components/assistant/styles";
 import UserAvatar from "@/components/dashboard/common/UserAvatar";
+import { selectedRowInk } from "@/components/dashboard/common/currentPlace";
 import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
 import type { SettingsNavGroup, SettingsNavItem } from "@/components/settings/nav/settingsNav";
 
@@ -71,7 +71,7 @@ const rowLabelSx = (theme: Theme, selected: boolean) =>
     minWidth: 0,
     fontSize: 14,
     fontWeight: selected ? 700 : 500,
-    color: selected ? theme.palette.primary.main : theme.palette.text.primary,
+    color: selected ? selectedRowInk(theme) : theme.palette.text.primary,
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -92,7 +92,7 @@ const RowIcon = ({ icon, selected }: { icon: ICON_NAME; selected: boolean }) => 
     <Box sx={{ display: "flex", flexShrink: 0 }}>
       <Icon
         iconName={icon}
-        style={{ fontSize: 17, color: selected ? theme.palette.primary.main : theme.palette.text.secondary }}
+        style={{ fontSize: 17, color: selected ? selectedRowInk(theme) : theme.palette.text.secondary }}
       />
     </Box>
   );
@@ -107,20 +107,18 @@ export const NavDivider = () => (
  * icon and gap). */
 const CHILD_INDENT = "32px";
 
-/** One link row: icon, label, the Mitglieder badge or the Nutzung dot. A link
+/** One link row: icon, label, the Mitglieder badge. A link
  * (`<a href>`, prefetched as every `next/link`) drawn as Content's rows, so it
  * reads as a menu entry rather than as text with an underline. */
 export function NavRow({
   item,
   memberCount,
-  needsAttention,
   indent = false,
   minHeight,
   onNavigate,
 }: {
   item: SettingsNavItem;
   memberCount?: number;
-  needsAttention?: boolean;
   indent?: boolean;
   /** 44 in the phone sheet; else the row's own height. */
   minHeight?: number;
@@ -163,21 +161,6 @@ export function NavRow({
           }}>
           {memberCount}
         </Box>
-      )}
-      {item.key === "usage" && needsAttention && (
-        <>
-          <Box
-            component="span"
-            aria-hidden
-            sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "warning.main" }}
-          />
-          {/* Keeps the name "Usage needs attention" where it is read from the
-              text (a space inside the hidden span is trimmed away); between
-              flex items it draws nothing. */}{" "}
-          <Box component="span" sx={visuallyHidden}>
-            {t("settings_nav_needs_attention")}
-          </Box>
-        </>
       )}
     </ListItemButton>
   );
@@ -295,7 +278,6 @@ export default function SettingsNav({
   organization,
   failed = false,
   memberCount,
-  needsAttention,
 }: {
   groups: SettingsNavGroup[];
   organization?: Organization;
@@ -303,7 +285,6 @@ export default function SettingsNav({
    * group's name instead of the organization's, and no skeleton. */
   failed?: boolean;
   memberCount?: number;
-  needsAttention: boolean;
 }) {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -333,12 +314,7 @@ export default function SettingsNav({
                 item.key === "whiteLabel" && !item.skeleton ? (
                   <WhiteLabelRow key={item.key} item={item} />
                 ) : (
-                  <NavRow
-                    key={item.key}
-                    item={item}
-                    memberCount={memberCount}
-                    needsAttention={needsAttention}
-                  />
+                  <NavRow key={item.key} item={item} memberCount={memberCount} />
                 )
               )}
             </Box>

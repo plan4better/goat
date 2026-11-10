@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nextProvider } from "react-i18next";
 import { toast } from "react-toastify";
@@ -97,6 +97,12 @@ const openMenuItem = async (instance: string, item: string) => {
   return screen.findByRole("dialog");
 };
 
+/** A save that worked closes its dialog, and the page shows the result: no toast says so. */
+const closedWithoutToast = async () => {
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(toast.success).not.toHaveBeenCalled();
+};
+
 describe("Analytics page", () => {
   beforeEach(() => {
     api.organizationId = "org-1";
@@ -164,7 +170,7 @@ describe("Analytics page", () => {
     expect(api.assign).toHaveBeenCalledWith("org-1", "a2", ["p6", "p1"]);
     expect(api.mutateDashboards).toHaveBeenCalledWith([], { revalidate: false });
     expect(api.mutate).toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("Dashboard assignment saved.");
+    await closedWithoutToast();
   });
 
   it("filters the dashboards by name and keeps the ticks of the hidden ones", async () => {
@@ -241,7 +247,7 @@ describe("Analytics page", () => {
       config: { provider: "matomo", url: "https://matomo.example.org/", site_id: "5" },
     });
     expect(api.mutate).toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("Matomo saved.");
+    await closedWithoutToast();
   });
 
   it("names the field's problem when Enter is pressed on a form that is not valid", async () => {
@@ -271,7 +277,7 @@ describe("Analytics page", () => {
       provider: "matomo",
       config: { provider: "matomo", url: "https://matomo.example.org/", site_id: "7" },
     });
-    expect(toast.success).toHaveBeenCalledWith("Matomo saved.");
+    await closedWithoutToast();
   });
 
   it("keeps the Matomo dialog open when saving fails, and saves the same values on the next try", async () => {
@@ -289,7 +295,7 @@ describe("Analytics page", () => {
       provider: "matomo",
       config: { provider: "matomo", url: "https://matomo.example.org/", site_id: "5" },
     });
-    expect(toast.success).toHaveBeenCalledWith("Matomo saved.");
+    await closedWithoutToast();
   });
 
   it("says how many dashboards stop being measured when an instance is removed", async () => {
@@ -300,7 +306,7 @@ describe("Analytics page", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
     expect(api.remove).toHaveBeenCalledWith("org-1", "a1");
     expect(api.mutate).toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("Matomo Dashboards removed.");
+    await closedWithoutToast();
   });
 
   it("names only the instance when no dashboard uses it", async () => {
@@ -412,7 +418,7 @@ describe("Analytics page", () => {
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     saving.resolve([]);
-    await vi.waitFor(() => expect(toast.success).toHaveBeenCalledWith("Dashboard assignment saved."));
+    await closedWithoutToast();
   });
 
   it("holds the Matomo dialog while it saves", async () => {
@@ -437,7 +443,7 @@ describe("Analytics page", () => {
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     saving.resolve(undefined);
-    await vi.waitFor(() => expect(toast.success).toHaveBeenCalledWith("Matomo saved."));
+    await closedWithoutToast();
   });
 
   it("keeps every value through a failed save, also when the focused field loses the focus while saving", async () => {
@@ -471,6 +477,6 @@ describe("Analytics page", () => {
       provider: "matomo",
       config: { provider: "matomo", url: "https://matomo.example.org/", site_id: "5" },
     });
-    expect(toast.success).toHaveBeenCalledWith("Matomo saved.");
+    await closedWithoutToast();
   });
 });

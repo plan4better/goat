@@ -91,10 +91,10 @@ export default function DomainCard({
       const after = await recheckCustomDomain(organizationId, domain.id);
       await onChanged();
       const outcome = recheckOutcome(domain, after);
-      if (outcome === "found")
-        toast.success(t("settings_domains_dns_found", { domain: domain.base_domain, ...PLAIN }));
-      else if (outcome === "wrong") toast.warning(t("settings_domains_still_wrong"));
-      else toast.success(t("settings_domains_unchanged"));
+      // A DNS record found shows in the status pill; one still wrong or no
+      // change shows nowhere on the card, so those are said.
+      if (outcome === "wrong") toast.warning(t("settings_domains_still_wrong"));
+      else if (outcome === "unchanged") toast.success(t("settings_domains_unchanged"));
     } catch {
       toast.error(t("settings_domains_recheck_error"));
     } finally {

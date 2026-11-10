@@ -20,11 +20,11 @@ export const pageActionSx = {
 } as const;
 
 /**
- * The frame of every settings page: the layout keeps the "Einstellungen" title
- * and the nav in place (Content's frame), and the page scrolls as one in this
- * area, its heading first and then its cards 16px apart, as settings areas
- * usually do and as Home and Catalog scroll. Content's feed padding, with the
- * top set so the heading lines up with the nav card.
+ * The frame of every settings page: its heading first and then its cards 16px
+ * apart. It scrolls with the layout's area (the title scrolls away, the nav
+ * stays), as settings areas usually do and as Home and Catalog scroll.
+ * Content's feed padding, with the top set so the heading lines up with the
+ * nav card.
  */
 export default function SettingsPage({
   header,
@@ -36,15 +36,7 @@ export default function SettingsPage({
   children?: ReactNode;
 }) {
   return (
-    // Each page renders its own, so a page opened from a scrolled one starts at
-    // its top: the router mounts a new page (and a new area) on every path.
-    <Box
-      sx={{
-        flex: 1,
-        minHeight: 0,
-        overflowY: "auto",
-        padding: { xs: "8px 14px 90px", md: "18px 40px 40px" },
-      }}>
+    <Box sx={{ flex: 1, padding: { xs: "8px 14px 90px", md: "18px 40px 40px" } }}>
       <Stack spacing={4}>
         {header}
         {children}

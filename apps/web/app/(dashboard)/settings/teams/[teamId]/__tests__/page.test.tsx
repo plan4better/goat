@@ -1,6 +1,6 @@
 import { type Theme, getContrastRatio } from "@mui/material";
 import { ThemeProvider } from "@mui/material/styles";
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Suspense } from "react";
 import { I18nextProvider } from "react-i18next";
@@ -246,7 +246,9 @@ describe("Team page", () => {
     expect(api.mutateMembers).toHaveBeenCalled();
     // The Teams cards' count and faces follow.
     expect(api.mutateTeams).toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("Ben Muster is no longer in the team.");
+    // The list shows it: the dialog closes, no toast says so.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("adds a member and reads the team list again, so the cards follow", async () => {
@@ -323,7 +325,13 @@ describe("Team page", () => {
     // Without a picture the avatar is left out: core keeps NULL instead of storing "".
     expect(api.updateTeam).toHaveBeenCalledWith("t1", { name: "Stadtplanung Nord", description: "" });
     expect(api.mutateTeam).toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("Team profile saved.");
+    // The card's save bar says so; no toast.
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("region", { name: "Team profile" })).getByRole("status")
+      ).toHaveTextContent("All saved")
+    );
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("counts the team's name as it is saved, without the spaces around it", async () => {
@@ -373,8 +381,9 @@ describe("Team page", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("Do you really want to delete Stadtplanung?");
     await userEvent.click(within(dialog).getByRole("button", { name: "Delete team" }));
-    expect(toast.success).toHaveBeenCalledWith("Team “Stadtplanung” deleted.");
+    // Back on Teams, without the team: no toast says so.
     expectTeamDroppedBeforePush();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("lets a member who is not the owner leave, removing only themselves", async () => {
@@ -403,8 +412,9 @@ describe("Team page", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Leave team" }));
     expect(api.deleteTeamMember).toHaveBeenCalledWith("t1", "u1");
     expect(api.deleteTeam).not.toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("You left Stadtplanung.");
+    // Back on Teams, without the team: no toast says so.
     expectTeamDroppedBeforePush();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("shows an organization admin who is a member both delete and leave, and lets them manage members", async () => {
@@ -454,9 +464,22 @@ describe("Team page", () => {
     expect(within(screen.getByRole("navigation", { name: "Path" })).queryByText("/")).toBeNull();
   });
 
-  it("scrolls the path and the head with the cards while the team loads, when it is missing and when it is shown", async () => {
-    const scrolls = (element: Element) => {
-      for (let node = element.parentElement; node; node = node.parentElement) {
+  it("keeps the path and the head in the page with the cards while the team loads, when it is missing and when it is shown", async () => {
+    // The page's frame (its `SettingsPage`, the outermost element it draws):
+    // what sits in it scrolls with the cards in the layout's area.
+    const frameOf = (element: Element) => {
+      let node = element;
+      while (node.parentElement && node.parentElement.parentElement !== document.body)
+        node = node.parentElement;
+      return node;
+    };
+    // Nothing in the frame scrolls on its own.
+    const ownScroller = (element: Element) => {
+      for (
+        let node = element.parentElement;
+        node && node.parentElement !== document.body;
+        node = node.parentElement
+      ) {
         if (getComputedStyle(node).overflowY === "auto") return true;
       }
       return false;
@@ -471,10 +494,13 @@ describe("Team page", () => {
         </I18nextProvider>
       )
     );
-    expect(scrolls(await screen.findByRole("navigation", { name: "Path" }))).toBe(true);
+    const path = await screen.findByRole("navigation", { name: "Path" });
     // The head's placeholder sits with the path, where the head will be.
-    expect(scrolls(screen.getAllByRole("status", { name: "Loading" })[0])).toBe(true);
-    expect(scrolls(screen.getByRole("region", { name: "Team profile" }))).toBe(true);
+    const head = screen.getAllByRole("status", { name: "Loading" })[0];
+    const profile = screen.getByRole("region", { name: "Team profile" });
+    expect(frameOf(head)).toBe(frameOf(path));
+    expect(frameOf(profile)).toBe(frameOf(path));
+    for (const element of [path, head, profile]) expect(ownScroller(element)).toBe(false);
     loading.unmount();
 
     api.team = null;
@@ -487,14 +513,17 @@ describe("Team page", () => {
         </I18nextProvider>
       )
     );
-    expect(scrolls(await screen.findByRole("navigation", { name: "Path" }))).toBe(true);
+    expect(ownScroller(await screen.findByRole("navigation", { name: "Path" }))).toBe(false);
     missing.unmount();
 
     api.team = { id: "t1", name: "Stadtplanung", description: "", avatar: "", role: "team-owner" };
     await renderPage();
-    expect(scrolls(screen.getByRole("navigation", { name: "Path" }))).toBe(true);
-    expect(scrolls(screen.getByRole("heading", { level: 2, name: "Stadtplanung" }))).toBe(true);
-    expect(scrolls(screen.getByRole("region", { name: "Team profile" }))).toBe(true);
+    const shownPath = screen.getByRole("navigation", { name: "Path" });
+    const heading = screen.getByRole("heading", { level: 2, name: "Stadtplanung" });
+    const shownProfile = screen.getByRole("region", { name: "Team profile" });
+    expect(frameOf(heading)).toBe(frameOf(shownPath));
+    expect(frameOf(shownProfile)).toBe(frameOf(shownPath));
+    for (const element of [shownPath, heading, shownProfile]) expect(ownScroller(element)).toBe(false);
   });
 
   it("says the same when core answers 404", async () => {
@@ -529,7 +558,12 @@ describe("Team page", () => {
       name: "Stadtplanung",
       description: "Bebauungspläne",
     });
-    expect(toast.success).toHaveBeenCalledWith("Team profile saved.");
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("region", { name: "Team profile" })).getByRole("status")
+      ).toHaveTextContent("All saved")
+    );
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("shows a name core refuses as taken as the name's error, as Neues Team does", async () => {
@@ -658,7 +692,8 @@ describe("Team page", () => {
     await expect(dialog).not.toHaveTextContent("You stay a member of the team.");
     await userEvent.click(within(dialog).getByRole("button", { name: "Change owner" }));
     expect(api.changeTeamOwner).toHaveBeenCalledWith("t1", "u3");
-    expect(toast.success).toHaveBeenCalledWith("cara@x.de is now the team's owner.");
+    // The members read again show the new owner: no toast says so.
+    expect(toast.success).not.toHaveBeenCalled();
     expect(api.mutateMembers).toHaveBeenCalled();
     expect(api.mutateTeam).toHaveBeenCalled();
   });
@@ -690,7 +725,7 @@ describe("Team page", () => {
     expect(api.mutateTeam).toHaveBeenCalled(); // the caller's role in the team, and so their permissions
     expect(api.mutateTeams).toHaveBeenCalled();
     expect(api.mutateMembers).toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("cara@x.de is now the team's owner.");
+    expect(toast.success).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
     // What the reads answer: the caller is a member now, cara the owner.
     api.team = {

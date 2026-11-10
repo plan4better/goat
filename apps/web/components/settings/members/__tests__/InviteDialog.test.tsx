@@ -95,7 +95,8 @@ describe("InviteDialog", () => {
       { user_email: "b@x.de", role: "organization-editor" },
     ]);
     expect(onChanged).toHaveBeenCalledTimes(2);
-    expect(toast.success).toHaveBeenCalledWith("2 invitations sent.");
+    // The list behind shows the invitations: no toast says so.
+    expect(toast.success).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -153,7 +154,8 @@ describe("InviteDialog", () => {
     expect(api.inviteMember.mock.calls.map(([, body]) => body.user_email)).toEqual(["a@x.de", "b@x.de"]);
     expect(onChanged).toHaveBeenCalledTimes(2);
     expect(onClose).not.toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("Invitation sent to b@x.de.");
+    // The list behind shows the invitations: no toast says so.
+    expect(toast.success).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent("a@x.de: User has already been invited");
     expect(screen.queryByText("b@x.de")).toBeNull();
     await expect(screen.getByText("a@x.de").closest(".MuiChip-root")).toHaveAttribute("data-invalid", "true");
@@ -191,7 +193,7 @@ describe("InviteDialog", () => {
     expect(screen.queryByText(/User has already been invited/)).toBeNull();
   });
 
-  it("keeps what failed, with its reason, and reports what went out (and a manual account setup)", async () => {
+  it("keeps what failed, with its reason, and warns of a manual account setup", async () => {
     api.inviteMember
       .mockResolvedValueOnce(answer({ account_setup: "manual" }))
       .mockRejectedValueOnce(new ApiError(400, "User has already been invited"))
@@ -202,7 +204,8 @@ describe("InviteDialog", () => {
     await userEvent.type(addresses(), "a@x.de,b@x.de,c@x.de,");
     await userEvent.click(screen.getByRole("button", { name: "Send 3 invitations" }));
     expect(onClose).not.toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("Invitation sent to a@x.de.");
+    // The list behind shows the invitations: no toast says so.
+    expect(toast.success).not.toHaveBeenCalled();
     expect(toast.warning).toHaveBeenCalledWith(expect.stringMatching(/^a@x\.de: Member invited\./));
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("b@x.de: User has already been invited");

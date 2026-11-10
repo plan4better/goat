@@ -69,7 +69,6 @@ export default function AssignDashboardsDialog({
         checked.filter((id) => listed.has(id))
       );
       await onSaved(updated);
-      toast.success(t("settings_analytics_assigned"));
       onClose();
     } catch {
       toast.error(t("settings_analytics_assign_error"));

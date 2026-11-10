@@ -46,7 +46,6 @@ export default function MakeOwnerDialog({
       await changeTeamOwner(teamId, person.id);
       // A failed reload must not hide that the owner changed.
       await onChanged().catch(() => undefined);
-      toast.success(t("settings_team_owner_changed", { name: person.name, ...PLAIN }));
       onClose();
     } catch (error) {
       const status = statusOf(error);

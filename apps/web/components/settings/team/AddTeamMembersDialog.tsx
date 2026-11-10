@@ -3,7 +3,6 @@
 import { Alert } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "react-toastify";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
@@ -65,8 +64,6 @@ export default function AddTeamMembersDialog({
     } finally {
       setBusy(false);
     }
-    if (added.length === 1) toast.success(t("settings_team_added_one", { name: added[0].name, ...PLAIN }));
-    else if (added.length > 1) toast.success(t("settings_team_added_many", { n: added.length }));
     if (failed.length === 0) {
       onClose();
       return;

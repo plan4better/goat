@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Cookies from "js-cookie";
 import { signOut } from "next-auth/react";
@@ -147,7 +147,13 @@ describe("Organization profile", () => {
     // No logo: the field is left out, so core keeps a NULL instead of writing "".
     expect(api.updateOrganization).toHaveBeenCalledWith("org-1", { name: "Stadt Neuhausen" });
     expect(api.mutateOrganization).toHaveBeenCalled();
-    expect(toast.success).toHaveBeenCalledWith("Organization saved.");
+    // The card's save bar says so; no toast.
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("region", { name: "Name and logo" })).getByRole("status")
+      ).toHaveTextContent("All saved")
+    );
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("sends the logo along when there is one", async () => {

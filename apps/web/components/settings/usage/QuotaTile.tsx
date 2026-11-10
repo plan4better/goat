@@ -13,7 +13,8 @@ export interface QuotaTileProps extends Omit<SurfaceCardProps, "children" | "sel
   label: string;
   /** After the label: the Beta chip. */
   badge?: ReactNode;
-  /** A dot (red: over the limit, amber: full) and the hidden `attentionText`. */
+  /** Over the limit or full: the hidden `attentionText` says so; the figure
+   * and the bar show it by their colour. */
   attention?: "full" | "over" | null;
   attentionText: string;
   /** The figure; undefined while it loads (skeletons in its place). */
@@ -79,23 +80,9 @@ export const QuotaTile = forwardRef<HTMLDivElement, QuotaTileProps>(function Quo
         </Box>
         {badge}
         {attention && (
-          <>
-            <Box
-              component="span"
-              aria-hidden
-              sx={{
-                flexShrink: 0,
-                width: 8,
-                height: 8,
-                ml: "auto",
-                borderRadius: "50%",
-                backgroundColor: attention === "over" ? "error.main" : "warning.main",
-              }}
-            />
-            <Box component="span" sx={visuallyHidden}>
-              {attentionText}
-            </Box>
-          </>
+          <Box component="span" sx={visuallyHidden}>
+            {attentionText}
+          </Box>
         )}
       </Box>
       {figure ? (

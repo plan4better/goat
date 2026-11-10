@@ -1,6 +1,6 @@
 import { alpha } from "@mui/material";
 import { ThemeProvider } from "@mui/material/styles";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nextProvider } from "react-i18next";
 import { toast } from "react-toastify";
@@ -68,14 +68,14 @@ const domain = (over: Record<string, unknown>) => ({
 });
 
 const theme = createAppTheme({ mode: "light", locale: "en" });
-const renderPage = () =>
-  render(
-    <ThemeProvider theme={theme}>
-      <I18nextProvider i18n={commonI18n("en")}>
-        <DomainsPage />
-      </I18nextProvider>
-    </ThemeProvider>
-  );
+const page = () => (
+  <ThemeProvider theme={theme}>
+    <I18nextProvider i18n={commonI18n("en")}>
+      <DomainsPage />
+    </I18nextProvider>
+  </ThemeProvider>
+);
+const renderPage = () => render(page());
 
 const stubClipboard = (writeText: (value: string) => Promise<void>) =>
   Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
@@ -220,13 +220,29 @@ describe("Domains page", () => {
     );
   });
 
-  it("says what a recheck found", async () => {
+  it("shows a DNS record a recheck found in the domain's status, without a toast", async () => {
     api.domains = [domain({ dns_status: "pending", cert_status: "pending" })];
-    api.recheck.mockResolvedValue(domain({ dns_status: "verified", cert_status: "issuing" }));
-    renderPage();
+    const found = domain({ dns_status: "verified", cert_status: "issuing" });
+    api.recheck.mockResolvedValue(found);
+    const { rerender } = renderPage();
+    expect(screen.getByRole("article")).toHaveTextContent("Waiting for DNS");
     await userEvent.click(within(screen.getByRole("article")).getByRole("button", { name: "Check again" }));
     expect(api.recheck).toHaveBeenCalledWith("org-1", "d1");
-    expect(toast.success).toHaveBeenCalledWith("DNS for karten.stadt.example found.");
+    await waitFor(() => expect(api.mutate).toHaveBeenCalled());
+    // The list read again (SWR's mutate, stubbed here) carries the new state.
+    api.domains = [found];
+    rerender(page());
+    expect(screen.getByRole("article")).toHaveTextContent("Certificate being issued");
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("says when a recheck changed nothing, as the card shows no check", async () => {
+    const waiting = domain({ dns_status: "pending", cert_status: "pending" });
+    api.domains = [waiting];
+    api.recheck.mockResolvedValue(waiting);
+    renderPage();
+    await userEvent.click(within(screen.getByRole("article")).getByRole("button", { name: "Check again" }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Checked, nothing has changed."));
   });
 
   it("unassigns a domain and puts the assignment back on undo", async () => {
@@ -310,13 +326,15 @@ describe("Domains page", () => {
     await expect(screen.getByRole("button", { name: "Add first domain" })).toBeEnabled();
   });
 
-  it("copies a DNS value and says so, or says that it could not", async () => {
+  it("copies a DNS value and shows it on the button, or says that it could not", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     stubClipboard(writeText);
     renderPage();
     await userEvent.click(screen.getByRole("button", { name: "Copy custom.goat.example" }));
     expect(writeText).toHaveBeenCalledWith("custom.goat.example");
-    expect(toast.success).toHaveBeenCalledWith("Copied to the clipboard.");
+    // As GOAT's other copy buttons: "Copied" on the button, no toast.
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Copied");
+    expect(toast.success).not.toHaveBeenCalled();
 
     writeText.mockRejectedValue(new Error("denied"));
     await userEvent.click(screen.getByRole("button", { name: "Copy 203.0.113.7" }));
@@ -334,6 +352,9 @@ describe("Domains page", () => {
   });
 
   it("deletes a domain through its dialog", async () => {
+    api.remove.mockImplementation(async () => {
+      api.domains = [];
+    });
     renderPage();
     await userEvent.click(screen.getByRole("button", { name: "More actions for karten.stadt.example" }));
     await userEvent.click(screen.getByRole("menuitem", { name: "Delete domain" }));
@@ -341,6 +362,8 @@ describe("Domains page", () => {
     expect(dialog).toHaveTextContent("The domain is assigned to Radverkehr.");
     await userEvent.click(within(dialog).getByRole("button", { name: "Delete domain" }));
     expect(api.remove).toHaveBeenCalledWith("org-1", "d1");
-    expect(toast.success).toHaveBeenCalledWith("karten.stadt.example deleted.");
+    // It leaves the list: no toast says so.
+    await waitFor(() => expect(screen.queryByRole("article", { name: "karten.stadt.example" })).toBeNull());
+    expect(toast.success).not.toHaveBeenCalled();
   });
 });

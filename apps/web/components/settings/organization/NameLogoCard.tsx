@@ -38,7 +38,6 @@ export default function NameLogoCard() {
       // Without a logo the field is left out: core keeps NULL instead of storing "".
       await updateOrganization(organization.id, avatar ? { avatar, ...rest } : rest);
       await mutate();
-      toast.success(t("settings_org_saved"));
       return true;
     } catch {
       toast.error(t("settings_org_save_error"));

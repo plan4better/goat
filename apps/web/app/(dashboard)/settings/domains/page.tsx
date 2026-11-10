@@ -158,7 +158,6 @@ export default function DomainsPage() {
           onConfirm={async () => {
             await deleteCustomDomain(organizationId, deleting.id);
             await mutate();
-            toast.success(t("settings_domains_deleted", { domain: deleting.base_domain, ...PLAIN }));
             setDeleting(null);
           }}
         />
