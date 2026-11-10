@@ -69,7 +69,7 @@ Input: the issue number, after the reviewer has agreed on it.
 2. Range and tag come from the title. Branch `docs/release-<NEW>` from `origin/main`.
 3. For each ticked item:
    - Read every TSX component that renders the UI, in full, on `main`.
-   - Take each label from `apps/web/i18n/locales/en/common.json` and `…/de/common.json`, and each German UI term from `apps/docs/docs/nerdy_content/GOAT_ui_glossary.md`.
+   - Take each label, in English and German, from `apps/web/i18n/locales/en/common.json` and `…/de/common.json`.
    - Edit the English and German page in the same commit, scoped to what the item says: no unrelated rewording or restyling.
    - If the components contradict the item, follow the components and flag it in the PR.
    - Screenshots and recordings can't be taken from here. Leave the old ones in place and list them in the PR.
