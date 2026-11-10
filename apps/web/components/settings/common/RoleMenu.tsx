@@ -1,12 +1,13 @@
 "use client";
 
-import { Box, ButtonBase, Menu, MenuItem, Typography, alpha, useTheme } from "@mui/material";
+import { ButtonBase, Menu, alpha, useTheme } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { focusRing } from "@/components/assistant/styles";
+import { MenuRow } from "@/components/common/MenuRow";
 import { type AssignableRole, roleWords } from "@/components/settings/common/roleWords";
 import type { RoleOption } from "@/components/settings/members/seats";
 
@@ -72,18 +73,19 @@ export default function RoleMenu({
         onClose={() => setAnchor(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
-        slotProps={{ paper: { sx: { width: 250, borderRadius: "12px", padding: "6px" } } }}
+        slotProps={{ paper: { sx: { width: 250, mt: 1.5 } } }}
         // A disabled role stays reachable by keyboard, so its reason is read out.
         MenuListProps={{ "aria-label": label, disabledItemsFocusable: true }}>
         {options.map(({ role, disabledReason }) => {
           const current = role === value;
           return (
-            <MenuItem
+            <MenuRow
               key={role}
               role="menuitemradio"
               aria-checked={current}
-              // `selected` is what the open menu focuses first; the current
-              // role reads from its primary ink and check, not from a fill.
+              label={words[role].word}
+              secondary={disabledReason ?? words[role].description}
+              // `selected` is what the open menu focuses first.
               selected={current}
               disabled={!!disabledReason}
               onClick={() => {
@@ -92,44 +94,7 @@ export default function RoleMenu({
                 setAnchor(null);
                 if (role !== value) onChange(role);
               }}
-              sx={{
-                alignItems: "flex-start",
-                gap: "10px",
-                padding: "9px 11px",
-                borderRadius: "8px",
-                whiteSpace: "normal",
-                "&.Mui-selected": { backgroundColor: "transparent" },
-                "&.Mui-selected:hover": { backgroundColor: theme.palette.action.hover },
-                "&.Mui-selected.Mui-focusVisible": { backgroundColor: theme.palette.action.focus },
-              }}>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography
-                  component="div"
-                  sx={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: current ? theme.palette.primary.main : theme.palette.text.primary,
-                  }}>
-                  {words[role].word}
-                </Typography>
-                <Typography
-                  component="div"
-                  sx={{
-                    fontSize: 11.5,
-                    color: theme.palette.text.secondary,
-                    marginTop: "1px",
-                    lineHeight: 1.4,
-                  }}>
-                  {disabledReason ?? words[role].description}
-                </Typography>
-              </Box>
-              {current && (
-                <Icon
-                  iconName={ICON_NAME.CIRCLECHECK}
-                  style={{ fontSize: 13, color: theme.palette.primary.main, marginTop: 2 }}
-                />
-              )}
-            </MenuItem>
+            />
           );
         })}
       </Menu>

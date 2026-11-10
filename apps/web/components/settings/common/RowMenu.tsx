@@ -1,9 +1,11 @@
 "use client";
 
-import { IconButton, ListItemIcon, ListItemText, Menu, MenuItem } from "@mui/material";
+import { IconButton, Menu } from "@mui/material";
 import { useState } from "react";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+
+import { MenuRow } from "@/components/common/MenuRow";
 
 export interface RowMenuItem {
   key: string;
@@ -19,7 +21,7 @@ export interface RowMenuItem {
 }
 
 /** A row's ⋮ menu, drawn as Content's (`ContentKebab`, `PopperMenu`): a 28px
- * button (40px below `md`) and a menu of 14px items with their icons. Nothing
+ * button (40px below `md`) and a menu of the shared popover rows. Nothing
  * when there is nothing to offer. */
 export default function RowMenu({ label, items }: { label: string; items: RowMenuItem[] }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -41,14 +43,17 @@ export default function RowMenu({ label, items }: { label: string; items: RowMen
         open={!!anchor}
         onClose={() => setAnchor(null)}
         // A disabled item stays reachable by keyboard, so its reason is read out.
-        MenuListProps={{ disabledItemsFocusable: true, dense: true }}
-        slotProps={{ paper: { sx: { minWidth: 220, maxWidth: 340 } } }}
+        MenuListProps={{ disabledItemsFocusable: true }}
+        slotProps={{ paper: { sx: { minWidth: 220, maxWidth: 340, mt: 1.5 } } }}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}>
         {items.map((item) => (
-          <MenuItem
+          <MenuRow
             key={item.key}
-            dense
+            icon={item.icon}
+            label={item.label}
+            secondary={item.disabled ? item.reason : undefined}
+            danger={item.danger}
             disabled={item.disabled}
             onClick={() => {
               // A focused disabled item still gets ButtonBase's Space click.
@@ -56,26 +61,7 @@ export default function RowMenu({ label, items }: { label: string; items: RowMen
               setAnchor(null);
               item.onClick();
             }}
-            sx={{
-              color: item.danger ? "error.main" : "text.secondary",
-              whiteSpace: "normal",
-              py: "4px",
-              "& .MuiListItemText-root": { my: "4px" },
-              // PopperMenu's icon column: the icon and 16px to its label.
-              "& .MuiListItemIcon-root": { minWidth: 0, pr: 4, color: "inherit" },
-            }}>
-            {item.icon && (
-              <ListItemIcon>
-                <Icon iconName={item.icon} style={{ fontSize: 15 }} htmlColor="inherit" />
-              </ListItemIcon>
-            )}
-            <ListItemText
-              primary={item.label}
-              secondary={item.disabled ? item.reason : undefined}
-              primaryTypographyProps={{ variant: "body2", color: "inherit" }}
-              secondaryTypographyProps={{ variant: "caption" }}
-            />
-          </MenuItem>
+          />
         ))}
       </Menu>
     </>

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ButtonProps } from "@mui/material";
-import { Box, Button, ListItemIcon, Menu, MenuItem, Typography } from "@mui/material";
+import { Button, Menu } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,6 +15,7 @@ import { USERS_API_BASE_URL } from "@/lib/api/users";
 import { ASSETS_URL } from "@/lib/constants";
 import type { Project } from "@/lib/validations/project";
 
+import { MenuRow } from "@/components/common/MenuRow";
 import NameDialog from "@/components/dashboard/common/NameDialog";
 import ProjectImportModal from "@/components/modals/ProjectImport";
 
@@ -49,7 +50,7 @@ export interface NewProjectItem {
  * Content's "Add new"): a breath of space under the trigger and a width that
  * does not hug the labels. */
 export const DASHBOARD_MENU_SLOT_PROPS = {
-  paper: { sx: { mt: 1, minWidth: 240, borderRadius: "10px" } },
+  paper: { sx: { mt: 1.5, minWidth: 240 } },
 } as const;
 
 export const NEW_PROJECT_ITEMS: NewProjectItem[] = [
@@ -181,19 +182,15 @@ export const NewProjectButton = ({ location, size, fullWidth }: NewProjectButton
           // A direct `MenuItem` child of `Menu`: `MenuList` clones its own
           // children to drive arrow-key navigation and typeahead, so a
           // wrapper element in between would take those away.
-          <MenuItem
+          <MenuRow
             key={item.key}
+            icon={item.icon}
+            label={t(item.labelKey)}
             onClick={() => {
               setMenuOpen(false);
               setIntent(item.key);
-            }}>
-            <ListItemIcon sx={{ minWidth: 30 }}>
-              <Icon iconName={item.icon} style={{ fontSize: 15 }} />
-            </ListItemIcon>
-            <Box>
-              <Typography variant="body2">{t(item.labelKey)}</Typography>
-            </Box>
-          </MenuItem>
+            }}
+          />
         ))}
       </Menu>
 

@@ -1,11 +1,12 @@
 "use client";
 
-import { Button, CircularProgress, ListItemIcon, Menu, MenuItem, Typography } from "@mui/material";
+import { Button, CircularProgress, Menu } from "@mui/material";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { MenuRow } from "@/components/common/MenuRow";
 import { DASHBOARD_MENU_SLOT_PROPS } from "@/components/dashboard/common/NewProjectMenu";
 
 export interface NewMenuItem {
@@ -62,17 +63,15 @@ const NewMenuButton = ({ items, disabled, loading, label }: NewMenuButtonProps) 
         transformOrigin={{ vertical: "top", horizontal: "right" }}
         slotProps={DASHBOARD_MENU_SLOT_PROPS}>
         {items.map((item) => (
-          <MenuItem
+          <MenuRow
             key={item.key}
+            icon={item.icon}
+            label={item.label}
             onClick={() => {
               setOpen(false);
               item.onSelect();
-            }}>
-            <ListItemIcon sx={{ minWidth: 30 }}>
-              <Icon iconName={item.icon} style={{ fontSize: 15 }} />
-            </ListItemIcon>
-            <Typography variant="body2">{item.label}</Typography>
-          </MenuItem>
+            }}
+          />
         ))}
       </Menu>
     </>

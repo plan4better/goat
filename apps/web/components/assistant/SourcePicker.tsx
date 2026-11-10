@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, MenuItem, MenuList, Popover, Skeleton, Stack, Typography, useTheme } from "@mui/material";
+import { Box, MenuList, Popover, Skeleton, Stack, Typography, useTheme } from "@mui/material";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -10,9 +10,9 @@ import { useProjects } from "@/lib/api/projects";
 import type { SourceRef } from "@/lib/assistant/types";
 
 import { accentSoft, accentText, mutedText } from "@/components/assistant/styles";
+import { MenuRow } from "@/components/common/MenuRow";
 import ContentThumbnail from "@/components/dashboard/common/ContentThumbnail";
 import SearchInput from "@/components/dashboard/common/SearchInput";
-import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
 
 export const SEARCH_DEBOUNCE_MS = 250;
 
@@ -79,9 +79,6 @@ export default function SourcePicker({
           // Never wider than the screen, so it stays inside the dock on a phone.
           width: "min(320px, calc(100vw - 32px))",
           mt: "-6px",
-          borderRadius: "12px",
-          border: `1px solid ${theme.palette.divider}`,
-          boxShadow: surfaceShadows(theme).hover,
           overflow: "hidden",
         },
       }}>
@@ -118,35 +115,30 @@ export default function SourcePicker({
         ) : (
           <MenuList ref={list} disablePadding sx={{ display: "flex", flexDirection: "column", gap: "2px" }}>
             {options.map((project) => (
-              <MenuItem
+              <MenuRow
                 key={project.id}
+                title={project.name}
                 onClick={() => pick(project)}
+                icon={
+                  <ContentThumbnail
+                    kind="project"
+                    variant="mark"
+                    height={28}
+                    href={project.thumbnail_url || undefined}
+                  />
+                }
+                label={project.name}
                 sx={{
-                  gap: "10px",
-                  minHeight: 0,
-                  px: "8px",
+                  // A thumbnail is higher than an icon: less padding keeps the row's height.
                   py: "6px",
-                  borderRadius: "8px",
-                  "&:hover": { bgcolor: "action.hover" },
+                  minHeight: 0,
                   // Arrow keys move the focus: the focused row takes the tint and an inset ring.
                   "&.Mui-focusVisible, &:focus-visible": {
                     bgcolor: accentSoft(theme),
                     boxShadow: `inset 0 0 0 2px ${accentText(theme)}`,
                   },
-                }}>
-                <ContentThumbnail
-                  kind="project"
-                  variant="mark"
-                  height={28}
-                  href={project.thumbnail_url || undefined}
-                />
-                <Typography
-                  noWrap
-                  title={project.name}
-                  sx={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: "text.primary" }}>
-                  {project.name}
-                </Typography>
-              </MenuItem>
+                }}
+              />
             ))}
           </MenuList>
         )}

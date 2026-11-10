@@ -233,7 +233,7 @@ describe("RowMenu", () => {
     expect(screen.queryByRole("button", { name: "Weitere Aktionen für Anna" })).toBeNull();
   });
 
-  it("writes a destructive item in error ink and the others muted", async () => {
+  it("writes a destructive item in error ink and the others in the popover rows' ink", async () => {
     const theme = createAppTheme({ mode: "light", locale: "de" });
     render(
       <ThemeProvider theme={theme}>
@@ -251,7 +251,7 @@ describe("RowMenu", () => {
       color: theme.palette.error.main,
     });
     expect(screen.getByRole("menuitem", { name: "E-Mail-Adresse kopieren" })).toHaveStyle({
-      color: theme.palette.text.secondary,
+      color: theme.palette.text.primary,
     });
   });
 
@@ -267,14 +267,12 @@ describe("RowMenu", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Weitere Aktionen für Anna" }));
     const copy = screen.getByRole("menuitem", { name: "E-Mail-Adresse kopieren" });
-    const icon = copy.querySelector(".MuiListItemIcon-root");
-    expect(icon?.querySelector("svg")).not.toBeNull();
+    const icon = copy.querySelector("svg");
+    expect(icon).not.toBeNull();
     expect(icon?.compareDocumentPosition(within(copy).getByText("E-Mail-Adresse kopieren"))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );
-    expect(
-      screen.getByRole("menuitem", { name: "Ohne Symbol" }).querySelector(".MuiListItemIcon-root")
-    ).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Ohne Symbol" }).querySelector("svg")).toBeNull();
   });
 
   it("lets the keyboard reach a disabled item and its reason without running it", async () => {
