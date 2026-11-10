@@ -1,16 +1,7 @@
 "use client";
 
 import ErrorOutlineOutlined from "@mui/icons-material/ErrorOutlineOutlined";
-import {
-  Box,
-  FormControlLabel,
-  MenuItem,
-  Stack,
-  Switch,
-  TextField,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { Box, FormControlLabel, MenuItem, Stack, Switch, Typography, useTheme } from "@mui/material";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -25,6 +16,7 @@ import { DEFAULT_STREET_NETWORK, type UploadFlow } from "@/hooks/addLayer/useUpl
 import LayerSetupDialog from "@/components/addLayer/LayerSetupDialog";
 import UploadDropzone from "@/components/addLayer/UploadDropzone";
 import UploadFileRow from "@/components/addLayer/UploadFileRow";
+import LabeledField from "@/components/common/LabeledField";
 import CatalogFeatureTable from "@/components/dashboard/catalog/CatalogFeatureTable";
 import Selector from "@/components/map/panels/common/Selector";
 
@@ -282,10 +274,9 @@ const UploadBody = ({
               consequence stated under them rather than left to be inferred. */}
           <Stack spacing={4} sx={{ width: 280, flexShrink: 0 }}>
             {upload.preview && upload.preview.sheetNames.length > 1 && (
-              <TextField
+              <LabeledField
+                id="upload-worksheet"
                 select
-                fullWidth
-                size="small"
                 label={t("worksheet")}
                 value={upload.sheet}
                 onChange={(event) => upload.setSheet(event.target.value)}>
@@ -294,7 +285,7 @@ const UploadBody = ({
                     {name}
                   </MenuItem>
                 ))}
-              </TextField>
+              </LabeledField>
             )}
 
             <FormControlLabel

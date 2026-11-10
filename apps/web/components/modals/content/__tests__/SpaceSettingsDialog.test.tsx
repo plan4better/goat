@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Space } from "@/lib/validations/content";
 
+import SpaceSettingsDialog from "@/components/modals/content/SpaceSettingsDialog";
+
 const { useSpacesMock, updateSpaceDefaultRoleMock } = vi.hoisted(() => ({
   useSpacesMock: vi.fn(),
   updateSpaceDefaultRoleMock: vi.fn(),
@@ -19,8 +21,6 @@ vi.mock("@/lib/api/content", () => ({
   updateSpaceDefaultRole: updateSpaceDefaultRoleMock,
 }));
 
-import SpaceSettingsDialog from "@/components/modals/content/SpaceSettingsDialog";
-
 const teamSpace: Space = {
   id: "space-1",
   kind: "team",
@@ -33,23 +33,29 @@ const teamSpace: Space = {
 
 const noop = () => {};
 
-const radio = (name: string) => screen.getByRole("radio", { name }) as HTMLInputElement;
+/** A role's card: named by the role, then its line. */
+const radio = (role: string) => screen.getByRole("radio", { name: new RegExp(`^${role}`) });
 
 describe("SpaceSettingsDialog", () => {
   beforeEach(() => {
     updateSpaceDefaultRoleMock.mockReset().mockResolvedValue(undefined);
-    useSpacesMock.mockReturnValue({ spaces: [teamSpace], isLoading: false, isError: undefined, mutate: vi.fn() });
+    useSpacesMock.mockReturnValue({
+      spaces: [teamSpace],
+      isLoading: false,
+      isError: undefined,
+      mutate: vi.fn(),
+    });
   });
 
   it("offers the space's default content role, with the one in force selected", () => {
     render(<SpaceSettingsDialog space={teamSpace} onClose={noop} />);
 
     expect(screen.getByText("default_content_role")).toBeInTheDocument();
-    // Read off the DOM property rather than a matcher: the repo's ESLint
-    // setup reads jest-dom's `toBeChecked`/`toBeDisabled` as Playwright's
-    // (async) matchers of the same name.
-    expect(radio("viewer").checked).toBe(true);
-    expect(radio("editor").checked).toBe(false);
+    // The roles are the settings' radio cards, each with its line.
+    expect(screen.getByRole("radiogroup", { name: "default_content_role" })).toBeInTheDocument();
+    expect(radio("viewer").getAttribute("aria-checked")).toBe("true");
+    expect(radio("editor").getAttribute("aria-checked")).toBe("false");
+    expect(radio("editor").textContent).toContain("space_default_editor_hint");
   });
 
   it("saves only once the role actually changed", async () => {
@@ -57,7 +63,7 @@ describe("SpaceSettingsDialog", () => {
 
     expect((screen.getByRole("button", { name: "save" }) as HTMLButtonElement).disabled).toBe(true);
 
-    fireEvent.click(screen.getByRole("radio", { name: "editor" }));
+    fireEvent.click(radio("editor"));
     fireEvent.click(screen.getByRole("button", { name: "save" }));
 
     await waitFor(() => expect(updateSpaceDefaultRoleMock).toHaveBeenCalledWith("space-1", "editor"));

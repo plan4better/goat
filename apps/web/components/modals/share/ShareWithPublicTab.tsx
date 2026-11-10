@@ -63,9 +63,9 @@ const SectionLabel = ({ children, first }: { children: string; first?: boolean }
   );
 };
 
-/** Copies one value and says so for a moment. A pill rather than the
- * `CopyField` field+button pair, because both rows here already show what
- * they copy (the link inline, the embed code by description). */
+/** Copies one value and says so for a moment. A pill rather than a field
+ * with a button, because both rows here already show what they copy (the
+ * link inline, the embed code by description). */
 const CopyPill = ({ value, label }: { value: string; label: string }) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
