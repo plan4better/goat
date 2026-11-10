@@ -15,7 +15,7 @@ import AuthLayout from "@p4b/ui/components/AuthLayout";
 
 import { createOrganization } from "@/lib/api/organizations";
 import { useFeatures, useOrganizationCreation } from "@/lib/api/users";
-import { ORG_DEFAULT_AVATAR, privacyPolicyUrl } from "@/lib/constants";
+import { ORG_DEFAULT_AVATAR, privacyPolicyUrl, termsOfUseUrl } from "@/lib/constants";
 import { postOrganizationSchema } from "@/lib/validations/organization";
 
 import { useOrganizationSetup } from "@/hooks/onboarding/OrganizationCreate";
@@ -84,7 +84,14 @@ export default function OrganizationOnBoarding() {
     router.push("/");
   }
 
-  const privacyUrl = privacyPolicyUrl(i18n.language?.startsWith("de") ? "de" : "en");
+  const language = i18n.language?.startsWith("de") ? "de" : "en";
+  // A link where the website is configured, the bare words where it is not.
+  const legalLink = (url: string | undefined) =>
+    url ? (
+      <Link href={url} target="_blank" rel="noopener noreferrer" color="inherit" underline="always" />
+    ) : (
+      <span />
+    );
   const email = session?.user?.email;
 
   return (
@@ -164,17 +171,8 @@ export default function OrganizationOnBoarding() {
                   t={t}
                   i18nKey="organization_accept_terms"
                   components={{
-                    privacy: privacyUrl ? (
-                      <Link
-                        href={privacyUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        color="inherit"
-                        underline="always"
-                      />
-                    ) : (
-                      <span />
-                    ),
+                    terms: legalLink(termsOfUseUrl(language)),
+                    privacy: legalLink(privacyPolicyUrl(language)),
                   }}
                 />
               </Typography>

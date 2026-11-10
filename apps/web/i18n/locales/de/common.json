@@ -1865,7 +1865,7 @@
   "organization-member": "Mitglied",
   "organization-owner": "Eigentümer",
   "organization-viewer": "Betrachter",
-  "organization_accept_terms": "Mit Ihrer Anmeldung stimmen Sie unseren Nutzungsbedingungen und <privacy>Datenschutzrichtlinien</privacy> zu.",
+  "organization_accept_terms": "Mit Ihrer Anmeldung stimmen Sie unseren <terms>Nutzungsbedingungen</terms> und <privacy>Datenschutzrichtlinien</privacy> zu.",
   "organization_contact_phone_label": "Telefonnummer",
   "organization_contact_stepper": "Kontakt",
   "organization_contact_subtitle": "Zuletzt geben wir einige Kontaktinformationen an, um in Verbindung zu bleiben.",

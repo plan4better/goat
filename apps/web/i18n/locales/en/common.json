@@ -1767,7 +1767,7 @@
   "organization-member": "Member",
   "organization-owner": "Owner",
   "organization-viewer": "Viewer",
-  "organization_accept_terms": "By signing up, you agree to our Terms of Service and <privacy>Privacy Policy</privacy>.",
+  "organization_accept_terms": "By signing up, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
   "organization_contact_phone_label": "Phone number",
   "organization_contact_stepper": "Contact",
   "organization_contact_subtitle": "At last, let's provide some contact information to stay connected.",

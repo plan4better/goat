@@ -10,6 +10,7 @@ import OrganizationOnBoarding from "@/app/onboarding/organization/create/page";
 const state = vi.hoisted(() => ({
   billing: false,
   privacyUrl: undefined as string | undefined,
+  termsUrl: undefined as string | undefined,
   push: vi.fn(),
   replace: vi.fn(),
   update: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("@/lib/api/users", () => ({
 vi.mock("@/lib/constants", async (original) => ({
   ...(await original<typeof import("@/lib/constants")>()),
   privacyPolicyUrl: () => state.privacyUrl,
+  termsOfUseUrl: () => state.termsUrl,
 }));
 
 const renderPage = () =>
@@ -53,6 +55,7 @@ describe("Create organization", () => {
   beforeEach(() => {
     state.billing = false;
     state.privacyUrl = undefined;
+    state.termsUrl = undefined;
     for (const mock of [state.push, state.replace, state.update, state.signOut]) mock.mockReset();
     state.createOrganization.mockReset().mockResolvedValue({});
   });
@@ -102,18 +105,24 @@ describe("Create organization", () => {
     expect(screen.getByText(/Testzeitraum/)).toBeInTheDocument();
   });
 
-  it("links the privacy policy where the website is configured", async () => {
+  it("links GOAT's terms of use and the privacy policy where the website is configured", async () => {
+    state.termsUrl = "https://example.org/de/nutzungsbedingungen-goat";
     state.privacyUrl = "https://example.org/de/datenschutz";
     renderPage();
     const terms = screen.getByText(/stimmen Sie/);
+    await expect(within(terms).getByRole("link", { name: "Nutzungsbedingungen" })).toHaveAttribute(
+      "href",
+      "https://example.org/de/nutzungsbedingungen-goat"
+    );
     await expect(within(terms).getByRole("link", { name: "Datenschutzrichtlinien" })).toHaveAttribute(
       "href",
       "https://example.org/de/datenschutz"
     );
   });
 
-  it("names the privacy policy without a link where no website is configured", () => {
+  it("names both without a link where no website is configured", () => {
     renderPage();
+    expect(screen.getByText(/Nutzungsbedingungen/)).toBeInTheDocument();
     expect(screen.getByText(/Datenschutzrichtlinien/)).toBeInTheDocument();
     expect(screen.queryByRole("link")).toBeNull();
   });
