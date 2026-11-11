@@ -59,7 +59,7 @@ Tick the changes to make, edit or strike out anything, then run `docs-release ap
 | `<sha>` (#<PR>) | <subject> | <a few words> |
 ```
 
-Keep the proposals to the real changes. Keep the "No docs needed" table complete, with every commit in the range, so the reviewer can move any of them up. List merge commits under their PR, not on their own. If nothing needs docs, leave "Proposed changes" empty and still open the issue: it marks the range as reviewed.
+Keep the proposals to the real changes. Keep the "No docs needed" table complete, with every commit in the range, so the reviewer can move any of them up. List merge commits under their PR, not on their own. If nothing needs docs, leave "Proposed changes" empty and still open the issue, because it marks the range as reviewed. Then close it right away with `gh issue close <n> --repo plan4better/goat --comment "Nothing in this range needs docs."`; the next proposal still finds it, as the search includes closed issues. An issue with proposed changes stays open until the docs PR that says `Closes #<issue>` is merged.
 
 ## Stage 2: apply
 
