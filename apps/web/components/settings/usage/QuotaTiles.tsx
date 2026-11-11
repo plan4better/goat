@@ -1,63 +1,28 @@
 "use client";
 
-import { Box, LinearProgress, Skeleton, useMediaQuery, useTheme } from "@mui/material";
-import type { Theme } from "@mui/material";
-import { visuallyHidden } from "@mui/utils";
+import { Box, useMediaQuery, useTheme } from "@mui/material";
 import { type KeyboardEvent, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { CreditBalance } from "@/lib/api/usage";
+import { formatCredits, formatCreditsDay, formatMegabytes } from "@/lib/utils/credits";
+
+import { accentText } from "@/components/assistant/styles";
+import { QuotaTile } from "@/components/settings/usage/QuotaTile";
 import {
-  type AiCreditsLevel,
-  aiCreditsLevelColors,
-  formatCredits,
-  formatCreditsDay,
-  formatMegabytes,
-} from "@/lib/utils/credits";
+  QUOTA_KEYS,
+  type QuotaKey,
+  type QuotaLevel,
+  amountsOf,
+  levelColors,
+  levelOf,
+} from "@/components/settings/usage/quotaLevels";
 
-import { accentText, focusRing } from "@/components/assistant/styles";
-import SurfaceCard from "@/components/dashboard/common/SurfaceCard";
-
-export type QuotaKey = "credits" | "ai" | "storage" | "projects" | "editors";
-
-export const QUOTA_KEYS: QuotaKey[] = ["credits", "ai", "storage", "projects", "editors"];
+// The old import paths keep working.
+export { QUOTA_KEYS, type QuotaKey } from "@/components/settings/usage/quotaLevels";
 
 /** The id of a quota's tile, for the panel it controls to be labelled by. */
 export const quotaTabId = (panelId: string, key: QuotaKey): string => `${panelId}-${key}`;
-
-/** Within the limit, at 90 % of it or more, or over it. */
-type QuotaLevel = "ok" | "full" | "over";
-
-/** What a quota uses and its limit; null: no limit. */
-const amountsOf = (balance: CreditBalance): Record<QuotaKey, [number, number | null]> => ({
-  credits: [balance.used_credits, balance.total_credits],
-  ai: [balance.used_ai_credits, balance.total_ai_credits],
-  storage: [balance.used_storage, balance.total_storage],
-  projects: [balance.used_projects, balance.total_projects],
-  editors: [balance.used_editors, balance.total_editors],
-});
-
-/** Exactly at the limit is full, not over: every seat taken is not one too many. */
-const levelOf = (used: number, limit: number | null): QuotaLevel => {
-  if (limit === null) return "ok";
-  // A pool of nothing that nothing used (AI switched off by the deal) needs
-  // no attention; any use of it is over.
-  if (limit <= 0 && used <= 0) return "ok";
-  if (used > limit) return "over";
-  return used >= limit * 0.9 ? "full" : "ok";
-};
-
-/** A tile's level in the credit levels' colours: green, orange, red. */
-const LEVEL_COLORS: Record<QuotaLevel, AiCreditsLevel> = { ok: "ok", full: "low", over: "empty" };
-
-const levelColors = (theme: Theme, level: QuotaLevel) => {
-  const { bar, text } = aiCreditsLevelColors(theme, LEVEL_COLORS[level]);
-  return {
-    bar,
-    text: level === "ok" ? theme.palette.text.primary : text,
-    note: level === "ok" ? undefined : text,
-  };
-};
 
 interface Tile {
   key: QuotaKey;
@@ -70,8 +35,6 @@ interface Tile {
   percent: number;
   note: string | null;
 }
-
-const ellipsis = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
 
 /**
  * The five quotas as the tabs of the usage page: each tile names its quota,
@@ -192,15 +155,11 @@ export const QuotaTiles = ({
         const tile = content?.[index];
         const colors = tile && levelColors(theme, tile.level);
         return (
-          <SurfaceCard
+          <QuotaTile
             key={key}
-            ref={(node: HTMLElement | null) => {
+            ref={(node: HTMLDivElement | null) => {
               tabs.current[index] = node;
             }}
-            component="button"
-            // A plain button, never one that submits a form around it; the
-            // spread passes it on, as SurfaceCard's props are a div's.
-            {...{ type: "button" }}
             role="tab"
             id={quotaTabId(panelId, key)}
             aria-selected={open}
@@ -209,35 +168,10 @@ export const QuotaTiles = ({
             selected={open}
             onClick={() => onChange(key)}
             onKeyDown={(event: KeyboardEvent) => onKeyDown(event, index)}
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "stretch",
-              gap: "6px",
-              minWidth: 0,
-              m: 0,
-              p: "14px 16px 16px",
-              textAlign: "left",
-              font: "inherit",
-              color: "text.primary",
-              cursor: "pointer",
-              ...focusRing(theme),
-            }}>
-            <Box
-              component="span"
-              sx={{
-                display: "flex",
-                flexWrap: isPhone ? "wrap" : "nowrap",
-                alignItems: "center",
-                gap: "6px",
-                fontSize: 13,
-                fontWeight: 700,
-                color: open ? accentText(theme) : "text.secondary",
-              }}>
-              <Box component="span" sx={{ ...ellipsis, minWidth: 0 }}>
-                {labels[key]}
-              </Box>
-              {key === "ai" && (
+            label={labels[key]}
+            compact={isPhone}
+            badge={
+              key === "ai" ? (
                 <Box
                   component="span"
                   sx={{
@@ -253,84 +187,18 @@ export const QuotaTiles = ({
                   }}>
                   {t("beta")}
                 </Box>
-              )}
-              {tile && tile.level !== "ok" && (
-                <>
-                  <Box
-                    component="span"
-                    aria-hidden
-                    sx={{
-                      flexShrink: 0,
-                      width: 8,
-                      height: 8,
-                      ml: "auto",
-                      borderRadius: "50%",
-                      backgroundColor: tile.level === "over" ? "error.main" : "warning.main",
-                    }}
-                  />
-                  <Box component="span" sx={visuallyHidden}>
-                    {t("usage_needs_attention")}
-                  </Box>
-                </>
-              )}
-            </Box>
-            {tile && colors ? (
-              <>
-                <Box component="span" sx={{ ...ellipsis, fontSize: 13, color: "text.secondary" }}>
-                  <Box
-                    component="strong"
-                    sx={{
-                      fontSize: isPhone ? 18 : 22,
-                      fontWeight: 800,
-                      color: colors.text,
-                      fontVariantNumeric: "tabular-nums",
-                    }}>
-                    {tile.used}
-                  </Box>{" "}
-                  {tile.limit === null ? t("usage_used") : `/ ${tile.limit}`}
-                </Box>
-                {tile.limit === null ? (
-                  // The bar's place, so the notes of all tiles stay on one line.
-                  <Box component="span" aria-hidden sx={{ display: "block", height: 4 }} />
-                ) : (
-                  <LinearProgress
-                    variant="determinate"
-                    value={tile.percent}
-                    aria-hidden
-                    sx={{
-                      height: 4,
-                      borderRadius: "2px",
-                      backgroundColor: "action.selected",
-                      "& .MuiLinearProgress-bar": { borderRadius: "2px", backgroundColor: colors.bar },
-                    }}
-                  />
-                )}
-                {tile.note && (
-                  // A long note (German, a narrow tile) wraps to a second line
-                  // rather than losing its end, and stops there.
-                  <Box
-                    component="span"
-                    sx={{
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                      fontSize: 12,
-                      lineHeight: 1.4,
-                      color: colors.note ?? "text.secondary",
-                    }}>
-                    {tile.note}
-                  </Box>
-                )}
-              </>
-            ) : (
-              <>
-                <Skeleton variant="rounded" height={24} width="70%" sx={{ borderRadius: "6px" }} />
-                <Skeleton variant="rounded" height={4} sx={{ borderRadius: "2px" }} />
-                <Skeleton variant="rounded" height={12} width="50%" sx={{ borderRadius: "6px" }} />
-              </>
-            )}
-          </SurfaceCard>
+              ) : undefined
+            }
+            attention={tile && tile.level !== "ok" ? tile.level : null}
+            attentionText={t("usage_needs_attention")}
+            figure={
+              tile && colors
+                ? { used: tile.used, limit: tile.limit, usedWord: t("usage_used"), color: colors.text }
+                : undefined
+            }
+            bar={tile && colors && tile.limit !== null ? { percent: tile.percent, color: colors.bar } : null}
+            note={tile?.note && colors ? { text: tile.note, color: colors.note } : null}
+          />
         );
       })}
     </Box>

@@ -31,9 +31,9 @@ test("a user without an organization creates one on first login", async ({ page 
   await page.waitForURL(/\/onboarding\/organization\/create/, { timeout: 30000 });
 
   // One step: the name and the type. Everything else about the organization lives in the CRM.
-  await page.getByLabel("Your organization's name").fill("Newcomer Planning");
+  await page.getByLabel("Organization name").fill("Newcomer Planning");
   await choose(page, /Organization type/, "Public sector");
-  await page.getByRole("button", { name: "Let's get started" }).click();
+  await page.getByRole("button", { name: "Create organization" }).click();
 
   await page.waitForURL(/\/home/, { timeout: 30000 });
   await expect(page.getByRole("heading", { level: 1 })).toContainText(userOf("newcomer").firstname);

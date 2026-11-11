@@ -86,7 +86,7 @@
     "accept-language": "^3.0.18",
     "ai": "7.0.126",
     "apache-arrow": "17.0.0",
-    "axios": "^1.18.1",
+    "axios": "^1.21.0",
     "chroma-js": "^3.1.2",
     "clsx": "^2.0.0",
     "color": "^4.2.3",
@@ -94,7 +94,7 @@
     "country-flag-icons": "^1.5.7",
     "date-fns": "^2.30.0",
     "dayjs": "^1.11.9",
-    "dompurify": "^3.4.13",
+    "dompurify": "^3.4.17",
     "eslint": "^8.47.0",
     "geojson": "^0.5.0",
     "i18next": "^23.4.4",
@@ -104,7 +104,7 @@
     "liquidjs": "^10.27.2",
     "lodash.uniq": "^4.5.0",
     "maplibre-gl": "^5.21.1",
-    "next": "16.3.3",
+    "next": "16.4.5",
     "next-auth": "^4.24.15",
     "nuqs": "^2.8.0",
     "ol": "10.1.0",
@@ -128,7 +128,7 @@
     "remark-gfm": "^4.0.1",
     "remove-accents": "^0.5.0",
     "screenfull": "^6.0.2",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.5",
     "swiper": "^12.1.2",
     "swr": "^2.2.0",
     "tsafe": "^1.6.0",
@@ -139,7 +139,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@next/bundle-analyzer": "^16.3.3",
+    "@next/bundle-analyzer": "^16.4.5",
     "@p4b/prettier-config": "workspace:*",
     "@p4b/tsconfig": "workspace:*",
     "@playwright/test": "^1.33.0",
@@ -153,13 +153,13 @@
     "@types/react-dom": "^19.2.0",
     "@types/uuid": "^9.0.2",
     "@vitejs/plugin-react": "^4.2.1",
-    "@vitest/ui": "^5.0.2",
+    "@vitest/ui": "^5.0.5",
     "cross-env": "^7.0.3",
     "es-check": "^7.1.1",
     "eslint-config-p4b": "workspace:*",
     "jsdom": "^29.1.1",
     "react-rnd": "^10.4.1",
     "size-limit": "^8.2.6",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.5"
   }
 }

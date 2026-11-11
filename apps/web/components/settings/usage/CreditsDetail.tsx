@@ -15,7 +15,7 @@ import {
   useCreditBreakdown,
 } from "@/lib/api/usage";
 import { formatCredits, roundCredits, toolTitle } from "@/lib/utils/credits";
-import { rangeWindow } from "@/lib/utils/usageRange";
+import { NO_PERIOD, rangeWindow, requestWindow } from "@/lib/utils/usageRange";
 
 import { useProcessList } from "@/hooks/map/useOgcProcesses";
 import { useLocalList } from "@/hooks/settings/useLocalList";
@@ -93,8 +93,10 @@ const rowKey = (row: { key: string | null }) => row.key ?? "public";
  * counts, compute and traffic apart, the usage per day, and the ledger
  * grouped by workflow, tool, layer, member or period. Workflows and layers
  * are paged on the server; the other groupings are small and paged here.
+ * `balance` is undefined until `/credits/balance` answers: the frame and the
+ * lists are there before it, the figures fill in with it.
  */
-export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
+export const CreditsDetail = ({ balance }: { balance?: CreditBalance }) => {
   const { t, i18n } = useTranslation("common");
   const language = i18n.language;
   const theme = useTheme();
@@ -108,15 +110,21 @@ export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
   });
   const { range, group, member, q, page } = state;
   const sort = state.sort ?? DEFAULT_SORT[group];
-  const bounds = rangeWindow(range, balance);
-  const span = { since: bounds.since, until: bounds.until };
+  const bounds = rangeWindow(range, balance ?? NO_PERIOD);
+  const requested = requestWindow(range, balance);
+  const span = requested ?? {};
+  // The last period waits for the balance's start; every other range asks at once.
+  const ready = requested !== null;
+  // Days or months follow the period the balance names: until it answers the
+  // chart names days, the usual case.
+  const perMonth = !!balance && bounds.perMonth;
   const memberParam = member ?? undefined;
   const directory = useMemberDirectory();
   const { processes } = useProcessList();
 
-  const chart = useCreditBreakdown("day", { ...span, member: memberParam });
+  const chart = useCreditBreakdown("day", { ...span, member: memberParam }, ready);
   // Everyone's credits in the range: the member pill's options and the Members grouping.
-  const members = useCreditBreakdown("member", span);
+  const members = useCreditBreakdown("member", span, ready);
   const paged = group === "workflow" || group === "layer";
   const pagedList = useCreditBreakdown(
     group === "layer" ? "layer" : "workflow",
@@ -129,15 +137,14 @@ export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
     },
-    paged
+    paged && ready
   );
-  const tools = useCreditBreakdown("tool", { ...span, member: memberParam }, group === "tool");
+  const tools = useCreditBreakdown("tool", { ...span, member: memberParam }, group === "tool" && ready);
   // Whole periods, whatever the range: a window would cut a period's sums
   // while its row keeps its bounds and its download.
   const periods = useCreditBreakdown("period", { member: memberParam }, group === "period");
 
-  const chartRows =
-    chart.breakdown && (bounds.perMonth ? byMonth(chart.breakdown.rows) : chart.breakdown.rows);
+  const chartRows = chart.breakdown && (perMonth ? byMonth(chart.breakdown.rows) : chart.breakdown.rows);
   const credits = (value: number | null | undefined) => formatCredits(value, language);
   const creditsText = (value: number) =>
     t("usage_credits_count", { count: roundCredits(value), credits: credits(value) });
@@ -181,15 +188,18 @@ export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
   const toolTotal = (toolRows ?? []).reduce((total, row) => total + row.credits, 0);
 
   const usedInPeriod = member === null && range.preset === "period";
-  const amount = usedInPeriod ? balance.used_credits : sum(chartRows, "credits");
+  const amount = usedInPeriod ? (balance?.used_credits ?? 0) : sum(chartRows, "credits");
   // Nothing used yet this period: the chart and the list make way for a
   // word on where credits come from; the toolbar stays for another range.
   const emptyPeriod =
-    usedInPeriod && balance.used_credits === 0 && !!chartRows && !chartRows.some((row) => row.credits > 0);
+    usedInPeriod && balance?.used_credits === 0 && !!chartRows && !chartRows.some((row) => row.credits > 0);
+  // An empty list of this period may be an empty period, which the balance
+  // tells (the empty state takes the list's place): until then it loads.
+  const holdEmpty = (rows: unknown[] | undefined) => usedInPeriod && !balance && !rows?.length;
   // This period's axis runs to its reset (a trial's to its end); the days
   // after today stay empty.
   const periodEnd =
-    range.preset === "period"
+    range.preset === "period" && balance
       ? balance.on_trial
         ? balance.plan_renewal_date
         : balance.credits_reset_at
@@ -409,7 +419,7 @@ export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
           <DetailList
             {...listProps}
             failed={!!pagedList.isError}
-            isLoading={pagedList.isLoading}
+            isLoading={pagedList.isLoading || holdEmpty(pagedList.breakdown?.rows)}
             columns={shown === "layer" ? layerColumns : workflowColumns}
             rows={pagedList.breakdown?.rows}
             rowKey={rowKey}
@@ -422,7 +432,7 @@ export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
           <DetailList
             {...listProps}
             failed={!!tools.isError}
-            isLoading={tools.isLoading}
+            isLoading={tools.isLoading || holdEmpty(toolList.pageRows)}
             columns={toolColumns}
             rows={toolList.pageRows}
             rowKey={rowKey}
@@ -435,7 +445,7 @@ export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
           <DetailList
             {...listProps}
             failed={!!members.isError}
-            isLoading={members.isLoading}
+            isLoading={members.isLoading || holdEmpty(memberList.pageRows)}
             columns={memberColumns}
             rows={memberList.pageRows}
             rowKey={rowKey}
@@ -463,7 +473,7 @@ export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
   return (
     <DetailFrame
       header={
-        usedInPeriod || chartRows
+        balance && (usedInPeriod || chartRows)
           ? {
               title: t("credits"),
               amount: credits(amount),
@@ -489,7 +499,10 @@ export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
           : undefined
       }
       headerFailed={!!chart.isError}
+      // The split fills in with the header and the chart, once the balance
+      // says whether this period has any usage at all.
       above={
+        balance &&
         chartRows &&
         !emptyPeriod && (
           <SplitCard
@@ -524,11 +537,12 @@ export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
           <DateRangePill
             value={range}
             onChange={state.setRange}
-            onTrial={balance.on_trial}
-            hasPeriod={balance.period_start !== null}
-            periodStart={balance.period_start}
-            disabled={group === "period"}
-            disabledHint={t("usage_periods_whole")}
+            onTrial={balance?.on_trial}
+            hasPeriod={!!balance?.period_start}
+            periodStart={balance?.period_start}
+            // Until the balance answers, the presets have no period to name.
+            disabled={!balance || group === "period"}
+            disabledHint={group === "period" ? t("usage_periods_whole") : undefined}
           />
           <MemberPill
             value={member}
@@ -536,7 +550,13 @@ export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
             onChange={pickMember}
             valueLabel={memberName ?? ""}
           />
-          <ExportPill onExport={() => downloadUsageCsv("credits", { ...span, member: memberParam })} />
+          {/* The exact window: without the balance's period start it would be the whole ledger. */}
+          <ExportPill
+            disabled={!balance}
+            onExport={() =>
+              downloadUsageCsv("credits", { since: bounds.since, until: bounds.until, member: memberParam })
+            }
+          />
         </>
       }>
       {emptyPeriod ? (
@@ -561,11 +581,11 @@ export const CreditsDetail = ({ balance }: { balance: CreditBalance }) => {
             <UsageChart
               rows={chartRows}
               kind="credits"
-              perMonth={bounds.perMonth}
+              perMonth={perMonth}
               window={bounds}
-              isLoading={chart.isLoading}
+              isLoading={chart.isLoading || !balance}
               periodEnd={periodEnd}
-              phrase={rangePhrase(range, balance, t, language)}
+              phrase={balance ? rangePhrase(range, balance, t, language) : ""}
             />
           )}
           {groupToggle}

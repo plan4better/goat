@@ -1,4 +1,4 @@
-import { Alert, DialogContentText, Stack, TextField, Typography } from "@mui/material";
+import { Alert, DialogContentText, Stack, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Trans } from "react-i18next";
@@ -9,6 +9,7 @@ import { ICON_NAME } from "@p4b/ui/components/Icon";
 import type { ProjectLayerTreeNode } from "@/lib/validations/project";
 
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
+import LabeledField from "@/components/common/LabeledField";
 
 type LayerGroupModalMode = "create" | "rename" | "delete";
 
@@ -196,13 +197,15 @@ const ProjectLayerGroupModal = ({
         </>
       ) : (
         <Stack spacing={3} sx={{ mt: 1 }}>
-          <TextField
-            fullWidth
+          <LabeledField
+            id="layer-group-name"
             name="name"
             label={t("group_name")}
             value={name}
             onChange={handleNameChange}
             placeholder={t("enter_group_name")}
+            // A group's name is no personal detail: the browser has nothing to suggest.
+            autoComplete="off"
             autoFocus
           />
         </Stack>

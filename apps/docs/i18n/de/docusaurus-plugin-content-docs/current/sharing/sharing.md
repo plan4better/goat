@@ -17,31 +17,24 @@ Das Teilen **dupliziert nicht** Ihre Daten, sondern gewährt nur Zugriff darauf.
 
 <div class="step">
    <div class="step-number">1</div>
-   <div class="content">Gehen Sie zu <code>Einstellungen</code>.</div>
+   <div class="content">Gehen Sie zu <code>Einstellungen</code> und öffnen Sie <code>Teams</code>. Sie sehen die Teams, in denen Sie Mitglied sind. Teams können Abteilungen oder Gruppen innerhalb Ihrer Organisation darstellen.</div>
 </div>
 <div class="step">
    <div class="step-number">2</div>
-   <div class="content">Sehen Sie die Liste der Teams, denen Sie angehören. Teams können Abteilungen oder Gruppen innerhalb Ihrer Organisation darstellen.</div>
+   <div class="content">Klicken Sie auf ein Team, um <b>seine Mitglieder</b> zu sehen und wer Eigentümer des Teams ist.</div>
 </div>
 <div class="step">
    <div class="step-number">3</div>
-   <div class="content">Klicken Sie auf ein <code>Team</code> und dann auf den Tab <code>Mitglieder</code>, um die Mitglieder und ihre Rollen zu sehen.</div>
-</div>
-<div class="step">
-   <div class="step-number">4</div>
    <div class="content">
-   Wenn Sie <b>Besitzer</b> der Organisation sind, können Sie:
+   Wenn Sie <b>Eigentümer des Teams</b> sind, können Sie:
       <ul>
-         <li>Auf <code>+ Neues Mitglied</code> klicken, um ein neues Mitglied hinzuzufügen.</li>
-         <li>Auf das <code>Mehr Optionen</code>-Menü <img src={require('/img/icons/3dots.png').default} alt="Mehr Optionen" style={{ maxHeight: '20px', maxWidth: '20px', verticalAlign: 'middle'}}/> neben einem Mitglied klicken, um weitere Optionen wie <code>Löschen</code> zu sehen.</li>
+         <li>Auf <code>Mitglieder hinzufügen</code> klicken, um Personen Ihrer Organisation zum Team hinzuzufügen.</li>
+         <li>Auf das Menü <code>Weitere Aktionen</code> <img src={require('/img/icons/3dots.png').default} alt="Weitere Aktionen" style={{ maxHeight: '20px', maxWidth: '20px', verticalAlign: 'middle'}}/> eines Mitglieds und dann auf <code>Aus dem Team entfernen</code> klicken.</li>
       </ul>
    </div>
 </div>
 
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <img src={require('/img/sharing/manage_team_members_de.webp').default} alt="Mitglieder in den Einstellungen verwalten" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "contain"}}/>
-</div>
-<p> </p>
+In die Organisation kommen Personen über eine Einladung: Eigentümer und Admins laden sie unter <code>Organisation</code> › <code>Mitglieder</code> ein und legen ihre Rolle fest; siehe [Einstellungen](../workspace/settings.md#mitglieder).
 
 :::important
 Wenn Sie einen Datensatz/ein Projekt mit einem Team oder einer Organisation teilen, haben alle Mitglieder Zugriff darauf.
@@ -54,7 +47,7 @@ Wenn Sie einen Datensatz/ein Projekt mit einem Team oder einer Organisation teil
 Öffnen Sie das <code>Weitere Optionen</code>-Menü <img src={require('/img/icons/3dots.png').default} alt="Weitere Optionen" style={{ maxHeight: '20px', maxWidth: '20px'}}/> des Inhalts und wählen Sie <code>Teilen</code>. Der Dialog hat diese Tabs:
 
 - **Personen**: einen **Datensatz, ein Projekt oder eine Vorlage** mit einer **einzelnen Person** aus Ihrer Organisation teilen. Suchen Sie sie; der Inhalt erscheint bei ihr unter `Mit mir geteilt` und bleibt, wo er liegt. Ordner und Datenpakete lassen sich nur mit Teams und der Organisation teilen.
-- **Teams**: mit einem ganzen **Team oder einer Organisation** teilen. Gewähren Sie den Mitgliedern <code>Viewer</code>- oder <code>Editor</code>-Zugriff, oder <code>Kein Zugriff</code>, um ihn zu entziehen.
+- **Teams**: mit einem ganzen **Team oder einer Organisation** teilen. Gewähren Sie den Mitgliedern <code>Betrachter</code>- oder <code>Bearbeiter</code>-Zugriff, oder <code>Kein Zugriff</code>, um ihn zu entziehen.
 - **Öffentlich** (nur Datensätze und Projekte): einen **Datensatz** für alle GOAT-Nutzer öffentlich machen; bei einem **Projekt** eine öffentliche Momentaufnahme veröffentlichen, die jeder ohne GOAT-Konto öffnen kann. Beides wird unter [Öffentliches Teilen](./public.md) behandelt.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -76,7 +69,7 @@ Sie können auch einen ganzen **Ordner** auf einmal teilen. Das Teilen eines Ord
 </div>
 <div class="step">
    <div class="step-number">2</div>
-   <div class="content">Wählen Sie eine <code>Organisation</code> oder ein <code>Team</code> und gewähren Sie <code>Viewer</code>- oder <code>Editor</code>-Zugriff nach Bedarf.</div>
+   <div class="content">Wählen Sie eine <code>Organisation</code> oder ein <code>Team</code> und gewähren Sie <code>Betrachter</code>- oder <code>Bearbeiter</code>-Zugriff nach Bedarf.</div>
 </div>
 
 :::info
@@ -127,7 +120,7 @@ Das Übertragen der Rechte ändert, wem der Inhalt gehört, und ersetzt dessen p
 
 Gelöschte Inhalte werden nicht sofort entfernt. Sie **wandern zuerst in den Papierkorb**.
 
-Jeder Bereich hat einen eigenen Papierkorb. Wählen Sie unter <code>Inhalt</code> im Panel <code>Bereiche</code> links einen Bereich; wenn Sie ihn besitzen, erscheint unten im Panel sein <code>Papierkorb</code>. Nur der Besitzer eines Bereichs kann dessen Papierkorb öffnen und Inhalte wiederherstellen; in einem Team-Bereich wenden Sie sich also an den Besitzer des Teams.
+Jeder Bereich hat einen eigenen Papierkorb. Wählen Sie unter <code>Inhalt</code> im Panel <code>Bereiche</code> links einen Bereich; wenn Sie ihn besitzen, erscheint unten im Panel sein <code>Papierkorb</code>. Nur der Eigentümer eines Bereichs kann dessen Papierkorb öffnen und Inhalte wiederherstellen; in einem Team-Bereich wenden Sie sich also an den Eigentümer des Teams.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
   <img src={require('/img/sharing/trash_de.webp').default} alt="Papierkorb unten im Panel Bereiche unter Inhalt" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "contain"}}/>
@@ -154,6 +147,6 @@ Siehe die Tabelle unten, um zu erfahren, was jeder Benutzer innerhalb einer Orga
 
 Das Löschen eines Datensatzes aus einem geteilten Projekt, **das Sie besitzen**, entfernt ihn *auch für andere Benutzer*. Er landet in Ihrem Papierkorb, sodass Sie ihn innerhalb von 30 Tagen wiederherstellen können.
 
-**Als Editor**: Wenn Sie einen Datensatz oder eine Ebene aus dem Projekt löschen, bleibt dieser *für den Besitzer weiterhin im persönlichen Datensatz erhalten*.
+**Als Bearbeiter**: Wenn Sie einen Datensatz oder eine Ebene aus dem Projekt löschen, bleibt dieser *für den Eigentümer weiterhin im persönlichen Datensatz erhalten*.
 
 :::

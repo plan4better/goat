@@ -17,33 +17,26 @@ Sharing **does not duplicate** your data, only grants access to it.
 
 <div class="step">
    <div class="step-number">1</div>
-   <div class="content">Go to the <code>Settings</code> section.</div>
+   <div class="content">Go to <code>Settings</code> and open <code>Teams</code>. You see the teams you are a member of. Teams can represent departments or groups within your organization.</div>
 </div>
 
 <div class="step">
    <div class="step-number">2</div>
-   <div class="content">Click on a <code>Team</code> and <b>view the list of Teams</b> you are part of. Teams can represent departments or groups within your organization.</div>
-</div>
-<div class="step">
-   <div class="step-number">3</div>
-   <div class="content">Then click on the <code>Members</code> tab to <b>see the members and their roles</b>.</div>
+   <div class="content">Click a team to <b>see its members</b> and who owns the team.</div>
 </div>
 
 <div class="step">
-   <div class="step-number">4</div>
+   <div class="step-number">3</div>
    <div class="content">
-   If you are the <b>Owner</b> of the Organization, you can:
+   If you are the <b>owner of the team</b>, you can:
       <ul>
-         <li>Click <code>+ New Member</code> to add a new member.</li>
-         <li>Click the <code>More Options</code> <img src={require('/img/icons/3dots.png').default} alt="More options" style={{ maxHeight: '20px', maxWidth: '20px', verticalAlign: 'middle'}}/> menu and then on <code>Delete</code> to remove a member</li>
+         <li>Click <code>Add members</code> to add people of your organization to the team.</li>
+         <li>Click the <code>More actions</code> <img src={require('/img/icons/3dots.png').default} alt="More actions" style={{ maxHeight: '20px', maxWidth: '20px', verticalAlign: 'middle'}}/> menu of a member and then <code>Remove from the team</code>.</li>
       </ul>
    </div>
 </div>
 
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <img src={require('/img/sharing/manage_team_members.webp').default} alt="Managing team members in Settings" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "contain"}}/>
-</div>
-<p> </p>
+People join the organization by invitation: owners and admins invite them and set their roles under <code>Organization</code> › <code>Members</code>; see [Settings](../workspace/settings.md#members).
 
 :::important
 When you share a dataset/project with a Team/Organization, all members will have access to it.

@@ -19,15 +19,15 @@ import { useTranslation } from "react-i18next";
 
 import { aiCreditsRuleText } from "@/lib/assistant/aiCredits";
 import { useActiveSurface } from "@/lib/assistant/store";
+import { settingsUsagePath } from "@/lib/settingsRoutes";
 import { aiCreditsLevelColors, formatCredits, formatCreditsDay } from "@/lib/utils/credits";
 
 import type { AiCredits, AiCreditsPool } from "@/hooks/assistant/useAiCredits";
 
-import { CARD_RADIUS, accentSoft, accentText, focusRing, mutedText } from "@/components/assistant/styles";
-import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
+import { accentSoft, accentText, focusRing, mutedText } from "@/components/assistant/styles";
 
 /** The usage page opened on its AI credits tile. */
-const USAGE_HREF = "/settings/usage?quota=ai";
+const USAGE_HREF = settingsUsagePath("ai");
 /** The ring's circle: 16px wide, a 2.4px stroke. */
 const RADIUS = 6;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -135,10 +135,6 @@ export function AiCreditsRing({ pool, isAdmin }: { pool: AiCreditsPool; isAdmin:
             mt: "-8px",
             width: 290,
             maxWidth: "calc(100vw - 32px)",
-            borderRadius: CARD_RADIUS,
-            border: 1,
-            borderColor: "divider",
-            boxShadow: surfaceShadows(theme).hover,
           },
         }}>
         <Stack gap="12px" sx={{ p: "14px" }}>

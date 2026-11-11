@@ -38,9 +38,10 @@ interface Person {
 /**
  * The organization's projects against the plan's limit, newest first,
  * searched, filtered by owner and paged on the server. Each opens as the
- * content page opens it.
+ * content page opens it. `balance` is undefined until `/credits/balance`
+ * answers: the list is there before it, the amount fills in with it.
  */
-export const ProjectsDetail = ({ balance }: { balance: CreditBalance }) => {
+export const ProjectsDetail = ({ balance }: { balance?: CreditBalance }) => {
   const { t, i18n } = useTranslation("common");
   const language = i18n.language;
   // A phone gives the search a row of its own above the pills.
@@ -66,8 +67,8 @@ export const ProjectsDetail = ({ balance }: { balance: CreditBalance }) => {
   };
   const people = [...directory.people.entries()].map(([id, person]) => ({ id, name: person.name }));
   const count = (value: number) => value.toLocaleString(language);
-  const used = balance.used_projects;
-  const limit = balance.total_projects;
+  const used = balance?.used_projects ?? 0;
+  const limit = balance?.total_projects ?? null;
   // The amount counts the projects in the trash, the list does not: the line
   // under the amount says how the two part. A core without `trash` names none.
   const trash = projects.projects?.trash?.count ?? 0;
@@ -116,23 +117,28 @@ export const ProjectsDetail = ({ balance }: { balance: CreditBalance }) => {
 
   return (
     <DetailFrame
-      header={{
-        title: t("projects"),
-        amount: count(used),
-        amountRest:
-          limit === null
-            ? t("usage_projects_no_limit", { count: used })
-            : t(balance.on_trial ? "usage_amount_of_trial_limit" : "usage_amount_of_plan", {
-                limit: count(limit),
-              }),
-        amountTone: limit !== null && used > limit ? "error" : undefined,
-        note:
-          trash > 0
-            ? t("usage_projects_trash", { count: live, live: count(live), trash: count(trash) })
-            : undefined,
-        explain: t("usage_projects_explain"),
-        limitLine: limit !== null ? t("usage_projects_limit") : undefined,
-      }}
+      // The amount is the balance's: the header waits for it, the list does not.
+      header={
+        balance
+          ? {
+              title: t("projects"),
+              amount: count(used),
+              amountRest:
+                limit === null
+                  ? t("usage_projects_no_limit", { count: used })
+                  : t(balance.on_trial ? "usage_amount_of_trial_limit" : "usage_amount_of_plan", {
+                      limit: count(limit),
+                    }),
+              amountTone: limit !== null && used > limit ? "error" : undefined,
+              note:
+                trash > 0
+                  ? t("usage_projects_trash", { count: live, live: count(live), trash: count(trash) })
+                  : undefined,
+              explain: t("usage_projects_explain"),
+              limitLine: limit !== null ? t("usage_projects_limit") : undefined,
+            }
+          : undefined
+      }
       toolbar={
         <>
           <SearchInput

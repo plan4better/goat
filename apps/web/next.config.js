@@ -59,6 +59,12 @@ const nextConfig = {
   images: {
     remotePatterns: imageRemotePatterns(),
   },
+  // A typed /settings lands on the profile, as a 307 before rendering and
+  // before the proxy runs. A page.tsx with redirect() under settings/loading.tsx
+  // would stream a 200 page that reloads the whole app (Settings load, L1).
+  async redirects() {
+    return [{ source: "/settings", destination: "/settings/profile", permanent: false }];
+  },
 };
 
 module.exports = withBundleAnalyzer(nextConfig);

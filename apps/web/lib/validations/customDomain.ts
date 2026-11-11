@@ -37,15 +37,16 @@ export type DomainKind = z.infer<typeof domainKindSchema>;
 export const HOSTNAME_REGEX =
   /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
 
+/** The messages are i18n keys: the add dialog translates them. */
 export const customDomainCreateSchema = z.object({
   base_domain: z
     .string()
-    .min(3)
-    .max(253)
+    .min(3, "settings_domains_name_invalid")
+    .max(253, "settings_domains_name_invalid")
     .transform((v) => v.trim().toLowerCase())
-    .refine((v) => HOSTNAME_REGEX.test(v), "Invalid hostname format")
-    .refine((v) => v.split(".").length >= 2, "Hostname must have at least two labels")
-    .refine((v) => !v.startsWith("www."), "Subdomain cannot be 'www'"),
+    .refine((v) => HOSTNAME_REGEX.test(v), "settings_domains_name_invalid")
+    .refine((v) => v.split(".").length >= 2, "settings_domains_name_invalid")
+    .refine((v) => !v.startsWith("www."), "settings_domains_name_www"),
 });
 
 /** True for apex domains (e.g. ministry.de). False for subdomains. */

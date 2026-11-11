@@ -20,20 +20,27 @@ const api = vi.hoisted(() => ({
   trash: 0,
   failing: false,
   projects: vi.fn(),
+  membersQuery: vi.fn(),
+  organizationLoading: false,
 }));
 
 vi.mock("@/lib/api/usage", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/usage")>()),
   useOrgProjects: (...args: unknown[]) => api.projects(...args),
 }));
-vi.mock("@/lib/api/users", () => ({ useOrganization: () => ({ organization: { id: "org1" } }) }));
+vi.mock("@/lib/api/users", () => ({
+  useOrganization: () => ({ organization: api.organizationLoading ? undefined : { id: "org1" } }),
+}));
 vi.mock("@/lib/api/organizations", () => ({
-  useOrganizationMembers: () => ({
-    members: [
-      { id: "u1", firstname: "Anna", lastname: "Weber", email: "anna@example.org", roles: [] },
-      { id: "u2", firstname: "Tim", lastname: "Braun", email: "tim@example.org", roles: [] },
-    ],
-  }),
+  useOrganizationMembers: (...args: unknown[]) => {
+    api.membersQuery(...args);
+    return {
+      members: [
+        { id: "u1", firstname: "Anna", lastname: "Weber", email: "anna@example.org", roles: [] },
+        { id: "u2", firstname: "Tim", lastname: "Braun", email: "tim@example.org", roles: [] },
+      ],
+    };
+  },
 }));
 vi.mock("@/components/support/SupportMenu", () => ({ useReportProblemHref: () => null }));
 
@@ -74,8 +81,9 @@ const project = (i: number, values: Partial<OrgProject> = {}): OrgProject => ({
 
 const lastCall = () => api.projects.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
 
-const renderDetail = (balance: CreditBalance = BALANCE, language: "en" | "de" = "en") =>
-  render(<ProjectsDetail balance={balance} />, {
+/** `null`: the balance has not answered yet. */
+const renderDetail = (balance: CreditBalance | null = BALANCE, language: "en" | "de" = "en") =>
+  render(<ProjectsDetail balance={balance ?? undefined} />, {
     wrapper: ({ children }: { children: ReactNode }) => (
       <ThemeProvider theme={theme}>
         <I18nextProvider i18n={commonI18n(language)}>{children}</I18nextProvider>
@@ -93,6 +101,8 @@ beforeEach(() => {
   api.total = 527;
   api.trash = 134;
   api.failing = false;
+  api.organizationLoading = false;
+  api.membersQuery.mockReset();
   api.projects.mockReset();
   api.projects.mockImplementation(() =>
     api.failing
@@ -123,6 +133,26 @@ describe("ProjectsDetail", () => {
     expect(screen.getByRole("columnheader", { name: /Updated/ }).getAttribute("aria-sort")).toBe(
       "descending"
     );
+  });
+
+  it("lists the projects before the balance answers, and fills the amount in when it does", () => {
+    const view = renderDetail(null);
+    expect(screen.getByText("1–10 of 527 projects")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 3, name: "Projects" })).not.toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+    view.rerender(<ProjectsDetail balance={BALANCE} />);
+    expect(screen.getByText("661")).toBeInTheDocument();
+  });
+
+  it("asks for the owners with the cookie's organization before the organization answers", () => {
+    api.organizationLoading = true;
+    document.cookie = "organization=org-cookie; path=/";
+    try {
+      renderDetail();
+      expect(api.membersQuery).toHaveBeenCalledWith("org-cookie");
+    } finally {
+      document.cookie = "organization=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+    }
   });
 
   it("says how many projects the plan allows", () => {

@@ -88,10 +88,10 @@ describe("Header documentation icon", () => {
     profile.value = { id: "u1" };
   });
 
-  it('has no "report an issue" entry any more: the support popover carries it', () => {
+  it('has no "report an issue" entry any more: the support popover carries it', async () => {
     render(<Header mapHeader />);
     expect(screen.queryByText("common:report_an_issue")).toBeNull();
-    expect(screen.getByText("common:home")).toBeTruthy();
+    expect(await screen.findByText("common:home")).toBeTruthy();
   });
 
   it("is not in the header, whatever the support state", () => {

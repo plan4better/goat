@@ -145,7 +145,7 @@ Wie diese Einstellungen zusammenwirken, steht unter [KI-Assistent](./external_se
 | `ASSISTANT_DEFAULT_BASE_URL` | leer | Pflicht für `openai_compatible` und `azure_openai` (der Azure-v1-Endpunkt, endet auf `/openai/v1`); ein optionales Gateway für `anthropic`, `openai` und `mistral` |
 | `ASSISTANT_DEFAULT_API_KEY` | leer | Pflicht für `anthropic`, `openai`, `mistral` und `azure_openai`; optional für `openai_compatible`; für `bedrock` ein optionaler Bedrock-API-Schlüssel |
 | `ASSISTANT_DEFAULT_REGION` | leer | AWS-Region (`bedrock`) oder Google-Cloud-Standort (`vertex`) |
-| `ASSISTANT_DEFAULT_HOSTED_IN` | leer | Wo das Modell von GOAT AI gehostet wird, eine Region wie `EU`. Die Details der Antworten von GOAT AI nennen sie, und Administratoren der Organisation sehen sie auf der Seite der KI-Einstellungen. Wird mit jeder Antwort gespeichert, sodass eine spätere Änderung frühere Antworten unverändert lässt; leer nennt keinen Ort. |
+| `ASSISTANT_DEFAULT_HOSTED_IN` | leer | Wo das Modell von GOAT AI gehostet wird, eine Region wie `EU`. Die Details der Antworten von GOAT AI nennen sie, und Admins der Organisation sehen sie auf der Seite der KI-Einstellungen. Wird mit jeder Antwort gespeichert, sodass eine spätere Änderung frühere Antworten unverändert lässt; leer nennt keinen Ort. |
 | `ASSISTANT_ALLOW_ORG_CONNECTIONS` | `true` | Organisationen dürfen eigene Verbindungen anlegen |
 | `ASSISTANT_ALLOWED_PROVIDERS` | alle sieben Typen | Anbietertypen, die Organisationen verwenden dürfen, durch Kommas getrennt |
 | `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS` | `false` | Erlaubt Verbindungen von Organisationen zu privaten und internen Adressen sowie unverschlüsseltes `http` |

@@ -25,6 +25,26 @@ describe("AppDialog", () => {
     expect(screen.getByText("body content")).toBeInTheDocument();
   });
 
+  it("is named by its title, as MUI's DialogTitle names a dialog", () => {
+    render(
+      <AppDialog open onClose={vi.fn()} icon={ICON_NAME.SAVE} title="Save as template" subtitle="Munich">
+        <div>body content</div>
+      </AppDialog>
+    );
+
+    expect(screen.getByRole("dialog", { name: "Save as template" })).toBeInTheDocument();
+  });
+
+  it("takes its name from ariaLabel when one is given", () => {
+    render(
+      <AppDialog open onClose={vi.fn()} icon={ICON_NAME.SAVE} title="Set up layer" ariaLabel="roads.gpkg">
+        <div>body content</div>
+      </AppDialog>
+    );
+
+    expect(screen.getByRole("dialog", { name: "roads.gpkg" })).toBeInTheDocument();
+  });
+
   it("renders nothing when closed", () => {
     render(
       <AppDialog open={false} onClose={vi.fn()} icon={ICON_NAME.SAVE} title="Save as template">

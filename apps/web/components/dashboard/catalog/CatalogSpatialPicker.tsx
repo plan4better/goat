@@ -3,11 +3,11 @@
 import {
   Autocomplete,
   Box,
-  Button,
   Chip,
-  Slider,
+  IconButton,
   Stack,
   TextField,
+  Tooltip,
   Typography,
   useTheme,
 } from "@mui/material";
@@ -27,22 +27,27 @@ import {
   DEFAULT_BUFFER_KM,
   MAX_BUFFER_KM,
   MIN_BUFFER_KM,
-  formatBuffer,
   spatialFeatures,
 } from "@/lib/catalog/spatial";
 import type { CatalogNutsRegion } from "@/lib/validations/catalog";
+
+import type { SelectorItem } from "@/types/map/common";
 
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
 import { useCatalogNutsGeometries } from "@/hooks/catalog/useCatalogNutsGeometries";
 
 import DetailMapAttribution from "@/components/dashboard/common/DetailMapAttribution";
+import Selector from "@/components/map/panels/common/Selector";
+import { FieldLabel, SETTINGS_PANE_HEIGHT } from "@/components/map/panels/common/SettingsColumn";
+import SliderInput from "@/components/map/panels/common/SliderInput";
 
 /**
  * Search a place, buffer a point, or draw an area, on one editable map.
  *
  * In parts, so a host can put the controls where its own layout wants them: `useSpatialPicker`
- * holds what the controls and the map share, `SpatialPickerMap` is only the map, and the
- * controls below are separate pieces. `CatalogSpatialPicker` is the catalog dialog's layout of them.
+ * holds what the controls and the map share, `SpatialPickerMap` is only the map, and
+ * `SpatialAreaSettings` the settings column's fields. `CatalogSpatialPicker` is the catalog
+ * dialog's layout of them, the one the fetch dialog uses: the fields in a column beside the map.
  */
 
 const SHAPE_COLOR = "#2BB381";
@@ -115,14 +120,11 @@ export const useSpatialPicker = ({
 
   const polygonVertices = value?.kind === "polygon" ? value.ring.length : 0;
 
+  // Only drawing needs a hint: the other ways say what they need in their own fields.
   const hint =
-    mode === "region"
-      ? t("catalog_spatial_hint_region")
-      : mode === "point"
-        ? t("catalog_spatial_hint_point")
-        : polygonVertices === 0
-          ? t("catalog_spatial_hint_polygon")
-          : t("catalog_spatial_hint_polygon_progress", { count: polygonVertices });
+    polygonVertices === 0
+      ? t("catalog_spatial_hint_polygon")
+      : t("catalog_spatial_hint_polygon_progress", { count: polygonVertices });
 
   return {
     mode,
@@ -225,20 +227,137 @@ export const SpatialRegionChips = ({ picker }: { picker: SpatialPicker }) => {
   );
 };
 
-/** The radius around the point, as a plain slider. */
-export const SpatialBufferSlider = ({ picker }: { picker: SpatialPicker }) => {
-  const { t } = useTranslation("common");
+/** A small action beside a control, as the tool panels draw theirs: an icon with its name on hover. */
+export const SpatialAreaAction = ({
+  label,
+  icon,
+  danger,
+  onClick,
+  href,
+}: {
+  label: string;
+  icon: ICON_NAME;
+  danger?: boolean;
+  onClick?: () => void;
+  /** Opens a page in a new tab instead of acting here. */
+  href?: string;
+}) => {
+  const theme = useTheme();
   return (
-    <Slider
-      size="small"
-      value={picker.buffer}
-      min={MIN_BUFFER_KM}
-      max={MAX_BUFFER_KM}
-      step={BUFFER_STEP_KM}
-      aria-label={t("catalog_buffer_radius")}
-      onChange={(_event, next) => picker.changeBuffer(next as number)}
-      sx={{ mt: 1 }}
-    />
+    <Tooltip title={label} placement="top">
+      <IconButton
+        size="small"
+        aria-label={label}
+        onClick={onClick}
+        {...(href ? { component: "a", href, target: "_blank", rel: "noopener noreferrer" } : {})}
+        sx={{ p: 0.5, "&:hover": { color: danger ? theme.palette.error.main : theme.palette.primary.main } }}>
+        <Icon iconName={icon} style={{ fontSize: "14px" }} htmlColor="inherit" />
+      </IconButton>
+    </Tooltip>
+  );
+};
+
+/**
+ * How the area is chosen, and what that way needs: the map beside it is where it is picked.
+ * The host says which ways it offers; a way of its own that the picker does not draw (the
+ * fetch dialog's map view) puts what it needs in `children`, shown under the selector.
+ */
+export const SpatialAreaSettings = <M extends string>({
+  modes,
+  mode,
+  onModeChange,
+  picker,
+  children,
+}: {
+  /** Labelled `fetch_features_area_mode_<mode>`, in this order. */
+  modes: M[];
+  mode: M;
+  onModeChange: (mode: M) => void;
+  picker: SpatialPicker;
+  children?: ReactNode;
+}) => {
+  const { t, i18n } = useTranslation("common");
+  const items: SelectorItem[] = modes.map((value) => ({
+    value,
+    label: t(`fetch_features_area_mode_${value}`),
+  }));
+  const point = picker.value?.kind === "point" ? picker.value : null;
+  const coordinate = (value: number) =>
+    value.toLocaleString(i18n.language, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+  return (
+    <>
+      <Selector
+        label={t("fetch_features_area_by")}
+        items={items}
+        selectedItems={items.find((item) => item.value === mode)}
+        setSelectedItems={(item) => {
+          const next = !Array.isArray(item) && item ? (item.value as M) : undefined;
+          if (next) onModeChange(next);
+        }}
+      />
+      {children}
+      {picker.mode === "region" && (
+        <Box>
+          <FieldLabel>{t("fetch_features_area_region")}</FieldLabel>
+          <SpatialRegionSearch picker={picker} label={t("fetch_features_area_region")} />
+          <Box sx={{ mt: picker.regionIds.length ? 2 : 0 }}>
+            <SpatialRegionChips picker={picker} />
+          </Box>
+        </Box>
+      )}
+      {picker.mode === "point" && (
+        <>
+          <Box>
+            <FieldLabel>{t("fetch_features_area_centre")}</FieldLabel>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ minHeight: 30 }}>
+              <Typography variant="body2" color={point ? "text.primary" : "text.secondary"} sx={{ flex: 1 }}>
+                {point
+                  ? `${coordinate(point.lat)}, ${coordinate(point.lng)}`
+                  : t("fetch_features_area_pick_on_map")}
+              </Typography>
+              {point && (
+                <SpatialAreaAction
+                  label={t("clear_all")}
+                  icon={ICON_NAME.TRASH}
+                  danger
+                  onClick={() => picker.onChange(null)}
+                />
+              )}
+            </Stack>
+          </Box>
+          <Box>
+            <FieldLabel>{t("fetch_features_area_radius")}</FieldLabel>
+            <SliderInput
+              value={picker.buffer}
+              isRange={false}
+              min={MIN_BUFFER_KM}
+              max={MAX_BUFFER_KM}
+              step={BUFFER_STEP_KM}
+              onChange={(next) => picker.changeBuffer(next as number)}
+              rootSx={{ pl: 1 }}
+            />
+          </Box>
+        </>
+      )}
+      {picker.mode === "polygon" && (
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ minHeight: 30 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+            {picker.hint}
+          </Typography>
+          {picker.polygonVertices > 0 && (
+            <>
+              <SpatialAreaAction label={t("undo")} icon={ICON_NAME.UNDO} onClick={picker.undoVertex} />
+              <SpatialAreaAction
+                label={t("clear_all")}
+                icon={ICON_NAME.TRASH}
+                danger
+                onClick={() => picker.onChange(null)}
+              />
+            </>
+          )}
+        </Stack>
+      )}
+    </>
   );
 };
 
@@ -432,94 +551,68 @@ export const SpatialPickerMap = ({
   );
 };
 
-/** The catalog's location filter: search, then the way of picking, the radius, a hint, and the map. */
+const CATALOG_MODES: Mode[] = ["region", "point", "polygon"];
+
+/**
+ * The catalog's location filter: the fetch dialog's area fields in one strip (the way of
+ * picking, then what that way needs beside it), and the map framed below them. A few fields
+ * do not fill a column of their own, so the map gets the room.
+ */
 const CatalogSpatialPicker = ({
   mode,
+  onModeChange,
   value,
   onChange,
-  modeSwitch,
   onRegionAdded,
   mapId,
 }: {
   mode: Mode;
+  onModeChange: (mode: Mode) => void;
   value: CatalogSpatialFilter | null;
   onChange: (filter: CatalogSpatialFilter | null) => void;
-  /** Shown between the region search and the hint. */
-  modeSwitch?: ReactNode;
   onRegionAdded?: () => void;
   mapId: string;
 }) => {
-  const { t } = useTranslation("common");
   const theme = useTheme();
   const picker = useSpatialPicker({ mode, value, onChange, onRegionAdded });
 
   return (
-    <Stack spacing={4} sx={{ pt: 1 }}>
-      <Box>
-        <Typography variant="caption" fontWeight={600} color="text.secondary">
-          {t("catalog_location")}
-        </Typography>
-        <Box sx={{ mt: 1.5 }}>
-          <SpatialRegionSearch picker={picker} />
-        </Box>
-        {picker.regionIds.length > 0 && (
-          <Box sx={{ mt: 2 }}>
-            <SpatialRegionChips picker={picker} />
-          </Box>
-        )}
-      </Box>
-
-      {modeSwitch}
-
-      {mode === "point" && (
-        <Box>
-          <Stack direction="row" alignItems="baseline" justifyContent="space-between">
-            <Typography variant="body2" fontWeight={600}>
-              {t("catalog_buffer_radius")}
-            </Typography>
-            <Chip size="small" color="primary" label={formatBuffer(picker.buffer)} />
-          </Stack>
-          <SpatialBufferSlider picker={picker} />
-        </Box>
-      )}
-
-      <Stack
-        direction="row"
-        spacing={2.5}
-        alignItems="center"
+    <Box
+      sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, height: SETTINGS_PANE_HEIGHT }}>
+      <Box
         sx={{
-          px: 3.5,
-          py: 2.5,
-          borderRadius: 2,
-          border: `1px solid ${theme.palette.divider}`,
-          backgroundColor: theme.palette.action.hover,
+          display: "flex",
+          flexDirection: { xs: "column", md: "row" },
+          // The polygon's hint has no label over it: it lines up with the selector's field.
+          alignItems: { md: mode === "polygon" ? "flex-end" : "flex-start" },
+          gap: { xs: 3, md: 4 },
+          px: 4,
+          py: 3,
+          flexShrink: 0,
+          "& > *": { flex: { md: 1 }, minWidth: 0 },
+          "& > :first-of-type": { flex: { md: "0 0 280px" } },
         }}>
-        <Icon
-          iconName={ICON_NAME.CIRCLEINFO}
-          style={{ fontSize: 14 }}
-          htmlColor={theme.palette.primary.main}
-        />
-        <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
-          {picker.hint}
-        </Typography>
-        {mode === "polygon" && picker.polygonVertices > 0 && (
-          <Button size="small" onClick={picker.undoVertex}>
-            {t("undo")}
-          </Button>
-        )}
-      </Stack>
-
+        <SpatialAreaSettings modes={CATALOG_MODES} mode={mode} onModeChange={onModeChange} picker={picker} />
+      </Box>
       <SpatialPickerMap
         picker={picker}
         mapId={mapId}
+        frameEdits
+        // Framed inside the dialog's padding, as the dashboard's other maps are. A height of
+        // its own on a phone, where the body's height is not set and the map inside (sized at
+        // 100%) would collapse to nothing.
         sx={{
-          height: 380,
+          flex: { xs: "none", md: 1 },
+          minHeight: 280,
+          height: { xs: 320, md: "auto" },
+          mx: 4,
+          mb: 4,
           borderRadius: 2,
           overflow: "hidden",
           border: `1px solid ${theme.palette.divider}`,
         }}
       />
-    </Stack>
+    </Box>
   );
 };
 

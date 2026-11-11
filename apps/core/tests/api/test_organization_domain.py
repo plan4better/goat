@@ -5,6 +5,8 @@ the user-facing CRUD endpoints. The k8s side is mocked via FakeProvisioner;
 DNS resolution is monkeypatched via ``_resolve``.
 """
 
+import re
+from datetime import datetime, timezone
 from typing import Generator
 from uuid import UUID
 
@@ -255,6 +257,186 @@ async def test_recheck_provisions_when_dns_appears(
     assert body["dns_status"] == "verified"
     assert body["cert_status"] == "active"
     assert fake_provisioner.created == ["recheck.test.example.com"]
+
+
+def _checked_at(body: dict) -> datetime:
+    """The answer's `dns_last_checked_at` as an aware time (fails while null)."""
+    return datetime.fromisoformat(body["dns_last_checked_at"])
+
+
+@pytest.mark.asyncio
+async def test_create_and_recheck_record_when_dns_was_checked(
+    client: AsyncClient,
+    seeded_org: str,
+    fake_provisioner: FakeProvisioner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every DNS check records when it ran, so the list can say when it last
+    checked ("Zuletzt geprüft")."""
+    monkeypatch.setattr(
+        "core.services.domain_reconciliation._resolve",
+        fake_dns_resolve(),
+    )
+    before = datetime.now(timezone.utc)
+    r = await client.post(
+        f"/api/v2/organizations/{seeded_org}/domains/",
+        json={"base_domain": "checked.test.example.com"},
+    )
+    assert r.status_code == 201, r.text
+    created = _checked_at(r.json())
+    assert before <= created <= datetime.now(timezone.utc)
+
+    r = await client.post(
+        f"/api/v2/organizations/{seeded_org}/domains/{r.json()['id']}/recheck"
+    )
+    assert r.status_code == 200, r.text
+    rechecked = _checked_at(r.json())
+    assert created <= rechecked <= datetime.now(timezone.utc)
+
+
+async def _set_status(db_session: AsyncSession, domain_id: str, **fields) -> None:
+    """Write status fields straight to the row, as nothing in core sets them."""
+    from core.db.models.organization_domain import OrganizationDomain
+    from sqlmodel import select
+
+    row = (
+        await db_session.execute(
+            select(OrganizationDomain).where(OrganizationDomain.id == UUID(domain_id))
+        )
+    ).scalar_one()
+    for name, value in fields.items():
+        setattr(row, name, value)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_recheck_tells_a_wrong_record_from_a_missing_one(
+    client: AsyncClient,
+    seeded_org: str,
+    fake_provisioner: FakeProvisioner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A record that points elsewhere answers failed ("not right yet"),
+    no record at all answers pending ("waiting for DNS")."""
+    monkeypatch.setattr(
+        "core.services.domain_reconciliation._resolve",
+        fake_dns_resolve(cname=["old-host.example.net."]),
+    )
+    r = await client.post(
+        f"/api/v2/organizations/{seeded_org}/domains/",
+        json={"base_domain": "wrong.test.example.com"},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert (body["dns_status"], body["cert_status"]) == ("failed", "pending")
+    assert re.fullmatch(
+        r"CNAME points to old-host\.example\.net\.? \(expected .+\)",
+        body["dns_status_message"],
+    ), body["dns_status_message"]
+    recheck = f"/api/v2/organizations/{seeded_org}/domains/{body['id']}/recheck"
+
+    monkeypatch.setattr(
+        "core.services.domain_reconciliation._resolve",
+        fake_dns_resolve(),
+    )
+    r = await client.post(recheck)
+    assert r.status_code == 200, r.text
+    assert r.json()["dns_status"] == "pending"
+
+    monkeypatch.setattr(
+        "core.services.domain_reconciliation._resolve",
+        fake_dns_resolve(cname=["cname.goat.plan4better.de."]),
+    )
+    r = await client.post(recheck)
+    assert r.status_code == 200, r.text
+    assert (r.json()["dns_status"], r.json()["cert_status"]) == ("verified", "active")
+    assert fake_provisioner.created == ["wrong.test.example.com"]
+
+
+@pytest.mark.asyncio
+async def test_recheck_provisions_a_failed_certificate_again(
+    client: AsyncClient,
+    seeded_org: str,
+    fake_provisioner: FakeProvisioner,
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
+) -> None:
+    """A certificate that failed is not final: once DNS points at GOAT, a
+    recheck provisions the domain again, the way it does a new one."""
+    from core.db.models.organization_domain import CertStatus
+
+    monkeypatch.setattr(
+        "core.services.domain_reconciliation._resolve",
+        fake_dns_resolve(),
+    )
+    r = await client.post(
+        f"/api/v2/organizations/{seeded_org}/domains/",
+        json={"base_domain": "certfailed.test.example.com"},
+    )
+    assert r.status_code == 201, r.text
+    domain_id = r.json()["id"]
+    await _set_status(
+        db_session,
+        domain_id,
+        cert_status=CertStatus.FAILED,
+        cert_status_message="certificate could not be issued",
+    )
+    recheck = f"/api/v2/organizations/{seeded_org}/domains/{domain_id}/recheck"
+
+    # DNS still missing: nothing to provision, the certificate stays failed.
+    r = await client.post(recheck)
+    assert r.status_code == 200, r.text
+    assert (r.json()["dns_status"], r.json()["cert_status"]) == ("pending", "failed")
+    assert fake_provisioner.created == []
+
+    monkeypatch.setattr(
+        "core.services.domain_reconciliation._resolve",
+        fake_dns_resolve(cname=["cname.goat.plan4better.de."]),
+    )
+    r = await client.post(recheck)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert (body["dns_status"], body["cert_status"]) == ("verified", "active")
+    assert body["cert_status_message"] is None
+    assert fake_provisioner.created == ["certfailed.test.example.com"]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_lists_failed_dns_too(
+    client: AsyncClient,
+    seeded_org: str,
+    fake_provisioner: FakeProvisioner,
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
+) -> None:
+    """The periodic job keeps checking a domain whose record was wrong, so
+    fixing the record is enough, as it was while such a domain read pending."""
+    from core.crud.crud_organization_domain import organization_domain as crud
+    from core.db.models.organization_domain import DnsStatus
+
+    ids = {}
+    for name, dns_status in (
+        ("listed-pending", DnsStatus.PENDING),
+        ("listed-failed", DnsStatus.FAILED),
+        ("listed-verified", DnsStatus.VERIFIED),
+    ):
+        monkeypatch.setattr(
+            "core.services.domain_reconciliation._resolve",
+            fake_dns_resolve(),
+        )
+        r = await client.post(
+            f"/api/v2/organizations/{seeded_org}/domains/",
+            json={"base_domain": f"{name}.test.example.com"},
+        )
+        assert r.status_code == 201, r.text
+        ids[r.json()["id"]] = name
+        await _set_status(db_session, r.json()["id"], dns_status=dns_status)
+
+    listed = await crud.list_pending_dns(async_session=db_session)
+    assert sorted(ids[str(d.id)] for d in listed if str(d.id) in ids) == [
+        "listed-failed",
+        "listed-pending",
+    ]
 
 
 @pytest.mark.asyncio

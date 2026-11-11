@@ -6,6 +6,8 @@ import type { ElementType, MouseEventHandler, ReactNode } from "react";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { POPOVER_LIST_PADDING, POPOVER_ROW_ICON_SIZE, POPOVER_ROW_SX } from "@/components/common/popoverRow";
+
 /** One width for every header popover, unless one genuinely needs another. */
 export const HEADER_POPOVER_WIDTH = "min(340px, calc(100vw - 24px))";
 
@@ -55,7 +57,7 @@ export const HeaderPopoverHeader = ({ title, aside, leading, children }: HeaderP
 };
 
 export const HeaderPopoverList = ({ children, sx }: { children: ReactNode; sx?: SxProps<Theme> }) => (
-  <Stack sx={[{ p: "6px" }, ...(Array.isArray(sx) ? sx : [sx])]}>{children}</Stack>
+  <Stack sx={[{ p: POPOVER_LIST_PADDING }, ...(Array.isArray(sx) ? sx : [sx])]}>{children}</Stack>
 );
 
 type RowProps = {
@@ -107,18 +109,14 @@ export const HeaderPopoverRow = ({
         : {})}
       onClick={interactive ? onClick : undefined}
       sx={{
+        ...POPOVER_ROW_SX,
         display: "flex",
         alignItems: "center",
-        gap: "11px",
-        p: "9px 10px",
         width: "100%",
         border: "none",
         background: "none",
         textAlign: "left",
         textDecoration: "none",
-        borderRadius: "8px",
-        fontSize: 13.5,
-        fontWeight: 600,
         fontFamily: "inherit",
         color,
         opacity: disabled ? 0.5 : 1,
@@ -129,7 +127,11 @@ export const HeaderPopoverRow = ({
       {typeof icon === "string" ? (
         <Icon
           iconName={icon as ICON_NAME}
-          style={{ fontSize: 15, color: danger ? "inherit" : theme.palette.text.secondary, flexShrink: 0 }}
+          style={{
+            fontSize: POPOVER_ROW_ICON_SIZE,
+            color: danger ? "inherit" : theme.palette.text.secondary,
+            flexShrink: 0,
+          }}
         />
       ) : (
         icon
@@ -177,11 +179,8 @@ export const HeaderPopoverFooter = ({ children }: { children: ReactNode }) => {
   const theme = useTheme();
   return (
     <Box
-      sx={{
-        p: "10px 16px",
-        borderTop: `1px solid ${theme.palette.divider}`,
-        backgroundColor: theme.palette.background.default,
-      }}>
+      // On the card's own surface, ruled off: a tinted strip read as the page showing through.
+      sx={{ p: "10px 16px", borderTop: `1px solid ${theme.palette.divider}` }}>
       {children}
     </Box>
   );

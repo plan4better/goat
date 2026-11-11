@@ -84,6 +84,12 @@ describe("Composer", () => {
       />
     );
     expect(screen.queryByText("Current")).toBeNull();
+    // A project in the source picker is one of the app's menu rows.
+    expect(screen.getByRole("menuitem", { name: "Berlin" })).toHaveStyle({
+      fontSize: "13.5px",
+      fontWeight: "600",
+      borderRadius: "8px",
+    });
     fireEvent.click(screen.getByText("Berlin"));
     expect(onAddSource).toHaveBeenCalledWith({ kind: "project", id: "p2", name: "Berlin" });
     expect(onDraftChange).toHaveBeenCalledWith("Vergleiche mit ");

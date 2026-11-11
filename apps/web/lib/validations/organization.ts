@@ -63,6 +63,12 @@ const organizationMemberSchema = z.object({
   roles: z.array(z.string()),
   invitation_status: invitationStatusEnum,
   avatar: z.string(),
+  // Core B5, naive UTC (read with parseApiDate from lib/utils/credits): a
+  // member's join date; an invitation's creation, expiry and last send.
+  joined_at: z.string().nullable().optional(),
+  invited_at: z.string().nullable().optional(),
+  expires_at: z.string().nullable().optional(),
+  last_sent_at: z.string().nullable().optional(),
 });
 export const organizationMemberQueryParams = z.object({
   include_invitations: z.boolean().optional(),

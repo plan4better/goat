@@ -166,6 +166,36 @@ async def create_invited_user(email: str) -> str | None:
         raise
 
 
+async def pending_setup_user_id(email: str) -> str | None:
+    """The Keycloak id of the account for `email` while it still waits for its
+    first password (UPDATE_PASSWORD among its required actions): resending
+    an invitation sends such an invitee the account setup mail again.
+
+    None when GOAT does not create accounts (KEYCLOAK_PROVISION_INVITED_USERS
+    or AUTH off), without the admin client, without an account for the
+    address, or once its password is set. A failed lookup is logged and counts
+    as None: the GOAT invitation mail goes out instead.
+    """
+    if not (settings.AUTH and settings.KEYCLOAK_PROVISION_INVITED_USERS):
+        return None
+    admin = await keycloak_admin()
+    if admin is None:
+        return None
+    try:
+        matches = await asyncio.to_thread(
+            admin.get_users, {"email": email, "exact": True}
+        )
+    except KeycloakError:
+        logger.warning("keycloak lookup failed for a pending invitation", exc_info=True)
+        return None
+    for user in matches or []:
+        same_address = (user.get("email") or "").lower() == email.lower()
+        waiting = "UPDATE_PASSWORD" in (user.get("requiredActions") or [])
+        if same_address and waiting:
+            return user.get("id")
+    return None
+
+
 async def send_account_setup_email(user_id: str, redirect_uri: str) -> bool:
     """Have Keycloak email the user a link to set their password.
 

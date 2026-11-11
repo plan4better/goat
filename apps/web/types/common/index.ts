@@ -49,18 +49,6 @@ export enum FilterExpressionActions {
   DUPLICATE = "duplicate",
 }
 
-export enum OrgMemberActions {
-  EDIT = "edit",
-  DELETE = "delete",
-  TRANSFER_OWNERSHIP = "transferOwnership",
-  CANCEL_INVITATION = "cancelInvitation",
-}
-
-export enum TeamMemberActions {
-  DELETE = "delete",
-  CANCEL_INVITATION = "cancelInvitation",
-}
-
 export type ResponseResult = {
   message: string;
   status?: "error" | "success";

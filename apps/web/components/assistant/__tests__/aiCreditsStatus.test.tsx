@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import Composer from "@/components/assistant/Composer";
 
-import AiSettingsPage from "@/app/(dashboard)/settings/organization/ai/page";
+import AiSettingsPage from "@/app/(dashboard)/settings/ai/page";
 
 /**
  * The AI settings page and the dock in one tab, on the app's own SWR cache:
@@ -122,7 +122,8 @@ describe("the dock's AI credits and the AI settings", () => {
     await screen.findByText("assistant_credits_used_up");
     expect(composer()).toBeNull();
 
-    await userEvent.click(await screen.findByRole("button", { name: "ai_settings_use_connection" }));
+    // Choosing the tested own connection saves at once.
+    await userEvent.click(await screen.findByRole("radio", { name: /^Own vLLM/ }));
 
     // The save reads /status again: an own connection answers, so the pool no longer holds the dock back.
     await waitFor(() => expect(composer()).not.toBeNull());

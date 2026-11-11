@@ -8,6 +8,10 @@ over the account through a password reset), delete their Keycloak account,
 or create an organization owned by them. The web app never sends that
 parameter; each route now acts as the token's subject only.
 
+The organization's owner cannot delete their account at all while the
+organization exists (spec R1): it would be left with nobody to delete it or
+hand it over. Everyone else can.
+
 Keycloak is replaced by a recorder, so these tests never reach a real one.
 """
 
@@ -17,13 +21,21 @@ from uuid import UUID
 
 import pytest
 from core.core.config import settings
+from core.crud.crud_organization import organization as crud_organization
 from core.db.models.organization import Organization
 from core.db.models.user import User
+from core.utils.i18n import language, trans
+from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.authz.route_world import API, give_org_role, sweep_client
+from tests.utils import as_user
 
 S = settings.SCHEMA
+OWNER_KEEPS_ACCOUNT = (
+    "The organization owner cannot delete their account while the "
+    "organization exists."
+)
 
 
 class _RecordingKeycloak:
@@ -69,7 +81,8 @@ async def people(
     victim = await make_user(org.id)
     attacker = await make_user(other_org.id)
     await give_org_role(db_session, victim.id, roles["organization-owner"])
-    await give_org_role(db_session, attacker.id, roles["organization-owner"])
+    # An admin: an owner cannot delete their own account (the tests below).
+    await give_org_role(db_session, attacker.id, roles["organization-admin"])
     await db_session.commit()
     return {"victim": victim, "attacker": attacker}
 
@@ -171,3 +184,79 @@ async def test_an_organization_is_never_created_for_someone_else(
     # ...and the newcomer named in the query is left without one.
     db_session.expire_all()
     assert await _column(db_session, "organization_id", newcomer_id) is None
+
+
+@pytest.mark.asyncio
+async def test_the_owner_cannot_delete_their_account(
+    auth_on: Callable[..., dict[str, str]],
+    keycloak: _RecordingKeycloak,
+    people: dict[str, User],
+) -> None:
+    owner_id = people["victim"].id
+
+    delete = await sweep_client().delete(f"{API}/users", headers=auth_on(owner_id))
+    assert delete.status_code == 409, delete.text
+    assert delete.json()["detail"] == OWNER_KEEPS_ACCOUNT
+    assert keycloak.deleted == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "role", ["organization-admin", "organization-editor", "organization-viewer"]
+)
+async def test_every_other_member_deletes_their_account(
+    role: str,
+    db_session: AsyncSession,
+    auth_on: Callable[..., dict[str, str]],
+    keycloak: _RecordingKeycloak,
+    roles: dict[str, UUID],
+    make_org: Callable[[], Awaitable[Organization]],
+    make_user: Callable[..., Awaitable[User]],
+) -> None:
+    member_id = (await make_user((await make_org()).id)).id
+    await give_org_role(db_session, member_id, roles[role])
+    await db_session.commit()
+
+    delete = await sweep_client().delete(f"{API}/users", headers=auth_on(member_id))
+    assert delete.status_code == 204, delete.text
+    assert keycloak.deleted == [str(member_id)]
+
+
+@pytest.mark.asyncio
+async def test_a_former_owner_deletes_their_account_once_the_organization_is_gone(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    keycloak: _RecordingKeycloak,
+    roles: dict[str, UUID],
+    make_org: Callable[[], Awaitable[Organization]],
+    make_user: Callable[..., Awaitable[User]],
+) -> None:
+    """The way the refusal names: once the organization is deleted for good
+    (`delete_permanently`, which leaves its last member without an
+    organization or a role), the handler lets its former owner delete their
+    account. AUTH is off here: with it on, `authorization()` refuses
+    `DELETE /users` to a user without an organization role (`manage-user`
+    comes only with one), so this path is the handler's alone for now."""
+    org_id = (await make_org()).id
+    owner_id = (await make_user(org_id)).id
+    await give_org_role(db_session, owner_id, roles["organization-owner"])
+    await db_session.commit()
+
+    refused = await client.delete(f"{API}/users", headers=as_user(owner_id))
+    assert refused.status_code == 409, refused.text
+
+    gone = await crud_organization.delete_permanently(organization_id=org_id)
+    assert gone is not None and gone.user_id == owner_id
+
+    deleted = await client.delete(f"{API}/users", headers=as_user(owner_id))
+    assert deleted.status_code == 204, deleted.text
+    assert keycloak.deleted == [str(owner_id)]
+
+
+@pytest.mark.unit
+def test_the_owner_refusal_has_a_german_text() -> None:
+    with language("de"):
+        assert trans(OWNER_KEEPS_ACCOUNT) == (
+            "Als Eigentümer können Sie Ihr Konto erst löschen, wenn die "
+            "Organisation gelöscht ist."
+        )

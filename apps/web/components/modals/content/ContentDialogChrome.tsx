@@ -6,6 +6,8 @@ import type { ReactNode, RefObject } from "react";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { readableText } from "@/lib/utils/credits";
+
 /** The chrome the Content dialogs (Share, Move, Transfer) share: a fixed
  * dialog width with a 16px radius, a header row whose leading icon sits in a
  * tinted block, and the pill search field the Share tabs filter with. */
@@ -15,6 +17,15 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
  * size, and on a dark ground it needs the light end of the ramp instead. */
 export const warningInk = (theme: Theme): string =>
   theme.palette.mode === "dark" ? theme.palette.warning.light : darken(theme.palette.warning.main, 0.3);
+
+/** Text in a palette colour, on paper: the colour's nearest shade that reads
+ * at 4.5:1 (`readableText`, which the usage pages use too). `warningInk`'s
+ * shade is made for icons and does not reach that as text. */
+export const textInk = (theme: Theme, color: "primary" | "info" | "success" | "warning" | "error"): string =>
+  readableText(theme, theme.palette[color].main);
+
+/** `textInk` in amber: a warning written as text on paper (a caption, a status line). */
+export const warningTextInk = (theme: Theme): string => textInk(theme, "warning");
 
 /** The amber a filled ownership button is painted with. Dark in both modes,
  * because it carries white text either way. */
@@ -72,6 +83,8 @@ interface ContentDialogHeaderProps {
    * straight into its tab bar, which carries the rule instead. */
   divider?: boolean;
   padding?: string;
+  /** The title's id, for the dialog to be named by it (`aria-labelledby`). */
+  titleId?: string;
 }
 
 /** A Content dialog's header: a 34px tinted icon block, the title, an
@@ -87,6 +100,7 @@ export const ContentDialogHeader = ({
   closeDisabled,
   divider,
   padding = "18px 22px 14px",
+  titleId,
 }: ContentDialogHeaderProps) => {
   const theme = useTheme();
   const toneColor = tone === "warning" ? warningInk(theme) : theme.palette.primary.main;
@@ -130,7 +144,7 @@ export const ContentDialogHeader = ({
           flexDirection: "column",
           justifyContent: "center",
         }}>
-        <Typography component="div" noWrap sx={{ fontSize: 16, fontWeight: 700 }}>
+        <Typography component="div" id={titleId} noWrap sx={{ fontSize: 16, fontWeight: 700 }}>
           {title}
         </Typography>
         {subtitle && (
@@ -187,6 +201,11 @@ interface DialogSearchFieldProps {
   inputRef?: RefObject<HTMLInputElement | null>;
   /** The field took focus — a tab may open its list of candidates on it. */
   onFocus?: () => void;
+  /** Names the field for assistive tech; the placeholder when unset. */
+  ariaLabel?: string;
+  /** No typing and no clearing meanwhile (a save in flight); the band dims
+   * as a disabled `ToolPill` does. */
+  disabled?: boolean;
 }
 
 /** The pill search field at the top of a Share tab: a soft band with a
@@ -198,6 +217,8 @@ export const DialogSearchField = ({
   clearLabel,
   inputRef,
   onFocus,
+  ariaLabel,
+  disabled,
 }: DialogSearchFieldProps) => {
   const theme = useTheme();
 
@@ -212,18 +233,32 @@ export const DialogSearchField = ({
         border: `1px solid ${theme.palette.divider}`,
         borderRadius: "999px",
         padding: "4px 10px 4px 14px",
+        opacity: disabled ? 0.45 : 1,
       }}>
       <Icon iconName={ICON_NAME.SEARCH} style={{ fontSize: 14, color: theme.palette.text.secondary }} />
       <InputBase
         inputRef={inputRef}
-        sx={{ flex: 1, fontSize: 13 }}
         placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onFocus={onFocus}
+        disabled={disabled}
+        inputProps={{ "aria-label": ariaLabel ?? placeholder }}
+        // Dimmed once, by the band: the text and the clear keep their ink.
+        sx={{
+          flex: 1,
+          fontSize: 13,
+          "&.Mui-disabled": { color: "text.primary" },
+          "& .MuiInputBase-input.Mui-disabled": { WebkitTextFillColor: "currentColor" },
+        }}
         endAdornment={
           value ? (
-            <IconButton size="small" aria-label={clearLabel} onClick={() => onChange("")}>
+            <IconButton
+              size="small"
+              aria-label={clearLabel}
+              disabled={disabled}
+              onClick={() => onChange("")}
+              sx={{ "&.Mui-disabled": { color: "action.active" } }}>
               <Icon iconName={ICON_NAME.CLOSE} style={{ fontSize: 13 }} />
             </IconButton>
           ) : undefined

@@ -1,19 +1,9 @@
 "use client";
 
-import {
-  Box,
-  ButtonBase,
-  IconButton,
-  Skeleton,
-  Stack,
-  Typography,
-  alpha,
-  debounce,
-  useTheme,
-} from "@mui/material";
+import { Box, IconButton, Skeleton, Stack, alpha, debounce, useTheme } from "@mui/material";
 import type { TFunction } from "i18next";
 import { parseAsString, useQueryState } from "nuqs";
-import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
@@ -24,11 +14,15 @@ import type { BreakdownRow, CreditBalance, SortDir } from "@/lib/api/usage";
 import { useOrganization } from "@/lib/api/users";
 import { formatCreditsDay } from "@/lib/utils/credits";
 import { type UsageRange, daySpanLabel, rangeLabel, rangeSpan } from "@/lib/utils/usageRange";
-import { organizationRoles } from "@/lib/validations/organization";
 
-import { focusRing } from "@/components/assistant/styles";
+import { useOrganizationId } from "@/hooks/settings/useOrganizationId";
+
 import SurfaceCard from "@/components/dashboard/common/SurfaceCard";
+import { personName } from "@/components/settings/common/personName";
+import { type OrgRole, roleWords } from "@/components/settings/common/roleWords";
 import type { UsageChip } from "@/components/settings/usage/UsageList";
+
+export { GroupToggle } from "@/components/settings/usage/GroupToggle";
 
 /** User text in a translated string: React escapes what it renders, so
  * i18next must not escape a name a second time ("O&#39;Brien"). */
@@ -155,39 +149,36 @@ export function useUsageDetailState<G extends string>({
 
 /** The organization's people by id: a name for a member the range has no
  * usage of, and the role a member row names below the name. `isLoading`
- * until the organization and its people are read. */
+ * until the organization's id is known and its people are read; an
+ * organization that cannot be read leaves no one to wait for. */
 export const useMemberDirectory = () => {
-  const { organization, isLoading: organizationLoading } = useOrganization();
-  const { members, isLoading } = useOrganizationMembers(organization?.id ?? "");
+  // The cookie's id: the list does not wait for GET /users/organization (L4).
+  const organizationId = useOrganizationId();
+  const { isError: organizationError } = useOrganization();
+  const { members, isLoading } = useOrganizationMembers(organizationId ?? "");
   const people = useMemo(
     () =>
       new Map(
         (members ?? []).map((member) => [
           member.id,
           {
-            name: [member.firstname, member.lastname].filter(Boolean).join(" ") || member.email,
+            name: personName(member),
             role: member.roles.find((role) => role.startsWith("organization-")) ?? null,
           },
         ])
       ),
     [members]
   );
-  return { people, isLoading: !!organizationLoading || !!isLoading };
+  return { people, isLoading: (!organizationId && !organizationError) || !!isLoading };
 };
 
 export type MemberDirectory = ReturnType<typeof useMemberDirectory>;
 
-const ROLE_WORDS: Record<string, string> = {
-  [organizationRoles.OWNER]: "usage_role_owner",
-  [organizationRoles.ADMIN]: "usage_role_admin",
-  [organizationRoles.EDITOR]: "usage_role_editor",
-  [organizationRoles.VIEWER]: "usage_role_viewer",
+/** A member's organization role in the words every settings page uses; undefined for none. */
+export const roleWord = (role: string | null | undefined, t: TFunction): string | undefined => {
+  const words = roleWords(t);
+  return role && role in words ? words[role as OrgRole].word : undefined;
 };
-
-/** A member's organization role in the words of the tiles and the headers
- * ("Bearbeiter", not the members page's "Editor"); undefined for none. */
-export const roleWord = (role: string | null | undefined, t: TFunction): string | undefined =>
-  role && ROLE_WORDS[role] ? t(ROLE_WORDS[role]) : undefined;
 
 /** The name of the member a detail is narrowed to: from its usage rows, else
  * from the organization's people. null while either is still loading; once
@@ -316,63 +307,6 @@ export const periodLabel = (row: BreakdownRow, t: TFunction, language: string): 
   }
   const last = new Date(new Date(`${row.until}T00:00:00Z`).getTime() - 24 * 60 * 60 * 1000);
   return daySpanLabel(from, last, t, language);
-};
-
-/** "Group by" and its options as one pill of segments, the one in force
- * filled, as the content page's layout toggle. */
-export const GroupToggle = <G extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: G;
-  options: { key: G; label: string }[];
-  onChange: (key: G) => void;
-}) => {
-  const { t } = useTranslation("common");
-  const theme = useTheme();
-  const labelId = useId();
-  return (
-    <Stack direction="row" alignItems="center" useFlexGap flexWrap="wrap" gap="10px">
-      <Typography id={labelId} sx={{ fontSize: 13, fontWeight: 600, color: "text.secondary" }}>
-        {t("group_by")}
-      </Typography>
-      <Box
-        role="group"
-        aria-labelledby={labelId}
-        sx={{
-          display: "inline-flex",
-          flexWrap: "wrap",
-          gap: "2px",
-          p: "3px",
-          borderRadius: "999px",
-          border: `1px solid ${theme.palette.divider}`,
-          backgroundColor: theme.palette.background.paper,
-        }}>
-        {options.map((option) => {
-          const on = option.key === value;
-          return (
-            <ButtonBase
-              key={option.key}
-              aria-pressed={on}
-              onClick={() => onChange(option.key)}
-              sx={{
-                height: 32,
-                px: "14px",
-                borderRadius: "999px",
-                fontSize: 13.5,
-                fontWeight: 600,
-                backgroundColor: on ? alpha(theme.palette.primary.main, 0.12) : "transparent",
-                color: on ? theme.palette.primary.main : theme.palette.text.primary,
-                ...focusRing(theme),
-              }}>
-              {option.label}
-            </ButtonBase>
-          );
-        })}
-      </Box>
-    </Stack>
-  );
 };
 
 /** A row's share of the list's total: a short bar and the whole percent. */

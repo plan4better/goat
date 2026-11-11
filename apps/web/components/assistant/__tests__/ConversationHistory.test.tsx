@@ -102,6 +102,20 @@ describe("ConversationHistory", () => {
     await waitFor(() => expect(useConversationsMock).toHaveBeenLastCalledWith({ projectId: null, q: "rad" }));
   });
 
+  it("draws a conversation's menu with the app's menu rows", () => {
+    render(<ConversationHistory />);
+    fireEvent.click(screen.getAllByRole("button", { name: "assistant_conversation_actions" })[0]);
+    expect(screen.getByRole("menuitem", { name: "rename" })).toHaveStyle({
+      fontSize: "13.5px",
+      fontWeight: "600",
+      borderRadius: "8px",
+    });
+    expect(screen.getByRole("menuitem", { name: "delete" })).toHaveStyle({
+      padding: "9px 10px",
+      gap: "11px",
+    });
+  });
+
   it("deletes after confirmation and leaves the deleted conversation", async () => {
     setDockState({ conversationId: "c1" });
     render(<ConversationHistory />);

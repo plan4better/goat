@@ -7,6 +7,8 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { SETTINGS_ROUTES } from "@/lib/settingsRoutes";
+
 import { useHomeCreate } from "@/hooks/dashboard/home/useHomeCreate";
 import type { SetupStepId } from "@/hooks/dashboard/home/useHomeStage";
 import {
@@ -64,7 +66,7 @@ const OnboardingTray = () => {
       newProject,
       addDataset,
       browseCatalog,
-      goToTeam: () => router.push("/settings/teams"),
+      goToTeam: () => router.push(SETTINGS_ROUTES.teams),
       // Outside Home there is no inline browser to open in place — send the
       // caller to the Catalog's Templates tab instead, for either template
       // step alike.

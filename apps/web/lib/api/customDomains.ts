@@ -1,12 +1,11 @@
 import useSWR from "swr";
 
+import { apiErrorOf } from "@/lib/api/apiError";
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import type { CustomDomain } from "@/lib/validations/customDomain";
 
-export const ORGANIZATIONS_API_BASE_URL = new URL(
-  "api/v2/organizations",
-  process.env.NEXT_PUBLIC_API_URL
-).href;
+export const ORGANIZATIONS_API_BASE_URL = new URL("api/v2/organizations", process.env.NEXT_PUBLIC_API_URL)
+  .href;
 
 const orgDomainsUrl = (orgId: string) => `${ORGANIZATIONS_API_BASE_URL}/${orgId}/domains/`;
 
@@ -19,8 +18,8 @@ const projectCustomDomainUrl = (projectId: string) =>
 /**
  * List all custom domains for an organization.
  *
- * Background revalidation every 30s catches state transitions for users
- * who navigate away from the detail panel; the panel itself polls faster.
+ * Rereads every 30s, so a status changed by a check elsewhere (the add
+ * dialog, the periodic reconcile job) shows up. Reading never checks DNS.
  */
 export function useOrganizationDomains(organizationId: string | undefined) {
   const { data, isLoading, error, mutate, isValidating } = useSWR<CustomDomain[]>(
@@ -31,34 +30,15 @@ export function useOrganizationDomains(organizationId: string | undefined) {
   return { domains: data, isLoading, isError: error, mutate, isValidating };
 }
 
-/**
- * Single domain. Set `polling: true` while watching transitional states
- * (the DetailDrawer in Phase 9B uses this to feel live).
- */
-export function useOrganizationDomain(
-  organizationId: string | undefined,
-  domainId: string | undefined,
-  options: { polling?: boolean } = {}
-) {
-  const { data, isLoading, error, mutate } = useSWR<CustomDomain>(
-    organizationId && domainId ? [oneDomainUrl(organizationId, domainId)] : null,
-    fetcher,
-    { refreshInterval: options.polling ? 5_000 : 30_000 }
-  );
-  return { domain: data, isLoading, isError: error, mutate };
-}
-
-export async function createCustomDomain(
-  organizationId: string,
-  baseDomain: string
-): Promise<CustomDomain> {
+export async function createCustomDomain(organizationId: string, baseDomain: string): Promise<CustomDomain> {
   const response = await apiRequestAuth(orgDomainsUrl(organizationId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ base_domain: baseDomain }),
   });
   if (!response.ok) {
-    throw new Error("Failed to create custom domain");
+    // A 409 is a domain registered already: the add dialog names it at the field.
+    throw await apiErrorOf(response);
   }
   return await response.json();
 }
@@ -68,19 +48,16 @@ export async function deleteCustomDomain(organizationId: string, domainId: strin
     method: "DELETE",
   });
   if (!response.ok) {
-    throw new Error(`Failed to delete custom domain ${domainId}`);
+    throw await apiErrorOf(response);
   }
 }
 
-export async function recheckCustomDomain(
-  organizationId: string,
-  domainId: string
-): Promise<CustomDomain> {
+export async function recheckCustomDomain(organizationId: string, domainId: string): Promise<CustomDomain> {
   const response = await apiRequestAuth(`${oneDomainUrl(organizationId, domainId)}/recheck`, {
     method: "POST",
   });
   if (!response.ok) {
-    throw new Error(`Failed to recheck custom domain ${domainId}`);
+    throw await apiErrorOf(response);
   }
   return await response.json();
 }
@@ -92,7 +69,7 @@ export async function assignDomainToProject(projectId: string, domainId: string)
     body: JSON.stringify({ domain_id: domainId }),
   });
   if (!response.ok) {
-    throw new Error("Failed to assign domain to project");
+    throw await apiErrorOf(response);
   }
 }
 
@@ -101,6 +78,6 @@ export async function unassignDomainFromProject(projectId: string): Promise<void
     method: "DELETE",
   });
   if (!response.ok) {
-    throw new Error("Failed to unassign domain from project");
+    throw await apiErrorOf(response);
   }
 }

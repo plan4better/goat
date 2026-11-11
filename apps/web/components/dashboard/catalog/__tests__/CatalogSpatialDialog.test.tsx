@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,8 @@ import CatalogSpatialDialog from "@/components/dashboard/catalog/CatalogSpatialD
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, vars?: Record<string, unknown>) => (vars ? `${key}:${JSON.stringify(vars)}` : key),
+    // The point's centre is formatted in the reader's language.
+    i18n: { language: "en" },
   }),
 }));
 
@@ -52,7 +54,18 @@ describe("CatalogSpatialDialog", () => {
     expect((screen.getByRole("button", { name: "apply" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("applies null once Clear all is pressed on an existing filter", async () => {
+  it("chooses the way of picking with the area selector the fetch dialog uses, not a segmented switch", () => {
+    render(<CatalogSpatialDialog open initial={null} onClose={vi.fn()} onApply={vi.fn()} />);
+
+    expect(screen.getByRole("combobox", { name: "fetch_features_area_by" })).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    // One group of fields under the dialog's title: no section heading of its own.
+    expect(screen.queryByText("catalog_location")).toBeNull();
+    // Clearing is done in place (chips, trash), so the footer holds Cancel and Apply only.
+    expect(screen.queryByRole("button", { name: "clear_all" })).toBeNull();
+  });
+
+  it("applies null once the last region chip is removed from an existing filter", async () => {
     const onApply = vi.fn();
     render(
       <CatalogSpatialDialog
@@ -63,7 +76,37 @@ describe("CatalogSpatialDialog", () => {
       />
     );
 
+    const chip = screen.getByRole("button", { name: "Baden-Württemberg" });
+    await userEvent.click(within(chip).getByTestId("CancelIcon"));
+    await userEvent.click(screen.getByRole("button", { name: "apply" }));
+
+    expect(onApply).toHaveBeenCalledWith(null);
+  });
+
+  it("switches to a point through the selector and asks for a click on the map", async () => {
+    render(<CatalogSpatialDialog open initial={null} onClose={vi.fn()} onApply={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("combobox", { name: "fetch_features_area_by" }));
+    await userEvent.click(await screen.findByRole("option", { name: "fetch_features_area_mode_point" }));
+
+    expect(screen.getByText("fetch_features_area_pick_on_map")).toBeInTheDocument();
+    expect(screen.getByText("fetch_features_area_radius")).toBeInTheDocument();
+  });
+
+  it("shows a point filter's centre and clears it with the trash action beside it", async () => {
+    const onApply = vi.fn();
+    render(
+      <CatalogSpatialDialog
+        open
+        initial={{ kind: "point", lng: 11.5, lat: 48.1, km: 3 }}
+        onClose={vi.fn()}
+        onApply={onApply}
+      />
+    );
+
+    expect(screen.getByText(/48[.,]1000, 11[.,]5000/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "clear_all" }));
+    expect(screen.getByText("fetch_features_area_pick_on_map")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "apply" }));
 
     expect(onApply).toHaveBeenCalledWith(null);
