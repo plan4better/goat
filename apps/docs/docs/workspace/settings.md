@@ -20,9 +20,17 @@ Each page is made of cards. A card with text fields has a bar at its bottom: <co
 
 How other members see you in GOAT, for example when sharing and in teams.
 
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/workspace/settings/profile.webp').default} alt="Your profile in the account settings" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
+
 - **Personal details**: your first name, last name and email address, and a picture (<code>Upload picture</code>: PNG, JPG or GIF, at most 1 MB; without a picture GOAT shows your initials). If you change the email address, GOAT asks you to confirm it with <code>Change and sign out</code>, saves it and signs you out; then you sign in with the new address.
 - **Your organization**: your organization, your role with a line on what it may do, and your teams. Owners, admins and team owners set your role and teams, so this card is read-only. <code>Open teams</code> leads to the Teams page.
 - **Delete account**: deletes your sign-in account; afterwards you can no longer sign in. What you put in teams and in the organization stays there, so download first what you want to keep yourself. To confirm, enter your email address and click <code>Delete account for good</code>. As the owner of the organization you can delete your account only once the organization is deleted.
+
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/workspace/settings/delete_account.webp').default} alt="The Delete account card" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
 
 ### Language and appearance
 
@@ -34,6 +42,10 @@ Choose the **language** of the interface (Deutsch or English) and the **appearan
 
 **Owners and admins** change the organization's name and logo here (logo: square, PNG, JPG or GIF, at most 1 MB; name: at most 50 characters). All members see them, in the navigation and in invitations. **Editors and viewers** see the organization, its number of members and their own role.
 
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/workspace/settings/org_profile.webp').default} alt="The organization's profile" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
+
 The **Owners and admins** card lists the people to ask about roles, seats, domains or AI, each with an email link. Owners and admins find links to <code>All members</code> and, where usage is billed, to <code>Seats and usage</code> there.
 
 **Delete organization** is for the owner alone; admins see its button disabled. Deleting ends access to the organization for all members, with all its teams, projects, layers and datasets, and signs you out. Download first what you want to keep. To confirm, enter the organization's name and click <code>Delete for good</code>.
@@ -41,6 +53,10 @@ The **Owners and admins** card lists the people to ask about roles, seats, domai
 ### Members
 
 Only owners and admins see this page. It shows who belongs to the organization and who is invited, and the roles that decide what each person may do:
+
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/workspace/settings/members.webp').default} alt="The members of an organization" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
 
 | Role | May do |
 | --- | --- |
@@ -78,6 +94,10 @@ A team shares projects and data: each team has a space of its own under <code>Co
 - <code>Team space under Content</code> opens the team's space.
 - **Delete team** (for those who may change the profile): deletes the team and all shares with the team. Content in the team's space must be moved or transferred first; content in the trash counts until it is deleted for good. The members' personal content stays.
 - **Leave team** (for every member except the team's owner): you lose access to the team's space, and what you put there stays in the team. The team's owner or an admin can bring you back. The team's owner cannot leave; they first make another member the owner.
+
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/workspace/settings/delete_team.webp').default} alt="The Delete team card" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
 
 ## White Label
 
