@@ -237,6 +237,18 @@
         }
       }
     },
+    "map": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "terrainTilesUrl": {
+          "type": "string"
+        },
+        "buildingsTilesUrl": {
+          "type": "string"
+        }
+      }
+    },
     "data": {
       "type": "object",
       "properties": {

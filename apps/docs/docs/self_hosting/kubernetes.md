@@ -131,6 +131,10 @@ Give the assistant an Ingress (`assistant.ingress`) or set `web.publicUrls.assis
 
 **Probes and load.** Readiness is `/readyz` (the database and Redis are reachable), liveness is `/healthz`. The conversation history list checks access with `customer.can` once per listed row, up to 200 rows per request: include it in load tests and when you size the database.
 
+## 3D view sources {#map-3d}
+
+The map's 3D view loads terrain and 3D buildings from tile servers outside your cluster: `map.terrainTilesUrl` (elevation tiles, Mapterhorn's public server by default) and `map.buildingsTilesUrl` (a vector TileJSON for buildings on basemaps without their own, OpenFreeMap by default). The chart gives each value to the web app (`NEXT_PUBLIC_TERRAIN_TILES_URL`, `NEXT_PUBLIC_BUILDINGS_TILES_URL`) and to core (`TERRAIN_TILES_URL`, `BUILDINGS_TILES_URL`). Viewers' browsers request the tiles directly, so these providers see their IP addresses. Set a value to your own copy, or to `""` to turn the feature off. What each source is, the privacy note and how to host the terrain yourself: [3D view sources](./docker_compose/external_services.md#map-3d).
+
 ## Upgrades {#upgrade}
 
 `helm upgrade` runs the database migrations in core's migrate hook before the new pods start; the chart README says what each chart version changes. The release that introduces GOAT Style, the new layer styles, converts every stored style in that hook (tens of thousands of styles take about a minute) and keeps the old styles for one release. Back up the database before you upgrade: going back means restoring that backup, and style changes made after the upgrade are lost. Map thumbnails are drawn again once. A published project whose layers were restyled after its last publish lists those layers as unpublished changes: they never were published, and the public map stays as it is until you publish again. A project published while the upgrade ran shows no layers on its public page until it is published again.

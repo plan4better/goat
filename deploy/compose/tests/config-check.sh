@@ -126,6 +126,19 @@ jq -e '[.services | (.geoapi, .processes) | .environment.RASTER_PRIVATE_HOSTS] |
 # core asks geoapi for a COG layer's bounds on geoapi's in-network port.
 jq -e '.services.core.environment.GOAT_GEOAPI_URL == "http://geoapi:8000"' <<<"$j" >/dev/null || fail "core lacks the geoapi URL"
 
+# 3D sources: one value per source reaches the web (browser) and core (scene checks), the public defaults while unset.
+jq -e '.services.web.environment.NEXT_PUBLIC_TERRAIN_TILES_URL == "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp" and .services.core.environment.TERRAIN_TILES_URL == .services.web.environment.NEXT_PUBLIC_TERRAIN_TILES_URL' <<<"$j" >/dev/null || fail "terrain tiles url default or twins differ"
+jq -e '.services.web.environment.NEXT_PUBLIC_BUILDINGS_TILES_URL == "https://tiles.openfreemap.org/planet" and .services.core.environment.BUILDINGS_TILES_URL == .services.web.environment.NEXT_PUBLIC_BUILDINGS_TILES_URL' <<<"$j" >/dev/null || fail "buildings tiles url default or twins differ"
+
+variant=no-3d-sources
+# An empty value turns a source off and stays empty (no default fills it in), for both twins.
+d3=$(make_variant --public-url https://goat.example.org --tls off)
+sed -i '/^TERRAIN_TILES_URL=/d; /^BUILDINGS_TILES_URL=/d' "$d3/.env"
+printf 'TERRAIN_TILES_URL=\nBUILDINGS_TILES_URL=\n' >> "$d3/.env"
+j3=$(render "$d3"); check_common "$j3"
+jq -e '.services.web.environment.NEXT_PUBLIC_TERRAIN_TILES_URL == "" and .services.core.environment.TERRAIN_TILES_URL == ""' <<<"$j3" >/dev/null || fail "empty terrain tiles url not kept empty"
+jq -e '.services.web.environment.NEXT_PUBLIC_BUILDINGS_TILES_URL == "" and .services.core.environment.BUILDINGS_TILES_URL == ""' <<<"$j3" >/dev/null || fail "empty buildings tiles url not kept empty"
+
 variant=support
 d2=$(make_variant --public-url https://goat.example.org --tls auto --acme-email ops@plan4better.de)
 cat >> "$d2/.env" <<'VARS'

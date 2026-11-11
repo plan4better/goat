@@ -270,6 +270,8 @@ GOAT funktioniert ohne jede dieser Integrationen. Jede schaltet eine Funktion fr
 | `GEOCODING_URL`, `GEOCODING_AUTHORIZATION` | Den Geocoding-Dienst, den Analyse-Werkzeuge verwenden | Analyseschritte, die Geocoding benötigen, können nicht laufen |
 | `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` | Den Export von Traces, Metriken und Logs an Ihren OpenTelemetry-Collector | Es wird nichts exportiert |
 
+Gelände und Gebäude der 3D-Ansicht sind standardmäßig eingeschaltet; siehe [Quellen der 3D-Ansicht](#map-3d).
+
 Die Links, die in der App erscheinen, und die Quelle der Produktgrafiken finden Sie in der [Konfigurationsreferenz](./configuration.md#integrations). Die Quelle der Routing-Basisdaten ist unter [Routing-Basisdaten](./operations.md#base-data) beschrieben.
 
 ### OpenStreetMap und Overture Maps {#open-data-mirror}
@@ -277,3 +279,29 @@ Die Links, die in der App erscheinen, und die Quelle der Produktgrafiken finden 
 Die Bereiche OpenStreetMap und Overture Maps unter *Layer hinzufügen › Daten abrufen / verbinden* kopieren die Features eines Gebiets in einen GOAT-Layer. Sie lesen aus einem Spiegel beider Datensätze, der als GeoParquet im Katalog-Bucket (`CATALOG_S3_*`) unter `mirror/osm` und `mirror/overture` liegt. Der Spiegel gehört nicht zu einer GOAT-Installation; eine eigene Pipeline legt ihn dort neben dem Katalog ab. Zwei Teile von GOAT lesen ihn: `processes` füllt die Attribut- und Wertelisten im Dialog, und der Windmill-Worker `tools` führt das Kopieren aus. Mehr ist nicht einzustellen: Ohne Katalog-Bucket finden die beiden Bereiche keine Daten.
 
 Die Lizenz wird an jedem neuen Layer vermerkt: ODbL 1.0 für OpenStreetMap, CDLA-Permissive 2.0 für Overture-Orte und ODbL 1.0 für die übrigen Overture-Typen.
+
+## Quellen der 3D-Ansicht {#map-3d}
+
+In 3D kann die Karte Gelände und 3D-Gebäude zeigen (siehe [3D-Ansicht](../../map/map_interface.md#3d-view)). Beides kommt von Kachelservern außerhalb Ihrer Installation, und die Browser der Betrachter laden es direkt. Beides ist standardmäßig eingeschaltet und braucht weder ein Konto noch einen Schlüssel.
+
+| Einstellung | Was sie ist | Standard | Wenn leer |
+|---|---|---|---|
+| `TERRAIN_TILES_URL` | Höhenkacheln für das Gelände und seine Schummerung: Terrarium-kodierte Kacheln, 512 px, mit `{z}/{x}/{y}` in der Adresse | Der öffentliche Server von Mapterhorn, `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp` | *Gelände* ist ausgeblendet, und es wird keine Geländekachel angefragt |
+| `BUILDINGS_TILES_URL` | Das TileJSON einer Vektorquelle im OpenMapTiles-Schema. Ihr Layer `building` liefert 3D-Gebäude auf Grundkarten, die keine mitbringen: Raster-, einfarbige und eigene Grundkarten. Die eingebauten Vektor-Grundkarten bringen eigene Gebäude mit und nutzen sie nicht. | OpenFreeMap, `https://tiles.openfreemap.org/planet` | *3D-Gebäude* ist auf diesen Grundkarten ausgeblendet |
+
+Das Paket gibt jeden Wert an die Web-App und an core: Der Browser lädt die Kacheln, und core prüft die 3D-Einstellungen eines Projekts gegen die Quellen, die Ihre Installation hat. Mapterhorn ist ein ehrenamtliches Projekt ohne Service-Level-Vereinbarung. Ist sein Server nicht erreichbar, lädt das Gelände nicht, und die Karte bleibt nutzbar.
+
+### Datenschutz {#map-3d-privacy}
+
+Solange eine Karte Gelände zeigt, fragt der Browser jedes Betrachters Kacheln beim Server von Mapterhorn an. Er läuft bei Cloudflare, das IP-Adresse, Referrer und User-Agent jeder Anfrage bis zu 30 Tage protokolliert (siehe die [Datenschutzerklärung von Mapterhorn](https://mapterhorn.com/privacy-policy/)). Die Gebäudekacheln werden auf dieselbe Weise bei OpenFreeMap angefragt. Nennen Sie diese Anbieter in Ihrer Datenschutzerklärung, lassen Sie die Einstellungen auf eine selbst betriebene Kopie zeigen, oder setzen Sie sie leer, um die Funktionen auszuschalten.
+
+### Quellenangaben {#map-3d-credits}
+
+Solange Gelände eingeschaltet ist, zeigen die Quellenangaben der Karte "© Mapterhorn" mit einem Link auf [mapterhorn.com/attribution](https://mapterhorn.com/attribution), wo jede Quelle der Höhendaten aufgeführt ist. 3D-Gebäude tragen die Quellenangaben ihrer Quelle, etwa OpenFreeMap, OpenMapTiles und OpenStreetMap. Gedruckte Layouts und Vorschaubilder zeigen keine Quellenangaben der Karte; fügen Sie einem Layout, das sie braucht, ein Textelement hinzu.
+
+### Eigene Geländekacheln {#map-3d-own-terrain}
+
+Mapterhorn veröffentlicht seine Daten als PMTiles-Dateien ([Data Access](https://mapterhorn.com/data-access)). Die ganze Welt bis Zoomstufe 12 umfasst etwa 330 GiB, und `pmtiles extract --bbox=...` schneidet die Region aus, die Sie brauchen. Stellen Sie die Kacheln als Terrarium-WebP unter `{z}/{x}/{y}` bereit, etwa mit einem PMTiles-Kachelserver, und tragen Sie diese Adresse in `TERRAIN_TILES_URL` ein. Die Quellenangabe bleibt "© Mapterhorn". Stellen Sie die Daten selbst bereit, gelten die Lizenzen ihrer Quellen für Ihre Installation: Machen Sie die auf [mapterhorn.com/attribution](https://mapterhorn.com/attribution) aufgeführten Quellenangaben für die Regionen, die Sie bereitstellen, von GOAT aus erreichbar, etwa den Copernicus-Hinweis, die Quellenvermerke der Bundesländer (`dl-de/by-2-0`) und ©swisstopo.
+
+Für die Gebäude eignet sich jede Vektorkachelquelle im OpenMapTiles-Schema mit einem TileJSON, etwa Ihr eigener OpenFreeMap- oder OpenMapTiles-Server.
+

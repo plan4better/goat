@@ -464,6 +464,10 @@ services:
       API_URL: ${GOAT_PUBLIC_URL}/api/v2
       # A COG layer's bounds, which core stores as its extent when it is added.
       GOAT_GEOAPI_URL: ${GOAT_GEOAPI_URL:-http://geoapi:8000}
+      # The 3D sources the browser loads (the web's NEXT_PUBLIC_ twins below);
+      # core checks a project's scene against them. Empty stays empty: no source.
+      TERRAIN_TILES_URL: ${TERRAIN_TILES_URL-https://tiles.mapterhorn.com/{z}/{x}/{y}.webp}
+      BUILDINGS_TILES_URL: ${BUILDINGS_TILES_URL-https://tiles.openfreemap.org/planet}
       POSTGRES_POOL_SIZE: ${POSTGRES_POOL_SIZE:-5}
       POSTGRES_MAX_OVERFLOW: ${POSTGRES_MAX_OVERFLOW:-10}
       # User-uploaded avatars and images
@@ -740,6 +744,9 @@ services:
       NEXT_PUBLIC_APP_ENVIRONMENT: prod
       NEXT_PUBLIC_MAPTILER_KEY: ${NEXT_PUBLIC_MAPTILER_KEY:-}
       NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+      # 3D sources (`-`, not `:-`: an empty value turns the source off)
+      NEXT_PUBLIC_TERRAIN_TILES_URL: ${TERRAIN_TILES_URL-https://tiles.mapterhorn.com/{z}/{x}/{y}.webp}
+      NEXT_PUBLIC_BUILDINGS_TILES_URL: ${BUILDINGS_TILES_URL-https://tiles.openfreemap.org/planet}
       NEXT_PUBLIC_WEBSITE_URL: ${NEXT_PUBLIC_WEBSITE_URL:-}
       NEXT_PUBLIC_STATUS_FEED_URL: ${NEXT_PUBLIC_STATUS_FEED_URL:-}
       NEXT_PUBLIC_DOCS_URL: ${NEXT_PUBLIC_DOCS_URL:-}

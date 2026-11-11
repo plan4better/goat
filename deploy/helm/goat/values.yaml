@@ -193,6 +193,24 @@ odoo:
     existingSecret: ""
     existingSecretKey: api-key
 
+# ─── 3D map sources ────────────────────────────────────────────────────────
+# What the map loads while it is in 3D. Each value goes to the web app
+# (NEXT_PUBLIC_TERRAIN_TILES_URL / NEXT_PUBLIC_BUILDINGS_TILES_URL: viewers'
+# browsers request the tiles, so those hosts see their IP addresses) and to
+# core (TERRAIN_TILES_URL / BUILDINGS_TILES_URL: core checks a project's scene
+# against them). An empty value turns the feature off. A service's own
+# config value wins.
+map:
+  # Terrarium elevation tiles, 512 px, of Mapterhorn's data. The default is
+  # Mapterhorn's public server on Cloudflare (logs kept up to 30 days); point it
+  # at your own copy of Mapterhorn's PMTiles to keep the requests in house.
+  # Empty hides Terrain.
+  terrainTilesUrl: "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
+  # TileJSON of an OpenMapTiles vector source whose `building` layer gives 3D
+  # buildings on basemaps without their own (raster, solid and custom
+  # basemaps). The default is OpenFreeMap. Empty hides 3D buildings there.
+  buildingsTilesUrl: "https://tiles.openfreemap.org/planet"
+
 # ─── Shared data volume ────────────────────────────────────────────────────
 # ONE volume, mounted by seven components. The windmill tools and workflows
 # workers WRITE to it (the catalog mirror via sync_catalog, the geoip database

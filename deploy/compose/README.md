@@ -120,6 +120,12 @@ endpoint at `<GOAT_PUBLIC_URL>/assistant/mcp`.
 
 More in the docs: [External services → AI assistant](https://goat.plan4better.de/docs/self_hosting/docker_compose/external_services#assistant)
 
+**3D sources.** `TERRAIN_TILES_URL` (Terrarium elevation tiles, default Mapterhorn's public
+server) and `BUILDINGS_TILES_URL` (an OpenMapTiles TileJSON for 3D buildings on basemaps without
+their own, default OpenFreeMap) go to both the web app and core. Viewers' browsers load them while a
+map is in 3D, so those hosts see the viewers' IP addresses (Mapterhorn runs on Cloudflare, which
+keeps logs up to 30 days). Point a URL at your own copy, or set it empty to turn the feature off.
+
 **Email.** GOAT sends invitations and Keycloak sends password resets through one
 SMTP server. Email is off while `SMTP_HOST` is empty.
 

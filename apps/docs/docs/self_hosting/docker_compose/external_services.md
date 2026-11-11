@@ -270,6 +270,8 @@ GOAT works without any of these. Each one switches on a feature that needs an ou
 | `GEOCODING_URL`, `GEOCODING_AUTHORIZATION` | The geocoding service used by analysis tools | Analysis steps that need geocoding cannot run |
 | `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` | Export of traces, metrics and logs to your OpenTelemetry collector | Nothing is exported |
 
+The 3D view's terrain and building tiles are on by default; see [3D view sources](#map-3d).
+
 Links shown in the app and the source of the product artwork are listed in the [configuration reference](./configuration.md#integrations). The source of the routing base data is described under [Routing base data](./operations.md#base-data).
 
 ### OpenStreetMap and Overture Maps {#open-data-mirror}
@@ -277,3 +279,28 @@ Links shown in the app and the source of the product artwork are listed in the [
 The OpenStreetMap and Overture Maps panes under *Add layer › Fetch / Connect data* copy the features of an area into a GOAT layer. They read from a mirror of both datasets, stored as GeoParquet in the catalog bucket (`CATALOG_S3_*`) under `mirror/osm` and `mirror/overture`. The mirror is not part of a GOAT installation; it is published there by a separate pipeline, next to the catalog. Two parts of GOAT read it: `processes` fills the attribute and value lists in the dialog, and the Windmill `tools` worker runs the copy. Nothing else needs setting: without a catalog bucket, the two panes find no data.
 
 The licence is recorded on each new layer: ODbL 1.0 for OpenStreetMap, CDLA-Permissive 2.0 for Overture places and ODbL 1.0 for the other Overture types.
+
+## 3D view sources {#map-3d}
+
+In 3D, the map can show terrain and 3D buildings (see [3D view](../../map/map_interface.md#3d-view)). Both come from tile servers outside your installation, and viewers' browsers load them directly. Both are on by default and need no account or key.
+
+| Setting | What it is | Default | When empty |
+|---|---|---|---|
+| `TERRAIN_TILES_URL` | Elevation tiles for the terrain and its shading: Terrarium-encoded tiles, 512 px, with `{z}/{x}/{y}` in the address | Mapterhorn's public server, `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp` | *Terrain* is hidden and no terrain tile is requested |
+| `BUILDINGS_TILES_URL` | The TileJSON of a vector source in the OpenMapTiles schema. Its `building` layer gives 3D buildings on basemaps that bring none: raster, single color and custom basemaps. The built-in vector basemaps bring their own buildings and do not use it. | OpenFreeMap, `https://tiles.openfreemap.org/planet` | *3D buildings* is hidden on those basemaps |
+
+The bundle gives each value to the web app and to core: the browser loads the tiles, and core checks a project's 3D settings against the sources your installation has. Mapterhorn is a volunteer project without a service level agreement. If its server cannot be reached, the terrain does not load and the map stays usable.
+
+### Privacy {#map-3d-privacy}
+
+While a map shows terrain, every viewer's browser requests tiles from Mapterhorn's server. It runs on Cloudflare, which logs the IP address, the referrer and the user agent of each request for up to 30 days (see [Mapterhorn's privacy policy](https://mapterhorn.com/privacy-policy/)). The building tiles are requested from OpenFreeMap in the same way. Name these providers in your privacy policy, point the settings at a copy you host yourself, or set them empty to turn the features off.
+
+### Credits {#map-3d-credits}
+
+While terrain is on, the map's credits show "© Mapterhorn" with a link to [mapterhorn.com/attribution](https://mapterhorn.com/attribution), which lists every source of the elevation data. 3D buildings carry the credits of their source, such as OpenFreeMap, OpenMapTiles and OpenStreetMap. Printed layouts and thumbnails show no map credits; add a text element to a layout that needs them.
+
+### Your own terrain tiles {#map-3d-own-terrain}
+
+Mapterhorn publishes its data as PMTiles files ([Data Access](https://mapterhorn.com/data-access)). The whole world down to zoom 12 is about 330 GiB, and `pmtiles extract --bbox=...` cuts out the region you need. Serve the tiles as Terrarium WebP under `{z}/{x}/{y}`, for example with a PMTiles tile server, and set `TERRAIN_TILES_URL` to that address. The credit stays "© Mapterhorn". When you serve the data yourself, the licences of its sources apply to your installation: make the credits listed on [mapterhorn.com/attribution](https://mapterhorn.com/attribution) for the regions you serve reachable from GOAT, such as the Copernicus notice, the source notes of the German states (`dl-de/by-2-0`) and ©swisstopo.
+
+For the buildings, any vector tiles in the OpenMapTiles schema with a TileJSON work, such as your own OpenFreeMap or OpenMapTiles server.

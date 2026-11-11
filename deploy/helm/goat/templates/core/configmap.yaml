@@ -43,6 +43,13 @@ data:
   {{- if $geoapiUrl }}
   GOAT_GEOAPI_URL: {{ $geoapiUrl | quote }}
   {{- end }}
+  {{- /* The 3D sources the web loads (the `map` block): core checks a
+         project's scene against them. Empty stays empty (no such source). */}}
+  {{- range $pair := list (list "TERRAIN_TILES_URL" .Values.map.terrainTilesUrl) (list "BUILDINGS_TILES_URL" .Values.map.buildingsTilesUrl) }}
+  {{- if not (include "goat.env.userSet" (dict "values" $.Values.core "key" (index $pair 0))) }}
+  {{ index $pair 0 }}: {{ index $pair 1 | default "" | quote }}
+  {{- end }}
+  {{- end }}
   {{- /* Links in core's emails. A key set in core.config / core.extraEnv is
          used as is. */}}
   {{- $clientUrl := include "goat.web.publicUrl" . | trimSuffix "/" }}

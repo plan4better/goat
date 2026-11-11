@@ -117,6 +117,8 @@ GOAT's services name their database sessions after themselves (`goat-core`, `goa
 | `OTEL_ENABLED` | `false` | Export traces, metrics and logs through OpenTelemetry |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Your OpenTelemetry (OTLP) endpoint |
 | `RASTER_PRIVATE_HOSTS` | empty | Hosts geoapi and processes may read raster layers' COG files from although they resolve to a private, loopback or link-local address, comma-separated: an object store on your own network. Every other host must resolve to public addresses, so a layer cannot make GOAT read from inside your network. |
+| `TERRAIN_TILES_URL` | `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp` | Elevation tiles of the terrain in the map's 3D view (Terrarium-encoded, 512 px), from Mapterhorn by default. Viewers' browsers load them. Empty hides *Terrain*. See [3D view sources](./external_services.md#map-3d). |
+| `BUILDINGS_TILES_URL` | `https://tiles.openfreemap.org/planet` | TileJSON of a vector source in the OpenMapTiles schema for 3D buildings on basemaps without their own (raster, single color and custom basemaps), from OpenFreeMap by default. Viewers' browsers load it. Empty hides *3D buildings* on those basemaps. See [3D view sources](./external_services.md#map-3d). |
 | `GOAT_GEOAPI_URL` | *(commented out)*, `http://geoapi:8000` | Where core reaches geoapi: when a raster layer is added from a COG file, core asks geoapi for the file's bounds and stores them as the layer's extent. Change it only if geoapi runs outside the bundle. |
 
 If you add `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` to a service, never include `Authorization`: the login tokens of users and external agents would land in your traces.
