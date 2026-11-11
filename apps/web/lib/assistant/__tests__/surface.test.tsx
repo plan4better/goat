@@ -161,14 +161,7 @@ describe("surface helpers", () => {
   });
 
   it("shows the dock on app pages only", () => {
-    for (const path of [
-      "/home",
-      "/catalog",
-      "/catalog/abc",
-      "/content",
-      "/settings/organization/ai",
-      "/map/p1",
-    ]) {
+    for (const path of ["/home", "/catalog", "/catalog/abc", "/content", "/settings/ai", "/map/p1"]) {
       expect(assistantRouteAllowed(path)).toBe(true);
     }
     for (const path of ["/map/public/p1", "/print/x", "/auth/login", "/onboarding", "/thumbnail/x", null]) {

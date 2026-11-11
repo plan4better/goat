@@ -21,6 +21,7 @@ const api = vi.hoisted(() => ({
   breakdown: vi.fn(),
   failing: false,
   organizationFailing: false,
+  organizationLoading: false,
 }));
 
 vi.mock("@/lib/api/usage", async (importOriginal) => ({
@@ -31,7 +32,9 @@ vi.mock("@/lib/api/users", () => ({
   useOrganization: () =>
     api.organizationFailing
       ? { organization: undefined, isLoading: false, isError: new Error("500") }
-      : { organization: { id: "org1" }, isLoading: false, isError: undefined },
+      : api.organizationLoading
+        ? { organization: undefined, isLoading: true, isError: undefined }
+        : { organization: { id: "org1" }, isLoading: false, isError: undefined },
 }));
 vi.mock("@/lib/api/organizations", () => ({
   useOrganizationMembers: (...args: unknown[]) => api.membersQuery(...args),
@@ -89,8 +92,9 @@ const row = (key: string, values: Partial<BreakdownRow> = {}): BreakdownRow => (
 
 const onOpenUsage = vi.fn();
 
-const renderDetail = (balance: CreditBalance = BALANCE, language: "en" | "de" = "en") =>
-  render(<EditorsDetail balance={balance} onOpenUsage={onOpenUsage} />, {
+/** `null`: the balance has not answered yet. */
+const renderDetail = (balance: CreditBalance | null = BALANCE, language: "en" | "de" = "en") =>
+  render(<EditorsDetail balance={balance ?? undefined} onOpenUsage={onOpenUsage} />, {
     wrapper: ({ children }: { children: ReactNode }) => (
       <ThemeProvider theme={theme}>
         <I18nextProvider i18n={commonI18n(language)}>{children}</I18nextProvider>
@@ -123,6 +127,7 @@ beforeEach(() => {
   ];
   api.failing = false;
   api.organizationFailing = false;
+  api.organizationLoading = false;
   api.membersQuery.mockReset();
   api.membersQuery.mockImplementation(() => ({ members: api.members, isLoading: false, isError: undefined }));
   api.breakdown.mockReset();
@@ -147,10 +152,10 @@ describe("EditorsDetail", () => {
     renderDetail();
     // Invitations count: they hold a seat.
     expect(api.membersQuery).toHaveBeenCalledWith("org1", { include_invitations: true });
-    // This period's credits per member.
+    // This period's credits per member: core counts from its start, so the request names none.
     expect(api.breakdown).toHaveBeenCalledWith(
       "member",
-      expect.objectContaining({ since: "2026-10-31T12:00:00.000Z" })
+      expect.not.objectContaining({ since: expect.anything() })
     );
     expect(screen.getByText("1–6 of 6 members")).toBeInTheDocument();
     const rows = tableRows();
@@ -172,6 +177,42 @@ describe("EditorsDetail", () => {
     expect(screen.getByText("Eva Lang")).toBeInTheDocument();
   });
 
+  it("lists the seats before the balance answers, and fills the header in when it does", () => {
+    const view = renderDetail(null);
+    expect(api.breakdown).toHaveBeenCalledWith(
+      "member",
+      expect.not.objectContaining({ since: expect.anything() })
+    );
+    expect(screen.getByText("1–6 of 6 members")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 3, name: "Editors and viewers" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/out of 10 editors/)).not.toBeInTheDocument();
+    view.rerender(<EditorsDetail balance={BALANCE} onOpenUsage={onOpenUsage} />);
+    expect(screen.getByRole("heading", { level: 3, name: "Editors and viewers" })).toBeInTheDocument();
+    expect(screen.getByText("out of 10 editors, 2 out of 50 viewers.")).toBeInTheDocument();
+  });
+
+  it("asks for the members with the cookie's organization before the organization answers", () => {
+    api.organizationLoading = true;
+    document.cookie = "organization=org-cookie; path=/";
+    try {
+      renderDetail();
+      expect(api.membersQuery).toHaveBeenCalledWith("org-cookie", { include_invitations: true });
+    } finally {
+      document.cookie = "organization=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+    }
+  });
+
+  it("names a member whose names are only spaces by the address, as every settings list does", () => {
+    api.members = [
+      member("u1", "Anna", "Weber", "organization-admin"),
+      { ...member("u6", " ", "  ", "organization-viewer"), email: "blank@example.org" },
+    ];
+    renderDetail();
+    const blank = tableRows().find((tableRow) => tableRow.textContent?.includes("blank@example.org"));
+    expect(blank).toBeDefined();
+    expect(within(blank as HTMLElement).getByText("blank@example.org")).toBeInTheDocument();
+  });
+
   it("marks open invitations", () => {
     renderDetail();
     const invited = tableRows().find((tableRow) => tableRow.textContent?.includes("neu@example.org"));
@@ -183,7 +224,7 @@ describe("EditorsDetail", () => {
     const rowOf = (name: string) =>
       tableRows().find((tableRow) => tableRow.textContent?.includes(name)) as HTMLElement;
     expect(screen.getByRole("heading", { level: 3, name: "Bearbeiter und Betrachter" })).toBeInTheDocument();
-    expect(within(rowOf("Anna Weber")).getByText("Administrator")).toBeInTheDocument();
+    expect(within(rowOf("Anna Weber")).getByText("Admin")).toBeInTheDocument();
     expect(within(rowOf("Tim Braun")).getByText("Bearbeiter")).toBeInTheDocument();
     expect(within(rowOf("Lea Hoffmann")).getByText("Betrachter")).toBeInTheDocument();
     expect(within(rowOf("Eva Lang")).getByText("Eigentümer")).toBeInTheDocument();
@@ -227,7 +268,7 @@ describe("EditorsDetail", () => {
       )
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Manage members" }).getAttribute("href")).toBe(
-      "/settings/organization/members"
+      "/settings/members"
     );
   });
 

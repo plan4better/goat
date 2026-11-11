@@ -278,11 +278,6 @@ const FilterPanel = ({ activeLayer, projectId }: { activeLayer: ProjectLayer; pr
           {activeLayer.type === layerType.Values.feature && (
             <Menu
               anchorEl={addExpressionAnchorEl}
-              sx={{
-                "& .MuiPaper-root": {
-                  boxShadow: "0px 0px 10px 0px rgba(58, 53, 65, 0.1)",
-                },
-              }}
               anchorOrigin={{ vertical: "top", horizontal: "center" }}
               transformOrigin={{ vertical: "bottom", horizontal: "center" }}
               open={open}

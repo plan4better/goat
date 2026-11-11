@@ -198,6 +198,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    # Chromium caps preflight caching at two hours (Safari keeps 600 s, Firefox allows more).
+    max_age=7200,
 )
 
 # Add compression middleware. Level 6 over the default 9: on multi-MB items

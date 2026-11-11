@@ -185,6 +185,8 @@ def create_app(
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
+        # Chromium caps preflight caching at two hours (Safari keeps 600 s, Firefox allows more).
+        max_age=7200,
     )
     app.include_router(health_router)
     app.include_router(conversations_router)

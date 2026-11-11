@@ -36,6 +36,7 @@ from typing import Any, Self
 import duckdb
 from pydantic import BaseModel, Field
 
+from goatlib.io.sql import sql_identifier, sql_literal
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
 
 logger = logging.getLogger(__name__)
@@ -269,13 +270,13 @@ class TempLayerWriter:
 
             # Get column info
             cols = con.execute(
-                f"DESCRIBE SELECT * FROM read_parquet('{parquet_path_str}')"
+                "DESCRIBE SELECT * FROM read_parquet(?)", [parquet_path_str]
             ).fetchall()
             columns = {row[0]: row[1] for row in cols}
 
             # Get row count
             count_result = con.execute(
-                f"SELECT COUNT(*) FROM read_parquet('{parquet_path_str}')"
+                "SELECT COUNT(*) FROM read_parquet(?)", [parquet_path_str]
             ).fetchone()
             feature_count = count_result[0] if count_result else 0
 
@@ -290,13 +291,18 @@ class TempLayerWriter:
                     break
 
             if geom_col:
+                # The column's name comes from the data: quoted.
+                geom = sql_identifier(geom_col)
                 # Get geometry type
-                type_result = con.execute(f"""
-                    SELECT DISTINCT ST_GeometryType({geom_col})
-                    FROM read_parquet('{parquet_path_str}')
-                    WHERE {geom_col} IS NOT NULL
+                type_result = con.execute(
+                    f"""
+                    SELECT DISTINCT ST_GeometryType({geom})
+                    FROM read_parquet(?)
+                    WHERE {geom} IS NOT NULL
                     LIMIT 1
-                """).fetchone()
+                """,
+                    [parquet_path_str],
+                ).fetchone()
                 if type_result:
                     geometry_type = type_result[0]
                 else:
@@ -304,14 +310,17 @@ class TempLayerWriter:
 
                 # Get bounding box
                 try:
-                    extent_result = con.execute(f"""
+                    extent_result = con.execute(
+                        f"""
                         SELECT
-                            ST_XMin(ST_Extent_Agg({geom_col})),
-                            ST_YMin(ST_Extent_Agg({geom_col})),
-                            ST_XMax(ST_Extent_Agg({geom_col})),
-                            ST_YMax(ST_Extent_Agg({geom_col}))
-                        FROM read_parquet('{parquet_path_str}')
-                    """).fetchone()
+                            ST_XMin(ST_Extent_Agg({geom})),
+                            ST_YMin(ST_Extent_Agg({geom})),
+                            ST_XMax(ST_Extent_Agg({geom})),
+                            ST_YMax(ST_Extent_Agg({geom}))
+                        FROM read_parquet(?)
+                    """,
+                        [parquet_path_str],
+                    ).fetchone()
                     if extent_result and all(v is not None for v in extent_result):
                         bbox = list(extent_result)
                 except Exception as e:
@@ -378,7 +387,7 @@ class TempLayerWriter:
 
             # Get columns and filter out unsupported types for GeoJSON export
             cols = con.execute(
-                f"DESCRIBE SELECT * FROM read_parquet('{parquet_path_str}')"
+                "DESCRIBE SELECT * FROM read_parquet(?)", [parquet_path_str]
             ).fetchall()
 
             geom_col = None
@@ -405,13 +414,13 @@ class TempLayerWriter:
                 return None
 
             # Build column list for export (excluding unsupported types)
-            col_list = ", ".join(f'"{c}"' for c in exportable_cols)
+            col_list = ", ".join(map(sql_identifier, exportable_cols))
 
             # Export to GeoJSON using DuckDB
             con.execute(f"""
                 COPY (
-                    SELECT {col_list} FROM read_parquet('{parquet_path_str}')
-                ) TO '{geojson_path}'
+                    SELECT {col_list} FROM read_parquet({sql_literal(parquet_path_str)})
+                ) TO {sql_literal(geojson_path)}
                 WITH (FORMAT GDAL, DRIVER 'GeoJSON')
             """)
 

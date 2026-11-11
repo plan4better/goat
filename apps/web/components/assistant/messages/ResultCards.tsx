@@ -480,11 +480,11 @@ function ResultCard({
               ? t("assistant_item_added_to_named_project", { name: item.title, project: target.name })
               : t("assistant_item_added_to_project", { name: item.title })}
           </span>
-          <Button size="small" color="inherit" onClick={undo}>
+          <Button variant="text" size="small" color="inherit" onClick={undo}>
             {t("undo")}
           </Button>
           {target && (
-            <Button size="small" color="inherit" onClick={() => dock.openProject(target.id)}>
+            <Button variant="text" size="small" color="inherit" onClick={() => dock.openProject(target.id)}>
               {t("assistant_item_open_project")}
             </Button>
           )}

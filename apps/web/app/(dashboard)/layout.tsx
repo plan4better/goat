@@ -21,6 +21,7 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
         // CSS (md breakpoint) decides whether the hamburger shows, so the phone layout is right
         // in the server HTML; `hidden` (JS) only drives the drawer behaviour.
         showHambugerMenu
+        menuOpen={navVisible}
         onMenuIconClick={() => {
           setNavVisible(!navVisible);
         }}
@@ -30,8 +31,9 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
         <DashboardSidebar
           hidden={hidden}
           navVisible={navVisible}
-          width={240}
-          collapsedWidth={53}
+          width={280}
+          title="Workspace"
+          collapsedWidth={56}
           setNavVisible={setNavVisible}
         />
         <Box

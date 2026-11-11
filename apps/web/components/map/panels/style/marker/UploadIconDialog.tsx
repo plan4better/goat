@@ -1,5 +1,5 @@
 import CloseIcon from "@mui/icons-material/Close";
-import { Box, Button, IconButton, Stack, TextField, Typography } from "@mui/material";
+import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Trans } from "react-i18next";
@@ -11,6 +11,7 @@ import { uploadAsset } from "@/lib/api/assets";
 import { ASSETS_MAX_FILE_SIZE_MB, assetTypeEnum } from "@/lib/validations/assets";
 
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
+import LabeledField from "@/components/common/LabeledField";
 import SectionHeader from "@/components/map/panels/common/SectionHeader";
 import SectionOptions from "@/components/map/panels/common/SectionOptions";
 
@@ -162,11 +163,12 @@ export const UploadIconDialog = ({ open, onClose, onUploaded }: UploadIconDialog
         active={!!file}
         baseOptions={
           <Stack spacing={2} sx={{ py: 2 }}>
-            <TextField
+            <LabeledField
+              id="upload-icon-name"
               label={t("name")}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              fullWidth
+              autoComplete="off"
               required
             />
           </Stack>

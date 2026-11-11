@@ -16,9 +16,9 @@ import {
 import Divider from "@mui/material/Divider";
 import { visuallyHidden } from "@mui/utils";
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
-import { useId, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMap } from "react-map-gl/maplibre";
 
 import { GOATLogoIconOnlyGreen } from "@p4b/ui/assets/svg/GOATLogoIconOnlyGreen";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -27,7 +27,7 @@ import { useDateFnsLocale } from "@/i18n/utils";
 
 import { useFeatures, useOrganization, useUserProfile } from "@/lib/api/users";
 import { useDockState } from "@/lib/assistant/store";
-import { CONTACT_URL, privacyPolicyUrl } from "@/lib/constants";
+import { CONTACT_URL } from "@/lib/constants";
 import { setSelectedLayers } from "@/lib/store/layer/slice";
 import { setMapMode } from "@/lib/store/map/slice";
 import { setActiveRightPanel } from "@/lib/store/map/slice";
@@ -39,25 +39,82 @@ import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import UserInfoMenu from "@/components/UserInfoMenu";
 import AskAiButton from "@/components/assistant/AskAiButton";
+import { DialogLoadFailed, orLoadFailed } from "@/components/assistant/LoadFailed";
+import { whenIdle } from "@/components/assistant/dockLoader";
 import EditableTypography from "@/components/common/EditableTypography";
-import type { PopperMenuItem } from "@/components/common/PopperMenu";
-import MoreMenu from "@/components/common/PopperMenu";
 import SlidingToggle from "@/components/common/SlidingToggle";
 import OnboardingTray from "@/components/header/OnboardingTray";
+import ProjectMenuButton from "@/components/header/ProjectMenuButton";
 import StatusDot from "@/components/header/StatusDot";
 import WhatsNewPopper from "@/components/header/WhatsNewPopper";
 import JobsPopper from "@/components/jobs/JobsPopper";
-import ContentDeleteModal from "@/components/modals/ContentDelete";
-import Metadata from "@/components/modals/Metadata";
-import ProjectShareDialog from "@/components/modals/content/ProjectShareDialog";
 import SupportMenu from "@/components/support/SupportMenu";
-import SaveTemplateDialog from "@/components/templates/SaveTemplateDialog";
 
 import { TOOLBAR_HEIGHT, Toolbar } from "./Toolbar";
+
+/** The GOAT logo, linking home: the left end of the workspace header, and of
+ * the map header when the project menu's code did not load
+ * (`ProjectMenuLoadFailed`). */
+function HomeLogoLink() {
+  return (
+    <Link
+      href="/home"
+      style={{
+        width: "32px",
+        height: "32px",
+        cursor: "pointer",
+      }}>
+      <Box
+        sx={{
+          transition: "transform 0.2s ease-in-out",
+          "&:hover": {
+            transform: "scale(1.1)",
+          },
+        }}>
+        <GOATLogoIconOnlyGreen style={{ width: "32px", height: "32px", cursor: "pointer" }} />
+      </Box>
+    </Link>
+  );
+}
+
+/** In place of the project menu whose code did not load: the way home stays. */
+function ProjectMenuLoadFailed() {
+  return (
+    <>
+      <HomeLogoLink />
+      <Divider orientation="vertical" flexItem />
+    </>
+  );
+}
+
+// Only the map view shows these, so the other pages never load their code (L6). Code that
+// does not load (gone after a deploy) shows a fallback instead of the app's error page.
+const ProjectMenu = dynamic(
+  () => orLoadFailed(import("@/components/header/ProjectMenu"), ProjectMenuLoadFailed),
+  {
+    ssr: false,
+    // The menu's own button in the wrapper the menu has (its popper's div) and its divider,
+    // so the title does not move when the menu arrives.
+    loading: () => (
+      <>
+        <div>
+          <ProjectMenuButton placeholder />
+        </div>
+        <Divider orientation="vertical" flexItem />
+      </>
+    ),
+  }
+);
+const ProjectShareDialog = dynamic(
+  () => orLoadFailed(import("@/components/modals/content/ProjectShareDialog"), DialogLoadFailed),
+  { ssr: false }
+);
 
 export type HeaderProps = {
   title?: string;
   showHambugerMenu?: boolean;
+  /** Whether the menu the hamburger opens is open. */
+  menuOpen?: boolean;
   onMenuIconClick?: () => void;
   height?: number;
   mapHeader?: boolean;
@@ -82,8 +139,7 @@ export default function Header(props: HeaderProps) {
   // header (with its centred mode toggle) beside the docked dock or in a window narrower than xl.
   const compactAskAi = isSmallScreen || (!!props.mapHeader && (dockDocked || belowXl));
   const askAi = props.askAi !== false && <AskAiButton compact={compactAskAi} />;
-  const { map } = useMap();
-  const { t, i18n } = useTranslation(["common"]);
+  const { t } = useTranslation(["common"]);
   const {
     onMenuIconClick,
     showHambugerMenu,
@@ -106,7 +162,6 @@ export default function Header(props: HeaderProps) {
     if (days < 0) return t("trial_expired");
     return days > 0 ? t("trial_days_left", { count: days }) : t("trial_ends_today");
   };
-  const lng = i18n.language === "de" ? "/de" : "";
   const lastSaved = project?.updated_at
     ? `${t("common:last_saved")}: ${format(parseISO(project.updated_at), "Pp", { locale: dateLocale })}`
     : null;
@@ -127,202 +182,41 @@ export default function Header(props: HeaderProps) {
   );
 
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
-  const [isEditingProjectMetadata, setIsEditingProjectMetadata] = useState(false);
-  const [showDeleteProjectDialog, setShowDeleteProjectDialog] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
-  const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const mapMode = useAppSelector((state) => state.map.mapMode);
-
-  const mapMenuItems: PopperMenuItem[] = useMemo(() => {
-    const editorMenuItems: PopperMenuItem[] = [
-      {
-        id: "home",
-        icon: ICON_NAME.HOUSE,
-        label: t("common:home"),
-        group: "basic",
-        onClick: () => {
-          window.location.href = "/home";
-        },
-      },
-      {
-        id: "edit_metadata",
-        icon: ICON_NAME.EDIT,
-        label: t("common:edit_metadata"),
-        group: "project",
-        onClick: () => {
-          setIsEditingProjectMetadata(true);
-        },
-      },
-      {
-        id: "save_project_as_template",
-        icon: ICON_NAME.SAVE,
-        label: t("common:save_project_as_template"),
-        group: "project",
-        onClick: () => {
-          setShowSaveTemplateDialog(true);
-        },
-      },
-      {
-        id: "delete_project",
-        icon: ICON_NAME.TRASH,
-        label: t("common:delete_project"),
-        group: "project",
-        color: theme.palette.error.main,
-        onClick: () => {
-          setShowDeleteProjectDialog(true);
-        },
-      },
-      {
-        id: "lock_map_view",
-        icon: project?.max_extent ? ICON_NAME.UNLOCK : ICON_NAME.LOCK,
-        label: project?.max_extent ? t("common:unlock_map_view") : t("common:lock_map_view"),
-        group: "map",
-        onClick: async () => {
-          if (map) {
-            if (project?.max_extent) {
-              await onProjectUpdate?.("max_extent", null);
-            } else {
-              const bounds = map.getBounds()?.toArray().flat();
-              await onProjectUpdate?.("max_extent", bounds);
-            }
-          }
-        },
-      },
-    ];
-
-    const publicMenuItems: PopperMenuItem[] = [
-      {
-        id: "login",
-        icon: ICON_NAME.USER,
-        label: t("common:login"),
-        group: "login",
-        onClick: () => {
-          window.location.href = "/auth/login";
-        },
-      },
-    ];
-    const privacyUrl = privacyPolicyUrl(lng ? "de" : "en");
-    const commonMenuItems: PopperMenuItem[] = [];
-    if (privacyUrl) {
-      commonMenuItems.push({
-        id: "privacy_policy",
-        icon: ICON_NAME.COOKIES,
-        label: t("common:privacy_policy"),
-        group: "privacy",
-        onClick: () => {
-          window.open(privacyUrl, "_blank");
-        },
-      });
-    }
-
-    const homeItem = editorMenuItems[0]; // reuse the already-defined "home" item
-
-    if (!viewOnly) {
-      return [...editorMenuItems, ...commonMenuItems];
-    } else if (isLoggedIn) {
-      return [homeItem, ...commonMenuItems];
-    } else {
-      return [...publicMenuItems, ...commonMenuItems];
-    }
-  }, [t, theme.palette.error.main, project?.max_extent, viewOnly, isLoggedIn, map, onProjectUpdate, lng]);
+  // The share dialog's code loads while the page is idle, so the first Share click does
+  // not wait for it. Share shows only to editors; a failed load shows its notice on the click.
+  const shareShown = !!props.mapHeader && !props.viewOnly;
+  useEffect(() => {
+    if (!shareShown) return;
+    return whenIdle(() => {
+      import("@/components/modals/content/ProjectShareDialog").catch(() => undefined);
+    });
+  }, [shareShown]);
 
   return (
     <>
-      {showDeleteProjectDialog && project && (
-        <ContentDeleteModal
-          onDelete={() => {
-            setShowDeleteProjectDialog(false);
-            window.location.href = "/home";
-          }}
-          content={project}
-          open={showDeleteProjectDialog}
-          onClose={() => setShowDeleteProjectDialog(false)}
-          type="project"
-        />
-      )}
-
       {project && props.mapHeader && showShareDialog && (
         <ProjectShareDialog project={project} onClose={() => setShowShareDialog(false)} />
       )}
 
-      {project && isEditingProjectMetadata && (
-        <Metadata
-          open={isEditingProjectMetadata}
-          onClose={() => setIsEditingProjectMetadata(false)}
-          type="project"
-          content={project}
-        />
-      )}
-
-      {project && showSaveTemplateDialog && (
-        <SaveTemplateDialog
-          source={{ kind: "project", project_id: project.id }}
-          defaultName={project.name}
-          defaultThumbnailUrl={project.thumbnail_url}
-          onClose={() => setShowSaveTemplateDialog(false)}
-          onSaved={() => setShowSaveTemplateDialog(false)}
-        />
-      )}
-
       <Toolbar
         showHambugerMenu={showHambugerMenu}
+        menuOpen={props.menuOpen}
         onMenuIconClick={onMenuIconClick}
         height={height}
         // The project menu (logo and chevron) or the logo link: never truncated away.
         leftMinWidth={props.mapHeader ? 64 : 32}
         LeftToolbarChild={
           <>
-            {!props.mapHeader && (
-              <Link
-                href="/home"
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  cursor: "pointer",
-                }}>
-                <Box
-                  sx={{
-                    transition: "transform 0.2s ease-in-out",
-                    "&:hover": {
-                      transform: "scale(1.1)",
-                    },
-                  }}>
-                  <GOATLogoIconOnlyGreen style={{ width: "32px", height: "32px", cursor: "pointer" }} />
-                </Box>
-              </Link>
-            )}
+            {!props.mapHeader && <HomeLogoLink />}
             {props.mapHeader && (
-              <>
-                <MoreMenu
-                  menuItems={mapMenuItems}
-                  disablePortal={false}
-                  menuButton={
-                    <Button
-                      color="secondary"
-                      endIcon={
-                        <Icon
-                          iconName={ICON_NAME.CHEVRON_DOWN}
-                          style={{ fontSize: "14px", color: "inherit" }}
-                        />
-                      }
-                      sx={{
-                        textTransform: "none",
-                        borderRadius: 1,
-                        ml: -2,
-                        my: 4,
-                        "&:hover": {
-                          color: theme.palette.primary.main,
-                        },
-                      }}
-                      size="small"
-                      variant="text">
-                      <GOATLogoIconOnlyGreen style={{ width: "32px", height: "32px", cursor: "pointer" }} />
-                    </Button>
-                  }
-                />
-
-                <Divider orientation="vertical" flexItem />
-              </>
+              <ProjectMenu
+                project={project}
+                viewOnly={viewOnly}
+                isLoggedIn={isLoggedIn}
+                onProjectUpdate={onProjectUpdate}
+              />
             )}
             {/* The title shrinks to an ellipsis inside the column; the last save beside it gives
                 way first. Beside the docked dock the last save moves into the title's tooltip. */}

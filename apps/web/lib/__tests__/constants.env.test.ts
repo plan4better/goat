@@ -164,17 +164,21 @@ describe("CONTACT_URL", () => {
 describe("website-only surfaces", () => {
   it("are off without NEXT_PUBLIC_WEBSITE_URL", async () => {
     vi.stubEnv("NEXT_PUBLIC_WEBSITE_URL", "");
-    const { WELCOME_VIDEO, privacyPolicyUrl } = await loadConstants();
+    const { WELCOME_VIDEO, privacyPolicyUrl, termsOfUseUrl } = await loadConstants();
     expect(WELCOME_VIDEO).toBeUndefined();
     expect(privacyPolicyUrl("en")).toBeUndefined();
+    expect(termsOfUseUrl("en")).toBeUndefined();
   });
 
   it("are on with NEXT_PUBLIC_WEBSITE_URL", async () => {
     vi.stubEnv("NEXT_PUBLIC_WEBSITE_URL", "https://www.site.test");
-    const { WELCOME_VIDEO, privacyPolicyUrl } = await loadConstants();
+    const { WELCOME_VIDEO, privacyPolicyUrl, termsOfUseUrl } = await loadConstants();
     expect(WELCOME_VIDEO?.url).toMatch(/\.mp4$/);
     expect(privacyPolicyUrl("en")).toBe("https://www.site.test/en/about-us/privacy");
     expect(privacyPolicyUrl("de")).toBe("https://www.site.test/de/about-us/datenschutz");
+    // GOAT's own terms, not the website's.
+    expect(termsOfUseUrl("en")).toBe("https://www.site.test/en/about-us/terms-of-use-goat");
+    expect(termsOfUseUrl("de")).toBe("https://www.site.test/de/about-us/nutzungsbedingungen-goat");
   });
 });
 

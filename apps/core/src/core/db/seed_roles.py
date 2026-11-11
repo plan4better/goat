@@ -519,6 +519,13 @@ RESOURCES_PERMISSIONS = [
         "method": ["DELETE", "PATCH"],
         "permissions": ["manage-organization-invitation"],
     },
+    # Resending has its own row: the `invitations` row's prefix fallback would
+    # match too, but an exact row keeps the lookup unambiguous.
+    {
+        "url_pattern": "organizations/{organization_id}/invitations/{invitation_id}/resend",
+        "method": ["POST"],
+        "permissions": ["manage-organization-invitation"],
+    },
     {
         "url_pattern": "space",
         "method": ["GET"],
@@ -539,8 +546,15 @@ RESOURCES_PERMISSIONS = [
     },
     {
         "url_pattern": "teams",
-        "method": ["GET", "POST"],
+        "method": ["GET"],
         "permissions": ["read-team"],
+    },
+    # Creating a team is for editors and up (decision 5): a team brings a
+    # space for content, and viewers create no content.
+    {
+        "url_pattern": "teams",
+        "method": ["POST"],
+        "permissions": ["create-team"],
     },
     {
         "url_pattern": "teams/{team_id}",
@@ -555,6 +569,13 @@ RESOURCES_PERMISSIONS = [
     {
         "url_pattern": "teams/{team_id}/profile",
         "method": ["PATCH"],
+        "permissions": ["update-team"],
+    },
+    # Naming a team's owner: the handler decides (the team's owner, or an
+    # owner or admin of the organization), as for renaming.
+    {
+        "url_pattern": "teams/{team_id}/owner",
+        "method": ["PUT"],
         "permissions": ["update-team"],
     },
     {

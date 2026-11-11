@@ -25,7 +25,8 @@ const renderDialog = (overrides?: { onSubmit?: (name: string) => Promise<void>; 
       onSubmit={onSubmit}
     />
   );
-  return { onSubmit, onClose, field: screen.getByLabelText("new_folder") };
+  // The field by its role: the dialog is named by the same title.
+  return { onSubmit, onClose, field: screen.getByRole("textbox", { name: "new_folder" }) };
 };
 
 describe("NameDialog", () => {

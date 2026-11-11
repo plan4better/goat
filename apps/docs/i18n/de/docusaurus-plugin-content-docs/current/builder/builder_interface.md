@@ -100,7 +100,7 @@ Um ein Panel zu löschen, klicken Sie unten in den Einstellungen auf `Panel lös
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Sie können auf das <code>Löschen-Symbol</code> klicken, um <b>das Widget zu entfernen</b> von Ihrem Dashboard.</div>
+  <div class="content">Sie können auf das <code>Löschen-Symbol</code> klicken, um <b>das Widget zu entfernen</b> von Ihrem Dashboard. Klicken Sie auf <code>Duplizieren</code>, um <b>das Widget zu kopieren</b>: Die Kopie wird direkt darunter mit denselben Einstellungen eingefügt, und ein <code>Tabs</code>-Widget wird mit seinen Widgets kopiert. Klicken Sie auf <code>Panel auswählen</code>, um <b>das Panel auszuwählen</b>, in dem das Widget liegt. Das hilft, wenn das Widget das ganze Panel ausfüllt.</div>
 </div>
 
 <div class="step">
@@ -111,7 +111,7 @@ Um ein Panel zu löschen, klicken Sie unten in den Einstellungen auf `Panel lös
 Weitere Details finden Sie unter [Widgets](../category/widgets).
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <Video src={require('/img/builder/widget_drag.mp4').default} alt="recent datasets" style={{ maxHeight: "400px", maxWidth: "auto", objectFit: "cover"}}/>
+  <Video src={require('/img/builder/widget_drag_de.mp4').default} alt="Ein Layer-Widget in ein Panel ziehen und Titel und Beschreibung festlegen" style={{ maxHeight: "400px", maxWidth: "auto", objectFit: "cover"}}/>
 </div>
 
 ## Einstellungen

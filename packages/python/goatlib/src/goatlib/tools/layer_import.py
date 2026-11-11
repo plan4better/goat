@@ -25,7 +25,7 @@ from goatlib.analysis.schemas.ui import (
     ui_sections,
 )
 from goatlib.io.converter import IOConverter
-from goatlib.io.formats import RASTER_EXTS
+from goatlib.io.formats import RASTER_EXTS, refuse_unsupported_format
 from goatlib.io.ingest import convert_all, first_line
 from goatlib.models.io import ConversionReport, DatasetMetadata
 from goatlib.tools.base import (
@@ -213,6 +213,7 @@ class LayerImportRunner(BaseToolRunner[LayerImportParams]):
         """
         if self.settings is None:
             raise RuntimeError("Settings not initialized")
+        refuse_unsupported_format(s3_key)
 
         logger.info(
             "S3 Settings: provider=%s, endpoint=%s, bucket=%s, region=%s",
@@ -478,8 +479,9 @@ class LayerImportRunner(BaseToolRunner[LayerImportParams]):
         if self.settings is None:
             raise RuntimeError("Settings not initialized")
 
-        client = self._get_s3_client()
         s3_key = params.s3_key or ""
+        refuse_unsupported_format(s3_key)
+        client = self._get_s3_client()
         local_file = temp_dir / Path(s3_key).name
         logger.info(
             "Downloading s3://%s/%s to %s",

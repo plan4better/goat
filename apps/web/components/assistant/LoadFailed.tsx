@@ -75,6 +75,11 @@ export function DialogLoadFailed({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** In place of `ConfirmModal` when its code did not load: its `onClose` is optional. */
+export function ConfirmLoadFailed({ onClose }: { onClose?: () => void }) {
+  return <DialogLoadFailed onClose={() => onClose?.()} />;
+}
+
 interface DockErrorBoundaryProps {
   /** The open conversation: another one shows again. */
   resetKey: string | null;

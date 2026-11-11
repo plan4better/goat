@@ -14,7 +14,7 @@ import {
 } from "@mui/material";
 import type { DialogProps } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material";
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ICON_NAME } from "@p4b/ui/components/Icon";
@@ -95,6 +95,10 @@ const AppDialog = ({
   const { t } = useTranslation("common");
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down(fullScreenBelow));
+  // Named by its title, as MUI's DialogTitle names a dialog (MUI otherwise
+  // points `aria-labelledby` at an id nothing carries). An `ariaLabel` names
+  // it instead: on the paper, the element with the dialog role.
+  const titleId = useId();
 
   // MUI hands the backdrop-click/Escape reason to `onClose` itself, so
   // gating those two paths (alongside the header X, which just never calls
@@ -108,11 +112,12 @@ const AppDialog = ({
     <Dialog
       open={open}
       onClose={handleClose}
-      aria-label={ariaLabel}
+      aria-labelledby={titleId}
       transitionDuration={transitionDuration}
       fullScreen={fullScreen}
       maxWidth={false}
       PaperProps={{
+        ...(ariaLabel ? { "aria-label": ariaLabel, "aria-labelledby": undefined } : {}),
         sx: [
           contentDialogPaperSx(maxWidth, fullScreen),
           ...(Array.isArray(paperSx) ? paperSx : [paperSx]),
@@ -127,6 +132,7 @@ const AppDialog = ({
         closeLabel={closeLabel ?? t("close")}
         closeDisabled={closeDisabled}
         divider
+        titleId={titleId}
       />
 
       <DialogContent sx={[bleed ? { p: 0 } : {}, ...(Array.isArray(bodySx) ? bodySx : [bodySx])]}>

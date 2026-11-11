@@ -31,7 +31,7 @@ test.describe("Content Page Management Operations", () => {
     await page.getByRole("menuitem", { name: "New folder" }).click();
     const folderDialog = page.getByRole("dialog").filter({ hasText: "New folder" });
     await expect(folderDialog.getByText("New folder", { exact: true })).toBeVisible();
-    await page.getByLabel("New folder").fill(folderName);
+    await page.getByRole("textbox", { name: "New folder" }).fill(folderName);
     await page.getByRole("button", { name: "Create folder" }).click();
     await expect(folderDialog).toBeHidden();
     await expect(page.getByText(folderName)).toBeVisible({ timeout: 15000 });
@@ -49,7 +49,7 @@ test.describe("Content Page Management Operations", () => {
     await page.getByRole("button", { name: "Add new" }).click();
     await page.getByRole("menuitem", { name: "Blank project" }).click();
     await expect(page.getByRole("dialog").getByText("New project", { exact: true })).toBeVisible();
-    await page.getByLabel("New project").fill(projectName);
+    await page.getByRole("textbox", { name: "New project" }).fill(projectName);
     await page.getByRole("button", { name: "Create project" }).click();
     await expect(page).toHaveURL(/\/map\//, { timeout: 30000 });
 

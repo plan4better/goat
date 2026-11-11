@@ -1,10 +1,13 @@
 "use client";
 
-import { Box, ButtonBase, Menu, MenuItem, Typography, alpha, useTheme } from "@mui/material";
+import { ButtonBase, Menu, alpha, useTheme } from "@mui/material";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+
+import { focusRing } from "@/components/assistant/styles";
+import { MenuRow } from "@/components/common/MenuRow";
 
 export type RolePrefix = "layer" | "project" | "folder" | "bundle" | "template";
 
@@ -48,6 +51,8 @@ const RolePicker = ({ value, prefix, onChange, disabled }: RolePickerProps) => {
       <ButtonBase
         ref={anchorRef}
         disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
         onClick={() => setOpen(true)}
         sx={{
           display: "inline-flex",
@@ -60,9 +65,13 @@ const RolePicker = ({ value, prefix, onChange, disabled }: RolePickerProps) => {
           border: `1px solid ${accent || open ? theme.palette.primary.main : alpha(theme.palette.text.primary, 0.24)}`,
           backgroundColor: accent ? alpha(theme.palette.primary.main, 0.12) : "transparent",
           color: accent ? theme.palette.primary.main : theme.palette.text.primary,
+          // The app's font: a bare button would fall back to the browser's.
+          fontFamily: "inherit",
           fontSize: 12.5,
           fontWeight: 700,
           opacity: disabled ? 0.5 : 1,
+          // A bare ButtonBase draws no focus of its own: the keyboard's ring.
+          ...focusRing(theme),
         }}>
         {current.label}
         <Icon
@@ -76,46 +85,18 @@ const RolePicker = ({ value, prefix, onChange, disabled }: RolePickerProps) => {
         onClose={() => setOpen(false)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
-        slotProps={{ paper: { sx: { width: 250, borderRadius: "12px", padding: "6px" } } }}>
+        slotProps={{ paper: { sx: { width: 250, mt: 1.5 } } }}>
         {options.map((option) => (
-          <MenuItem
+          <MenuRow
             key={option.role || "none"}
+            label={option.label}
+            secondary={option.hint}
+            selected={option.role === value}
             onClick={() => {
               onChange(option.role);
               setOpen(false);
             }}
-            sx={{ alignItems: "flex-start", gap: "10px", padding: "9px 11px", borderRadius: "8px" }}>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography
-                component="div"
-                sx={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: option.role === value ? theme.palette.primary.main : theme.palette.text.primary,
-                }}>
-                {option.label}
-              </Typography>
-              {option.hint && (
-                <Typography
-                  component="div"
-                  sx={{
-                    fontSize: 11.5,
-                    color: theme.palette.text.secondary,
-                    marginTop: "1px",
-                    lineHeight: 1.4,
-                    whiteSpace: "normal",
-                  }}>
-                  {option.hint}
-                </Typography>
-              )}
-            </Box>
-            {option.role === value && (
-              <Icon
-                iconName={ICON_NAME.CIRCLECHECK}
-                style={{ fontSize: 13, color: theme.palette.primary.main, marginTop: 2 }}
-              />
-            )}
-          </MenuItem>
+          />
         ))}
       </Menu>
     </>

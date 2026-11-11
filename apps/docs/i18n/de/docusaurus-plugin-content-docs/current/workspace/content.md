@@ -49,7 +49,7 @@ Wählen Sie ein Element aus, oder mehrere, um damit zu arbeiten. Das Menü auf e
 
 | Aktion | Was sie bewirkt |
 |--------|-----------------|
-| **Teilen** | Gibt anderen Zugriff. Sie bleiben Besitzer. |
+| **Teilen** | Gibt anderen Zugriff. Sie bleiben Eigentümer. |
 | **Verschieben** | Legt das Element in einen anderen Ordner. |
 | **Umbenennen** | Ändert den Namen. |
 | **Rechte übertragen** | Übergibt das Element dauerhaft an jemand anderen. |
@@ -57,9 +57,9 @@ Wählen Sie ein Element aus, oder mehrere, um damit zu arbeiten. Das Menü auf e
 
 ### Teilen und Übertragen sind zweierlei
 
-**Teilen** gewährt Zugriff, während Sie Besitzer bleiben. Das ist sinnvoll, wenn Kolleginnen und Kollegen etwas sehen oder bearbeiten sollen, das weiterhin in Ihrer Verantwortung liegt.
+**Teilen** gewährt Zugriff, während Sie Eigentümer bleiben. Das ist sinnvoll, wenn Kolleginnen und Kollegen etwas sehen oder bearbeiten sollen, das weiterhin in Ihrer Verantwortung liegt.
 
-**Rechte übertragen** verschiebt das Element dauerhaft in den Bereich eines Teams oder der Organisation. Das ist der richtige Weg, wenn ein Projekt tatsächlich den Besitzer wechselt, etwa bei einer Übergabe vor dem Wechsel aus einem Team.
+**Rechte übertragen** verschiebt das Element dauerhaft in den Bereich eines Teams oder der Organisation. Das ist der richtige Weg, wenn ein Projekt tatsächlich den Eigentümer wechselt, etwa bei einer Übergabe vor dem Wechsel aus einem Team.
 
 Standardmäßig bleibt im Ursprungsbereich eine **Verknüpfung** zurück, als solche gekennzeichnet und mit dem echten Namen des Elements. Sie ist ein Verweis: Ein Klick darauf führt Sie zum Element an seinem neuen Ort.
 
@@ -69,7 +69,7 @@ Ein Element zeigt seine **Sichtbarkeit**: privat, mit einzelnen Personen geteilt
 
 ### Papierkorb und Wiederherstellen
 
-Gelöschte Inhalte verschwinden nicht sofort: Sie landen im **Papierkorb**, aus dem der Besitzer sie **Wiederherstellen** kann. Sie bleiben dort **30 Tage** lang und werden dann endgültig entfernt. Ein versehentliches Löschen lässt sich also rückgängig machen. Wo Sie den Papierkorb finden, steht unter [Papierkorb](../sharing/sharing.md#papierkorb).
+Gelöschte Inhalte verschwinden nicht sofort: Sie landen im **Papierkorb**, aus dem der Eigentümer sie **Wiederherstellen** kann. Sie bleiben dort **30 Tage** lang und werden dann endgültig entfernt. Ein versehentliches Löschen lässt sich also rückgängig machen. Wo Sie den Papierkorb finden, steht unter [Papierkorb](../sharing/sharing.md#papierkorb).
 
 ## Inhalte hinzufügen
 

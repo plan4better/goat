@@ -745,6 +745,13 @@ a.card:hover {
   width: auto;
 }
 
+/* Pictures sit in a centring <div>, which has no bottom margin of its own, so
+   the text or step that follows touched them. Give the block a paragraph's
+   space below. */
+.theme-doc-markdown > div:not(.step):not(.theme-admonition):has(> img, > video, > picture) {
+  margin-bottom: var(--ifm-paragraph-margin-bottom);
+}
+
 /* On a narrow screen every picture fits the column, whatever its own limit. */
 @media (max-width: 996px) {
   .theme-doc-markdown img,

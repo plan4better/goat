@@ -25,6 +25,7 @@ import FetchBody from "@/components/addLayer/FetchBody";
 import UploadBody from "@/components/addLayer/UploadBody";
 import { type AddLayerSourceId, addLayerSource } from "@/components/addLayer/sources";
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
+import { SETTINGS_PANE_HEIGHT } from "@/components/map/panels/common/SettingsColumn";
 
 /**
  * The chrome one source is shown in: a title, the body, and the flow's own control.
@@ -107,7 +108,7 @@ const AddLayerFrame = ({
             flex: 1,
             minHeight: 0,
             // Room for the map beside the settings, never taller than the window allows.
-            height: { md: "min(680px, calc(100vh - 210px))" },
+            height: SETTINGS_PANE_HEIGHT,
           }}>
           {aside}
           <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>{children}</Box>

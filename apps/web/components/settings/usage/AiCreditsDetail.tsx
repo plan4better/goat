@@ -14,7 +14,7 @@ import {
   formatRate,
   roundCredits,
 } from "@/lib/utils/credits";
-import { rangeWindow } from "@/lib/utils/usageRange";
+import { NO_PERIOD, rangeWindow, requestWindow } from "@/lib/utils/usageRange";
 
 import { useLocalList } from "@/hooks/settings/useLocalList";
 
@@ -71,9 +71,10 @@ const rowKey = (row: { key: string | null }) => row.key ?? "";
  * The AI credits of the range chosen: the amount and how answers are counted,
  * the AI credits per day, and the answers grouped by member, by day (by
  * month for the last 12 months) or by period. All three lists are small and
- * paged here.
+ * paged here. `balance` is undefined until `/credits/balance` answers (see
+ * CreditsDetail).
  */
-export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
+export const AiCreditsDetail = ({ balance }: { balance?: CreditBalance }) => {
   const { t, i18n } = useTranslation("common");
   const language = i18n.language;
   // A phone gives the search a row of its own above the pills.
@@ -82,19 +83,24 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
   const { range, group, member, page } = state;
   const searched = state.query.trim();
   const sort = state.sort ?? DEFAULT_SORT[group];
-  const bounds = rangeWindow(range, balance);
-  const span = { since: bounds.since, until: bounds.until };
+  const bounds = rangeWindow(range, balance ?? NO_PERIOD);
+  const requested = requestWindow(range, balance);
+  const span = requested ?? {};
+  // The last period waits for the balance's start; every other range asks at once.
+  const ready = requested !== null;
+  // Days or months follow the period the balance names: until it answers the
+  // days, the usual case, name the grouping, and the day list waits.
+  const perMonth = !!balance && bounds.perMonth;
   const memberParam = member ?? undefined;
   const directory = useMemberDirectory();
 
-  const chart = useCreditBreakdown("day", { ...span, member: memberParam });
+  const chart = useCreditBreakdown("day", { ...span, member: memberParam }, ready);
   // Everyone's AI credits in the range: the member pill's options and the Members grouping.
-  const members = useCreditBreakdown("member", span);
+  const members = useCreditBreakdown("member", span, ready);
   // Whole periods, whatever the range (see CreditsDetail).
   const periods = useCreditBreakdown("period", { member: memberParam }, group === "period");
 
-  const chartRows =
-    chart.breakdown && (bounds.perMonth ? byMonth(chart.breakdown.rows) : chart.breakdown.rows);
+  const chartRows = chart.breakdown && (perMonth ? byMonth(chart.breakdown.rows) : chart.breakdown.rows);
   const memberRows: MemberRow[] | undefined = members.breakdown?.rows
     .filter((row) => row.key && (row.ai_credits ?? 0) > 0)
     .map((row) => ({
@@ -109,7 +115,7 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
     ...local,
     search: memberNameOfRow,
   });
-  const dayList = useLocalList(group === "day" ? chartRows?.filter(answered) : undefined, local);
+  const dayList = useLocalList(group === "day" && balance ? chartRows?.filter(answered) : undefined, local);
   const periodList = useLocalList(
     group === "period" ? periods.breakdown?.rows.filter(answered) : undefined,
     local
@@ -117,13 +123,13 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
   const memberTotal = (memberRows ?? []).reduce((total, row) => total + row.ai_credits, 0);
 
   const usedInPeriod = member === null && range.preset === "period";
-  const total = balance.total_ai_credits;
-  const amount = usedInPeriod ? balance.used_ai_credits : aiSum(chartRows);
+  const total = balance?.total_ai_credits ?? null;
+  const amount = usedInPeriod ? (balance?.used_ai_credits ?? 0) : aiSum(chartRows);
   // Nothing used yet this period: the chart and the list make way for a
   // word on how AI credits are used; the toolbar stays for another range.
   const emptyPeriod =
     usedInPeriod &&
-    balance.used_ai_credits === 0 &&
+    balance?.used_ai_credits === 0 &&
     !!chartRows &&
     !chartRows.some((row) => (row.ai_credits ?? 0) > 0);
   // While a member is chosen the detail says so, named or not (see CreditsDetail).
@@ -134,24 +140,23 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
   const answers = (count: number) =>
     t("usage_answers_count", { count, answers: count.toLocaleString(language) });
 
-  const tiers = aiCreditTiersText(balance.ai_credit_tiers, t, language);
+  const tiers = aiCreditTiersText(balance?.ai_credit_tiers ?? [], t, language);
+  const perEditor = balance?.ai_credits_per_editor ?? null;
   const explain = [
     tiers && t("usage_ai_explain_rule", { tiers }),
     total === null
       ? t("usage_ai_explain_no_limit")
-      : balance.on_trial
+      : balance?.on_trial
         ? t("usage_ai_explain_trial", { total: credits(total) })
-        : balance.ai_credits_per_editor !== null &&
-          t("usage_ai_explain_per_editor", {
-            perEditor: formatRate(balance.ai_credits_per_editor, language),
-          }),
+        : perEditor !== null &&
+          t("usage_ai_explain_per_editor", { perEditor: formatRate(perEditor, language) }),
     t("usage_ai_explain_own"),
   ]
     .filter(Boolean)
     .join(" ");
 
   const dayLabel = (key: string | null) =>
-    bounds.perMonth
+    perMonth
       ? new Intl.DateTimeFormat(language?.startsWith("de") ? "de-DE" : "en-GB", {
           month: "long",
           year: "numeric",
@@ -194,7 +199,7 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
   const dayColumns: UsageColumn<BreakdownRow>[] = [
     {
       key: "key",
-      label: t(bounds.perMonth ? "month" : "day"),
+      label: t(perMonth ? "month" : "day"),
       width: "minmax(0, 1fr)",
       sortable: true,
       render: (row) => (
@@ -240,12 +245,12 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
 
   const groups: { key: Group; label: string }[] = [
     ...(member ? [] : [{ key: "member" as const, label: t("members") }]),
-    { key: "day", label: t(bounds.perMonth ? "usage_group_months" : "usage_group_days") },
+    { key: "day", label: t(perMonth ? "usage_group_months" : "usage_group_days") },
     { key: "period", label: t("usage_group_periods") },
   ];
   const nouns: Record<Group, string> = {
     member: "usage_noun_members",
-    day: bounds.perMonth ? "usage_noun_months" : "usage_noun_days",
+    day: perMonth ? "usage_noun_months" : "usage_noun_days",
     period: "usage_noun_periods",
   };
   const noun = (count: number) => t(nouns[group], { count });
@@ -257,10 +262,12 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
       sub: aiCreditsText(row.ai_credits, t, language),
     }));
 
+  // An empty list of this period may be an empty period (see CreditsDetail).
+  const holdEmpty = (rows: unknown[] | undefined) => usedInPeriod && !balance && !rows?.length;
   // This period's axis runs to its reset (a trial's to its end); the days
   // after today stay empty.
   const periodEnd =
-    range.preset === "period"
+    range.preset === "period" && balance
       ? balance.on_trial
         ? balance.plan_renewal_date
         : balance.credits_reset_at
@@ -293,7 +300,7 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
           <DetailList
             {...listProps}
             failed={!!members.isError}
-            isLoading={members.isLoading}
+            isLoading={members.isLoading || holdEmpty(memberList.pageRows)}
             columns={memberColumns}
             rows={memberList.pageRows}
             rowKey={rowKey}
@@ -305,7 +312,7 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
         return chart.isError ? null : (
           <DetailList
             {...listProps}
-            isLoading={chart.isLoading}
+            isLoading={chart.isLoading || !balance}
             columns={dayColumns}
             rows={dayList.pageRows}
             rowKey={rowKey}
@@ -333,7 +340,7 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
   return (
     <DetailFrame
       header={
-        usedInPeriod || chartRows
+        balance && (usedInPeriod || chartRows)
           ? {
               title: t("usage_ai_credits"),
               amount: credits(amount),
@@ -375,11 +382,12 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
           <DateRangePill
             value={range}
             onChange={state.setRange}
-            onTrial={balance.on_trial}
-            hasPeriod={balance.period_start !== null}
-            periodStart={balance.period_start}
-            disabled={group === "period"}
-            disabledHint={t("usage_periods_whole")}
+            onTrial={balance?.on_trial}
+            hasPeriod={!!balance?.period_start}
+            periodStart={balance?.period_start}
+            // Until the balance answers, the presets have no period to name.
+            disabled={!balance || group === "period"}
+            disabledHint={group === "period" ? t("usage_periods_whole") : undefined}
           />
           <MemberPill
             value={member}
@@ -387,7 +395,13 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
             onChange={state.setMember}
             valueLabel={memberName ?? ""}
           />
-          <ExportPill onExport={() => downloadUsageCsv("ai", { ...span, member: memberParam })} />
+          {/* The exact window: without the balance's period start it would be the whole ledger. */}
+          <ExportPill
+            disabled={!balance}
+            onExport={() =>
+              downloadUsageCsv("ai", { since: bounds.since, until: bounds.until, member: memberParam })
+            }
+          />
         </>
       }>
       {emptyPeriod ? (
@@ -412,11 +426,11 @@ export const AiCreditsDetail = ({ balance }: { balance: CreditBalance }) => {
             <UsageChart
               rows={chartRows}
               kind="ai"
-              perMonth={bounds.perMonth}
+              perMonth={perMonth}
               window={bounds}
-              isLoading={chart.isLoading}
+              isLoading={chart.isLoading || !balance}
               periodEnd={periodEnd}
-              phrase={rangePhrase(range, balance, t, language)}
+              phrase={balance ? rangePhrase(range, balance, t, language) : ""}
             />
           )}
           {groupToggle}

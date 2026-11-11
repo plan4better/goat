@@ -1,4 +1,5 @@
 // lib/api/system.ts
+import { apiErrorOf } from "@/lib/api/apiError";
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import { useAuthedSWR } from "@/lib/api/useAuthedSWR";
 import type { SystemSettings, SystemSettingsUpdate } from "@/lib/validations/system";
@@ -41,7 +42,7 @@ export const updateSystemSettings = async (
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error("Failed to update system settings");
+  if (!res.ok) throw await apiErrorOf(res);
   // backend response is validated/normalized — use that
   return res.json();
 };

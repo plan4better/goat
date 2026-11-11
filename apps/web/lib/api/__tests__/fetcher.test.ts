@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { detailOf, statusOf } from "@/lib/api/apiError";
 import { clearTokenCache, fetcher, renewAccessToken } from "@/lib/api/fetcher";
 
 const { getSessionMock, signInMock } = vi.hoisted(() => ({
@@ -70,6 +71,27 @@ describe("fetcher auth handling", () => {
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
       "http://api.test/thing?page=0&search=&flag=false&empty=null"
     );
+  });
+
+  it("keeps the status of a refused request whose body is not JSON (a proxy's 502 page)", async () => {
+    getSessionMock.mockResolvedValue(null);
+    vi.mocked(fetch).mockResolvedValueOnce(new Response("<html>Bad gateway</html>", { status: 502 }));
+    const error = await fetcher("http://api.test/thing").catch((caught: unknown) => caught);
+    expect(statusOf(error)).toBe(502);
+    expect(detailOf(error)).toBeUndefined();
+  });
+
+  it("keeps the status and core's detail of a refused request with a JSON body", async () => {
+    getSessionMock.mockResolvedValue(null);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Not allowed" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    const error = await fetcher("http://api.test/thing").catch((caught: unknown) => caught);
+    expect(statusOf(error)).toBe(403);
+    expect(detailOf(error)).toBe("Not allowed");
   });
 
   it("sends no auth header without a session", async () => {

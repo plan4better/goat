@@ -34,6 +34,7 @@ Dieser Abschnitt **enthält Widgets, die Informationen über Ihre Projektlayer**
     <li><code>Herunterladen</code>: erlaubt Betrachtern, die Daten dieses Layers herunterzuladen</li>
   </ul>
   Für Gruppen können Sie auf das Symbol klicken, um das <code>Symbol zu ändern</code>, und auf die ⓘ-Schaltfläche, um Gruppeninformationen hinzuzufügen oder zu bearbeiten (Markdown unterstützt).
+  Unter einer Gruppe mit zwei oder mehr Layern wählen Sie, wie die Gruppe angezeigt wird: <code>Liste</code> zeigt ihre Layer wie bisher, <code>Chips</code>, <code>Slider</code> und <code>Dropdown</code> zeigen <b>jeweils einen Layer der Gruppe</b>. Wenn Sie einen Layer auswählen, wird er eingeblendet und die anderen Layer der Gruppe werden ausgeblendet. Darunter erscheint die Legende des angezeigten Layers. Aktivieren Sie <code>Abspielen</code>, um eine Wiedergabe-Schaltfläche hinzuzufügen, die die Layer nacheinander durchläuft. Betrachter des veröffentlichten Dashboards sehen von einer solchen Gruppe immer genau einen Layer.
   </div>
 </div>
 

@@ -110,6 +110,8 @@ app.add_middleware(
     # The web app runs on another origin: it reads the map request's ETag to ask with If-None-Match,
     # and names a downloaded export (CSV) from Content-Disposition.
     expose_headers=["ETag", "Content-Disposition"],
+    # Chromium caps preflight caching at two hours (Safari keeps 600 s, Firefox allows more).
+    max_age=7200,
 )
 
 from goatlib.auth import JOSEError  # noqa: E402

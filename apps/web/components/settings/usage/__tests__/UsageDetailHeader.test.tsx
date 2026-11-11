@@ -95,7 +95,7 @@ describe("UsageDetailHeader", () => {
   });
 
   it("puts an action beside the title", () => {
-    renderHeader({ action: <a href="/settings/organization/members">Manage members</a> });
+    renderHeader({ action: <a href="/settings/members">Manage members</a> });
     expect(screen.getByRole("link", { name: "Manage members" })).toBeInTheDocument();
   });
 });

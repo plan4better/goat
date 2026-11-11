@@ -6,7 +6,6 @@ import {
   FormControlLabel,
   InputBase,
   Link,
-  Paper,
   Radio,
   RadioGroup,
   Skeleton,
@@ -24,6 +23,7 @@ import type { Space } from "@/lib/validations/content";
 import type { TemplateSourceFilter } from "@/lib/validations/template";
 
 import { ArrowPopper } from "@/components/ArrowPoper";
+import PopoverPaper from "@/components/common/PopoverPaper";
 import ToolPill from "@/components/dashboard/common/ToolPill";
 import TemplateTag from "@/components/templates/TemplateTag";
 
@@ -132,7 +132,7 @@ const TemplateFilterPill = ({
         onClose={() => setOpen(false)}
         arrow={false}
         content={
-          <Paper elevation={8} sx={{ minWidth: 230, maxHeight: 380, overflowY: "auto", py: 1 }}>
+          <PopoverPaper sx={{ minWidth: 230, maxHeight: 380, overflowY: "auto", py: 1 }}>
             {/* The clear link sits beside the first section's heading, and
               on its own row where the source section is not offered. */}
             <Stack
@@ -271,7 +271,7 @@ const TemplateFilterPill = ({
                 )}
               </>
             )}
-          </Paper>
+          </PopoverPaper>
         }>
         <ToolPill
           icon={ICON_NAME.FILTER}

@@ -49,15 +49,15 @@ import type { SelectorItem } from "@/types/map/common";
 
 import useLayerFields from "@/hooks/map/CommonHooks";
 import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
+import { useStepFieldFocus } from "@/hooks/workflows/useStepFieldFocus";
 
 import DatasetPickerDialog from "@/components/addLayer/DatasetPickerDialog";
 import Container from "@/components/map/panels/Container";
 import Selector from "@/components/map/panels/common/Selector";
 import ToolsHeader from "@/components/map/panels/common/ToolsHeader";
+import Expression from "@/components/map/panels/filter/Expression";
 import StepIssuesSummary from "@/components/workflows/issues/StepIssuesSummary";
 import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
-import { useStepFieldFocus } from "@/hooks/workflows/useStepFieldFocus";
-import Expression from "@/components/map/panels/filter/Expression";
 
 // Tab panel component
 interface TabPanelProps {
@@ -769,11 +769,6 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
                 {selectedLayer.type === layerType.Values.feature && (
                   <Menu
                     anchorEl={filterMenuAnchorEl}
-                    sx={{
-                      "& .MuiPaper-root": {
-                        boxShadow: "0px 0px 10px 0px rgba(58, 53, 65, 0.1)",
-                      },
-                    }}
                     anchorOrigin={{ vertical: "top", horizontal: "center" }}
                     transformOrigin={{ vertical: "bottom", horizontal: "center" }}
                     open={filterMenuOpen}

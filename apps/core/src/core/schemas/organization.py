@@ -86,6 +86,12 @@ class OrganizationUser(BaseModel):
     roles: list[str]
     invitation_status: InvitationStatusEnum
     avatar: str | None
+    # B5: a member's join date (their user row's creation), an invitation's
+    # creation, expiry and the last time its mail went out.
+    joined_at: datetime | None = None
+    invited_at: datetime | None = None
+    expires_at: datetime | None = None
+    last_sent_at: datetime | None = None
 
 
 request_examples = {

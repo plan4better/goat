@@ -30,8 +30,21 @@ _FACET_KEY = r"^[a-z][a-z0-9_]{0,39}$"
 NUTS_ID_PATTERN = r"^[A-Z]{2}[A-Z0-9]{0,3}$"
 #: Fields with no reason to hold prose are constrained (Decision T19).
 SORTBY_PATTERN = r"^-?[A-Za-z0-9_.:]+(,-?[A-Za-z0-9_.:]+)*$"
-RECORD_ID_PATTERN = r"^[A-Za-z0-9._:-]{1,300}$"
+#: A catalog record id. Its length limit is max_length, not a count in the
+#: pattern: a provider that enforces tool schemas strictly may reject a long
+#: counted repeat as a malformed tool definition.
+RECORD_ID_PATTERN = r"^[A-Za-z0-9._:-]+$"
+RECORD_ID_MAX_LENGTH = 300
+_RECORD_ID = re.compile(RECORD_ID_PATTERN)
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def is_record_id(value: str) -> bool:
+    """Whether ``value`` is a catalog record id (pattern and length)."""
+    return (
+        len(value) <= RECORD_ID_MAX_LENGTH and _RECORD_ID.fullmatch(value) is not None
+    )
+
 
 FacetValue = Annotated[str, Field(max_length=200)]
 FacetValues = Annotated[list[FacetValue], Field(max_length=50)]
@@ -87,7 +100,9 @@ class CatalogContext(_Page):
     to_date: date | None = Field(default=None, alias="to")
     nuts: list[NutsId] = Field(default_factory=list, max_length=20)
     sortby: str | None = Field(default=None, max_length=100, pattern=SORTBY_PATTERN)
-    selected_record_id: str | None = Field(default=None, pattern=RECORD_ID_PATTERN)
+    selected_record_id: str | None = Field(
+        default=None, max_length=RECORD_ID_MAX_LENGTH, pattern=RECORD_ID_PATTERN
+    )
 
     @field_validator("from_date", "to_date", mode="before")
     @classmethod

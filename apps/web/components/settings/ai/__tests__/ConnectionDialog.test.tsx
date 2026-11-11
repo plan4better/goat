@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -111,20 +111,24 @@ describe("ConnectionDialog secrets", () => {
   });
 
   it("clears the typed key after a successful save", async () => {
-    const fetchMock = answer(201, {});
+    const fetchMock = answer(201, { id: "c9", name: "Own vLLM" });
     vi.stubGlobal("fetch", fetchMock);
-    const { onClose } = renderDialog();
+    const { onClose, onSaved } = renderDialog();
     await userEvent.type(screen.getByLabelText(/^name/), "Own vLLM");
     await userEvent.type(screen.getByLabelText(/^ai_settings_field_base_url/), "https://llm.example.org/v1");
     await userEvent.type(screen.getByLabelText(/^ai_settings_field_model/), "qwen3");
     await userEvent.type(keyField(), "sk-secret");
-    await userEvent.click(screen.getByRole("button", { name: "save" }));
+    await userEvent.click(screen.getByRole("button", { name: "settings_ai_save_and_test" }));
     expect(fetchMock).toHaveBeenCalledWith(
       "http://assistant.test/connections",
       expect.objectContaining({ method: "POST" })
     );
     await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+    // The page tests what was saved, so it gets the service's answer.
+    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: "c9" }));
     expect(keyField().value).toBe("");
+    // The service's answer, not the form with the typed key.
+    expect(JSON.stringify(onSaved.mock.calls)).not.toContain("sk-secret");
   });
 });
 
@@ -152,7 +156,7 @@ describe("ConnectionDialog provider order", () => {
     await userEvent.type(screen.getByLabelText(/^name/), "OpenRouter");
     await userEvent.type(screen.getByLabelText(/^ai_settings_field_model/), "deepseek/deepseek-v4.1-flash");
     await userEvent.type(screen.getByLabelText(/^ai_settings_field_api_key/), "sk-or");
-    await userEvent.click(screen.getByRole("button", { name: "save" }));
+    await userEvent.click(screen.getByRole("button", { name: "settings_ai_save_and_test" }));
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(body).toMatchObject({ provider_order: ["DeepInfra", "Together"], allow_fallbacks: false });
@@ -187,7 +191,7 @@ describe("ConnectionDialog failed save", () => {
     );
     open();
     await fillCompatible();
-    await userEvent.click(screen.getByRole("button", { name: "save" }));
+    await userEvent.click(screen.getByRole("button", { name: "settings_ai_save_and_test" }));
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(
@@ -195,16 +199,14 @@ describe("ConnectionDialog failed save", () => {
     );
     const baseUrl = screen.getByLabelText(/^ai_settings_field_base_url/);
     expect(baseUrl.getAttribute("aria-invalid")).toBe("true");
-    expect(
-      screen.getByText(/10\.0\.0\.5 is a private or internal address\./, { selector: "p" })
-    ).toBeInTheDocument();
+    expect(baseUrl).toHaveAccessibleDescription(/10\.0\.0\.5 is a private or internal address\./);
   });
 
   it("shows any coded error in the dialog and clears it when a field changes", async () => {
     vi.stubGlobal("fetch", answer(409, { detail: { code: "name_taken" } }));
     open();
     await fillCompatible();
-    await userEvent.click(screen.getByRole("button", { name: "save" }));
+    await userEvent.click(screen.getByRole("button", { name: "settings_ai_save_and_test" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("ai_settings_error_name_taken");
     await userEvent.type(screen.getByLabelText(/^name/), "2");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -217,7 +219,178 @@ describe("ConnectionDialog failed save", () => {
     );
     open();
     await fillCompatible();
-    await userEvent.click(screen.getByRole("button", { name: "save" }));
+    await userEvent.click(screen.getByRole("button", { name: "settings_ai_save_and_test" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Enter a region.");
+  });
+});
+
+const EDITED = {
+  id: "c1",
+  name: "Own vLLM",
+  provider: "openai_compatible" as const,
+  base_url: "https://llm.example.org/v1",
+  region: null,
+  model: "qwen3",
+  provider_order: [],
+  allow_fallbacks: true,
+  key_last4: "1234",
+  credentials_readable: true,
+  capabilities: {},
+  tested_model: true,
+  last_test_at: null,
+  last_test_ok: true,
+  last_test_error: null,
+  active: false,
+  created_at: "2026-10-01T00:00:00Z",
+  updated_at: "2026-10-01T00:00:00Z",
+};
+
+describe("ConnectionDialog titles and labels", () => {
+  it("adds with its own title and subtitle, labels above the fields", () => {
+    render(
+      <ConnectionDialog
+        open
+        connection={null}
+        allowedProviders={["openai_compatible"]}
+        allowHttp={false}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("settings_ai_dialog_add_title");
+    expect(dialog).toHaveTextContent("settings_ai_dialog_add_subtitle");
+    expect(within(dialog).getByRole("button", { name: "settings_ai_save_and_test" })).toBeInTheDocument();
+    // A real label outside the field, not MUI's floating one.
+    const name = screen.getByLabelText(/^name/);
+    const label = document.querySelector(`label[for="${name.id}"]`);
+    expect(label?.closest(".MuiTextField-root")).toBeNull();
+    expect(screen.getByRole("combobox", { name: /^ai_settings_field_provider/ })).toBeInTheDocument();
+  });
+
+  it("edits under the connection's title, without the add subtitle and without the stored key", () => {
+    render(
+      <ConnectionDialog
+        open
+        connection={EDITED}
+        allowedProviders={["openai_compatible"]}
+        allowHttp={false}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("ai_settings_edit_connection");
+    expect(dialog).not.toHaveTextContent("settings_ai_dialog_add_title");
+    expect(dialog).not.toHaveTextContent("settings_ai_dialog_add_subtitle");
+    expect((screen.getByLabelText(/^ai_settings_field_api_key/) as HTMLInputElement).value).toBe("");
+    expect(dialog).not.toHaveTextContent("1234");
+  });
+});
+
+describe("ConnectionDialog completeness", () => {
+  it("keeps Save and test disabled until an OpenAI compatible connection is complete", async () => {
+    render(
+      <ConnectionDialog
+        open
+        connection={null}
+        allowedProviders={["openai_compatible"]}
+        allowHttp={false}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
+    const save = screen.getByRole("button", { name: "settings_ai_save_and_test" });
+    await expect(save).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/^name/), "Own vLLM");
+    await userEvent.type(screen.getByLabelText(/^ai_settings_field_base_url/), "https://llm.example.org/v1");
+    await expect(save).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/^ai_settings_field_model/), "qwen3");
+    await expect(save).toBeEnabled();
+  });
+});
+
+describe("ConnectionDialog field errors", () => {
+  const open = () =>
+    render(
+      <ConnectionDialog
+        open
+        connection={null}
+        allowedProviders={["openai_compatible"]}
+        allowHttp={false}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    );
+
+  it("shows a field's error once it was left, not while typing", async () => {
+    open();
+    const name = screen.getByLabelText(/^name/);
+    await userEvent.type(name, "x");
+    await userEvent.clear(name);
+    expect(screen.queryByText("ai_settings_error_required")).toBeNull();
+    await userEvent.tab();
+    expect(screen.getByText("ai_settings_error_required")).toBeInTheDocument();
+    await expect(name).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("shows every missing field's error after Enter, which counts as a save attempt", async () => {
+    open();
+    await userEvent.type(screen.getByLabelText(/^name/), "LAN model{Enter}");
+    await vi.waitFor(() => expect(screen.getAllByText("ai_settings_error_required")).toHaveLength(2));
+    await expect(screen.getByLabelText(/^ai_settings_field_base_url/)).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    await expect(screen.getByLabelText(/^ai_settings_field_model/)).toHaveAttribute("aria-invalid", "true");
+  });
+});
+
+describe("ConnectionDialog while saving", () => {
+  it("keeps the fields read only, not disabled, so a retry after a blur sends them again", async () => {
+    let fail!: (reason: unknown) => void;
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(
+        new Promise((_, reject) => {
+          fail = reject;
+        })
+      )
+      .mockResolvedValue(
+        new Response(JSON.stringify({ id: "c9" }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const onSaved = vi.fn();
+    render(
+      <ConnectionDialog
+        open
+        connection={null}
+        allowedProviders={["openai_compatible"]}
+        allowHttp={false}
+        onClose={vi.fn()}
+        onSaved={onSaved}
+      />
+    );
+    const name = screen.getByLabelText(/^name/) as HTMLInputElement;
+    await userEvent.type(name, "LAN model");
+    await userEvent.type(screen.getByLabelText(/^ai_settings_field_base_url/), "https://llm.example.org/v1");
+    await userEvent.type(screen.getByLabelText(/^ai_settings_field_model/), "llama");
+    await userEvent.click(screen.getByRole("button", { name: "settings_ai_save_and_test" }));
+    await vi.waitFor(() => expect(name.readOnly).toBe(true));
+    await expect(name).toHaveAttribute("aria-readonly", "true");
+    expect(name.disabled).toBe(false);
+    // A blur while saving must not empty the field in the form's state.
+    name.focus();
+    name.blur();
+    fail(new TypeError("Failed to fetch"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ai_settings_error_generic");
+    expect(name.readOnly).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: "settings_ai_save_and_test" }));
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: "c9" })));
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    expect(body).toMatchObject({ name: "LAN model", base_url: "https://llm.example.org/v1", model: "llama" });
   });
 });

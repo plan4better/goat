@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 # `license.txt`, and importing those as layers means a failed dataset in every report.
 ARCHIVE_SKIP_EXTS = frozenset({FileFormat.TXT.value, FileFormat.DSV.value})
 
+# The first bytes of every SQLite database, so of every GeoPackage.
+_SQLITE_HEADER = b"SQLite format 3\x00"
+
 
 class DiscoveryError(Exception):
     """Custom exception for discovery-related errors."""
@@ -97,6 +100,17 @@ def _discover_gpkg_layers(gpkg: Path) -> list[str]:
     Returns:
         List of virtual paths in format 'file::layer'
     """
+    # ST_Read_Meta takes no driver list, so GDAL picks a driver by the file's
+    # content: only a file with the SQLite header, which every GeoPackage has,
+    # is opened for its layers. Anything else stays one path, which the
+    # converter then reads with the GeoPackage driver only.
+    try:
+        with open(gpkg, "rb") as f:
+            if f.read(len(_SQLITE_HEADER)) != _SQLITE_HEADER:
+                return [str(gpkg)]
+    except OSError:
+        return [str(gpkg)]
+
     try:
         # Use context manager for proper resource cleanup
         with duckdb.connect(database=":memory:") as con:

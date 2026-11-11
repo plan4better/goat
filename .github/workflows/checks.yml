@@ -23,10 +23,6 @@ on:
         description: "Keycloak theme changed"
         value: ${{ jobs.checks.outputs.keycloak-theme }}
 
-      storybook:
-        description: "Storybook changed"
-        value: ${{ jobs.checks.outputs.storybook }}
-
       processes:
         description: "Processes API changed"
         value: ${{ jobs.checks.outputs.processes }}
@@ -74,7 +70,6 @@ jobs:
       geoapi: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.geoapi }}
       docs: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.docs }}
       keycloak-theme: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.keycloak-theme }}
-      storybook: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.storybook }}
       processes: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.processes }}
       workers: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.workers }}
       windmill: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.windmill }}
@@ -156,17 +151,6 @@ jobs:
                 - 'packages/js/tsconfig/**'
                 - 'packages/js/types/**'
                 - 'packages/js/ui/**'
-                - '.prettier*'
-                - 'pnpm-lock.yaml'
-
-            storybook:
-                - 'apps/storybook/**'
-                - 'packages/js/keycloak-theme/**'
-                - 'packages/js/ui/**'
-                - 'packages/js/eslint-config-p4b/**'
-                - 'packages/js/prettier-config/**'
-                - 'packages/js/tsconfig/**'
-                - 'packages/js/types/**'
                 - '.prettier*'
                 - 'pnpm-lock.yaml'
 

@@ -12,8 +12,7 @@ import type { UsageMetadata } from "@/lib/assistant/types";
 import { formatCredits } from "@/lib/utils/credits";
 import { providerName } from "@/lib/validations/assistant";
 
-import { CARD_RADIUS, eyebrowSx, headerIconButtonSx, mutedText } from "@/components/assistant/styles";
-import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
+import { eyebrowSx, headerIconButtonSx, mutedText } from "@/components/assistant/styles";
 
 /** GOAT AI is a product name: the same in every language. */
 const GOAT_AI = "GOAT AI";
@@ -70,15 +69,7 @@ export default function AnswerDetails({ usage }: { usage: UsageMetadata | undefi
         onClose={() => setAnchor(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
         transformOrigin={{ vertical: "top", horizontal: "left" }}
-        PaperProps={{
-          sx: {
-            mt: "4px",
-            borderRadius: CARD_RADIUS,
-            border: 1,
-            borderColor: "divider",
-            boxShadow: surfaceShadows(theme).hover,
-          },
-        }}>
+        PaperProps={{ sx: { mt: "6px" } }}>
         <Box sx={{ px: "14px", py: "12px", minWidth: 240 }}>
           <Typography sx={{ ...eyebrowSx, color: mutedText }}>{t("assistant_details")}</Typography>
           {rows.length === 0 && (

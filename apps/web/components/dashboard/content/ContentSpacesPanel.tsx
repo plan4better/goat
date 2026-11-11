@@ -19,6 +19,7 @@ import type { Space } from "@/lib/validations/content";
 
 import type { ActiveScope } from "@/hooks/dashboard/content/useContentPageState";
 
+import { selectedRowInk } from "@/components/dashboard/common/currentPlace";
 import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
 
 /** The card plus the 40px inset that keeps it on the page title's edge. */
@@ -126,7 +127,7 @@ const ContentSpacesPanel = ({
     minWidth: 0,
     fontSize: 14,
     fontWeight: selected ? 700 : 500,
-    color: selected ? theme.palette.primary.main : theme.palette.text.primary,
+    color: selected ? selectedRowInk(theme) : theme.palette.text.primary,
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -179,7 +180,7 @@ const ContentSpacesPanel = ({
               iconName={icon}
               style={{
                 fontSize: 17,
-                color: selected ? theme.palette.primary.main : theme.palette.text.secondary,
+                color: selected ? selectedRowInk(theme) : theme.palette.text.secondary,
               }}
             />
           </Box>
@@ -213,7 +214,7 @@ const ContentSpacesPanel = ({
             iconName={icon}
             style={{
               fontSize: 17,
-              color: selected ? theme.palette.primary.main : theme.palette.text.secondary,
+              color: selected ? selectedRowInk(theme) : theme.palette.text.secondary,
             }}
           />
         </Box>

@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import tempfile
 import urllib.error
 import urllib.request
@@ -10,6 +11,9 @@ from urllib.parse import urlparse
 from duckdb import DuckDBPyConnection
 from pydantic import BaseModel, Field
 from pyproj import CRS
+
+from goatlib.io.formats import allowed_drivers_sql
+from goatlib.io.sql import sql_identifier
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +86,22 @@ class Metadata(BaseModel):
     raw_meta: Any | None = Field(None, description="Raw metadata dict.")
 
 
+_GEOMETRY_TYPE = re.compile(r"^GEOMETRY\('(.*)'\)$", re.IGNORECASE | re.DOTALL)
+
+
+def geometry_type_crs(column_type: str) -> str | None:
+    """The CRS DuckDB names in a geometry column's type, `GEOMETRY('EPSG:4326')`
+    gives `EPSG:4326`; None for a type without one."""
+    match = _GEOMETRY_TYPE.match(column_type.strip())
+    return match.group(1).replace("''", "'") if match else None
+
+
 def get_metadata(con: DuckDBPyConnection, input_path: str) -> Metadata:
     """
-    Extract unified metadata for Parquet/GeoParquet or any spatial source readable by ST_Read().
+    Extract unified metadata for a Parquet/GeoParquet file, or for a file of a
+    format GDAL reads with the drivers `READ_DRIVERS` (`goatlib.io.formats`)
+    lists for its suffix: GeoJSON, GeoPackage, Shapefile, KML, GPX, XLSX. Any
+    other suffix raises `ValueError("Unsupported file format: ...")`.
     Returns a Metadata object with geometry_column, geometry_type, crs, columns, raw_meta.
     """
     input_path_str = str(input_path)
@@ -111,7 +128,8 @@ def get_metadata(con: DuckDBPyConnection, input_path: str) -> Metadata:
     if suffix == ".parquet":
         try:
             rows = con.execute(
-                f"SELECT * FROM parquet_kv_metadata('{input_path_str}') WHERE key = 'geo'"
+                "SELECT * FROM parquet_kv_metadata(?) WHERE key = 'geo'",
+                [input_path_str],
             ).fetchall()
         except Exception:
             rows = []
@@ -149,7 +167,7 @@ def get_metadata(con: DuckDBPyConnection, input_path: str) -> Metadata:
         # --- DuckDB-side column introspection
         try:
             cols = con.execute(
-                f"DESCRIBE SELECT * FROM read_parquet('{input_path_str}')"
+                "DESCRIBE SELECT * FROM read_parquet(?)", [input_path_str]
             ).fetchall()
             meta.columns = [
                 ColumnMeta(name=c[0], type=c[1], nullable=c[2] == "YES") for c in cols
@@ -171,12 +189,12 @@ def get_metadata(con: DuckDBPyConnection, input_path: str) -> Metadata:
         # --- Last resort: Detect geometry type from first row using ST_GeometryType
         if meta.geometry_column and is_unknown_geometry_type(meta.geometry_type):
             try:
-                geom_type_result = con.execute(f"""
-                    SELECT ST_GeometryType("{meta.geometry_column}")
-                    FROM read_parquet('{input_path_str}')
-                    WHERE "{meta.geometry_column}" IS NOT NULL
-                    LIMIT 1
-                """).fetchone()
+                geom = sql_identifier(meta.geometry_column)
+                geom_type_result = con.execute(
+                    f"SELECT ST_GeometryType({geom}) FROM read_parquet(?) "
+                    f"WHERE {geom} IS NOT NULL LIMIT 1",
+                    [input_path_str],
+                ).fetchone()
 
                 if geom_type_result and geom_type_result[0]:
                     # ST_GeometryType returns like 'ST_MULTIPOLYGON', 'ST_POINT', etc.
@@ -197,46 +215,15 @@ def get_metadata(con: DuckDBPyConnection, input_path: str) -> Metadata:
     # CASE 2: Spatial formats via ST_Read() (e.g., GeoJSON, Shapefile)
     # ----------------------------------------------------------------------
     else:
-        try:
-            rows = con.execute(
-                f"SELECT * FROM ST_Read_Meta('{input_path_str}')"
-            ).fetchall()
-        except Exception as e:
-            logger.warning("ST_Read_Meta failed for %s: %s", input_path_str, e)
-            rows = []
-
-        raw_meta = {}
-        geom_col = None
-        geom_type = None
-        crs = None
-
-        if rows:
-            meta_row = rows[0]
-            raw_meta = (
-                meta_row[3][0]
-                if len(meta_row) > 3 and isinstance(meta_row[3], list)
-                else {}
-            )
-            geom_fields = raw_meta.get("geometry_fields") or []
-            if geom_fields:
-                geom_col = geom_fields[0].get("name")
-                geom_type_raw = geom_fields[0].get("type")
-                if geom_type_raw:
-                    # Normalize geometry type, e.g. "Multi Polygon" -> "MultiPolygon"
-                    geom_type = geom_type_raw.title().replace(" ", "")
-                crs_info = geom_fields[0].get("crs")
-                if crs_info:
-                    try:
-                        crs = CRS.from_user_input(
-                            crs_info.get("projjson") or crs_info.get("wkt")
-                        )
-                    except Exception as e:
-                        logger.warning("Failed to parse CRS from metadata: %s", e)
+        # Every read names the drivers of the input's format: GDAL picks a
+        # driver by a file's content, and ST_Read_Meta, which takes no driver
+        # list, is not used for that reason.
+        reader = f"ST_Read(?, {allowed_drivers_sql(suffix)})"
 
         # --- Get native DuckDB schema using DESCRIBE
         try:
             cols = con.execute(
-                f"DESCRIBE SELECT * FROM ST_Read('{input_path_str}')"
+                f"DESCRIBE SELECT * FROM {reader}", [input_path_str]
             ).fetchall()
             column_defs = [
                 ColumnMeta(name=c[0], type=c[1], nullable=c[2] == "YES") for c in cols
@@ -245,24 +232,33 @@ def get_metadata(con: DuckDBPyConnection, input_path: str) -> Metadata:
             logger.warning("DESCRIBE failed for ST_Read: %s", e)
             column_defs = [ColumnMeta(name="error", type=str(e), nullable=True)]
 
+        # --- The geometry column, and the CRS DuckDB gives its type:
+        # GEOMETRY('EPSG:4326')
+        geom_def = next((c for c in column_defs if "GEOMETRY" in c.type.upper()), None)
+        crs = None
+        crs_text = geometry_type_crs(geom_def.type) if geom_def else None
+        if crs_text:
+            try:
+                crs = CRS.from_user_input(crs_text)
+            except Exception as e:
+                logger.warning("Failed to parse CRS from metadata: %s", e)
+
         # --- Merge metadata
-        meta.geometry_column = geom_col or next(
-            (c.name for c in column_defs if "GEOMETRY" in c.type.upper()), None
-        )
-        meta.geometry_type = geom_type
+        meta.geometry_column = geom_def.name if geom_def else None
+        meta.geometry_type = None
         meta.crs = crs
         meta.columns = column_defs
-        meta.raw_meta = raw_meta
+        meta.raw_meta = {}
 
         # --- Last resort: Detect geometry type from first row using ST_GeometryType
         if meta.geometry_column and is_unknown_geometry_type(meta.geometry_type):
             try:
-                geom_type_result = con.execute(f"""
-                    SELECT ST_GeometryType("{meta.geometry_column}")
-                    FROM ST_Read('{input_path_str}')
-                    WHERE "{meta.geometry_column}" IS NOT NULL
-                    LIMIT 1
-                """).fetchone()
+                geom = sql_identifier(meta.geometry_column)
+                geom_type_result = con.execute(
+                    f"SELECT ST_GeometryType({geom}) FROM {reader} "
+                    f"WHERE {geom} IS NOT NULL LIMIT 1",
+                    [input_path_str],
+                ).fetchone()
 
                 if geom_type_result and geom_type_result[0]:
                     # ST_GeometryType returns like 'ST_MULTIPOLYGON', 'ST_POINT', etc.

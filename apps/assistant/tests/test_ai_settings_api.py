@@ -666,6 +666,8 @@ async def test_cors_preflight_allows_the_settings_methods(
     assert response.status_code == 200
     assert method in response.headers["access-control-allow-methods"]
     assert response.headers["access-control-allow-origin"] == origin
+    # Chromium's cap: the browser keeps this answer for two hours.
+    assert response.headers["access-control-max-age"] == "7200"
 
 
 async def test_validation_errors_do_not_echo_the_key(

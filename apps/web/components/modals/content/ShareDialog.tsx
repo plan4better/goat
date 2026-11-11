@@ -15,7 +15,7 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 import { mutate } from "swr";
@@ -112,6 +112,8 @@ const ROLE_PREFIX: Record<ContentItem["type"], RolePrefix> = {
  */
 const ShareDialog = ({ item, space, folders, onClose, onTransfer }: ShareDialogProps) => {
   const { t } = useTranslation("common");
+  // Named by its title, as every AppDialog is.
+  const titleId = useId();
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("md"));
 
@@ -444,9 +446,11 @@ const ShareDialog = ({ item, space, folders, onClose, onTransfer }: ShareDialogP
     <Dialog
       open
       onClose={onClose}
+      aria-labelledby={titleId}
       fullScreen={fullScreen}
       PaperProps={{ sx: contentDialogPaperSx(500, fullScreen, { height: DIALOG_HEIGHT }) }}>
       <ContentDialogHeader
+        titleId={titleId}
         icon={isFolder ? ICON_NAME.FOLDER : ICON_NAME.SHARE}
         title={t("share_item", { name: item.name })}
         subline={<ContentDialogSubline icon={spaceIconFor(space)}>{subline}</ContentDialogSubline>}
@@ -466,6 +470,9 @@ const ShareDialog = ({ item, space, folders, onClose, onTransfer }: ShareDialogP
           {tabItems.map((tabItem, index) => (
             <Tab
               key={tabItem.value}
+              // The ids the tab panel below names itself by and is controlled from.
+              id={`simple-tab-${tabItem.value}`}
+              aria-controls={tab === index ? `simple-tabpanel-${tabItem.value}` : undefined}
               aria-label={tabItem.label}
               label={
                 <Box sx={{ display: "inline-flex", alignItems: "center", gap: "7px" }}>
@@ -625,8 +632,9 @@ const ShareDialog = ({ item, space, folders, onClose, onTransfer }: ShareDialogP
             showTransfer={space.kind === "personal" && !!onTransfer}
           />
         )}
-        {activeTabValue === "public" &&
-          item.type === "layer" && <ShareDatasetPublicTab item={item} canToggle={canActOn(item)} />}
+        {activeTabValue === "public" && item.type === "layer" && (
+          <ShareDatasetPublicTab item={item} canToggle={canActOn(item)} />
+        )}
         {activeTabValue === "public" &&
           item.type === "project" &&
           (fullProject ? (
