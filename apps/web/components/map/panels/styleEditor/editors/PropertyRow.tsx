@@ -3,7 +3,7 @@
 // One property of a part as a row: its control while the value is fixed (color, slider, choice), else a summary
 // that opens the value's editor; the value mode button switches between the forms the property takes.
 import { Box } from "@mui/material";
-import { memo } from "react";
+import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { addClassification, classifyShape, scopedView } from "@/lib/style/editor/classify";
@@ -97,12 +97,14 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
   const classify = (store.get("classify") as unknown[] | undefined) ?? [];
   const owner = mode === "classes" ? classificationFor(store.document, key, data.geometry) : undefined;
   // The row is active while its value's editor is open, whether its field or the mode menu opened it.
-  const editorOpen = useIsOpen(
-    `zoom:${path}`,
-    `attr:${path}`,
-    `classes-field:${path}`,
-    ...(owner ? [classificationKey(owner, classify.indexOf(owner))] : [])
-  );
+  // The field menu of By classes, open at the mode button.
+  const [classesAnchor, setClassesAnchor] = useState<HTMLElement | null>(null);
+  const editorOpen =
+    useIsOpen(
+      `zoom:${path}`,
+      `attr:${path}`,
+      ...(owner ? [classificationKey(owner, classify.indexOf(owner))] : [])
+    ) || classesAnchor !== null;
 
   /** Opens the editor of a value by zoom or by attribute, as the store holds it now. In scope the editors edit the
    * class's own value: a base by zoom is copied into the class first; a base by attribute stays the layer's (class
@@ -137,28 +139,8 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
 
   const select = (to: Mode, anchor: HTMLElement) => {
     if (to === "classes") {
-      // Pick the field, add the classification, open its editor.
-      popover.open(next, {
-        key: `classes-field:${path}`,
-        transient: true,
-        title: t("style_editor.by_classes_of", { label: t(propLabelKey(key)) }),
-        anchorTop: anchorTopOf(anchor),
-        render: () => (
-          <FieldPicker
-            fields={data.fields.filter((f) => f.type !== "date" && f.type !== "datetime")}
-            onChange={(name) => {
-              const field = data.fields.find((f) => f.name === name);
-              if (!field) return;
-              const ctx = { mapZoom, sample: data.sample, geometry: data.geometry };
-              store.update((doc) =>
-                addClassification(switchMode(doc, path, "fixed", ctx), key, field, data.geometry)
-              );
-              const count = (store.get("classify") as unknown[] | undefined)?.length ?? 0;
-              openClassification(count - 1, anchorTopOf(anchor));
-            }}
-          />
-        ),
-      });
+      // Pick the field in a menu at the mode button; the pick adds the classification and opens its editor.
+      setClassesAnchor(anchor);
       return;
     }
     const numberField = data.fields.find((f) => isNumberField(f.type))?.name;
@@ -197,6 +179,22 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
           modes={modes}
           onSelect={(to, anchor) => select(to as Mode, anchor)}
           onReset={reset}
+        />
+        <FieldPicker
+          anchorEl={classesAnchor}
+          onClose={() => setClassesAnchor(null)}
+          title={t("style_editor.by_classes_of", { label: t(propLabelKey(key)) })}
+          fields={data.fields.filter((f) => f.type !== "date" && f.type !== "datetime")}
+          onChange={(name) => {
+            const field = data.fields.find((f) => f.name === name);
+            if (!field) return;
+            const ctx = { mapZoom, sample: data.sample, geometry: data.geometry };
+            store.update((doc) =>
+              addClassification(switchMode(doc, path, "fixed", ctx), key, field, data.geometry)
+            );
+            const count = (store.get("classify") as unknown[] | undefined)?.length ?? 0;
+            if (classesAnchor) openClassification(count - 1, anchorTopOf(classesAnchor));
+          }}
         />
       </Box>
     ) : undefined;

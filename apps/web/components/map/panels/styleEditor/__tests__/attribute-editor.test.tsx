@@ -72,7 +72,7 @@ describe("attribute editor", () => {
       computed: { domain: [0, 500] },
     });
     expect(screen.getByText("style_editor.values_map")).toBeDefined();
-    await userEvent.click(within(rowOf("style_editor.field")).getByRole("button"));
+    await userEvent.click(within(rowOf("style_editor.field")).getByRole("combobox"));
     await userEvent.click(screen.getByText("count"));
     expect(store.get("symbol.line.width.field")).toBe("count");
     expect(saves).toHaveLength(1);

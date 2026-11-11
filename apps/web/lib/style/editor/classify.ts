@@ -21,7 +21,9 @@ export const INTENT_KEYS = [
 ] as const;
 
 const list = (value: unknown): JsonObject[] => (Array.isArray(value) ? value.filter(isObject) : []);
-const classifyOf = (doc: LayerStyle): JsonObject[] => list((doc as unknown as JsonObject).classify);
+// A save answered without a document (a failed or stubbed reply) leaves no stored document: read it as no classes.
+const classifyOf = (doc: LayerStyle | undefined): JsonObject[] =>
+  list((doc as unknown as JsonObject | undefined)?.classify);
 
 /** How many classifications the style has. */
 export const classifyCount = (doc: LayerStyle): number => classifyOf(doc).length;

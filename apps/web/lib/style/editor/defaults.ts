@@ -20,6 +20,7 @@ export const SLIDERS: Readonly<Record<string, SliderRange>> = {
   "line.opacity": PCT,
   "line.width": { min: 1, max: 14, step: 1, unit: "px" },
   "line.offset": { min: -10, max: 10, step: 1, unit: "px" },
+  "line.blur": { min: 0, max: 10, step: 1, unit: "px" },
   "casing.opacity": PCT,
   "casing.width": { min: 1, max: 6, step: 1, unit: "px" },
   "arrows.size": { min: 6, max: 24, step: 1, unit: "px" },
@@ -27,6 +28,7 @@ export const SLIDERS: Readonly<Record<string, SliderRange>> = {
   "marker.opacity": PCT,
   "marker.size": { min: 2, max: 60, step: 1, unit: "px" },
   "marker.rotation": { min: 0, max: 359, step: 1, unit: "°" },
+  "marker.offset": { min: -20, max: 20, step: 1, unit: "px" },
   "label.size": { min: 8, max: 28, step: 1, unit: "px" },
   "label.max_width": { min: 60, max: 240, step: 10, unit: "px" },
   "label.halo.width": { min: 0, max: 4, step: 1, unit: "px" },
@@ -37,6 +39,7 @@ export const SLIDERS: Readonly<Record<string, SliderRange>> = {
   "h3.opacity": PCT,
   // Columns chart a value over hexagons up to ~20 km wide, so they go far above a building (goatlib allows 200 km).
   "h3.extrude.tallest": { min: 0, max: 60000, step: 100, unit: "m" },
+  "h3.extrude.base": { min: 0, max: 60000, step: 100, unit: "m" },
   "cluster.radius": { min: 20, max: 120, step: 5, unit: "px" },
   "scene.sky.horizon_blend": PCT,
   "scene.fog.horizon_blend": PCT,

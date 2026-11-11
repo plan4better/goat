@@ -4,8 +4,12 @@
 import { type InputBaseComponentProps, OutlinedInput, type SxProps, type Theme } from "@mui/material";
 import { type ReactNode, type Ref, forwardRef } from "react";
 
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+
 import {
+  FIELD_INSET,
   FOCUSED_OUTLINE,
+  TRAILING_ICON_SIZE,
   fieldOutline,
   fieldSx,
   focusRing,
@@ -38,6 +42,8 @@ export interface FieldButtonProps {
   active?: boolean;
   buttonRef?: Ref<HTMLButtonElement>;
   ariaLabel?: string;
+  /** Opens a menu: "listbox" for the field's options (the button is a combobox), "menu" for actions or modes. */
+  popup?: "listbox" | "menu";
   start?: ReactNode;
   end?: ReactNode;
   sx?: SxProps<Theme>;
@@ -50,6 +56,7 @@ export function FieldButton({
   active,
   buttonRef,
   ariaLabel,
+  popup,
   start,
   end,
   sx,
@@ -65,6 +72,8 @@ export function FieldButton({
         "aria-expanded": expanded,
         "data-active": active || undefined,
         "aria-label": ariaLabel,
+        "aria-haspopup": popup,
+        role: popup === "listbox" ? "combobox" : undefined,
         onClick: (event: React.MouseEvent<HTMLElement>) => onClick(event.currentTarget),
       }}
       startAdornment={start}
@@ -84,8 +93,10 @@ export function FieldButton({
           flex: 1,
           cursor: "pointer",
           pl: start ? 1 : 0,
-          pr: end ? 1 : 0,
+          // A trailing icon keeps the text's inset from the right border, with a gap before it for the truncated text.
+          pr: end ? FIELD_INSET : 0,
           "& .MuiInputBase-input": {
+            ...(end ? { pr: 2 } : {}),
             display: "flex",
             alignItems: "center",
             gap: 2,
@@ -102,6 +113,16 @@ export function FieldButton({
         },
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}
+    />
+  );
+}
+
+/** A field's trailing icon: the caret of a field that opens a menu, the chevron of one that opens an editor. */
+export function FieldTrailingIcon({ kind }: { kind: "caret" | "chevron" }) {
+  return (
+    <Icon
+      iconName={kind === "caret" ? ICON_NAME.CHEVRON_DOWN : ICON_NAME.CHEVRON_RIGHT}
+      sx={{ fontSize: TRAILING_ICON_SIZE, color: "text.secondary", flex: "none" }}
     />
   );
 }

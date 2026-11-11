@@ -1,4 +1,4 @@
-// Small pictures of a choice for its dropdown: dash patterns, fill patterns, line ends and corners.
+// Small pictures of a choice for its dropdown: dash patterns, fill patterns, line ends and corners, anchor positions.
 import type { ReactNode } from "react";
 
 import { PatternPicture } from "@/components/map/panels/styleEditor/pickers/PatternTiles";
@@ -19,8 +19,40 @@ function Svg({ width, children }: { width: number; children: ReactNode }) {
   );
 }
 
+/** The anchor positions as a 3 x 3 grid, row by row. */
+const ANCHOR_GRID = [
+  "top_left",
+  "top",
+  "top_right",
+  "left",
+  "center",
+  "right",
+  "bottom_left",
+  "bottom",
+  "bottom_right",
+];
+
 /** The picture of `value` for the choice property `key`, or undefined when it has none. */
 export function choiceGlyph(key: string, value: string): ReactNode | undefined {
+  // An anchor: nine dots, the anchor's filled and larger.
+  if (key === "marker.anchor")
+    return (
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style={{ flex: "none" }}>
+        {ANCHOR_GRID.map((position, i) => {
+          const on = position === value;
+          return (
+            <circle
+              key={position}
+              cx={2 + (i % 3) * 4}
+              cy={2 + Math.floor(i / 3) * 4}
+              r={on ? 1.9 : 0.9}
+              fill="currentColor"
+              opacity={on ? 1 : 0.45}
+            />
+          );
+        })}
+      </svg>
+    );
   if (key === "line.dash" || key === "outline.dash")
     return (
       <Svg width={24}>

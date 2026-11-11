@@ -67,7 +67,11 @@ export function IssueNotice({ issue }: { issue: StyleIssue }) {
       sx={{ py: 0, px: 2, "& .MuiAlert-message": { fontSize: "0.75rem" } }}
       action={
         fix && (
-          <Button size="small" color="inherit" onClick={() => store.update((doc) => applyFix(doc, fix))}>
+          <Button
+            variant="text"
+            size="small"
+            color="inherit"
+            onClick={() => store.update((doc) => applyFix(doc, fix))}>
             {label}
           </Button>
         )

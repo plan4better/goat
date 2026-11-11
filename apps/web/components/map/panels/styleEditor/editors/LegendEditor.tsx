@@ -1,12 +1,15 @@
 "use client";
 
 // What the legend shows (spec 7.2, prototype 4.9), with the legend as it will look on top: a caption, and per classification its place, whether it is in the
-// legend, its heading and unit. The order is also the order the classifications apply in.
+// legend, its heading, unit and, for a number field, how its numbers read. The order is also the order the
+// classifications apply in.
 import { Box, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
+import type { NumberFormatSpec } from "@/lib/style/compile/labels";
 import type { Geometry } from "@/lib/style/compile/types";
 import { moveClassification } from "@/lib/style/editor/classify";
+import { formatNumberText, isNumberType } from "@/lib/style/editor/labels";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { buildLegend, classificationProperty } from "@/lib/style/legend";
 
@@ -17,7 +20,16 @@ import {
   useStyleData,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
-import { ChoiceRow, SwitchRow, TextRow } from "@/components/map/panels/styleEditor/rows";
+import {
+  NumberFormatEditor,
+  PREVIEW_NUMBER,
+} from "@/components/map/panels/styleEditor/editors/NumberFormatEditor";
+import {
+  anchorTopOf,
+  useNextLevel,
+  usePopover,
+} from "@/components/map/panels/styleEditor/popovers/usePopover";
+import { ChoiceRow, NavRow, SwitchRow, TextRow } from "@/components/map/panels/styleEditor/rows";
 import { useServiceLegendUrl } from "@/components/map/panels/styleEditor/sections/ServiceSection";
 
 /** The legend as it will look; it follows every edit of what it draws, so it subscribes on its own. */
@@ -39,9 +51,11 @@ export function LiveLegend() {
 }
 
 export function LegendEditor() {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const store = useEditor();
-  const { fields, geometry } = useStyleData();
+  const { fields, geometry, fieldTypes } = useStyleData();
+  const popover = usePopover();
+  const next = useNextLevel();
   const caption = useStyleValue<unknown>("legend.caption");
   const kind = useStyleValue<unknown>("kind");
   const legendText = (key: string) => {
@@ -119,6 +133,27 @@ export function LegendEditor() {
               placeholder={t("style_editor.unit_placeholder")}
               onChange={(value) => store.set(`classify.${ci}.unit`, value || undefined)}
             />
+            {/* Class bounds of a number field: how the legend writes them. Categories show their values as they are. */}
+            {isNumberType(fieldTypes[String(c.field)]) && c.method !== "categories" && (
+              <NavRow
+                label={t("style_editor.numbers")}
+                value={
+                  isObject(c.format)
+                    ? t("style_editor.example", {
+                        value: formatNumberText(PREVIEW_NUMBER, c.format as NumberFormatSpec, i18n.language),
+                      })
+                    : t("style_editor.as_in_dataset")
+                }
+                onOpen={(anchor) =>
+                  popover.open(next, {
+                    key: `legend:format:${ci}`,
+                    title: t("style_editor.number_format"),
+                    anchorTop: anchorTopOf(anchor),
+                    render: () => <NumberFormatEditor path={`classify.${ci}.format`} />,
+                  })
+                }
+              />
+            )}
           </Box>
         );
       })}

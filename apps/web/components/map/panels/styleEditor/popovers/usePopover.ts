@@ -1,8 +1,10 @@
-// The panel's popovers: level 1 (a part's or section's editor), level 2 (an editor opened from level 1) and a
-// picker (color, palette, icon, field). One entry per level; opening level 1 closes the others.
+// The panel's popovers: level 1 (a part's or section's editor), level 2 (an editor opened from level 1), level 3 and
+// on (an editor opened from the level before), each beside the one that opened it, and a picker (color, palette,
+// icon). One entry per level; opening a level closes the levels after it.
 import { type ReactNode, createContext, useContext, useEffect, useSyncExternalStore } from "react";
 
-export type PopoverLevel = 1 | 2 | "picker";
+/** A level from 1 on, or the picker. */
+export type PopoverLevel = number | "picker";
 
 export interface PopoverEntry {
   key: string;
@@ -20,10 +22,6 @@ export interface PopoverEntry {
   opener?: Element | null;
   /** The content is a column that scrolls a part of itself (a long class list) rather than all of it. */
   fill?: boolean;
-  /** A step on the way to another editor (the field to classify by): going back skips it. */
-  transient?: boolean;
-  /** Set by the stack: the level 2 editor this one replaced, opened from inside it; its header goes back to it. */
-  back?: PopoverEntry;
 }
 
 export interface PopoverApi {
@@ -40,10 +38,13 @@ export function usePopover(): PopoverApi {
   return api;
 }
 
-/** The open popover of each level. */
-export type OpenStack = Record<"1" | "2" | "picker", PopoverEntry | null>;
+/** The open popovers: the levels in order (level 1 first) and the picker. */
+export interface OpenStack {
+  levels: PopoverEntry[];
+  picker: PopoverEntry | null;
+}
 
-export const CLOSED: OpenStack = { "1": null, "2": null, picker: null };
+export const CLOSED: OpenStack = { levels: [], picker: null };
 
 /** The open popovers as a store: a component subscribes to what it shows (whether its button opened one, whether one
  * with its key is open) and renders again only when that changes, not on every change of the stack. */
@@ -56,7 +57,7 @@ const NO_STACK: OpenStackStore = { subscribe: () => () => undefined, get: () => 
 
 export const OpenStackContext = createContext<OpenStackStore>(NO_STACK);
 
-const entriesOf = (stack: OpenStack) => [stack["1"], stack["2"], stack.picker];
+const entriesOf = (stack: OpenStack) => [...stack.levels, stack.picker];
 
 function useOpenStack<T>(select: (stack: OpenStack) => T): T {
   const store = useContext(OpenStackContext);
@@ -112,7 +113,8 @@ export function useCloseWhenGone(gone: boolean): void {
   }, [gone, level, popover]);
 }
 
-/** The level an editor opened from here takes: level 1 from the panel, level 2 from a popover. */
-export function useNextLevel(): 1 | 2 {
-  return useContext(LevelContext) === 0 ? 1 : 2;
+/** The level an editor opened from here takes: level 1 from the panel, the next level from a popover (beside it). */
+export function useNextLevel(): number {
+  const level = useContext(LevelContext);
+  return level === 0 ? 1 : level === "picker" ? 2 : level + 1;
 }

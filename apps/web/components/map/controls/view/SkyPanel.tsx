@@ -318,7 +318,6 @@ export function SkyPanel({ onBack, onClose }: { onBack: () => void; onClose: () 
     title: t("view3d.sky"),
     anchorTop: 0,
     render: () => null,
-    back: { key: "view", title: t("view3d.title"), anchorTop: 0, render: () => null },
   };
   const glyphOf = (summary: ReturnType<typeof summaryOf>, hidden?: string): ReactNode => (
     <>
@@ -337,7 +336,12 @@ export function SkyPanel({ onBack, onClose }: { onBack: () => void; onClose: () 
   );
 
   return (
-    <PopoverFrame entry={entry} width={VIEW_WIDTH} onClose={onClose} onBack={onBack}>
+    <PopoverFrame
+      entry={entry}
+      width={VIEW_WIDTH}
+      onClose={onClose}
+      onBack={onBack}
+      backTitle={t("view3d.title")}>
       <Box
         sx={{
           display: "flex",

@@ -1,5 +1,6 @@
-// Height for polygons (3D spec 8.4): None, Fixed, By zoom, By attribute, By classes; the first height on a 2D map
-// tilts it once, with Undo; a raw field picks its unit; Base height while Height is set.
+// Height for polygons (3D spec 8.4): a group row like Fill and Outline with a summary, opening its popover with the
+// part's switch: None, Fixed, By zoom, By attribute, By classes; the first height on a 2D map tilts it once, with Undo;
+// a raw field picks its unit; Base height while Height is set.
 import { ThemeProvider, createTheme } from "@mui/material";
 import { configureStore } from "@reduxjs/toolkit";
 import { act, render, screen, within } from "@testing-library/react";
@@ -84,12 +85,43 @@ function setup(document: LayerStyle = { version: 1, kind: "vector" } as LayerSty
   return { store, redux };
 }
 
+/** The Height row of the Polygons section (its field shows the summary). */
+const sidebarRow = () =>
+  screen.getAllByText("Height").find((el) => !el.closest("[data-popover-frame]"))!
+    .parentElement as HTMLElement;
+const summary = () => within(sidebarRow()).getAllByRole("button")[0].textContent;
+const popover = () =>
+  screen
+    .getByText("Height", { selector: "[data-popover-frame] p" })
+    .closest("[data-popover-frame]") as HTMLElement;
+const openHeight = async () => {
+  if (!document.querySelector("[data-popover-frame]"))
+    await userEvent.click(within(sidebarRow()).getAllByRole("button")[0]);
+};
 const pick = async (mode: string) => {
-  await userEvent.click(screen.getByRole("button", { name: /^Height: .*Change how the value is set\.$/ }));
+  await openHeight();
+  await userEvent.click(
+    within(popover()).getByRole("button", { name: /^Height: .*Change how the value is set\.$/ })
+  );
   await userEvent.click(within(screen.getByRole("menu")).getByText(mode));
 };
 
 describe("HeightRow", () => {
+  it("shows the height in the Polygons section and opens it in a popover with the part's switch", async () => {
+    const { store } = setup();
+    expect(summary()).toBe("None");
+    await openHeight();
+    expect(within(popover()).getByRole("checkbox", { name: "Turn height on" })).toBeTruthy();
+    await pick("Fixed");
+    expect(summary()).toBe("10 m");
+    // Off remembers the height, on brings it back.
+    await userEvent.click(within(popover()).getByRole("checkbox", { name: "Turn height off" }));
+    expect(store.get("symbol.extrude")).toBe(false);
+    expect(summary()).toBe("None");
+    await userEvent.click(within(popover()).getByRole("checkbox", { name: "Turn height on" }));
+    expect(store.get("symbol.extrude")).toEqual({ height: 10 });
+  });
+
   it("tilts a 2D map once for the first height, with Undo", async () => {
     const { store, redux } = setup();
     await pick("Fixed");
@@ -111,21 +143,53 @@ describe("HeightRow", () => {
     expect(redux.getState().map.view?.mode).toBe("3d");
   });
 
-  it("suggests height fields and reads levels as storeys", async () => {
+  it("suggests height fields in the field menu, reads levels as storeys and says so in the summary", async () => {
     const { store } = setup();
     await pick("By attribute");
-    const picker = screen.getByText("Suggested for height").closest("[data-popover-frame]") as HTMLElement;
-    const items = within(picker).getAllByRole("menuitem");
+    const menu = screen.getByRole("listbox");
+    const items = within(menu).getAllByRole("option");
+    expect(within(menu).getByText("Suggested for height")).toBeTruthy();
     expect(within(items[0]).getByText("levels")).toBeTruthy();
     expect(within(items[1]).getByText("height")).toBeTruthy();
-    expect(within(picker).getByText("Other number fields")).toBeTruthy();
+    expect(within(menu).getByText("Other number fields")).toBeTruthy();
     await userEvent.click(items[0]);
     expect(store.get("symbol.extrude")).toEqual({ height: { field: "levels" }, unit: "storeys" });
     expect(screen.getByRole("button", { name: "Storeys × 3 m" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByText("Base height")).toBeTruthy();
+    expect(within(popover()).getByText("Base height")).toBeTruthy();
+    expect(summary()).toBe("By levels · storeys");
   });
 
-  it("shows a class's own height in class scope", () => {
+  it("shows the unit while the base reads a field", async () => {
+    const { store } = setup({
+      version: 1,
+      kind: "vector",
+      symbol: { extrude: { height: 10 } },
+    } as LayerStyle);
+    await openHeight();
+    expect(within(popover()).queryByText("Unit")).toBeNull();
+    await userEvent.click(
+      within(popover()).getByRole("button", { name: /^Base height: .*Change how the value is set\.$/ })
+    );
+    await userEvent.click(within(screen.getByRole("menu")).getByText("By attribute"));
+    await userEvent.click(within(screen.getByRole("listbox")).getByText("height"));
+    expect(store.get("symbol.extrude.base")).toEqual({ field: "height" });
+    expect(within(popover()).getByText("Unit")).toBeTruthy();
+  });
+
+  it("says at which zooms the volumes stand while a height is set, as Fill and Outline do", async () => {
+    setup({ version: 1, kind: "vector", symbol: { extrude: { height: 10, min_zoom: 14 } } } as LayerStyle);
+    await openHeight();
+    expect(within(popover()).getByText("Visible")).toBeTruthy();
+    expect(within(popover()).getAllByText(/14/).length).toBeGreaterThan(0);
+  });
+
+  it("has no zoom row while there is no height", async () => {
+    setup();
+    await openHeight();
+    expect(within(popover()).queryByText("Visible")).toBeNull();
+  });
+
+  it("shows a class's own height in class scope", async () => {
     const { store } = setup({
       version: 1,
       kind: "vector",
@@ -139,6 +203,8 @@ describe("HeightRow", () => {
       ],
     } as unknown as LayerStyle);
     act(() => store.setScope({ classify: 0, key: 0 }));
+    expect(summary()).toBe("30 m");
+    await openHeight();
     expect(screen.getByRole("slider", { name: "Height" }).getAttribute("value")).toBe("30");
   });
 });

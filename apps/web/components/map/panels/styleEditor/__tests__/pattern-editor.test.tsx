@@ -56,7 +56,7 @@ describe("pattern editor", () => {
       expect(modesFor(key, { scoped: false, hasNumberField: true })).toEqual(["fixed", "zoom", "classes"]);
   });
 
-  it("by zoom: pictures in the summaries, tiles for a stop, and back to the pattern editor", async () => {
+  it("by zoom: pictures in the summaries, tiles for a stop, in a third popover beside the pattern editor", async () => {
     const { store } = render({
       color: "#cccccc",
       pattern: {
@@ -71,16 +71,20 @@ describe("pattern editor", () => {
     // The Fill editor's row shows the patterns, their names on hover.
     await userEvent.click(screen.getByRole("img", { name: "hatch_45 → grid" }));
     expect(screen.getByText("style_editor.pattern_spacing")).toBeDefined();
-    // The pattern editor's row opens the zoom editor in its place, which can go back to it.
+    // The pattern editor's row opens the zoom editor beside it: three popovers, none replaced.
     await userEvent.click(screen.getAllByRole("img", { name: "hatch_45 → grid" }).at(-1) as HTMLElement);
     expect(screen.getByText("style_editor.by_zoom_title")).toBeDefined();
+    expect(document.querySelectorAll("[data-popover-frame]")).toHaveLength(3);
+    expect(screen.getByText("style_editor.pattern_spacing")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "style_editor.back_to" })).toBeNull();
     // The stop nearest the map zoom (12) is selected: zoom 14.
     await userEvent.click(screen.getByRole("radio", { name: "dots" }));
     expect(store.get("symbol.fill.pattern.zoom")).toEqual([
       [8, "hatch_45"],
       [14, "dots"],
     ]);
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.back_to" }));
+    // Escape closes the top one; the pattern editor under it stays.
+    await userEvent.keyboard("{Escape}");
     expect(screen.queryByText("style_editor.by_zoom_title")).toBeNull();
     expect(screen.getByText("style_editor.pattern_spacing")).toBeDefined();
   });

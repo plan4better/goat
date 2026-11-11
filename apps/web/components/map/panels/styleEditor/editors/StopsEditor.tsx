@@ -2,7 +2,7 @@
 
 // Own colors at own values (spec 9.2 `stops`, today's color maps): a value and a color per stop, sorted by value,
 // blended or the nearest stop's color.
-import { Box, Button, IconButton } from "@mui/material";
+import { Box, IconButton } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -10,7 +10,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { useEditor, useStyleValue } from "@/components/map/panels/styleEditor/context";
 import { PathColorPicker } from "@/components/map/panels/styleEditor/editors/ColorRow";
 import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
-import { ChoiceRow, ColorField, NumberInput, Row } from "@/components/map/panels/styleEditor/rows";
+import { AddButton, ChoiceRow, ColorField, NumberInput, Row } from "@/components/map/panels/styleEditor/rows";
 
 interface Stop {
   value: number;
@@ -76,15 +76,13 @@ export function StopsEditor() {
         </Row>
       ))}
       <Box sx={{ px: 3 }}>
-        <Button
-          size="small"
-          color="inherit"
+        <AddButton
           onClick={() => {
             const last = stops[stops.length - 1];
             write([...stops, { value: (last?.value ?? 0) + 1, color: last?.color ?? "#9aa3ad" }]);
           }}>
           {t("style_editor.add_stop")}
-        </Button>
+        </AddButton>
       </Box>
       <ChoiceRow<string>
         label={t("style_editor.interpolate")}

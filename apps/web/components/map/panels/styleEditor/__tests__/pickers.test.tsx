@@ -147,20 +147,62 @@ describe("pickers", () => {
     { name: "Straße", type: "string", label: "Straße" },
     { name: "density", type: "number", label: "Inhabitants per km²" },
   ];
+  /** Enough fields for the menu's search (9). */
+  const padded: FieldInfo[] = [
+    ...fields,
+    ...Array.from({ length: 6 }, (_, i) => ({
+      name: `extra_${i}`,
+      type: "string" as const,
+      label: `extra_${i}`,
+    })),
+  ];
+  const anchor = () => {
+    const button = document.createElement("button");
+    document.body.appendChild(button);
+    return button;
+  };
+
+  it("FieldPicker is a menu at its control: a short list has no search, each field shows its kind", () => {
+    renderPanel(<FieldPicker anchorEl={anchor()} onClose={vi.fn()} fields={fields} onChange={vi.fn()} />);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    // The kind's badge before the name (123 for numbers, A for text), the field's name under a display name.
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "123Einwohner 2020",
+      "AStraße",
+      "123Inhabitants per km²density",
+    ]);
+  });
 
   it("FieldPicker finds Einwohner 2020 and Straße by search and filters numbers", async () => {
     const onChange = vi.fn();
-    const { rerender } = renderPanel(<FieldPicker fields={fields} onChange={onChange} />);
+    const onClose = vi.fn();
+    const at = anchor();
+    const { rerender } = renderPanel(
+      <FieldPicker anchorEl={at} onClose={onClose} fields={padded} onChange={onChange} />
+    );
     await userEvent.type(screen.getByRole("textbox", { name: "style_editor.search_fields" }), "straß");
     expect(screen.getByText("Straße")).toBeDefined();
     expect(screen.queryByText("Einwohner 2020")).toBeNull();
     await userEvent.click(screen.getByText("Straße"));
     expect(onChange).toHaveBeenCalledWith("Straße");
-    rerender(<FieldPicker fields={fields} onChange={onChange} filter="number" />);
-    await userEvent.clear(screen.getByRole("textbox", { name: "style_editor.search_fields" }));
+    expect(onClose).toHaveBeenCalled();
+    rerender(
+      <FieldPicker anchorEl={at} onClose={onClose} fields={padded} onChange={onChange} filter="number" />
+    );
     expect(screen.getByText("Einwohner 2020")).toBeDefined();
     expect(screen.getByText("Inhabitants per km²")).toBeDefined();
     expect(screen.queryByText("Straße")).toBeNull();
+  });
+
+  it("FieldPicker searches by a field's name under its display name and takes the first match on Enter", async () => {
+    const onChange = vi.fn();
+    renderPanel(<FieldPicker anchorEl={anchor()} onClose={vi.fn()} fields={padded} onChange={onChange} />);
+    await userEvent.keyboard("dens");
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "123Inhabitants per km²density",
+    ]);
+    await userEvent.keyboard("{Enter}");
+    expect(onChange).toHaveBeenCalledWith("density");
   });
 
   it("FieldPicker renders 500 fields and searches without delay", async () => {
@@ -169,7 +211,7 @@ describe("pickers", () => {
       type: "string",
       label: `Field ${i}`,
     }));
-    renderPanel(<FieldPicker fields={many} onChange={vi.fn()} />);
+    renderPanel(<FieldPicker anchorEl={anchor()} onClose={vi.fn()} fields={many} onChange={vi.fn()} />);
     fireEvent.change(screen.getByRole("textbox", { name: "style_editor.search_fields" }), {
       target: { value: "field_499" },
     });

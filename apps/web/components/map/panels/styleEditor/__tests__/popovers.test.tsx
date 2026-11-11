@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import {
   type PopoverEntry,
   type PopoverLevel,
   anchorTopOf,
+  useNextLevel,
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { NavRow } from "@/components/map/panels/styleEditor/rows";
@@ -62,6 +63,48 @@ describe("popovers", () => {
     await userEvent.click(screen.getByText("open palette"));
     expect(screen.getByText("fill content")).toBeDefined();
     expect(screen.getByText("palette content")).toBeDefined();
+  });
+
+  it("an editor opened from level 2 opens beside it as level 3; closing a level closes the levels it opened", async () => {
+    function Level({ name, next }: { name: string; next?: () => PopoverEntry }) {
+      const popover = usePopover();
+      const level = useNextLevel();
+      return (
+        <>
+          <p>{name} content</p>
+          {next && <button onClick={() => popover.open(level, next())}>open from {name}</button>}
+        </>
+      );
+    }
+    const color = entry("color", () => <Level name="color" />);
+    const classes = entry("classes", () => <Level name="classes" next={() => color} />);
+    const fill = entry("fill", () => <Level name="fill" next={() => classes} />);
+    renderPanel(
+      <div data-style-panel>
+        <PopoverProvider>
+          <Harness entries={[[1, fill]]} />
+        </PopoverProvider>
+      </div>
+    );
+    await userEvent.click(screen.getByText("open fill"));
+    await userEvent.click(screen.getByText("open from fill"));
+    await userEvent.click(screen.getByText("open from classes"));
+    const frames = () => Array.from(document.querySelectorAll<HTMLElement>("[data-popover-frame]"));
+    expect(frames().map((f) => f.dataset.popoverLevel)).toEqual(["1", "2", "3"]);
+    expect(screen.queryByRole("button", { name: "style_editor.back_to" })).toBeNull();
+    // Each level left of the one that opened it, all three shown.
+    const left = (text: string) =>
+      parseFloat(
+        (screen.getByText(text).closest("[data-popover-frame]")!.parentElement as HTMLElement).style.left
+      );
+    expect(left("color content")).toBeLessThanOrEqual(left("classes content"));
+    expect(left("classes content")).toBeLessThanOrEqual(left("fill content"));
+    // Level 2's close button closes it and level 3.
+    const level2 = frames()[1];
+    await userEvent.click(within(level2).getByRole("button", { name: "style_editor.close" }));
+    expect(screen.queryByText("classes content")).toBeNull();
+    expect(screen.queryByText("color content")).toBeNull();
+    expect(screen.getByText("fill content")).toBeDefined();
   });
 
   it("Escape closes picker, then level 2, then level 1", async () => {
@@ -189,7 +232,7 @@ describe("popovers", () => {
   it("a long dropdown has a search box that narrows its items; a short one has none", async () => {
     const anchor = document.createElement("button");
     document.body.appendChild(anchor);
-    const many = Array.from({ length: 12 }, (_, i) => ({ label: `Class ${i + 1}` }));
+    const many = Array.from({ length: 13 }, (_, i) => ({ label: `Class ${i + 1}` }));
     const { unmount } = renderPanel(<DropdownMenu anchorEl={anchor} items={many} onClose={vi.fn()} />);
     await userEvent.type(screen.getByRole("textbox", { name: "search_placeholder_short" }), "Class 1");
     expect(screen.getAllByRole("menuitem").map((el) => el.textContent)).toEqual([
@@ -197,6 +240,7 @@ describe("popovers", () => {
       "Class 10",
       "Class 11",
       "Class 12",
+      "Class 13",
     ]);
     unmount();
     renderPanel(<DropdownMenu anchorEl={anchor} items={many.slice(0, 3)} onClose={vi.fn()} />);
@@ -252,5 +296,71 @@ describe("popovers", () => {
       expect(screen.getByTestId("clip").contains(frame)).toBe(false);
       expect((frame.parentElement as HTMLElement).style.position).toBe("fixed");
     }
+  });
+});
+
+describe("dropdowns", () => {
+  it("marks the chosen item with a check, not a fill", () => {
+    const anchor = document.createElement("button");
+    document.body.appendChild(anchor);
+    renderPanel(
+      <DropdownMenu
+        anchorEl={anchor}
+        items={[{ label: "Points", selected: true }, { label: "Heatmap" }]}
+        onClose={vi.fn()}
+      />
+    );
+    const [points, heatmap] = screen.getAllByRole("menuitem");
+    expect(points.querySelector("svg")).not.toBeNull();
+    expect(heatmap.querySelector("svg")).toBeNull();
+  });
+
+  const classes = (n: number) => Array.from({ length: n }, (_, i) => ({ label: `Class ${i + 1}` }));
+  const anchored = () => {
+    const anchor = document.createElement("button");
+    document.body.appendChild(anchor);
+    return anchor;
+  };
+
+  it("a list of choices has a search box from 13 items on; 12 have none", () => {
+    const { unmount } = renderPanel(
+      <DropdownMenu anchorEl={anchored()} items={classes(13)} onClose={vi.fn()} />
+    );
+    expect(screen.getByRole("textbox", { name: "search_placeholder_short" })).toBeDefined();
+    unmount();
+    renderPanel(<DropdownMenu anchorEl={anchored()} items={classes(12)} onClose={vi.fn()} />);
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("the search narrows its items", async () => {
+    renderPanel(<DropdownMenu anchorEl={anchored()} items={classes(13)} onClose={vi.fn()} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "search_placeholder_short" }), "Class 1");
+    expect(screen.getAllByRole("menuitem").map((el) => el.textContent)).toEqual([
+      "Class 1",
+      "Class 10",
+      "Class 11",
+      "Class 12",
+      "Class 13",
+    ]);
+  });
+
+  it("from the search, Down moves into the items and Enter takes the first match", async () => {
+    const picked = vi.fn();
+    const items = classes(13).map((item) => ({ ...item, onClick: () => picked(item.label) }));
+    const onClose = vi.fn();
+    renderPanel(<DropdownMenu anchorEl={anchored()} items={items} onClose={onClose} />);
+    const search = screen.getByRole("textbox", { name: "search_placeholder_short" });
+    expect(document.activeElement).toBe(search);
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(screen.getAllByRole("menuitem")[0]);
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(screen.getAllByRole("menuitem")[1]);
+    // Typing on an item goes on in the search.
+    await userEvent.keyboard("11");
+    expect(document.activeElement).toBe(search);
+    expect((search as HTMLInputElement).value).toBe("11");
+    await userEvent.keyboard("{Enter}");
+    expect(picked).toHaveBeenCalledWith("Class 11");
+    expect(onClose).toHaveBeenCalled();
   });
 });

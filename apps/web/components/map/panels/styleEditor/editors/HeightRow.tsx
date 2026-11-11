@@ -1,16 +1,17 @@
 "use client";
 
-// Height for polygons (3D spec 8.4): the `extrude` part as rows of the Polygons section. Height is None, Fixed, By
-// zoom, By attribute (a number field read as it is, metres or storeys) or By classes; while Height is set, Base
-// height (Fixed or By attribute). The first height on a 2D map tilts it to 3D once, with Undo; a layer whose tilt was
-// undone says "Viewing in 2D · Show in 3D" instead.
+// Height for polygons (3D spec 8.4): the `extrude` part as a group row of the Polygons section, like Fill and Outline,
+// opening its editor in a popover with the part's switch in the header. Height is None, Fixed, By zoom, By attribute (a number
+// field read as it is, metres or storeys) or By classes; while Height is set, Base height (Fixed or By attribute); the
+// unit while either reads a field. The first height on a 2D map tilts it to 3D once, with Undo; a layer whose tilt
+// was undone says "Viewing in 2D · Show in 3D" under the row instead.
 import { Box, Button, Typography } from "@mui/material";
-import { useRef } from "react";
+import { memo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { addClassification, classifyShape, scopedView } from "@/lib/style/editor/classify";
+import { addClassification, classifyShape, recordPathOf, scopedView } from "@/lib/style/editor/classify";
 import {
   type Mode,
   classificationFor,
@@ -34,11 +35,13 @@ import {
   useScoped,
   useStyleData,
   useStyleSelector,
+  useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import {
   classificationKey,
   useClassificationOpener,
 } from "@/components/map/panels/styleEditor/editors/ClassificationEditor";
+import { HeaderSwitch, PartZooms, togglePart } from "@/components/map/panels/styleEditor/editors/PartEditor";
 import { ZoomEditor } from "@/components/map/panels/styleEditor/editors/ZoomEditor";
 import { FieldPicker } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
 import {
@@ -47,7 +50,7 @@ import {
   useNextLevel,
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
-import { GroupRow, Row, SegmentedRow, SliderRow } from "@/components/map/panels/styleEditor/rows";
+import { FormButton, GroupRow, Row, SegmentedRow, SliderRow } from "@/components/map/panels/styleEditor/rows";
 import { FieldButton } from "@/components/map/panels/styleEditor/rows/FieldButton";
 import { type ModeChoice, ValueModeButton } from "@/components/map/panels/styleEditor/rows/ValueModeButton";
 
@@ -70,6 +73,16 @@ const HEIGHT_SLIDER = { min: 0, max: 200, step: 1, unit: "m" };
 
 const isNumberField = (type: string) => type === "number" || type === "integer";
 
+/** Whether the value at `path` reads a field as it is (By attribute of a height: metres or storeys). */
+const rawField = (value: unknown): value is { field: string } =>
+  isObject(value) && typeof value.field === "string" && !("range" in value);
+
+/** The editor of the height part: the layer's, or in class scope the class's (written into its record). */
+function useHeightPart() {
+  const { value: part, scoped } = useScoped(PART);
+  return { on: isObject(part), scoped };
+}
+
 /** One value of the height part: Height or Base height. */
 function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean }) {
   const { t } = useTranslation("common");
@@ -85,8 +98,12 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
   const key = `extrude.${prop}`;
   const { value, writePath, scoped, overridden } = useScoped(path);
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
+  // A height read from a field says its unit.
+  useStyleValue(`${PART}.unit`);
   const label = t(prop === "height" ? "style_editor.height" : "style_editor.base_height");
   const modeBox = useRef<HTMLDivElement | null>(null);
+  // The field menu: for a height read from a field, or for the classes' field.
+  const [menu, setMenu] = useState<{ purpose: "raw" | "classes"; anchor: HTMLElement } | null>(null);
   const own = scoped && overridden ? writePath : path;
   const mode: ModeChoice = !on ? "none" : modeOf(store.document, own, data.geometry);
   const numberFields = data.fields.filter((f) => isNumberField(f.type));
@@ -98,12 +115,9 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
         : ["none", "fixed", "zoom", ...(numberFields.length ? (["raw"] as const) : []), "classes"];
   const classify = (store.get("classify") as unknown[] | undefined) ?? [];
   const owner = mode === "classes" ? classificationFor(store.document, key, data.geometry) : undefined;
-  const editorOpen = useIsOpen(
-    `zoom:${path}`,
-    `field:${path}`,
-    `classes-field:${path}`,
-    ...(owner ? [classificationKey(owner, classify.indexOf(owner))] : [])
-  );
+  const editorOpen =
+    useIsOpen(`zoom:${path}`, ...(owner ? [classificationKey(owner, classify.indexOf(owner))] : [])) ||
+    menu !== null;
   const ctx = { mapZoom, sample: data.sample, geometry: data.geometry };
   /** The document with the part on (a height part with nothing set draws the default height). */
   const withPart = (doc: LayerStyle) => (isObject(getIn(doc, PART)) ? doc : setIn(doc, PART, {}));
@@ -115,46 +129,33 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
       anchorTop,
       render: () => <ZoomEditor path={scoped ? writePath : path} />,
     });
-  const openField = (anchor: HTMLElement) =>
-    popover.open("picker", {
-      key: `field:${path}`,
-      title: t("style_editor.field"),
-      anchorTop: anchorTopOf(anchor),
-      anchorEl: anchor,
-      render: () => (
-        <FieldPicker
-          fields={data.fields}
-          filter="number"
-          value={isObject(value) && typeof value.field === "string" ? value.field : undefined}
-          suggested={
-            prop === "height"
-              ? {
-                  names: HEIGHT_FIELDS,
-                  title: t("style_editor.height_suggested"),
-                  othersTitle: t("style_editor.height_other_fields"),
-                }
-              : undefined
-          }
-          onChange={(name) => {
-            const fromNone = !on;
-            store.update((doc) => {
-              let next = setIn(withPart(doc), path, { field: name });
-              if (prop === "height")
-                next = setIn(next, `${PART}.unit`, STOREY_FIELDS.includes(name.toLowerCase()) ? "storeys" : undefined);
-              return next;
-            });
-            popover.close("picker");
-            tilt(fromNone);
-          }}
-        />
-      ),
+  const pickField = (name: string) => {
+    const fromNone = !on;
+    store.update((doc) => {
+      let next = setIn(withPart(doc), path, { field: name });
+      if (prop === "height")
+        next = setIn(next, `${PART}.unit`, STOREY_FIELDS.includes(name.toLowerCase()) ? "storeys" : undefined);
+      return next;
     });
+    tilt(fromNone);
+  };
+  const pickClassesField = (name: string, anchor: HTMLElement) => {
+    const field = data.fields.find((f) => f.name === name);
+    if (!field) return;
+    const fromNone = !on;
+    store.update((doc) =>
+      addClassification(switchMode(withPart(doc), path, "fixed", ctx), key, field, data.geometry)
+    );
+    const count = (store.get("classify") as unknown[] | undefined)?.length ?? 0;
+    openClassification(count - 1, anchorTopOf(anchor));
+    tilt(fromNone);
+  };
 
   const select = (to: ModeChoice, anchor: HTMLElement) => {
     const fromNone = !on;
     if (to === mode) {
       if (to === "zoom") openZoom(anchorTopOf(anchor));
-      if (to === "raw") openField(anchor);
+      if (to === "raw") setMenu({ purpose: "raw", anchor });
       return;
     }
     if (to === "none") {
@@ -162,31 +163,7 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
       store.update((doc) => setIn(switchMode(doc, path, "fixed", ctx), PART, undefined));
       return;
     }
-    if (to === "raw") return openField(anchor);
-    if (to === "classes") {
-      popover.open(next, {
-        key: `classes-field:${path}`,
-        transient: true,
-        title: t("style_editor.by_classes_of", { label }),
-        anchorTop: anchorTopOf(anchor),
-        render: () => (
-          <FieldPicker
-            fields={data.fields.filter((f) => f.type !== "date" && f.type !== "datetime")}
-            onChange={(name) => {
-              const field = data.fields.find((f) => f.name === name);
-              if (!field) return;
-              store.update((doc) =>
-                addClassification(switchMode(withPart(doc), path, "fixed", ctx), key, field, data.geometry)
-              );
-              const count = (store.get("classify") as unknown[] | undefined)?.length ?? 0;
-              openClassification(count - 1, anchorTopOf(anchor));
-              tilt(fromNone);
-            }}
-          />
-        ),
-      });
-      return;
-    }
+    if (to === "raw" || to === "classes") return setMenu({ purpose: to, anchor });
     store.update((doc) => {
       if (scope) return switchScopedMode(doc, scopedView(doc, scope).view, path, writePath, to, ctx);
       // Off: the height starts at its reference default.
@@ -220,12 +197,48 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
       }
     />
   );
+  const fieldMenu = (
+    <FieldPicker
+      anchorEl={menu?.anchor ?? null}
+      onClose={() => setMenu(null)}
+      title={menu?.purpose === "classes" ? t("style_editor.by_classes_of", { label }) : undefined}
+      fields={
+        menu?.purpose === "classes"
+          ? data.fields.filter((f) => f.type !== "date" && f.type !== "datetime")
+          : data.fields
+      }
+      filter={menu?.purpose === "raw" ? "number" : undefined}
+      value={menu?.purpose === "raw" && rawField(value) ? value.field : undefined}
+      suggested={
+        prop === "height" && menu?.purpose === "raw"
+          ? {
+              names: HEIGHT_FIELDS,
+              title: t("style_editor.height_suggested"),
+              othersTitle: t("style_editor.height_other_fields"),
+            }
+          : undefined
+      }
+      onChange={(name) => {
+        if (menu?.purpose === "classes") pickClassesField(name, menu.anchor);
+        else pickField(name);
+      }}
+    />
+  );
+  const actions = (
+    // The field menu opens at the mode button or at the row's field; it draws in a portal.
+    <Box ref={modeBox} sx={{ display: "flex" }}>
+      {modeButton}
+      {fieldMenu}
+    </Box>
+  );
 
   if (mode === "none")
     return (
-      <Row label={label} actions={<Box ref={modeBox}>{modeButton}</Box>}>
+      <Row label={label} actions={actions}>
         {/* The value opens the mode menu, as the canvas's "None" field does. */}
-        <FieldButton onClick={() => modeBox.current?.querySelector("button")?.click()}>
+        <FieldButton
+          popup="menu"
+          onClick={() => modeBox.current?.querySelector<HTMLButtonElement>("button")?.click()}>
           <Typography component="span" variant="body2" fontWeight="bold" color="text.primary">
             {t("style_editor.none")}
           </Typography>
@@ -239,30 +252,39 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
         {...HEIGHT_SLIDER}
         value={typeof value === "number" ? value : (DEFAULTS[key] as number)}
         onChange={(v) => store.set(writePath, v)}
-        mode={modeButton}
+        mode={actions}
       />
     );
+  const storeys = getIn(store.document, `${PART}.unit`) === "storeys";
+  if (mode === "raw")
+    // A field picked from a list: the field opens the field menu under it.
+    return (
+      <Row label={label} actions={actions} active={editorOpen}>
+        <FormButton
+          popup="listbox"
+          open={menu?.purpose === "raw"}
+          text={
+            rawField(value)
+              ? t(storeys ? "style_editor.height_storeys_value" : "style_editor.height_metres_value", {
+                  field: data.fields.find((f) => f.name === value.field)?.label ?? value.field,
+                  storey: SCENE_DEFAULTS.storey_height,
+                })
+              : ""
+          }
+          onOpen={(anchor) => setMenu(menu ? null : { purpose: "raw", anchor })}
+        />
+      </Row>
+    );
   const shown = scope ? scopedView(store.document, scope).view : store.document;
-  let text = summarize(shown, path, t, { fields: data.fields, mapZoom, geometry: data.geometry });
-  if (mode === "raw" && isObject(value)) {
-    const storeys = getIn(store.document, `${PART}.unit`) === "storeys";
-    text = storeys
-      ? t("style_editor.height_storeys_value", {
-          field: String(value.field),
-          storey: SCENE_DEFAULTS.storey_height,
-        })
-      : t("style_editor.height_metres_value", { field: String(value.field) });
-  }
   return (
     <GroupRow
       label={label}
-      value={text}
+      value={summarize(shown, path, t, { fields: data.fields, mapZoom, geometry: data.geometry })}
       curve={mode === "zoom"}
-      mode={modeButton}
+      mode={actions}
       active={editorOpen}
       onOpen={(anchor) => {
         if (mode === "zoom") openZoom(anchorTopOf(anchor));
-        else if (mode === "raw") openField(anchor);
         else if (mode === "classes") {
           const ci = classify.indexOf(owner);
           if (ci >= 0) openClassification(ci, anchorTopOf(anchor));
@@ -283,6 +305,7 @@ export function ViewingIn2D({ onShow }: { onShow: () => void }) {
         ·
       </Typography>
       <Button
+        variant="text"
         size="small"
         onClick={onShow}
         sx={{ textTransform: "none", minWidth: 0, p: 0, typography: "caption", fontWeight: 700 }}>
@@ -292,21 +315,41 @@ export function ViewingIn2D({ onShow }: { onShow: () => void }) {
   );
 }
 
-export function HeightRow() {
+/** The height part's switch, for its editor's header: off remembers the part, on brings it back (the default height
+ * when there is nothing to bring back) and tilts a 2D map as a first height does. */
+export function HeightSwitch() {
   const { t } = useTranslation("common");
   const store = useEditor();
-  const data = useStyleData();
-  const { value: part, scoped } = useScoped(PART);
+  const scope = useScope();
+  const { layerId } = useStyleData();
+  const { tilt } = useAutoTilt(layerId);
+  const { on } = useHeightPart();
+  return (
+    <HeaderSwitch
+      name={t("style_editor.part_name_height")}
+      on={on}
+      onToggle={() => {
+        togglePart(store, scope ? `${recordPathOf(scope)}.extrude` : PART, !on);
+        tilt(!on);
+      }}
+    />
+  );
+}
+
+/** The height part's editor: Height, then while it is set Base height, the unit while either reads a field, and the
+ * zooms it shows at. */
+export function HeightEditor() {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const { on, scoped } = useHeightPart();
   const { value: height } = useScoped(`${PART}.height`);
-  const { mode, show3d } = useAutoTilt(data.layerId);
-  const on = isObject(part);
-  const raw = isObject(height) && typeof height.field === "string" && !("range" in height);
+  const { value: base } = useScoped(`${PART}.base`);
   const unit = getIn(store.document, `${PART}.unit`) === "storeys" ? "storeys" : "m";
   return (
     <>
       <ExtrudeValueRow prop="height" on={on} />
-      {on && mode === "2d" && <ViewingIn2D onShow={show3d} />}
-      {on && raw && !scoped && (
+      {on && !scoped && <ExtrudeValueRow prop="base" on />}
+      {on && !scoped && (rawField(height) || rawField(base)) && (
         <SegmentedRow
           label={t("style_editor.height_unit")}
           value={unit}
@@ -320,7 +363,59 @@ export function HeightRow() {
           onChange={(next) => store.set(`${PART}.unit`, next === "storeys" ? "storeys" : undefined)}
         />
       )}
-      {on && !scoped && <ExtrudeValueRow prop="base" on />}
+      {/* Where the volumes stand, as Fill and Outline say where they draw; outside it they are flat. */}
+      {on && <PartZooms base={PART} />}
     </>
   );
 }
+
+/** The Height row of the Polygons section: what the height is ("None", "10 m", "By Hoehe · storeys"), opening the
+ * height editor. */
+export const HeightRow = memo(function HeightRow() {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const data = useStyleData();
+  const mapZoom = useMapZoom();
+  const popover = usePopover();
+  const next = useNextLevel();
+  const scope = useScope();
+  const { on } = useHeightPart();
+  const { value: height, overridden, scoped, writePath } = useScoped(`${PART}.height`);
+  useStyleValue(`${PART}.unit`);
+  useStyleSelector((doc) => classifyShape(doc, data.geometry));
+  const { mode, show3d } = useAutoTilt(data.layerId);
+  const label = t("style_editor.height");
+  const shown = scope ? scopedView(store.document, scope).view : store.document;
+  // In class scope a class's own value is the class's, whatever the layer's height is.
+  const heightMode = on
+    ? modeOf(store.document, scoped && overridden ? writePath : `${PART}.height`, data.geometry)
+    : "fixed";
+  let text = !on
+    ? t("style_editor.none")
+    : heightMode === "fixed"
+      ? `${typeof height === "number" ? height : DEFAULTS["extrude.height"]} m`
+      : summarize(shown, `${PART}.height`, t, { fields: data.fields, mapZoom, geometry: data.geometry });
+  if (on && getIn(store.document, `${PART}.unit`) === "storeys")
+    text = t("style_editor.height_summary_storeys", { value: text });
+  return (
+    <>
+      <GroupRow
+        label={label}
+        off={!on}
+        value={text}
+        curve={on && heightMode === "zoom"}
+        overrideDot={overridden}
+        onOpen={(anchor) =>
+          popover.open(next, {
+            key: "part:height",
+            title: label,
+            anchorTop: anchorTopOf(anchor),
+            actions: <HeightSwitch />,
+            render: () => <HeightEditor />,
+          })
+        }
+      />
+      {on && mode === "2d" && <ViewingIn2D onShow={show3d} />}
+    </>
+  );
+});

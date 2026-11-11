@@ -4,6 +4,13 @@ import { type SxProps, type Theme, alpha } from "@mui/material";
 
 export const FIELD_HEIGHT = 40;
 
+/** The inset of a field's content from its border, the same on both sides: the text from the left, the trailing caret
+ * or chevron from the right (12 px, as MUI's own select keeps its caret from the right border). */
+export const FIELD_INSET = 3;
+
+/** The one size of a field's trailing caret and chevron. */
+export const TRAILING_ICON_SIZE = 10;
+
 /** The theme's outline of a field at rest and under the pointer (its OutlinedInput override): the text color at 22 and
  * 32 %. */
 export const fieldOutline = (theme: Theme, hover?: boolean) =>
@@ -24,14 +31,14 @@ export const fieldSx: SxProps<Theme> = {
   height: FIELD_HEIGHT,
   minWidth: 0,
   fontSize: "0.875rem",
-  "& .MuiInputBase-input": { py: 0, pl: 3, pr: 1 },
+  "& .MuiInputBase-input": { py: 0, pl: FIELD_INSET, pr: 1 },
   "& .MuiSelect-select": {
     display: "flex",
     alignItems: "center",
     gap: 2,
     minWidth: "0 !important",
     py: 0,
-    pl: 3,
+    pl: FIELD_INSET,
   },
   "& .MuiInputAdornment-root": { color: "text.secondary" },
 };

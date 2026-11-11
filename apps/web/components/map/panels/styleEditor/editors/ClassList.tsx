@@ -5,8 +5,7 @@
 // feature count, show or hide, and "Style this class"; then Other and No data. A category class's label opens its
 // values to pick, and "Add class" starts a new one. The rows share one grid, so values, labels and counts line up in
 // columns; a number column keeps room for its longest value, as a slider's value does.
-import { Box, Button, ButtonBase, IconButton, InputBase, Tooltip, Typography } from "@mui/material";
-import { useState } from "react";
+import { Box, ButtonBase, IconButton, InputBase, Tooltip, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -33,9 +32,8 @@ import { IconGlyph } from "@/components/map/panels/styleEditor/pickers/IconGlyph
 import { paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
 import { PatternPicture, PatternTiles } from "@/components/map/panels/styleEditor/pickers/PatternTiles";
 import { MarkerPicture } from "@/components/map/panels/styleEditor/pickers/ShapeTiles";
-import { DropdownMenu } from "@/components/map/panels/styleEditor/popovers/DropdownMenu";
 import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
-import { NumberInput } from "@/components/map/panels/styleEditor/rows";
+import { AddButton, ChoiceField, NumberInput } from "@/components/map/panels/styleEditor/rows";
 import { valueChars } from "@/components/map/panels/styleEditor/rows/SliderRow";
 
 type RecordKey = number | "other" | "no_data";
@@ -147,7 +145,6 @@ function TargetValue({
   const { t } = useTranslation("common");
   const store = useEditor();
   const popover = usePopover();
-  const [menu, setMenu] = useState<HTMLElement | null>(null);
   const valuePath = `${path}.${target}`;
   const value = useStyleValue<unknown>(valuePath);
   const look = useShapeState(`${path}.marker`);
@@ -257,26 +254,15 @@ function TargetValue({
       />
     );
   }
+  // A field of its own, as the panel's other choices, at the height of the class rows.
   return (
-    <>
-      <Button
-        size="small"
-        color="inherit"
-        onClick={(event) => setMenu(menu ? null : event.currentTarget)}
-        sx={{ textTransform: "none", minWidth: 0, px: 1 }}>
-        {value === undefined ? "…" : choiceLabel(t, target, value)}
-      </Button>
-      <DropdownMenu
-        anchorEl={menu}
-        title={title}
-        items={(choices ?? []).map((v) => ({
-          label: choiceLabel(t, target, v),
-          selected: v === value,
-          onClick: () => store.set(valuePath, v),
-        }))}
-        onClose={() => setMenu(null)}
-      />
-    </>
+    <ChoiceField<string>
+      ariaLabel={title}
+      value={typeof value === "string" ? value : ""}
+      options={(choices ?? []).map((v) => ({ value: v, label: choiceLabel(t, target, v) }))}
+      onChange={(v) => store.set(valuePath, v)}
+      sx={{ height: 28 }}
+    />
   );
 }
 
@@ -495,23 +481,9 @@ function AddClassButton({
     openValues(anchor, ci, classes.length, typeof c.id === "string" ? c.id : undefined);
   };
   return (
-    <Button
-      variant="text"
-      size="small"
-      startIcon={<Icon iconName={ICON_NAME.PLUS} sx={{ fontSize: "12px !important" }} />}
-      onClick={(event) => add(event.currentTarget)}
-      sx={{
-        mt: 1,
-        ml: 2,
-        height: 32,
-        px: 2.5,
-        borderRadius: 2,
-        fontSize: 13,
-        fontWeight: 700,
-        textTransform: "none",
-      }}>
+    <AddButton onClick={(event) => add(event.currentTarget)} sx={{ mt: 1, ml: 2 }}>
       {t("style_editor.add_class")}
-    </Button>
+    </AddButton>
   );
 }
 

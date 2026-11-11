@@ -41,6 +41,7 @@ import {
   useIsOpener,
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
+import { AddButton } from "@/components/map/panels/styleEditor/rows/AddButton";
 
 /** Named styles per project layer (spec 10). */
 export const MAX_STYLES = 10;
@@ -363,24 +364,9 @@ function StylesPopover({ live }: { live: Live }) {
           />
         ))}
       </List>
-      {/* The prototype's ghost button: green text, no fill. */}
-      <Button
-        variant="text"
-        size="small"
-        disabled={full}
-        startIcon={<Icon iconName={ICON_NAME.PLUS} sx={{ fontSize: "12px !important" }} />}
-        onClick={() => void add()}
-        sx={{
-          mt: 3,
-          height: 32,
-          px: 2.5,
-          borderRadius: 2,
-          fontSize: 13,
-          fontWeight: 700,
-          textTransform: "none",
-        }}>
+      <AddButton disabled={full} onClick={() => void add()} sx={{ mt: 3 }}>
         {t("style_editor.new_style")}
-      </Button>
+      </AddButton>
       {full && (
         <Typography variant="caption" color="text.secondary" component="p" sx={{ px: 2 }}>
           {t("style_editor.styles_full", { max: MAX_STYLES })}

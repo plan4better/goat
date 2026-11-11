@@ -36,6 +36,7 @@ import {
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import { LabelEditor } from "@/components/map/panels/styleEditor/editors/LabelEditor";
+import { OffsetRows } from "@/components/map/panels/styleEditor/editors/OffsetRows";
 import { PatternRow } from "@/components/map/panels/styleEditor/editors/PatternEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import { type PartGroup, groupOf } from "@/components/map/panels/styleEditor/editors/partRows";
@@ -205,6 +206,8 @@ function PartRows({ group, geometry, shown }: { group: PartGroup; geometry: Geom
         .map((row) =>
           row.type === "pattern" ? (
             <PatternRow key={row.key} row={row} base={base} />
+          ) : row.type === "offset" ? (
+            <OffsetRows key={row.key} base={base} rangeKey={`${group.part}.offset`} />
           ) : (
             <PropertyRow key={row.key} row={row} base={base} />
           )
@@ -213,7 +216,8 @@ function PartRows({ group, geometry, shown }: { group: PartGroup; geometry: Geom
   );
 }
 
-const PartZooms = memo(function PartZooms({ base }: { base: Path }) {
+/** The zooms a part shows at (its "Visible" row), in class scope the class's own. */
+export const PartZooms = memo(function PartZooms({ base }: { base: Path }) {
   const store = useEditor();
   const mapZoom = useLiveMapZoom();
   const from = useScoped(`${base}.min_zoom`);

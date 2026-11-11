@@ -3,7 +3,7 @@
 // H3 hexagons (spec 8.3): the hexagon size, what a hexagon's value is (its points, or a field's sum or mean), the
 // colors as classes or continuous, opacity and outline, and the zoom from which the points themselves show. The
 // server computes the classes per resolution when the style is saved.
-import { Box } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
 import { SLIDERS } from "@/lib/style/editor/defaults";
@@ -16,12 +16,14 @@ import { useAutoTilt } from "@/hooks/map/useAutoTilt";
 import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
 import { PathColorPicker } from "@/components/map/panels/styleEditor/editors/ColorRow";
 import { ViewingIn2D } from "@/components/map/panels/styleEditor/editors/HeightRow";
+import { HeaderSwitch } from "@/components/map/panels/styleEditor/editors/PartEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
-import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
+import { anchorTopOf, useNextLevel, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import {
   ChoiceRow,
   ColorField,
+  GroupRow,
   NumberInput,
   PanelSection,
   Row,
@@ -32,6 +34,7 @@ import { PointsRow, RenderPaletteRow } from "@/components/map/panels/styleEditor
 
 const AUTO = "auto";
 const TALLEST: PartRow = { type: "number", key: "tallest", label: "style_editor.h3_tallest" };
+const BASE: PartRow = { type: "number", key: "base", label: "style_editor.base_height" };
 /** About how wide a hexagon of each resolution is, in meters (twice H3's average edge length). */
 const WIDTH_M: Record<number, number> = { 5: 19700, 6: 7400, 7: 2800, 8: 1100, 9: 400, 10: 150 };
 const METHODS = ["quantile", "equal_interval", "natural_breaks", "std_dev", "heads_and_tails"];
@@ -189,47 +192,81 @@ function OutlineRow() {
   );
 }
 
-/** Columns (3D spec 8.4): None or By value, then the tallest column and how values scale to it. The first columns on
- * a 2D map tilt it once, with Undo. */
-function HeightRows() {
+/** The columns' switch, for their editor's header: on raises them (the first columns on a 2D map tilt it once,
+ * with Undo), off lays them flat. */
+function H3HeightSwitch() {
   const { t } = useTranslation("common");
   const store = useEditor();
   const { layerId } = useStyleData();
-  const extrude = useStyleValue<unknown>("render.extrude");
+  const { tilt } = useAutoTilt(layerId);
+  const on = isObject(useStyleValue<unknown>("render.extrude"));
+  return (
+    <HeaderSwitch
+      name={t("style_editor.part_name_height")}
+      on={on}
+      onToggle={() => {
+        store.set("render.extrude", on ? undefined : {});
+        tilt(!on);
+      }}
+    />
+  );
+}
+
+/** The columns' editor: the tallest column and how values scale to it. */
+function H3HeightEditor() {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const on = isObject(useStyleValue<unknown>("render.extrude"));
   const scale = useStyleValue<unknown>("render.extrude.scale");
-  const { tilt, mode, show3d } = useAutoTilt(layerId);
-  const on = isObject(extrude);
+  if (!on)
+    return (
+      <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 2 }}>
+        {t("style_editor.part_off_note")}
+      </Typography>
+    );
   return (
     <>
-      <ChoiceRow<string>
-        label={t("style_editor.height")}
-        value={on ? "value" : "none"}
+      <PropertyRow row={TALLEST} base="render.extrude" />
+      <PropertyRow row={BASE} base="render.extrude" />
+      <SegmentedRow<string>
+        label={t("style_editor.h3_scale")}
+        value={scale === "linear" ? "linear" : "sqrt"}
         options={[
-          { value: "none", label: t("style_editor.mode_none"), sub: t("style_editor.h3_height_none_sub") },
-          { value: "value", label: t("style_editor.h3_height_value"), sub: t("style_editor.h3_height_value_sub") },
+          { value: "linear", label: t("style_editor.h3_scale_linear") },
+          { value: "sqrt", label: t("style_editor.h3_scale_sqrt") },
         ]}
-        onChange={(next) => {
-          if (next === "none") return store.set("render.extrude", undefined);
-          if (on) return;
-          store.set("render.extrude", {});
-          tilt(true);
-        }}
+        onChange={(next) => store.set("render.extrude.scale", next)}
+      />
+    </>
+  );
+}
+
+/** Columns (3D spec 8.4) as a group row, like the polygons' Height: None or By value, opening their editor. */
+function HeightRows() {
+  const { t } = useTranslation("common");
+  const { layerId } = useStyleData();
+  const popover = usePopover();
+  const next = useNextLevel();
+  const on = isObject(useStyleValue<unknown>("render.extrude"));
+  const { mode, show3d } = useAutoTilt(layerId);
+  const label = t("style_editor.height");
+  return (
+    <>
+      <GroupRow
+        label={label}
+        off={!on}
+        value={on ? t("style_editor.h3_height_value") : t("style_editor.none")}
+        onOpen={(anchor) =>
+          popover.open(next, {
+            key: "h3:height",
+            title: label,
+            anchorTop: anchorTopOf(anchor),
+            actions: <H3HeightSwitch />,
+            render: () => <H3HeightEditor />,
+          })
+        }
       />
       {on && mode === "2d" && <ViewingIn2D onShow={show3d} />}
-      {on && (
-        <>
-          <PropertyRow row={TALLEST} base="render.extrude" />
-          <SegmentedRow<string>
-            label={t("style_editor.h3_scale")}
-            value={scale === "linear" ? "linear" : "sqrt"}
-            options={[
-              { value: "linear", label: t("style_editor.h3_scale_linear") },
-              { value: "sqrt", label: t("style_editor.h3_scale_sqrt") },
-            ]}
-            onChange={(next) => store.set("render.extrude.scale", next)}
-          />
-        </>
-      )}
     </>
   );
 }

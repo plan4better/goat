@@ -14,12 +14,14 @@ import { formatNumberText } from "@/lib/style/editor/labels";
 import { type Path, setIn } from "@/lib/style/editor/store";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
+import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 
 import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
 import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
 import type { FieldProfile } from "@/components/map/panels/styleEditor/context";
-import { FieldPicker } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
+import { ColorRow } from "@/components/map/panels/styleEditor/editors/ColorRow";
+import { FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
 import { PalettePicker, paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
 import {
   anchorTopOf,
@@ -28,12 +30,12 @@ import {
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import {
   ChoiceRow,
-  FormButton,
   NavRow,
   NumberInput,
   Row,
   SliderRow,
   SwitchRow,
+  TextRow,
 } from "@/components/map/panels/styleEditor/rows";
 
 const SCALES = ["linear", "sqrt", "log"];
@@ -105,27 +107,6 @@ export function AttributeEditor({ path }: { path: Path }) {
       `${path}.${Object.keys(patch).join(",")}`
     );
 
-  const pickField = (anchor: HTMLElement) =>
-    popover.open("picker", {
-      key: `attr-field:${path}`,
-      title: t("style_editor.field"),
-      anchorTop: anchorTopOf(anchor),
-      anchorEl: anchor,
-      render: () => (
-        <FieldPicker
-          fields={data.fields}
-          filter="number"
-          value={field}
-          profile={(_, loaded) => profileRange(loaded, locale, t("style_editor.to"))}
-          onChange={(name) => {
-            // A domain written for the old field means nothing for the new one; the server computes the new one.
-            write({ field: name, domain: undefined, computed: undefined });
-            popover.close("picker");
-          }}
-        />
-      ),
-    });
-
   let values: string;
   if (pending || !domain) values = t("style_editor.values_pending");
   else if (isColor)
@@ -155,7 +136,16 @@ export function AttributeEditor({ path }: { path: Path }) {
   return (
     <>
       <Row label={t("style_editor.field")}>
-        <FormButton text={fieldLabel} onOpen={pickField} />
+        <FieldPickerButton
+          ariaLabel={t("style_editor.field")}
+          text={fieldLabel}
+          fields={data.fields}
+          filter="number"
+          value={field}
+          profile={(_, loaded) => profileRange(loaded, locale, t("style_editor.to"))}
+          // A domain written for the old field means nothing for the new one; the server computes the new one.
+          onChange={(name) => write({ field: name, domain: undefined, computed: undefined })}
+        />
       </Row>
       {isColor ? (
         <>
@@ -211,6 +201,33 @@ export function AttributeEditor({ path }: { path: Path }) {
           ),
         }))}
         onChange={(scale) => write({ scale })}
+      />
+      {/* What features without a value in the field draw with, and the ramp's title in the legend. */}
+      {isColor ? (
+        <ColorRow
+          label={t("style_editor.no_data")}
+          path={`${path}.no_data`}
+          fallback={DEFAULTS[key] as string | undefined}
+          note={t("style_editor.note_no_data")}
+        />
+      ) : (
+        <SliderRow
+          label={t("style_editor.no_data")}
+          min={bounds.min}
+          max={bounds.max}
+          step={bounds.step}
+          unit={bounds.unit}
+          pct={bounds.pct}
+          value={typeof form.no_data === "number" ? form.no_data : (DEFAULTS[key] as number)}
+          note={t("style_editor.note_no_data")}
+          onChange={(v) => write({ no_data: v })}
+        />
+      )}
+      <TextRow
+        label={t("style_editor.legend_heading")}
+        value={typeof form.title === "string" ? form.title : ""}
+        placeholder={fieldLabel}
+        onChange={(value) => write({ title: value || undefined })}
       />
       <Row label={t("style_editor.values")}>
         <Typography variant="body2" color="text.secondary" sx={{ minWidth: 0 }}>

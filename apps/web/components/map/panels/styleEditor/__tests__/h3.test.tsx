@@ -90,19 +90,26 @@ describe("H3 hexagons", () => {
     expect(store.get("render.points_from_zoom")).toBe(10);
   });
 
-  it("height: By value raises columns once tilted, Tallest and Scale write them, None lays them flat", async () => {
+  /** The section's Height row (the popover's title says Height too, after it in the page). */
+  const heightRow = () => screen.getAllByText("style_editor.height")[0].parentElement as HTMLElement;
+
+  it("height: a group row whose popover switches columns on (tilting once), writes Tallest and Scale, and off", async () => {
     const { store, redux } = setup();
     expect(screen.getByText("style_editor.part_outline")).toBeDefined();
-    await pick("style_editor.height", 1);
+    expect(within(heightRow()).getByText("style_editor.none")).toBeDefined();
+    await userEvent.click(within(heightRow()).getByRole("button"));
+    expect(screen.getByText("style_editor.part_off_note")).toBeDefined();
+    await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.turn_part_on" }));
     expect(store.get("render.extrude")).toEqual({});
     expect(redux.getState().map.view?.mode).toBe("3d");
+    expect(within(heightRow()).getByText("style_editor.h3_height_value")).toBeDefined();
     // The outline is not drawn under columns.
     expect(screen.queryByText("style_editor.part_outline")).toBeNull();
     fireEvent.change(within(rowOf("style_editor.h3_tallest")).getByRole("slider"), { target: { value: 1500 } });
     expect(store.get("render.extrude.tallest")).toBe(1500);
     await userEvent.click(within(rowOf("style_editor.h3_scale")).getAllByRole("button")[0]);
     expect(store.get("render.extrude.scale")).toBe("linear");
-    await pick("style_editor.height", 0);
+    await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.turn_part_off" }));
     expect(store.get("render.extrude")).toBeUndefined();
     expect(screen.getByText("style_editor.part_outline")).toBeDefined();
   });

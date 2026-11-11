@@ -345,7 +345,7 @@ export function RasterColorsEditor() {
               </Box>
             </Row>
             <Row note={note ?? undefined}>
-              <Button size="small" color="inherit" onClick={() => void fromData()}>
+              <Button variant="text" size="small" color="inherit" onClick={() => void fromData()}>
                 {t("style_editor.range_from_data")}
               </Button>
             </Row>

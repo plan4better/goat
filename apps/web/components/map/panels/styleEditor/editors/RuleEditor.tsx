@@ -2,7 +2,7 @@
 
 // One rule (spec 6, prototype 4.8): its name, the condition, and what it does to the matching features: hide them,
 // show them at fewer zooms, leave them out of the legend, or style them (the symbol section edits the rule then).
-import { Box, Button, Typography } from "@mui/material";
+import { Box, Button, Divider, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -18,8 +18,12 @@ import {
   useStyleSelector,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
-import { ConditionBuilder, EMPTY_ROW } from "@/components/map/panels/styleEditor/editors/ConditionBuilder";
-import { SwitchRow, TextRow, ZoomRangeRow } from "@/components/map/panels/styleEditor/rows";
+import {
+  ConditionBuilder,
+  EMPTY_ROW,
+  RuleHeading,
+} from "@/components/map/panels/styleEditor/editors/ConditionBuilder";
+import { NavRow, SwitchRow, TextRow, ZoomRangeRow } from "@/components/map/panels/styleEditor/rows";
 
 /** A rule's name, else its condition as a sentence. */
 export function useRuleLabel(): (rule: unknown) => string {
@@ -30,18 +34,6 @@ export function useRuleLabel(): (rule: unknown) => string {
     isObject(rule) && typeof rule.name === "string" && rule.name
       ? rule.name
       : conditionSentence(isObject(rule) ? rule.when : undefined, label, t, fieldTypes);
-}
-
-function Heading({ children }: { children: string }) {
-  return (
-    <Typography
-      variant="caption"
-      color="text.secondary"
-      fontWeight="bold"
-      sx={{ display: "block", px: 3, pt: 2 }}>
-      {children}
-    </Typography>
-  );
 }
 
 /** The condition of the rule at `index`: rows while they can show it, else its CQL2 as text to edit. */
@@ -83,6 +75,7 @@ function RuleCondition({ index }: { index: number }) {
   return (
     <ConditionBuilder
       rows={rows}
+      title={t("style_editor.when")}
       onChange={(next) => {
         setRows(next);
         const cql = fromRows(next, fieldTypes);
@@ -114,15 +107,15 @@ export function RuleEditor({ id }: { id: string }) {
         placeholder={label({ when: rule.when })}
         onChange={(value) => store.set(`${path}.name`, value || undefined)}
       />
-      <Heading>{t("style_editor.when")}</Heading>
       <RuleCondition key={id} index={index} />
-      <Heading>{t("style_editor.then")}</Heading>
+      <RuleHeading>{t("style_editor.then")}</RuleHeading>
       <SwitchRow
         label={t("style_editor.rule_visible")}
         on={rule.visible !== false}
         onToggle={() => store.set(`${path}.visible`, rule.visible === false ? undefined : false)}
       />
       <ZoomRangeRow
+        label={t("style_editor.rule_zooms")}
         from={rule.min_zoom as number | undefined}
         until={rule.max_zoom as number | undefined}
         mapZoom={mapZoom}
@@ -138,17 +131,20 @@ export function RuleEditor({ id }: { id: string }) {
         on={rule.legend !== false}
         onToggle={() => store.set(`${path}.legend`, rule.legend === false ? undefined : false)}
       />
-      <Box sx={{ px: 3, pt: 2 }}>
-        <Button size="small" variant="outlined" onClick={() => store.setScope({ rule: id, index })}>
-          {t("style_editor.style_matching")}
-        </Button>
-      </Box>
+      <NavRow value={t("style_editor.style_matching")} onOpen={() => store.setScope({ rule: id, index })} />
     </>
   );
 }
 
-/** A new rule: written once its condition is complete and confirmed. */
-export function NewRuleEditor({ onAdded }: { onAdded: (id: string) => void }) {
+/** A new rule: written once its condition is complete and confirmed. Its foot carries the popover's one action, as
+ * the app's dialogs do: Cancel beside the primary "Add rule", which waits for a complete condition. */
+export function NewRuleEditor({
+  onAdded,
+  onCancel,
+}: {
+  onAdded: (id: string) => void;
+  onCancel: () => void;
+}) {
   const { t } = useTranslation("common");
   const store = useEditor();
   const { fieldTypes } = useStyleData();
@@ -156,12 +152,16 @@ export function NewRuleEditor({ onAdded }: { onAdded: (id: string) => void }) {
   const when = fromRows(rows, fieldTypes);
   return (
     <>
-      <Heading>{t("style_editor.when")}</Heading>
-      <ConditionBuilder rows={rows} onChange={setRows} />
-      <Box sx={{ px: 3, pt: 2 }}>
+      <ConditionBuilder rows={rows} title={t("style_editor.when")} onChange={setRows} />
+      <Divider sx={{ mt: 2 }} />
+      <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2, px: 3, pt: 3 }}>
+        <Button variant="text" size="small" onClick={onCancel}>
+          {t("cancel")}
+        </Button>
         <Button
-          size="small"
           variant="contained"
+          size="small"
+          disableElevation
           disabled={!when}
           onClick={() => {
             if (!when) return;

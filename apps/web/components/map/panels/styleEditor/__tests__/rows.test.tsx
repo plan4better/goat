@@ -212,9 +212,9 @@ describe("rows", () => {
     expect(onChange).toHaveBeenCalledWith("square");
   });
 
-  it("ChoiceRow searches a long list", async () => {
+  it("ChoiceRow searches a long list (13 choices and more)", async () => {
     const onChange = vi.fn();
-    const options = Array.from({ length: 12 }, (_, i) => ({ value: i, label: `Field ${i + 1}` }));
+    const options = Array.from({ length: 13 }, (_, i) => ({ value: i, label: `Field ${i + 1}` }));
     renderPanel(<ChoiceRow label="Field" value={0} options={options} onChange={onChange} />);
     await userEvent.click(screen.getByRole("combobox", { name: "Field" }));
     await userEvent.type(screen.getByRole("textbox", { name: "search_placeholder_short" }), "12");

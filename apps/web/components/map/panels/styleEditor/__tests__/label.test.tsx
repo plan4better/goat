@@ -48,10 +48,10 @@ describe("label part", () => {
   it("picking a field writes {field}", async () => {
     const { store } = render({ text: "{name}" });
     await openGroup("style_editor.part_label");
-    await userEvent.click(within(rowOf("style_editor.text")).getByRole("button"));
+    await userEvent.click(within(rowOf("style_editor.text")).getByRole("combobox"));
     await userEvent.click(screen.getByText("Einwohner 2020"));
     expect(store.get("symbol.label.text")).toBe("{Einwohner 2020}");
-    await userEvent.click(within(rowOf("style_editor.text")).getByRole("button"));
+    await userEvent.click(within(rowOf("style_editor.text")).getByRole("combobox"));
     await userEvent.click(screen.getByText("a{b}"));
     expect(store.get("symbol.label.text")).toBe("{a\\{b\\}}");
   });
@@ -67,7 +67,7 @@ describe("label part", () => {
     const { store } = render({ text: "{name}" });
     await openGroup("style_editor.part_label");
     expect(screen.queryByText("style_editor.numbers")).toBeNull();
-    await userEvent.click(within(rowOf("style_editor.text")).getByRole("button"));
+    await userEvent.click(within(rowOf("style_editor.text")).getByRole("combobox"));
     await userEvent.click(screen.getByText("population"));
     expect(store.get("symbol.label.text")).toBe("{population}");
     expect(screen.getByText("style_editor.numbers")).toBeDefined();

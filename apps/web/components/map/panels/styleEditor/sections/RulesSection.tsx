@@ -149,7 +149,9 @@ export function RulesSection() {
             key: "rule:new",
             title: t("style_editor.new_rule"),
             anchorTop: 120,
-            render: () => <NewRuleEditor onAdded={(id) => open(id, 120)} />,
+            render: () => (
+              <NewRuleEditor onAdded={(id) => open(id, 120)} onCancel={() => popover.close(next)} />
+            ),
           }),
       }}
       empty={keys.length ? undefined : t("style_editor.rules_empty")}>

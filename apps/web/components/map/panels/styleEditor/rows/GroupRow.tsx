@@ -4,10 +4,8 @@ import { Box, Tooltip, Typography } from "@mui/material";
 import { type ReactNode, memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
-
 import { useIsOpener } from "@/components/map/panels/styleEditor/popovers/usePopover";
-import { FieldButton } from "@/components/map/panels/styleEditor/rows/FieldButton";
+import { FieldButton, FieldTrailingIcon } from "@/components/map/panels/styleEditor/rows/FieldButton";
 import { Row } from "@/components/map/panels/styleEditor/rows/Row";
 
 /** A swatch: a CSS background (a color, a gradient, a hatch); `wide` for ramps, `small` inside a pill. */
@@ -95,7 +93,7 @@ export function ValueButton({
       buttonRef={buttonRef}
       expanded={expanded}
       active={active}
-      end={<Icon iconName={ICON_NAME.CHEVRON_RIGHT} sx={{ fontSize: 10, color: "text.secondary" }} />}>
+      end={<FieldTrailingIcon kind="chevron" />}>
       {swatch && <SwatchBox swatch={swatch} />}
       {glyph}
       {curve && <CurveGlyph />}

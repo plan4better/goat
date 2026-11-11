@@ -1,24 +1,32 @@
-// The field picker (prototype 5.4): each field with its kind, display name and a short profile, searched by name and
-// display name.
-import { Box, InputBase, ListItemIcon, ListItemText, MenuItem, MenuList, Typography } from "@mui/material";
-import { useMemo, useState } from "react";
+// The field picker (prototype 5.4): the app's field list (FieldMenu) at the control that picks a field, each field
+// with its kind, display name and a short profile. Fields the use cannot take (a number where only numbers work) are
+// left out, as the panel's other choices leave out what does not apply.
+import { Typography } from "@mui/material";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import FieldKindIcon, { fieldIndicatorKind } from "@/components/common/FieldKindIcon";
+import FieldMenu from "@/components/common/FieldMenu";
 import {
   type FieldInfo,
   type FieldProfile,
   useFieldProfile,
 } from "@/components/map/panels/styleEditor/context";
+import type { DropdownItem, MenuPlacement } from "@/components/map/panels/styleEditor/popovers/DropdownMenu";
+import { FormButton } from "@/components/map/panels/styleEditor/rows/FormButton";
 
 const NUMBER_TYPES = new Set(["number", "integer"]);
 /** Profiles load only for a list this short: a search narrows a long one first (a profile is a query on the data). */
 const PROFILE_LIMIT = 20;
 
 export interface FieldPickerProps {
+  /** The control it opens at; closed while null. */
+  anchorEl: HTMLElement | null;
+  onClose: () => void;
   fields: FieldInfo[];
   value?: string;
   onChange: (name: string) => void;
+  /** The menu's heading (what the field is for). */
+  title?: string;
   filter?: "number" | "text";
   exclude?: string[];
   hint?: string;
@@ -26,120 +34,100 @@ export interface FieldPickerProps {
   profile?: (field: FieldInfo, loaded: FieldProfile | undefined) => string | undefined;
   /** Fields listed first under their own heading (fields named for the property, such as `height`), lower-case. */
   suggested?: { names: readonly string[]; title: string; othersTitle: string };
+  /** Rows before the fields (a label's "Custom text"). */
+  before?: DropdownItem[];
+  placement?: MenuPlacement;
 }
 
-function FieldItem({
+/** The line under a field: its name where the display name differs, and its profile once loaded. */
+function FieldSub({
   field,
-  selected,
   load,
   profile,
-  onPick,
 }: {
   field: FieldInfo;
-  selected: boolean;
   load: boolean;
   profile?: FieldPickerProps["profile"];
-  onPick: (name: string) => void;
 }) {
-  const numeric = NUMBER_TYPES.has(field.type);
-  const loaded = useFieldProfile(profile && numeric ? field.name : undefined, { load });
+  const loaded = useFieldProfile(profile && NUMBER_TYPES.has(field.type) ? field.name : undefined, { load });
   const sub = [field.label !== field.name ? field.name : undefined, profile?.(field, loaded)]
     .filter(Boolean)
     .join(" · ");
-  return (
-    <MenuItem selected={selected} onClick={() => onPick(field.name)}>
-      <ListItemIcon>
-        <FieldKindIcon kind={fieldIndicatorKind({ type: field.type })} />
-      </ListItemIcon>
-      <ListItemText
-        primary={field.label}
-        secondary={sub || undefined}
-        secondaryTypographyProps={{ variant: "caption" }}
-      />
-    </MenuItem>
-  );
-}
-
-/** A heading in the list. */
-function Heading({ children }: { children: string }) {
-  return (
-    <Typography
-      component="li"
-      role="presentation"
-      variant="caption"
-      color="text.secondary"
-      sx={{ display: "block", px: 3, pt: 1.5, pb: 0.5 }}>
-      {children}
+  return sub ? (
+    <Typography component="span" variant="inherit">
+      {sub}
     </Typography>
-  );
+  ) : null;
 }
 
 export function FieldPicker({
+  anchorEl,
+  onClose,
   fields,
   value,
   onChange,
+  title,
   filter,
   exclude,
   hint,
   profile,
   suggested,
+  before = [],
+  placement,
 }: FieldPickerProps) {
   const { t } = useTranslation("common");
-  const [search, setSearch] = useState("");
-  const shown = useMemo(() => {
-    const needle = search.trim().toLocaleLowerCase();
-    return fields.filter(
-      (f) =>
-        !exclude?.includes(f.name) &&
-        (filter === undefined || (filter === "number") === NUMBER_TYPES.has(f.type)) &&
-        (filter !== "text" || f.type === "string") &&
-        (!needle ||
-          f.name.toLocaleLowerCase().includes(needle) ||
-          f.label.toLocaleLowerCase().includes(needle))
-    );
-  }, [fields, filter, exclude, search]);
-
-  const groups = useMemo(() => {
-    if (!suggested) return [{ title: "", items: shown }];
-    const isSuggested = (f: FieldInfo) => suggested.names.includes(f.name.toLowerCase());
-    const first = shown.filter(isSuggested);
-    if (!first.length) return [{ title: "", items: shown }];
-    return [
-      { title: suggested.title, items: first },
-      { title: suggested.othersTitle, items: shown.filter((f) => !isSuggested(f)) },
-    ];
-  }, [shown, suggested]);
-
+  const usable = fields.filter(
+    (f) =>
+      !exclude?.includes(f.name) &&
+      (filter === undefined || (filter === "number") === NUMBER_TYPES.has(f.type)) &&
+      (filter !== "text" || f.type === "string")
+  );
   return (
-    <Box>
-      <InputBase
-        value={search}
-        autoFocus
-        placeholder={t("style_editor.search_fields")}
-        inputProps={{ "aria-label": t("style_editor.search_fields") }}
-        onChange={(event) => setSearch(event.target.value)}
-        sx={{ px: 3, py: 1, width: "100%", typography: "body2" }}
+    <FieldMenu
+      anchorEl={anchorEl}
+      onClose={onClose}
+      fields={usable}
+      isSelected={(field) => field.name === value}
+      onPick={(field) => onChange(field.name)}
+      // Only where there is something to say: an empty line would set the row on two lines.
+      sub={(field, shown) =>
+        field.label !== field.name || (profile && NUMBER_TYPES.has(field.type)) ? (
+          <FieldSub field={field} load={shown <= PROFILE_LIMIT} profile={profile} />
+        ) : undefined
+      }
+      suggested={suggested}
+      before={before}
+      title={title}
+      hint={hint}
+      placement={placement}
+      searchLabel={t("style_editor.search_fields")}
+    />
+  );
+}
+
+/** A field's value in a row: the field it holds, opening the field picker under it. */
+export function FieldPickerButton({
+  text,
+  start,
+  ariaLabel,
+  ...picker
+}: Omit<FieldPickerProps, "anchorEl" | "onClose"> & {
+  text: ReactNode;
+  start?: ReactNode;
+  ariaLabel?: string;
+}) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <FormButton
+        popup="listbox"
+        open={anchor !== null}
+        ariaLabel={ariaLabel}
+        start={start}
+        text={text}
+        onOpen={(el) => setAnchor(anchor ? null : el)}
       />
-      <MenuList dense sx={{ maxHeight: 320, overflowY: "auto" }}>
-        {groups.map((group, gi) => [
-          group.title && group.items.length ? <Heading key={`h${gi}`}>{group.title}</Heading> : null,
-          ...group.items.map((field) => (
-            <FieldItem
-              key={field.name}
-              field={field}
-              selected={field.name === value}
-              load={shown.length <= PROFILE_LIMIT}
-              profile={profile}
-              onPick={onChange}
-            />
-          )),
-        ])}
-      </MenuList>
-      {hint && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 3, pb: 2 }}>
-          {hint}
-        </Typography>
-      )}
-    </Box>
+      <FieldPicker anchorEl={anchor} onClose={() => setAnchor(null)} {...picker} />
+    </>
   );
 }

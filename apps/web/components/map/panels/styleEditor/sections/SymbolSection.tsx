@@ -291,7 +291,7 @@ function ScopeNote() {
       <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
         {t("style_editor.scope_note", { class: name })}
       </Typography>
-      <Button size="small" onClick={() => store.setScope(null)} sx={{ textTransform: "none" }}>
+      <Button variant="text" size="small" onClick={() => store.setScope(null)} sx={{ textTransform: "none" }}>
         {t("style_editor.all_features")}
       </Button>
     </Box>

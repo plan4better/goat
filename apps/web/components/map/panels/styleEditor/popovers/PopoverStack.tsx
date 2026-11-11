@@ -1,10 +1,11 @@
 "use client";
 
-// Holds the open popovers and draws them: level 1 left of the panel at the row that opened it, level 2 left of
-// level 1, the picker next to its anchor. They are drawn in a portal, positioned from the panel's box, so the boxes
-// that hold the panel on a page (scrolling, clipping) cannot cut them off. Only open popovers render their content.
-// Escape closes the picker, then level 2, then level 1. A new scope (another layer or style) closes them all, and a
-// picker closes when its control leaves the page.
+// Holds the open popovers and draws them: level 1 left of the panel at the row that opened it, each further level left
+// of the one that opened it (never past the window's left edge: there it overlaps the level under it), the picker next
+// to its anchor. They are drawn in a portal, positioned from the panel's box, so the boxes that hold the panel on a
+// page (scrolling, clipping) cannot cut them off. Only open popovers render their content. Escape closes the picker,
+// then the last level, one by one. A new scope (another layer or style) closes them all, and a picker closes when its
+// control leaves the page.
 import { Box, IconButton, Popper, type PopperProps, Typography } from "@mui/material";
 import {
   type ReactNode,
@@ -23,6 +24,7 @@ import { useTranslation } from "react-i18next";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { FloatingPanel } from "@/components/common/FloatingPanel";
+import { RIGHT_PANEL_WIDTH } from "@/components/map/layouts/desktop/rightStack";
 import {
   CLOSED,
   LevelContext,
@@ -36,13 +38,12 @@ import {
   placeIn,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
 
-export const POPOVER_WIDTH = 320;
-export const PICKER_WIDTH = 288;
+/** The popovers and pickers are as wide as the panel they open from. */
+export const POPOVER_WIDTH = RIGHT_PANEL_WIDTH;
+export const PICKER_WIDTH = POPOVER_WIDTH;
 const GAP = 12;
 /** The popover's header sits this far above the row that opened it. */
 const HEADER_OFFSET = 62;
-
-const slot = (level: PopoverLevel) => String(level) as keyof OpenStack;
 
 // Memoized: a frame renders again only when its entry or its content changes, not when another level opens or closes.
 export const PopoverFrame = memo(function PopoverFrame({
@@ -50,14 +51,17 @@ export const PopoverFrame = memo(function PopoverFrame({
   level,
   onClose,
   onBack,
+  backTitle,
   width,
   children,
 }: {
   entry: PopoverEntry;
-  level?: 1 | 2;
+  level?: number;
   onClose: () => void;
-  /** Goes back to the editor this one replaced. */
+  /** Goes back to the panel this one replaced (the View popover's Sky and atmosphere); the style editor's popovers
+   * open beside each other and have none. */
   onBack?: () => void;
+  backTitle?: string;
   width: number;
   children: ReactNode;
 }) {
@@ -80,11 +84,11 @@ export const PopoverFrame = memo(function PopoverFrame({
             pb: 1.5,
             flex: "none",
           }}>
-          {onBack && entry.back && (
+          {onBack && backTitle && (
             <IconButton
               size="small"
-              aria-label={t("style_editor.back_to", { title: entry.back.title })}
-              title={t("style_editor.back_to", { title: entry.back.title })}
+              aria-label={t("style_editor.back_to", { title: backTitle })}
+              title={t("style_editor.back_to", { title: backTitle })}
               onClick={onBack}
               sx={{ ml: -1.5 }}>
               <Icon iconName={ICON_NAME.CHEVRON_LEFT} sx={{ fontSize: 12 }} />
@@ -272,7 +276,8 @@ function Placed({
   const panel = marker.current?.closest("[data-style-panel]") ?? marker.current?.parentElement;
   if (box && panel) placeIn(box, panel);
   const rect = panel?.getBoundingClientRect();
-  const left = (rect?.left ?? 0) - offset;
+  // Never past the window's left edge: a level with no room left of the one under it overlaps it, above it.
+  const left = Math.max(GAP, (rect?.left ?? 0) - offset);
   // At its row, moved up as far as it needs to end inside the window (as a picker is); taller than the window, it
   // starts at the top.
   const top = Math.max(
@@ -298,6 +303,30 @@ function Placed({
     document.body
   );
 }
+
+// Drawn once per entry: the editors read the store themselves, so opening or closing another level leaves them as
+// they are.
+const LevelContent = memo(function LevelContent({ entry, level }: { entry: PopoverEntry; level: number }) {
+  return <LevelContext.Provider value={level}>{entry.render()}</LevelContext.Provider>;
+});
+
+/** One level's frame; its close button closes it with the levels it opened. */
+const LevelFrame = memo(function LevelFrame({
+  entry,
+  level,
+  close,
+}: {
+  entry: PopoverEntry;
+  level: number;
+  close: (level: PopoverLevel) => void;
+}) {
+  const onClose = useCallback(() => close(level), [close, level]);
+  return (
+    <PopoverFrame entry={entry} level={level} width={POPOVER_WIDTH} onClose={onClose}>
+      <LevelContent entry={entry} level={level} />
+    </PopoverFrame>
+  );
+});
 
 /** Provides usePopover to the panel and draws the open popovers; place it inside the panel's positioned box. A new
  * `scope` (the panel showing another layer or style) closes them all.
@@ -343,19 +372,13 @@ export function PopoverProvider({ scope, children }: { scope?: unknown; children
   }, []);
 
   const close = useCallback((level: PopoverLevel) => {
-    setOpen((state) => {
-      if (level === 1) return CLOSED;
-      if (level === 2) return { ...state, "2": null, picker: null };
-      return { ...state, picker: null };
-    });
+    setOpen((state) =>
+      level === "picker"
+        ? { ...state, picker: null }
+        : { levels: state.levels.slice(0, level - 1), picker: null }
+    );
   }, []);
-  const close1 = useCallback(() => close(1), [close]);
-  const close2 = useCallback(() => close(2), [close]);
   const closePicker = useCallback(() => close("picker"), [close]);
-  const back = useCallback(
-    () => setOpen((state) => ({ ...state, "2": state["2"]?.back ?? null, picker: null })),
-    []
-  );
 
   const api = useMemo<PopoverApi>(
     () => ({
@@ -363,28 +386,20 @@ export function PopoverProvider({ scope, children }: { scope?: unknown; children
         const opener = clicked.current?.closest("button, [role='button']") ?? null;
         const entry: PopoverEntry = { ...given, opener };
         setOpen((state) => {
-          // An editor opened from inside the level 2 editor takes its place: it can go back to it (past a step on
-          // the way, the field picker).
-          const previous = state["2"];
-          if (
-            level === 2 &&
-            previous &&
-            previous.key !== entry.key &&
-            clicked.current?.closest("[data-popover-level='2']")
-          )
-            entry.back = previous.transient ? previous.back : previous;
-          if (state[slot(level)]?.key === entry.key) {
-            if (level === 1) return CLOSED;
-            if (level === 2) return { ...state, "2": null, picker: null };
-            return { ...state, picker: null };
-          }
-          if (level === 1) return { "1": entry, "2": null, picker: null };
-          if (level === 2) return { ...state, "2": entry, picker: null };
-          return { ...state, picker: entry };
+          if (level === "picker")
+            return state.picker?.key === entry.key ? { ...state, picker: null } : { ...state, picker: entry };
+          const i = level - 1;
+          // The level that asked is gone (it closed in the same click): nothing opens from it.
+          if (state.levels.length < i) return state;
+          const before = state.levels.slice(0, i);
+          // The same key again closes it, with the levels it opened.
+          if (state.levels[i]?.key === entry.key) return { levels: before, picker: null };
+          return { levels: [...before, entry], picker: null };
         });
       },
       close,
-      current: (level) => openRef.current[slot(level)],
+      current: (level) =>
+        level === "picker" ? openRef.current.picker : (openRef.current.levels[level - 1] ?? null),
     }),
     [close]
   );
@@ -394,15 +409,12 @@ export function PopoverProvider({ scope, children }: { scope?: unknown; children
       if (event.key !== "Escape") return;
       const state = openRef.current;
       if (state.picker) close("picker");
-      else if (state["2"]) close(2);
-      else if (state["1"]) close(1);
+      else if (state.levels.length) close(state.levels.length);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [close]);
 
-  const level1 = open["1"];
-  const level2 = open["2"];
   const picker = open.picker;
   const pickerElement = picker?.anchorEl;
   // A picker whose control left the page (its row turned into another, its part switched off, an undo) closes: it
@@ -416,15 +428,6 @@ export function PopoverProvider({ scope, children }: { scope?: unknown; children
     return () => observer.disconnect();
   }, [pickerElement, close]);
   const pickerAnchor = useMemo(() => (pickerElement ? besideFrame(pickerElement) : null), [pickerElement]);
-  // Each entry's content, drawn once per entry: the editors read the store themselves.
-  const content1 = useMemo(
-    () => level1 && <LevelContext.Provider value={1}>{level1.render()}</LevelContext.Provider>,
-    [level1]
-  );
-  const content2 = useMemo(
-    () => level2 && <LevelContext.Provider value={2}>{level2.render()}</LevelContext.Provider>,
-    [level2]
-  );
   const contentPicker = useMemo(
     () => picker && <LevelContext.Provider value="picker">{picker.render()}</LevelContext.Provider>,
     [picker]
@@ -435,29 +438,16 @@ export function PopoverProvider({ scope, children }: { scope?: unknown; children
       {/* Around the popovers too: a row in a popover can open the next level. */}
       <OpenStackContext.Provider value={store}>
         {children}
-        {level1 && (
-          <Placed marker={marker} offset={GAP + POPOVER_WIDTH} anchorTop={level1.anchorTop} zIndex={LEVEL_Z}>
-            <PopoverFrame entry={level1} level={1} width={POPOVER_WIDTH} onClose={close1}>
-              {content1}
-            </PopoverFrame>
-          </Placed>
-        )}
-        {level2 && (
+        {open.levels.map((entry, i) => (
           <Placed
+            key={`${i}:${entry.key}`}
             marker={marker}
-            offset={2 * (GAP + POPOVER_WIDTH)}
-            anchorTop={level2.anchorTop}
-            zIndex={LEVEL_Z + 1}>
-            <PopoverFrame
-              entry={level2}
-              level={2}
-              width={POPOVER_WIDTH}
-              onClose={close2}
-              onBack={level2.back ? back : undefined}>
-              {content2}
-            </PopoverFrame>
+            offset={(i + 1) * (GAP + POPOVER_WIDTH)}
+            anchorTop={entry.anchorTop}
+            zIndex={LEVEL_Z + i}>
+            <LevelFrame entry={entry} level={i + 1} close={close} />
           </Placed>
-        )}
+        ))}
         {picker &&
           (picker.anchorEl ? (
             <PickerPopper anchorEl={pickerAnchor}>

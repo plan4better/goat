@@ -60,6 +60,7 @@ export function AdjustmentsEditor() {
       ))}
       <Box sx={{ px: 3, pt: 2 }}>
         <Button
+          variant="text"
           size="small"
           color="inherit"
           onClick={() =>

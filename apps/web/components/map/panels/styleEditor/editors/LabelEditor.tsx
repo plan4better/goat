@@ -3,13 +3,14 @@
 // The rows of the label (prototype 4.1 Label; spec 3.4): the text as one field or a template with a preview from
 // the first feature, the number format when the text shows a number, the text's look, placement, offset, priority
 // and overlap.
-import { Button, ListItemText, MenuItem, Typography } from "@mui/material";
+import { Button, Typography } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { ICON_NAME } from "@p4b/ui/components/Icon";
+
 import type { NumberFormatSpec } from "@/lib/style/compile/labels";
 import type { Geometry } from "@/lib/style/compile/types";
-import { SLIDERS } from "@/lib/style/editor/defaults";
 import {
   fieldToken,
   fillTemplate,
@@ -36,16 +37,15 @@ import {
   NumberFormatEditor,
   PREVIEW_NUMBER,
 } from "@/components/map/panels/styleEditor/editors/NumberFormatEditor";
+import { OffsetRows } from "@/components/map/panels/styleEditor/editors/OffsetRows";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
-import { FieldPicker } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
+import { FieldPicker, FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
 import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import {
   ChoiceRow,
-  FormButton,
   NavRow,
   Row,
-  SliderRow,
   TextRow,
 } from "@/components/map/panels/styleEditor/rows";
 
@@ -85,23 +85,6 @@ const PLACEMENT: Record<Geometry, PartRow | undefined> = {
   polygon: undefined,
 };
 
-function TextPicker({ value, onPick }: { value?: string; onPick: (field: string | null) => void }) {
-  const { t } = useTranslation("common");
-  const { fields } = useStyleData();
-  return (
-    <>
-      <MenuItem dense onClick={() => onPick(null)}>
-        <ListItemText
-          primary={t("style_editor.custom_text")}
-          secondary={t("style_editor.custom_text_sub")}
-          secondaryTypographyProps={{ variant: "caption" }}
-        />
-      </MenuItem>
-      <FieldPicker fields={fields} value={value} onChange={onPick} />
-    </>
-  );
-}
-
 function TextRows({ base }: { base: Path }) {
   const { t, i18n } = useTranslation("common");
   const store = useEditor();
@@ -126,48 +109,14 @@ function TextRows({ base }: { base: Path }) {
   const templateLines = template ? template.split("\n").length : 0;
   const label = t("style_editor.text");
 
-  const pickText = (anchor: HTMLElement) =>
-    popover.open("picker", {
-      key: "label:text",
-      title: label,
-      anchorTop: anchorTopOf(anchor),
-      anchorEl: anchor,
-      render: () => (
-        <TextPicker
-          value={field ?? undefined}
-          onPick={(name) => {
-            if (name === null) setCustom(true);
-            else {
-              setCustom(false);
-              store.set(textPath, fieldToken(name));
-            }
-            popover.close("picker");
-          }}
-        />
-      ),
-    });
-  const insertField = (anchor: HTMLElement) =>
-    popover.open("picker", {
-      key: "label:insert",
-      title: t("style_editor.insert_field"),
-      anchorTop: anchorTopOf(anchor),
-      anchorEl: anchor,
-      render: () => (
-        <FieldPicker
-          fields={data.fields}
-          onChange={(name) => {
-            store.set(textPath, `${(store.get(textPath) as string | undefined) ?? ""}${fieldToken(name)}`);
-            popover.close("picker");
-          }}
-        />
-      ),
-    });
+  const [insertAnchor, setInsertAnchor] = useState<HTMLElement | null>(null);
 
   const preview = fillTemplate(template, data.sample, data.fieldTypes, format ?? {}, i18n.language, formats);
   return (
     <>
       <Row label={label}>
-        <FormButton
+        <FieldPickerButton
+          ariaLabel={label}
           text={
             custom
               ? t("style_editor.custom_text")
@@ -175,7 +124,22 @@ function TextRows({ base }: { base: Path }) {
                 ? fieldLabel(field)
                 : template || t("style_editor.no_text")
           }
-          onOpen={pickText}
+          title={label}
+          fields={data.fields}
+          value={custom ? undefined : (field ?? undefined)}
+          before={[
+            {
+              label: t("style_editor.custom_text"),
+              sub: t("style_editor.custom_text_sub"),
+              icon: ICON_NAME.EDIT,
+              selected: custom,
+              onClick: () => setCustom(true),
+            },
+          ]}
+          onChange={(name) => {
+            setCustom(false);
+            store.set(textPath, fieldToken(name));
+          }}
         />
       </Row>
       {custom && (
@@ -189,9 +153,25 @@ function TextRows({ base }: { base: Path }) {
             onChange={(value) => store.set(textPath, value || undefined)}
           />
           <Row>
-            <Button size="small" color="inherit" onClick={(event) => insertField(event.currentTarget)}>
+            <Button
+              variant="text"
+              size="small"
+              color="inherit"
+              aria-haspopup="listbox"
+              aria-expanded={insertAnchor !== null}
+              onClick={(event) => setInsertAnchor(insertAnchor ? null : event.currentTarget)}>
               {t("style_editor.insert_field")}
             </Button>
+            <FieldPicker
+              anchorEl={insertAnchor}
+              onClose={() => setInsertAnchor(null)}
+              title={t("style_editor.insert_field")}
+              placement="bottom-start"
+              fields={data.fields}
+              onChange={(name) =>
+                store.set(textPath, `${(store.get(textPath) as string | undefined) ?? ""}${fieldToken(name)}`)
+              }
+            />
           </Row>
         </>
       )}
@@ -266,40 +246,6 @@ function TextRows({ base }: { base: Path }) {
   );
 }
 
-function OffsetRows({ base }: { base: Path }) {
-  const { t } = useTranslation("common");
-  const store = useEditor();
-  const { value: offset, writePath: path } = useScoped(`${base}.offset`);
-  // An offset by zoom has no sliders here.
-  if (offset !== undefined && !Array.isArray(offset)) return null;
-  const [x, y] = (Array.isArray(offset) ? offset : [0, 0]) as [number, number];
-  const range = SLIDERS["label.offset"];
-  const write = (next: [number, number]) =>
-    store.set(path, next[0] === 0 && next[1] === 0 ? undefined : next);
-  return (
-    <>
-      <SliderRow
-        label={t("style_editor.offset_x")}
-        min={range.min}
-        max={range.max}
-        step={range.step}
-        unit={range.unit}
-        value={x}
-        onChange={(v) => write([v, y])}
-      />
-      <SliderRow
-        label={t("style_editor.offset_y")}
-        min={range.min}
-        max={range.max}
-        step={range.step}
-        unit={range.unit}
-        value={y}
-        onChange={(v) => write([x, v])}
-      />
-    </>
-  );
-}
-
 function PriorityRow({ base }: { base: Path }) {
   const { t } = useTranslation("common");
   const store = useEditor();
@@ -359,7 +305,7 @@ export function LabelEditor({ base }: { base: Path }) {
       <PropertyRow row={MAX_WIDTH} base={base} />
       {placement && <PropertyRow row={placement} base={base} />}
       {geometry === "polygon" && <RoofPlacement />}
-      <OffsetRows base={base} />
+      <OffsetRows base={base} rangeKey="label.offset" />
       {overlap !== true && !scoped && <PriorityRow base={base} />}
       <PropertyRow row={OVERLAP} base={base} />
     </>

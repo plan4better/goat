@@ -14,6 +14,7 @@ import { formatNumberText } from "@/lib/style/editor/labels";
 import { getIn } from "@/lib/style/editor/store";
 import { type JsonObject, isObject } from "@/lib/style/json";
 
+import { SEARCH_INPUT } from "@/components/common/SearchableMenu";
 import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
 import { TextRow } from "@/components/map/panels/styleEditor/rows";
 
@@ -164,7 +165,10 @@ export function ClassValues({
         value={search}
         autoFocus
         placeholder={t("style_editor.search_values", { total: number(total) })}
-        inputProps={{ "aria-label": t("style_editor.search_values", { total: number(total) }) }}
+        inputProps={{
+          ...SEARCH_INPUT,
+          "aria-label": t("style_editor.search_values", { total: number(total) }),
+        }}
         onChange={(event) => setSearch(event.target.value)}
         sx={{ px: 3, py: 1, width: "100%", typography: "body2" }}
       />

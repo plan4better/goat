@@ -1,4 +1,5 @@
-export { ChoiceRow, type ChoiceOption, type ChoiceRowProps } from "./ChoiceRow";
+export { AddButton, type AddButtonProps } from "./AddButton";
+export { ChoiceField, ChoiceRow, type ChoiceOption, type ChoiceRowProps } from "./ChoiceRow";
 export { ColorField, HATCH, type ColorFieldProps } from "./ColorField";
 export { FormButton, type FormButtonProps } from "./FormButton";
 export {

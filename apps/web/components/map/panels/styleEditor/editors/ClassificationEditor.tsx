@@ -36,7 +36,7 @@ import { ClassList } from "@/components/map/panels/styleEditor/editors/ClassList
 import { VALUES_LIMIT } from "@/components/map/panels/styleEditor/editors/ClassValues";
 import { Histogram } from "@/components/map/panels/styleEditor/editors/Histogram";
 import { choiceValues } from "@/components/map/panels/styleEditor/editors/partRows";
-import { FieldPicker } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
+import { FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
 import { PalettePicker, paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
 import {
   anchorTopOf,
@@ -44,7 +44,7 @@ import {
   useNextLevel,
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
-import { ChoiceRow, FormButton, NavRow, Row } from "@/components/map/panels/styleEditor/rows";
+import { ChoiceRow, NavRow, Row } from "@/components/map/panels/styleEditor/rows";
 
 const NUMERIC_METHODS = [
   "quantile",
@@ -177,26 +177,6 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
   const others = (Array.isArray(all) ? all : []).filter(isObject);
   const fieldLabel = data.fields.find((f) => f.name === field)?.label ?? field;
 
-  const pickField = (anchor: HTMLElement) =>
-    popover.open("picker", {
-      key: `class-field:${ci}`,
-      title: t("style_editor.field"),
-      anchorTop: anchorTopOf(anchor),
-      anchorEl: anchor,
-      render: () => (
-        <FieldPicker
-          fields={data.fields.filter((f) => f.type !== "date" && f.type !== "datetime")}
-          value={field}
-          profile={(_, loaded) => profileRange(loaded, locale, t("style_editor.to"))}
-          onChange={(name) => {
-            const picked = data.fields.find((f) => f.name === name);
-            if (picked) store.update((doc) => setClassificationField(doc, ci, picked));
-            popover.close("picker");
-          }}
-        />
-      ),
-    });
-
   const methods = numericField ? ["categories", ...NUMERIC_METHODS] : ["categories"];
   const counts = categories ? CATEGORY_COUNTS : CLASS_COUNTS;
   const byHand = categories && typeof c.count !== "number";
@@ -281,10 +261,17 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
       {/* The settings stay in view; a long class list scrolls on its own below them (the popover's `fill`). */}
       <Box sx={{ flex: "none" }}>
         <Row label={t("style_editor.field")}>
-          <FormButton
+          <FieldPickerButton
+            ariaLabel={t("style_editor.field")}
             start={fieldType && <FieldKindIcon kind={fieldIndicatorKind({ type: fieldType })} />}
             text={fieldLabel || t("style_editor.pick_field")}
-            onOpen={pickField}
+            fields={data.fields.filter((f) => f.type !== "date" && f.type !== "datetime")}
+            value={field}
+            profile={(_, loaded) => profileRange(loaded, locale, t("style_editor.to"))}
+            onChange={(name) => {
+              const picked = data.fields.find((f) => f.name === name);
+              if (picked) store.update((doc) => setClassificationField(doc, ci, picked));
+            }}
           />
         </Row>
         {idField && (

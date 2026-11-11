@@ -43,11 +43,15 @@ export function StatusLine({ saver, problemsOnly = false }: { saver: StyleSaver;
       </Typography>
       {reason === "base_too_old" && (
         <Box sx={{ display: "flex", gap: 2 }}>
-          <Button size="small" variant="contained" onClick={() => void saver.resolveBaseTooOld("apply")}>
-            {t("style_editor.apply_my_changes")}
-          </Button>
-          <Button size="small" onClick={() => void saver.resolveBaseTooOld("discard")}>
+          <Button size="small" variant="text" onClick={() => void saver.resolveBaseTooOld("discard")}>
             {t("style_editor.discard_my_changes")}
+          </Button>
+          <Button
+            size="small"
+            variant="contained"
+            disableElevation
+            onClick={() => void saver.resolveBaseTooOld("apply")}>
+            {t("style_editor.apply_my_changes")}
           </Button>
         </Box>
       )}

@@ -71,7 +71,7 @@ export const ValueModeButton = memo(function ValueModeButton({
   const items: DropdownItem[] = modes.map((m) => ({
     label: name(m),
     sub: sub(m),
-    icon: <Icon iconName={ICONS[m]} sx={{ fontSize: 14 }} />,
+    icon: ICONS[m],
     selected: m === mode,
     onClick: () => anchor && onSelect(m, anchor),
   }));
@@ -79,13 +79,14 @@ export const ValueModeButton = memo(function ValueModeButton({
     items.push({
       label: t("style_editor.mode_reset"),
       sub: t("style_editor.mode_reset_sub"),
-      icon: <Icon iconName={ICON_NAME.UNDO} sx={{ fontSize: 14 }} />,
+      icon: ICON_NAME.UNDO,
       onClick: onReset,
     });
   return (
     <>
       <FieldButton
         ariaLabel={t("style_editor.value_mode_aria", { label, mode: name(mode) })}
+        popup="menu"
         expanded={anchor !== null}
         active={anchor !== null}
         onClick={(el) => setAnchor(anchor ? null : el)}

@@ -32,11 +32,19 @@ const FIELDS: FieldInfo[] = Array.from({ length: 50 }, (_, i) => ({
   label: `n${i}`,
 }));
 
+const anchor = () => {
+  const button = document.createElement("button");
+  document.body.appendChild(button);
+  return button;
+};
+
 describe("field picker profiles", () => {
   it("a long list asks for no profiles; a search that narrows it asks for the fields shown", () => {
     const { profiles, load } = source();
     renderPanel(
       <FieldPicker
+        anchorEl={anchor()}
+        onClose={() => undefined}
         fields={FIELDS}
         onChange={() => undefined}
         profile={(_, p) => (p ? `${p.min} to ${p.max}` : undefined)}
@@ -56,6 +64,8 @@ describe("field picker profiles", () => {
     const { profiles, arrive } = source();
     renderPanel(
       <FieldPicker
+        anchorEl={anchor()}
+        onClose={() => undefined}
         fields={FIELDS.slice(0, 3)}
         onChange={() => undefined}
         profile={(_, p) => (p ? `${p.min} to ${p.max}` : undefined)}

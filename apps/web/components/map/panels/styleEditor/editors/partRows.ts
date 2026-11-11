@@ -28,6 +28,8 @@ export type PartRow =
   | (RowBase & { type: "switch" })
   /** An icon reference, picked in the icon picker. */
   | (RowBase & { type: "icon" })
+  /** An `[x, y]` shift in px, as two sliders. */
+  | (RowBase & { type: "offset" })
   /** A fill pattern: in the Fill editor a row that opens the pattern editor; there, the patterns as tiles. */
   | (RowBase & { type: "pattern" | "pattern_tiles"; values: readonly string[] })
   | (RowBase & {
@@ -146,6 +148,7 @@ const LINE: PartGroup = {
     },
     { type: "choice", key: "join", label: "style_editor.corners", values: ["miter", "round", "bevel"] },
     { type: "number", key: "offset", label: "style_editor.offset", note: "style_editor.note_line_offset" },
+    { type: "number", key: "blur", label: "style_editor.blur" },
   ],
 };
 
@@ -215,6 +218,8 @@ const POINT_FILL: PartGroup = {
   rows: [
     { type: "color", key: "color", label: "style_editor.color" },
     { type: "number", key: "opacity", label: "style_editor.opacity" },
+    // A plain circle's shift (an image marker's is in the Icon editor, with the image).
+    { type: "offset", key: "offset", label: "style_editor.offset", when: (m) => !asImage(m) },
   ],
 };
 
@@ -239,11 +244,25 @@ const ICON: PartGroup = {
       fallback: (m: JsonObject) => (m.fill === false && typeof m.color === "string" ? m.color : undefined),
     },
     { type: "number", key: "rotation", label: "style_editor.rotation", when: asImage },
+    // A shift of the drawn image (MapLibre's icon offset); a plain circle has none.
+    { type: "offset", key: "offset", label: "style_editor.offset", when: asImage },
     {
       type: "choice",
       key: "anchor",
       label: "style_editor.anchor",
-      values: ["center", "bottom"],
+      // Every anchor the style takes: center and bottom (a pin's) first, with what they mean, then the rest in
+      // reading order.
+      values: [
+        "center",
+        "bottom",
+        "top_left",
+        "top",
+        "top_right",
+        "left",
+        "right",
+        "bottom_left",
+        "bottom_right",
+      ],
       subs: ["center", "bottom"],
       // A pin stands on its tip (the bottom) unless an anchor is set.
       when: (m) => (hasIcon(m) && alone(m)) || isPin(m.shape),

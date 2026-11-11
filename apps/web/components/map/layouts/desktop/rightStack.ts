@@ -8,7 +8,8 @@ const EDGE = 10;
 const GAP = 16;
 const MEASURE_CARD_WIDTH = 320;
 const FEATURE_EDIT_PANEL_WIDTH = 320;
-const RIGHT_PANEL_WIDTH = 300;
+/** The right panel's width (layer settings, the style editor); the style editor's popovers are as wide. */
+export const RIGHT_PANEL_WIDTH = 300;
 
 /** The measure card renders once a tool is picked or something is measured, not for the tool menu alone. */
 export function isMeasureCardShown({

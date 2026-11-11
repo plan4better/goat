@@ -12,6 +12,7 @@ import { PALETTES } from "@/lib/style/generated/catalog";
 import { paletteColors } from "@/lib/style/palettes";
 
 import { ColorPicker } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
+import { AddButton } from "@/components/map/panels/styleEditor/rows/AddButton";
 
 export type PaletteKind = "sequential" | "diverging" | "qualitative";
 
@@ -241,22 +242,9 @@ export function PalettePicker({
       {allowCustom && (
         <>
           <Divider sx={{ mt: 2, mb: 1 }} />
-          <Button
-            variant="text"
-            size="small"
-            startIcon={<Icon iconName={ICON_NAME.PLUS} sx={{ fontSize: "12px !important" }} />}
-            onClick={() => setEditing(true)}
-            sx={{
-              ml: 2,
-              height: 32,
-              px: 2.5,
-              borderRadius: 2,
-              fontSize: 13,
-              fontWeight: 700,
-              textTransform: "none",
-            }}>
+          <AddButton onClick={() => setEditing(true)} sx={{ ml: 2 }}>
             {t("style_editor.make_my_own_palette")}
-          </Button>
+          </AddButton>
         </>
       )}
     </Box>

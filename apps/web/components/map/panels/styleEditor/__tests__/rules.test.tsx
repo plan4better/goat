@@ -8,7 +8,7 @@ import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/Po
 import { RulesSection } from "@/components/map/panels/styleEditor/sections/RulesSection";
 import { SymbolSection } from "@/components/map/panels/styleEditor/sections/SymbolSection";
 
-import { choose, openGroup, pickColor, renderPanel } from "./renderPanel";
+import { openGroup, pickColor, renderPanel } from "./renderPanel";
 
 const FIELDS = [
   { name: "traffic", type: "number" as const, label: "traffic" },
@@ -46,22 +46,96 @@ const openRule = (name: string) =>
   );
 
 describe("rules", () => {
+  /** Picks `option` from the dropdown named `name` in condition `n` (from 1). */
+  const pickIn = async (n: number, name: string, option: string) => {
+    const groups = screen.getAllByRole("group", { name: "style_editor.condition_n" });
+    await userEvent.click(within(groups[n - 1]).getByRole("combobox", { name }));
+    await userEvent.click(within(screen.getByRole("listbox")).getByText(option));
+  };
+
   it("a new rule is written once its condition is complete", async () => {
     const { store } = setup();
     await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule" }));
-    expect(store.get("rules")).toBeUndefined();
-    await choose("style_editor.condition_field", "style_editor.pick_field", "traffic");
-    await choose(
-      "style_editor.condition_operator",
-      "filter_expressions.is",
-      "filter_expressions.is_less_than"
-    );
-    fireEvent.change(screen.getByRole("textbox", { name: "style_editor.condition_value" }), {
+    const add = screen.getByRole("button", { name: "style_editor.add_rule_confirm" });
+    expect(add.hasAttribute("disabled")).toBe(true);
+    // One condition on one line: the field, the comparison and the value.
+    const [condition] = screen.getAllByRole("group", { name: "style_editor.condition_n" });
+    expect(
+      within(condition).getByRole("combobox", { name: "style_editor.condition_field" }).textContent
+    ).toBe("style_editor.condition_field");
+    await pickIn(1, "style_editor.condition_field", "traffic");
+    await pickIn(1, "style_editor.condition_compare", "filter_expressions.is_less_than");
+    expect(add.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(within(condition).getByRole("textbox", { name: "style_editor.condition_value" }), {
       target: { value: "1500" },
     });
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule_confirm" }));
+    expect(store.get("rules")).toBeUndefined();
+    expect(add.hasAttribute("disabled")).toBe(false);
+    await userEvent.click(add);
     expect(store.get("rules.0.when")).toEqual({ op: "<", args: [{ property: "traffic" }, 1500] });
     expect(typeof store.get("rules.0.id")).toBe("string");
+  });
+
+  it("a second condition brings the all or any choice and a remove button per condition", async () => {
+    const { store } = setup();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule" }));
+    // One condition: "When", no all or any.
+    expect(screen.getByText("style_editor.when")).toBeDefined();
+    expect(screen.queryByText("style_editor.match_lead")).toBeNull();
+    expect(screen.queryByRole("button", { name: "style_editor.remove_condition" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_condition" }));
+    expect(screen.getAllByRole("group", { name: "style_editor.condition_n" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "style_editor.remove_condition" })).toHaveLength(2);
+    await pickIn(1, "style_editor.condition_field", "traffic");
+    await pickIn(1, "style_editor.condition_compare", "filter_expressions.is_greater_than");
+    fireEvent.change(
+      within(screen.getAllByRole("group", { name: "style_editor.condition_n" })[0]).getByRole("textbox"),
+      { target: { value: "10" } }
+    );
+    await pickIn(2, "style_editor.condition_field", "name");
+    await pickIn(2, "style_editor.condition_compare", "filter_expressions.is_blank");
+    // A comparison without a value has no value box.
+    expect(
+      within(screen.getAllByRole("group", { name: "style_editor.condition_n" })[1]).queryByRole("textbox")
+    ).toBeNull();
+    // Two: "Match all of these", with a menu for all or any.
+    expect(screen.queryByText("style_editor.when")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /^style_editor.match_lead/ }));
+    await userEvent.click(within(screen.getByRole("listbox")).getByText("style_editor.match_any"));
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule_confirm" }));
+    expect(store.get("rules.0.when")).toEqual({
+      op: "or",
+      args: [
+        { op: ">", args: [{ property: "traffic" }, 10] },
+        { op: "isNull", args: [{ property: "name" }] },
+      ],
+    });
+  });
+
+  it("Cancel closes the new rule without writing it; the comparison shows its short label", async () => {
+    const { store } = setup();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule" }));
+    await pickIn(1, "style_editor.condition_field", "traffic");
+    await pickIn(1, "style_editor.condition_compare", "filter_expressions.is_less_than");
+    expect(screen.getByRole("combobox", { name: "style_editor.condition_compare" }).textContent).toBe(
+      "style_editor.op_short_is_less_than"
+    );
+    await userEvent.click(screen.getByRole("button", { name: "cancel" }));
+    expect(screen.queryByText("style_editor.new_rule")).toBeNull();
+    expect(store.get("rules")).toBeUndefined();
+  });
+
+  it("removing a condition leaves the others", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule" }));
+    await pickIn(1, "style_editor.condition_field", "traffic");
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_condition" }));
+    await userEvent.click(screen.getAllByRole("button", { name: "style_editor.remove_condition" })[1]);
+    const groups = screen.getAllByRole("group", { name: "style_editor.condition_n" });
+    expect(groups).toHaveLength(1);
+    expect(
+      within(groups[0]).getByRole("combobox", { name: "style_editor.condition_field" }).textContent
+    ).toContain("traffic");
   });
 
   it("Visible off hides the matching features; moving a rule up changes its place", async () => {

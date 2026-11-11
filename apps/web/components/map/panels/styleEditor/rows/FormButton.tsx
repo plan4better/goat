@@ -1,11 +1,11 @@
 // The value of a property that is not fixed (by zoom, by attribute, by classes): a strip or curve and a summary
-// in the panel's field, opening its editor.
+// in the panel's field, opening its editor (a chevron) or a menu under it (a caret).
 import { Box, Tooltip, Typography } from "@mui/material";
 import { type ReactNode, memo } from "react";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { FieldButton } from "@/components/map/panels/styleEditor/rows/FieldButton";
+import { FieldButton, FieldTrailingIcon } from "@/components/map/panels/styleEditor/rows/FieldButton";
 import { CurveGlyph } from "@/components/map/panels/styleEditor/rows/GroupRow";
 
 export interface FormButtonProps {
@@ -17,6 +17,11 @@ export interface FormButtonProps {
   text: ReactNode;
   onOpen: (anchor: HTMLElement) => void;
   note?: string;
+  /** Opens a menu under it (a caret) rather than an editor (a chevron), and shows as open while it is. */
+  popup?: "listbox";
+  open?: boolean;
+  /** The field's name where no label is beside it. */
+  ariaLabel?: string;
 }
 
 export const FormButton = memo(function FormButton({
@@ -26,10 +31,17 @@ export const FormButton = memo(function FormButton({
   text,
   onOpen,
   note,
+  popup,
+  open,
+  ariaLabel,
 }: FormButtonProps) {
   return (
     <FieldButton
+      ariaLabel={ariaLabel}
       onClick={onOpen}
+      popup={popup}
+      expanded={popup ? !!open : undefined}
+      active={open}
       end={
         <>
           {note && (
@@ -39,7 +51,7 @@ export const FormButton = memo(function FormButton({
               </Box>
             </Tooltip>
           )}
-          <Icon iconName={ICON_NAME.CHEVRON_RIGHT} sx={{ fontSize: 10, color: "text.secondary" }} />
+          <FieldTrailingIcon kind={popup ? "caret" : "chevron"} />
         </>
       }>
       {start}
