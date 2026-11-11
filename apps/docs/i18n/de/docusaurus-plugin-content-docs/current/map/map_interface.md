@@ -79,3 +79,22 @@ Wenn Sie einen Layer im Layer Panel auswählen, erscheint der Bearbeitungsbereic
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
   <img src={require('/img/map/basemap/add_basemap_de.webp').default} alt="Eigene Grundkarte in GOAT hinzufügen" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "cover"}}/>
 </div>
+
+### 3D-Ansicht {#3d-view}
+
+Die Schaltfläche <code>Ansicht</code> mit dem Würfelsymbol, über <code>Hineinzoomen</code>, öffnet das Panel <code>Ansicht</code>. Es schaltet die Karte zwischen 2D und 3D um:
+
+- <code>2D</code> | <code>3D</code>: <strong>Wechseln Sie zu 3D</strong>, um die Karte zu neigen und zu drehen. Zurück in <code>2D</code> wird die Karte wieder flach und nach Norden ausgerichtet.
+- <code>Globus beim Herauszoomen</code>: <strong>Zeigt die Welt als Globus</strong>, wenn Sie herauszoomen. Der Globus schwebt im All, mit einem weichen Leuchten und schwachen Sternen ringsum. Das funktioniert in 2D und 3D; ab Zoomstufe 9 ist die Karte wieder flach.
+- <code>Gelände</code> (nur in 3D): <strong>Zeigt Berge und Täler</strong> mit Schummerung. <code>Überhöhung</code> macht das Relief steiler (1x, 1,5x, 2x oder 3x). Über Satelliten- und anderen Bild-Grundkarten erhält das Gelände keine zusätzliche Schummerung. Auf dem Globus zeigt sich das Relief als Schummerung; das Gelände hebt sich, sobald die Karte wieder flach ist.
+- <code>3D-Gebäude</code> (nur in 3D): <strong>Hebt die Gebäude der Grundkarte an</strong>, ab Zoomstufe 14. Hat einer Ihrer Layer eigene Höhen, sind die Gebäude der Grundkarte zunächst ausgeschaltet. <code>Deckkraft</code> macht die Gebäude durchscheinend (standardmäßig 60 %), damit die Layer am Boden darunter lesbar bleiben.
+- <code>Himmel und Atmosphäre</code> (für Bearbeitende, in 3D oder mit Globus): <code>Auto</code> übernimmt die Himmelsfarben aus der Grundkarte, sodass der Horizont zur Karte passt, lässt das Licht aus Ihrer Blickrichtung kommen und zeichnet keinen Nebel. Schalten Sie <code>Auto</code> aus, um <code>Himmel</code>, <code>Nebel</code>, <code>Globusleuchten</code> und <code>Licht</code> selbst festzulegen; die Karte ändert sich erst, wenn Sie einen Bereich bearbeiten. Schalten Sie <code>Nebel</code> mit dem Schalter oben in seinem Bereich ein, um zum Horizont hin Dunst hinzuzufügen. Unter <code>Globusleuchten</code> legen <code>Stärke</code> und <code>Leuchtfarbe</code> das Leuchten um den herausgezoomten Globus fest; die Stärke 0 schaltet es aus. Unter <code>Licht</code> legen <code>Richtung</code> und <code>Höhe</code> fest, woher das Licht kommt, <code>Intensität</code> und <code>Farbe</code>, wie es wirkt. <code>Auf Auto zurücksetzen</code> stellt das automatische Aussehen wieder her.
+
+**Neigen und drehen** Sie die Karte in 3D, indem Sie mit der rechten Maustaste ziehen, mit <code>Strg</code> + Ziehen oder mit <code>Umschalt</code> + den Pfeiltasten. Der Himmel und, falls eingeschaltet, der Nebel zeigen sich, wenn die Karte stark geneigt ist.
+
+Solange die Karte geneigt oder gedreht ist, erscheint über der Schaltfläche <code>Ansicht</code> ein **Kompass** mit der Neigung, etwa <code>Neigung 55°</code>. Ein Klick richtet die Karte nach Norden aus, ein zweiter führt zurück zu 2D.
+
+Was Bearbeitende hier wählen, wird mit dem Projekt gespeichert, sodass öffentliche Karten und Dashboards in derselben Ansicht öffnen. Betrachter können die Ansicht für sich ändern; ihre Änderungen werden nicht gespeichert.
+
+Auch Ihre eigenen Polygon-Layer und H3-Sechsecke können in 3D stehen: siehe [Höhe](./layer_style/style/styling.md#height). Das Kartenelement eines Layouts druckt die geneigte Ansicht als Bild; siehe [Geneigte Karten](../layouts/layouts.md#tilted-maps).
+

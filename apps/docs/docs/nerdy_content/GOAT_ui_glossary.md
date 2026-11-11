@@ -413,6 +413,7 @@ This glossary lists the English and German labels of the main tools, features an
 | Panel | Panel | Individual dashboard container |
 | Delete Panel | Panel löschen | Remove a dashboard panel |
 | Map view | Kartenansicht | Map view settings of the dashboard |
+| 3D view | 3D-Ansicht | Map control: the View button for 2D, 3D and Globe |
 | **Chart** | **Diagramm** | Data visualization chart |
 | Charts | Diagramme | Widget group for charts |
 | Categories | Kategorien | Chart comparing values across categories |

@@ -21,6 +21,7 @@ GOAT saves your changes to the dashboard as you make them. If the dashboard was 
 The following controls are available on the dashboard map. Their position can be configured in [Settings](./settings).
 
 - **Location search**: search for an address or place and pan the map to it
+- **3D view**: the **View** button, to switch between 2D and 3D, show the globe when zoomed out, and in 3D turn terrain and 3D buildings on or off
 - **Zoom controls**: zoom in and out buttons
 - **Basemaps**: switch between available basemaps. See [Basemaps](../map/basemaps)
 - **Measurements**: measure distances, areas, and routes directly on the map. See [Measurements](../map/measurements)

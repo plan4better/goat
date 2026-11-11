@@ -95,3 +95,8 @@ Der Elementbereich enthält alle Werkzeuge, die Sie benötigen, um Elemente in I
   <div class="step-number">4</div>
   <div class="content">Mit einem ausgewählten Element verwenden Sie das <code>Eigenschaften-Panel</code> rechts, um <b>sein Aussehen und seine Einstellungen anzupassen</b>.</div>
 </div>
+
+### Geneigte Karten {#tilted-maps}
+
+Ein Kartenelement zeigt die Ansicht, die es erhalten hat. Ist diese Ansicht in 3D geneigt, druckt das Element sie als Bild der Ansicht, mit Gelände, Gebäuden und Himmel des Projekts. Eine geneigte Karte hat keinen einheitlichen Maßstab, daher zeigt eine mit ihr verbundene Maßstabsleiste <code>Nicht maßstabsgetreu. Die Karte ist geneigt, daher ändern sich Entfernungen über die Ansicht hinweg.</code> Die Einstellungen des Kartenelements weisen ebenfalls darauf hin und bieten <code>Stattdessen flach drucken</code>, das Neigung und Drehung auf 0 zurücksetzt. Karten, die ein Atlas steuert, werden immer flach gedruckt.
+

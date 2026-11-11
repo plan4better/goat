@@ -156,6 +156,24 @@ You can only edit the color of icons from the library, not uploaded custom icons
   </div>
 </div>
 
+### Height {#height}
+
+Polygons and H3 hexagons can stand in the map's [3D view](../../map_interface.md#3d-view) as volumes.
+
+**Polygons.** In the polygon settings, <code>Height</code> sets how tall each polygon stands:
+
+- <code>None</code>: flat, no height.
+- <code>Fixed</code>: one height for every polygon, in metres.
+- <code>By zoom</code>: the height grows as the map zooms in.
+- <code>By attribute</code>: the height from a number field, such as height or levels. Fields named like `height`, `render_height`, `building_height`, `levels`, `building_levels`, `storeys` or `floors` are suggested first. For a field that counts levels, set <code>Unit</code> to <code>Storeys × 3 m</code>.
+- <code>By classes</code>: one height per class of a field.
+
+While <code>Height</code> is set, <code>Base height</code> lifts the volume off the ground, for example for a bridge or an upper floor. A raised layer has one opacity for the whole layer and draws no fill pattern; its outline stays on the ground and its labels sit on the roofs. Setting a height while the map is in 2D switches it to 3D.
+
+**H3 hexagons.** <code>Height</code> turns the hexagons into columns as tall as their value. <code>Tallest</code> sets the height of the column with the highest value, and <code>Scale</code> chooses <code>Linear</code> or <code>Square root</code>.
+
+The legend names the height under the layer's colors.
+
 ## Copy and paste style
 
 The <code>Style</code> tab of a layer's settings panel has three quick-action icons at the top to manage styles across layers: **Copy Style**, **Paste Style**, and **Set as Default**. This lets you apply a consistent look across multiple layers without reconfiguring each one manually.

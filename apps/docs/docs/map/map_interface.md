@@ -82,3 +82,21 @@ When selecting a layer from the Layers Panel, the Editing Panel appears on the r
   <img src={require('/img/map/basemap/add_basemap.webp').default} alt="Add custom basemap in GOAT" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "cover"}}/>
 </div>
 
+### 3D view {#3d-view}
+
+The <code>View</code> button with the cube icon, above <code>Zoom In</code>, opens the <code>View</code> panel. It switches the map between 2D and 3D:
+
+- <code>2D</code> | <code>3D</code>: <strong>Switch to 3D</strong> to tilt and rotate the map. Back in <code>2D</code>, the map turns flat and faces north again.
+- <code>Globe when zoomed out</code>: <strong>Show the world as a globe</strong> when you zoom out. The globe floats in space with a soft glow and faint stars around it. This works in 2D and 3D; from zoom 9 on the map is flat again.
+- <code>Terrain</code> (3D only): <strong>Show mountains and valleys</strong> with shading. <code>Exaggeration</code> makes the relief steeper (1x, 1.5x, 2x or 3x). Over satellite and other image basemaps the terrain gets no extra shading. On the globe, relief shows as shading; raised terrain rises once the map is flat again.
+- <code>3D buildings</code> (3D only): <strong>Raise the basemap's buildings</strong> from zoom 14 on. If one of your layers has its own heights, the basemap's buildings start switched off. <code>Opacity</code> makes the buildings see-through (60% by default), so the layers on the ground below them stay readable.
+- <code>Sky and atmosphere</code> (editors, in 3D or with the globe): <code>Auto</code> takes the sky colors from the basemap, so the horizon matches the map, lets the light come from where you look, and draws no fog. Turn <code>Auto</code> off to set your own <code>Sky</code>, <code>Fog</code>, <code>Globe glow</code> and <code>Light</code>; the map changes only once you edit one of them. Switch on <code>Fog</code> with the switch at the top of its section to add haze towards the horizon. Under <code>Globe glow</code>, <code>Strength</code> and <code>Glow color</code> set the glow around the zoomed-out globe; a strength of 0 turns it off. Under <code>Light</code>, <code>Direction</code> and <code>Height</code> set where the light comes from, <code>Intensity</code> and <code>Color</code> how it looks. <code>Reset to auto</code> goes back to the automatic look.
+
+**Tilt and rotate** the map in 3D by dragging with the right mouse button, with <code>Ctrl</code> + drag or with <code>Shift</code> + the arrow keys. The sky, and fog if you switched it on, show when the map is tilted steeply.
+
+While the map is tilted or rotated, a **compass** shows above the <code>View</code> button with the tilt, such as <code>Tilt 55°</code>. Click it once to face north, and again to go back to 2D.
+
+What editors choose here is saved with the project, so public maps and dashboards open in the same view. Viewers can change the view for themselves; their changes are not saved.
+
+Your own polygon layers and H3 hexagons can stand in 3D too: see [Height](./layer_style/style/styling.md#height). A layout's map element prints the tilted view as an image; see [Tilted maps](../layouts/layouts.md#tilted-maps).
+

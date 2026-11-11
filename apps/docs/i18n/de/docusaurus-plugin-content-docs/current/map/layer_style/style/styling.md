@@ -168,6 +168,24 @@ Sie können nur die Farbe von Symbolen aus der Bibliothek bearbeiten, nicht von 
 </div>
 
 
+### Höhe {#height}
+
+Polygone und H3-Sechsecke können in der [3D-Ansicht](../../map_interface.md#3d-view) der Karte als Körper stehen.
+
+**Polygone.** In den Polygon-Einstellungen legt <code>Höhe</code> fest, wie hoch jedes Polygon steht:
+
+- <code>Keine</code>: flach, ohne Höhe.
+- <code>Fest</code>: eine Höhe für jedes Polygon, in Metern.
+- <code>Nach Zoom</code>: Die Höhe wächst beim Hineinzoomen.
+- <code>Nach Attribut</code>: die Höhe aus einem Zahlenfeld, etwa einer Höhe oder einer Geschosszahl. Felder mit Namen wie `height`, `render_height`, `building_height`, `levels`, `building_levels`, `storeys` oder `floors` werden zuerst vorgeschlagen. Für ein Feld, das Geschosse zählt, stellen Sie <code>Einheit</code> auf <code>Geschosse × 3 m</code>.
+- <code>Nach Klassen</code>: eine Höhe je Klasse eines Feldes.
+
+Solange <code>Höhe</code> gesetzt ist, hebt <code>Basishöhe</code> den Körper vom Boden ab, etwa für eine Brücke oder ein oberes Geschoss. Ein angehobener Layer hat eine Deckkraft für den ganzen Layer und zeichnet kein Füllmuster; seine Kontur bleibt am Boden, und seine Beschriftungen stehen auf den Dächern. Wird eine Höhe gesetzt, während die Karte in 2D ist, wechselt sie zu 3D.
+
+**H3-Sechsecke.** <code>Höhe</code> macht die Sechsecke zu Säulen, so hoch wie ihr Wert. <code>Größte Höhe</code> legt die Höhe der Säule mit dem höchsten Wert fest, und <code>Skala</code> wählt <code>Linear</code> oder <code>Quadratwurzel</code>.
+
+Die Legende nennt die Höhe unter den Farben des Layers.
+
 ## Stil kopieren und einfügen
 
 Der Tab <code>Stil</code> im Einstellungs-Panel eines Layers bietet oben drei Schnellzugriff-Symbole zur Verwaltung von Stilen zwischen Layern: **Stil kopieren**, **Stil einfügen** und **Als Standard setzen**. So können Sie einen einheitlichen Stil auf mehrere Layer anwenden, ohne jeden einzeln zu konfigurieren.

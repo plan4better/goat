@@ -23,6 +23,7 @@ GOAT speichert Ihre Änderungen am Dashboard, während Sie arbeiten. Wurde das D
 Die folgenden Steuerelemente sind auf der Dashboard-Karte verfügbar. Ihre Position kann in den [Einstellungen](./settings) konfiguriert werden.
 
 - **Standortsuche**: suchen Sie nach einer Adresse oder einem Ort und zentrieren Sie die Karte darauf
+- **3D-Ansicht**: die Schaltfläche **Ansicht**, um zwischen 2D und 3D zu wechseln, beim Herauszoomen den Globus zu zeigen und in 3D Gelände und 3D-Gebäude ein- oder auszuschalten
 - **Zoom-Steuerung**: Schaltflächen zum Vergrößern und Verkleinern
 - **Grundkarten**: wechseln Sie zwischen verfügbaren Grundkarten. Siehe [Grundkarten](../map/basemaps)
 - **Messen**: messen Sie Abstände, Flächen und Routen direkt auf der Karte. Siehe [Messen](../map/measurements)
