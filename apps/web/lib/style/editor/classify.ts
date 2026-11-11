@@ -405,7 +405,7 @@ export const recordPathOf = (scope: Scope): Path =>
       ? `classify.${scope.classify}.other`
       : `classify.${scope.classify}.classes.${scope.key}`;
 
-const PART_KEYS = new Set(["fill", "outline", "line", "casing", "arrows", "marker", "label"]);
+const PART_KEYS = new Set(["fill", "outline", "extrude", "line", "casing", "arrows", "marker", "label"]);
 
 function deepMerge(base: unknown, over: JsonObject): JsonObject {
   const out: JsonObject = { ...(isObject(base) ? base : {}) };

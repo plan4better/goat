@@ -97,9 +97,24 @@ export function markerInvisible(doc: LayerStyle, scope: Scope | null): boolean {
   return icons.length === 0;
 }
 
+/** A popover header's on/off switch (passed as the entry's `actions`, beside the close button), named "Turn <name>
+ * on" or "Turn <name> off". */
+export function HeaderSwitch({ name, on, onToggle }: { name: string; on: boolean; onToggle: () => void }) {
+  const { t } = useTranslation("common");
+  return (
+    <Switch
+      size="small"
+      checked={on}
+      onChange={onToggle}
+      inputProps={{
+        "aria-label": t(on ? "style_editor.turn_part_off" : "style_editor.turn_part_on", { part: name }),
+      }}
+    />
+  );
+}
+
 /** The Fill switch of points, for the Fill editor's header; none on the icon alone, which has no fill. */
 function FillSwitch({ name }: { name: string }) {
-  const { t } = useTranslation("common");
   const store = useEditor();
   const scope = useScope();
   const state = useStyleSelector((doc) => {
@@ -109,16 +124,7 @@ function FillSwitch({ name }: { name: string }) {
   });
   if (state === "none") return null;
   const on = state === "on";
-  return (
-    <Switch
-      size="small"
-      checked={on}
-      onChange={() => toggleFill(store, scope, !on)}
-      inputProps={{
-        "aria-label": t(on ? "style_editor.turn_part_off" : "style_editor.turn_part_on", { part: name }),
-      }}
-    />
-  );
+  return <HeaderSwitch name={name} on={on} onToggle={() => toggleFill(store, scope, !on)} />;
 }
 
 const ICON_PATH = "symbol.marker.icon";
@@ -152,18 +158,14 @@ export function IconSwitch() {
   const popover = usePopover();
   const on = useStyleSelector((doc) => markerOn(doc));
   if (scope) return null;
-  const name = t("style_editor.part_name_icon");
   return (
-    <Switch
-      size="small"
-      checked={on}
-      onChange={() => {
+    <HeaderSwitch
+      name={t("style_editor.part_name_icon")}
+      on={on}
+      onToggle={() => {
         // Off, the icon row goes, and the icon picker with it.
         if (on) popover.close("picker");
         toggleIcon(store, !on, { mapZoom, geometry });
-      }}
-      inputProps={{
-        "aria-label": t(on ? "style_editor.turn_part_off" : "style_editor.turn_part_on", { part: name }),
       }}
     />
   );
@@ -185,16 +187,7 @@ export function PartSwitch({ part }: { part: string }) {
   const name = t(`style_editor.part_name_${group.id}`);
   if (group.switchKey) return <FillSwitch name={name} />;
   const writePath = scope ? `${recordPathOf(scope)}.${group.part}` : partPath(group);
-  return (
-    <Switch
-      size="small"
-      checked={on}
-      onChange={() => togglePart(store, writePath, !on)}
-      inputProps={{
-        "aria-label": t(on ? "style_editor.turn_part_off" : "style_editor.turn_part_on", { part: name }),
-      }}
-    />
-  );
+  return <HeaderSwitch name={name} on={on} onToggle={() => togglePart(store, writePath, !on)} />;
 }
 
 function PartRows({ group, geometry, shown }: { group: PartGroup; geometry: Geometry; shown: Set<string> }) {

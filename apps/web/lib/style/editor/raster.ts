@@ -3,17 +3,17 @@ import { type JsonObject } from "@/lib/style/json";
 import { paletteSteps } from "@/lib/style/palettes";
 import { type RasterInfo, type ValueSample, seedDomain } from "@/lib/style/raster/metadata";
 
-export type RasterRenderType = "terrain" | "continuous" | "categorical" | "image";
+export type RasterRenderType = "hillshade" | "continuous" | "categorical" | "image";
 
 /** The panel's palette for new categories. */
 const CATEGORY_PALETTE = "colorbrewer:Set3";
 
-/** The renders a file allows (unknown files allow all): terrain on one band of elevation, a color range on any band
+/** The renders a file allows (unknown files allow all): hillshade on one band of elevation, a color range on any band
  * without a color table, categories on whole-number cells, the image always. */
 export function drawAsOptions(info: RasterInfo | undefined): RasterRenderType[] {
-  if (!info) return ["terrain", "continuous", "categorical", "image"];
+  if (!info) return ["hillshade", "continuous", "categorical", "image"];
   const out: RasterRenderType[] = [];
-  if (info.bands === 1 && !info.colorTable) out.push("terrain");
+  if (info.bands === 1 && !info.colorTable) out.push("hillshade");
   if (!info.colorTable) out.push("continuous");
   if (info.integer) out.push("categorical");
   out.push("image");
@@ -61,6 +61,6 @@ export function noDataApplies(render: JsonObject, info: RasterInfo | undefined):
   const type = render.type ?? "image";
   if (type === "image") return !info?.colorTable;
   if (type === "categorical") return Array.isArray(render.classes) && render.classes.length > 0;
-  if (type === "terrain") return render.palette !== undefined;
+  if (type === "hillshade") return render.palette !== undefined;
   return true;
 }

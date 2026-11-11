@@ -11,7 +11,7 @@ import { LayerInformationWidget } from "@/components/builder/widgets/information
  * layers; everything else stays as it was.
  */
 
-const updateTree = vi.fn().mockResolvedValue(undefined);
+const setVisibility = vi.fn().mockResolvedValue(undefined);
 
 const layer = (id: number, name: string, order: number, group: number | null, visibility = true) => ({
   id,
@@ -19,7 +19,8 @@ const layer = (id: number, name: string, order: number, group: number | null, vi
   order,
   layer_project_group_id: group,
   type: "feature",
-  properties: { visibility },
+  entry: { type: "layer", id, visible: visibility },
+  style: null,
 });
 
 const layers = [
@@ -39,7 +40,7 @@ vi.mock("@/hooks/store/ContextHooks", () => ({
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/components/builder/widgets/information/useWidgetLayerTree", () => ({
-  useWidgetLayerTree: () => ({ projectId: "p", layers, layerGroups: groups, updateTree }),
+  useWidgetLayerTree: () => ({ projectId: "p", layers, layerGroups: groups, treeState: {}, setVisibility }),
 }));
 // The tree itself is tested elsewhere: list what it was given, and render the group content
 vi.mock("@/components/map/panels/layer/ProjectLayerTree", () => ({
@@ -79,7 +80,7 @@ const widget = (setup: object = {}, options: object = {}) =>
     />
   );
 
-beforeEach(() => updateTree.mockClear());
+beforeEach(() => setVisibility.mockClear());
 
 describe("LayerInformationWidget", () => {
   it("lists every layer and group in the tree when no group is a switcher", () => {

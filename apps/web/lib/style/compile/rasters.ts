@@ -1,5 +1,5 @@
 // Raster files (spec 9) drawn from geoapi's raster service: the coloring travels in the tile URL as a token, so the
-// service colors the cells for every render type and screen, print and thumbnails draw the same tiles. Terrain is
+// service colors the cells for every render type and screen, print and thumbnails draw the same tiles. Hillshade is
 // MapLibre's hillshade over the service's Terrarium elevation tiles.
 import type { LayerSpecification } from "maplibre-gl";
 
@@ -32,10 +32,18 @@ const rgbOf = (hex: string): [number, number, number] => {
   return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16)];
 };
 
-/** The hillshade paint (spec 9.6): one light, or GDAL's four for `multidirectional`; the layer opacity goes into
- * the colors' alpha, since a hillshade has no opacity of its own. */
+/** A hillshade's light (3D spec 7.4): the scene's light through the global state `sunAzimuth` and `sunAltitude`,
+ * its own direction and altitude while those are null (an automatic light), measured from north. */
+export const illumination = (direction: number, altitude: number): Record<string, unknown> => ({
+  "hillshade-illumination-direction": ["coalesce", ["global-state", "sunAzimuth"], direction],
+  "hillshade-illumination-altitude": ["coalesce", ["global-state", "sunAltitude"], altitude],
+  "hillshade-illumination-anchor": "map",
+});
+
+/** The hillshade paint (spec 9.6): one light that follows the scene's, or GDAL's four for `multidirectional`; the
+ * layer opacity goes into the colors' alpha, since a hillshade has no opacity of its own. */
 function hillshadePaint(style: JsonObject, render: JsonObject): Record<string, unknown> {
-  const pick = <T>(key: string): T => (render[key] ?? DEFAULTS[`terrain.${key}`]) as T;
+  const pick = <T>(key: string): T => (render[key] ?? DEFAULTS[`hillshade.${key}`]) as T;
   const method = pick<string>("method");
   const direction = pick<number>("direction");
   const altitude = pick<number>("altitude");
@@ -61,8 +69,14 @@ function hillshadePaint(style: JsonObject, render: JsonObject): Record<string, u
   const flat = (c: unknown) => (Array.isArray(c) && c[0] === "interpolate" ? c[c.length - 1] : c);
   const paint: Record<string, unknown> = {
     "hillshade-method": method,
-    "hillshade-illumination-direction": lights ?? direction,
-    "hillshade-illumination-altitude": lights ? lights.map(() => altitude) : altitude,
+    // An expression cannot build the four lights' array: several lights keep their own.
+    ...(lights
+      ? {
+          "hillshade-illumination-direction": lights,
+          "hillshade-illumination-altitude": lights.map(() => altitude),
+          "hillshade-illumination-anchor": "map",
+        }
+      : illumination(direction, altitude)),
     "hillshade-exaggeration": pick<number>("exaggeration"),
     "hillshade-shadow-color": lights ? lights.map(() => flat(shadow)) : shadow,
     "hillshade-highlight-color": lights ? lights.map(() => flat(highlight)) : highlight,
@@ -107,7 +121,7 @@ export function rasterLayers(
       paint,
     } as LayerSpecification);
   }
-  if (render.type === "terrain") {
+  if (render.type === "hillshade") {
     const dem = `${source.id}-dem`;
     out.sources[dem] = {
       type: "raster-dem",

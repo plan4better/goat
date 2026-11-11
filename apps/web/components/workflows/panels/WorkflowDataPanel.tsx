@@ -821,7 +821,6 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
                       fitBoundsOptions: { padding: isTempLayer ? 40 : 20 },
                     }}
                     mapStyle={getBasemapUrl("light")}
-                    dragRotate={false}
                     touchZoomRotate={false}
                     containerSx={{
                       position: "relative",

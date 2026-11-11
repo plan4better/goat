@@ -1,5 +1,5 @@
 // Runs compiled output through MapLibre's own style validator (style spec 26.4.4).
-import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
+import { createExpression, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 
 const SOURCE = { type: "vector", tiles: ["https://tiles.example/{z}/{x}/{y}"] };
 
@@ -23,3 +23,10 @@ export function maplibreErrors(
 /** Errors of a circle layer whose `circle-radius` (or another paint key) holds `value`. */
 export const paintErrors = (value: unknown, key = "circle-radius", type = "circle"): string[] =>
   maplibreErrors([{ id: "l", type, source: "s", "source-layer": "default", paint: { [key]: value } }]);
+
+/** An expression evaluated by MapLibre for one feature's properties at `zoom`. */
+export function evaluate(expr: unknown, properties: Record<string, unknown> = {}, zoom = 14): unknown {
+  const parsed = createExpression(expr, "layers[0].paint.value");
+  if (parsed.result !== "success") throw new Error(parsed.value.map((e) => e.message).join("; "));
+  return parsed.value.evaluate({ zoom }, { type: 1, properties } as never);
+}

@@ -1,3 +1,5 @@
+import { storableView } from "@/lib/scene/view";
+
 export type MapLoc = {
   latitude: number;
   longitude: number;
@@ -22,7 +24,15 @@ const NUMBER_PATTERN = /^-?\d+(\.\d+)?$/;
 
 const parseNumber = (token: string): number => (NUMBER_PATTERN.test(token) ? Number(token) : NaN);
 
-export function serializeLoc(loc: LocInput): string {
+/** A camera inside what a map stores (`storableView`): longitude wrapped, latitude, zoom and pitch in their ranges;
+ * a zoomed-out globe goes past them. */
+function inside(loc: LocInput): { latitude: number; longitude: number; zoom: number; pitch: number } {
+  const { latitude, longitude, zoom, pitch } = storableView({ bearing: 0, pitch: 0, ...loc });
+  return { latitude, longitude, zoom, pitch };
+}
+
+export function serializeLoc(input: LocInput): string {
+  const loc = { ...input, ...inside(input) };
   const parts = [`${round(loc.latitude, 5)}`, `${round(loc.longitude, 5)}`, `${round(loc.zoom, 2)}z`];
   const bearing = normalizeBearing(round(normalizeBearing(loc.bearing ?? 0), 1));
   if (bearing !== 0) {
@@ -43,9 +53,8 @@ export function parseLoc(raw: string | null | undefined): MapLoc | null {
   const longitude = parseNumber(tokens[1]);
   const zoomToken = tokens[2].endsWith("z") ? tokens[2].slice(0, -1) : tokens[2];
   const zoom = parseNumber(zoomToken);
-  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
-  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
-  if (!Number.isFinite(zoom) || zoom < 0 || zoom > 24) return null;
+  // Numbers out of range are brought inside, not refused: a link from a zoomed-out globe still opens.
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(zoom)) return null;
   let bearing: number | undefined;
   let pitch: number | undefined;
   for (const token of tokens.slice(3)) {
@@ -57,13 +66,12 @@ export function parseLoc(raw: string | null | undefined): MapLoc | null {
       bearing = normalizeBearing(value);
     } else if (suffix === "p") {
       if (pitch !== undefined) return null;
-      if (value < 0 || value > 60) return null;
       pitch = value;
     } else {
       return null;
     }
   }
-  return { latitude, longitude, zoom, bearing: bearing ?? 0, pitch: pitch ?? 0 };
+  return { ...inside({ latitude, longitude, zoom, pitch: pitch ?? 0 }), bearing: bearing ?? 0 };
 }
 
 export function getLocFromUrl(): MapLoc | null {

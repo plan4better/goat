@@ -57,6 +57,24 @@ export const CAPABILITIES: Readonly<Record<string, Capability>> = {
     attribute: "number",
     perFeature: true,
   },
+  "extrude.base": {
+    kind: "number",
+    zoom: "blend",
+    attribute: "number",
+    perFeature: true,
+  },
+  "extrude.height": {
+    kind: "number",
+    zoom: "blend",
+    attribute: "number",
+    perFeature: true,
+  },
+  "extrude.unit": {
+    kind: "choice",
+    zoom: null,
+    attribute: null,
+    perFeature: false,
+  },
   "fill.color": {
     kind: "color",
     zoom: "blend",
@@ -92,6 +110,18 @@ export const CAPABILITIES: Readonly<Record<string, Capability>> = {
     zoom: "step",
     attribute: null,
     perFeature: true,
+  },
+  "h3.extrude.base": {
+    kind: "number",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "h3.extrude.tallest": {
+    kind: "number",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
   },
   "heatmap.intensity": {
     kind: "number",
@@ -345,6 +375,96 @@ export const CAPABILITIES: Readonly<Record<string, Capability>> = {
     attribute: null,
     perFeature: false,
   },
+  "scene.buildings.on": {
+    kind: "choice",
+    zoom: null,
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.buildings.opacity": {
+    kind: "number",
+    zoom: null,
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.fog.color": {
+    kind: "color",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.fog.ground_blend": {
+    kind: "number",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.fog.horizon_blend": {
+    kind: "number",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.glow.color": {
+    kind: "color",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.glow.strength": {
+    kind: "number",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.light.altitude": {
+    kind: "number",
+    zoom: null,
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.light.color": {
+    kind: "color",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.light.direction": {
+    kind: "number",
+    zoom: null,
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.light.intensity": {
+    kind: "number",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.sky.color": {
+    kind: "color",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.sky.horizon_blend": {
+    kind: "number",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.sky.horizon_color": {
+    kind: "color",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "scene.terrain.exaggeration": {
+    kind: "number",
+    zoom: null,
+    attribute: null,
+    perFeature: false,
+  },
 };
 
 /** The range a number target spreads its classes or values over when the style gives none (goatlib default_range). */
@@ -360,6 +480,8 @@ export const DEFAULT_RANGES: Readonly<Record<string, readonly [number, number]>>
   offset: [0, 8],
   rotation: [0, 360],
   max_width: [60, 240],
+  "extrude.height": [0, 50],
+  "extrude.base": [0, 10],
 };
 
 /** The default range of a property: by its full key, else by its last segment ("outline.width" -> "width"). */

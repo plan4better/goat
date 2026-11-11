@@ -12,6 +12,9 @@ export type BuiltInBasemap = {
   title: string;
   subtitle: string;
   thumbnail: string;
+  /** How the basemap gets 3D buildings (3D spec 7.3): its own fill-extrusion layers, or GOAT's extrusion on its
+   * OpenMapTiles source; without it the deployment's building overlay. */
+  buildings?: "own" | { source: string };
 };
 
 export type Basemap = BuiltInBasemap | (CustomBasemap & { source: "custom"; value: string });

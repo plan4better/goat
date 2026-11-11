@@ -195,7 +195,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
           propertyKey={key}
           mode={mode}
           modes={modes}
-          onSelect={select}
+          onSelect={(to, anchor) => select(to as Mode, anchor)}
           onReset={reset}
         />
       </Box>

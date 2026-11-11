@@ -696,7 +696,7 @@ describe("raster legends", () => {
 
   it("an image or shading without colors has no legend; a map service shows its legend image", () => {
     expect(raster({ type: "image" })).toBeNull();
-    expect(raster({ type: "terrain" })).toBeNull();
+    expect(raster({ type: "hillshade" })).toBeNull();
     expect(
       buildLegend(
         { version: 1, kind: "raster", render: { type: "image" } },
@@ -788,5 +788,78 @@ describe("informative", () => {
         })
       )
     ).toBe(true);
+  });
+});
+
+describe("height legends", () => {
+  const poly = (symbol: object, extra: object = {}) =>
+    buildLegend({ version: 1, kind: "vector", symbol, ...extra }, { geometry: "polygon", zoom: 12 })!;
+  const height = (legend: ReturnType<typeof poly>) => legend.sections.find((s) => s.kind === "height");
+
+  it("one line after the colour entries, per value form", () => {
+    const fixed = poly({ extrude: { height: 12 } });
+    expect(fixed.sections.map((s) => s.kind)).toEqual(["entries", "height"]);
+    expect(height(fixed)).toMatchObject({ mode: "fixed", value: 12 });
+    expect(height(poly({ extrude: {} }))).toMatchObject({ mode: "fixed", value: 10 });
+    expect(
+      height(
+        poly({
+          extrude: {
+            height: {
+              zoom: [
+                [14, 0],
+                [16, 12],
+              ],
+            },
+          },
+        })
+      )
+    ).toMatchObject({ mode: "zoom", max: 12 });
+    expect(height(poly({ extrude: { height: { field: "height" } } }))).toMatchObject({
+      mode: "field",
+      field: "height",
+    });
+    expect(height(poly({ extrude: { height: { field: "levels" }, unit: "storeys" } }))).toMatchObject({
+      mode: "storeys",
+      field: "levels",
+    });
+    expect(
+      height(poly({ extrude: { height: { field: "h", range: [0, 50], domain: [0, 10] } } }))
+    ).toMatchObject({ mode: "range", field: "h", from: 0, to: 50 });
+    expect(
+      height(
+        poly(
+          { extrude: { height: 5 } },
+          {
+            classify: [
+              {
+                field: "height",
+                method: "manual",
+                target: "extrude.height",
+                classes: [{ to: 10 }, { from: 10, to: 20 }, { from: 20 }],
+              },
+            ],
+          }
+        )
+      )
+    ).toMatchObject({ mode: "classes", field: "height", count: 3 });
+  });
+
+  it("flat layers have no height line; H3 columns name the cell value", () => {
+    expect(height(poly({ fill: { color: "#ff0000" } }))).toBeUndefined();
+    expect(height(poly({ extrude: false }))).toBeUndefined();
+    const h3 = buildLegend(
+      {
+        version: 1,
+        kind: "vector",
+        render: { type: "h3", value: { op: "sum", field: "residents" }, extrude: { tallest: 1000 } },
+      },
+      { geometry: "point", zoom: 10 }
+    )!;
+    expect(h3.sections.find((s) => s.kind === "height")).toMatchObject({
+      mode: "h3",
+      op: "sum",
+      field: "residents",
+    });
   });
 });

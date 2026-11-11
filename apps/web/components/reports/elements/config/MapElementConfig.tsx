@@ -101,6 +101,8 @@ const MapElementConfig: React.FC<MapElementConfigProps> = ({ element, projectLay
   const currentZoom = viewState.zoom ?? 10;
   const currentLatitude = viewState.latitude ?? 48;
   const currentRotation = viewState.bearing ?? 0;
+  // A tilted map prints as an image of the view, without a scale (3D spec 10).
+  const tilted = ((viewState.pitch as number | undefined) ?? 0) > 0.5;
   // If the user explicitly picked a scale, we stored it here so we can display it exactly
   const storedScale = viewState.scale_denominator as number | undefined;
 
@@ -174,6 +176,8 @@ const MapElementConfig: React.FC<MapElementConfigProps> = ({ element, projectLay
       updateViewState({ zoom: newZoom, scale_denominator: scaleValue });
     }
   };
+
+  const handlePrintFlat = () => updateViewState({ pitch: 0, bearing: 0, mode: "2d" });
 
   const handleRotationChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(event.target.value);
@@ -301,6 +305,21 @@ const MapElementConfig: React.FC<MapElementConfigProps> = ({ element, projectLay
                 }}
               />
             </Stack>
+
+            {tilted && (
+              <Stack spacing={1}>
+                <Typography variant="caption" color="text.secondary">
+                  {t("report_map_tilted_note")}
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handlePrintFlat}
+                  sx={{ textTransform: "none" }}>
+                  {t("report_print_flat")}
+                </Button>
+              </Stack>
+            )}
           </Stack>
         }
       />

@@ -74,11 +74,28 @@ export function useIsOpen(...keys: string[]): boolean {
   return useOpenStack((stack) => entriesOf(stack).some((entry) => !!entry && keys.includes(entry.key)));
 }
 
+/** The panel each placed popover box belongs to: a page can show two panels with popovers (the style panel and the
+ * View popover's Sky and atmosphere panel). */
+const placedPanels = new WeakMap<Element, Element>();
+
+/** Records the panel a placed popover box (marked `data-popover-placed`) belongs to. */
+export function placeIn(box: Element, panel: Element): void {
+  placedPanels.set(box, panel);
+}
+
+/** The panel box `el` measures against: the one it is in, the one its popover belongs to, else the first on the page. */
+function panelOf(el: HTMLElement): Element | null {
+  const own = el.closest("[data-style-panel]");
+  if (own) return own;
+  const placed = el.closest("[data-popover-placed]");
+  return (placed && placedPanels.get(placed)) ?? document.querySelector("[data-style-panel]");
+}
+
 /** The top of `el` in the coordinates of the style panel box (marked `data-style-panel`). A control in a popover is
- * outside that box (popovers draw in a portal), so it measures against the panel on the page. */
+ * outside that box (popovers draw in a portal), so it measures against the panel its popover belongs to. */
 export function anchorTopOf(el: HTMLElement): number {
   const top = el.getBoundingClientRect().top;
-  const panel = el.closest("[data-style-panel]") ?? document.querySelector("[data-style-panel]");
+  const panel = panelOf(el);
   return panel ? top - panel.getBoundingClientRect().top : top;
 }
 

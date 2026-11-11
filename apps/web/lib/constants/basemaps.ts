@@ -37,6 +37,8 @@ const MAPTILER_BASEMAPS: BuiltInBasemap[] = MAPTILER_KEY
         title: "Satellite",
         subtitle: "As seen from space",
         thumbnail: "https://cloud.maptiler.com/static/img/maps/satellite.png",
+        // MapTiler's OpenMapTiles vector source in the hybrid style; the overlay where the style has none.
+        buildings: { source: "maptiler_planet" },
       },
     ]
   : [];
@@ -50,6 +52,7 @@ export const BASEMAPS: BuiltInBasemap[] = [
     title: "High Fidelity",
     subtitle: "Great for public presentations",
     thumbnail: "/assets/images/basemaps/liberty.png",
+    buildings: "own",
   },
   ...MAPTILER_BASEMAPS,
   {
@@ -60,6 +63,7 @@ export const BASEMAPS: BuiltInBasemap[] = [
     title: "Light",
     subtitle: "For highlighting data overlays",
     thumbnail: "/assets/images/basemaps/positron.png",
+    buildings: { source: "openmaptiles" },
   },
   {
     source: "builtin",
@@ -69,6 +73,7 @@ export const BASEMAPS: BuiltInBasemap[] = [
     title: "Dark",
     subtitle: "For highlighting data overlays",
     thumbnail: "/assets/images/basemaps/dark.png",
+    buildings: { source: "openmaptiles" },
   },
   {
     source: "builtin",
@@ -78,6 +83,7 @@ export const BASEMAPS: BuiltInBasemap[] = [
     title: "BKG Basemap",
     subtitle: "Color (World)",
     thumbnail: "https://basemap.de/viewer/assets/basemap_colour.png",
+    buildings: "own",
   },
   {
     source: "builtin",
@@ -87,6 +93,7 @@ export const BASEMAPS: BuiltInBasemap[] = [
     title: "BKG Basemap",
     subtitle: "Grayscale",
     thumbnail: "https://basemap.de/viewer/assets/basemap_greyscale.png",
+    buildings: "own",
   },
   {
     source: "builtin",
@@ -96,6 +103,7 @@ export const BASEMAPS: BuiltInBasemap[] = [
     title: "BKG Basemap",
     subtitle: "Topographic",
     thumbnail: "https://basemap.de/viewer/assets/basemap_hillshade.png",
+    buildings: "own",
   },
   {
     source: "builtin",
@@ -105,6 +113,7 @@ export const BASEMAPS: BuiltInBasemap[] = [
     title: "BKG Basemap",
     subtitle: "Landuse",
     thumbnail: "https://basemap.de/viewer/assets/basemap_hillshade.png",
+    buildings: "own",
   },
 ];
 

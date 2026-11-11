@@ -24,7 +24,9 @@ import {
 } from "@/lib/api/projects";
 import { DrawProvider } from "@/lib/providers/DrawProvider";
 import { MeasureProvider } from "@/lib/providers/MeasureProvider";
-import { setSelectedBuilderItem } from "@/lib/store/map/slice";
+import { initView, setSelectedBuilderItem } from "@/lib/store/map/slice";
+import { shownMode } from "@/lib/scene/support";
+import { openingMode, openingTilt, storableView } from "@/lib/scene/view";
 import { StyleStoresProvider, useEditedLayers } from "@/lib/style/editor/StyleStores";
 import { createSnapToCursorModifier } from "@/lib/utils/dnd-modifier";
 import { getLocFromUrl, writeLocToUrl, writeMapLocToUrl } from "@/lib/utils/map/loc-url";
@@ -46,6 +48,7 @@ import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
 import { useBasemap } from "@/hooks/map/MapHooks";
 import { useMapLayers } from "@/hooks/map/useMapLayers";
 import { useMapUrlIntent } from "@/hooks/map/useMapUrlIntent";
+import { SceneStoreProvider, useSceneDocument, useSceneStoreContext } from "@/hooks/map/useSceneStore";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { DraggableItem } from "@/components/builder/widgets/common/DraggableItem";
@@ -77,7 +80,9 @@ function EditingMapViewer({
     projectId,
     props.layers as Array<{ id: number; style?: { id?: string } | null }>
   );
-  return <MapViewer {...props} editing={editing} />;
+  // The scene as the View and Sky panels edit it.
+  const scene = useSceneDocument(useSceneStoreContext());
+  return <MapViewer {...props} scene={scene ?? props.scene} editing={editing} />;
 }
 
 export default function MapPage(props: { params: Promise<{ projectId: string }> }) {
@@ -166,7 +171,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
     return allProjectLayersIncludingTables || [];
   }, [allProjectLayersIncludingTables]);
 
-  const { mapStyle, setActiveBasemap } = useBasemap(project);
+  const { mapStyle, setActiveBasemap, activeBasemap } = useBasemap(project);
   // The theme's basemap in the Explorer, where nobody has chosen the project's:
   // told by the project as core sends it, before the schema fills in a default.
   useExplorerBasemap(_project);
@@ -243,31 +248,79 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
     [projectError, projectInitialViewError, projectLayersError, projectLayerGroupsError]
   );
 
+  // 2D or 3D and the projection (3D spec 5.1): a tilted view from the URL opens in 3D, else the saved view's; the
+  // View button and the compass change them in the map slice.
+  const openingView = openingMode(initialView, urlLoc?.pitch);
+  const openingProjection = initialView?.projection ?? "mercator";
+  const storedView = useAppSelector((state) => state.map.view);
+  const ownView = storedView?.projectId === projectId ? storedView : undefined;
+  const viewMode = ownView?.mode ?? openingView;
+  const projection = ownView?.projection ?? openingProjection;
+  useEffect(() => {
+    if (!isLoading && !ownView)
+      dispatch(initView({ projectId, mode: openingView, projection: openingProjection }));
+  }, [isLoading, ownView, dispatch, projectId, openingView, openingProjection]);
+
   const updateViewState = useMemo(
     () =>
-      debounce((e: ViewStateChangeEvent) => {
-        updateProjectInitialViewState(projectId, {
-          zoom: e.viewState.zoom,
-          latitude: e.viewState.latitude,
-          longitude: e.viewState.longitude,
-          pitch: e.viewState.pitch,
-          bearing: e.viewState.bearing,
-          min_zoom: initialView?.min_zoom ?? 0,
-          max_zoom: initialView?.max_zoom ?? 24,
+      debounce((view: { zoom: number; latitude: number; longitude: number; pitch: number; bearing: number }) => {
+        // Inside what core stores: Globe zooms out below 0, a dragged map can pass the date line and the pole.
+        // A saved 3D view shown in 2D (3D drawn in software) keeps its tilt and heading.
+        const kept = viewMode !== shownMode(viewMode);
+        const camera = storableView({
+          longitude: view.longitude,
+          latitude: view.latitude,
+          zoom: view.zoom,
+          pitch: kept ? (initialView?.pitch ?? 0) : view.pitch,
+          bearing: kept ? (initialView?.bearing ?? 0) : view.bearing,
+          min_zoom: initialView?.min_zoom,
+          max_zoom: initialView?.max_zoom,
         });
+        // A background save: a refused or lost one is logged, the next move saves again.
+        updateProjectInitialViewState(projectId, { ...camera, mode: viewMode, projection }).catch((error) =>
+          console.warn("The map view was not saved", error)
+        );
       }, UPDATE_VIEW_STATE_DEBOUNCE_TIME),
-    [initialView?.max_zoom, initialView?.min_zoom, projectId]
+    [
+      initialView?.max_zoom,
+      initialView?.min_zoom,
+      initialView?.pitch,
+      initialView?.bearing,
+      projectId,
+      viewMode,
+      projection,
+    ]
   );
 
   const handleMoveEnd = useCallback(
     (e: ViewStateChangeEvent) => {
       writeLocToUrl(e.viewState);
       if (isProjectEditor) {
-        updateViewState(e);
+        updateViewState(e.viewState);
       }
     },
     [isProjectEditor, updateViewState]
   );
+
+  // A new mode or projection is saved with the view at once: a Globe toggle does not move the map.
+  const savedView = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ownView) return;
+    const key = `${ownView.mode}|${ownView.projection}`;
+    const first = savedView.current === null;
+    if (savedView.current === key) return;
+    savedView.current = key;
+    const map = mapRef.current?.getMap();
+    if (first || !isProjectEditor || !map) return;
+    const centre = map.getCenter();
+    updateViewState({
+      zoom: map.getZoom(),
+      latitude: centre.lat,
+      longitude: centre.lng,
+      pitch: map.getPitch(),
+      bearing: map.getBearing(),
+    });
+  }, [ownView, isProjectEditor, updateViewState]);
 
   const handleMapLoaded = useCallback(() => {
     const map = mapRef.current?.getMap();
@@ -534,6 +587,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
       {isLoading && <LoadingPage />}
       {!isLoading && !hasError && project && (
         <MapProvider>
+          <SceneStoreProvider projectId={projectId} initial={projectMap?.map.scene} editable={isProjectEditor}>
           <StyleStoresProvider>
             <DrawProvider>
               <MeasureProvider>
@@ -609,7 +663,13 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                                   zoom: urlLoc?.zoom ?? initialView?.zoom ?? 3,
                                   latitude: urlLoc?.latitude ?? initialView?.latitude ?? 48.13,
                                   longitude: urlLoc?.longitude ?? initialView?.longitude ?? 11.57,
-                                  pitch: urlLoc?.pitch ?? initialView?.pitch ?? 0,
+                                  // A 3D view opens tilted, at the URL's or the saved tilt.
+                                  pitch: openingTilt(
+                                    initialView,
+                                    urlLoc?.pitch,
+                                    urlLoc?.zoom ?? initialView?.zoom ?? 3,
+                                    projection
+                                  ),
                                   bearing: urlLoc?.bearing ?? initialView?.bearing ?? 0,
                                   fitBoundsOptions: {
                                     minZoom: initialView?.min_zoom ?? 0,
@@ -617,6 +677,10 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                                   },
                                 }}
                                 mapStyle={mapStyle}
+                                mode={shownMode(viewMode)}
+                                projection={projection}
+                                scene={projectMap?.map.scene}
+                                basemap={activeBasemap}
                                 onMoveEnd={handleMoveEnd}
                                 onLoad={handleMapLoaded}
                                 isEditor={isProjectEditor}
@@ -699,6 +763,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
               </MeasureProvider>
             </DrawProvider>
           </StyleStoresProvider>
+          </SceneStoreProvider>
         </MapProvider>
       )}
     </>

@@ -32,7 +32,7 @@ vi.mock("@/hooks/map/FilteringHooks", () => ({
 }));
 
 vi.mock("@/hooks/map/LayerPanelHooks", () => ({
-  useActiveLayer: () => ({ activeLayer: undefined }),
+  useFilterQueries: () => ({ activeLayer: undefined }),
 }));
 
 type DraftCase = {

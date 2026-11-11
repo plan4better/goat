@@ -19,7 +19,8 @@ import {
   templateFields,
 } from "@/lib/style/editor/labels";
 import type { Path } from "@/lib/style/editor/store";
-import { isObject } from "@/lib/style/json";
+import { extrudes } from "@/lib/style/compile/polygons";
+import { type JsonObject, isObject } from "@/lib/style/json";
 
 import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
 import {
@@ -27,6 +28,7 @@ import {
   useScope,
   useScoped,
   useStyleData,
+  useStyleSelector,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import { LabelLinesEditor } from "@/components/map/panels/styleEditor/editors/LabelLinesEditor";
@@ -327,6 +329,20 @@ function PriorityRow({ base }: { base: Path }) {
   );
 }
 
+/** Polygon labels of a layer with a height sit on the roofs (3D spec 7.5): said, not set. */
+function RoofPlacement() {
+  const { t } = useTranslation("common");
+  const extruded = useStyleSelector((doc) => extrudes(doc as unknown as JsonObject));
+  if (!extruded) return null;
+  return (
+    <Row label={t("style_editor.placement")}>
+      <Typography variant="body2" fontWeight="bold">
+        {t("style_editor.placement_roof")}
+      </Typography>
+    </Row>
+  );
+}
+
 export function LabelEditor({ base }: { base: Path }) {
   const { geometry } = useStyleData();
   const overlap = useStyleValue<unknown>(`${base}.allow_overlap`);
@@ -342,6 +358,7 @@ export function LabelEditor({ base }: { base: Path }) {
       <PropertyRow row={HALO_WIDTH} base={base} />
       <PropertyRow row={MAX_WIDTH} base={base} />
       {placement && <PropertyRow row={placement} base={base} />}
+      {geometry === "polygon" && <RoofPlacement />}
       <OffsetRows base={base} />
       {overlap !== true && !scoped && <PriorityRow base={base} />}
       <PropertyRow row={OVERLAP} base={base} />

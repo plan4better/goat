@@ -9,7 +9,7 @@ const ICONS: Record<string, ICON_NAME> = {
   image: ICON_NAME.IMAGE,
   continuous: ICON_NAME.RASTER,
   categorical: ICON_NAME.CATEGORIES,
-  terrain: ICON_NAME.MOUNTAIN,
+  hillshade: ICON_NAME.MOUNTAIN,
 };
 
 export function drawAsIcon(value: string) {

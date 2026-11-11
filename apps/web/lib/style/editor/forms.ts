@@ -35,6 +35,7 @@ export function keyOf(full: Path): string {
   if (record) return record[1];
   const rule = /^rules\.\d+\.(.+)$/.exec(path);
   if (rule) return rule[1];
+  if (path.startsWith("render.extrude.")) return `h3.${path.slice("render.".length)}`;
   if (path.startsWith("render.")) return `heatmap.${path.slice("render.".length)}`;
   return path;
 }
@@ -78,7 +79,11 @@ export function modesFor(
   if (!ctx.scoped && cap.perFeature) {
     if (cap.attribute && ctx.hasNumberField) modes.push("attribute");
     // Field values as they are: a bearing for rotation, a hex text for colors.
-    if (key === "marker.rotation" ? ctx.hasNumberField : cap.kind === "color" && ctx.hasColorField)
+    if (
+      key === "marker.rotation" || key.startsWith("extrude.")
+        ? ctx.hasNumberField
+        : cap.kind === "color" && ctx.hasColorField
+    )
       modes.push("raw");
     modes.push("classes");
   }

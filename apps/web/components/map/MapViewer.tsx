@@ -1,8 +1,8 @@
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import type { Theme } from "@mui/material";
-import { Box, useMediaQuery, useTheme } from "@mui/material";
+import { Box, Typography, useMediaQuery, useTheme } from "@mui/material";
 import centroid from "@turf/centroid";
-import type { MapGeoJSONFeature, StyleSpecification } from "maplibre-gl";
+import type { MapGeoJSONFeature, Map as MaplibreMap, PaddingOptions, StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Map, type MapLayerMouseEvent, type MapLayerTouchEvent, type MapRef, type ViewState } from "react-map-gl/maplibre";
@@ -18,6 +18,17 @@ import {
 } from "@/lib/store/map/slice";
 import { HEXAGON_PART, hexagonPopup, hexagonValues, isHexagon } from "@/lib/style/h3Popup";
 import { rasterPopupLayer, rasterValuesAt } from "@/lib/style/raster/popup";
+import { BUILDINGS_TILES_URL, TERRAIN_TILES_URL } from "@/lib/constants";
+import { BASEMAPS, DEFAULT_BASEMAP } from "@/lib/constants/basemaps";
+import { type Tone, isImageryBasemap, toneOf } from "@/lib/scene/auto";
+import { buildingsAnchor } from "@/lib/scene/compile";
+import { keepGlobeDepth } from "@/lib/scene/depth";
+import { SPACE_STYLE, followGlobe, haloOf } from "@/lib/scene/space";
+import { ENTER_3D, MAX_PITCH_3D, type ViewMode, cameraFor, maxPitchAtZoom, viewModeOf } from "@/lib/scene/view";
+import { GLOBE_UNTIL_ZOOM } from "@/lib/scene/visibility";
+import { extrudes } from "@/lib/style/compile/polygons";
+import type { Scene } from "@/lib/style/generated/types";
+import type { JsonObject } from "@/lib/style/json";
 import { carryProjectLayers, mapLayerIdsOf, projectLayerOf } from "@/lib/style/render/mapLayers";
 import {
   INTERACTIVE_PARTS,
@@ -28,12 +39,14 @@ import {
 } from "@/lib/style/render/viewLayers";
 import { applyMapLanguage } from "@/hooks/map/MapHooks";
 import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
+import type { Basemap } from "@/types/map/common";
 import createPulsingDot from "@/lib/utils/map/pulsing-dot-image";
 import { type PopupTrigger, splitPopupProperties } from "@/lib/utils/map/popupProperties";
 
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { useFeatureEditor } from "@/hooks/map/useFeatureEditor";
+import { useScene } from "@/hooks/map/useScene";
 import { useRenderLayers } from "@/hooks/map/useRenderLayers";
 import { ExplorerMapLayers } from "@/components/explorer/ExplorerMapLayers";
 import GeocoderLayer from "@/components/map/GeocoderLayer";
@@ -81,8 +94,18 @@ interface MapProps {
   onMoveEnd?: ((e: ViewStateChangeEvent) => void | undefined) | undefined;
   onClick?: (e: MapLayerMouseEvent) => void;
   onLoad?: () => void;
-  dragRotate?: boolean | undefined;
+  /** Pinch to zoom (and, in 3D, to rotate). */
   touchZoomRotate?: boolean | undefined;
+  /** 2D or 3D (3D spec 7.1); missing: 3D when the initial view is tilted. */
+  mode?: ViewMode;
+  /** Globe when zoomed out, or mercator (the default). */
+  projection?: "mercator" | "globe";
+  /** The map document's scene: terrain, buildings, sky, fog, glow and light; missing parts are automatic. */
+  scene?: Scene | null;
+  /** The basemap's tone for the automatic scene; by default from the basemap and the app theme. */
+  tone?: Tone;
+  /** The basemap the scene adds buildings to; the active basemap by default. */
+  basemap?: Basemap;
   children?: React.ReactNode;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   containerSx?: any;
@@ -121,8 +144,12 @@ const MapViewer: React.FC<MapProps> = ({
   onMoveEnd,
   onClick,
   onLoad,
-  dragRotate = false,
   touchZoomRotate = false,
+  mode,
+  projection,
+  scene,
+  tone,
+  basemap,
   maxExtent,
   minZoom,
   maxZoom,
@@ -134,6 +161,38 @@ const MapViewer: React.FC<MapProps> = ({
   const { t, i18n } = useTranslation("common");
   const theme = useTheme();
   const dispatch = useAppDispatch();
+  // The MapLibre map once loaded: the scene applies to it.
+  const [loadedMap, setLoadedMap] = useState<MaplibreMap | null>(null);
+  // The map could not start (no WebGL 2): a message instead of a blank map.
+  const [cannotStart, setCannotStart] = useState(false);
+  // An error before the map exists is its start failing; the rest are the map's own (tiles, styles), logged as before.
+  // A basemap style can name source layers its tiles do not carry (BKG's world style does), which draws nothing and
+  // is not ours to fix: that goes to the debug log once per message. A project layer's (`src-*` source) stays an error.
+  const loggedBasemapNotices = useRef(new Set<string>());
+  const handleMapError = useCallback((event: { target: unknown; error: Error }) => {
+    if (event.target === null) setCannotStart(true);
+    const message = event.error?.message ?? "";
+    const missingSourceLayer = /^Source layer ".*" does not exist on source "(.*)" as specified by style layer/.exec(
+      message
+    );
+    if (missingSourceLayer && !missingSourceLayer[1].startsWith("src-")) {
+      if (!loggedBasemapNotices.current.has(message)) {
+        loggedBasemapNotices.current.add(message);
+        console.debug(message);
+      }
+      return;
+    }
+    console.error(event.error);
+  }, []);
+  useEffect(() => {
+    if (!loadedMap) return;
+    // MapLibre restores a lost context itself when the browser gives it back; a lost one is worth a line in the log.
+    const onLost = () => console.warn("The map's WebGL context was lost; it redraws when the browser restores it.");
+    loadedMap.on("webglcontextlost", onLost);
+    return () => {
+      loadedMap.off("webglcontextlost", onLost);
+    };
+  }, [loadedMap]);
   const isGetInfoActive = useAppSelector((state) => state.map.isMapGetInfoActive);
   const mapCursor = useAppSelector((state) => state.map.mapCursor);
   const highlightedFeature = useAppSelector((state) => state.map.highlightedFeature);
@@ -677,6 +736,8 @@ const MapViewer: React.FC<MapProps> = ({
 
       // Apply label language based on current locale
       applyMapLanguage(map, i18n.language);
+      setLoadedMap(map);
+      keepGlobeDepth(map);
 
       applyPendingMapStyle();
     }
@@ -751,6 +812,109 @@ const MapViewer: React.FC<MapProps> = ({
   }, [highlightLayerId, highlightId, mapRef]);
   const renderLayers = useRenderLayers(layers, { highlight });
 
+  // --- 2D and 3D (3D spec 7.1) and the scene (7.2) ---------------------------
+  const viewMode = mode ?? viewModeOf({ pitch: initialViewState?.pitch });
+  const camera = cameraFor(viewMode);
+  // react-map-gl applies maxPitch at once: leaving 3D keeps it until the map has eased flat.
+  const [maxPitch, setMaxPitch] = useState(camera.maxPitch);
+  const shownMode = useRef(viewMode);
+  useEffect(() => {
+    const map = loadedMap;
+    if (!map) return;
+    const three = viewMode === "3d";
+    for (const handler of [map.touchZoomRotate, map.keyboard]) {
+      if (three) handler.enableRotation();
+      else handler.disableRotation();
+    }
+    if (shownMode.current === viewMode) return;
+    shownMode.current = viewMode;
+    if (three) {
+      map.setMaxPitch(MAX_PITCH_3D);
+      setMaxPitch(MAX_PITCH_3D);
+      map.easeTo({ pitch: ENTER_3D.pitch });
+      return;
+    }
+    const flat = () => {
+      if (shownMode.current === "2d") setMaxPitch(0);
+    };
+    if (map.getPitch() === 0 && map.getBearing() === 0) return flat();
+    map.once("moveend", flat);
+    map.easeTo({ pitch: 0, bearing: 0 });
+  }, [loadedMap, viewMode]);
+
+  const activeBasemap = useAppSelector((state) => state.map.activeBasemap);
+  const sceneBasemap: Basemap =
+    basemap ?? activeBasemap ?? BASEMAPS.find((b) => b.value === DEFAULT_BASEMAP) ?? BASEMAPS[0];
+  const projectExtrudes = useMemo(
+    () => layers.some((l) => l.visible && l.style && extrudes(l.style.document as unknown as JsonObject)),
+    [layers],
+  );
+  // A 3D globe tilts back as it zooms out (flat at zoom 3, the full 85 from zoom 7), so it stays in the middle of the
+  // view; the limit only lowers the tilt, and moves with the zoom without stopping a gesture.
+  useEffect(() => {
+    const map = loadedMap;
+    if (!map || viewMode !== "3d") return;
+    const limit = () => {
+      const max = projection === "globe" ? maxPitchAtZoom(map.getZoom()) : MAX_PITCH_3D;
+      if (map.getMaxPitch() !== max) map.setMaxPitch(max);
+    };
+    limit();
+    map.on("zoom", limit);
+    return () => {
+      map.off("zoom", limit);
+      if (map.getMaxPitch() !== MAX_PITCH_3D && shownMode.current === "3d") map.setMaxPitch(MAX_PITCH_3D);
+    };
+  }, [loadedMap, viewMode, projection]);
+
+  // While the globe is drawn (zoomed out), it sits in the middle of the whole map: padding a zoom to a layer left for
+  // the panels is set aside, and given back once the map zooms in past the globe or leaves it.
+  const asidePadding = useRef<PaddingOptions | null>(null);
+  useEffect(() => {
+    const map = loadedMap;
+    if (!map) return;
+    const centre = () => {
+      const globe = projection === "globe" && map.getZoom() < GLOBE_UNTIL_ZOOM;
+      const padding = map.getPadding();
+      const padded = padding.top || padding.bottom || padding.left || padding.right;
+      if (globe && padded) {
+        asidePadding.current = { ...padding };
+        map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+      } else if (!globe && asidePadding.current) {
+        map.setPadding(asidePadding.current);
+        asidePadding.current = null;
+      }
+    };
+    centre();
+    map.on("zoomend", centre);
+    return () => {
+      map.off("zoomend", centre);
+    };
+  }, [loadedMap, projection]);
+
+  const sceneTone = tone ?? toneOf(sceneBasemap, theme.palette.mode);
+  const appliedScene = useScene(loadedMap, {
+    scene: scene ?? undefined,
+    mode: viewMode,
+    projection: projection ?? "mercator",
+    tone: sceneTone,
+    terrainUrl: TERRAIN_TILES_URL,
+    buildingsUrl: BUILDINGS_TILES_URL,
+    projectExtrudes,
+    imagery: isImageryBasemap(sceneBasemap),
+    basemap: sceneBasemap,
+  });
+  // Space around the globe: stars and a halo behind the canvas, which is transparent there. The halo is the globe
+  // glow, as strong and in the colour the scene's Globe glow gives at the map's zoom.
+  const spaceRef = useRef<HTMLDivElement>(null);
+  const globe = projection === "globe";
+  const glow = scene?.glow;
+  useEffect(() => {
+    if (!loadedMap || !globe || !spaceRef.current) return;
+    return followGlobe(loadedMap, spaceRef.current, (zoom) =>
+      haloOf(glow ? { glow } : undefined, sceneTone, zoom)
+    );
+  }, [loadedMap, globe, glow, sceneTone]);
+
   return (
     <>
       <Box
@@ -806,6 +970,7 @@ const MapViewer: React.FC<MapProps> = ({
           },
           ...containerSx,
         }}>
+        {globe && <div ref={spaceRef} aria-hidden style={SPACE_STYLE} />}
         <Map
           {...MAPLIBRE_MAP_OPTIONS}
           id="map"
@@ -814,8 +979,13 @@ const MapViewer: React.FC<MapProps> = ({
           initialViewState={initialViewState}
           mapStyle={initialMapStyleRef.current}
           interactiveLayerIds={interactiveLayerIds}
-          dragRotate={dragRotate}
-          touchZoomRotate={touchZoomRotate}
+          maxPitch={maxPitch}
+          // On the first style load, so the first frame is already a globe (the scene applies it again later).
+          projection={{ type: projection ?? "mercator" }}
+          dragRotate={camera.dragRotate}
+          touchPitch={camera.touchPitch}
+          pitchWithRotate={camera.pitchWithRotate}
+          touchZoomRotate={touchZoomRotate || viewMode === "3d"}
           attributionControl={false}
           // MapLibre's own UI strings; the canvas is announced by this title.
           locale={{ "Map.Title": t("map") }}
@@ -828,7 +998,8 @@ const MapViewer: React.FC<MapProps> = ({
           maxBounds={maxExtent}
           minZoom={minZoom}
           maxZoom={maxZoom}
-          onLoad={handleMapLoad}>
+          onLoad={handleMapLoad}
+          onError={handleMapError}>
           <DrawControl
             position="top-right"
             displayControlsDefault={false}
@@ -838,6 +1009,7 @@ const MapViewer: React.FC<MapProps> = ({
             layers={renderLayers}
             editing={editing}
             locale={locale || i18n.language}
+            ground={buildingsAnchor(appliedScene)}
             onLayersChange={setDrawnLayerIds}
           />
           <GeocoderLayer />
@@ -924,6 +1096,22 @@ const MapViewer: React.FC<MapProps> = ({
             />
           )}
         </Map>
+        {cannotStart && (
+          <Box
+            role="alert"
+            sx={{
+              position: "absolute",
+              inset: 0,
+              display: "grid",
+              placeItems: "center",
+              p: 4,
+              bgcolor: "background.default",
+            }}>
+            <Typography variant="body1" color="text.secondary" textAlign="center">
+              {t("view3d.needs_webgl")}
+            </Typography>
+          </Box>
+        )}
         <FeatureEditToolbar
           onSave={featureEditorHandlers.handleSave}
           onDiscard={featureEditorHandlers.handleDiscardRequest}

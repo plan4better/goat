@@ -180,9 +180,9 @@ describe("syncMapLayers", () => {
       entry: {},
       source: { type: "points", id: "src-2", data: "https://geoapi/items" },
     };
-    const terrain: RenderLayer = {
+    const hillshade: RenderLayer = {
       key: "3",
-      style: { version: 1, kind: "raster", render: { type: "terrain", band: 1 } } as LayerStyle,
+      style: { version: 1, kind: "raster", render: { type: "hillshade", band: 1 } } as LayerStyle,
       entry: {},
       source: {
         type: "raster",
@@ -202,7 +202,7 @@ describe("syncMapLayers", () => {
         dem: "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp",
       },
     };
-    syncMapLayers(map, null, [labelled, clusters, terrain, image], { locale: "en" });
+    syncMapLayers(map, null, [labelled, clusters, hillshade, image], { locale: "en" });
     for (const id of ours(map)) expect([id, projectLayerOf(map, id)]).toEqual([id, id.split("-")[0]]);
     expect(map.order.some((id) => id.startsWith("2-cluster-"))).toBe(true);
     expect(map.order).toContain("3-hillshade");
@@ -220,7 +220,11 @@ describe("syncMapLayers", () => {
       { id: "base-road", type: "line", "source-layer": "transportation" },
       { id: "base-label", type: "symbol" },
     ];
-    expect(basemapAnchors(basemap)).toEqual({ labels: "base-label", roads: "base-road" });
+    expect(basemapAnchors(basemap)).toEqual({
+      labels: "base-label",
+      roads: "base-road",
+      buildings: "base-label",
+    });
     const map = orderedMap(basemap);
     syncMapLayers(
       map,
@@ -286,6 +290,86 @@ describe("syncMapLayers", () => {
       24,
       4
     );
+  });
+
+  describe("3D buildings (`ground`)", () => {
+    const basemap = [
+      { id: "base-bg", type: "background" },
+      { id: "base-road", type: "line", "source-layer": "transportation" },
+      { id: "base-label", type: "symbol" },
+      { id: "base-buildings", type: "fill-extrusion" },
+      { id: "base-boundary", type: "line" },
+    ];
+    const point = polygon("1", {
+      style: { version: 1, kind: "vector", symbol: { marker: {} } } as LayerStyle,
+      geometry: "point",
+    });
+    const labelled = polygon("2", {
+      style: {
+        version: 1,
+        kind: "vector",
+        symbol: { fill: { color: "#cccccc" }, outline: { color: "#000000" }, label: { text: "{name}" } },
+      } as LayerStyle,
+    });
+    const line = polygon("3", {
+      style: { version: 1, kind: "vector", symbol: { line: { color: "#3366cc" } } } as LayerStyle,
+      geometry: "line",
+    });
+
+    it("fills and lines on top go below the buildings, points and labels stay above them", () => {
+      const map = orderedMap(basemap);
+      syncMapLayers(map, null, [point, labelled, line], {
+        locale: "en",
+        anchors: basemapAnchors(basemap),
+        ground: "base-buildings",
+      });
+      expect(map.order).toEqual([
+        "base-bg",
+        "base-road",
+        "base-label",
+        "3-line",
+        "2-fill",
+        "2-outline",
+        "base-buildings",
+        "base-boundary",
+        "2-label",
+        "1-marker",
+      ]);
+    });
+
+    it("buildings switched on and off move the ground parts below them and back", () => {
+      const map = orderedMap(basemap);
+      const layers = [point, labelled, line];
+      const anchors = basemapAnchors(basemap);
+      let state = syncMapLayers(map, null, layers, { locale: "en", anchors });
+      const flat = [...map.order];
+      expect(flat.slice(basemap.length)).toEqual(["3-line", "2-fill", "2-outline", "2-label", "1-marker"]);
+      state = syncMapLayers(map, state, layers, { locale: "en", anchors, ground: "base-buildings" });
+      expect(map.order.indexOf("2-fill")).toBeLessThan(map.order.indexOf("base-buildings"));
+      expect(map.order.indexOf("2-label")).toBeGreaterThan(map.order.indexOf("base-buildings"));
+      syncMapLayers(map, state, layers, { locale: "en", anchors });
+      expect(map.order).toEqual(flat);
+    });
+
+    it("a building layer below the labels takes the ground parts of the layers below the labels too", () => {
+      const map = orderedMap([
+        { id: "base-bg", type: "background" },
+        { id: "goat-buildings", type: "fill-extrusion" },
+        { id: "base-label", type: "symbol" },
+      ]);
+      syncMapLayers(map, null, [polygon("1", { entry: { position: "below_labels" } })], {
+        locale: "en",
+        anchors: { labels: "base-label" },
+        ground: "goat-buildings",
+      });
+      expect(map.order).toEqual(["base-bg", "1-fill", "1-outline", "goat-buildings", "base-label"]);
+    });
+
+    it("a building layer not on the map yet changes nothing", () => {
+      const map = orderedMap([{ id: "base-bg", type: "background" }]);
+      syncMapLayers(map, null, [labelled], { locale: "en", ground: "goat-buildings" });
+      expect(map.order).toEqual(["base-bg", "2-fill", "2-outline", "2-label"]);
+    });
   });
 
   it("position changes the beforeId: a layer moved below the labels lands there", () => {

@@ -5,6 +5,7 @@ import type { LayerSpecification } from "maplibre-gl";
 import { cascade, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
 import { FONT_STACKS } from "@/lib/style/compile/constants";
 import { type PartContext, makeLayer, put, withLayerOpacity } from "@/lib/style/compile/parts";
+import { extrudes, heightValue } from "@/lib/style/compile/polygons";
 import type { FieldType } from "@/lib/style/compile/types";
 import {
   type Expr,
@@ -309,6 +310,8 @@ export function labelLayers(ctx: PartContext): LayerSpecification[] {
   if (geometry === "polygon") {
     sourceLayer = "default_anchor";
     ctx.out.tileParams.label = true;
+    // Names of raised polygons sit on their roofs (3D spec 7.5).
+    if (extrudes(style)) layout["symbol-height-offset"] = toProperty(heightValue(ctx));
   }
   const priority = perLayer(style, "label.priority");
   if (isObject(priority) && typeof priority.field === "string") {

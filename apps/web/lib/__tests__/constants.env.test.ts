@@ -81,6 +81,34 @@ describe("MAPTILER_KEY", () => {
   });
 });
 
+describe.each([
+  ["TERRAIN_TILES_URL", "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"],
+  ["BUILDINGS_TILES_URL", "https://tiles.openfreemap.org/planet"],
+] as const)("%s (3D source)", (name, fallback) => {
+  const env = `NEXT_PUBLIC_${name}`;
+
+  it("is off when set to an empty value", async () => {
+    vi.stubEnv(env, "");
+    const constants = await loadConstants();
+    expect(constants[name]).toBeUndefined();
+  });
+
+  it("is the default when unset, still the Docker placeholder, or left unset by the entrypoint", async () => {
+    vi.stubEnv(env, undefined);
+    expect((await loadConstants())[name]).toBe(fallback);
+    vi.stubEnv(env, `APP_${env}`);
+    expect((await loadConstants())[name]).toBe(fallback);
+    // entrypoint.sh leaves the bare prefix for a 3D source the container does not set
+    vi.stubEnv(env, "APP_NEXT_PUBLIC_");
+    expect((await loadConstants())[name]).toBe(fallback);
+  });
+
+  it("uses the configured URL", async () => {
+    vi.stubEnv(env, "https://dem.example.org/{z}/{x}/{y}.webp");
+    expect((await loadConstants())[name]).toBe("https://dem.example.org/{z}/{x}/{y}.webp");
+  });
+});
+
 describe("a saved MapTiler basemap without a key", () => {
   it("resolves to the default basemap", async () => {
     vi.stubEnv("NEXT_PUBLIC_MAPTILER_KEY", "");

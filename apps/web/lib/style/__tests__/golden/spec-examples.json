@@ -2186,6 +2186,187 @@
   "position": "top",
   "unsupported": []
  },
+ "575": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill-extrusion",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-extrusion-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#d9d9d9"
+     ],
+     "fill-extrusion-height": [
+      "match",
+      [
+       "get",
+       "land_use"
+      ],
+      "green",
+      0,
+      0
+     ],
+     "fill-extrusion-base": [
+      "min",
+      [
+       "match",
+       [
+        "get",
+        "land_use"
+       ],
+       "green",
+       0,
+       0
+      ],
+      [
+       "match",
+       [
+        "get",
+        "land_use"
+       ],
+       "green",
+       0,
+       0
+      ]
+     ],
+     "fill-extrusion-opacity": 0.9
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#636363"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_anchor",
+    "layout": {
+     "text-field": [
+      "to-string",
+      [
+       "get",
+       "name"
+      ]
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Regular"
+     ],
+     "symbol-height-offset": [
+      "match",
+      [
+       "get",
+       "land_use"
+      ],
+      "green",
+      0,
+      0
+     ]
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {
+   "label": true,
+   "fields": [
+    "land_use",
+    "name"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
  "584": {
   "id": "1",
   "sources": {
@@ -2389,6 +2570,94 @@
       ],
       3,
       3
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "620": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill-extrusion",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-extrusion-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#fdb462"
+     ],
+     "fill-extrusion-height": 20,
+     "fill-extrusion-base": 20,
+     "fill-extrusion-opacity": 1
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": "#ffc300",
+     "line-width": 3,
+     "line-opacity": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      1,
+      0
      ]
     }
    }
@@ -6518,12 +6787,64 @@
     "source": "s-dem",
     "paint": {
      "hillshade-method": "standard",
-     "hillshade-illumination-direction": 315,
-     "hillshade-illumination-altitude": 45,
+     "hillshade-illumination-direction": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAzimuth"
+      ],
+      315
+     ],
+     "hillshade-illumination-altitude": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAltitude"
+      ],
+      45
+     ],
+     "hillshade-illumination-anchor": "map",
      "hillshade-exaggeration": 0.5,
      "hillshade-shadow-color": "rgba(0, 0, 0, 0.8)",
      "hillshade-highlight-color": "rgba(255, 255, 255, 0.8)",
      "hillshade-accent-color": "rgba(0, 0, 0, 0.8)"
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1789": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   },
+   "s-h3": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}?h3=auto&h3_value=sum&h3_field=pupils"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-h3-fill",
+    "type": "fill-extrusion",
+    "source": "s-h3",
+    "source-layer": "h3",
+    "paint": {
+     "fill-extrusion-color": "#fc8d59",
+     "fill-extrusion-height": 750,
+     "fill-extrusion-opacity": 0.85
     }
    }
   ],
@@ -6850,6 +7171,7 @@
       45,
       45
      ],
+     "hillshade-illumination-anchor": "map",
      "hillshade-exaggeration": 0.6,
      "hillshade-shadow-color": [
       "rgba(45, 58, 74, 0.6)",
@@ -6904,8 +7226,23 @@
     "source": "s-dem",
     "paint": {
      "hillshade-method": "standard",
-     "hillshade-illumination-direction": 315,
-     "hillshade-illumination-altitude": 45,
+     "hillshade-illumination-direction": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAzimuth"
+      ],
+      315
+     ],
+     "hillshade-illumination-altitude": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAltitude"
+      ],
+      45
+     ],
+     "hillshade-illumination-anchor": "map",
      "hillshade-exaggeration": 0.5,
      "hillshade-shadow-color": "rgba(0, 0, 0, 1)",
      "hillshade-highlight-color": "rgba(255, 255, 255, 1)",
@@ -6938,8 +7275,23 @@
     "source": "s-dem",
     "paint": {
      "hillshade-method": "combined",
-     "hillshade-illumination-direction": 315,
-     "hillshade-illumination-altitude": 45,
+     "hillshade-illumination-direction": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAzimuth"
+      ],
+      315
+     ],
+     "hillshade-illumination-altitude": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAltitude"
+      ],
+      45
+     ],
+     "hillshade-illumination-anchor": "map",
      "hillshade-exaggeration": 0.5,
      "hillshade-shadow-color": "rgba(0, 0, 0, 1)",
      "hillshade-highlight-color": "rgba(255, 255, 255, 1)"
@@ -6971,8 +7323,23 @@
     "source": "s-dem",
     "paint": {
      "hillshade-method": "igor",
-     "hillshade-illumination-direction": 315,
-     "hillshade-illumination-altitude": 45,
+     "hillshade-illumination-direction": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAzimuth"
+      ],
+      315
+     ],
+     "hillshade-illumination-altitude": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAltitude"
+      ],
+      45
+     ],
+     "hillshade-illumination-anchor": "map",
      "hillshade-exaggeration": 0.7,
      "hillshade-shadow-color": "rgba(0, 0, 0, 1)",
      "hillshade-highlight-color": "rgba(255, 255, 255, 1)"
@@ -7004,8 +7371,23 @@
     "source": "s-dem",
     "paint": {
      "hillshade-method": "basic",
-     "hillshade-illumination-direction": 315,
-     "hillshade-illumination-altitude": 45,
+     "hillshade-illumination-direction": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAzimuth"
+      ],
+      315
+     ],
+     "hillshade-illumination-altitude": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAltitude"
+      ],
+      45
+     ],
+     "hillshade-illumination-anchor": "map",
      "hillshade-exaggeration": 0.5,
      "hillshade-shadow-color": "rgba(0, 0, 0, 1)",
      "hillshade-highlight-color": "rgba(255, 255, 255, 1)"
@@ -7393,8 +7775,23 @@
     "source": "s-dem",
     "paint": {
      "hillshade-method": "standard",
-     "hillshade-illumination-direction": 315,
-     "hillshade-illumination-altitude": 45,
+     "hillshade-illumination-direction": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAzimuth"
+      ],
+      315
+     ],
+     "hillshade-illumination-altitude": [
+      "coalesce",
+      [
+       "global-state",
+       "sunAltitude"
+      ],
+      45
+     ],
+     "hillshade-illumination-anchor": "map",
      "hillshade-exaggeration": 0.5,
      "hillshade-shadow-color": "rgba(0, 0, 0, 1)",
      "hillshade-highlight-color": "rgba(255, 255, 255, 1)",

@@ -66,7 +66,7 @@ function domainOf(render: JsonObject): [number, number] | null {
   return domain && domain.length === 2 && domain.every(num) ? (domain as [number, number]) : null;
 }
 
-/** The coloring of a raster render; null for shading without colors (terrain without a palette). */
+/** The coloring of a raster render; null for shading without colors (hillshade without a palette). */
 export function rasterColorSpec(render: JsonObject): RasterColorSpec | null {
   const noData =
     isObject(render.no_data) && Array.isArray(render.no_data.values) ? render.no_data.values.filter(num) : [];
@@ -93,7 +93,7 @@ export function rasterColorSpec(render: JsonObject): RasterColorSpec | null {
       other: typeof render.other_color === "string" ? render.other_color : null,
     };
   }
-  if (render.type !== "continuous" && render.type !== "terrain") return null;
+  if (render.type !== "continuous" && render.type !== "hillshade") return null;
   const outside: Outside = render.outside === "hide" ? "hide" : "clamp";
   if (render.type === "continuous" && Array.isArray(render.stops)) {
     const stops = render.stops
@@ -111,7 +111,7 @@ export function rasterColorSpec(render: JsonObject): RasterColorSpec | null {
       outside,
     };
   }
-  // Terrain is colored only with a palette; continuous defaults to the reference palette.
+  // Hillshade is colored only with a palette; continuous defaults to the reference palette.
   const fallback = render.type === "continuous" ? (DEFAULTS["continuous.palette"] as string) : undefined;
   const palette = (render.palette ?? fallback) as string | string[] | undefined;
   if (palette === undefined) return null;

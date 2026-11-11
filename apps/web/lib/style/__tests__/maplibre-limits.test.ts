@@ -183,6 +183,22 @@ const PROBES: CompileInput[] = [
     },
   },
   {
+    id: "extruded",
+    geometry: "polygon",
+    source: TILES,
+    style: {
+      version: 1,
+      kind: "vector",
+      symbol: { extrude: { height: { field: "levels" }, base: 2, unit: "storeys" } },
+    },
+  },
+  {
+    id: "columns",
+    geometry: "point",
+    source: TILES,
+    style: { version: 1, kind: "vector", render: { type: "h3", extrude: { tallest: 500, base: 10 } } },
+  },
+  {
     id: "icon",
     geometry: "point",
     source: TILES,
@@ -281,8 +297,17 @@ describe("MapLibre limits (goatlib maplibre_limits.json)", () => {
     });
     expect(problems).toEqual([]);
     expect(Object.keys(SLIDERS)).toEqual(
-      expect.arrayContaining(["terrain.direction", "terrain.exaggeration"])
+      expect.arrayContaining(["hillshade.direction", "hillshade.exaggeration"])
     );
+  });
+
+  it("let H3 columns chart far above a building's height", () => {
+    // Hexagons at country zoom are ~20 km wide: a column a few times that wide reads as one. Polygons stay real.
+    const table = settings();
+    expect(effective(table["h3.extrude.tallest"]).max).toBe(200000);
+    expect(effective(table["h3.extrude.base"]).max).toBe(200000);
+    expect(effective(table["extrude.height"]).max).toBe(5000);
+    expect(SLIDERS["h3.extrude.tallest"].max).toBeGreaterThanOrEqual(60000);
   });
 
   it("report a change in words", () => {
@@ -290,8 +315,8 @@ describe("MapLibre limits (goatlib maplibre_limits.json)", () => {
       maplibre: ["paint_hillshade.hillshade-exaggeration"],
       spec: { min: 0, max: 1, zoom: null, feature: false },
     };
-    expect(changes("terrain.exaggeration", setting)).toEqual([
-      "terrain.exaggeration (paint_hillshade.hillshade-exaggeration): MapLibre now allows zoom expressions that interpolate (table: no zoom expressions)",
+    expect(changes("hillshade.exaggeration", setting)).toEqual([
+      "hillshade.exaggeration (paint_hillshade.hillshade-exaggeration): MapLibre now allows zoom expressions that interpolate (table: no zoom expressions)",
     ]);
   });
 });

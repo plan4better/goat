@@ -120,13 +120,13 @@ describe("raster colors", () => {
   });
 
   it("hillshade colors start from the band's values; a band without values keeps them off and says so", async () => {
-    const empty = setup({ type: "terrain" }, {}, { ...INFO, stats: stats(null, null) });
+    const empty = setup({ type: "hillshade" }, {}, { ...INFO, stats: stats(null, null) });
     await openColors();
     await userEvent.click(within(rowOf("style_editor.hillshade_colors")).getByRole("checkbox"));
     expect(empty.store.get("render.palette")).toBeUndefined();
     expect(screen.getByText("style_editor.range_nothing_found")).toBeDefined();
     empty.unmount();
-    const { store } = setup({ type: "terrain" });
+    const { store } = setup({ type: "hillshade" });
     await openColors();
     await userEvent.click(within(rowOf("style_editor.hillshade_colors")).getByRole("checkbox"));
     await waitFor(() => expect(store.get("render.domain")).toEqual([3, 98]));
@@ -134,7 +134,7 @@ describe("raster colors", () => {
   });
 
   it("hillshade shows the accent only for the standard method", async () => {
-    const { store } = setup({ type: "terrain" });
+    const { store } = setup({ type: "hillshade" });
     expect(screen.getByText("style_editor.hillshade_accent")).toBeDefined();
     await choose(
       "style_editor.hillshade_method",

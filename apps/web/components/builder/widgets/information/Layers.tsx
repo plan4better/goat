@@ -1,20 +1,17 @@
 import { Box, InputAdornment, TextField } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useProjectLayerGroups } from "@/lib/api/projects";
 import { SYSTEM_LAYERS_IDS } from "@/lib/constants";
 import type { ProjectLayer, ProjectLayerGroup } from "@/lib/validations/project";
 import type { LayerInformationSchema } from "@/lib/validations/widget";
 
-import { useLayerTreeState } from "@/hooks/map/useLayerTreeState";
-import { type MapLayer, useMapLayers, withMapGroups } from "@/hooks/map/useMapLayers";
 import { useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { LayerGroupSwitcher } from "@/components/builder/widgets/information/LayerGroupSwitcher";
 import TabsLayerLayout from "@/components/builder/widgets/information/TabsLayerLayout";
+import { useWidgetLayerTree } from "@/components/builder/widgets/information/useWidgetLayerTree";
 import { ProjectLayerTree } from "@/components/map/panels/layer/ProjectLayerTree";
 
 interface LayerInformationProps {
@@ -33,7 +30,6 @@ export const LayerInformationWidget = ({
   viewOnly,
 }: LayerInformationProps) => {
   const { t } = useTranslation("common");
-  const { projectId } = useParams() as { projectId: string };
   const [searchText, setSearchText] = useState("");
 
   // In edit mode, read the latest config from Redux for instant updates — but ONLY for THIS widget
@@ -47,26 +43,13 @@ export const LayerInformationWidget = ({
       ? (selectedBuilderItem.config as LayerInformationSchema)
       : configProp;
 
-  // A published dashboard keeps its map layers (view state included) in the store; the builder reads the project's.
-  const reduxProjectLayers = useAppSelector((state) => state.layers.projectLayers) as MapLayer[];
-  const reduxProjectLayerGroups = useAppSelector((state) => state.layers.projectLayerGroups);
-
-  const { layers: editProjectLayers, map: projectMap } = useMapLayers(viewOnly ? undefined : projectId);
-  const { layerGroups: editLayerGroups } = useProjectLayerGroups(viewOnly ? undefined : projectId);
-  const editProjectLayerGroups = useMemo(
-    () => withMapGroups(editLayerGroups ?? [], projectMap?.map),
-    [editLayerGroups, projectMap?.map]
-  );
-  // An editor in the builder writes map state; a dashboard visitor's changes are view state.
-  const treeState = useLayerTreeState(projectId, viewOnly ? "public" : "edit");
-  const allLayers = useMemo(
-    () => (viewOnly ? reduxProjectLayers : editProjectLayers || []),
-    [viewOnly, reduxProjectLayers, editProjectLayers]
-  );
-  const allGroups = useMemo(
-    () => (viewOnly ? reduxProjectLayerGroups : editProjectLayerGroups || []),
-    [viewOnly, reduxProjectLayerGroups, editProjectLayerGroups]
-  );
+  // A published dashboard's map layers (view state included) are in the store; the builder reads the project's map.
+  const {
+    projectId,
+    layers: allLayers,
+    layerGroups: allGroups,
+    treeState,
+  } = useWidgetLayerTree(viewOnly);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const opts = config.options as Record<string, any> | undefined;

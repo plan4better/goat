@@ -54,13 +54,22 @@ export function useLayerTreeState(projectId: string | undefined, mode: TreeState
     [mode, setGroupState, viewGroupState, dispatch]
   );
 
-  const onLayerTimeChange = useCallback<LayerTimeChange>(
-    async (layerProjectId, value, committed) => {
-      if (mode === "edit" && !committed) return viewLayerState(layerProjectId, { time_value: value });
-      return onLayerStateChange(layerProjectId, { time_value: value });
+  /** A change only shown: an editor's stays on the page until it is written; everyone else's is view state anyway. */
+  const previewLayerState = useCallback<LayerStateChange>(
+    async (layerProjectId, state) => {
+      if (mode === "edit") return viewLayerState(layerProjectId, state);
+      return onLayerStateChange(layerProjectId, state);
     },
     [mode, viewLayerState, onLayerStateChange]
   );
 
-  return { onLayerStateChange, onGroupStateChange, onLayerTimeChange };
+  const onLayerTimeChange = useCallback<LayerTimeChange>(
+    async (layerProjectId, value, committed) => {
+      if (!committed) return previewLayerState(layerProjectId, { time_value: value });
+      return onLayerStateChange(layerProjectId, { time_value: value });
+    },
+    [previewLayerState, onLayerStateChange]
+  );
+
+  return { onLayerStateChange, onGroupStateChange, onLayerTimeChange, previewLayerState };
 }

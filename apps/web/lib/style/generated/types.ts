@@ -55,6 +55,7 @@ export interface Symbol {
   arrows?: (Arrows | false) | null;
   marker?: (Marker | false) | null;
   label?: (Label | false) | null;
+  extrude?: (Extrude | false) | null;
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
@@ -460,6 +461,28 @@ export interface Priority {
   top: "largest" | "smallest";
 }
 /**
+ * The height part of polygons: each feature drawn as a volume from `base` to `height`.
+ *
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "Extrude".
+ */
+export interface Extrude {
+  min_zoom?: number | null;
+  max_zoom?: number | null;
+  height?: (number | ZoomHeight | ByAttributeNumber | RawField) | null;
+  base?: (number | ZoomHeight | ByAttributeNumber | RawField) | null;
+  unit?: ("m" | "storeys") | null;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomHeight".
+ */
+export interface ZoomHeight {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
  * via the `definition` "Classification".
  */
@@ -486,6 +509,9 @@ export interface Classification {
         | "casing.color"
         | "casing.opacity"
         | "casing.width"
+        | "extrude.base"
+        | "extrude.height"
+        | "extrude.unit"
         | "fill.color"
         | "fill.opacity"
         | "fill.pattern"
@@ -557,6 +583,7 @@ export interface ClassRecord {
   arrows?: (Arrows | false) | null;
   marker?: (Marker | false) | null;
   label?: (Label | false) | null;
+  extrude?: (Extrude | false) | null;
   id?: string | null;
   values?: (string | number | boolean)[] | null;
   from?: number | null;
@@ -579,6 +606,7 @@ export interface Rule {
   arrows?: (Arrows | false) | null;
   marker?: (Marker | false) | null;
   label?: (Label | false) | null;
+  extrude?: (Extrude | false) | null;
   id?: string | null;
   name?: string | null;
   legend?: false | null;
@@ -880,6 +908,7 @@ export interface H3Render {
   opacity?: number | null;
   outline?: H3Outline | null;
   points_from_zoom?: number | null;
+  extrude?: H3Extrude | null;
   computed?: H3Computed | null;
 }
 /**
@@ -929,6 +958,27 @@ export interface H3Outline {
   width?: number | null;
 }
 /**
+ * Hexagons drawn as columns: the cell value, scaled, sets each column's height
+ * from `base` up to `base + tallest`.
+ *
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "H3Extrude".
+ */
+export interface H3Extrude {
+  tallest?: (number | ZoomH3Height) | null;
+  base?: (number | ZoomH3Height) | null;
+  scale?: ("linear" | "sqrt") | null;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomH3Height".
+ */
+export interface ZoomH3Height {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
  * What the server computed for an H3 render (section 12), by resolution.
  *
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
@@ -965,7 +1015,7 @@ export interface RasterStyle {
   min_zoom?: number | null;
   max_zoom?: number | null;
   resampling?: ("linear" | "nearest") | null;
-  render?: (ImageRender | ContinuousRender | CategoricalRender | TerrainRender) | null;
+  render?: (ImageRender | ContinuousRender | CategoricalRender | HillshadeRender) | null;
   legend?: RasterLegend | false | null;
   popup?: RasterPopup | false | null;
   brightness?: number | null;
@@ -1050,9 +1100,9 @@ export interface CategoryClass {
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
- * via the `definition` "TerrainRender".
+ * via the `definition` "HillshadeRender".
  */
-export interface TerrainRender {
+export interface HillshadeRender {
   band?: number | BandFormula | null;
   no_data?: NoData | null;
   palette?: string | string[] | null;
@@ -1061,7 +1111,7 @@ export interface TerrainRender {
   classify?: ColorClassification | null;
   outside?: ("clamp" | "hide") | null;
   computed?: Computed | null;
-  type: "terrain";
+  type: "hillshade";
   method?: ("standard" | "multidirectional" | "combined" | "igor" | "basic") | null;
   direction?: number | null;
   altitude?: number | null;
@@ -1103,6 +1153,7 @@ export interface MapDocument {
   view?: View | null;
   locale?: string | null;
   layers?: (MapLayer | MapGroup)[] | null;
+  scene?: Scene | null;
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
@@ -1121,6 +1172,8 @@ export interface View {
   pitch?: number | null;
   bearing?: number | null;
   bounds?: [unknown, unknown, unknown, unknown] | null;
+  mode?: ("2d" | "3d") | null;
+  projection?: ("mercator" | "globe") | null;
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
@@ -1165,6 +1218,94 @@ export interface MapGroup {
   visible?: boolean | null;
   expanded?: boolean | null;
   children?: (MapLayer | MapGroup)[] | null;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "Scene".
+ */
+export interface Scene {
+  terrain?: (SceneTerrain | false) | null;
+  buildings?: boolean | SceneBuildings | null;
+  sky?: SceneSky | null;
+  fog?: SceneFog | null;
+  glow?: SceneGlow | null;
+  light?: SceneLight | null;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "SceneTerrain".
+ */
+export interface SceneTerrain {
+  exaggeration?: number | null;
+}
+/**
+ * 3D buildings: `on` (missing: automatic) and how opaque they are.
+ *
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "SceneBuildings".
+ */
+export interface SceneBuildings {
+  on?: boolean | null;
+  opacity?: number | null;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "SceneSky".
+ */
+export interface SceneSky {
+  color?: (string | ZoomSceneColor) | null;
+  horizon_color?: (string | ZoomSceneColor) | null;
+  horizon_blend?: (number | ZoomSceneUnit) | null;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomSceneColor".
+ */
+export interface ZoomSceneColor {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomSceneUnit".
+ */
+export interface ZoomSceneUnit {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "SceneFog".
+ */
+export interface SceneFog {
+  color?: (string | ZoomSceneColor) | null;
+  horizon_blend?: (number | ZoomSceneUnit) | null;
+  ground_blend?: (number | ZoomSceneUnit) | null;
+}
+/**
+ * The glow around the globe: how strong it is, and the colour of GOAT's halo.
+ *
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "SceneGlow".
+ */
+export interface SceneGlow {
+  strength?: (number | ZoomSceneUnit) | null;
+  color?: (string | ZoomSceneColor) | null;
+}
+/**
+ * Where the light comes from: a compass direction and an altitude above the
+ * horizon, with its intensity and colour.
+ *
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "SceneLight".
+ */
+export interface SceneLight {
+  direction?: number | null;
+  altitude?: number | null;
+  intensity?: (number | ZoomSceneUnit) | null;
+  color?: (string | ZoomSceneColor) | null;
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema

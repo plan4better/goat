@@ -5,7 +5,7 @@ export const basicLayout = {
       "top-left": ["location", "measure"],
       "top-right": [],
       "bottom-left": [],
-      "bottom-right": ["zoom_controls", "basemap", "fullscreen"],
+      "bottom-right": ["view", "zoom_controls", "basemap", "fullscreen"],
     },
     allowed_basemaps: null,
     toolbar: true,

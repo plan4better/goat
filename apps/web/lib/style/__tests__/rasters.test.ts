@@ -170,11 +170,11 @@ describe("raster files from the raster service", () => {
     expect(out.layers).toEqual([]);
   });
 
-  it("terrain is MapLibre's hillshade over an elevation source; several lights are GDAL's four", () => {
+  it("hillshade is MapLibre's hillshade over an elevation source; several lights are GDAL's four", () => {
     const out = compile({
       opacity: 0.6,
       render: {
-        type: "terrain",
+        type: "hillshade",
         method: "multidirectional",
         direction: 315,
         altitude: 45,
@@ -201,13 +201,14 @@ describe("raster files from the raster service", () => {
         "hillshade-exaggeration": 0.6,
         "hillshade-shadow-color": Array(4).fill("rgba(0, 0, 0, 0.6)"),
         "hillshade-highlight-color": Array(4).fill("rgba(255, 255, 255, 0.6)"),
+        "hillshade-illumination-anchor": "map",
       },
     });
     expect(out.layers[0].paint).not.toHaveProperty("hillshade-accent-color");
     valid(out);
   });
 
-  it("standard terrain takes the reference defaults and its accent; opacity by zoom fades the shading", () => {
+  it("standard hillshade takes the reference defaults and its accent; opacity by zoom fades the shading", () => {
     const out = compile({
       opacity: {
         zoom: [
@@ -215,11 +216,22 @@ describe("raster files from the raster service", () => {
           [12, 1],
         ],
       },
-      render: { type: "terrain" },
+      render: { type: "hillshade" },
     });
     const paint = out.layers[0].paint as Record<string, unknown>;
     expect(paint["hillshade-method"]).toBe("standard");
-    expect(paint["hillshade-illumination-direction"]).toBe(315);
+    // The scene's light moves the shading through the global state; without it the hillshade's own light.
+    expect(paint["hillshade-illumination-direction"]).toEqual([
+      "coalesce",
+      ["global-state", "sunAzimuth"],
+      315,
+    ]);
+    expect(paint["hillshade-illumination-altitude"]).toEqual([
+      "coalesce",
+      ["global-state", "sunAltitude"],
+      45,
+    ]);
+    expect(paint["hillshade-illumination-anchor"]).toBe("map");
     expect(paint["hillshade-shadow-color"]).toEqual([
       "interpolate",
       ["linear"],
@@ -233,10 +245,10 @@ describe("raster files from the raster service", () => {
     valid(out);
   });
 
-  it("terrain over colors: the color layer under the shading, an elevation source of its own", () => {
+  it("hillshade over colors: the color layer under the shading, an elevation source of its own", () => {
     const out = compile({
       render: {
-        type: "terrain",
+        type: "hillshade",
         palette: "goat:elevation",
         domain: [181, 440],
         classify: { method: "manual", classes: [{ to: 300 }, { from: 300 }] },
@@ -248,15 +260,15 @@ describe("raster files from the raster service", () => {
     valid(out);
   });
 
-  it("terrain without a palette has no color layer", () => {
-    expect(compile({ render: { type: "terrain" } }).layers.map((l) => l.id)).toEqual(["9-hillshade"]);
+  it("hillshade without a palette has no color layer", () => {
+    expect(compile({ render: { type: "hillshade" } }).layers.map((l) => l.id)).toEqual(["9-hillshade"]);
   });
 
   it("zooms go on every layer", () => {
     const out = compile({
       min_zoom: 10,
       max_zoom: 18,
-      render: { type: "terrain", palette: "goat:elevation", domain: [0, 9] },
+      render: { type: "hillshade", palette: "goat:elevation", domain: [0, 9] },
     });
     for (const layer of out.layers) expect(layer).toMatchObject({ minzoom: 10, maxzoom: 18 });
   });

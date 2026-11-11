@@ -103,6 +103,7 @@ export const CORNER_KEYS = ["top-left", "top-right", "bottom-left", "bottom-righ
 export type CornerKey = (typeof CORNER_KEYS)[number];
 
 export const CONTROL_KEYS = [
+  "view",
   "location",
   "measure",
   "zoom_controls",
@@ -129,7 +130,7 @@ const controlPositionsSchema = z
   })
   .default({
     "top-left": ["location", "measure"],
-    "bottom-right": ["zoom_controls", "basemap", "fullscreen"],
+    "bottom-right": ["view", "zoom_controls", "basemap", "fullscreen"],
   });
 
 export type ControlPositions = z.infer<typeof controlPositionsSchema>;
@@ -138,7 +139,7 @@ export const DEFAULT_CONTROL_POSITIONS: ControlPositions = {
   "top-left": ["location", "measure"],
   "top-right": [],
   "bottom-left": [],
-  "bottom-right": ["zoom_controls", "basemap", "fullscreen"],
+  "bottom-right": ["view", "zoom_controls", "basemap", "fullscreen"],
 };
 
 export const builderConfigSchema = z.object({
@@ -476,8 +477,12 @@ export const projectViewStateSchema = z.object({
   zoom: z.number().min(0).max(24),
   min_zoom: z.number().min(0).max(24),
   max_zoom: z.number().min(0).max(24),
-  bearing: z.number().min(0).max(360),
-  pitch: z.number().min(0).max(60),
+  // Any bearing; core stores it from 0 up to 360.
+  bearing: z.number(),
+  pitch: z.number().min(0).max(85),
+  // Missing: 3D when the view is tilted (3D spec 5.1).
+  mode: z.enum(["2d", "3d"]).optional(),
+  projection: z.enum(["mercator", "globe"]).optional(),
 });
 
 export const postProjectSchema = z.object({

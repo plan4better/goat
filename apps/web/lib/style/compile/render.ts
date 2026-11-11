@@ -7,7 +7,7 @@ import { TILE_MAXZOOM } from "@/lib/style/compile/constants";
 import { labelLayers } from "@/lib/style/compile/labels";
 import { type PartContext, layerOpacity, makeLayer, put, withLayerOpacity } from "@/lib/style/compile/parts";
 import { pointLayers } from "@/lib/style/compile/points";
-import { fromForm } from "@/lib/style/compile/values";
+import { combine, fromForm, toProperty } from "@/lib/style/compile/values";
 import type { Expr } from "@/lib/style/compile/values";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS, H3_AUTO_FROM_ZOOM } from "@/lib/style/generated/defaults";
@@ -229,7 +229,54 @@ function h3Color(render: JsonObject): Expr {
   ];
 }
 
-/** The hexagons over geoapi's H3 tiles: a fill and, unless its width is 0, an outline; up to `points_from_zoom`. */
+/** A hexagon's value scaled to 0 to 1 over a resolution's computed range (spec 5.8 linear or square root). */
+function scaledValue(scale: unknown, min: number, max: number): Expr {
+  const value: Expr = ["to-number", ["get", "value"], 0];
+  const clamp = (t: Expr): Expr => ["max", 0, ["min", 1, t]];
+  if (scale === "linear") return clamp(["/", ["-", value, min], max - min]);
+  const [s0, s1] = [Math.sqrt(Math.max(min, 0)), Math.sqrt(Math.max(max, 0))];
+  return clamp(["/", ["-", ["sqrt", ["max", value, 0]], s0], s1 - s0]);
+}
+
+/** How tall a column is, 0 to 1 of the tallest (3D spec 5.4): the scaled value of its resolution's computed range,
+ * one half where nothing was computed. */
+function columnShare(render: JsonObject, extrude: JsonObject): Expr {
+  const scale = extrude.scale ?? DEFAULTS["h3.extrude.scale"];
+  const computed =
+    isObject(render.computed) && isObject(render.computed.resolutions) ? render.computed.resolutions : {};
+  const branches = Object.entries(computed).flatMap(([res, cells]) => {
+    const resolution = Number(res);
+    if (!Number.isInteger(resolution) || !isObject(cells)) return [];
+    const { min, max } = cells;
+    if (typeof min !== "number" || typeof max !== "number") return [];
+    const flat = scale === "linear" ? min >= max : Math.sqrt(Math.max(min, 0)) >= Math.sqrt(Math.max(max, 0));
+    return [[resolution, flat ? 0.5 : scaledValue(scale, min, max)] as const];
+  });
+  if (!branches.length) return 0.5;
+  branches.sort((a, b) => a[0] - b[0]);
+  return ["match", ["get", "resolution"], ...branches.flat(), 0.5];
+}
+
+/** The hexagons as columns: the fill colour, base plus the column's share of the tallest, one opacity. */
+function h3ColumnPaint(ctx: PartContext, render: JsonObject, extrude: JsonObject): Record<string, unknown> {
+  const tallest = fromForm(extrude.tallest, "number", DEFAULTS["h3.extrude.tallest"]);
+  const base = fromForm(extrude.base, "number", DEFAULTS["h3.extrude.base"]);
+  const share = columnShare(render, extrude);
+  const height = combine([base, tallest], ([b, t]) => ["+", b, ["*", share, t]], { kind: "number" });
+  const paint: Record<string, unknown> = {
+    "fill-extrusion-color": h3Color(render),
+    "fill-extrusion-height": toProperty(height),
+  };
+  const baseProperty = toProperty(base);
+  if (baseProperty !== 0) paint["fill-extrusion-base"] = baseProperty;
+  paint["fill-extrusion-opacity"] = toProperty(
+    withLayerOpacity(ctx, fromForm(render.opacity, "number", DEFAULTS["h3.opacity"]))
+  );
+  return paint;
+}
+
+/** The hexagons over geoapi's H3 tiles: a fill and, unless its width is 0, an outline; up to `points_from_zoom`.
+ * With `extrude` the fill is a fill-extrusion of columns and the outline is not drawn (3D spec 7.6). */
 export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecification[] {
   const source = h3SourceId(ctx.sourceId);
   const zooms: { minzoom?: number; maxzoom?: number } = {};
@@ -239,6 +286,12 @@ export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecificati
     typeof render.points_from_zoom === "number" ? render.points_from_zoom : 24
   );
   if (max < 24) zooms.maxzoom = max;
+  if (isObject(render.extrude)) {
+    const paint = h3ColumnPaint(ctx, render, render.extrude);
+    return [
+      { id: `${ctx.id}-h3-fill`, type: "fill-extrusion", source, "source-layer": "h3", ...zooms, paint },
+    ] as LayerSpecification[];
+  }
   const fillPaint: Record<string, unknown> = { "fill-color": h3Color(render) };
   put(
     fillPaint,

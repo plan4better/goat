@@ -13,6 +13,7 @@ import type {
   MapDocument,
   MapGroup,
   MapLayer as MapLayerEntry,
+  Scene,
 } from "@/lib/style/generated/types";
 import type { StyleIssue } from "@/lib/style/save";
 
@@ -62,6 +63,29 @@ export interface LayerMapState {
 }
 
 export const projectMapUrl = (projectId: string) => `${PROJECTS_API_BASE_URL}/${projectId}/map`;
+
+/** Saves the project's scene (3D spec 5.2) through the project update: null resets it to automatic. A refused scene
+ * (422 `invalid_scene`) stores nothing and answers the validator's issues; any other failure throws. */
+export async function putScene(
+  projectId: string,
+  scene: Scene | null
+): Promise<{ stored: boolean; scene: Scene | null; issues: StyleIssue[] }> {
+  const response = await apiRequestAuth(`${PROJECTS_API_BASE_URL}/${projectId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scene }),
+  });
+  if (response.status === 422) {
+    const body = await response.json().catch(() => null);
+    const detail = body?.detail;
+    if (detail?.code === "invalid_scene")
+      return { stored: false, scene: null, issues: (detail.issues ?? []) as StyleIssue[] };
+  }
+  if (!response.ok) throw new Error(`Saving the scene failed (${response.status})`);
+  // The project as stored; its `scene` key is left out when the scene is automatic.
+  const project = await response.json().catch(() => ({}));
+  return { stored: true, scene: (project?.scene as Scene | undefined) ?? null, issues: [] };
+}
 
 /** A fetcher that asks with the last ETag and keeps the last body on `304`. */
 export function createMapFetcher() {

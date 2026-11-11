@@ -9,15 +9,15 @@ const landcover = { bands: 1, bits: [8], colorTable: true, integer: true, stats:
 
 describe("raster render choices", () => {
   it("offers what fits the file", () => {
-    expect(drawAsOptions(float)).toEqual(["terrain", "continuous", "image"]);
-    expect(drawAsOptions(byte)).toEqual(["terrain", "continuous", "categorical", "image"]);
+    expect(drawAsOptions(float)).toEqual(["hillshade", "continuous", "image"]);
+    expect(drawAsOptions(byte)).toEqual(["hillshade", "continuous", "categorical", "image"]);
     expect(drawAsOptions(rgb)).toEqual(["continuous", "categorical", "image"]);
     expect(drawAsOptions(landcover)).toEqual(["categorical", "image"]);
-    expect(drawAsOptions(undefined)).toEqual(["terrain", "continuous", "categorical", "image"]);
+    expect(drawAsOptions(undefined)).toEqual(["hillshade", "continuous", "categorical", "image"]);
   });
 
   it("starts each render from what is known, defaults left out", () => {
-    expect(defaultRender("terrain", { info: float })).toEqual({ type: "terrain" });
+    expect(defaultRender("hillshade", { info: float })).toEqual({ type: "hillshade" });
     expect(defaultRender("image", { info: rgb })).toEqual({ type: "image" });
     expect(defaultRender("continuous", { info: byte })).toEqual({ type: "continuous", domain: [0, 255] });
     expect(defaultRender("continuous", { info: float })).toEqual({ type: "continuous" });
@@ -56,8 +56,8 @@ describe("noDataApplies", () => {
     expect(noDataApplies({ type: "categorical", classes: [{ value: 1, color: "#000000" }] }, PALETTED)).toBe(
       true
     );
-    expect(noDataApplies({ type: "terrain" }, undefined)).toBe(false);
-    expect(noDataApplies({ type: "terrain", palette: "goat:elevation", domain: [0, 9] }, undefined)).toBe(
+    expect(noDataApplies({ type: "hillshade" }, undefined)).toBe(false);
+    expect(noDataApplies({ type: "hillshade", palette: "goat:elevation", domain: [0, 9] }, undefined)).toBe(
       true
     );
     expect(noDataApplies({ type: "continuous", domain: [0, 1] }, undefined)).toBe(true);

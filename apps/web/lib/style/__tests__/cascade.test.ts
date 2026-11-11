@@ -7,7 +7,7 @@ import { cqlToExpression } from "@/lib/style/compile/cql";
 import { toProperty } from "@/lib/style/compile/values";
 
 import { fieldTypes, goldenPairs } from "./fixtures";
-import { paintErrors } from "./maplibre";
+import { evaluate, paintErrors } from "./maplibre";
 
 const dash = (v: unknown) => ["literal", DASHES[v as string] ?? DASHES.solid];
 
@@ -422,5 +422,41 @@ describe("cqlToExpression", () => {
       ["slice", s, ["-", ["length", s], 3]],
       "weg",
     ]);
+  });
+});
+
+describe("heights", () => {
+  it("a class that switches extrude off has height 0", () => {
+    const style = {
+      version: 1,
+      kind: "vector",
+      symbol: { extrude: { height: 20 } },
+      classify: [{ field: "use", method: "categories", classes: [{ values: ["green"], extrude: false }] }],
+    };
+    const expr = toProperty(cascade(style, "extrude.height", { kind: "number" }));
+    expect(JSON.stringify(expr)).toContain('"green"');
+    expect(evaluate(expr, { use: "green" })).toBe(0);
+    expect(evaluate(expr, { use: "office" })).toBe(20);
+    const base = toProperty(cascade(style, "extrude.base", { kind: "number" }));
+    expect(evaluate(base, { use: "green" })).toBe(0);
+  });
+
+  it("the raw hook reaches raw fields in classes and rules", () => {
+    const style = {
+      version: 1,
+      kind: "vector",
+      symbol: { extrude: { height: 5 } },
+      rules: [
+        {
+          when: { op: "=", args: [{ property: "kind" }, "tower"] },
+          extrude: { height: { field: "levels" } },
+        },
+      ],
+    };
+    const expr = toProperty(
+      cascade(style, "extrude.height", { kind: "number", raw: (get) => ["*", get, 3] })
+    );
+    expect(evaluate(expr, { kind: "tower", levels: 4 })).toBe(12);
+    expect(evaluate(expr, { kind: "house", levels: 4 })).toBe(5);
   });
 });

@@ -99,25 +99,25 @@ describe("raster general section", () => {
     await choose(
       "style_editor.draw_as",
       "style_editor.raster_type_continuous",
-      "style_editor.raster_type_terrain"
+      "style_editor.raster_type_hillshade"
     );
-    expect(store.get("render")).toEqual({ type: "terrain" });
+    expect(store.get("render")).toEqual({ type: "hillshade" });
   });
 
   it("Color range on a float file starts from the band's values; a band without values keeps the drawing", async () => {
-    const empty = setup({ type: "terrain" }, FLOAT);
+    const empty = setup({ type: "hillshade" }, FLOAT);
     await choose(
       "style_editor.draw_as",
-      "style_editor.raster_type_terrain",
+      "style_editor.raster_type_hillshade",
       "style_editor.raster_type_continuous"
     );
-    expect(empty.store.get("render")).toEqual({ type: "terrain" });
+    expect(empty.store.get("render")).toEqual({ type: "hillshade" });
     expect(screen.getByText("style_editor.range_nothing_found")).toBeDefined();
     empty.unmount();
-    const { store } = setup({ type: "terrain" }, FLOAT_VALUES);
+    const { store } = setup({ type: "hillshade" }, FLOAT_VALUES);
     await choose(
       "style_editor.draw_as",
-      "style_editor.raster_type_terrain",
+      "style_editor.raster_type_hillshade",
       "style_editor.raster_type_continuous"
     );
     await waitFor(() => expect(store.get("render.type")).toBe("continuous"));

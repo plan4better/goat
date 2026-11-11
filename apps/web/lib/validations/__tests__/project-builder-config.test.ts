@@ -12,8 +12,29 @@ describe("builderConfigSchema — control_positions", () => {
       "top-left": ["location", "measure"],
       "top-right": [],
       "bottom-left": [],
-      "bottom-right": ["zoom_controls", "basemap", "fullscreen"],
+      "bottom-right": ["view", "zoom_controls", "basemap", "fullscreen"],
     });
+  });
+
+  it("keeps a saved list without the View button as it is", () => {
+    const saved = ["zoom_controls", "basemap", "fullscreen"];
+    const result = builderConfigSchema.safeParse({
+      settings: {
+        control_positions: { "top-left": [], "top-right": [], "bottom-left": [], "bottom-right": saved },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.settings.control_positions["bottom-right"]).toEqual(saved);
+  });
+
+  it("takes the View button as a control", () => {
+    const result = builderConfigSchema.safeParse({
+      settings: { control_positions: { "bottom-right": ["view", "zoom_controls"] } },
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.settings.control_positions["bottom-right"]).toEqual(["view", "zoom_controls"]);
   });
 
   it("sets allowed_basemaps to null by default", () => {
@@ -162,7 +183,7 @@ describe("builderConfigSchema — control_positions", () => {
       "top-left": ["location", "measure"],
       "top-right": [],
       "bottom-left": [],
-      "bottom-right": ["zoom_controls", "basemap", "fullscreen"],
+      "bottom-right": ["view", "zoom_controls", "basemap", "fullscreen"],
     });
     expect(result.data.settings.toolbar).toBe(false);
   });

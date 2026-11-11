@@ -1,6 +1,6 @@
 // Generates lib/style/generated/ from goatlib's GOAT Style data: the TypeScript types of the JSON Schema, the
 // palette, icon and emoji catalogues with the icon groups, the property kinds and capabilities, the reference defaults and
-// default ranges; and from the library icons' SVGs, the picker's symbols file (public/assets/icons/maki/symbols.json). The web build does not see packages/python (turbo prune), so the app reads these copies;
+// default ranges, the scene's automatic and default values; and from the library icons' SVGs, the picker's symbols file (public/assets/icons/maki/symbols.json). The web build does not see packages/python (turbo prune), so the app reads these copies;
 // lib/style/__tests__/generated.test.ts fails when they no longer match goatlib. Run: pnpm --filter @p4b/web generate:style
 import { compile } from "json-schema-to-typescript";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -70,6 +70,28 @@ function partProperties(schema) {
   return out.sort(([a], [b]) => a.localeCompare(b));
 }
 
+/** Every key of the map document's scene sections (`scene.sky.color`, `scene.light.direction`). */
+function sceneProperties(schema) {
+  const defs = schema.$defs;
+  const out = [];
+  for (const [section, sectionSchema] of Object.entries(defs.Scene.properties)) {
+    const model = refs(sectionSchema)[0];
+    if (!model) continue;
+    for (const [key, property] of Object.entries(defs[model].properties))
+      out.push([`scene.${section}.${key}`, property]);
+  }
+  return out.sort(([a], [b]) => a.localeCompare(b));
+}
+
+/** Whether a property's fixed value is a hex colour or its zoom stops hold colours. */
+const fixedColor = (property) =>
+  refs(property).some((t) => t.endsWith("Color")) ||
+  (property.anyOf ?? []).some((branch) =>
+    (branch.oneOf ?? [branch]).some(
+      (b) => b.type === "string" && typeof b.pattern === "string" && b.pattern.startsWith("^#")
+    )
+  );
+
 /** color, number or choice for every part key, as goatlib derives its target kinds from the models. */
 function propertyKinds(schema) {
   const kindOf = (property) => {
@@ -103,7 +125,9 @@ function capabilities(schema) {
       : targets.includes("ByAttributeNumber")
         ? "number"
         : null;
-    const kind = attribute ?? (zoom === "blend" || fixedNumber(property) ? "number" : "choice");
+    const kind =
+      attribute ??
+      (fixedColor(property) ? "color" : zoom === "blend" || fixedNumber(property) ? "number" : "choice");
     return { kind, zoom, attribute, perFeature };
   };
   const caps = Object.fromEntries(
@@ -113,6 +137,9 @@ function capabilities(schema) {
   caps["raster.opacity"] = capability(defs.RasterStyle.properties.opacity, false);
   for (const key of ["radius", "intensity", "opacity"])
     caps[`heatmap.${key}`] = capability(defs.HeatmapRender.properties[key], false);
+  for (const key of ["tallest", "base"])
+    caps[`h3.extrude.${key}`] = capability(defs.H3Extrude.properties[key], false);
+  for (const [key, property] of sceneProperties(schema)) caps[key] = capability(property, false);
   return Object.fromEntries(Object.entries(caps).sort(([a], [b]) => a.localeCompare(b)));
 }
 
@@ -225,6 +252,12 @@ export async function generate() {
       `\n/** From which zoom each H3 resolution draws under "auto" (goatlib AUTO_FROM_ZOOM); geoapi picks it per tile. */\n` +
       `export const H3_AUTO_FROM_ZOOM: readonly (readonly [number, number])[] = ${JSON.stringify(schema["x-h3-auto"])};\n`,
     "lib/style/generated/capabilities.ts": capabilitiesModule(schema),
+    "lib/style/generated/scene.ts":
+      `${BANNER}\nexport type SceneTone = "light" | "dark";\n\n` +
+      `/** The scene's automatic values per basemap tone (goatlib SCENE_AUTO). */\n` +
+      `export const SCENE_AUTO: Readonly<Record<SceneTone, Readonly<Record<string, unknown>>>> = ${JSON.stringify(schema["x-scene-auto"], null, 2)};\n\n` +
+      `/** Scene defaults that are not automatic (goatlib SCENE_DEFAULTS). */\n` +
+      `export const SCENE_DEFAULTS = ${JSON.stringify(schema["x-scene-defaults"], null, 2)} as const;\n`,
     "public/assets/icons/maki/symbols.json": JSON.stringify(symbols(icons)),
   };
   // Formatted like the rest of the repository, so running prettier leaves the files as generated.

@@ -40,14 +40,18 @@ import { EXPLORER_RIGHT_PANEL_WIDTH, useRightPanelWidth } from "@/components/exp
 import { STRIP_TOP } from "@/components/explorer/strip/stripLayout";
 import AttributionControl from "@/components/map/controls/Attribution";
 import { BasemapSelector } from "@/components/map/controls/BasemapSelector";
+import { Compass } from "@/components/map/controls/Compass";
 import { CustomBasemapDialog } from "@/components/map/controls/CustomBasemapDialog";
 import { Fullscren } from "@/components/map/controls/Fullscreen";
 import Scalebar from "@/components/map/controls/Scalebar";
 import { Toolbox as ToolboxCtrl } from "@/components/map/controls/Toolbox";
+import { ViewControl } from "@/components/map/controls/ViewControl";
 import { Zoom } from "@/components/map/controls/Zoom";
+import { CONTROL_COLUMN_SX } from "@/components/map/controls/controlColumn";
 import { MeasureButton, MeasureResultsPanel } from "@/components/map/controls/measure";
 import SearchControl from "@/components/map/controls/search/SearchControl";
 import { useEditorSearchLayers } from "@/components/map/controls/search/editorSearchLayers";
+import { isMeasureCardShown, rightStackInsets } from "@/components/map/layouts/desktop/rightStack";
 import { DATA_PANEL_HEIGHT_CONSUMER_ATTR, DATA_PANEL_HEIGHT_VAR } from "@/components/map/panels/DataPanel";
 import FeatureEditPanel from "@/components/map/panels/FeatureEditPanel";
 import BundleSettingsPanel from "@/components/map/panels/bundle/BundleSettingsPanel";
@@ -314,21 +318,21 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
     }
   }, [activeRight, selectedLayerIds, projectLayers, selectedBundleId, dispatch]);
 
-  // Width occupied by the right-side stack (measure results, feature
-  // editor panel, active right component). Used to size the fixed-popup
-  // host below so it doesn't extend behind the panels.
-  const measureVisible = measureTool.measureOpen || measureTool.measurements.length > 0;
-  const rightStackWidth = useMemo(() => {
-    const FEATURE_EDIT_PANEL_WIDTH = 320;
-    const MEASURE_PANEL_WIDTH = 320;
-    const widths: number[] = [];
-    if (measureVisible) widths.push(MEASURE_PANEL_WIDTH);
-    // The right-hand panels belong to the data view, not the Explorer.
-    if (showFeatureEditPanel && !explorerActive) widths.push(FEATURE_EDIT_PANEL_WIDTH);
-    if (activeRight && !explorerActive) widths.push(panelWidth);
-    if (widths.length === 0) return 0;
-    return widths.reduce((a, b) => a + b, 0) + GAP_SIZE * (widths.length - 1);
-  }, [measureVisible, showFeatureEditPanel, activeRight, explorerActive]);
+  // The full-height panels on the right push the map controls aside; the
+  // measure card sits above the controls, and the fixed-popup host below keeps
+  // clear of both.
+  const measureCard = isMeasureCardShown({
+    measureOpen: measureTool.measureOpen,
+    activeTool: measureTool.activeMeasureTool,
+    measurementCount: measureTool.measurements.length,
+  });
+  const rightInsets = rightStackInsets({
+    measureCard,
+    featureEdit: showFeatureEditPanel,
+    rightPanel: !!activeRight,
+    explorerActive,
+    explorerRightRoom,
+  });
 
   const layerTree = (
     <ProjectLayerTree
@@ -431,28 +435,28 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           height: `calc(100% - ${toolbarHeight + 20}px - var(${DATA_PANEL_HEIGHT_VAR}, 0px))`,
           // The map controls sit left of the right panels, which run the whole height (prototype `.style`),
           // and of the Explorer's right panel.
-          right:
-            (rightStackWidth ? rightStackWidth + GAP_SIZE : 0) +
-            10 +
-            (explorerActive ? explorerRightRoom : 0),
+          right: rightInsets.controlsRight,
           zIndex: (theme) => theme.zIndex.drawer + 1,
           pointerEvents: "none",
           alignItems: "flex-end",
         }}>
+        {/* The measure card is short: it sits above the controls, clipped by them, instead of moving them aside. */}
+        <Stack direction="row" sx={{ alignItems: "flex-start", flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <MeasureResultsPanel {...measureTool} />
+        </Stack>
         <Stack
           direction="column"
           alignItems="flex-end"
           sx={{
-            mt: "auto",
+            mt: 2,
             flexShrink: 0,
             pointerEvents: "none",
           }}>
           {/* In the Explorer the controls end on the panels' and the bar's
               line, EXPLORER_FOOT above the map's edge. */}
-          <Stack
-            direction="column"
-            alignItems="flex-end"
-            sx={{ mb: explorerActive ? `${EXPLORER_CONTROLS_LIFT + 4}px` : 1 }}>
+          <Stack sx={{ ...CONTROL_COLUMN_SX, mb: explorerActive ? `${EXPLORER_CONTROLS_LIFT + 4}px` : 3 }}>
+            <Compass />
+            <ViewControl showSky={isProjectEditor} />
             <Zoom tooltipZoomIn={t("zoom_in")} tooltipZoomOut={t("zoom_out")} />
             <Fullscren tooltipOpen={t("fullscreen")} tooltipExit={t("exit_fullscreen")} />
             <BasemapSelector
@@ -487,8 +491,8 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           </Box>
         </Stack>
       </Stack>
-      {/* Right panels and measure results, the whole height, the map controls to their left */}
-      {rightStackWidth > 0 && (
+      {/* Right panels, the whole height, the map controls to their left */}
+      {rightInsets.panelsWidth > 0 && (
         <Box
           {...{ [DATA_PANEL_HEIGHT_CONSUMER_ATTR]: "" }}
           sx={{
@@ -503,7 +507,6 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
             direction="row"
             spacing={2}
             sx={{ alignItems: "flex-start", height: "100%", overflow: "hidden" }}>
-            <MeasureResultsPanel {...measureTool} />
             {showFeaturePanel && (
               <FloatingPanel width={320} maxHeight="100%" fillHeight>
                 <FeatureEditPanel />
@@ -531,7 +534,7 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           position: "absolute",
           top: toolbarHeight + 10,
           left: leftWidth + GAP_SIZE + 10,
-          right: (rightStackWidth ? rightStackWidth + GAP_SIZE : 0) + 10,
+          right: rightInsets.popupRight,
           bottom: `calc(10px + var(${DATA_PANEL_HEIGHT_VAR}, 0px))`,
           pointerEvents: "none",
           // Above layout controls (drawer + 1), so a popup at the top-left

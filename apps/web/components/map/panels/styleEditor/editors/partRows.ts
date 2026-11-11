@@ -261,9 +261,19 @@ const ICON: PartGroup = {
   ],
 };
 
+/** The polygons' height (3D spec 8.4): an inline row the section draws as the Height rows. */
+const HEIGHT: PartGroup = {
+  id: "height",
+  part: "extrude",
+  toggle: false,
+  summary: "height",
+  rows: [],
+  inline: { type: "number", key: "height", label: "style_editor.height" },
+};
+
 /** The groups of the symbol section per geometry, in display order. */
 export const GROUPS: Readonly<Record<Geometry, PartGroup[]>> = {
-  polygon: [FILL, OUTLINE, LABEL],
+  polygon: [FILL, OUTLINE, HEIGHT, LABEL],
   line: [LINE, CASING, ARROWS, LABEL],
   point: [SIZE, POINT_FILL, OUTLINE, ICON, LABEL],
 };

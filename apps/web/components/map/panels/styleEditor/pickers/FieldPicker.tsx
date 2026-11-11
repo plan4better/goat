@@ -24,6 +24,8 @@ export interface FieldPickerProps {
   hint?: string;
   /** A short profile under the name ("12 to 9,800") from the number field's profile, loaded for the fields shown. */
   profile?: (field: FieldInfo, loaded: FieldProfile | undefined) => string | undefined;
+  /** Fields listed first under their own heading (fields named for the property, such as `height`), lower-case. */
+  suggested?: { names: readonly string[]; title: string; othersTitle: string };
 }
 
 function FieldItem({
@@ -58,7 +60,30 @@ function FieldItem({
   );
 }
 
-export function FieldPicker({ fields, value, onChange, filter, exclude, hint, profile }: FieldPickerProps) {
+/** A heading in the list. */
+function Heading({ children }: { children: string }) {
+  return (
+    <Typography
+      component="li"
+      role="presentation"
+      variant="caption"
+      color="text.secondary"
+      sx={{ display: "block", px: 3, pt: 1.5, pb: 0.5 }}>
+      {children}
+    </Typography>
+  );
+}
+
+export function FieldPicker({
+  fields,
+  value,
+  onChange,
+  filter,
+  exclude,
+  hint,
+  profile,
+  suggested,
+}: FieldPickerProps) {
   const { t } = useTranslation("common");
   const [search, setSearch] = useState("");
   const shown = useMemo(() => {
@@ -74,6 +99,17 @@ export function FieldPicker({ fields, value, onChange, filter, exclude, hint, pr
     );
   }, [fields, filter, exclude, search]);
 
+  const groups = useMemo(() => {
+    if (!suggested) return [{ title: "", items: shown }];
+    const isSuggested = (f: FieldInfo) => suggested.names.includes(f.name.toLowerCase());
+    const first = shown.filter(isSuggested);
+    if (!first.length) return [{ title: "", items: shown }];
+    return [
+      { title: suggested.title, items: first },
+      { title: suggested.othersTitle, items: shown.filter((f) => !isSuggested(f)) },
+    ];
+  }, [shown, suggested]);
+
   return (
     <Box>
       <InputBase
@@ -85,16 +121,19 @@ export function FieldPicker({ fields, value, onChange, filter, exclude, hint, pr
         sx={{ px: 3, py: 1, width: "100%", typography: "body2" }}
       />
       <MenuList dense sx={{ maxHeight: 320, overflowY: "auto" }}>
-        {shown.map((field) => (
-          <FieldItem
-            key={field.name}
-            field={field}
-            selected={field.name === value}
-            load={shown.length <= PROFILE_LIMIT}
-            profile={profile}
-            onPick={onChange}
-          />
-        ))}
+        {groups.map((group, gi) => [
+          group.title && group.items.length ? <Heading key={`h${gi}`}>{group.title}</Heading> : null,
+          ...group.items.map((field) => (
+            <FieldItem
+              key={field.name}
+              field={field}
+              selected={field.name === value}
+              load={shown.length <= PROFILE_LIMIT}
+              profile={profile}
+              onPick={onChange}
+            />
+          )),
+        ])}
       </MenuList>
       {hint && (
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 3, pb: 2 }}>

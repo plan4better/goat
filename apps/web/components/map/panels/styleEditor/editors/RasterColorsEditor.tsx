@@ -155,13 +155,13 @@ export function RasterColorsEditor() {
   const value = useStyleValue<unknown>("render");
   const [note, setNote] = useState<string | null>(null);
   const render: JsonObject = isObject(value) ? value : {};
-  const terrain = render.type === "terrain";
+  const hillshade = render.type === "hillshade";
   const band = typeof render.band === "number" ? render.band : 1;
   const stops = Array.isArray(render.stops) ? render.stops.filter(isObject) : null;
   const domain = (Array.isArray(render.domain) ? render.domain : [0, 1]) as [number, number];
   const classify = isObject(render.classify) ? render.classify : null;
   const count = classify && Array.isArray(classify.classes) ? classify.classes.length : 5;
-  const colored = !terrain || render.palette !== undefined;
+  const colored = !hillshade || render.palette !== undefined;
 
   const fromData = async () => {
     const found = await sample(band);
@@ -247,7 +247,7 @@ export function RasterColorsEditor() {
   const { colors, stepped } = renderColors(render);
   return (
     <>
-      {terrain && (
+      {hillshade && (
         <SwitchRow
           label={t("style_editor.hillshade_colors")}
           on={colored}
@@ -256,7 +256,7 @@ export function RasterColorsEditor() {
           onToggle={() => void toggleColors()}
         />
       )}
-      {!terrain && (
+      {!hillshade && (
         <ChoiceRow<string>
           label={t("style_editor.colors_kind")}
           value={stops ? "stops" : "palette"}

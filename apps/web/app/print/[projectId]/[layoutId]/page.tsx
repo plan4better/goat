@@ -13,8 +13,11 @@ import type { AtlasPage } from "@/lib/print/atlas-utils";
 import { resolveElementFrame } from "@/lib/print/elementFrame";
 import { snapScalebarWidths } from "@/lib/print/scalebar";
 import { mmToPx, resolvePageMm } from "@/lib/print/units";
+import type { Scene } from "@/lib/style/generated/types";
 import type { CustomBasemap } from "@/lib/validations/project";
 import type { ReportLayoutConfig } from "@/lib/validations/reportLayout";
+
+import type { Basemap } from "@/types/map/common";
 
 import { useBasemap } from "@/hooks/map/MapHooks";
 import { type MapLayer, useMapLayers } from "@/hooks/map/useMapLayers";
@@ -53,10 +56,14 @@ export default function PrintPage() {
 
   const { reportLayout, isLoading, isError } = useReportLayout(projectId, layoutId);
   const { project, isLoading: isProjectLoading } = useProject(projectId);
-  const { layers: mapLayers, isLoading: isLayersLoading } = useMapLayers(projectId, {
+  const {
+    layers: mapLayers,
+    map: projectMap,
+    isLoading: isLayersLoading,
+  } = useMapLayers(projectId, {
     revalidateOnMount: true,
   });
-  const { mapStyle, setActiveBasemap } = useBasemap(project);
+  const { mapStyle, setActiveBasemap, activeBasemap } = useBasemap(project);
 
   // Populate the Redux active basemap so <Layers> can apply the custom
   // basemap's layer_config (label visibility, layer stacking). Unlike the
@@ -234,6 +241,8 @@ export default function PrintPage() {
             basemapUrl={mapStyle}
             projectLayers={projectLayers}
             locale={project?.locale ?? undefined}
+            scene={projectMap?.map.scene}
+            basemap={activeBasemap}
             atlasPage={currentAtlasPage}
             onMapLoaded={handleMapLoaded}
           />
@@ -271,6 +280,9 @@ interface ReportElementsProps {
   projectLayers?: MapLayer[];
   /** The project's number locale. */
   locale?: string;
+  /** The project's 3D scene and basemap: a tilted map element prints in 3D (3D spec 10). */
+  scene?: Scene | null;
+  basemap?: Basemap;
   atlasPage?: AtlasPage | null;
   onMapLoaded?: () => void;
 }
@@ -280,6 +292,8 @@ const ReportElements: React.FC<ReportElementsProps> = ({
   basemapUrl,
   projectLayers,
   locale,
+  scene,
+  basemap,
   atlasPage,
   onMapLoaded,
 }) => {
@@ -359,6 +373,8 @@ const ReportElements: React.FC<ReportElementsProps> = ({
               basemapUrl={basemapUrl}
               projectLayers={projectLayers}
               locale={locale}
+              scene={scene}
+              basemap={basemap}
               atlasPage={atlasPage}
               viewOnly
               onElementUpdate={handleElementUpdate}

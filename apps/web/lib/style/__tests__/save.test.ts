@@ -71,6 +71,34 @@ describe("StyleSaver", () => {
     expect(s.status).toBe("saved");
   });
 
+  it("does not send a copy equal to the saved one as JSON (key order, keys without a value)", async () => {
+    const t = fakeTransport();
+    const s = new StyleSaver({ transport: t.transport, document: DOC, revision: 41 });
+    s.edit({
+      symbol: { outline: { width: 1 }, fill: { opacity: 1, color: "#cccccc" } },
+      kind: "vector",
+      version: 1,
+    } as LayerStyle);
+    await vi.advanceTimersByTimeAsync(1000);
+    s.edit({ ...DOC, render: undefined } as LayerStyle);
+    await vi.advanceTimersByTimeAsync(1000);
+    s.saveNow();
+    s.flush();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.saves).toHaveLength(0);
+    expect(s.status).toBe("saved");
+    expect(s.pending).toBe(false);
+  });
+
+  it("does not save again when the same stored style comes back another way", async () => {
+    const t = fakeTransport();
+    const s = new StyleSaver({ transport: t.transport, document: DOC, revision: 41 });
+    s.receive({ document: structuredClone(DOC), revision: 41 });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.saves).toHaveLength(0);
+    expect(s.status).toBe("saved");
+  });
+
   it("takes the server's document when nothing changed while saving", async () => {
     const t = fakeTransport();
     const s = new StyleSaver({ transport: t.transport, document: DOC, revision: 41 });

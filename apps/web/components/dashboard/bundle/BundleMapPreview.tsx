@@ -104,7 +104,6 @@ const BundleMapPreview: React.FC<{ layers: Layer[] }> = ({ layers }) => {
               fitBoundsOptions: { padding: 40 },
             }}
             mapStyle={basemapStyle}
-            dragRotate={false}
             touchZoomRotate={false}
             activeFeatureMarker={false}
             containerSx={{

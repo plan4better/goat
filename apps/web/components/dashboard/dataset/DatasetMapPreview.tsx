@@ -140,7 +140,6 @@ const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
               fitBoundsOptions: { padding: 40 },
             }}
             mapStyle={basemapStyle}
-            dragRotate={false}
             touchZoomRotate={false}
             // The highlight alone marks the hovered feature, as on the catalog map.
             activeFeatureMarker={false}

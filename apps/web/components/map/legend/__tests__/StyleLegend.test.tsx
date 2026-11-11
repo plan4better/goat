@@ -9,15 +9,20 @@ import { goldenPairs } from "../../../../lib/style/__tests__/fixtures";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) =>
-      ({
-        "style_editor.range_under": "under",
-        "style_editor.range_to": "to",
-        "style_editor.size": "Size",
-        "style_editor.color": "Color",
-        "style_editor.no_data": "No data",
-        "style_editor.other": "Other",
-      })[key] ?? "and more",
+    t: (key: string, options?: Record<string, unknown>) =>
+      (
+        ({
+          "style_editor.range_under": "under",
+          "style_editor.range_to": "to",
+          "style_editor.size": "Size",
+          "style_editor.color": "Color",
+          "style_editor.no_data": "No data",
+          "style_editor.other": "Other",
+          "style_editor.legend_height_storeys": "Height · {{field}} × {{storey}} m",
+          "style_editor.legend_height_h3": "Height · {{value_label}}",
+          "style_editor.h3_value_sum": "Sum of {{field}}",
+        })[key] ?? "and more"
+      ).replace(/{{(\w+)}}/g, (_, name: string) => String(options?.[name] ?? "")),
     i18n: { language: "en" },
   }),
 }));
@@ -349,5 +354,25 @@ describe("StyleLegend", () => {
     const path = container.querySelector("[data-pattern='vertical']");
     expect(path?.getAttribute("stroke")).toBe("#333333");
     expect(container.querySelectorAll("rect")).toHaveLength(2);
+  });
+
+  it("a layer with height ends with its Height line", () => {
+    const storeys = legendOf(
+      { version: 1, kind: "vector", symbol: { extrude: { height: { field: "levels" }, unit: "storeys" } } },
+      "polygon"
+    );
+    const { unmount } = render(<StyleLegend legend={storeys} variant="tree" />);
+    expect(screen.getByText("Height · levels × 3 m")).toBeInTheDocument();
+    unmount();
+    const h3 = legendOf(
+      {
+        version: 1,
+        kind: "vector",
+        render: { type: "h3", value: { op: "sum", field: "residents" }, extrude: { tallest: 500 } },
+      },
+      "point"
+    );
+    render(<StyleLegend legend={h3} variant="tree" />);
+    expect(screen.getByText("Height · Sum of residents")).toBeInTheDocument();
   });
 });

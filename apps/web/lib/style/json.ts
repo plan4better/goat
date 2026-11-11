@@ -5,7 +5,11 @@ export type JsonObject = Record<string, unknown>;
 export const isObject = (value: unknown): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Equal as JSON: objects compare key by key whatever their order, lists item by item. */
+/** The keys JSON writes: a key holding `undefined` is not sent. */
+const jsonKeys = (o: JsonObject) => Object.keys(o).filter((k) => o[k] !== undefined);
+
+/** Equal as JSON: objects compare key by key whatever their order (a key holding `undefined` counts as absent), lists
+ * item by item. */
 export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (Array.isArray(a) || Array.isArray(b)) {
@@ -14,8 +18,8 @@ export function deepEqual(a: unknown, b: unknown): boolean {
     );
   }
   if (isObject(a) && isObject(b)) {
-    const keys = Object.keys(a);
-    return keys.length === Object.keys(b).length && keys.every((k) => k in b && deepEqual(a[k], b[k]));
+    const keys = jsonKeys(a);
+    return keys.length === jsonKeys(b).length && keys.every((k) => deepEqual(a[k], b[k]));
   }
   return false;
 }

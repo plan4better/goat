@@ -54,7 +54,7 @@ export function RasterGeneralSection() {
     if (kind === "categorical" && !Array.isArray(now.classes)) {
       store.set("render.classes", defaultRender("categorical", { info, sample: found }).classes);
     }
-    if (kind === "continuous" || kind === "terrain") {
+    if (kind === "continuous" || kind === "hillshade") {
       const domain = seedDomain(found, info);
       if (!domain) return;
       store.update((doc) => {

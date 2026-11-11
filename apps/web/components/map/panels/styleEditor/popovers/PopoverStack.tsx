@@ -33,6 +33,7 @@ import {
   PopoverContext,
   type PopoverEntry,
   type PopoverLevel,
+  placeIn,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
 
 export const POPOVER_WIDTH = 320;
@@ -44,7 +45,7 @@ const HEADER_OFFSET = 62;
 const slot = (level: PopoverLevel) => String(level) as keyof OpenStack;
 
 // Memoized: a frame renders again only when its entry or its content changes, not when another level opens or closes.
-const PopoverFrame = memo(function PopoverFrame({
+export const PopoverFrame = memo(function PopoverFrame({
   entry,
   level,
   onClose,
@@ -269,6 +270,7 @@ function Placed({
     };
   }, [box]);
   const panel = marker.current?.closest("[data-style-panel]") ?? marker.current?.parentElement;
+  if (box && panel) placeIn(box, panel);
   const rect = panel?.getBoundingClientRect();
   const left = (rect?.left ?? 0) - offset;
   // At its row, moved up as far as it needs to end inside the window (as a picker is); taller than the window, it
@@ -281,6 +283,7 @@ function Placed({
     // As tall as the room below its top: the frame scrolls inside it instead of running off the window.
     <div
       ref={setBox}
+      data-popover-placed
       style={{
         position: "fixed",
         left,

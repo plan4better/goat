@@ -1,5 +1,7 @@
 // Legend data of a layer style (spec 7.2): sections of entries with swatches, ramps for palettes by attribute,
 // size samples for ranges. Swatches hold fixed values at a zoom; the legend components draw them.
+import { perLayer } from "@/lib/style/compile/cascade";
+import { extrudes } from "@/lib/style/compile/polygons";
 import { h3Resolution, h3Scale } from "@/lib/style/compile/render";
 import type { Geometry } from "@/lib/style/compile/types";
 import { fromForm, valueAt } from "@/lib/style/compile/values";
@@ -59,6 +61,21 @@ export type LegendSection =
       /** The unit after the end values, and words in place of them (raster legends, spec 9.2). */
       unit?: string;
       labels?: [string | undefined, string | undefined];
+    }
+  | {
+      /** The height of raised polygons or H3 columns (3D spec 7.7): one line, worded by the legend component. */
+      kind: "height";
+      id: string;
+      title?: string;
+      mode: "fixed" | "zoom" | "field" | "storeys" | "classes" | "range" | "h3";
+      field?: string;
+      value?: number;
+      max?: number;
+      count?: number;
+      from?: number;
+      to?: number;
+      /** H3: how the cell value is computed. */
+      op?: "count" | "sum" | "mean";
     }
   | { kind: "image"; id: string; title?: string; url: string }
   | { kind: "sizes"; id: string; title?: string; samples: Array<{ value: number; swatch: Swatch }> };
@@ -354,6 +371,52 @@ function legendClassifications(
   return out;
 }
 
+/** The Height line of a layer that raises its features (3D spec 7.7): how the base height is set, or the classes a
+ * classification of the height makes; H3 columns follow the cell value. */
+function heightSection(style: JsonObject, geometry: Geometry): LegendSection | null {
+  if (!extrudes(style)) return null;
+  const render = isObject(style.render) ? style.render : null;
+  if (render?.type === "h3") {
+    const value = isObject(render.value) ? render.value : {};
+    const op = value.op === "sum" || value.op === "mean" ? value.op : "count";
+    return {
+      kind: "height",
+      id: "height",
+      mode: "h3",
+      op,
+      ...(op !== "count" && typeof value.field === "string" ? { field: value.field } : {}),
+    };
+  }
+  if (geometry !== "polygon") return null;
+  const classified = list(style.classify).find(
+    (c) => c.target === "extrude.height" && typeof c.field === "string"
+  );
+  if (classified)
+    return {
+      kind: "height",
+      id: "height",
+      mode: "classes",
+      field: classified.field as string,
+      count: list(classified.classes).length,
+    };
+  const symbol = isObject(style.symbol) ? style.symbol : {};
+  const part = isObject(symbol.extrude) ? symbol.extrude : {};
+  const form = part.height ?? DEFAULTS["extrude.height"];
+  if (typeof form === "number") return { kind: "height", id: "height", mode: "fixed", value: form };
+  if (isObject(form) && Array.isArray(form.zoom)) {
+    const values = (form.zoom as unknown[][]).map((stop) => stop[1]).filter((v) => typeof v === "number");
+    return { kind: "height", id: "height", mode: "zoom", max: Math.max(...(values as number[])) };
+  }
+  if (isObject(form) && typeof form.field === "string") {
+    const range = Array.isArray(form.range) ? form.range : null;
+    if (range && typeof range[0] === "number" && typeof range[1] === "number")
+      return { kind: "height", id: "height", mode: "range", field: form.field, from: range[0], to: range[1] };
+    const storeys = perLayer(style, "extrude.unit") === "storeys";
+    return { kind: "height", id: "height", mode: storeys ? "storeys" : "field", field: form.field };
+  }
+  return null;
+}
+
 export const informative = (legend: Legend | null | undefined): boolean =>
   !!legend?.sections.some((section) => section.kind !== "entries" || section.id !== "base");
 
@@ -463,6 +526,8 @@ export function buildLegend(
       entries: [{ id: "base", swatch: swatch(style, geometry, ctx.zoom) }],
     });
   }
+  const height = heightSection(style, geometry);
+  if (height) sections.push(height);
   return {
     ...(isObject(legend) && typeof legend.title === "string" ? { title: legend.title } : {}),
     ...(isObject(legend) && typeof legend.caption === "string" ? { caption: legend.caption } : {}),

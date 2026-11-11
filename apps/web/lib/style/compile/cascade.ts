@@ -15,6 +15,8 @@ export interface CascadeContext {
   /** Turns fixed values into MapLibre values (dash names into arrays). */
   map?: (value: unknown) => Expr;
   kind?: Kind;
+  /** Turns the number a raw field reads into the property's unit (storeys into metres). */
+  raw?: (get: Expr) => Expr;
 }
 
 const MAIN_PART: Record<Geometry, string> = { point: "marker", line: "line", polygon: "fill" };
@@ -26,19 +28,33 @@ const list = (value: unknown): JsonObject[] => (Array.isArray(value) ? value.fil
 
 const constant = (value: unknown): Expr => (Array.isArray(value) ? ["literal", value] : value);
 
-/** What a record sets at `path`: a part switched off sets its opacity to 0 (a fill also no pattern) and nothing else. */
+/** Keys a part switched off sets to 0: its opacity, and a height part's height and base (a flat volume). */
+const OFF_IS_ZERO = new Set(["extrude.height", "extrude.base"]);
+
+/** What a record sets at `path`: a part switched off sets its opacity (or height) to 0, a fill also no pattern, and
+ * nothing else. */
 function read(record: unknown, path: string, baseOff: boolean): unknown {
   if (!isObject(record)) return undefined;
   const [part, ...keys] = path.split(".");
   const node = record[part];
-  if (node === false) return path.endsWith(".opacity") ? 0 : path === "fill.pattern" ? "none" : undefined;
+  if (node === false)
+    return path.endsWith(".opacity") || OFF_IS_ZERO.has(path)
+      ? 0
+      : path === "fill.pattern"
+        ? "none"
+        : undefined;
   let current: unknown = node;
   for (const key of keys) {
     if (!isObject(current)) return undefined;
     current = current[key];
   }
   // An object switches a part that the base switched off on again.
-  if (current === undefined && baseOff && isObject(node) && path.endsWith(".opacity"))
+  if (
+    current === undefined &&
+    baseOff &&
+    isObject(node) &&
+    (path.endsWith(".opacity") || OFF_IS_ZERO.has(path))
+  )
     return DEFAULTS[path] ?? 1;
   return current === null ? undefined : current;
 }
@@ -96,11 +112,18 @@ export function cascade(style: JsonObject, path: string, ctx: CascadeContext = {
   const baseOff = symbol[part] === false || (symbol[part] === undefined && !MAIN_PARTS.has(part));
   // A caller's fallback is already a MapLibre value; only the reference default goes through `map`.
   const def = ctx.fallback !== undefined ? ctx.fallback : map(DEFAULTS[path]);
-  let value = fromForm(baseOff && path.endsWith(".opacity") ? 0 : read(symbol, path, false), kind, def, map);
+  const raw = ctx.raw;
+  let value = fromForm(
+    baseOff && path.endsWith(".opacity") ? 0 : read(symbol, path, false),
+    kind,
+    def,
+    map,
+    raw
+  );
   const noDataOf = (v: Value) => (isZoomed(v) ? def : v.expr);
   const formOf = (record: unknown) => {
     const form = read(record, path, baseOff);
-    return form === undefined ? null : fromForm(form, kind, noDataOf(value), map);
+    return form === undefined ? null : fromForm(form, kind, noDataOf(value), map, raw);
   };
   const opts = { step: kind === "choice", kind };
 

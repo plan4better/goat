@@ -407,3 +407,34 @@ describe("folding and degenerate domains", () => {
     expect(paintErrors(ramp, "circle-color")).toEqual([]);
   });
 });
+
+describe("raw fields", () => {
+  it("a raw field goes through the raw hook", () => {
+    const v = fromForm({ field: "levels" }, "number", 0, undefined, (get) => ["*", get, 3]);
+    expect(v).toEqual({ expr: ["*", ["to-number", ["get", "levels"], 0], 3] });
+  });
+
+  it("fixed values, zoom stops and ranges stay as they are", () => {
+    const raw = (get: unknown) => ["*", get, 3];
+    expect(fromForm(12, "number", 0, undefined, raw)).toEqual({ expr: 12 });
+    expect(
+      toProperty(
+        fromForm(
+          {
+            zoom: [
+              [10, 2],
+              [16, 6],
+            ],
+          },
+          "number",
+          0,
+          undefined,
+          raw
+        )
+      )
+    ).toEqual(["interpolate", ["linear"], ["zoom"], 10, 2, 16, 6]);
+    expect(
+      JSON.stringify(fromForm({ field: "h", range: [0, 50], domain: [0, 10] }, "number", 0, undefined, raw))
+    ).not.toContain('"*"');
+  });
+});

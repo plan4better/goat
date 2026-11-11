@@ -17,29 +17,29 @@ import { useTranslation } from "react-i18next";
 
 import { SYSTEM_LAYERS_IDS } from "@/lib/constants";
 import { emitInteractionEvent } from "@/lib/store/interaction/slice";
-import { rgbToHex } from "@/lib/utils/helpers";
-import { getLegendColorMap, getLegendMarkerMap, resolveFeatureMarker } from "@/lib/utils/map/legend";
-import type { ProjectLayer, ProjectLayerTreeUpdate } from "@/lib/validations/project";
+import type { Geometry } from "@/lib/style/compile/types";
+import { type JsonObject, isObject } from "@/lib/style/json";
+import { buildLegend, informative } from "@/lib/style/legend";
 import type { GroupSwitcherType } from "@/lib/validations/widget";
 
-import { useAppDispatch } from "@/hooks/store/ContextHooks";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
+import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { selectableChipSx } from "@/components/builder/widgets/common/selectableChipSx";
 import { useWidgetLayerTree } from "@/components/builder/widgets/information/useWidgetLayerTree";
-import { LayerIcon } from "@/components/map/panels/layer/legend/LayerIcon";
-import { LayerLegendPanel } from "@/components/map/panels/layer/legend/LayerLegend";
+import { StyleLegend, layerSwatchIcon } from "@/components/map/legend/StyleLegend";
 
 /** How long each layer stays on the map while playing. */
 export const PLAY_INTERVAL_MS = 1500;
 
-const isVisible = (layer: ProjectLayer) => layer.properties?.visibility ?? true;
+/** The layer's own visibility in the map document, its group's aside. */
+const isVisible = (layer: MapLayer) => layer.entry?.visible !== false;
 
-const toCssColor = (value: unknown) =>
-  Array.isArray(value)
-    ? value.length >= 3
-      ? rgbToHex(value as [number, number, number])
-      : undefined
-    : (value as string | undefined);
+const GEOMETRIES = new Set<string>(["point", "line", "polygon"]);
+const geometryOf = (type: string | null | undefined): Geometry | undefined => {
+  const geometry = type?.toLowerCase();
+  return geometry && GEOMETRIES.has(geometry) ? (geometry as Geometry) : undefined;
+};
 
 /** The legend of the layer on the map, so the layer tree can leave the switched layers out. */
 const ActiveLayerLegend = ({
@@ -47,21 +47,18 @@ const ActiveLayerLegend = ({
   simple,
   hideHeading,
 }: {
-  layer: ProjectLayer;
+  layer: MapLayer;
   simple: boolean;
   hideHeading: boolean;
 }) => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const props = (layer.properties ?? {}) as Record<string, any>;
-  if (props.legend?.show === false) return null;
-  const geometryType = layer.feature_layer_geometry_type?.toLowerCase() || "polygon";
-  const hasBreakdown =
-    !simple &&
-    (getLegendColorMap(props, "color").length > 1 ||
-      getLegendColorMap(props, "stroke_color").length > 1 ||
-      getLegendMarkerMap(props).length > 1);
-  const marker = resolveFeatureMarker(props);
-  const caption = props.legend?.caption;
+  const zoom = useAppSelector((state) => Math.round(state.map.currentZoom ?? 12));
+  const style = (layer.style?.document ?? null) as JsonObject | null;
+  if (!style || style.legend === false || (isObject(style.legend) && style.legend.show === false)) return null;
+  const legend = simple
+    ? null
+    : buildLegend(style, { geometry: geometryOf(layer.feature_layer_geometry_type), zoom });
+  const caption =
+    isObject(style.legend) && typeof style.legend.caption === "string" ? style.legend.caption : null;
   return (
     <Box sx={{ pt: 1, pl: 0.5 }}>
       {/* The legend caption, as the layer list shows it under the layer name. */}
@@ -73,18 +70,11 @@ const ActiveLayerLegend = ({
           {caption}
         </Typography>
       )}
-      {hasBreakdown ? (
-        <LayerLegendPanel properties={props} geometryType={geometryType} hideHeading={hideHeading} />
+      {legend && informative(legend) ? (
+        <StyleLegend legend={{ ...legend, caption: undefined }} variant="tree" hideHeading={hideHeading} />
       ) : (
         <Stack direction="row" alignItems="center" spacing={1}>
-          <LayerIcon
-            type={geometryType}
-            color={toCssColor(props.color) ?? "#ccc"}
-            strokeColor={props.stroked !== false ? toCssColor(props.stroke_color) : undefined}
-            filled={props.filled !== false}
-            iconUrl={marker?.url}
-            iconSource={marker?.source ?? "library"}
-          />
+          {layerSwatchIcon(layer, zoom)}
           <Typography variant="body2" color="text.secondary">
             {layer.name}
           </Typography>
@@ -128,7 +118,7 @@ export const LayerGroupSwitcher = ({
   const theme = useTheme();
   const dispatch = useAppDispatch();
 
-  const { layers, updateTree } = useWidgetLayerTree(viewOnly);
+  const { layers, setVisibility } = useWidgetLayerTree(viewOnly);
   const layout = config.layout;
   const showPlay = config.show_play ?? false;
 
@@ -154,25 +144,22 @@ export const LayerGroupSwitcher = ({
   const select = useCallback(
     async (layerId: number, persist = true) => {
       const changed = groupLayers.filter((l) => isVisible(l) !== (l.id === layerId));
-      if (changed.length === 0 && !(persist && unsaved.current)) return;
+      const wasUnsaved = unsaved.current;
+      if (changed.length === 0 && !(persist && wasUnsaved)) return;
       unsaved.current = !persist && !viewOnly;
-      const payload: ProjectLayerTreeUpdate = {
-        items: groupLayers.map((layer, index) => ({
-          id: layer.id,
-          type: "layer" as const,
-          order: index,
-          parent_id: null,
-          properties: { ...(layer.properties ?? {}), visibility: layer.id === layerId },
-        })),
-      };
       changed.forEach((l) =>
         dispatch(
           emitInteractionEvent({ type: "visibility_changed", sourceId: l.id, value: l.id === layerId })
         )
       );
-      await updateTree(payload, { persist });
+      // After steps that were only shown, every layer of the group is written: the page shows them already.
+      const written = persist && wasUnsaved ? groupLayers : changed;
+      await setVisibility(
+        written.map((layer) => ({ id: layer.id, visible: layer.id === layerId })),
+        { persist }
+      );
     },
-    [groupLayers, viewOnly, dispatch, updateTree]
+    [groupLayers, viewOnly, dispatch, setVisibility]
   );
 
   // Viewers see exactly one layer at a time, even if the project was saved with none or several

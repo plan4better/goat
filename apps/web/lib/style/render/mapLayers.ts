@@ -41,10 +41,11 @@ export interface RenderLayer {
   resolveIcon?: CompileInput["resolveIcon"];
 }
 
-/** The basemap layers the `position`s go below. */
+/** The basemap layers the `position`s go below, and the one GOAT's 3D buildings go below. */
 export interface Anchors {
   labels?: string;
   roads?: string;
+  buildings?: string;
 }
 
 export interface SyncOptions {
@@ -53,6 +54,8 @@ export interface SyncOptions {
   anchors?: Anchors;
   /** The lowest layer that stays above every project layer (the popup highlight, drawing tools). */
   overlay?: string;
+  /** The scene's lowest 3D building layer: the project layers' parts drawn on the ground go below it (`GROUND`). */
+  ground?: string;
 }
 
 interface Placed {
@@ -66,6 +69,8 @@ export interface MapLayersState {
   locale?: string;
   anchors?: Anchors;
   overlay?: string;
+  /** The building layer the ground parts went below: `ground` while it is on the map. */
+  ground?: string;
 }
 
 export type RendererMap = PreviewMap & {
@@ -75,19 +80,74 @@ export type RendererMap = PreviewMap & {
   ): unknown;
 };
 
+/**
+ * The layer types MapLibre draws on the ground: with terrain it drapes them onto the terrain, and the terrain is
+ * depth tested against the fill extrusions drawn before it, so a line above a building layer would be hidden behind
+ * every building, however translucent. Below the buildings they show through them, with terrain and without.
+ */
+const GROUND = new Set(["background", "fill", "line", "raster", "hillshade", "color-relief"]);
+
 /** Source layers of road networks in the basemaps GOAT offers (OpenMapTiles, basemap.de). */
 const ROAD_SOURCE_LAYERS = new Set(["transportation", "Verkehrslinie", "Verkehrsflaeche"]);
 
-/** The anchors of a vector basemap: its first symbol layer (labels) and its first road layer; raster and solid
- * basemaps have none, so every layer draws on top. */
+/** Whether MapLibre draws a layer of this type on the ground (`GROUND`). */
+export const drawnOnGround = (type: string): boolean => GROUND.has(type);
+
+/**
+ * Where a vector basemap's block of labels starts: the lowest point with the fewest symbol layers below it and ground
+ * layers above it. Symbols among the ground layers (Dark's water names, road arrows) stay below it, a ground layer
+ * among the labels (basemap.de's rock pattern) above it; other types (3D buildings, circles) count for neither side.
+ */
+function labelBlockStart(list: Array<{ type: string }>): number {
+  let misplaced = list.filter((l) => GROUND.has(l.type)).length;
+  let fewest = misplaced;
+  let start = 0;
+  list.forEach((l, i) => {
+    if (l.type === "symbol") misplaced++;
+    else if (GROUND.has(l.type)) misplaced--;
+    if (misplaced < fewest) [fewest, start] = [misplaced, i + 1];
+  });
+  return start;
+}
+
+/**
+ * The anchors of a vector basemap: the first symbol layer of its label block (labels), its first road layer, and the
+ * layer the block starts at (buildings). Every basemap GOAT offers draws roads, boundaries or relief after its flat
+ * building fill and ends in the block of labels, so the layers below the labels and GOAT's buildings go above all of
+ * its ground. Raster and solid basemaps have none of the three, so every layer draws on top.
+ */
 export function basemapAnchors(
   layers: Array<{ id: string; type: string; "source-layer"?: string }> | undefined
 ): Anchors {
   const list = layers ?? [];
+  const start = labelBlockStart(list);
   return {
-    labels: list.find((l) => l.type === "symbol")?.id,
+    labels: list.slice(start).find((l) => l.type === "symbol")?.id,
     roads: list.find((l) => l["source-layer"] !== undefined && ROAD_SOURCE_LAYERS.has(l["source-layer"]))?.id,
+    buildings: list[start]?.id,
   };
+}
+
+/**
+ * The anchors of the basemap on a map, from its style's layers that are neither the renderer's, GOAT's scene (`goat-`
+ * ids) nor on a GeoJSON source (the mask, the drawing and measuring tools, the popup highlight, drawn on top).
+ */
+export function basemapAnchorsOf(map: {
+  getStyle():
+    | {
+        layers?: Array<{ id: string; type: string; source?: unknown; "source-layer"?: string }>;
+        sources?: Record<string, { type?: string }>;
+      }
+    | undefined;
+}): Anchors {
+  const style = map.getStyle();
+  const onGeojson = (source: unknown) =>
+    typeof source === "string" && style?.sources?.[source]?.type === "geojson";
+  return basemapAnchors(
+    style?.layers?.filter(
+      (l) => !projectLayerOf(map, l.id) && !l.id.startsWith("goat-") && !onGeojson(l.source)
+    )
+  );
 }
 
 /** Layer types that take a filter (rasters and hillshades do not). */
@@ -203,6 +263,7 @@ export function syncMapLayers(
   }
 
   const anchors = opts.anchors ?? {};
+  const ground = opts.ground && map.getLayer(opts.ground) ? opts.ground : undefined;
   const reorder =
     !prev ||
     !deepEqual(
@@ -211,6 +272,7 @@ export function syncMapLayers(
     ) ||
     !deepEqual(prev.anchors ?? {}, anchors) ||
     prev.overlay !== opts.overlay ||
+    prev.ground !== ground ||
     next.some((layer) => {
       const old = prev.placed.get(layer.key);
       return old !== undefined && positionOf(old.layer) !== positionOf(layer);
@@ -221,17 +283,40 @@ export function syncMapLayers(
       : position === "below_roads"
         ? (anchors.roads ?? anchors.labels)
         : undefined) ?? opts.overlay;
-  const lowestOnMap = (compiled: CompiledLayer) => compiled.layers.find((l) => map.getLayer(l.id))?.id;
+  // A position's ground parts go below the buildings where the buildings are below the position's anchor; they
+  // and the other parts are then placed as two stacks, each in the map document's order.
+  let mapOrder: Map<string, number> | undefined;
+  const below = (a: string, b: string) => {
+    if (!mapOrder) {
+      const style = (map as { getStyle?: () => { layers?: Array<{ id: string }> } | undefined }).getStyle?.();
+      mapOrder = new Map((style?.layers ?? []).map((l, i) => [l.id, i]));
+    }
+    return (mapOrder.get(a) ?? -1) < (mapOrder.get(b) ?? Infinity);
+  };
+  const groundAnchorFor = (position: Position) => {
+    const anchor = anchorFor(position);
+    if (!ground || position === "top" || anchor === undefined) return ground ?? anchor;
+    return below(ground, anchor) ? ground : anchor;
+  };
+  const splits = (position: Position) => groundAnchorFor(position) !== anchorFor(position);
+  const onGround = (position: Position, l: LayerSpecification) => splits(position) && GROUND.has(l.type);
+  const lowestOnMap = (compiled: CompiledLayer, position: Position, low: boolean) =>
+    compiled.layers.find((l) => onGround(position, l) === low && map.getLayer(l.id))?.id;
 
   const placed = new Map<string, Placed>();
   next.forEach((layer, index) => {
     const position = positionOf(layer);
-    let beforeId: string | undefined;
-    for (let i = index - 1; i >= 0 && beforeId === undefined; i--) {
-      const above = placed.get(next[i].key);
-      if (above && positionOf(next[i]) === position) beforeId = lowestOnMap(above.compiled);
-    }
-    beforeId ??= anchorFor(position);
+    const stackBefore = (low: boolean) => {
+      let id: string | undefined;
+      for (let i = index - 1; i >= 0 && id === undefined; i--) {
+        const above = placed.get(next[i].key);
+        if (above && positionOf(next[i]) === position) id = lowestOnMap(above.compiled, position, low);
+      }
+      return id ?? (low ? groundAnchorFor(position) : anchorFor(position));
+    };
+    const raised = stackBefore(false);
+    const low = splits(position) ? stackBefore(true) : raised;
+    const beforeId = (l: LayerSpecification) => (onGround(position, l) ? low : raised);
     const old = prev?.placed.get(layer.key);
     let compiled = old && sameInput(old.layer, layer) ? old.compiled : compile(layer);
     if (compiled !== old?.compiled) applyCompiled(map, old?.compiled ?? null, compiled, { beforeId });
@@ -269,7 +354,7 @@ export function syncMapLayers(
   }
   registries.set(map, registry);
 
-  return { placed, order: nextKeys, locale: opts.locale, anchors, overlay: opts.overlay };
+  return { placed, order: nextKeys, locale: opts.locale, anchors, overlay: opts.overlay, ground };
 }
 
 /** Sets the global state again (the locale, every time slider's value) after a new style replaced it. */

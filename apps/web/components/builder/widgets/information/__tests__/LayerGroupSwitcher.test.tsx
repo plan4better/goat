@@ -10,17 +10,20 @@ import {
 
 /**
  * A layer group shown one layer at a time: picking one turns it
- * on and its siblings off, through the same tree update the layers widget uses.
+ * on and its siblings off, as map state, the way the layers widget changes it.
  */
 
 const dispatch = vi.fn();
-const updateTree = vi.fn().mockResolvedValue(undefined);
+const setVisibility = vi.fn().mockResolvedValue(undefined);
 let layers: object[] = [];
 
-vi.mock("@/hooks/store/ContextHooks", () => ({ useAppDispatch: () => dispatch }));
+vi.mock("@/hooks/store/ContextHooks", () => ({
+  useAppDispatch: () => dispatch,
+  useAppSelector: () => 12,
+}));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/components/builder/widgets/information/useWidgetLayerTree", () => ({
-  useWidgetLayerTree: () => ({ projectId: "p", layers, layerGroups: [], updateTree }),
+  useWidgetLayerTree: () => ({ projectId: "p", layers, layerGroups: [], setVisibility }),
 }));
 
 const layer = (id: number, name: string, order: number, visibility: boolean, group = 7) => ({
@@ -29,7 +32,9 @@ const layer = (id: number, name: string, order: number, visibility: boolean, gro
   order,
   layer_project_group_id: group,
   type: "feature",
-  properties: { visibility },
+  feature_layer_geometry_type: "polygon",
+  entry: { type: "layer", id, visible: visibility },
+  style: { document: { version: 1, kind: "vector", symbol: { fill: { color: "#2bb381" } } } },
 });
 
 const GROUP = 7;
@@ -58,15 +63,15 @@ const Switcher = ({
 
 const visibilityIn = (call: number) =>
   Object.fromEntries(
-    updateTree.mock.calls[call][0].items.map((i: { id: number; properties: { visibility: boolean } }) => [
-      i.id,
-      i.properties.visibility,
+    setVisibility.mock.calls[call][0].map((change: { id: number; visible: boolean }) => [
+      change.id,
+      change.visible,
     ])
   );
 
 beforeEach(() => {
   dispatch.mockClear();
-  updateTree.mockClear();
+  setVisibility.mockClear();
   layers = [
     layer(3, "2021", 2, false),
     layer(1, "2015", 0, false),
@@ -90,8 +95,9 @@ describe("LayerGroupSwitcher", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "2021" }));
 
-    expect(updateTree).toHaveBeenCalledTimes(1);
-    expect(visibilityIn(0)).toEqual({ 1: false, 2: false, 3: true });
+    expect(setVisibility).toHaveBeenCalledTimes(1);
+    // Only the layers that change are written; layer 1 is off already.
+    expect(visibilityIn(0)).toEqual({ 2: false, 3: true });
     const events = dispatch.mock.calls.map(([a]) => a.payload);
     expect(events).toEqual([
       expect.objectContaining({ type: "visibility_changed", sourceId: 2, value: false }),
@@ -103,7 +109,7 @@ describe("LayerGroupSwitcher", () => {
     renderSwitcher();
 
     fireEvent.click(screen.getByRole("radio", { name: "2018" }));
-    expect(updateTree).not.toHaveBeenCalled();
+    expect(setVisibility).not.toHaveBeenCalled();
   });
 
   it("leaves out layers the Layers widget excludes, and renders nothing for an empty group", () => {
@@ -119,22 +125,22 @@ describe("LayerGroupSwitcher", () => {
     layers = [layer(1, "a", 0, true), layer(2, "b", 1, true), layer(3, "c", 2, false)];
     renderSwitcher({}, { viewOnly: true });
 
-    expect(updateTree).toHaveBeenCalledTimes(1);
-    expect(visibilityIn(0)).toEqual({ 1: true, 2: false, 3: false });
+    expect(setVisibility).toHaveBeenCalledTimes(1);
+    expect(visibilityIn(0)).toEqual({ 2: false });
   });
 
   it("turns the last layer on in the public view when none is on", () => {
     layers = [layer(1, "a", 0, false), layer(2, "b", 1, false), layer(3, "c", 2, false)];
     renderSwitcher({}, { viewOnly: true });
 
-    expect(visibilityIn(0)).toEqual({ 1: false, 2: false, 3: true });
+    expect(visibilityIn(0)).toEqual({ 3: true });
   });
 
   it("leaves the saved visibility alone in the editor", () => {
     layers = [layer(1, "a", 0, true), layer(2, "b", 1, true), layer(3, "c", 2, false)];
     renderSwitcher();
 
-    expect(updateTree).not.toHaveBeenCalled();
+    expect(setVisibility).not.toHaveBeenCalled();
   });
 
   it("does not offer tables or locked layers", () => {
@@ -159,9 +165,13 @@ describe("LayerGroupSwitcher", () => {
     hidden.unmount();
 
     // The legend caption shows above the legend, as in the layer list.
-    (layers[2] as { properties: object }).properties = {
-      visibility: true,
-      legend: { caption: "Einwohner je Hektar" },
+    (layers[2] as { style: object }).style = {
+      document: {
+        version: 1,
+        kind: "vector",
+        symbol: { fill: { color: "#2bb381" } },
+        legend: { caption: "Einwohner je Hektar" },
+      },
     };
     renderSwitcher();
     expect(screen.getByText("Einwohner je Hektar")).toBeInTheDocument();
@@ -177,7 +187,7 @@ describe("LayerGroupSwitcher", () => {
       vi.advanceTimersByTime(PLAY_INTERVAL_MS);
     });
 
-    expect(visibilityIn(0)).toEqual({ 1: true, 2: false, 3: false });
+    expect(visibilityIn(0)).toEqual({ 1: true, 3: false });
   });
 
   it("only shows each play step in the editor, and saves the layer it stops on once", async () => {
@@ -189,12 +199,12 @@ describe("LayerGroupSwitcher", () => {
     await act(async () => {
       vi.advanceTimersByTime(PLAY_INTERVAL_MS);
     });
-    expect(updateTree).toHaveBeenCalledTimes(1);
-    expect(updateTree.mock.calls[0][1]).toEqual({ persist: false });
+    expect(setVisibility).toHaveBeenCalledTimes(1);
+    expect(setVisibility.mock.calls[0][1]).toEqual({ persist: false });
 
     fireEvent.click(screen.getByRole("button", { name: "pause" }));
-    expect(updateTree).toHaveBeenCalledTimes(2);
-    expect(updateTree.mock.calls[1][1]).toEqual({ persist: true });
+    expect(setVisibility).toHaveBeenCalledTimes(2);
+    expect(setVisibility.mock.calls[1][1]).toEqual({ persist: true });
   });
 
   it("saves nothing more when playing stops in the public view", async () => {
@@ -208,7 +218,7 @@ describe("LayerGroupSwitcher", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "pause" }));
 
-    expect(updateTree).toHaveBeenCalledTimes(1);
+    expect(setVisibility).toHaveBeenCalledTimes(1);
   });
 
   it("stops playing when the play button is switched off", async () => {
@@ -222,7 +232,7 @@ describe("LayerGroupSwitcher", () => {
       vi.advanceTimersByTime(PLAY_INTERVAL_MS * 3);
     });
 
-    expect(updateTree).not.toHaveBeenCalled();
+    expect(setVisibility).not.toHaveBeenCalled();
   });
 
   it("renders a slider with one mark per layer", () => {
@@ -238,7 +248,7 @@ describe("LayerGroupSwitcher", () => {
     // A keyboard step is a change and its commit at once; a drag commits only when let go
     fireEvent.change(screen.getByRole("slider"), { target: { value: 2 } });
 
-    expect(updateTree.mock.calls.map((call) => call[1])).toEqual([{ persist: false }, { persist: true }]);
+    expect(setVisibility.mock.calls.map((call) => call[1])).toEqual([{ persist: false }, { persist: true }]);
     expect(visibilityIn(1)).toEqual({ 1: false, 2: false, 3: true });
   });
 
@@ -250,6 +260,6 @@ describe("LayerGroupSwitcher", () => {
     fireEvent.mouseDown(select);
     fireEvent.click(screen.getByRole("option", { name: "2021" }));
 
-    expect(visibilityIn(0)).toEqual({ 1: false, 2: false, 3: true });
+    expect(visibilityIn(0)).toEqual({ 2: false, 3: true });
   });
 });

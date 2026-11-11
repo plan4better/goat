@@ -36,6 +36,8 @@ import { BaseMapSelectorList, BasemapSelectorButton } from "@/components/map/con
 import { CustomBasemapDialog } from "@/components/map/controls/CustomBasemapDialog";
 import Scalebar from "@/components/map/controls/Scalebar";
 import { UserLocation } from "@/components/map/controls/UserLocation";
+import { Compass } from "@/components/map/controls/Compass";
+import { ViewControl } from "@/components/map/controls/ViewControl";
 import { Zoom } from "@/components/map/controls/Zoom";
 import SearchControl from "@/components/map/controls/search/SearchControl";
 import { usePublicSearchSource } from "@/components/map/controls/search/publicSearchLayers";
@@ -560,6 +562,8 @@ const MobileProjectLayout = ({
             {project && hasControl("project_info") && (
               <ProjectInfo project={project} viewOnly={viewOnly} onProjectUpdate={onProjectUpdate} />
             )}
+            <Compass />
+            {hasControl("view") && <ViewControl showSky={false} />}
             {hasControl("zoom_controls") && (
               <Zoom tooltipZoomIn={t("zoom_in")} tooltipZoomOut={t("zoom_out")} />
             )}

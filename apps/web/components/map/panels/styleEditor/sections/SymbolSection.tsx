@@ -35,6 +35,7 @@ import {
   markerInvisible,
   partPath,
 } from "@/components/map/panels/styleEditor/editors/PartEditor";
+import { HeightRow } from "@/components/map/panels/styleEditor/editors/HeightRow";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import { useRuleLabel } from "@/components/map/panels/styleEditor/editors/RuleEditor";
 import { ShapedIcon } from "@/components/map/panels/styleEditor/editors/ShapeField";
@@ -320,7 +321,9 @@ export function SymbolSection() {
       scope={<ScopeChip />}
       scopeNote={scope ? <ScopeHeader /> : undefined}>
       {GROUPS[geometry].map((group) =>
-        group.inline ? (
+        group.part === "extrude" ? (
+          <HeightRow key={group.id} />
+        ) : group.inline ? (
           <PropertyRow key={group.id} row={group.inline} base={partPath(group)} />
         ) : (
           <PartGroupRow key={group.id} group={group} />

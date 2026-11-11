@@ -8,6 +8,7 @@ import { CAPABILITIES, defaultRange } from "@/lib/style/generated/capabilities";
 import { ICON_GROUPS, ICON_NAMES, PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { PROPERTY_KINDS } from "@/lib/style/generated/properties";
+import { SCENE_AUTO, SCENE_DEFAULTS } from "@/lib/style/generated/scene";
 
 const WEB = resolve(__dirname, "../../..");
 
@@ -48,6 +49,7 @@ describe("generated GOAT Style sources", () => {
       "lib/style/generated/defaults.ts",
       "lib/style/generated/emoji.ts",
       "lib/style/generated/properties.ts",
+      "lib/style/generated/scene.ts",
       "lib/style/generated/types.ts",
       "public/assets/icons/maki/symbols.json",
     ]);
@@ -159,7 +161,7 @@ describe("limits the panel shares with the format", () => {
 
 describe("raster keys", () => {
   it("raster render defaults and the raster opacity capability are generated", () => {
-    expect(DEFAULTS["terrain.direction"]).toBe(315);
+    expect(DEFAULTS["hillshade.direction"]).toBe(315);
     expect(DEFAULTS["continuous.palette"]).toBe("goat:elevation");
     expect(CAPABILITIES["raster.opacity"]).toEqual({
       kind: "number",
@@ -167,5 +169,30 @@ describe("raster keys", () => {
       attribute: null,
       perFeature: false,
     });
+  });
+});
+
+describe("scene keys", () => {
+  it("scene keys are generated", () => {
+    expect(CAPABILITIES["scene.sky.color"]).toEqual({
+      kind: "color",
+      zoom: "blend",
+      attribute: null,
+      perFeature: false,
+    });
+    expect(CAPABILITIES["scene.glow.strength"].kind).toBe("number");
+    expect(CAPABILITIES["scene.light.intensity"]).toEqual({
+      kind: "number",
+      zoom: "blend",
+      attribute: null,
+      perFeature: false,
+    });
+    expect(CAPABILITIES["extrude.height"]).toMatchObject({
+      kind: "number",
+      zoom: "blend",
+      attribute: "number",
+    });
+    expect(SCENE_AUTO.dark["sky.color"]).toBe("#1D4877");
+    expect(SCENE_DEFAULTS.storey_height).toBe(3);
   });
 });

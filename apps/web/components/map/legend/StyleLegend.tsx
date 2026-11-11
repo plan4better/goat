@@ -11,8 +11,17 @@ import { SQUARE_RADIUS } from "@/lib/style/compile/markerImage";
 import { type PatternKind, patternTile } from "@/lib/style/compile/patternImage";
 import type { Geometry } from "@/lib/style/compile/types";
 import { formatNumberText } from "@/lib/style/editor/labels";
+import { SCENE_DEFAULTS } from "@/lib/style/generated/scene";
 import type { JsonObject } from "@/lib/style/json";
-import { type Legend, type Swatch, baseSwatch, classOf, rangeText, valuesText } from "@/lib/style/legend";
+import {
+  type Legend,
+  type LegendSection,
+  type Swatch,
+  baseSwatch,
+  classOf,
+  rangeText,
+  valuesText,
+} from "@/lib/style/legend";
 import { MARKER_SHAPES, markerShapeOf } from "@/lib/style/markerShapes";
 
 const str = (value: unknown, fallback: string) => (typeof value === "string" ? value : fallback);
@@ -278,6 +287,34 @@ export function StyleLegend({
         {value}
       </Typography>
     );
+  const heightText = (section: Extract<LegendSection, { kind: "height" }>) => {
+    const n = (v?: number) => (v === undefined ? "" : number(v));
+    switch (section.mode) {
+      case "fixed":
+        return t("style_editor.legend_height_fixed", { value: n(section.value) });
+      case "zoom":
+        return t("style_editor.legend_height_zoom", { max: n(section.max) });
+      case "field":
+        return t("style_editor.legend_height_field", { field: section.field });
+      case "storeys":
+        return t("style_editor.legend_height_storeys", {
+          field: section.field,
+          storey: n(SCENE_DEFAULTS.storey_height),
+        });
+      case "classes":
+        return t("style_editor.legend_height_classes", { field: section.field, count: section.count });
+      case "range":
+        return t("style_editor.legend_height_range", {
+          field: section.field,
+          from: n(section.from),
+          to: n(section.to),
+        });
+      case "h3":
+        return t("style_editor.legend_height_h3", {
+          value_label: t(`style_editor.h3_value_${section.op ?? "count"}`, { field: section.field }),
+        });
+    }
+  };
   const title = variant === "panel" ? (legend.title ?? layerName) : legend.title;
   return (
     <Box
@@ -299,7 +336,8 @@ export function StyleLegend({
         </Typography>
       )}
       {legend.sections.map((section) => {
-        const field = "field" in section ? section.field : undefined;
+        // The Height line names its field in its own text.
+        const field = "field" in section && section.kind !== "height" ? section.field : undefined;
         // Two classification blocks of one field tell themselves apart by the property each sets.
         const properties = section.kind === "entries" ? section.properties : undefined;
         const heading = hideHeading
@@ -372,6 +410,7 @@ export function StyleLegend({
                 </Box>
               </Box>
             )}
+            {section.kind === "height" && text(section.id, heightText(section), true)}
             {section.kind === "image" && (
               <Box component="img" src={section.url} alt={title ?? ""} sx={{ maxWidth: "100%" }} />
             )}

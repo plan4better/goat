@@ -35,8 +35,8 @@ function ColorsRow() {
   const render: JsonObject = isObject(value) ? value : {};
   const popover = usePopover();
   const next = useNextLevel();
-  const terrain = render.type === "terrain";
-  const colored = !terrain || render.palette !== undefined;
+  const hillshade = render.type === "hillshade";
+  const colored = !hillshade || render.palette !== undefined;
   const { colors, stepped } = renderColors(render);
   const classify = isObject(render.classify) ? render.classify : null;
   const text = !colored
@@ -57,7 +57,7 @@ function ColorsRow() {
       onOpen={(anchor) =>
         popover.open(next, {
           key: "raster:colors",
-          title: terrain ? t("style_editor.hillshade_colors") : label,
+          title: hillshade ? t("style_editor.hillshade_colors") : label,
           anchorTop: anchorTopOf(anchor),
           render: () => <RasterColorsEditor />,
         })
@@ -75,10 +75,10 @@ function HillshadeRows() {
     altitude: useStyleValue<unknown>("render.altitude"),
     exaggeration: useStyleValue<unknown>("render.exaggeration"),
   } as Record<string, unknown>;
-  const value = <T,>(key: string) => (read[key] ?? DEFAULTS[`terrain.${key}`]) as T;
+  const value = <T,>(key: string) => (read[key] ?? DEFAULTS[`hillshade.${key}`]) as T;
   const setNumber = (key: string) => (v: number) =>
     store.update(
-      (doc) => setIn(doc, `render.${key}`, v === DEFAULTS[`terrain.${key}`] ? undefined : v),
+      (doc) => setIn(doc, `render.${key}`, v === DEFAULTS[`hillshade.${key}`] ? undefined : v),
       `render.${key}`
     );
   const method = value<string>("method");
@@ -92,41 +92,41 @@ function HillshadeRows() {
           label: t(`style_editor.hillshade_method_${v}`),
           sub: t(`style_editor.hillshade_method_${v}_sub`),
         }))}
-        onChange={(v) => store.set("render.method", v === DEFAULTS["terrain.method"] ? undefined : v)}
+        onChange={(v) => store.set("render.method", v === DEFAULTS["hillshade.method"] ? undefined : v)}
       />
       <SliderRow
         label={t("style_editor.hillshade_direction")}
-        {...SLIDERS["terrain.direction"]}
+        {...SLIDERS["hillshade.direction"]}
         value={value<number>("direction")}
         onChange={setNumber("direction")}
       />
       <SliderRow
         label={t("style_editor.hillshade_altitude")}
-        {...SLIDERS["terrain.altitude"]}
+        {...SLIDERS["hillshade.altitude"]}
         value={value<number>("altitude")}
         onChange={setNumber("altitude")}
       />
       <SliderRow
         label={t("style_editor.hillshade_strength")}
-        {...SLIDERS["terrain.exaggeration"]}
+        {...SLIDERS["hillshade.exaggeration"]}
         value={value<number>("exaggeration")}
         onChange={setNumber("exaggeration")}
       />
       <ColorRow
         label={t("style_editor.hillshade_shadow")}
         path="render.shadow_color"
-        fallback={DEFAULTS["terrain.shadow_color"] as string}
+        fallback={DEFAULTS["hillshade.shadow_color"] as string}
       />
       <ColorRow
         label={t("style_editor.hillshade_highlight")}
         path="render.highlight_color"
-        fallback={DEFAULTS["terrain.highlight_color"] as string}
+        fallback={DEFAULTS["hillshade.highlight_color"] as string}
       />
       {method === "standard" && (
         <ColorRow
           label={t("style_editor.hillshade_accent")}
           path="render.accent_color"
-          fallback={DEFAULTS["terrain.accent_color"] as string}
+          fallback={DEFAULTS["hillshade.accent_color"] as string}
         />
       )}
     </>
@@ -153,7 +153,7 @@ export function RasterColorSection() {
       ) : (
         <>
           <ColorsRow />
-          {type === "terrain" && <HillshadeRows />}
+          {type === "hillshade" && <HillshadeRows />}
         </>
       )}
     </PanelSection>

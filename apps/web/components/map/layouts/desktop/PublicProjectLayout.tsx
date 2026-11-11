@@ -51,6 +51,9 @@ import { CustomBasemapDialog } from "@/components/map/controls/CustomBasemapDial
 import { Fullscren } from "@/components/map/controls/Fullscreen";
 import Scalebar from "@/components/map/controls/Scalebar";
 import { UserLocation } from "@/components/map/controls/UserLocation";
+import { Compass } from "@/components/map/controls/Compass";
+import { CONTROL_COLUMN_SX } from "@/components/map/controls/controlColumn";
+import { ViewControl } from "@/components/map/controls/ViewControl";
 import { Zoom } from "@/components/map/controls/Zoom";
 import { MeasureButton, MeasureResultsPanel } from "@/components/map/controls/measure";
 import SearchControl from "@/components/map/controls/search/SearchControl";
@@ -546,7 +549,7 @@ const PublicProjectLayout = ({
       "top-left": ["location", "measure"] as ControlKey[],
       "top-right": [] as ControlKey[],
       "bottom-left": [] as ControlKey[],
-      "bottom-right": ["zoom_controls", "basemap", "fullscreen"] as ControlKey[],
+      "bottom-right": ["view", "zoom_controls", "basemap", "fullscreen"] as ControlKey[],
     };
   }, [builderConfig]);
 
@@ -584,6 +587,9 @@ const PublicProjectLayout = ({
               placement={isRightCorner ? "left" : "right"}
             />
           );
+        case "view":
+          // Viewers change the view on their screen only: no Sky and atmosphere.
+          return <ViewControl key="view" showSky={false} />;
         case "zoom_controls":
           return <Zoom key="zoom_controls" tooltipZoomIn={t("zoom_in")} tooltipZoomOut={t("zoom_out")} />;
         case "basemap":
@@ -778,10 +784,14 @@ const PublicProjectLayout = ({
               zIndex: 2,
               transition: "all 0.3s",
             }}>
-            {(searchPanelOpen && controlsByCorner["bottom-right"].includes("location")
-              ? (["location"] as ControlKey[])
-              : controlsByCorner["bottom-right"]
-            ).map((c) => renderControl(c, "bottom-right"))}
+            <Box sx={{ ...CONTROL_COLUMN_SX, mb: 2 }}>
+              {/* Not a control key: shown on every tilted or rotated map, so a viewer can get back to 2D. */}
+              <Compass />
+              {(searchPanelOpen && controlsByCorner["bottom-right"].includes("location")
+                ? (["location"] as ControlKey[])
+                : controlsByCorner["bottom-right"]
+              ).map((c) => renderControl(c, "bottom-right"))}
+            </Box>
             {/* -8px pulls the strip down to sit flush with the map's bottom edge (cancels the residual bottom inset of this bottom-right control box). */}
             <Box sx={{ mb: "-8px" }}>
               <AttributionControl

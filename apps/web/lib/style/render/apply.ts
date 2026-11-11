@@ -153,13 +153,18 @@ function updateProperties(
   }
 }
 
+/** Where a compiled layer's map layers go: below one layer, or below a layer chosen per map layer. */
+export type Before = string | undefined | ((layer: LayerSpecification) => string | undefined);
+
+const beforeOf = (before: Before) => (typeof before === "function" ? before : () => before);
+
 const layerOf = (layer: LayerSpecification) => layer as LayerSpecification & Record<string, unknown>;
 
 export function applyCompiled(
   map: PreviewMap,
   prev: CompiledLayer | null,
   next: CompiledLayer,
-  opts: { beforeId?: string } = {}
+  opts: { beforeId?: Before } = {}
 ): void {
   registerImages(map, next.images);
   const prevSources = prev?.sources ?? {};
@@ -204,11 +209,14 @@ export function applyCompiled(
     }
   }
 
-  // Bottom to top: a layer that is (re)added goes below the next one already on the map, else below beforeId.
+  // Bottom to top: a layer that is (re)added goes below the next one already on the map with the same beforeId,
+  // else below its beforeId.
+  const before = beforeOf(opts.beforeId);
   const beforeFor = (index: number): string | undefined => {
+    const own = before(next.layers[index]);
     for (let i = index + 1; i < next.layers.length; i++)
-      if (map.getLayer(next.layers[i].id)) return next.layers[i].id;
-    return opts.beforeId;
+      if (map.getLayer(next.layers[i].id) && before(next.layers[i]) === own) return next.layers[i].id;
+    return own;
   };
   next.layers.forEach((spec, index) => {
     const layer = layerOf(spec);
@@ -254,8 +262,9 @@ export function applyCompiled(
 }
 
 /** Moves a compiled layer's map layers below `beforeId` (to the top without one), keeping their order. */
-export function moveCompiled(map: PreviewMap, compiled: CompiledLayer, beforeId?: string): void {
-  for (const layer of compiled.layers) if (map.getLayer(layer.id)) map.moveLayer(layer.id, beforeId);
+export function moveCompiled(map: PreviewMap, compiled: CompiledLayer, beforeId?: Before): void {
+  const before = beforeOf(beforeId);
+  for (const layer of compiled.layers) if (map.getLayer(layer.id)) map.moveLayer(layer.id, before(layer));
 }
 
 /** Takes a compiled layer off the map again. */

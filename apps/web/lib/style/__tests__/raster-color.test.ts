@@ -30,7 +30,7 @@ describe("rasterColorSpec", () => {
       rasterColorSpec({ type: "continuous", band: { name: "NDVI", expression: "(b4 - b1)" }, domain: [0, 1] })
     ).toMatchObject({ kind: "ramp", band: "(b4 - b1)", domain: [0, 1] });
     expect(rasterColorSpec({ type: "continuous" })).toMatchObject({ kind: "ramp", domain: null });
-    expect(rasterColorSpec({ type: "terrain" })).toBeNull();
+    expect(rasterColorSpec({ type: "hillshade" })).toBeNull();
   });
 
   it("resolves palettes, reverse, class colors from the palette's variant and the style's no data", () => {
@@ -52,7 +52,7 @@ describe("rasterColorSpec", () => {
       outside: "hide",
     });
     const classes = rasterColorSpec({
-      type: "terrain",
+      type: "hillshade",
       palette: "colorbrewer:BuGn",
       domain: [0, 30],
       classify: {

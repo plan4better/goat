@@ -64,3 +64,24 @@ describe("ScalebarElementRenderer", () => {
     expect(bar(container).style.width).toBe("100%");
   });
 });
+
+describe("ScalebarElementRenderer on a tilted map (3D spec 10)", () => {
+  const tilted = (pitch: number) =>
+    ({ ...mapElement, config: { viewState: { zoom: 12, latitude: 48, longitude: 11, pitch } } }) as ReportElement;
+
+  it("says the map is not to scale instead of drawing a bar", () => {
+    const { container, getByTestId } = render(
+      <ScalebarElementRenderer element={scalebar()} mapElements={[tilted(55)]} />
+    );
+    expect(getByTestId("scalebar-not-to-scale").textContent).toBe("report_scalebar_not_to_scale");
+    expect(bar(container)).toBeNull();
+  });
+
+  it("draws the bar on a flat map", () => {
+    const { container, queryByTestId } = render(
+      <ScalebarElementRenderer element={scalebar()} mapElements={[tilted(0)]} />
+    );
+    expect(queryByTestId("scalebar-not-to-scale")).toBeNull();
+    expect(bar(container)).not.toBeNull();
+  });
+});

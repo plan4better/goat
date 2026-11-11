@@ -22,6 +22,14 @@ export interface RuleScope {
 
 export type Scope = ClassScope | RuleScope;
 
+/** Where a store's document lives and goes: the style saver for a layer style, the scene's saver for `{ scene }`. */
+export interface DocumentSaver<T> {
+  readonly document: T;
+  subscribe(listener: () => void): () => void;
+  edit(next: T): void;
+  saveNow(): void;
+}
+
 export const isRuleScope = (scope: Scope | null): scope is RuleScope => scope !== null && "rule" in scope;
 
 export { type Path, getIn, setIn };
@@ -38,8 +46,8 @@ function reuse(prev: unknown, next: unknown): unknown {
   return next;
 }
 
-export class EditorStore {
-  readonly saver: StyleSaver;
+export class EditorStore<S extends DocumentSaver<LayerStyle> = StyleSaver> {
+  readonly saver: S;
   private current: LayerStyle;
   private seen: LayerStyle;
   private past: LayerStyle[] = [];
@@ -51,7 +59,7 @@ export class EditorStore {
   private readonly listeners = new Set<() => void>();
   private detach: (() => void) | null = null;
 
-  constructor(opts: { saver: StyleSaver }) {
+  constructor(opts: { saver: S }) {
     this.saver = opts.saver;
     // Rules without ids get theirs here, with no history entry; the next save carries them.
     this.current = withRuleIds(opts.saver.document);

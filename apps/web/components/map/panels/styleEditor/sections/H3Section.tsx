@@ -11,8 +11,13 @@ import { setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { isObject } from "@/lib/style/json";
 
+import { useAutoTilt } from "@/hooks/map/useAutoTilt";
+
 import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
 import { PathColorPicker } from "@/components/map/panels/styleEditor/editors/ColorRow";
+import { ViewingIn2D } from "@/components/map/panels/styleEditor/editors/HeightRow";
+import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
+import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
 import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import {
   ChoiceRow,
@@ -20,11 +25,13 @@ import {
   NumberInput,
   PanelSection,
   Row,
+  SegmentedRow,
   SliderRow,
 } from "@/components/map/panels/styleEditor/rows";
 import { PointsRow, RenderPaletteRow } from "@/components/map/panels/styleEditor/sections/HeatmapSection";
 
 const AUTO = "auto";
+const TALLEST: PartRow = { type: "number", key: "tallest", label: "style_editor.h3_tallest" };
 /** About how wide a hexagon of each resolution is, in meters (twice H3's average edge length). */
 const WIDTH_M: Record<number, number> = { 5: 19700, 6: 7400, 7: 2800, 8: 1100, 9: 400, 10: 150 };
 const METHODS = ["quantile", "equal_interval", "natural_breaks", "std_dev", "heads_and_tails"];
@@ -182,12 +189,58 @@ function OutlineRow() {
   );
 }
 
+/** Columns (3D spec 8.4): None or By value, then the tallest column and how values scale to it. The first columns on
+ * a 2D map tilt it once, with Undo. */
+function HeightRows() {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const { layerId } = useStyleData();
+  const extrude = useStyleValue<unknown>("render.extrude");
+  const scale = useStyleValue<unknown>("render.extrude.scale");
+  const { tilt, mode, show3d } = useAutoTilt(layerId);
+  const on = isObject(extrude);
+  return (
+    <>
+      <ChoiceRow<string>
+        label={t("style_editor.height")}
+        value={on ? "value" : "none"}
+        options={[
+          { value: "none", label: t("style_editor.mode_none"), sub: t("style_editor.h3_height_none_sub") },
+          { value: "value", label: t("style_editor.h3_height_value"), sub: t("style_editor.h3_height_value_sub") },
+        ]}
+        onChange={(next) => {
+          if (next === "none") return store.set("render.extrude", undefined);
+          if (on) return;
+          store.set("render.extrude", {});
+          tilt(true);
+        }}
+      />
+      {on && mode === "2d" && <ViewingIn2D onShow={show3d} />}
+      {on && (
+        <>
+          <PropertyRow row={TALLEST} base="render.extrude" />
+          <SegmentedRow<string>
+            label={t("style_editor.h3_scale")}
+            value={scale === "linear" ? "linear" : "sqrt"}
+            options={[
+              { value: "linear", label: t("style_editor.h3_scale_linear") },
+              { value: "sqrt", label: t("style_editor.h3_scale_sqrt") },
+            ]}
+            onChange={(next) => store.set("render.extrude.scale", next)}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
 export function H3Section() {
   const { t } = useTranslation("common");
   const store = useEditor();
   const { geometry } = useStyleData();
   const type = useStyleValue<unknown>("render.type");
   const opacity = useStyleValue<unknown>("render.opacity");
+  const extruded = isObject(useStyleValue<unknown>("render.extrude"));
   if (geometry !== "point" || type !== "h3") return null;
   const range = SLIDERS["h3.opacity"];
   return (
@@ -216,7 +269,9 @@ export function H3Section() {
         value={typeof opacity === "number" ? opacity : (DEFAULTS["h3.opacity"] as number)}
         onChange={(next) => store.set("render.opacity", next)}
       />
-      <OutlineRow />
+      <HeightRows />
+      {/* Columns draw no outline. */}
+      {!extruded && <OutlineRow />}
       <PointsRow never={t("style_editor.points_never_h3")} />
     </PanelSection>
   );

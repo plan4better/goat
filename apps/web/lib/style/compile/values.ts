@@ -96,13 +96,15 @@ function byAttribute(form: Record<string, unknown>, fallback: Expr): Expr {
 
 /**
  * One value form as a value. `fallback` is the property's base value (what an absent form or missing data draws);
- * `map` turns fixed values into what MapLibre wants (dash names into arrays, say).
+ * `map` turns fixed values into what MapLibre wants (dash names into arrays, say); `raw` turns the number a raw
+ * field reads into the property's unit (storeys into metres).
  */
 export function fromForm(
   form: unknown,
   kind: Kind,
   fallback: Expr,
-  map: (v: unknown) => Expr = constant
+  map: (v: unknown) => Expr = constant,
+  raw: (get: Expr) => Expr = (e) => e
 ): Value {
   if (form === undefined || form === null) return { expr: fallback };
   if (isObject(form) && Array.isArray(form.zoom)) {
@@ -121,7 +123,7 @@ export function fromForm(
   if (isObject(form) && typeof form.field === "string") {
     if ("palette" in form || "range" in form) return { expr: byAttribute(form, fallback) };
     const get = ["get", form.field];
-    if (kind === "number") return { expr: ["to-number", get, fallback] };
+    if (kind === "number") return { expr: raw(["to-number", get, fallback]) };
     if (kind === "color") return { expr: ["to-color", get, fallback] };
     return { expr: get };
   }

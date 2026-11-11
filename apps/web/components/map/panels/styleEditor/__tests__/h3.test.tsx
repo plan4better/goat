@@ -1,6 +1,10 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { configureStore } from "@reduxjs/toolkit";
+import { Provider } from "react-redux";
+import { describe, expect, it, vi } from "vitest";
+
+import { initView, mapReducer } from "@/lib/store/map/slice";
 
 import type { LayerStyle } from "@/lib/style/generated/types";
 
@@ -12,17 +16,24 @@ import { choose, renderPanel } from "./renderPanel";
 
 const FIELDS = [{ name: "pupils", type: "integer" as const, label: "Pupils" }];
 
+vi.mock("react-toastify", () => ({ toast: Object.assign(() => 0, { info: () => 0, dismiss: () => 0 }) }));
+
 function setup(render: object = { type: "h3" }) {
-  return renderPanel(
-    <PopoverProvider>
-      <GeneralSection />
-      <H3Section />
-    </PopoverProvider>,
+  const redux = configureStore({ reducer: { map: mapReducer } });
+  redux.dispatch(initView({ projectId: "p1", mode: "2d", projection: "mercator" }));
+  const result = renderPanel(
+    <Provider store={redux}>
+      <PopoverProvider>
+        <GeneralSection />
+        <H3Section />
+      </PopoverProvider>
+    </Provider>,
     {
       document: { version: 1, kind: "vector", render } as LayerStyle,
       data: { geometry: "point", fields: FIELDS, fieldTypes: { pupils: "integer" } },
     }
   );
+  return { ...result, redux };
 }
 
 const rowOf = (label: string) => screen.getByText(label).parentElement as HTMLElement;
@@ -77,5 +88,22 @@ describe("H3 hexagons", () => {
     expect(store.get("render.outline.width")).toBe(2);
     await pick("style_editor.points", 1);
     expect(store.get("render.points_from_zoom")).toBe(10);
+  });
+
+  it("height: By value raises columns once tilted, Tallest and Scale write them, None lays them flat", async () => {
+    const { store, redux } = setup();
+    expect(screen.getByText("style_editor.part_outline")).toBeDefined();
+    await pick("style_editor.height", 1);
+    expect(store.get("render.extrude")).toEqual({});
+    expect(redux.getState().map.view?.mode).toBe("3d");
+    // The outline is not drawn under columns.
+    expect(screen.queryByText("style_editor.part_outline")).toBeNull();
+    fireEvent.change(within(rowOf("style_editor.h3_tallest")).getByRole("slider"), { target: { value: 1500 } });
+    expect(store.get("render.extrude.tallest")).toBe(1500);
+    await userEvent.click(within(rowOf("style_editor.h3_scale")).getAllByRole("button")[0]);
+    expect(store.get("render.extrude.scale")).toBe("linear");
+    await pick("style_editor.height", 0);
+    expect(store.get("render.extrude")).toBeUndefined();
+    expect(screen.getByText("style_editor.part_outline")).toBeDefined();
   });
 });

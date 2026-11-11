@@ -14,8 +14,7 @@ import {
   type MapLayersState,
   type RenderLayer,
   type RendererMap,
-  basemapAnchors,
-  projectLayerOf,
+  basemapAnchorsOf,
   rendererLayerIds,
   restoreGlobalState,
   syncMapLayers,
@@ -38,6 +37,8 @@ interface StyledLayersProps {
   locale: string;
   /** The lowest layer that stays above the project layers. */
   overlay?: string;
+  /** The scene's lowest 3D building layer (`buildingsAnchor`): the layers' ground parts go below it. */
+  ground?: string;
   /** Every MapLibre layer id the renderer drew, after each change (interactive layers, snapping). */
   onLayersChange?: (ids: string[]) => void;
 }
@@ -93,11 +94,18 @@ function EditedStyle({
   return null;
 }
 
-export function StyledLayers({ layers, editing = [], locale, overlay, onLayersChange }: StyledLayersProps) {
+export function StyledLayers({
+  layers,
+  editing = [],
+  locale,
+  overlay,
+  ground,
+  onLayersChange,
+}: StyledLayersProps) {
   const { current } = useMap();
   const map = current?.getMap() as StyleMap | undefined;
-  const latest = useRef({ layers, locale, overlay, onLayersChange });
-  latest.current = { layers, locale, overlay, onLayersChange };
+  const latest = useRef({ layers, locale, overlay, ground, onLayersChange });
+  latest.current = { layers, locale, overlay, ground, onLayersChange };
   const drawnIds = useRef("");
   const edited = useRef(new Map<string, LayerStyle>());
   const state = useRef<MapLayersState | null>(null);
@@ -125,8 +133,8 @@ export function StyledLayers({ layers, editing = [], locale, overlay, onLayersCh
         return;
       }
       ready.current = true;
-      const { layers: next, locale: nextLocale, overlay: nextOverlay } = latest.current;
-      anchors.current ??= basemapAnchors(map.getStyle()?.layers?.filter((l) => !projectLayerOf(map, l.id)));
+      const { layers: next, locale: nextLocale, overlay: nextOverlay, ground: nextGround } = latest.current;
+      anchors.current ??= basemapAnchorsOf(map);
       const drawn = next.map((layer) => {
         const document = edited.current.get(layer.key);
         return document ? { ...layer, style: document, version: undefined } : layer;
@@ -136,6 +144,7 @@ export function StyledLayers({ layers, editing = [], locale, overlay, onLayersCh
           locale: nextLocale,
           anchors: anchors.current,
           overlay: nextOverlay,
+          ground: nextGround,
         });
       } catch (error) {
         if (!String(error).includes("Style is not done loading")) throw error;
@@ -160,7 +169,7 @@ export function StyledLayers({ layers, editing = [], locale, overlay, onLayersCh
     [draw]
   );
 
-  useEffect(() => draw(), [layers, locale, overlay, draw]);
+  useEffect(() => draw(), [layers, locale, overlay, ground, draw]);
 
   const stacked = useMemo(
     () => layers.map((layer) => layer.key).filter((key) => !key.startsWith(PENDING_KEY)),
