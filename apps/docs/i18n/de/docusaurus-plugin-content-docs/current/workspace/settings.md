@@ -20,9 +20,17 @@ Jede Seite besteht aus Karten. Eine Karte mit Textfeldern hat unten eine Leiste:
 
 So sehen andere Mitglieder Sie in GOAT, zum Beispiel beim Teilen und in Teams.
 
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/workspace/settings/profile_de.webp').default} alt="Ihr Profil in den Kontoeinstellungen" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
+
 - **Persönliche Angaben**: Ihr Vorname, Nachname und Ihre E-Mail-Adresse sowie ein Bild (<code>Bild hochladen</code>: PNG, JPG oder GIF, höchstens 1 MB; ohne Bild zeigt GOAT Ihre Initialen). Ändern Sie die E-Mail-Adresse, bestätigen Sie das mit <code>Ändern und abmelden</code>. GOAT speichert die Adresse und meldet Sie ab; danach melden Sie sich mit der neuen Adresse an.
 - **Ihre Organisation**: Ihre Organisation, Ihre Rolle mit einer Zeile dazu, was sie darf, und Ihre Teams. Rolle und Teams legen Eigentümer, Admins und Team-Eigentümer fest; die Karte lässt sich daher nicht bearbeiten. <code>Teams öffnen</code> führt zur Seite Teams.
 - **Konto löschen**: löscht Ihr Anmeldekonto; danach können Sie sich nicht mehr anmelden. Was Sie in Teams und in der Organisation abgelegt haben, bleibt dort. Laden Sie also vorher herunter, was Sie selbst behalten möchten. Zur Bestätigung geben Sie Ihre E-Mail-Adresse ein und klicken auf <code>Konto endgültig löschen</code>. Als Eigentümer der Organisation können Sie Ihr Konto erst löschen, wenn die Organisation gelöscht ist.
+
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/workspace/settings/delete_account_de.webp').default} alt="Die Karte Konto löschen" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
 
 ### Sprache und Darstellung
 
@@ -34,6 +42,10 @@ Wählen Sie die **Sprache** der Oberfläche (Deutsch oder English) und das **Ers
 
 **Eigentümer und Admins** ändern hier Name und Logo der Organisation (Logo: quadratisch, PNG, JPG oder GIF, höchstens 1 MB; Name: höchstens 50 Zeichen). Alle Mitglieder sehen beides, in der Navigation und in Einladungen. **Bearbeiter und Betrachter** sehen die Organisation, die Zahl ihrer Mitglieder und ihre eigene Rolle.
 
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/workspace/settings/org_profile_de.webp').default} alt="Das Profil der Organisation" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
+
 Die Karte **Eigentümer und Admins** nennt die Personen, die Fragen zu Rollen, Plätzen, Domains oder KI beantworten, jeweils mit einem E-Mail-Link. Eigentümer und Admins finden dort Links zu <code>Alle Mitglieder</code> und, wenn die Nutzung abgerechnet wird, zu <code>Plätze und Nutzung</code>.
 
 **Organisation löschen** kann nur der Eigentümer; Admins sehen die Schaltfläche deaktiviert. Das Löschen beendet für alle Mitglieder den Zugang zur Organisation mit allen Teams, Projekten, Layern und Datensätzen und meldet Sie ab. Laden Sie vorher herunter, was Sie behalten möchten. Zur Bestätigung geben Sie den Namen der Organisation ein und klicken auf <code>Endgültig löschen</code>.
@@ -41,6 +53,10 @@ Die Karte **Eigentümer und Admins** nennt die Personen, die Fragen zu Rollen, P
 ### Mitglieder
 
 Diese Seite sehen nur Eigentümer und Admins. Sie zeigt, wer zur Organisation gehört und wer eingeladen ist, und die Rollen, die festlegen, was jede Person darf:
+
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/workspace/settings/members_de.webp').default} alt="Die Mitglieder einer Organisation" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
 
 | Rolle | Darf |
 | --- | --- |
@@ -78,6 +94,10 @@ Ein Team teilt Projekte und Daten: Jedes Team hat unter <code>Inhalt</code> eine
 - <code>Team-Bereich unter „Inhalt“</code> öffnet den Bereich des Teams.
 - **Team löschen** (für alle, die das Teamprofil ändern dürfen): löscht das Team und alle Freigaben an das Team. Inhalte im Bereich des Teams müssen vorher verschoben oder übertragen sein; Inhalte im Papierkorb zählen mit, bis sie endgültig gelöscht sind. Persönliche Inhalte der Mitglieder bleiben erhalten.
 - **Team verlassen** (für jedes Mitglied außer dem Eigentümer des Teams): Sie verlieren den Zugang zum Bereich des Teams, und was Sie dort abgelegt haben, bleibt im Team. Zurück ins Team bringt Sie der Eigentümer des Teams oder ein Admin. Der Eigentümer des Teams kann es nicht verlassen; er macht zuerst ein anderes Mitglied zum Eigentümer.
+
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+  <img src={require('/img/workspace/settings/delete_team_de.webp').default} alt="Die Karte Team löschen" style={{ maxWidth: "100%", objectFit: "cover"}}/>
+</div>
 
 ## White Label
 
