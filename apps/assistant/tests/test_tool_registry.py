@@ -190,6 +190,27 @@ def test_every_data_tool_has_a_restricted_form() -> None:
             assert hasattr(spec.output_model, "restricted"), spec.wire_name
 
 
+#: The largest count a pattern in a tool's schema may repeat up to. A provider
+#: that enforces tool schemas strictly (melious on Requesty) rejected the tool
+#: list as malformed with a ``{1,300}`` in it; longer limits go in max_length.
+_MAX_PATTERN_COUNT = 64
+
+
+def test_patterns_keep_long_limits_out_of_the_pattern() -> None:
+    for spec in ALL_TOOLS:
+        for name, sub in _walk(spec.json_schema()):
+            for upper in re.findall(r"\{\d*,(\d+)\}", sub.get("pattern", "")):
+                assert int(upper) <= _MAX_PATTERN_COUNT, f"{spec.wire_name}.{name}"
+
+
+def test_record_ids_keep_their_length_limit() -> None:
+    from assistant.context import is_record_id
+
+    assert is_record_id("de-bkg-vg250") and is_record_id("a" * 300)
+    assert not is_record_id("a" * 301)
+    assert not is_record_id("") and not is_record_id("a/b")
+
+
 def test_no_tool_can_send_data_out() -> None:
     """Spec §8.3: no tool takes a URL, so none can fetch or send anywhere."""
     for spec in ALL_TOOLS:
