@@ -30,6 +30,7 @@ import {
   type BuildingsPlan,
   buildingsLayer,
   buildingsSetting,
+  reachedOpacity,
 } from "@/lib/scene/buildings";
 import type { ViewMode } from "@/lib/scene/view";
 import { GLOBE_HANDOVER } from "@/lib/scene/visibility";
@@ -96,20 +97,28 @@ export interface SceneState {
 
 /** The paint properties the scene sets on a basemap's own building layers: its 3D ones and its flat footprints. */
 export type BuildingPaint = Partial<
-  Record<"fill-extrusion-opacity" | "fill-extrusion-height" | "fill-extrusion-base", number>
-> & { "fill-opacity"?: unknown };
+  Record<"fill-extrusion-opacity" | "fill-extrusion-height" | "fill-extrusion-base" | "fill-opacity", unknown>
+>;
+
+/** Where a scene layer goes (`CompiledScene.layers`). */
+export type Placement = "roads" | "buildings" | { above: string };
 
 export interface CompiledScene {
   projection: ProjectionSpecification;
   /** The terrain at full height; `terrainAt` gives what the map shows at a zoom. */
   terrain: TerrainSpecification | null;
   sources: Record<string, SourceSpecification>;
-  /** GOAT's layers with where they go: before the basemap's roads, or above its ground layers (`Anchors.buildings`). */
-  layers: Array<{ layer: LayerSpecification; before: "roads" | "buildings" }>;
+  /**
+   * GOAT's layers with where they go: before the basemap's roads, above its ground layers (`Anchors.buildings`), or
+   * right above one of its layers.
+   */
+  layers: Array<{ layer: LayerSpecification; before: Placement }>;
   /** Hidden basemap layers to show (a basemap's own 3D buildings); the others keep their own visibility. */
   show: string[];
   /** Paint properties set on a basemap's own building layers, by layer id; the others keep their own. */
   paint: Record<string, BuildingPaint>;
+  /** The `minzoom` set on a basemap's own building layers whose tiles reach down to their footprints' (`Reach`). */
+  zoom: Record<string, { minzoom: number }>;
   sky: SkySpecification | null;
   light: LightSpecification | null;
   /** The global state the light and the hillshades read. */
@@ -334,6 +343,7 @@ export function compileScene(i: SceneInputs): CompiledScene {
     layers: [],
     show: [],
     paint: {},
+    zoom: {},
     sky: null,
     light: null,
     state: stateOf(effectiveLight(scene, look)),
@@ -363,19 +373,35 @@ export function compileScene(i: SceneInputs): CompiledScene {
   const buildings = three && (setting.on ?? !i.projectExtrudes);
   const plan = i.buildings;
   // A basemap's own buildings switched off are flat, as 2D draws them: their own visibility and opacity, height 0.
+  // Shown, their tiles reach down to the footprints' tiles (`Reach`), and they show from their own zoom.
   if (plan.kind === "own" && three) {
     if (buildings) out.show.push(...plan.layers);
-    const paint: BuildingPaint = buildings
-      ? { "fill-extrusion-opacity": setting.opacity }
-      : { "fill-extrusion-height": 0, "fill-extrusion-base": 0 };
-    out.paint = Object.fromEntries(plan.layers.map((id) => [id, paint]));
+    const paint = (id: string): BuildingPaint =>
+      buildings
+        ? {
+            "fill-extrusion-opacity": reachedOpacity(setting.opacity, plan.reach?.[id]),
+          }
+        : { "fill-extrusion-height": 0, "fill-extrusion-base": 0 };
+    out.paint = Object.fromEntries(plan.layers.map((id) => [id, paint(id)]));
+    if (buildings)
+      for (const [id, { minzoom }] of Object.entries(plan.reach ?? {})) out.zoom[id] = { minzoom };
   }
-  // The basemap's flat footprints of the shown buildings fade where those show (`Footprint`).
+  // The basemap's flat footprints of the shown buildings fade where those show (`Footprint`); GOAT's copies right
+  // above them keep the buildings that get no volume flat, as the basemap draws them.
   if (buildings && (plan.kind === "own" || plan.kind === "source"))
-    for (const { id, opacity } of plan.footprints ?? []) out.paint[id] = { "fill-opacity": opacity };
+    for (const { id, opacity, copy } of plan.footprints ?? []) {
+      out.paint[id] = { "fill-opacity": opacity };
+      if (copy) out.layers.push({ layer: copy, before: { above: id } });
+    }
   if (buildings && plan.kind === "source")
     out.layers.push({
-      layer: buildingsLayer(plan.source, buildingColor(plan.color, tone), setting.opacity),
+      layer: buildingsLayer(
+        plan.source,
+        buildingColor(plan.color, tone),
+        setting.opacity,
+        "building",
+        plan.reach
+      ),
       before: "buildings",
     });
   if (buildings && plan.kind === "overlay") {

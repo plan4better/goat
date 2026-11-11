@@ -19,6 +19,7 @@ import {
   type BuildingPaint,
   type CompiledScene,
   GLOBE_LIGHT_UNTIL_ZOOM,
+  type Placement,
   type SceneInputs,
   type SceneState,
   compileScene,
@@ -60,13 +61,14 @@ const paintOf = (scene: CompiledScene): Array<[string, keyof BuildingPaint, unkn
 const propsOf = (paint: object | undefined) => Object.keys(paint ?? {}) as Array<keyof BuildingPaint>;
 
 /**
- * Where a scene layer goes: before the basemap's roads (or labels), or above its ground layers (`basemapAnchorsOf`),
- * else below the lowest project layer. The buildings go below the project layers' parts drawn right under that
+ * Where a scene layer goes: right above a basemap layer, before the basemap's roads (or labels), or above its ground
+ * layers (`basemapAnchorsOf`), else below the lowest project layer. The buildings go below the project layers' parts drawn right under that
  * anchor that are not on the ground (the points and labels of layers below the labels), which stay above them; their
  * ground parts stop the walk and stay below the buildings.
  */
-function beforeId(map: MaplibreMap, before: "roads" | "buildings"): string | undefined {
+function beforeId(map: MaplibreMap, before: Placement): string | undefined {
   const layers = map.getStyle()?.layers ?? [];
+  if (typeof before === "object") return layers[layers.findIndex((l) => l.id === before.above) + 1]?.id;
   const anchors = basemapAnchorsOf(map);
   const anchor = before === "roads" ? (anchors.roads ?? anchors.labels) : anchors.buildings;
   if (anchor && before === "roads") return anchor;
@@ -90,6 +92,12 @@ function drifted(map: MaplibreMap, last: Applied): boolean {
     )
   )
     return true;
+  if (
+    Object.entries(scene.zoom).some(
+      ([id, { minzoom }]) => map.getLayer(id) && map.getLayer(id)!.minzoom !== minzoom
+    )
+  )
+    return true;
   if ((map.getTerrain()?.source ?? null) !== (last.terrain?.source ?? null)) return true;
   if (!deepEqual(map.getProjection()?.type ?? "mercator", scene.projection.type)) return true;
   if (scene.sky && !deepEqual(map.getSky(), scene.sky)) return true;
@@ -107,6 +115,8 @@ interface Applied {
   original: Map<string, string>;
   /** The basemap's own paint properties the scene sets (undefined: unset), by layer id, to give back. */
   originalPaint: Map<string, Record<string, unknown>>;
+  /** The basemap's own `minzoom` of layers the scene lowers (undefined: unset), by layer id, to give back. */
+  originalZoom: Map<string, { minzoom?: number }>;
 }
 
 /** The scene's terrain as the map shows it at its current zoom. */
@@ -122,13 +132,14 @@ function applyScene(
   map: MaplibreMap,
   prev: Applied | null,
   next: CompiledScene,
-  kept?: Pick<Applied, "original" | "originalPaint">
+  kept?: Pick<Applied, "original" | "originalPaint" | "originalZoom">
 ): Applied {
   const full = prev === null;
   const old = prev?.scene;
   const original = prev?.original ?? kept?.original ?? new Map<string, string>();
   const originalPaint =
     prev?.originalPaint ?? kept?.originalPaint ?? new Map<string, Record<string, unknown>>();
+  const originalZoom = prev?.originalZoom ?? kept?.originalZoom ?? new Map<string, { minzoom?: number }>();
 
   if (full || !deepEqual(old!.projection, next.projection)) map.setProjection(next.projection);
 
@@ -174,6 +185,15 @@ function applyScene(
     }
   }
 
+  // Their zoom range: reaching down to the footprints' tiles while shown, else the basemap's own (recorded first).
+  for (const id of new Set([...originalZoom.keys(), ...Object.keys(next.zoom)])) {
+    const layer = map.getLayer(id);
+    if (!layer) continue;
+    if (!originalZoom.has(id)) originalZoom.set(id, { minzoom: layer.minzoom });
+    const want = next.zoom[id]?.minzoom ?? originalZoom.get(id)!.minzoom;
+    if ((layer.minzoom ?? 0) !== (want ?? 0)) map.setLayerZoomRange(id, want ?? 0, layer.maxzoom as number);
+  }
+
   const terrain = terrainOn(map, next);
   if (full || !deepEqual(prev!.terrain, terrain)) map.setTerrain(terrain);
 
@@ -189,7 +209,7 @@ function applyScene(
     if (full || !deepEqual(old!.light, next.light)) map.setLight(next.light);
   } else if (old?.light) map.setLight(DEFAULT_LIGHT);
 
-  return { scene: next, state, terrain, original, originalPaint };
+  return { scene: next, state, terrain, original, originalPaint, originalZoom };
 }
 
 /**
@@ -222,9 +242,13 @@ export function useScene(map: MaplibreMap | null, inputs: UseSceneInputs): Compi
   useEffect(() => {
     if (!map) return;
     const { basemap, buildingsUrl, ...rest } = stable;
-    // `recorded`: the basemap's own paint on this style, under what the scene set (`ownPaint`).
-    const compile = (recorded?: Applied["originalPaint"]) => {
-      const style = ownPaint(map.getStyle() as StyleSpecification | undefined, recorded);
+    // `recorded`: the basemap's own paint and zoom ranges on this style, under what the scene set (`ownPaint`).
+    const compile = (recorded?: Pick<Applied, "originalPaint" | "originalZoom">) => {
+      const style = ownPaint(
+        map.getStyle() as StyleSpecification | undefined,
+        recorded?.originalPaint,
+        recorded?.originalZoom
+      );
       return compileScene({
         ...rest,
         zoomedOut: followsZoom && map.getZoom() < GLOBE_LIGHT_UNTIL_ZOOM,
@@ -236,7 +260,7 @@ export function useScene(map: MaplibreMap | null, inputs: UseSceneInputs): Compi
     const apply = (full: boolean | "diff") => {
       try {
         const last = applied.current;
-        const next = compile(full === true ? undefined : last?.originalPaint);
+        const next = compile(full === true ? undefined : (last ?? undefined));
         applied.current = applyScene(
           map,
           full ? null : last,

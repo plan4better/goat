@@ -88,7 +88,12 @@ function fakeMap(
       else layers.push(layer);
     },
     setFilter: () => undefined,
-    setLayerZoomRange: () => undefined,
+    setLayerZoomRange: (id: string, minzoom: number, maxzoom: number) => {
+      record("setLayerZoomRange", id, minzoom, maxzoom);
+      const layer = layers.find((l) => l.id === id)!;
+      layer.minzoom = minzoom;
+      layer.maxzoom = maxzoom;
+    },
     setMissingStyleImageResolver: () => undefined,
     hasImage: () => false,
     setFeatureState: () => undefined,
@@ -223,9 +228,11 @@ describe("useScene", () => {
     );
     const opts = { locale: "en", anchors: basemapAnchorsOf(map as never), ground: "goat-buildings" };
     syncMapLayers(map as never, null, layers, opts);
+    // GOAT's copy of positron's building fill (`goat-footprint-building`) goes right above it.
     const order = [
       "background",
       "building",
+      "goat-footprint-building",
       "road",
       "2-fill",
       "2-outline",
@@ -339,7 +346,7 @@ describe("useScene", () => {
       named(after, "removeLayer")
         .map((c) => c[1])
         .sort()
-    ).toEqual(["goat-buildings", "goat-terrain-hillshade"]);
+    ).toEqual(["goat-buildings", "goat-footprint-building", "goat-terrain-hillshade"]);
     expect(
       named(after, "removeSource")
         .map((c) => c[1])
@@ -513,5 +520,89 @@ describe("useScene", () => {
     expect(opacity()).toBe(0.3);
     rerender(inputs({ basemap: own, mode: "2d", scene: { buildings: { opacity: 0.3 } } }));
     expect(opacity()).toBe(0.7);
+  });
+
+  it("a basemap's own buildings reach down to their footprints' tiles while shown, and get their own range back", () => {
+    const own: Basemap = { ...LIGHT, value: "basemap_de_gry", buildings: "own" };
+    const base = [
+      ...BASE_LAYERS.filter((l) => l.id !== "building"),
+      {
+        id: "flat",
+        type: "fill",
+        source: "openmaptiles",
+        "source-layer": "building",
+        minzoom: 12,
+        maxzoom: 22,
+        paint: { "fill-opacity": 1 },
+      },
+      {
+        id: "tall",
+        type: "fill-extrusion",
+        source: "openmaptiles",
+        "source-layer": "building",
+        minzoom: 16,
+        maxzoom: 22,
+        layout: { visibility: "none" },
+        paint: { "fill-extrusion-opacity": 0.8, "fill-extrusion-height": ["get", "h"] },
+      },
+    ];
+    const map = fakeMap(base);
+    const tall = () => map.getLayer("tall")!;
+    const look = () => [
+      tall().minzoom,
+      tall().maxzoom,
+      map.getPaintProperty("tall", "fill-extrusion-opacity"),
+      map.getPaintProperty("flat", "fill-opacity"),
+      // GOAT's copy of the footprint for the buildings without a height, and the layer drawn right below it.
+      order().find((id) => id.startsWith("goat-footprint-")) ?? null,
+      order()[order().indexOf("goat-footprint-flat") - 1] ?? null,
+    ];
+    const order = () => map.getStyle().layers.map((l) => l.id as string);
+    const shown = [
+      12,
+      22,
+      ["step", ["zoom"], 0, 16, 0.6],
+      ["step", ["zoom"], 1, 16, 0],
+      "goat-footprint-flat",
+      "flat",
+    ];
+    const flat = [16, 22, 0.8, 1, null, null];
+    const { rerender } = renderHook(
+      (props: UseSceneInputs) => useScene(map as unknown as MaplibreMap, props),
+      { initialProps: inputs({ basemap: own }) }
+    );
+    expect(look()).toEqual(shown);
+    // The copy draws with the footprint's own paint where the footprint is hidden.
+    expect(map.getLayer("goat-footprint-flat")).toMatchObject({
+      source: "openmaptiles",
+      "source-layer": "building",
+      minzoom: 12,
+      maxzoom: 22,
+      filter: ["!", [">", ["to-number", ["get", "h"], 0], 0]],
+      paint: { "fill-opacity": ["step", ["zoom"], 0, 16, 1] },
+    });
+    rerender(inputs({ basemap: own, scene: { buildings: false } }));
+    expect(look()).toEqual(flat);
+    rerender(inputs({ basemap: own }));
+    expect(look()).toEqual(shown);
+    // A style diff that leaves the scene's paint in place applies nothing again: the lowered range is not read as
+    // the basemap's own.
+    act(() => {
+      map.setPaintProperty("flat", "fill-opacity", 1);
+      map.fire("styledata");
+    });
+    expect(look()).toEqual(shown);
+    rerender(inputs({ basemap: own, mode: "2d" }));
+    expect(look()).toEqual(flat);
+
+    // A new style: reached down again, and its own range back in 2D.
+    rerender(inputs({ basemap: own }));
+    act(() => {
+      map.newStyle();
+      map.fire("style.load");
+    });
+    expect(look()).toEqual(shown);
+    rerender(inputs({ basemap: own, mode: "2d" }));
+    expect(look()).toEqual(flat);
   });
 });

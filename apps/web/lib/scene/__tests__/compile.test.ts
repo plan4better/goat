@@ -224,6 +224,66 @@ describe("compileScene", () => {
     expect(compileScene(inputs({ buildings: source, projectExtrudes: true })).paint).toEqual({});
   });
 
+  it("3D buildings reaching down to their footprints' tiles show from their own zoom, only while they show", () => {
+    const hidden = ["step", ["zoom"], 1, 16, 0];
+    const own = {
+      kind: "own" as const,
+      layers: ["tall"],
+      footprints: [{ id: "flat", opacity: hidden }],
+      reach: { tall: { minzoom: 12, shows: 16 } },
+    };
+    const on = compileScene(inputs({ buildings: own }));
+    expect(on.zoom).toEqual({ tall: { minzoom: 12 } });
+    expect(on.paint.tall).toEqual({ "fill-extrusion-opacity": ["step", ["zoom"], 0, 16, 0.6] });
+    // Off and 2D: the basemap's own zoom range and opacity.
+    expect(compileScene(inputs({ buildings: own, scene: { buildings: false } })).zoom).toEqual({});
+    expect(compileScene(inputs({ buildings: own, mode: "2d" })).zoom).toEqual({});
+    // Without a reach the opacity stays a number.
+    expect(compileScene(inputs({ buildings: { ...own, reach: undefined } })).zoom).toEqual({});
+
+    const source = {
+      kind: "source" as const,
+      source: "openmaptiles",
+      color: "#eaeae5",
+      footprints: [{ id: "building", opacity: ["step", ["zoom"], 1, 14, 0] }],
+      reach: { minzoom: 12, shows: 14 },
+    };
+    const goat = compileScene(inputs({ buildings: source }));
+    expect(goat.layers.find((l) => l.layer.id === "goat-buildings")!.layer).toMatchObject({
+      minzoom: 12,
+      paint: { "fill-extrusion-opacity": ["step", ["zoom"], 0, 14, 0.6] },
+    });
+    expect(goat.zoom).toEqual({});
+    expect(errors(goat)).toEqual([]);
+  });
+
+  it("GOAT's copies of the hidden footprints go right above them, only while 3D buildings show", () => {
+    const copy = {
+      id: "goat-footprint-flat",
+      type: "fill" as const,
+      source: "openmaptiles",
+      "source-layer": "building",
+      filter: ["!", [">", ["to-number", ["get", "h"], 0], 0]] as never,
+      paint: { "fill-opacity": ["step", ["zoom"], 0, 16, 1] as never },
+    };
+    const own = {
+      kind: "own" as const,
+      layers: ["tall"],
+      footprints: [{ id: "flat", opacity: ["step", ["zoom"], 1, 16, 0], copy }],
+    };
+    const on = compileScene(inputs({ buildings: own, scene: { terrain: false } }));
+    expect(on.layers).toEqual([{ layer: copy, before: { above: "flat" } }]);
+    expect(errors(on)).toEqual([]);
+    expect(
+      compileScene(inputs({ buildings: own, scene: { terrain: false, buildings: false } })).layers
+    ).toEqual([]);
+    expect(compileScene(inputs({ buildings: own, mode: "2d" })).layers).toEqual([]);
+    const source = { kind: "source" as const, source: "openmaptiles", footprints: own.footprints };
+    expect(
+      compileScene(inputs({ buildings: source, scene: { terrain: false } })).layers.map((l) => l.layer.id)
+    ).toEqual(["goat-footprint-flat", "goat-buildings"]);
+  });
+
   it("the terrain hillshade over a dark basemap: soft highlights and shadows, so the basemap still reads", () => {
     const dark = compileScene(inputs({ tone: "dark" }));
     const paint = (
