@@ -33,7 +33,9 @@ INFO = RasterInfo(
 
 
 class FakeSource:
-    def __init__(self, url: str, private_hosts: Any = ()) -> None:
+    def __init__(
+        self, url: str, private_hosts: Any = (), *, stored_file: Any = None
+    ) -> None:
         self.url = url
 
     def __enter__(self) -> "FakeSource":

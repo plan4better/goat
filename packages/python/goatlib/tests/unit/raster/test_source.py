@@ -257,3 +257,28 @@ def test_a_band_the_file_does_not_have_is_a_band_error(cog_server: str) -> None:
             with pytest.raises(BandError):
                 src.tile(*_tile_at(*CENTER, 13), coloring)
         assert src.point(*CENTER, parse_formula("b5")).formula is None
+
+
+def test_a_stored_file_opens_only_when_named_as_one(cog_dir) -> None:  # noqa: ANN001
+    """The file GOAT stores for a layer opens as `stored_file`; an address that
+    merely looks like a path is still refused, since a user's raster layer
+    stores whatever address was typed."""
+    local = str(cog_dir / "landcover.tif")
+    with RasterSource(None, stored_file=cog_dir / "landcover.tif") as src:
+        assert src.info().bounds == pytest.approx(BOUNDS, abs=1e-6)
+    for address in (local, f"file://{local}"):
+        with pytest.raises(UnsafeUrlError):
+            RasterSource(address).__enter__()
+
+
+def test_a_missing_stored_file_is_unavailable(cog_dir) -> None:  # noqa: ANN001
+    with pytest.raises(RasterUnavailableError):
+        RasterSource(None, stored_file=cog_dir / "gone.tif").__enter__()
+
+
+def test_a_source_needs_a_stored_file_or_an_address() -> None:
+    with pytest.raises(ValueError):
+        RasterSource(None)
+    # An empty address is still the URL guard's to refuse.
+    with pytest.raises(UnsafeUrlError):
+        RasterSource("").__enter__()

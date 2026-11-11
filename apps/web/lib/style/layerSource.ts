@@ -20,7 +20,8 @@ export interface SourceLayer {
 
 /** Where a raster or service layer's pictures come from (the layer's own configuration, spec 9.8). */
 export type StyleSourceInfo =
-  | { kind: "cog"; url: string }
+  /** A raster file, drawn by geoapi from the layer's id. One from the catalog has no address: geoapi reads its copy. */
+  | { kind: "cog"; url: string | null }
   | {
       kind: "wms" | "wmts" | "xyz";
       url: string;
@@ -34,8 +35,9 @@ const SERVICES = ["wms", "wmts", "xyz"] as const;
 
 /** A raster layer's file or map service; undefined for vector data. */
 export function sourceOf(layer: SourceLayer): StyleSourceInfo | undefined {
-  if (layer.type !== "raster" || !layer.url) return undefined;
-  if (layer.data_type === "cog") return { kind: "cog", url: layer.url };
+  if (layer.type !== "raster") return undefined;
+  if (layer.data_type === "cog") return { kind: "cog", url: layer.url ?? null };
+  if (!layer.url) return undefined;
   const service = SERVICES.find((s) => s === layer.data_type);
   if (!service) return undefined;
   const props = (layer.other_properties ?? {}) as {

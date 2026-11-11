@@ -21,7 +21,7 @@ from goatlib.raster.token import encode_token
 from geoapi.services import raster_service as rs
 
 LAYER = "abc123def456789012345678901234ab"
-ROW = rs.RasterLayer(id=LAYER, url="https://cdn.example/dem.tif", version="v1")
+ROW = rs.RasterLayer(id=LAYER, external_url="https://cdn.example/dem.tif", version="v1")
 RAMP = encode_token(
     {
         "v": 1,
@@ -66,7 +66,9 @@ class FakeSource:
     tiles: list[tuple[Any, ...]] = []
     fail: Exception | None = None
 
-    def __init__(self, url: str, private_hosts: Any = ()) -> None:
+    def __init__(
+        self, url: str, private_hosts: Any = (), *, stored_file: Any = None
+    ) -> None:
         self.url = url
 
     def __enter__(self) -> "FakeSource":
@@ -121,7 +123,7 @@ def test_a_raster_layers_tile_is_colored_by_the_token(client: TestClient) -> Non
     assert r.headers["content-type"] == "image/webp"
     assert r.headers["cache-control"] == "public, max-age=3600" and r.headers["etag"]
     # The layer row's address, never anything from the request; no domain: the band's range.
-    assert FakeSource.opened == [ROW.url]
+    assert FakeSource.opened == [ROW.external_url]
     assert FakeSource.tiles == [(12, 2178, 1420, "ramp", (100.0, 400.0))]
 
 

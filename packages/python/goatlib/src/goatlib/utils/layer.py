@@ -7,12 +7,14 @@ used across geoapi and processes services.
 import logging
 import os
 import re
+from functools import cache
 from pathlib import Path
-from typing import Protocol
-
-from cachetools import TTLCache
+from typing import TYPE_CHECKING, Protocol
 
 from goatlib.utils.credentials import postgres_attach_target
+
+if TYPE_CHECKING:
+    from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +209,23 @@ def catalog_layer_parquet(layer_id: str) -> Path | None:
     return path if path.exists() else None
 
 
+# Layer files are found here: the raster file GOAT stores for a layer.
+def stored_raster_file(layer_id: str, layers_dir: Path | None = None) -> Path:
+    """The raster file GOAT stores for a layer: `t_<id>.tif` beside the
+    parquet copies (`layers_dir`, else `catalog_layers_dir`), written by the
+    `catalog_materialize` job for a raster promoted from the catalog.
+
+    A trusted location, unlike a layer's `url`, which is an address the user
+    typed and opens only through the URL guard: it is named from the id alone
+    (a strict UUID, raising `InvalidLayerIdError` otherwise), never from the
+    layer's `url`. The catalog bucket is private, so the item's own href is no
+    address a reader can open; the job writes here and geoapi, processes,
+    core's heal check and the catalog GC look here.
+    """
+    table = layer_id_to_table_name(normalize_layer_id(layer_id))
+    return (layers_dir or catalog_layers_dir()) / f"{table}.tif"
+
+
 def catalog_layer_relation(layer_id: str) -> str:
     """The SQL relation a catalog layer is read through: `catalog_layers."t_…"`."""
     return f'{CATALOG_SCHEMA}."{layer_id_to_table_name(layer_id)}"'
@@ -293,9 +312,14 @@ def resolve_layer_schema(
     return row[0] if row else None
 
 
-# Global schema cache - shared across service instances
-# 1 hour TTL, max 10K entries
-_schema_cache: TTLCache[str, str] = TTLCache(maxsize=10000, ttl=3600)
+@cache
+def _schema_cache() -> "TTLCache[str, str]":
+    """Global schema cache, shared across service instances: 1 hour TTL, max
+    10K entries. Created on first use: cachetools is in goatlib's `full`
+    extra, and core imports this module for `stored_raster_file` without it."""
+    from cachetools import TTLCache
+
+    return TTLCache(maxsize=10000, ttl=3600)
 
 
 def _is_connection_error(error: Exception) -> bool:
@@ -331,8 +355,9 @@ def get_schema_for_layer(
         LayerNotFoundError: If layer not found in catalog
     """
     # Check cache first
-    if layer_id in _schema_cache:
-        return _schema_cache[layer_id]
+    schema_cache = _schema_cache()
+    if layer_id in schema_cache:
+        return schema_cache[layer_id]
 
     table_name = layer_id_to_table_name(layer_id)
     catalog_schema = ducklake_manager.catalog_schema
@@ -378,7 +403,7 @@ def get_schema_for_layer(
         raise LayerNotFoundError(layer_id)
 
     schema_name = result[0]
-    _schema_cache[layer_id] = schema_name
+    schema_cache[layer_id] = schema_name
     logger.debug("Cached schema for layer %s: %s", layer_id, schema_name)
 
     return schema_name
@@ -386,13 +411,14 @@ def get_schema_for_layer(
 
 def clear_schema_cache() -> None:
     """Clear the schema cache. Useful for testing."""
-    _schema_cache.clear()
+    _schema_cache().clear()
 
 
 __all__ = [
     "CATALOG_SCHEMA",
     "catalog_layers_dir",
     "catalog_layer_parquet",
+    "stored_raster_file",
     "catalog_layer_relation",
     "catalog_view_sql",
     "is_catalog_relation",

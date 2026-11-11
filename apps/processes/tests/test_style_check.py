@@ -261,10 +261,12 @@ def raster_check(
     fail: bool = False,
     url: str | None = "https://cdn.example/dem.tif",
 ) -> dict[str, Any]:
+    from processes.services.access import RasterFile
+
     service = AnalyticsService()
     with patch(
         "processes.services.analytics_service.RasterSource",
-        lambda u, hosts=(): FakeRaster(u, hosts, fail=fail),
+        lambda u, hosts=(), stored_file=None: FakeRaster(u, hosts, fail=fail),
     ):
         return service.style_check(
             collection=LAYER,
@@ -273,7 +275,7 @@ def raster_check(
             compute=True,
             stored=False,
             fingerprint="url:abc",
-            raster_url=url,
+            raster_file=RasterFile(external_url=url) if url else None,
         )
 
 
@@ -342,14 +344,17 @@ def test_the_route_hands_the_layer_rows_raster_address_to_the_check() -> None:
             "fields": [],
         }
 
+    from processes.services.access import RasterFile
+
+    raster = RasterFile(external_url="https://cdn.example/dem.tif")
     with patch("processes.routers.processes.analytics_service.style_check", fake_check):
         _execute_analytics_sync(
             "style-check",
             {"collection": LAYER, "document": {"version": 1, "kind": "raster"}},
             None,
-            raster_url="https://cdn.example/dem.tif",
+            raster_file=raster,
         )
-    assert seen["raster_url"] == "https://cdn.example/dem.tif"
+    assert seen["raster_file"] == raster
 
 
 async def test_the_raster_address_comes_from_a_raster_file_layer_only(
@@ -358,14 +363,64 @@ async def test_the_raster_address_comes_from_a_raster_file_layer_only(
     from processes.services import access
 
     class Pool:
-        async def fetchval(self, sql: str, layer_id: str) -> str | None:
+        async def fetchrow(self, sql: str, layer_id: str) -> dict | None:
             assert "type = 'raster'" in sql and "data_type = 'cog'" in sql
-            return "https://cdn.example/dem.tif" if layer_id == LAYER else None
+            if layer_id != LAYER:
+                return None
+            return {"url": "https://cdn.example/dem.tif", "catalog": False}
 
     async def pool() -> Pool:
         return Pool()
 
     monkeypatch.setattr(access, "get_pool", pool)
-    assert await access.raster_file_url(LAYER) == "https://cdn.example/dem.tif"
-    assert await access.raster_file_url("8b3b4b8e-0000-4000-8000-000000000000") is None
-    assert await access.raster_file_url("not-a-uuid") is None
+    assert await access.raster_file(LAYER) == access.RasterFile(
+        external_url="https://cdn.example/dem.tif"
+    )
+    assert await access.raster_file("8b3b4b8e-0000-4000-8000-000000000000") is None
+    assert await access.raster_file("not-a-uuid") is None
+
+
+async def test_a_catalog_raster_is_read_from_its_copy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """The catalog bucket is private: a promoted raster is read from the copy
+    the materialize job wrote, found by the layer's id, not by its url."""
+    from processes.services import access
+
+    monkeypatch.setenv("CATALOG_LAYERS_DIR", str(tmp_path))
+
+    class Pool:
+        async def fetchrow(self, sql: str, layer_id: str) -> dict | None:
+            assert "catalog_external_uid" in sql
+            return {"url": None, "catalog": True}
+
+    async def pool() -> Pool:
+        return Pool()
+
+    monkeypatch.setattr(access, "get_pool", pool)
+    assert await access.raster_file(LAYER) == access.RasterFile(
+        stored_file=tmp_path / f"t_{LAYER.replace('-', '')}.tif"
+    )
+
+
+def test_the_check_opens_a_catalog_rasters_copy_as_a_file(tmp_path) -> None:
+    from processes.services.access import RasterFile
+
+    opened: list[tuple[Any, ...]] = []
+
+    def source(url: str | None, hosts: object = (), **kwargs: Any) -> FakeRaster:
+        opened.append((url, kwargs))
+        return FakeRaster(url, hosts)
+
+    copy = tmp_path / "t_x.tif"
+    with patch("processes.services.analytics_service.RasterSource", source):
+        AnalyticsService().style_check(
+            collection=LAYER,
+            document={"version": 1, "kind": "raster", "render": {"type": "image"}},
+            geometry=None,
+            compute=True,
+            stored=False,
+            fingerprint="catalog:1",
+            raster_file=RasterFile(stored_file=copy),
+        )
+    assert opened == [(None, {"stored_file": copy})]

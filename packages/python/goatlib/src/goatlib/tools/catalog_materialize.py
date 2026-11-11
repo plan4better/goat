@@ -12,9 +12,17 @@ its final name and moved into place, so a re-run (or a crash mid-way)
 overwrites cleanly; the job is idempotent.
 
 Dispatch is by format so the catalog is not limited to vectors: a handler per
-``FormatProfile`` key, of which ``vector`` is the only one implemented. A
-future COG or bundle handler is a new entry here, nothing else changes —
-core only ever says "materialize layer X" and reads the status back.
+``FormatProfile`` key, ``vector`` and ``raster``. A raster item's data asset is
+a GeoTIFF, copied as it is to::
+
+    {DATA_DIR}/catalog/layers/t_<layer_id>.tif
+
+because the catalog bucket is private: the copy is the file GOAT stores for
+the layer (``goatlib.utils.layer.stored_raster_file``, named from the layer's
+id), which geoapi and processes read. The row becomes a raster file layer
+(``data_type`` ``cog``) without a ``url``: no address of the file exists. A
+future bundle handler is a new entry here, nothing else changes — core only ever
+says "materialize layer X" and reads the status back.
 
 Status lives in ``other_properties.catalog_materialize`` on the layer row
 (``pending`` → ``running`` → ``ready`` | ``failed``), merged so the
@@ -36,13 +44,22 @@ from typing import Any, Literal, Self
 import duckdb
 from pydantic import Field
 
+from goatlib.catalog.item import RASTER_SUFFIXES
 from goatlib.io.config import parquet_copy_options
 from goatlib.tools.base import SimpleToolRunner
 from goatlib.tools.schemas import ToolInputBase
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
-from goatlib.utils.layer import catalog_tiles_dir, layer_id_to_table_name
+from goatlib.utils.layer import (
+    catalog_tiles_dir,
+    layer_id_to_table_name,
+    stored_raster_file,
+)
 
 logger = logging.getLogger(__name__)
+
+
+#: The handler for each layer type: its data asset's format.
+HANDLERS = {"feature": "vector", "table": "vector", "raster": "raster"}
 
 
 class CatalogMaterializeParams(ToolInputBase):
@@ -51,17 +68,22 @@ class CatalogMaterializeParams(ToolInputBase):
     layer_id: str = Field(..., description="Promoted layer UUID to materialize")
 
 
-def bucket_key_for(parquet_url: str) -> str:
+#: The first bytes of a TIFF and a BigTIFF, in either byte order.
+TIFF_SIGNATURES = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
+
+
+def bucket_key_for(parquet_url: str, suffixes: tuple[str, ...] = (".parquet",)) -> str:
     """The catalog-bucket key for an item's data asset.
 
     The published href is relative to the item's place in the bucket's JSON
     tree (``../../../data/<uuid>.parquet`` — contract C8), so only its
     basename is meaningful here; the data prefix is fixed by the bucket
-    layout (contract §1).
+    layout (contract §1). The asset must be of the layer's format: a parquet
+    for a vector or table item, a GeoTIFF (`RASTER_SUFFIXES`) for a raster.
     """
     name = posixpath.basename(parquet_url or "")
-    if not name.endswith(".parquet"):
-        raise ValueError(f"Not a parquet data asset: {parquet_url!r}")
+    if not name.lower().endswith(suffixes):
+        raise ValueError(f"Not a {'/'.join(suffixes)} data asset: {parquet_url!r}")
     return f"data/{name}"
 
 
@@ -175,6 +197,56 @@ class CatalogMaterializeRunner(SimpleToolRunner):
         finally:
             await pool.close()
         await self._set_status(layer_id, "ready", {"feature_count": feature_count})
+
+    async def _finish_raster(self: Self, layer_id: str, out_path: Path) -> None:
+        """The row as a raster file layer (``data_type = 'cog'``), then `ready`.
+
+        Without a ``url``: the catalog bucket is private, so the file has no
+        address (and core reads a layer's url as an http(s) address); geoapi
+        and processes read `out_path`, the layer's `stored_raster_file`. The
+        extent stays the item's bbox, which promote wrote.
+        """
+        pool = await self.get_postgres_pool()
+        try:
+            await pool.execute(
+                f"""
+                UPDATE {self.settings.customer_schema}.layer
+                SET data_type = 'cog', url = NULL, size = $2
+                WHERE id = $1
+                """,
+                uuid_module.UUID(layer_id),
+                out_path.stat().st_size,
+            )
+        finally:
+            await pool.close()
+        await self._set_status(layer_id, "ready")
+
+    def _materialize_raster(self: Self, layer_id: str, href: str) -> Path:
+        """Bucket GeoTIFF → `t_<id>.tif` beside the parquet copies, unchanged.
+
+        Only its signature is checked: whatever GDAL reads is served as it is,
+        and an object that is no TIFF (an error page, a parquet under a wrong
+        name) fails here rather than on every tile.
+        """
+        bucket = os.environ.get("CATALOG_S3_BUCKET", "")
+        if not bucket:
+            raise RuntimeError("CATALOG_S3_BUCKET is not configured")
+        key = bucket_key_for(href, RASTER_SUFFIXES)
+
+        out_path = stored_raster_file(layer_id)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=out_path.parent) as tmp:
+            staged = Path(tmp) / "source.tif"
+            self._catalog_s3().download_file(bucket, key, str(staged))
+            with staged.open("rb") as f:
+                if f.read(4) not in TIFF_SIGNATURES:
+                    raise ValueError(f"The catalog object {key} is no GeoTIFF")
+            logger.info(
+                "Downloaded s3://%s/%s (%d bytes)", bucket, key, staged.stat().st_size
+            )
+            # Same-directory rename, as for the parquet: atomic.
+            os.replace(staged, out_path)
+        return out_path
 
     def _materialize_vector(
         self: Self, layer_id: str, parquet_url: str
@@ -345,9 +417,9 @@ class CatalogMaterializeRunner(SimpleToolRunner):
             # the status writes: a layer left at `pending` shows "preparing"
             # forever and core's self-heal re-enqueues it every time it is
             # re-added — a loop that never reaches the `failed` caption.
-            handler_key = "vector" if layer["type"] in ("feature", "table") else None
+            handler_key = HANDLERS.get(layer["type"])
             problem: str | None = None
-            if handler_key != "vector":
+            if handler_key is None:
                 problem = f"No materialize handler for layer type {layer['type']!r}"
             elif not parquet_url:
                 problem = "Layer's catalog_item snapshot has no parquet_url to fetch"
@@ -358,6 +430,28 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 raise ValueError(problem)
 
             loop.run_until_complete(self._set_status(params.layer_id, "running"))
+            if handler_key == "raster":
+                try:
+                    raster_path = self._materialize_raster(params.layer_id, parquet_url)
+                    loop.run_until_complete(
+                        self._finish_raster(params.layer_id, raster_path)
+                    )
+                except Exception as e:
+                    loop.run_until_complete(
+                        self._set_status(
+                            params.layer_id, "failed", {"error": str(e)[:500]}
+                        )
+                    )
+                    raise
+                return {
+                    "layer_id": params.layer_id,
+                    "status": "ready",
+                    "path": str(raster_path),
+                    "wm_labels": [params.triggered_by_email]
+                    if params.triggered_by_email
+                    else [],
+                }
+
             try:
                 out_path, count, bounds, geom_col = self._materialize_vector(
                     params.layer_id, parquet_url

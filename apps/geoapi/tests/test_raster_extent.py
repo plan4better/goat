@@ -37,7 +37,9 @@ STATS = [BandStats(1, 0.0, 255.0, 90.0, 40.0, 10.0, 240.0, ([1], [0.0, 255.0]), 
 class FakeSource:
     headers = 0
 
-    def __init__(self, url: str, private_hosts: Any = ()) -> None:
+    def __init__(
+        self, url: str, private_hosts: Any = (), *, stored_file: Any = None
+    ) -> None:
         self.url = url
 
     def __enter__(self) -> "FakeSource":

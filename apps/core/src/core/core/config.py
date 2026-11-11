@@ -131,7 +131,8 @@ class Settings(BaseSettings):
     # derives from DATA_DIR so a whole-volume mount keeps working unconfigured.
     CATALOG_DATA_DIR: str = os.path.join(os.getenv("DATA_DIR", "/app/data"), "catalog")
     # Where the catalog_materialize job writes a promoted catalog layer's
-    # parquet copy, resolved as the job and geoapi resolve it (an explicit
+    # parquet copy (or a raster's stored file, goatlib's stored_raster_file),
+    # resolved as the job and geoapi resolve it (an explicit
     # CATALOG_LAYERS_DIR wins). Inside the catalog subtree by default, so the
     # mount above covers it. Core only checks that a copy exists, when a
     # dataset is added again (`services.materialize_heal`).

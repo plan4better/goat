@@ -160,15 +160,18 @@ def layer_fingerprint(
     url: str | None = None,
 ) -> str | None:
     """The fingerprint of any layer row: a vector layer's (`fingerprint`), a
-    raster file's catalog version or address (`url:<hash>`: core reads no file,
-    so a file replaced under the same address is not noticed), none for a map
-    service, which has nothing to compute."""
+    raster file's catalog version (a catalog raster has no address) or address
+    (`url:<hash>`: core reads no file, so a file replaced under the same
+    address is not noticed), none for a map service, which has nothing to
+    compute."""
     if layer_type != "raster":
         return fingerprint(data_snapshot=data_snapshot, catalog_version=catalog_version)
-    if data_type != "cog" or not url:
+    if data_type != "cog":
         return None
     if catalog_version:
         return f"catalog:{catalog_version}"
+    if not url:
+        return None
     return "url:" + hashlib.sha256(url.encode()).hexdigest()[:16]
 
 

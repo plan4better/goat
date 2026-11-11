@@ -199,6 +199,10 @@ def test_a_raster_file_has_a_fingerprint_and_a_map_service_none() -> None:
     assert (
         layer_fingerprint("raster", "cog", url=url, catalog_version="7") == "catalog:7"
     )
+    # A raster promoted from the catalog has no address: it is read from its
+    # copy, and its version is its fingerprint.
+    assert layer_fingerprint("raster", "cog", catalog_version="7") == "catalog:7"
+    assert layer_fingerprint("raster", "cog") is None
     assert layer_fingerprint("raster", "wms", url=url) is None
     assert layer_fingerprint("feature", None, data_snapshot=5) == "ducklake:5"
 

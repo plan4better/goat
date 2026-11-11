@@ -6,11 +6,16 @@ from typing import Any
 
 from goatlib.style.migrate import context_for, stored_document
 
+#: The data asset of a raster item: a (cloud-optimized) GeoTIFF.
+RASTER_SUFFIXES = (".tif", ".tiff")
+
 
 def layer_type(item: dict[str, Any]) -> tuple[str, str | None]:
     """(layer type, geometry type) for the layer row.
 
-    ``goat:geometryType`` absent means an attribute table (contract §3.1).
+    ``goat:geometryType`` absent means an attribute table (contract §3.1),
+    unless the data is a GeoTIFF: a bundle's members declare ``bundle``, not
+    their own kind, so a raster among them is known by its data asset.
     """
     geom = item.get("goat:geometryType")
     declared = (item.get("goat:layerType") or "").lower()
@@ -18,6 +23,8 @@ def layer_type(item: dict[str, Any]) -> tuple[str, str | None]:
         return "feature", str(geom).lower()
     if declared in ("table", "feature", "raster"):
         return declared, None
+    if str(item.get("parquet_url") or "").lower().endswith(RASTER_SUFFIXES):
+        return "raster", None
     return "table", None
 
 

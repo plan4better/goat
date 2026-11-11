@@ -1,4 +1,5 @@
-"""Reading raster files: a COG at an http(s) address, through rio-tiler.
+"""Reading raster files through rio-tiler: a COG at an http(s) address, or
+the file GOAT stores for a layer (`goatlib.utils.layer.stored_raster_file`).
 
 Only addresses that pass the URL guard open: http and https, hosts that resolve
 to public addresses or are listed by the deployment, and redirects are followed
@@ -14,6 +15,7 @@ import time
 from collections.abc import Collection, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from types import TracebackType
 from typing import Any
 from urllib.parse import urljoin
@@ -224,24 +226,44 @@ def _terrarium(elevation: np.ndarray) -> np.ndarray:
 
 
 class RasterSource:
-    """One raster file, opened for the duration of a `with` block."""
+    """One raster file, opened for the duration of a `with` block.
 
-    def __init__(self, url: str, private_hosts: Collection[str] = ()) -> None:
+    A layer's file is either the file GOAT stores for it (`stored_file`, from
+    `goatlib.utils.layer.stored_raster_file`, named from the layer's id), which
+    opens as it is, or the address the user typed (`url`), which opens only
+    through the URL guard. A path typed as a `url` is therefore refused.
+    """
+
+    def __init__(
+        self,
+        url: str | None,
+        private_hosts: Collection[str] = (),
+        *,
+        stored_file: Path | None = None,
+    ) -> None:
+        if stored_file is None and url is None:
+            raise ValueError("A raster source needs a stored file or a url")
         self.url = url
         self.private_hosts = tuple(private_hosts)
+        self.stored_file = stored_file
+        #: What a failure is remembered under: the file that was read.
+        self._key = str(stored_file) if stored_file is not None else str(url)
         self._reader: Reader | None = None
         self._env: rasterio.Env | None = None
         self._info: RasterInfo | None = None
 
     def __enter__(self) -> "RasterSource":
-        failed = _recent_failure(self.url)
+        failed = _recent_failure(self._key)
         if failed is not None:
             raise RasterUnavailableError(failed)
-        try:
-            address = resolve_address(self.url, self.private_hosts)
-        except RasterUnavailableError as error:
-            _remember_failure(self.url, str(error))
-            raise
+        if self.stored_file is not None:
+            address = str(self.stored_file)
+        else:
+            try:
+                address = resolve_address(str(self.url), self.private_hosts)
+            except RasterUnavailableError as error:
+                _remember_failure(self._key, str(error))
+                raise
         self._env = rasterio.Env(**GDAL_OPTIONS)
         self._env.__enter__()
         try:
@@ -249,7 +271,7 @@ class RasterSource:
         except (RasterioError, RioTilerError, OSError) as error:
             self._env.__exit__(None, None, None)
             message = f"The file could not be read: {error}"
-            _remember_failure(self.url, message)
+            _remember_failure(self._key, message)
             raise RasterUnavailableError(message) from None
         return self
 
@@ -278,7 +300,7 @@ class RasterSource:
             raise
         except (RasterioError, RioTilerError, OSError) as error:
             message = f"The file could not be read: {error}"
-            _remember_failure(self.url, message)
+            _remember_failure(self._key, message)
             raise RasterUnavailableError(message) from None
 
     def info(self) -> RasterInfo:

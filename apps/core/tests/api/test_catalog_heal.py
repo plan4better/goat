@@ -52,7 +52,13 @@ def catalog(
 
 
 async def _project_with_ready_catalog_layer(
-    client: AsyncClient, db: AsyncSession, me: UUID, home_folder_id: UUID
+    client: AsyncClient,
+    db: AsyncSession,
+    me: UUID,
+    home_folder_id: UUID,
+    *,
+    raster: bool = False,
+    status: str = "ready",
 ) -> tuple[UUID, UUID]:
     created = await client.post(
         f"{settings.API_V2_STR}/project",
@@ -72,17 +78,24 @@ async def _project_with_ready_catalog_layer(
     )
     assert created.status_code in (200, 201), created.text
     project_id = UUID(created.json()["id"])
+    shape: dict[str, Any] = (
+        {"type": "raster"}
+        if raster
+        else {
+            "type": "feature",
+            "feature_layer_type": "standard",
+            "feature_layer_geometry_type": "polygon",
+        }
+    )
     layer = Layer(
         id=uuid4(),
         user_id=me,
         folder_id=home_folder_id,
         name="catalog layer",
-        type="feature",
-        feature_layer_type="standard",
-        feature_layer_geometry_type="polygon",
+        **shape,
         other_properties={
             "catalog_materialize": {
-                "status": "ready",
+                "status": status,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
         },
@@ -171,6 +184,75 @@ async def test_a_ready_layer_with_its_file_is_left_alone(
     )
     promoted["item-1"] = layer_id
     (layers_dir / f"t_{layer_id.hex}.parquet").write_bytes(b"PAR1")
+
+    response = await client.post(
+        f"{settings.API_V2_STR}/project/{project_id}/layer-catalog",
+        params={"catalog_ids": ["item-1"]},
+    )
+
+    assert response.status_code == 200, response.text
+    enqueue.assert_not_awaited()
+    assert (await _materialize_doc(db_session, layer_id))["status"] == "ready"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "reason"), [("failed", "failed"), ("ready", "ready, file missing")]
+)
+async def test_a_raster_layer_without_its_copy_is_materialized_again(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: Any,
+    fixture_get_home_folder: dict[str, Any],
+    catalog: tuple[Path, dict[str, UUID], AsyncMock],
+    status: str,
+    reason: str,
+) -> None:
+    """A catalog raster failed for good before the job could copy one; re-adding
+    it now runs the job again in the entry already in the project."""
+    _, promoted, enqueue = catalog
+    project_id, layer_id = await _project_with_ready_catalog_layer(
+        client,
+        db_session,
+        fixture_create_user,
+        fixture_get_home_folder["id"],
+        raster=True,
+        status=status,
+    )
+    promoted["item-1"] = layer_id
+
+    response = await client.post(
+        f"{settings.API_V2_STR}/project/{project_id}/layer-catalog",
+        params={"catalog_ids": ["item-1"]},
+    )
+
+    assert response.status_code == 200, response.text
+    enqueue.assert_awaited_once()
+    assert enqueue.await_args is not None
+    assert enqueue.await_args.kwargs["inputs"] == {"layer_id": str(layer_id)}
+    doc = await _materialize_doc(db_session, layer_id)
+    assert doc["status"] == "pending" and doc["heal_reason"] == reason
+    assert await _links(db_session, project_id, layer_id) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_ready_raster_layer_with_its_copy_is_left_alone(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: Any,
+    fixture_get_home_folder: dict[str, Any],
+    catalog: tuple[Path, dict[str, UUID], AsyncMock],
+) -> None:
+    layers_dir, promoted, enqueue = catalog
+    project_id, layer_id = await _project_with_ready_catalog_layer(
+        client,
+        db_session,
+        fixture_create_user,
+        fixture_get_home_folder["id"],
+        raster=True,
+    )
+    promoted["item-1"] = layer_id
+    (layers_dir / f"t_{layer_id.hex}.tif").write_bytes(b"II*\x00")
 
     response = await client.post(
         f"{settings.API_V2_STR}/project/{project_id}/layer-catalog",

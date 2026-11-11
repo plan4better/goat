@@ -6,7 +6,10 @@ layer's extent when it creates the layer, and what the web asks for when a
 layer has none. geoapi only reads the layer row: core owns it.
 
 A layer's file is always the layer row's own `url` (a raster layer with
-`data_type = 'cog'`), never an address from a request. Statistics are kept per
+`data_type = 'cog'`), never an address from a request. A raster promoted from
+the catalog is the exception: the catalog bucket is private, so it is read from
+the file GOAT stores for the layer, named from the layer's id
+(`stored_raster_file`); it has no `url`. Statistics are kept per
 layer version in process memory; tiles go to the Redis tile cache under a
 version made of the row's version and the coloring token.
 """
@@ -16,6 +19,7 @@ import math
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +29,7 @@ from goatlib.raster.color import Coloring
 from goatlib.raster.formula import Formula
 from goatlib.raster.source import BandStats, PointValues, RasterInfo, RasterSource
 from goatlib.raster.token import Rgb
+from goatlib.utils.layer import stored_raster_file
 
 from geoapi.config import settings
 from geoapi.services.layer_service import layer_service
@@ -39,9 +44,12 @@ _MISSING = object()
 @dataclass(frozen=True)
 class RasterLayer:
     id: str
-    url: str
+    #: The address the user typed: opened only through the URL guard.
+    external_url: str | None
     #: Changes when the row's address or update time changes.
     version: str
+    #: The file GOAT stores for the layer (a catalog raster), read instead.
+    stored_file: Path | None = None
 
 
 class RasterService:
@@ -70,21 +78,35 @@ class RasterService:
         if layer_id in self._rows:
             return self._rows[layer_id]
         row = await layer_service._execute_with_retry(
-            "SELECT url, extract(epoch FROM updated_at)::bigint AS updated "
+            "SELECT url, extract(epoch FROM updated_at)::bigint AS updated, "
+            "catalog_external_uid IS NOT NULL AS catalog "
             "FROM customer.layer "
-            "WHERE id = $1 AND type = 'raster' AND data_type = 'cog' AND url IS NOT NULL",
+            "WHERE id = $1 AND type = 'raster' AND data_type = 'cog' "
+            "AND (url IS NOT NULL OR catalog_external_uid IS NOT NULL)",
             UUID(layer_id),
             fetch_one=True,
         )
         found = None
         if row is not None:
-            digest = hashlib.sha256(row["url"].encode()).hexdigest()[:12]
-            found = RasterLayer(layer_id, row["url"], f"{digest}-{row['updated'] or 0}")
+            url = row["url"]
+            digest = hashlib.sha256((url or "").encode()).hexdigest()[:12]
+            stored = (
+                stored_raster_file(layer_id, Path(settings.CATALOG_LAYERS_DIR))
+                if row.get("catalog")
+                else None
+            )
+            found = RasterLayer(
+                layer_id, url, f"{digest}-{row['updated'] or 0}", stored
+            )
         self._rows[layer_id] = found
         return found
 
     def _source(self, layer: RasterLayer) -> RasterSource:
-        return RasterSource(layer.url, settings.raster_private_hosts)
+        return RasterSource(
+            layer.external_url,
+            settings.raster_private_hosts,
+            stored_file=layer.stored_file,
+        )
 
     def _once(self, cache: TTLCache, key: str, compute: Callable[[], Any]) -> Any:
         """`cache[key]`, computed by one thread while the others wait for it: the

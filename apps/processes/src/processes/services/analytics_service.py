@@ -61,6 +61,7 @@ from processes.ducklake import (
     preview_ducklake_manager,
     search_ducklake_manager,
 )
+from processes.services.access import RasterFile
 from processes.services.public_search_config import get_public_search_layers
 
 logger = logging.getLogger(__name__)
@@ -647,21 +648,21 @@ class AnalyticsService:
         compute: bool = True,
         stored: bool = False,
         fingerprint: str | None = None,
-        raster_url: str | None = None,
+        raster_file: RasterFile | None = None,
     ) -> dict[str, Any]:
         """A GOAT Style document checked against its layer, with its computed
         values (classes, domains) written in when `compute` is set.
 
         Statistics are over the whole layer, never filtered (style spec 12).
-        A raster file (`raster_url`, read by the route from the layer row) is
+        A raster file (`raster_file`, read by the route from the layer row) is
         read through goatlib.raster; a map service is validated only.
         """
         notes: list[Any] = []
         if document.get("kind") == "raster":
             ctx = DataContext(kind="raster")
-            if raster_url:
+            if raster_file:
                 ctx, document, notes = self._raster_check(
-                    raster_url, document, compute=compute, fingerprint=fingerprint
+                    raster_file, document, compute=compute, fingerprint=fingerprint
                 )
         else:
             table_name = self._get_table_name(collection)
@@ -701,7 +702,7 @@ class AnalyticsService:
 
     def _raster_check(
         self,
-        url: str,
+        raster: RasterFile,
         document: dict[str, Any],
         *,
         compute: bool,
@@ -712,7 +713,11 @@ class AnalyticsService:
         style stale and asks again; an address the URL guard refuses is
         validated without the file."""
         try:
-            with RasterSource(url, settings.raster_private_hosts) as source:
+            with RasterSource(
+                raster.external_url,
+                settings.raster_private_hosts,
+                stored_file=raster.stored_file,
+            ) as source:
                 ctx = raster_context(source)
                 notes: list[Any] = []
                 if compute:

@@ -20,7 +20,9 @@ import json
 import logging
 import re
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -29,6 +31,7 @@ from fastapi import HTTPException, status
 from goatlib.config.postgres import asyncpg_connect_args
 from goatlib.tools.registry import TOOL_REGISTRY
 from goatlib.tools.schemas import DEFAULT_NETWORK_BUNDLE
+from goatlib.utils.layer import stored_raster_file
 
 from processes.config import settings
 from processes.services.access_sql import access_check_sql
@@ -515,19 +518,37 @@ async def denied_references(
     return [dict(row) for row in rows]
 
 
-async def raster_file_url(layer_id: str) -> str | None:
-    """The stored address of a raster file layer (a COG), else None. The style
-    check reads raster files from here only, never from a request."""
+@dataclass(frozen=True)
+class RasterFile:
+    """A raster file layer's file: the address the user typed
+    (`external_url`, opened only through the URL guard), or for a raster
+    promoted from the catalog the file GOAT stores for it (`stored_file`,
+    named from the layer's id; the catalog bucket is private, so it has no
+    address)."""
+
+    external_url: str | None = None
+    stored_file: Path | None = None
+
+
+async def raster_file(layer_id: str) -> RasterFile | None:
+    """The file of a raster file layer (a COG), else None. The style check reads
+    raster files from here only, never from a request."""
     try:
         uuid = str(UUID(layer_id))
     except ValueError:
         return None
     pool = await get_pool()
-    return await pool.fetchval(
-        f"SELECT url FROM {settings.CUSTOMER_SCHEMA}.layer "
+    row = await pool.fetchrow(
+        "SELECT url, catalog_external_uid IS NOT NULL AS catalog "
+        f"FROM {settings.CUSTOMER_SCHEMA}.layer "
         "WHERE id = $1::uuid AND type = 'raster' AND data_type = 'cog'",
         uuid,
     )
+    if row is None:
+        return None
+    if row["catalog"]:
+        return RasterFile(stored_file=stored_raster_file(uuid))
+    return RasterFile(external_url=row["url"]) if row["url"] else None
 
 
 async def ensure_empty_copy_of_template(template_id: str, layer_id: str) -> None:

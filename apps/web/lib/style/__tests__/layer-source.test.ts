@@ -85,6 +85,18 @@ describe("compileSourceFor", () => {
     expect(sourceOf(feature)).toBeUndefined();
   });
 
+  it("a raster from the catalog is drawn by geoapi without an address", () => {
+    // The catalog bucket is private: geoapi reads the layer's copy by its id.
+    const catalog = { id: 5, layer_id: "r2", type: "raster", data_type: "cog", url: null };
+    expect(sourceOf(catalog)?.kind).toBe("cog");
+    expect(compileSourceFor(catalog, { kind: "raster", geoapiUrl: GEOAPI })).toMatchObject({
+      type: "raster",
+      tiles: `${GEOAPI}/collections/r2/raster/tiles/{z}/{x}/{y}.webp`,
+    });
+    // A map service still needs its address.
+    expect(sourceOf({ ...catalog, data_type: "wms" })).toBeUndefined();
+  });
+
   it("an overlay of features is a GeoJSON source of their own", () => {
     const data = { type: "FeatureCollection" as const, features: [] };
     expect(compileSourceFor(feature, { kind: "tiles", data, id: "pending-7" })).toEqual({

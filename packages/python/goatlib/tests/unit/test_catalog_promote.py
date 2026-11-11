@@ -103,6 +103,21 @@ def test_layer_type_no_geometry_is_a_table(mirror: Path) -> None:
     assert layer_type(read_item(mirror, "item-2")) == ("table", None)
 
 
+def test_layer_type_of_a_bundle_member_with_a_geotiff_is_a_raster() -> None:
+    """A bundle's members declare `bundle`, not their own kind: one without a
+    geometry whose data is a GeoTIFF is a raster, not a table."""
+    member = {
+        "goat:layerType": "bundle",
+        "goat:geometryType": None,
+        "parquet_url": "../../../data/ab-12.tif",
+    }
+    assert layer_type(member) == ("raster", None)
+    assert layer_type({**member, "parquet_url": "../../../data/ab-12.parquet"}) == (
+        "table",
+        None,
+    )
+
+
 def test_bucket_key_resolves_relative_hrefs() -> None:
     """Contract C8: published hrefs are tree-relative; only the basename and
     the bucket's fixed data/ prefix identify the object."""
@@ -120,6 +135,21 @@ def test_bucket_key_rejects_non_parquet() -> None:
         bucket_key_for("styles/ab-12.json")
     with _pytest.raises(ValueError):
         bucket_key_for("")
+
+
+def test_bucket_key_of_a_raster_is_its_geotiff() -> None:
+    """A raster item's data asset is a GeoTIFF under the same data/ prefix; a
+    vector layer still takes a parquet only."""
+    import pytest as _pytest
+    from goatlib.tools.catalog_materialize import RASTER_SUFFIXES, bucket_key_for
+
+    assert (
+        bucket_key_for("../../../data/ab-12.tif", RASTER_SUFFIXES) == "data/ab-12.tif"
+    )
+    with _pytest.raises(ValueError):
+        bucket_key_for("../../../data/ab-12.parquet", RASTER_SUFFIXES)
+    with _pytest.raises(ValueError):
+        bucket_key_for("../../../data/ab-12.tif")
 
 
 def test_resolve_item_ids_passes_item_ids_through(mirror: Path) -> None:

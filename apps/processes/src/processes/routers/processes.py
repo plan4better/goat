@@ -53,11 +53,12 @@ from processes.models.processes import (
     StatusInfo,
 )
 from processes.services.access import (
+    RasterFile,
     analytics_references,
     empty_copy_of_template,
     ensure_allowed,
     ensure_empty_copy_of_template,
-    raster_file_url,
+    raster_file,
     tool_references,
 )
 from processes.services.analytics_registry import (
@@ -257,14 +258,14 @@ def _execute_analytics_sync(
     process_id: str,
     inputs: dict[str, Any],
     user_id: UUID | None = None,
-    raster_url: str | None = None,
+    raster_file: RasterFile | None = None,
 ) -> dict[str, Any]:
     """Execute an analytics process synchronously.
 
     Args:
         process_id: Analytics process ID
         inputs: Process inputs
-        raster_url: style-check of a raster file: its address from the layer row
+        raster_file: style-check of a raster file: its file from the layer row
 
     Returns:
         Process result as dict
@@ -357,7 +358,7 @@ def _execute_analytics_sync(
                 compute=style_input.compute,
                 stored=style_input.stored,
                 fingerprint=style_input.fingerprint,
-                raster_url=raster_url,
+                raster_file=raster_file,
             )
         elif process_id == "layer-search":
             return analytics_service.layer_search(
@@ -745,14 +746,14 @@ async def execute_process(
         await ensure_allowed(
             user_id, analytics_references(process_id, execute_request.inputs)
         )
-        raster_url = None
+        raster = None
         document = execute_request.inputs.get("document")
         if (
             process_id == "style-check"
             and isinstance(document, dict)
             and document.get("kind") == "raster"
         ):
-            raster_url = await raster_file_url(
+            raster = await raster_file(
                 str(execute_request.inputs.get("collection", ""))
             )
         global _layer_search_inflight
@@ -800,7 +801,7 @@ async def execute_process(
                         process_id,
                         execute_request.inputs,
                         user_id,
-                        raster_url,
+                        raster,
                     ),
                     timeout=settings.ANALYTICS_QUERY_TIMEOUT,
                 )
