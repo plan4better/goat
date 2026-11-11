@@ -30,6 +30,14 @@ def dispatch_never_started(error: BaseException) -> bool:
     return isinstance(error, aiohttp.ClientConnectorError)
 
 
+#: Submitting a job is one round trip to processes, which hands it to Windmill
+#: and answers with the job id. Without a bound, a processes service that
+#: accepts the connection and never answers holds the caller for aiohttp's
+#: default of five minutes. A timeout is ambiguous (the job may have been
+#: accepted), so `dispatch_never_started` stays False for it.
+EXECUTE_PROCESS_TIMEOUT_S = 30
+
+
 async def execute_process(
     *,
     process_id: str,
@@ -54,7 +62,9 @@ async def execute_process(
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=EXECUTE_PROCESS_TIMEOUT_S)
+    ) as session:
         async with session.post(
             url, json={"inputs": inputs}, headers=headers
         ) as response:
@@ -80,6 +90,47 @@ async def execute_process(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Failed to start '{process_id}' job",
             )
+
+
+def processes_unreachable(error: BaseException) -> bool:
+    """Whether an ``execute_process`` failure says processes is not answering
+    at all: it is not configured, could not be connected to, or took the
+    request and never replied. A refusal it did answer (502) is about one job,
+    so the next one may well start; these three would fail every next job too.
+    """
+    return dispatch_never_started(error) or isinstance(error, TimeoutError)
+
+
+async def submit_each(*, process_id: str, inputs: list[dict], access_token: str) -> int:
+    """Submit one ``process_id`` job per entry of ``inputs``, best effort.
+
+    For callers whose jobs may stay unstarted, because what they operate on
+    keeps a pending state that a later request picks up again (a catalog
+    layer's materialize). A failure is logged, never raised. Once processes is
+    unreachable the rest are not submitted: each would wait for the same
+    timeout, so a batch of N would hold its request N times as long for no
+    different outcome. Returns how many jobs were submitted.
+    """
+    submitted = 0
+    for index, job_inputs in enumerate(inputs):
+        try:
+            await execute_process(
+                process_id=process_id, inputs=job_inputs, access_token=access_token
+            )
+        except Exception as e:
+            logger.warning("%s for %s did not start: %r", process_id, job_inputs, e)
+            if processes_unreachable(e):
+                left = len(inputs) - index - 1
+                if left:
+                    logger.warning(
+                        "processes is not answering; %d more %s job(s) not submitted",
+                        left,
+                        process_id,
+                    )
+                break
+        else:
+            submitted += 1
+    return submitted
 
 
 async def delete_bundle_artifacts_via_processes(
