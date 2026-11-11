@@ -60,20 +60,6 @@ def _column_types(parquet: str) -> dict[str, str]:
     return {str(row[0]): str(row[1]) for row in rows}
 
 
-#: The style keys without which the map does not draw a feature layer's
-#: entry: it hides the layer unless `visibility`, and fills nothing without
-#: `filled` and `color` (the web's `transformers/layer.ts`).
-DRAWN_KEYS = ("visibility", "filled", "color")
-
-
-def _drawable(properties: Any) -> bool:
-    return (
-        isinstance(properties, dict)
-        and properties.get("visibility") is True
-        and all(key in properties for key in DRAWN_KEYS)
-    )
-
-
 def _json(value: Any) -> Any:
     return json.loads(value) if isinstance(value, str) else value
 
@@ -92,31 +78,54 @@ async def _entry_properties(settings: Any, layer_id: str) -> list[Any]:
     return [_json(row["properties"]) for row in rows]
 
 
+async def _entries_styled(settings: Any, layer_id: str) -> list[bool]:
+    """Whether each project entry showing the layer has an active style of
+    its own, which the map draws a project layer by."""
+    conn = await get_pg_connection(settings)
+    try:
+        rows = await conn.fetch(
+            f"""
+            SELECT s.document IS NOT NULL AS styled
+            FROM {TEST_CUSTOMER_SCHEMA}.layer_project lp
+            LEFT JOIN {TEST_CUSTOMER_SCHEMA}.layer_style s
+              ON s.id = lp.active_style_id AND s.layer_project_id = lp.id
+            WHERE lp.layer_id = $1::uuid ORDER BY lp.id
+            """,
+            layer_id,
+        )
+    finally:
+        await conn.close()
+    return [row["styled"] for row in rows]
+
+
 async def _saved_layer(settings: Any, layer_id: str) -> dict[str, Any]:
     """What the layer record of a saved layer says about drawing it: its type,
-    geometry type, and whether it and every project entry showing it have
-    the style keys the map needs."""
+    geometry type, whether it has a default style, and whether every project
+    entry showing it has an active style."""
     conn = await get_pg_connection(settings)
     try:
         row = await conn.fetchrow(
             f"""
-            SELECT type, feature_layer_type, feature_layer_geometry_type,
-                   properties
-            FROM {TEST_CUSTOMER_SCHEMA}.layer
-            WHERE id = $1::uuid
+            SELECT l.type, l.feature_layer_type, l.feature_layer_geometry_type,
+                   EXISTS (
+                       SELECT 1 FROM {TEST_CUSTOMER_SCHEMA}.layer_style s
+                       WHERE s.layer_id = l.id
+                   ) AS styled
+            FROM {TEST_CUSTOMER_SCHEMA}.layer l
+            WHERE l.id = $1::uuid
             """,
             layer_id,
         )
     finally:
         await conn.close()
     assert row is not None, layer_id
-    entries = await _entry_properties(settings, layer_id)
+    entries = await _entries_styled(settings, layer_id)
     return {
         "type": row["type"],
         "feature_layer_type": row["feature_layer_type"],
         "feature_layer_geometry_type": row["feature_layer_geometry_type"],
-        "drawn": _drawable(_json(row["properties"])),
-        "entries_drawn": bool(entries) and all(_drawable(e) for e in entries),
+        "drawn": row["styled"],
+        "entries_drawn": bool(entries) and all(entries),
     }
 
 
@@ -599,7 +608,11 @@ async def test_a_table_layer_overwritten_with_geometries_becomes_a_map_layer(
     first.assert_succeeded()
     layer_id = first.step("save")["layer_id"]
     saved = await _saved_layer(tool_settings, layer_id)
-    assert saved["type"] == "table"
+    assert (saved["type"], saved["drawn"], saved["entries_drawn"]) == (
+        "table",
+        False,
+        False,
+    )
 
     second = await asyncio.to_thread(
         run_workflow, _custom_sql_export(sql.format("Grundschule")), workflow_id
@@ -640,8 +653,8 @@ async def test_a_table_entry_holding_the_tree_s_keys_is_drawn_once_it_has_points
     )
     second.assert_succeeded()
     assert second.step("save")["layer_id"] == layer_id
+    assert await _entries_styled(tool_settings, layer_id) == [True]
     [entry] = await _entry_properties(tool_settings, layer_id)
-    assert _drawable(entry), entry
     assert entry["legend"] == {"collapsed": False}
 
 
@@ -654,15 +667,55 @@ async def test_an_entry_with_its_own_style_keeps_it_when_its_layer_gets_points(
     )
     first.assert_succeeded()
     layer_id = first.step("save")["layer_id"]
-    own = {"visibility": True, "filled": False, "color": [1, 2, 3], "opacity": 0.4}
-    await _set_entry_properties(tool_settings, layer_id, own)
+    own = {
+        "version": 1,
+        "kind": "vector",
+        "symbol": {"marker": {"color": "#010203", "opacity": 0.4}},
+    }
+    # The entry's own style, active, as the style panel saves it.
+    conn = await get_pg_connection(tool_settings)
+    try:
+        own_id = await conn.fetchval(
+            f"""
+            WITH ins AS (
+                INSERT INTO {TEST_CUSTOMER_SCHEMA}.layer_style
+                    (layer_project_id, name, document)
+                SELECT id, 'Mine', $2::text::jsonb
+                FROM {TEST_CUSTOMER_SCHEMA}.layer_project
+                WHERE layer_id = $1::uuid
+                RETURNING id, layer_project_id
+            )
+            UPDATE {TEST_CUSTOMER_SCHEMA}.layer_project lp
+            SET active_style_id = ins.id FROM ins
+            WHERE lp.id = ins.layer_project_id
+            RETURNING ins.id
+            """,
+            layer_id,
+            json.dumps(own),
+        )
+    finally:
+        await conn.close()
 
     second = await asyncio.to_thread(
         run_workflow, _custom_sql_export(SCHOOLS_OF.format("Grundschule")), workflow_id
     )
     second.assert_succeeded()
-    [entry] = await _entry_properties(tool_settings, layer_id)
-    assert {key: entry[key] for key in own} == own
+    conn = await get_pg_connection(tool_settings)
+    try:
+        rows = await conn.fetch(
+            f"""
+            SELECT s.id, s.document, s.id = lp.active_style_id AS active
+            FROM {TEST_CUSTOMER_SCHEMA}.layer_project lp
+            JOIN {TEST_CUSTOMER_SCHEMA}.layer_style s ON s.layer_project_id = lp.id
+            WHERE lp.layer_id = $1::uuid
+            """,
+            layer_id,
+        )
+    finally:
+        await conn.close()
+    assert [(r["id"], _json(r["document"]), r["active"]) for r in rows] == [
+        (own_id, own, True)
+    ]
 
 
 async def test_a_re_run_beside_a_copy_styles_the_entry_it_points_at_its_new_layer(
@@ -716,8 +769,8 @@ async def test_a_re_run_beside_a_copy_styles_the_entry_it_points_at_its_new_laye
     assert layer_id != table_id, "the copy's table must not be overwritten"
     saved = await _saved_layer(tool_settings, layer_id)
     assert (saved["type"], saved["feature_layer_geometry_type"]) == ("feature", "point")
+    assert await _entries_styled(tool_settings, layer_id) == [True]
     [entry] = await _entry_properties(tool_settings, layer_id)
-    assert _drawable(entry), entry
     assert entry["legend"] == {"collapsed": False}
     assert (await _saved_layer(tool_settings, table_id))["type"] == "table"
 
