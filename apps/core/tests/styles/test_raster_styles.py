@@ -144,15 +144,15 @@ async def test_a_save_or_check_with_a_direction_outside_maplibres_bounds_is_an_e
 ) -> None:
     """A document being written is not brought inside the bounds: the value is an
     error the author (the AI too) sees, and the save keeps the stored value."""
-    terrain = {"version": 1, "kind": "raster", "render": {"type": "terrain"}}
+    hillshade = {"version": 1, "kind": "raster", "render": {"type": "hillshade"}}
     style_id, _ = await raster_style(
         db_session,
         style_world,
-        {**terrain, "render": {**terrain["render"], "direction": 300}},
+        {**hillshade, "render": {**hillshade["render"], "direction": 300}},
     )
     check = Compute()
     monkeypatch.setattr(style_service, "style_check", check)
-    turned = {**terrain, "render": {**terrain["render"], "direction": 360}}
+    turned = {**hillshade, "render": {**hillshade["render"], "direction": 360}}
     saved = await save_style(
         db_session,
         style_id=style_id,

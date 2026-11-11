@@ -105,6 +105,11 @@ class Project(ContentBaseAttributes, DateTimeBase, table=True):
         sa_column=Column(Text, nullable=True),
         description="The language map labels and formatted numbers use (spec 10); none follows the viewer",
     )
+    scene: Dict[str, Any] | None = Field(
+        default=None,
+        sa_column=Column(JSONB, nullable=True),
+        description="The 3D scene: terrain, buildings, sky, fog, globe glow and light (3D spec 5.2); none is automatic",
+    )
     thumbnail_url: str | None = Field(
         sa_column=Column(Text, nullable=True),
         description="Project thumbnail URL",

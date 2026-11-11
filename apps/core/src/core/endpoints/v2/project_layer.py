@@ -31,7 +31,7 @@ from core.schemas.project import (
 from core.schemas.project import (
     request_examples as project_request_examples,
 )
-from core.services.processes import execute_process
+from core.services.processes import submit_each
 
 logger = logging.getLogger("project_layer")
 
@@ -226,6 +226,7 @@ async def add_catalog_items_to_project(
     )
     layer_ids: List[UUID4] = []
     reused_link_ids: List[int] = []
+    to_materialize: List[dict] = []
     # What a user picks is a dataset; what promotes is a layer. A single-layer
     # dataset's Collection id is not its item's id, so the ids are resolved
     # against the mirror before anything is promoted.
@@ -330,26 +331,21 @@ async def add_catalog_items_to_project(
             if add_link:
                 layer_ids.append(layer_id)
             if should_enqueue:
-                # Enqueued server-side through the processes service (same path
-                # as bundle import and layer/bundle-delete cleanup) so
-                # materialization finishes whether or not the browser stays
-                # open. Best-effort: a processes hiccup leaves the layer at
-                # status=pending, which the next add resolves — so it must not
-                # fail the whole add.
-                try:
-                    await execute_process(
-                        process_id="catalog_materialize",
-                        inputs={"layer_id": result["layer_id"]},
-                        access_token=access_token,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Catalog materialize for layer %s did not start: %s",
-                        result["layer_id"],
-                        e,
-                    )
+                to_materialize.append({"layer_id": result["layer_id"]})
     finally:
         await conn.close()
+
+    # Enqueued server-side through the processes service (same path as bundle
+    # import and layer/bundle-delete cleanup) so materialization finishes
+    # whether or not the browser stays open. Best-effort: a processes hiccup
+    # leaves the layer at status=pending, which the next add resolves, so it
+    # must not fail the whole add. Once processes does not answer, the
+    # remaining layers stay pending without another wait each.
+    await submit_each(
+        process_id="catalog_materialize",
+        inputs=to_materialize,
+        access_token=access_token,
+    )
 
     layers_project = (
         await crud_layer_project.create(

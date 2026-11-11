@@ -47,7 +47,7 @@ def catalog(
         lambda mirror, ids: {i: {} for i in ids},
     )
     enqueue = AsyncMock()
-    monkeypatch.setattr("core.endpoints.v2.project_layer.execute_process", enqueue)
+    monkeypatch.setattr("core.services.processes.execute_process", enqueue)
     return layers_dir, promoted, enqueue
 
 

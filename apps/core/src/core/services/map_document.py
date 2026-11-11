@@ -23,17 +23,27 @@ from core.schemas.style import (
     StyleRead,
     UnpublishedChange,
 )
-from core.services.style import StyleSaveError, ensure_styles, layer_context
+from core.services.style import (
+    StyleSaveError,
+    ensure_styles,
+    issues_json,
+    layer_context,
+)
+from fastapi import HTTPException
 from goatlib.style.compute import same_ignoring_stamps
+from goatlib.style.context import MapContext
 from goatlib.style.fingerprint import (
     advance_data_snapshots_sql,
     data_snapshots_pending_sql,
     is_stale,
     layer_fingerprint,
 )
+from goatlib.style.issues import Issue
 from goatlib.style.map_rows import GroupRow, LayerRow, build_map_document, map_view
 from goatlib.style.merge import diff
+from goatlib.style.scene import extrudes
 from goatlib.style.upgrade import upgrade
+from goatlib.style.validate import validate_map
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,7 +82,7 @@ async def map_for_project(
     session: AsyncSession, *, project_id: UUID, user_id: UUID
 ) -> MapResponse:
     """The map document and the styles of a project, in four queries after the tracker:
-    the project with the caller's view, the groups, the layers with their active
+    the project with its scene and the caller's view, the groups, the layers with their active
     style, the other styles' names."""
     schema = settings.SCHEMA
     await track_data_snapshots(session)
@@ -81,7 +91,7 @@ async def map_for_project(
     project = (
         await session.execute(
             text(
-                f"SELECT p.basemap, p.locale, p.max_extent, up.initial_view_state "
+                f"SELECT p.basemap, p.locale, p.max_extent, p.scene, up.initial_view_state "
                 f"FROM {schema}.project p LEFT JOIN {schema}.user_project up "
                 "ON up.project_id = p.id AND up.user_id = :u WHERE p.id = :p"
             ),
@@ -186,6 +196,7 @@ async def map_for_project(
         bounds=project.max_extent,
         groups=[GroupRow(*g) for g in groups],
         layers=rows,
+        scene=project.scene,
     )
     return MapResponse(map=document, styles=styles)
 
@@ -234,6 +245,57 @@ async def write_layer_map_state(
     await session.commit()
     if written is None:
         raise StyleSaveError(422, "style_not_on_layer")
+
+
+async def extruded_layers(session: AsyncSession, project_id: UUID) -> frozenset[int]:
+    """The shown project layers whose drawn style (the active one, else the first
+    by position, as the map request picks it) draws heights."""
+    schema = settings.SCHEMA
+    rows = (
+        await session.execute(
+            text(
+                f"""
+                SELECT lp.id, s.document
+                FROM {schema}.layer_project lp
+                JOIN LATERAL (
+                    SELECT st.document FROM {schema}.layer_style st
+                    WHERE st.layer_project_id = lp.id
+                    ORDER BY st.id = lp.active_style_id DESC NULLS LAST, st.position, st.created_at
+                    LIMIT 1
+                ) s ON true
+                WHERE lp.project_id = :p AND lp.visible
+                """
+            ),
+            {"p": project_id},
+        )
+    ).all()
+    return frozenset(row.id for row in rows if extrudes(row.document))
+
+
+async def checked_scene(
+    session: AsyncSession, *, project_id: UUID, scene: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """The scene a project update stores (3D spec 6): null or `{}` is NULL
+    (automatic); otherwise goatlib checks the whole scene against the project's
+    extruded layers and the deployment's sources, and an error answers 422
+    `invalid_scene` with the issues. Warnings are not returned."""
+    if not scene:
+        return None
+    context = MapContext(
+        layers={},
+        extruded=await extruded_layers(session, project_id),
+        terrain_source=bool(settings.TERRAIN_TILES_URL),
+        # Without the overlay a basemap may still bring its own buildings;
+        # which ones do is the web's basemap registry, so: unknown.
+        buildings_source=True if settings.BUILDINGS_TILES_URL else None,
+    )
+    issues: list[Issue] = validate_map({"version": 1, "scene": scene}, context)
+    if any(i.level == "error" for i in issues):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_scene", "issues": issues_json(issues)},
+        )
+    return scene
 
 
 async def write_group_map_state(

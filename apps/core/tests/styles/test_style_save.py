@@ -236,6 +236,66 @@ async def test_a_merge_with_an_error_keeps_the_current_value_on_that_path(
     assert any(i["path"].startswith("/symbol/fill/opacity") for i in result.issues)
 
 
+@pytest.mark.asyncio
+async def test_a_save_whose_every_change_is_refused_writes_nothing(
+    db_session: AsyncSession, style_world: StyleWorld, fake: FakeCheck
+) -> None:
+    """13.1: what is stored does not change, so neither does the revision; the
+    reply still says what was not saved."""
+    style_id = await named_style(db_session, style_world)
+    broken = copy.deepcopy(BASE)
+    broken["symbol"]["fill"]["opacity"] = 5
+    result = await save(db_session, style_id, 1, broken)
+    assert result.revision == 1
+    assert result.document == BASE
+    assert await stored(db_session, style_id) == (1, BASE)
+    assert any(i["path"].startswith("/symbol/fill/opacity") for i in result.issues)
+
+
+@pytest.mark.asyncio
+async def test_a_refused_change_with_recomputed_values_writes_nothing(
+    db_session: AsyncSession, style_world: StyleWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The check computes the classes again (a new `at`, the last digits of a
+    parallel mean may differ) while the author's change is refused: the stored
+    classes are those of the same data, so nothing is written."""
+    doc = copy.deepcopy(CLASSIFIED)
+    doc["classify"][0]["computed"] = {
+        "at": "2026-10-25T10:00:00Z",
+        "data": "ducklake:3",
+    }
+    doc["classify"][0]["classes"] = [
+        {"id": "c1", "to": 23.314801864801865},
+        {"id": "c2", "from": 23.314801864801865},
+    ]
+    style_id = await named_style(db_session, style_world, doc)
+    error = {
+        "level": "error",
+        "code": "invalid_value",
+        "path": "/symbol/fill/opacity",
+        "message": "Out of range.",
+    }
+
+    async def check(*, document: dict[str, Any], **_: Any) -> dict[str, Any]:
+        out = copy.deepcopy(document)
+        c = out["classify"][0]
+        c["computed"] = {"at": "2026-10-29T14:43:40Z", "data": "ducklake:3"}
+        c["classes"][0]["to"] = c["classes"][1]["from"] = 23.31480186480186
+        bad = out["symbol"]["fill"].get("opacity") == 5
+        return {"document": out, "issues": [error] if bad else []}
+
+    monkeypatch.setattr(style_service, "style_check", check)
+    monkeypatch.setattr(
+        style_service.StoredStyle, "fingerprint", property(lambda self: "ducklake:3")
+    )
+    broken = copy.deepcopy(doc)
+    broken["symbol"]["fill"]["opacity"] = 5
+    result = await save(db_session, style_id, 1, broken)
+    assert result.revision == 1
+    assert await stored(db_session, style_id) == (1, doc)
+    assert [i["code"] for i in result.issues] == ["invalid_value"]
+
+
 MANUAL = {
     "version": 1,
     "kind": "vector",

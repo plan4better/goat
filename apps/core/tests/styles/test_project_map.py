@@ -353,3 +353,48 @@ def test_the_builder_assembles_plain_rows() -> None:
         ],
     }
     MapDocument.model_validate(document)
+
+
+@pytest.mark.asyncio
+async def test_map_without_scene(
+    client: AsyncClient, api_style_world: StyleWorld
+) -> None:
+    """Every project today has no scene: the map carries no `scene` key."""
+    body = (await get_map(client, api_style_world)).json()
+    assert "scene" not in body["map"]
+
+
+@pytest.mark.asyncio
+async def test_map_carries_scene_and_view_mode(
+    client: AsyncClient, api_style_world: StyleWorld
+) -> None:
+    world = api_style_world
+    before = await get_map(client, world)
+    saved = await client.put(
+        f"{API}/project/{world.project_id}",
+        json={"scene": {"terrain": {"exaggeration": 2}}},
+    )
+    assert saved.status_code == 200, saved.text
+    view = {
+        "latitude": 47.49,
+        "longitude": 11.09,
+        "zoom": 13,
+        "min_zoom": 0,
+        "max_zoom": 20,
+        "bearing": 200,
+        "pitch": 70,
+        "mode": "3d",
+        "projection": "globe",
+    }
+    put = await client.put(
+        f"{API}/project/{world.project_id}/initial-view-state", json=view
+    )
+    assert put.status_code == 200, put.text
+    after = await get_map(client, world)
+    body = after.json()
+    assert body["map"]["scene"] == {"terrain": {"exaggeration": 2}}
+    assert body["map"]["view"]["mode"] == "3d"
+    assert body["map"]["view"]["projection"] == "globe"
+    assert (body["map"]["view"]["pitch"], body["map"]["view"]["bearing"]) == (70, 200)
+    assert after.headers["etag"] != before.headers["etag"]
+    MapDocument.model_validate(body["map"])

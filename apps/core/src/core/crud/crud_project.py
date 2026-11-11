@@ -170,7 +170,7 @@ class CRUDProject(CRUDBase[Project, Any, Any]):
         # given; fall back to the default otherwise (e.g. a caller with no
         # view state of its own).
         seeded_view_state: dict[str, Any] = (
-            initial_view_state.model_dump()
+            initial_view_state.model_dump(exclude_none=True)
             if initial_view_state is not None
             else dict(DEFAULT_INITIAL_VIEW_STATE)
         )

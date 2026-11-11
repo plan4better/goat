@@ -6,7 +6,8 @@ project layer and one default per dataset. `layer_style_revision` keeps the last
 twenty documents of each named style, only to merge saves based on an older
 revision (spec 13.1). `layer.data_snapshot` and the one-row
 `data_snapshot_cursor` keep the data fingerprint the computed values are compared
-with (spec 12).
+with (spec 12). `project.scene` holds the project's 3D scene (3D spec 5.2); NULL
+means automatic.
 
 A fresh database gets the tables from the models (``init``), so every step checks
 the catalog first, like every revision since the squashed baseline.
@@ -206,6 +207,7 @@ def upgrade() -> None:
         S,
     )
     h.add_column_if_missing("project", sa.Column("locale", sa.Text(), nullable=True), S)
+    h.add_column_if_missing("project", sa.Column("scene", JSONB(), nullable=True), S)
     h.add_column_if_missing(
         "layer", sa.Column("data_snapshot", sa.BigInteger(), nullable=True), S
     )
@@ -213,6 +215,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     h.drop_column_if_present("layer", "data_snapshot", S)
+    h.drop_column_if_present("project", "scene", S)
     h.drop_column_if_present("project", "locale", S)
     h.drop_column_if_present("layer_project_group", "visible", S)
     for column in ("legend_expanded", "time_value", "position", "visible"):

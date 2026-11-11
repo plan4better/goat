@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Any, List, Literal, Optional
 from uuid import UUID
 
+from goatlib.style import limits
 from pydantic import (
     UUID4,
     BaseModel,
@@ -52,18 +53,34 @@ class IProjectCopy(BaseModel):
 class InitialViewState(BaseModel):
     latitude: float = Field(..., description="Latitude", ge=-90, le=90)
     longitude: float = Field(..., description="Longitude", ge=-180, le=180)
-    zoom: int = Field(..., description="Zoom level", ge=0, le=20)
+    zoom: float = Field(..., description="Zoom level", **limits.bounds("view.zoom"))
     min_zoom: int = Field(..., description="Minimum zoom level", ge=0, le=20)
     max_zoom: int = Field(..., description="Maximum zoom level", ge=0, le=20)
-    bearing: int = Field(..., description="Bearing", ge=0, le=360)
-    pitch: int = Field(..., description="Pitch", ge=0, le=60)
+    bearing: float = Field(
+        ...,
+        description="Bearing in degrees; any number is stored as 0 (incl.) to 360 (excl.)",
+        ge=0,
+        lt=360,
+    )
+    pitch: float = Field(..., description="Pitch in degrees", ge=0, le=85)
+    mode: Literal["2d", "3d"] | None = Field(
+        None, description="2D or 3D; missing means 3D when the pitch is above 0"
+    )
+    projection: Literal["mercator", "globe"] | None = Field(
+        None, description="Map projection; missing means mercator"
+    )
 
-    @field_validator("zoom", mode="before")
+    @field_validator("bearing", mode="before")
     @classmethod
-    def convert_zoom(cls: type["InitialViewState"], value: int | float) -> int:
-        if isinstance(value, float):
-            return int(value)
-        return value
+    def normalise_bearing(cls: type["InitialViewState"], value: Any) -> Any:
+        """MapLibre answers -180 to 180; the view stores 0 (incl.) to 360 (excl.)."""
+        if isinstance(value, bool):
+            raise ValueError("bearing must be a number")
+        if not isinstance(value, (int, float)):
+            return value
+        bearing = value % 360
+        # A tiny negative float rounds up to 360.0.
+        return 0 if bearing >= 360 else bearing
 
     @field_validator("max_zoom", mode="after")
     @classmethod
@@ -143,6 +160,10 @@ class IProjectRead(ContentBaseAttributes, DateTimeBase):
     )
     custom_basemaps: list[CustomBasemap] = Field(
         default_factory=list, description="Per-project custom basemap library"
+    )
+    scene: dict[str, Any] | None = Field(
+        None,
+        description="The 3D scene (3D spec 5.2); null = automatic",
     )
     shared_with: dict[str, Any] | None = Field(None, description="Shared with")
     owned_by: dict[str, Any] | None = Field(None, description="Owned by")
@@ -232,6 +253,13 @@ class IProjectBaseUpdate(SQLModel):
             "The builder_revision a builder_config change was made on. A "
             "change on another revision answers 409 changed_elsewhere; without "
             "it the change lands anyway."
+        ),
+    )
+    scene: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "The whole 3D scene (3D spec 5.2), checked by goatlib: an error answers "
+            "422 `invalid_scene` and stores nothing; null or {} resets it to automatic"
         ),
     )
     tags: List[str] | None = Field(

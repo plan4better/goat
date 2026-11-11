@@ -101,3 +101,31 @@ async def test_output_style_comes_from_the_export_results_active_style(
         db_session, world.project_id, UUID(workflow_id)
     )
     assert styles == {"n1": {**GREEN, "opacity": 0.5}}
+
+
+@pytest.mark.asyncio
+async def test_copy_keeps_scene(
+    client: AsyncClient, db_session: AsyncSession, api_style_world: StyleWorld
+) -> None:
+    """A copy (and a template copy, which goes through the same function) keeps
+    the project's scene and its label locale."""
+    world = api_style_world
+    await db_session.execute(
+        text(
+            f"UPDATE {S}.project SET scene = CAST(:s AS jsonb), locale = 'de' "
+            "WHERE id = :p"
+        ),
+        {"s": '{"buildings": false}', "p": world.project_id},
+    )
+    await db_session.commit()
+    copied = await client.post(f"{API}/project/{world.project_id}/copy", json={})
+    assert copied.status_code in (200, 201), copied.text
+    row = (
+        await db_session.execute(
+            text(f"SELECT scene, locale FROM {S}.project WHERE id = :p"),
+            {"p": copied.json()["id"]},
+        )
+    ).one()
+    assert (row.scene, row.locale) == ({"buildings": False}, "de")
+    body = (await client.get(f"{API}/project/{copied.json()['id']}/map")).json()
+    assert body["map"]["scene"] == {"buildings": False}

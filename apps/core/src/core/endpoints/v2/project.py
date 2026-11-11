@@ -47,6 +47,7 @@ from core.schemas.project import (
     request_examples as project_request_examples,
 )
 from core.services.initial_view_state import resolve_initial_view_state
+from core.services.map_document import checked_scene
 
 router = APIRouter()
 
@@ -284,7 +285,8 @@ async def update_project(
         description="Project to update",
     ),
 ) -> IProjectRead:
-    """Update base attributes of a project by its ID.
+    """Update base attributes of a project by its ID; a `scene` is checked by
+    goatlib first (422 `invalid_scene` stores nothing).
 
     A change of `builder_config` raises `builder_revision` and is refused with
     409 `changed_elsewhere` when `builder_base_revision` is not the stored
@@ -306,6 +308,11 @@ async def update_project(
             raise HTTPException(status_code=404, detail="Folder not found") from exc
         await authz.require(
             async_session, "folder", project_in.folder_id, user_id, "write"
+        )
+
+    if "scene" in project_in.model_fields_set:
+        project_in.scene = await checked_scene(
+            async_session, project_id=project_id, scene=project_in.scene
         )
 
     # Update project

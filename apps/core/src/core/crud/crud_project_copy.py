@@ -194,6 +194,8 @@ async def copy_project(
         tags=copy.deepcopy(source_project.tags) if source_project.tags else None,
         layer_order=None,  # will be updated after links are created
         basemap=source_project.basemap,
+        locale=source_project.locale,
+        scene=copy.deepcopy(source_project.scene),
         custom_basemaps=copy.deepcopy(source_project.custom_basemaps)
         if source_project.custom_basemaps
         else [],

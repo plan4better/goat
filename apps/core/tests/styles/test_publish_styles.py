@@ -139,3 +139,44 @@ async def test_stamps_alone_are_no_change(
         lambda doc: doc["classify"][0]["computed"].update(at="2026-10-27T10:00:00Z"),
     )
     assert await unpublished(client, world) == []
+
+
+@pytest.mark.asyncio
+async def test_publish_freezes_scene(
+    client: AsyncClient, db_session: AsyncSession, api_style_world: StyleWorld
+) -> None:
+    """The published map carries the scene of publishing time; a later edit
+    changes the project, not the published map."""
+    world = api_style_world
+    scene_url = f"{API}/project/{world.project_id}"
+    saved = await client.put(scene_url, json={"scene": {"buildings": False}})
+    assert saved.status_code == 200, saved.text
+    view = {
+        "latitude": 47.49,
+        "longitude": 11.09,
+        "zoom": 13,
+        "min_zoom": 0,
+        "max_zoom": 20,
+        "bearing": -20.5,
+        "pitch": 70,
+        "mode": "3d",
+        "projection": "globe",
+    }
+    put = await client.put(
+        f"{API}/project/{world.project_id}/initial-view-state", json=view
+    )
+    assert put.status_code == 200, put.text
+    config = await publish(client, world)
+    assert config["map"]["scene"] == {"buildings": False}
+    published_view = config["map"]["view"]
+    assert (published_view["mode"], published_view["projection"]) == ("3d", "globe")
+    assert (published_view["pitch"], published_view["bearing"]) == (70, 339.5)
+    edited = await client.put(scene_url, json={"scene": {"terrain": False}})
+    assert edited.status_code == 200, edited.text
+    stored = (
+        await db_session.execute(
+            text(f"SELECT config FROM {S}.project_public WHERE project_id = :p"),
+            {"p": world.project_id},
+        )
+    ).scalar_one()
+    assert stored["map"]["scene"] == {"buildings": False}

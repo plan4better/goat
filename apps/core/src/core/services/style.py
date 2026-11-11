@@ -385,6 +385,13 @@ async def save_style(
                     ]
         except StyleCheckUnavailable as error:
             raise _check_error(error) from error
+        if not diff(stored.document, checked) and not is_stale(
+            stored.document, stored.fingerprint
+        ):
+            # Every change was refused (or checked away): the stored values stay,
+            # and so does the revision. A recompute of the same data is not a
+            # change either; its last digits can differ from the stored ones.
+            return stored.read(issues=issues)
         revision = await write_document(session, stored, checked, actor_id)
         if revision is None:
             continue

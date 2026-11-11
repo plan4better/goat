@@ -152,6 +152,12 @@ class Settings(BaseSettings):
     # arrive from private addresses, and those are never geolocated. Unset on
     # hosted GOAT, where callers come from everywhere.
     DEFAULT_PROJECT_VIEW_STATE: str | None = None
+    # The 3D sources the browser loads, the same values as the web's
+    # NEXT_PUBLIC_ twins. Core only checks a project's scene against them:
+    # empty means this installation has no such source, so a scene asking for
+    # terrain (or the building overlay) gets a `scene_source_missing` warning.
+    TERRAIN_TILES_URL: str | None = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
+    BUILDINGS_TILES_URL: str | None = "https://tiles.openfreemap.org/planet"
     # Plan and quotas applied to organizations when no billing system is
     # configured (self-hosted deployments). With billing enabled these come
     # from the billing provider instead.
