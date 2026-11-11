@@ -10,7 +10,9 @@
     "goat: where goatlib sets its own value instead: min, max, zoom, attribute (attribute mappings; default: feature) and",
     "per_feature (classes and rules may set it; default: feature) and choice (a name the compiler turns into the value:",
     "MapLibre's min and max bound what the compiler writes, not the name). Everything else is spec's.",
-    "differs: why goatlib allows more than MapLibre for this setting."
+    "differs: why goatlib allows more than MapLibre for this setting.",
+    "A GOAT-only setting (GOAT draws it itself, no MapLibre property) has an empty maplibre and spec without zoom and",
+    "feature; its goat entry holds its value forms."
   ],
   "settings": {
     "fill.color": {
@@ -1112,9 +1114,9 @@
         "zoom": null
       }
     },
-    "terrain.direction": {
+    "hillshade.direction": {
       "models": [
-        "TerrainRender.direction"
+        "HillshadeRender.direction"
       ],
       "maplibre": [
         "paint_hillshade.hillshade-illumination-direction"
@@ -1129,9 +1131,9 @@
         "zoom": null
       }
     },
-    "terrain.altitude": {
+    "hillshade.altitude": {
       "models": [
-        "TerrainRender.altitude"
+        "HillshadeRender.altitude"
       ],
       "maplibre": [
         "paint_hillshade.hillshade-illumination-altitude"
@@ -1146,9 +1148,9 @@
         "zoom": null
       }
     },
-    "terrain.exaggeration": {
+    "hillshade.exaggeration": {
       "models": [
-        "TerrainRender.exaggeration"
+        "HillshadeRender.exaggeration"
       ],
       "maplibre": [
         "paint_hillshade.hillshade-exaggeration"
@@ -1193,6 +1195,313 @@
       "goat": {
         "min": 0,
         "max": 85
+      }
+    },
+    "scene.terrain.exaggeration": {
+      "models": [
+        "SceneTerrain.exaggeration"
+      ],
+      "maplibre": [
+        "terrain.exaggeration"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null
+      },
+      "goat": {
+        "min": 1,
+        "max": 3,
+        "zoom": null
+      }
+    },
+    "scene.buildings.opacity": {
+      "models": [
+        "SceneBuildings.opacity"
+      ],
+      "maplibre": [
+        "paint_fill-extrusion.fill-extrusion-opacity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "zoom": null
+      }
+    },
+    "scene.sky.color": {
+      "models": [
+        "SceneSky.color"
+      ],
+      "maplibre": [
+        "sky.sky-color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "scene.sky.horizon_color": {
+      "models": [
+        "SceneSky.horizon_color"
+      ],
+      "maplibre": [
+        "sky.horizon-color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "scene.sky.horizon_blend": {
+      "models": [
+        "SceneSky.horizon_blend"
+      ],
+      "maplibre": [
+        "sky.sky-horizon-blend"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "scene.fog.color": {
+      "models": [
+        "SceneFog.color"
+      ],
+      "maplibre": [
+        "sky.fog-color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "scene.fog.horizon_blend": {
+      "models": [
+        "SceneFog.horizon_blend"
+      ],
+      "maplibre": [
+        "sky.horizon-fog-blend"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "scene.fog.ground_blend": {
+      "models": [
+        "SceneFog.ground_blend"
+      ],
+      "maplibre": [
+        "sky.fog-ground-blend"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "scene.glow.strength": {
+      "models": [
+        "SceneGlow.strength"
+      ],
+      "maplibre": [
+        "sky.atmosphere-blend"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "scene.glow.color": {
+      "models": [
+        "SceneGlow.color"
+      ],
+      "maplibre": [],
+      "spec": {
+        "min": null,
+        "max": null
+      },
+      "goat": {
+        "zoom": "blend",
+        "attribute": false,
+        "per_feature": false
+      }
+    },
+    "scene.light.intensity": {
+      "models": [
+        "SceneLight.intensity"
+      ],
+      "maplibre": [
+        "light.intensity"
+      ],
+      "spec": {
+        "min": 0,
+        "max": 1,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "scene.light.color": {
+      "models": [
+        "SceneLight.color"
+      ],
+      "maplibre": [
+        "light.color"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "scene.light.direction": {
+      "models": [
+        "SceneLight.direction"
+      ],
+      "maplibre": [
+        "light.position"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "min": 0,
+        "max": 359.99,
+        "zoom": null
+      }
+    },
+    "scene.light.altitude": {
+      "models": [
+        "SceneLight.altitude"
+      ],
+      "maplibre": [
+        "light.position"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "min": 0,
+        "max": 90,
+        "zoom": null
+      }
+    },
+    "extrude.height": {
+      "models": [
+        "Extrude.height"
+      ],
+      "maplibre": [
+        "paint_fill-extrusion.fill-extrusion-height"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "min": 0,
+        "max": 5000
+      }
+    },
+    "extrude.base": {
+      "models": [
+        "Extrude.base"
+      ],
+      "maplibre": [
+        "paint_fill-extrusion.fill-extrusion-base"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "min": 0,
+        "max": 5000
+      }
+    },
+    "extrude.unit": {
+      "models": [
+        "Extrude.unit"
+      ],
+      "maplibre": [
+        "paint_fill-extrusion.fill-extrusion-height",
+        "paint_fill-extrusion.fill-extrusion-base"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false,
+        "per_feature": false
+      }
+    },
+    "h3.extrude.tallest": {
+      "models": [
+        "H3Extrude.tallest"
+      ],
+      "maplibre": [
+        "paint_fill-extrusion.fill-extrusion-height"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "min": 0,
+        "max": 200000,
+        "attribute": false
+      }
+    },
+    "h3.extrude.base": {
+      "models": [
+        "H3Extrude.base"
+      ],
+      "maplibre": [
+        "paint_fill-extrusion.fill-extrusion-base"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "min": 0,
+        "max": 200000,
+        "attribute": false
       }
     }
   }

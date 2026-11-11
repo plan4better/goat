@@ -2,6 +2,7 @@ import json
 
 import pytest
 from goatlib.style.convert_v0 import convert_v0
+from goatlib.style.parse import parse_for_write
 from goatlib.style.upgrade import palette_id_for_v0, upgrade
 from goatlib.style.validate import validate
 
@@ -47,8 +48,10 @@ def test_raster_brightness_and_hillshade_formulas(contexts: dict) -> None:
         },
         contexts["elevation"],
     )
+    assert hs.document["render"]["type"] == "hillshade"
     assert hs.document["render"]["exaggeration"] == 1
     assert any(n.key == "style.z_factor" for n in hs.lossy)
+    assert errors(hs.document, contexts["elevation"]) == []
 
 
 def test_raster_color_range_becomes_stops(contexts: dict) -> None:
@@ -597,11 +600,11 @@ def test_upgrade_brings_stored_values_inside_maplibres_bounds(contexts: dict) ->
     terrain = {
         "version": 1,
         "kind": "raster",
-        "render": {"type": "terrain", "direction": 360, "exaggeration": 1.5},
+        "render": {"type": "hillshade", "direction": 360, "exaggeration": 1.5},
     }
     r = upgrade(terrain, contexts["elevation"])
     assert r.document["render"] == {
-        "type": "terrain",
+        "type": "hillshade",
         "direction": 0,
         "exaggeration": 1,
     }
@@ -655,7 +658,7 @@ def test_upgrade_keeps_a_document_inside_the_bounds_as_it_is(contexts: dict) -> 
     doc = {
         "version": 1,
         "kind": "raster",
-        "render": {"type": "terrain", "direction": 359, "exaggeration": 1},
+        "render": {"type": "hillshade", "direction": 359, "exaggeration": 1},
     }
     r = upgrade(doc, contexts["elevation"])
     assert r.document is doc and r.lossy == ()
@@ -669,7 +672,7 @@ def test_a_strict_upgrade_leaves_a_current_document_for_the_validator(
     doc = {
         "version": 1,
         "kind": "raster",
-        "render": {"type": "terrain", "direction": 360},
+        "render": {"type": "hillshade", "direction": 360},
     }
     r = upgrade(doc, contexts["elevation"], strict=True)
     assert r.document is doc and r.lossy == ()
@@ -724,3 +727,32 @@ def test_todays_hillshade_and_arrows_convert_inside_maplibres_bounds(
     assert r.document["symbol"]["line"]["offset"] == -2
     assert r.document["symbol"]["arrows"]["spacing"] == 1
     assert errors(r.document, contexts["routes"]) == []
+
+
+def test_stored_terrain_reads_as_hillshade(contexts: dict) -> None:
+    stored = {
+        "version": 1,
+        "kind": "raster",
+        "render": {"type": "terrain", "direction": 315},
+    }
+    result = upgrade(stored, contexts["elevation"])
+    assert result.document["render"] == {"type": "hillshade", "direction": 315}
+    assert stored["render"]["type"] == "terrain"  # the input is not changed
+    assert [n.key for n in result.lossy] == ["/render/type"]
+    assert errors(result.document, contexts["elevation"]) == []
+    outside = {
+        "version": 1,
+        "kind": "raster",
+        "render": {"type": "terrain", "direction": 360},
+    }
+    result = upgrade(outside, contexts["elevation"])
+    assert result.document["render"] == {"type": "hillshade", "direction": 0}
+    assert sorted(n.key for n in result.lossy) == ["/render/direction", "/render/type"]
+
+
+def test_terrain_is_refused_on_write(contexts: dict) -> None:
+    doc = {"version": 1, "kind": "raster", "render": {"type": "terrain"}}
+    assert [i.code for i in parse_for_write(doc)[1]] == ["invalid_value"]
+    assert upgrade(doc, contexts["elevation"], strict=True).document is doc
+    doc["render"]["type"] = "hillshade"
+    assert parse_for_write(doc)[1] == []

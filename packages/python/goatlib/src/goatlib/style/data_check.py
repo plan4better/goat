@@ -407,7 +407,7 @@ class _Checker:
                 "Raster classes computed from the band",
             )
         if (
-            rtype in ("continuous", "terrain")
+            rtype in ("continuous", "hillshade")
             and render.get(
                 "palette", "goat:elevation" if rtype == "continuous" else None
             )
@@ -440,11 +440,11 @@ class _Checker:
         integer = (ctx.data_type or "").startswith(
             ("int", "uint")
         ) or ctx.data_type == "integer"
-        if rtype == "terrain" and (len(ctx.bands) > 1 or ctx.color_table):
+        if rtype == "hillshade" and (len(ctx.bands) > 1 or ctx.color_table):
             self.add(
                 "render_type_mismatch",
                 ["render", "type"],
-                "Terrain needs a single-band elevation raster.",
+                "Hillshade needs a single-band elevation raster.",
             )
         elif rtype == "continuous" and ctx.color_table and integer:
             self.add(

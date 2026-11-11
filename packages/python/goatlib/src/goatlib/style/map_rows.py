@@ -7,6 +7,8 @@ with it; the thumbnail task draws a project in the same order.
 from typing import Any, NamedTuple
 from uuid import UUID
 
+from goatlib.style.scene import upgrade_scene
+
 #: Named styles per project layer (spec 10).
 MAX_STYLES = 10
 
@@ -22,7 +24,7 @@ def map_view(
         and state.get("latitude") is not None
     ):
         view["center"] = [state["longitude"], state["latitude"]]
-    for key in ("zoom", "pitch", "bearing"):
+    for key in ("zoom", "pitch", "bearing", "mode", "projection"):
         if state and state.get(key) is not None:
             view[key] = state[key]
     if bounds and len(bounds) == 4:
@@ -67,11 +69,13 @@ def build_map_document(
     bounds: list[float] | None,
     groups: list[GroupRow],
     layers: list[LayerRow],
+    scene: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The map document (spec 10) from plain rows: the one assembly path of the
     live map request, publishing and the data migration (from a published
     snapshot). Order is the list order, top first (ascending `order`, groups and
-    layers sharing one order per parent); defaults stay out of the entries."""
+    layers sharing one order per parent); defaults stay out of the entries.
+    `scene` (the project's 3D settings) is added only when the project has one."""
     children: dict[int | None, list[tuple[int, int, int, dict[str, Any]]]] = {}
     group_ids = {g.id for g in groups}
     for row in layers:
@@ -113,6 +117,8 @@ def build_map_document(
         document["view"] = view
     if locale:
         document["locale"] = locale
+    if scene is not None:
+        document["scene"] = upgrade_scene(scene)[0]
     document["layers"] = tree(None, frozenset())
     return document
 

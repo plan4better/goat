@@ -19,7 +19,7 @@ from goatlib.style.template import liquid_to_label, problems
 GEOMETRY_PARTS = {
     "point": ("marker", "outline", "label"),
     "line": ("line", "casing", "arrows", "label"),
-    "polygon": ("fill", "outline", "label"),
+    "polygon": ("fill", "outline", "extrude", "label"),
 }
 MAIN_PART = {"point": "marker", "line": "line", "polygon": "fill"}
 MAIN_COLOR = {"point": "marker.color", "line": "line.color", "polygon": "fill.color"}
@@ -248,6 +248,8 @@ def check_document(
     _zoom_range(issues, [], doc, key_path=["min_zoom"])
     _duplicate_ids(issues, doc)
     _classifications(issues, doc, geometry, ctx)
+    if geometry in (None, "polygon"):
+        _extrude(issues, doc, places)
 
     render = doc.get("render")
     if (
@@ -291,6 +293,69 @@ def check_document(
             make_issue("low_opacity", "/opacity", "The layer is under 15% opacity.")
         )
     return issues
+
+
+def _per_feature(value: Any) -> bool:
+    """Whether a value differs by feature: by attribute, a raw field, or zoom stops holding either."""
+    if isinstance(value, dict) and isinstance(value.get("zoom"), list):
+        return any(
+            isinstance(stop, list) and len(stop) == 2 and _per_feature(stop[1])
+            for stop in value["zoom"]
+        )
+    return isinstance(value, dict) and "field" in value
+
+
+def _extrude(
+    issues: list[Issue],
+    doc: dict[str, Any],
+    places: list[tuple[list[str], dict[str, Any], bool]],
+) -> None:
+    """The height part's rules: they apply once any record switches `extrude` on."""
+    if not any(isinstance(record.get("extrude"), dict) for _, record, _ in places):
+        return
+    for path, record, in_override in places:
+        extrude = record.get("extrude")
+        if isinstance(extrude, dict):
+            height, base = extrude.get("height"), extrude.get("base")
+            if _num(height) and _num(base) and base > height:
+                issues.append(
+                    make_issue(
+                        "base_above_height",
+                        to_pointer(path + ["extrude", "base"]),
+                        "The base is above the height.",
+                    )
+                )
+        fill = record.get("fill")
+        if not isinstance(fill, dict):
+            continue
+        if fill.get("pattern") not in (None, "none"):
+            issues.append(
+                make_issue(
+                    "extrude_drops_pattern",
+                    to_pointer(path + ["fill", "pattern"]),
+                    "Heights draw without a fill pattern.",
+                )
+            )
+        if "opacity" in fill and (in_override or _per_feature(fill["opacity"])):
+            issues.append(
+                make_issue(
+                    "override_not_per_feature",
+                    to_pointer(path + ["fill", "opacity"]),
+                    _ONE_OPACITY,
+                )
+            )
+    for ci, c in enumerate(as_list(doc.get("classify"))):
+        if isinstance(c, dict) and c.get("target") == "fill.opacity":
+            issues.append(
+                make_issue(
+                    "override_not_per_feature",
+                    to_pointer(["classify", item_key(c, ci), "target"]),
+                    _ONE_OPACITY,
+                )
+            )
+
+
+_ONE_OPACITY = "Heights draw with one opacity for the whole layer: set the fill opacity fixed or by zoom."
 
 
 def _zoom_range(

@@ -292,3 +292,147 @@ def test_classes_and_rules_may_draw_hollow_markers() -> None:
         ],
     }
     assert check(doc, "point") == []
+
+
+POLY = {"version": 1, "kind": "vector", "geometry": "polygon"}
+
+
+def test_extrude_value_forms() -> None:
+    from goatlib.style.models.layer import VectorStyle
+
+    from .conftest import codes
+
+    for height in (
+        12,
+        {"zoom": [[14, 0], [16, 12]]},
+        {"field": "height"},
+        {"field": "height", "range": [0, 100]},
+    ):
+        assert (
+            check({**POLY, "symbol": {"extrude": {"height": height}}}, "polygon") == []
+        )
+    assert codes(VectorStyle, {**POLY, "symbol": {"extrude": {"height": -1}}}) != []
+
+
+def test_extrude_only_on_polygons() -> None:
+    doc = {**POLY, "geometry": "line", "symbol": {"extrude": {"height": 3}}}
+    assert [i.code for i in check(doc, "line")] == ["part_not_for_geometry"]
+
+
+def test_classes_and_rules_set_heights() -> None:
+    doc = {
+        **POLY,
+        "symbol": {"extrude": {"height": {"field": "levels"}, "unit": "storeys"}},
+        "classify": [
+            {
+                "field": "use",
+                "method": "categories",
+                "classes": [
+                    {"values": ["green"], "extrude": False},
+                    {"values": ["tower"], "extrude": {"height": 120}},
+                ],
+            }
+        ],
+    }
+    assert check(doc, "polygon") == []
+
+
+def test_extrude_unit_is_per_layer() -> None:
+    doc = {
+        **POLY,
+        "symbol": {"extrude": {"unit": "m"}},
+        "rules": [
+            {
+                "when": {"op": "isNull", "args": [{"property": "a"}]},
+                "extrude": {"unit": "storeys"},
+            }
+        ],
+    }
+    assert [i.code for i in check(doc, "polygon")] == ["override_not_per_feature"]
+
+
+def test_base_above_height() -> None:
+    doc = {**POLY, "symbol": {"extrude": {"height": 10, "base": 12}}}
+    assert [(i.code, i.path) for i in check(doc, "polygon")] == [
+        ("base_above_height", "/symbol/extrude/base")
+    ]
+    by_field = {**POLY, "symbol": {"extrude": {"height": {"field": "h"}, "base": 12}}}
+    assert check(by_field, "polygon") == []
+
+
+def test_extrude_drops_pattern() -> None:
+    doc = {
+        **POLY,
+        "symbol": {"fill": {"pattern": "hatch_45"}, "extrude": {"height": 10}},
+    }
+    assert [(i.code, i.level, i.path) for i in check(doc, "polygon")] == [
+        ("extrude_drops_pattern", "warning", "/symbol/fill/pattern")
+    ]
+    flat = {**POLY, "symbol": {"fill": {"pattern": "hatch_45"}, "extrude": False}}
+    assert check(flat, "polygon") == []
+
+
+def test_extrude_opacity_per_layer() -> None:
+    base = {
+        **POLY,
+        "symbol": {
+            "fill": {"opacity": {"zoom": [[10, 1], [16, 0.6]]}},
+            "extrude": {"height": 10},
+        },
+    }
+    assert check(base, "polygon") == []
+    by_attr = {
+        **POLY,
+        "symbol": {
+            "fill": {"opacity": {"field": "x", "range": [0.2, 1]}},
+            "extrude": {"height": 10},
+        },
+    }
+    assert [(i.code, i.path) for i in check(by_attr, "polygon")] == [
+        ("override_not_per_feature", "/symbol/fill/opacity")
+    ]
+    in_class = {
+        **POLY,
+        "symbol": {"extrude": {"height": 10}},
+        "classify": [
+            {
+                "field": "use",
+                "method": "categories",
+                "classes": [{"values": ["a"], "fill": {"opacity": 0.5}}],
+            }
+        ],
+    }
+    assert [(i.code, i.path) for i in check(in_class, "polygon")] == [
+        ("override_not_per_feature", "/classify/0/classes/0/fill/opacity")
+    ]
+    in_rule = {
+        **POLY,
+        "symbol": {"extrude": {"height": 10}},
+        "rules": [
+            {
+                "when": {"op": "isNull", "args": [{"property": "a"}]},
+                "fill": {"opacity": 0.5},
+            }
+        ],
+    }
+    assert [i.code for i in check(in_rule, "polygon")] == ["override_not_per_feature"]
+    flat = {**by_attr, "symbol": {**by_attr["symbol"], "extrude": False}}
+    assert check(flat, "polygon") == []
+
+
+def test_classification_can_target_height() -> None:
+    from goatlib.style.models.classify import TARGET_KINDS
+
+    assert TARGET_KINDS["extrude.height"] == "number"
+    assert TARGET_KINDS["extrude.base"] == "number"
+
+
+def test_classification_of_heights_has_a_default_range() -> None:
+    from goatlib.style.colors import default_range
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    assert default_range("extrude.height") == (0, 50)
+    assert default_range("extrude.base") == (0, 10)
+    assert REFERENCE_DEFAULTS["extrude.height"] == 10
+    assert REFERENCE_DEFAULTS["extrude.base"] == 0
+    assert REFERENCE_DEFAULTS["extrude.unit"] == "m"

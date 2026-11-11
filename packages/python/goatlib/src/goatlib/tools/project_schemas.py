@@ -46,9 +46,11 @@ class ExportProjectMetadata(BaseModel):
     name: str
     description: str | None = None
     basemap: str | None = None
+    locale: str | None = None
     custom_basemaps: list[dict[str, Any]] | None = None
     max_extent: list[float] | None = None
     builder_config: dict[str, Any] | None = None
+    scene: dict[str, Any] | None = None
     tags: list[str] | None = None
     initial_view_state: dict[str, Any] | None = None
     layer_order: list[int] | None = None

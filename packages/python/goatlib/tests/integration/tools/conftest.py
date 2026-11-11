@@ -214,9 +214,11 @@ async def test_schemas(postgres_pool: asyncpg.Pool) -> None:
                 layer_order INTEGER[],
                 space_id UUID,
                 basemap TEXT,
+                locale TEXT,
                 custom_basemaps JSONB,
                 max_extent FLOAT[],
                 builder_config JSONB,
+                scene JSONB,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )

@@ -172,6 +172,14 @@ WeightValue = value_type(
     **limits.forms("label.font.weight", attribute=None),
 )
 
+#: Heights in metres above the ground, fixed, by zoom or by attribute (raw fields
+#: count storeys when the part's `unit` says so).
+HeightValue = value_type(
+    "Height",
+    Annotated[float, Field(**limits.bounds("extrude.height", "extrude.base"))],
+    **limits.forms("extrude.height", "extrude.base", attribute="number"),
+)
+
 
 class _Part(StyleModel):
     min_zoom: ZoomLevel | None = None
@@ -290,6 +298,16 @@ class Label(_Part):
     allow_overlap: bool | None = None
 
 
+class Extrude(_Part):
+    """The height part of polygons: each feature drawn as a volume from `base` to `height`."""
+
+    height: HeightValue | None = None
+    base: HeightValue | None = None
+    #: How raw field values count: metres, or storeys of 3 m. Fixed values, zoom
+    #: stops and attribute ranges are always metres.
+    unit: Literal["m", "storeys"] | None = None
+
+
 def _on_off(v: Any) -> str:
     return "part:off" if v is False else "part:on"
 
@@ -312,6 +330,7 @@ PARTS: dict[str, type[StyleModel]] = {
     "arrows": Arrows,
     "marker": Marker,
     "label": Label,
+    "extrude": Extrude,
 }
 
 #: Keys that hold one value for the whole layer and may be set in one place only (6.1):
@@ -328,6 +347,7 @@ CasingPart = switchable(Casing)
 ArrowsPart = switchable(Arrows)
 MarkerPart = switchable(Marker)
 LabelPart = switchable(Label)
+ExtrudePart = switchable(Extrude)
 
 
 class Symbol(StyleModel):
@@ -338,3 +358,4 @@ class Symbol(StyleModel):
     arrows: ArrowsPart | None = None
     marker: MarkerPart | None = None
     label: LabelPart | None = None
+    extrude: ExtrudePart | None = None

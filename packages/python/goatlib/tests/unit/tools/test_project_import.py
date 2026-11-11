@@ -529,6 +529,19 @@ class TestProjectImportRunner:
         )
         assert meta.custom_basemaps == basemaps
 
+    def test_export_project_metadata_preserves_scene_and_locale(self) -> None:
+        """project.json carries the 3D scene and the label locale; an archive
+        without them (older exports) reads as automatic and the viewer's language."""
+        from goatlib.tools.project_schemas import ExportProjectMetadata
+
+        scene = {"buildings": False, "terrain": {"exaggeration": 1.5}}
+        meta = ExportProjectMetadata.model_validate(
+            {"name": "P", "scene": scene, "locale": "de"}
+        )
+        assert (meta.scene, meta.locale) == (scene, "de")
+        old = ExportProjectMetadata.model_validate({"name": "P"})
+        assert (old.scene, old.locale) == (None, None)
+
     def test_cleanup_on_failure(self, runner: ProjectImportRunner) -> None:
         """DuckLake tables without a layer row dropped, S3 objects deleted.
 

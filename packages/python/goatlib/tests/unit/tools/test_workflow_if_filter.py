@@ -589,7 +589,7 @@ def test_a_dataset_is_saved_in_its_own_style() -> None:
 
     assert run.tool_inputs["n-data"]["source_properties"] == STYLE
     assert run.styled == ["n-data"]
-    assert "properties" not in run.tool_inputs["n-export"]
+    assert "style" not in run.tool_inputs["n-export"]
 
 
 def test_a_dataset_behind_an_if_is_saved_in_its_own_style() -> None:
@@ -603,7 +603,7 @@ def test_a_dataset_behind_an_if_is_saved_in_its_own_style() -> None:
     # The style of the dataset the If passes on, copied into the If's folder.
     assert run.tool_inputs["n-if"]["source_properties"] == STYLE
     assert run.styled == ["n-data"]
-    assert "properties" not in run.tool_inputs["n-export"]
+    assert "style" not in run.tool_inputs["n-export"]
 
 
 def test_a_dataset_without_a_style_gets_the_default_style() -> None:
@@ -612,7 +612,7 @@ def test_a_dataset_without_a_style_gets_the_default_style() -> None:
     run([_dataset(), _export()], [_edge("n-data", "n-export", "input")])
 
     assert run.tool_inputs["n-data"]["source_properties"] is None
-    assert "properties" not in run.tool_inputs["n-export"]
+    assert "style" not in run.tool_inputs["n-export"]
 
 
 def test_a_remembered_style_wins_over_the_datasets_own() -> None:
@@ -623,4 +623,4 @@ def test_a_remembered_style_wins_over_the_datasets_own() -> None:
         [_edge("n-data", "n-export", "input")],
     )
 
-    assert run.tool_inputs["n-export"]["properties"] == REMEMBERED
+    assert run.tool_inputs["n-export"]["style"] == REMEMBERED

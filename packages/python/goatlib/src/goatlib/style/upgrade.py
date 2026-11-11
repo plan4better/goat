@@ -21,9 +21,9 @@ from goatlib.style.pointer import item_key, to_pointer
 #: Settings whose bounds became MapLibre's after documents with values outside
 #: them were stored, by where they sit: in a `render` of a type, in a part.
 _RENDER_BOUNDED = {
-    "terrain": {
-        "direction": "terrain.direction",
-        "exaggeration": "terrain.exaggeration",
+    "hillshade": {
+        "direction": "hillshade.direction",
+        "exaggeration": "hillshade.exaggeration",
     },
     "heatmap": {"radius": "heatmap.radius", "weight": "heatmap.weight"},
 }
@@ -40,8 +40,9 @@ def upgrade(
     from MapLibre; a current document inside them is returned as it is.
 
     `strict=True` is for a document being written: one at the current version is
-    returned as it is, so the validator reports a value outside the bounds as an
-    error. An older document is converted and brought inside either way.
+    returned as it is, so the validator reports a value outside the bounds (or a
+    raster render still called `terrain`) as an error. An older document is
+    converted and brought inside either way.
     """
     if not isinstance(doc, dict) or "version" not in doc:
         return bring_inside(convert_v0(doc if isinstance(doc, dict) else {}, ctx))
@@ -50,13 +51,30 @@ def upgrade(
         current = UpgradeResult(
             document=doc, map_state={}, lossy=(), version_from=CURRENT_VERSION
         )
-        return current if strict else bring_inside(current)
+        return current if strict else bring_inside(rename_hillshade(current))
     return UpgradeResult(
         document=doc,
         map_state={},
         lossy=(),
         version_from=version if isinstance(version, int) else -1,
     )
+
+
+def rename_hillshade(result: UpgradeResult) -> UpgradeResult:
+    """A raster document whose render type is still `terrain` with `hillshade`,
+    the render's name now (`scene.terrain` is the map's 3D terrain). The
+    document is copied only when it changes."""
+    doc = result.document
+    render = doc.get("render")
+    if (
+        doc.get("kind") != "raster"
+        or not isinstance(render, dict)
+        or render.get("type") != "terrain"
+    ):
+        return result
+    doc = {**doc, "render": {**render, "type": "hillshade"}}
+    note = LossyNote("/render/type", "terrain is now called hillshade.")
+    return replace(result, document=doc, lossy=result.lossy + (note,))
 
 
 def palette_id_for_v0(color_range: dict[str, Any]) -> str | list[str]:

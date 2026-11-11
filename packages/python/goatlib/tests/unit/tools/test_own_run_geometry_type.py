@@ -58,7 +58,7 @@ def test_an_empty_catchment_area_has_the_geometry_of_its_kind(
     runner._duckdb_con = con
     monkeypatch.setattr(runner, "_init_db_service", _nothing)
     monkeypatch.setattr(runner, "_close_db_service", _nothing)
-    monkeypatch.setattr(runner, "get_layer_properties", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "get_layer_style", lambda *a, **k: None)
     monkeypatch.setattr(
         runner,
         "process",
@@ -111,7 +111,7 @@ def test_an_empty_catchment_area_is_saved_as_a_layer_of_its_kind(
 
     monkeypatch.setattr(runner, "_init_db_service", _nothing)
     monkeypatch.setattr(runner, "_close_db_service", _nothing)
-    monkeypatch.setattr(runner, "get_layer_properties", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "get_layer_style", lambda *a, **k: None)
     monkeypatch.setattr(
         runner,
         "process",

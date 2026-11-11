@@ -27,6 +27,8 @@ DEFAULT_RANGES: dict[str, tuple[float, float]] = {
     "offset": (0, 8),
     "rotation": (0, 360),
     "max_width": (60, 240),
+    "extrude.height": (0, 50),
+    "extrude.base": (0, 10),
 }
 
 _HEX = re.compile(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})")

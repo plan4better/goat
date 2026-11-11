@@ -8,8 +8,9 @@ the code, tests and READMEs cite its sections as "spec N": "spec 4.2" is section
 The JSON examples are written against the sample datasets below; the comment above an example
 (`<!-- check: districts -->`) names its dataset. Examples meant to fail list the codes they must produce
 (`<!-- expect: ... -->`). MapLibre output examples follow MapLibre's style spec. Codes that need stored state or a
-deployment (`damaged`, `not_supported_yet`, `too_many_features_for_render`, `classes_stale`) are listed without an
-example; the goatlib validator produces them.
+deployment (`damaged`, `not_supported_yet`, `too_many_features_for_render`, `classes_stale`,
+`scene_source_missing`, `buildings_with_extruded_layer`) are listed without an example; the goatlib validator produces
+them.
 
 The sample datasets:
 
@@ -120,6 +121,7 @@ A geometry has a fixed set of parts. Each part has its own keys.
 | `arrows` | line | `placement`, `direction`, `spacing`, `size`, `color` |
 | `marker` | point | `shape`, `color`, `fill`, `size`, `opacity`, `icon`, `icon_color`, `rotation`, `anchor`, `offset`, `allow_overlap` |
 | `label` | all | `text`, `format`, `formats`, `size`, `color`, `halo`, `font`, `placement`, `offset`, `max_width`, `lines`, `priority`, `allow_overlap` |
+| `extrude` | polygon | `height`, `base`, `unit`: the polygon as a volume in 3D (3.6) |
 
 Every part also takes `min_zoom` and `max_zoom`.
 
@@ -561,6 +563,71 @@ its features from zoom 8.
 }
 ```
 
+### 3.6 Height (polygons in 3D)
+
+The part `extrude` draws each polygon as a volume from `base` up to `height`, in metres above the ground. The UI calls
+it "Height". Like every part it is off while absent and `false` switches it off.
+
+> "Districts as volumes, taller where more people live; green areas flat; names on the roofs."
+
+<!-- check: districts -->
+```json
+{
+  "version": 1,
+  "kind": "vector",
+  "symbol": {
+    "fill": { "color": "#d9d9d9", "opacity": 0.9 },
+    "outline": { "color": "#636363", "width": 1 },
+    "extrude": { "height": { "field": "density", "range": [0, 300] } },
+    "label": { "text": "{name}" }
+  },
+  "classify": [
+    {
+      "id": "use",
+      "field": "land_use",
+      "method": "categories",
+      "classes": [{ "id": "green", "values": ["green"], "name": "Green", "extrude": false }]
+    }
+  ]
+}
+```
+
+- `height`: metres, 0 to 5000; fixed, by zoom, by attribute (`{ "field", "range" }`, or a raw field `{ "field" }`
+  whose values are the heights), classes and rules. Default 10 when the part is on without a height. A feature without
+  a value stands at 0.
+- `base`: where the volume starts, metres, 0 to 5000, the same forms; default 0. A fixed base above a fixed height is
+  `base_above_height`; for values from the data the compiler takes the smaller of the two as the base.
+- `unit`: `m` (default) or `storeys`. With `storeys`, a raw field's values count storeys of 3 m
+  (`"height": { "field": "levels" }, "unit": "storeys"`). Fixed values, zoom stops and attribute ranges are always
+  metres. `unit` is per layer.
+- A class or rule with `extrude: false` draws its features flat (height 0) in the same layer. A classification can
+  target `extrude.height` or `extrude.base`; generated classes take their numbers from `range` (default 0 to 50 m for
+  the height, 0 to 10 m for the base).
+- MapLibre draws a volume with one opacity for the whole layer, so while `extrude` is on `fill.opacity` is fixed or by
+  zoom: in a class, in a rule, by attribute or as a classification target it is `override_not_per_feature`. A fill
+  pattern is not drawn on volumes (`extrude_drops_pattern`).
+- The outline stays a line on the ground. Polygon labels (placed at an anchor point inside each polygon) sit on the
+  roof; there is no key for it.
+- Volumes are drawn whatever the view: at pitch 0 they read as flat roofs. Tilting the map is the map document's
+  `view.mode` (10.1), not the layer's.
+- Shadows: MapLibre does not cast shadows from volumes yet. It is adding `fill-extrusion-shadow-opacity` and
+  `fill-extrusion-shadow-color` (style-spec PR #1870, GL JS issue #8830), with the direction taken from the root
+  light that the scene's `light` (10.2) already sets. GOAT will turn them on once GL JS ships them. Sun position
+  returns with shadows.
+
+<!-- check: districts -->
+<!-- expect: base_above_height, extrude_drops_pattern -->
+```json
+{
+  "version": 1,
+  "kind": "vector",
+  "symbol": {
+    "fill": { "color": "#fdb462", "pattern": "hatch_45" },
+    "extrude": { "height": 20, "base": 30 }
+  }
+}
+```
+
 ## 4. Values
 
 A color or number is **fixed**, **by zoom** or **by attribute**. **By classes** is a classification that sets the
@@ -747,6 +814,8 @@ and may be set in one place only (6.1).
 | arrows `spacing` | blend | no | per layer |
 | layer `opacity`, heatmap `intensity`, raster settings | blend | no | per layer |
 | marker `fill` | no | no | per feature |
+| extrude `height`, `base` | blend | yes | per feature |
+| extrude `unit`; fill `opacity` while `extrude` is on (3.6) | no (opacity: blend) | no | per layer |
 | marker `shape`, `allow_overlap`; arrows `placement`, `direction`; label `placement`, `lines`, `priority`, `allow_overlap`, `format`, `formats` | no | no | per layer |
 
 - MapLibre cannot move circles per feature (`circle-translate` takes no data), so a circle marker moves by the base
@@ -1399,10 +1468,11 @@ For labels, label `priority` decides placement and order together.
 | heatmap | a ramp "Low" to "High" |
 | cluster | "Clusters" with a sample, then the base and classes for single points |
 | H3 | the cell value (`count`, or the field with `sum` or `mean`) as classes or a ramp |
+| `extrude` (3.6, 8.3) | one line after the color entries: "Height" with the fixed height, the top of a by-zoom height, the field (with its range, or "levels x 3 m" for storeys), the number of classes, or for H3 the cell value |
 | raster `image` | none, or the file's color table |
 | raster `continuous` | a ramp or classes with the domain and `unit`; `min_label` and `max_label` replace the end values |
 | raster `categorical` | one entry per class |
-| raster `terrain` | "Shaded relief", plus the ramp when it has a palette |
+| raster `hillshade` | "Shaded relief", plus the ramp when it has a palette |
 | map service | the service's legend image for the chosen `service_style`, when it has one |
 
 - **Range text** uses the classification's `format` and `unit`: "under 2,800", "2,800 to 3,600", "6,300 and more".
@@ -1711,6 +1781,37 @@ and there is no feature limit.
 - Computed values differ per resolution: the server stores them in `computed` keyed by resolution (section 12).
 - `opacity` is the hexagons' part opacity; `outline` draws the cell borders.
 
+**Columns.** `extrude` raises each hexagon into a column as tall as its value.
+
+> "Pupils per hexagon as columns up to 1500 m."
+
+<!-- check: schools -->
+```json
+{
+  "version": 1,
+  "kind": "vector",
+  "render": {
+    "type": "h3",
+    "resolution": "auto",
+    "value": { "op": "sum", "field": "pupils" },
+    "palette": "colorbrewer:OrRd",
+    "extrude": { "tallest": 1500, "scale": "sqrt" }
+  },
+  "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 7 } }
+}
+```
+
+- `tallest`: metres, 0 to 200000, fixed or by zoom; default 1000. `base`: metres, 0 to 200000, fixed or by zoom;
+  default 0. `scale`: `linear` or `sqrt` (default). Columns chart a value, they are not real heights, so they go far
+  above the 5000 m of polygon heights (3.6): hexagons drawn at country zoom are about 20 km wide, and a column a few
+  times its width reads as one.
+- The cell value that colors a hexagon sets its height: scaled with `scale` (5.8) over the server's computed minimum and
+  maximum of that resolution (section 12) to 0 to `tallest`, on top of `base`. Without computed values (or where the
+  minimum equals the maximum) every column stands at half of `tallest`. With manual classes the server still computes
+  the range for the heights.
+- While extruded the outline is not drawn; `opacity` stays one value for the layer.
+- `extrude` absent: flat hexagons. `extrude` on any other `render` is `unknown_key`.
+
 ## 9. Raster styles
 
 <!-- check: elevation -->
@@ -1720,7 +1821,7 @@ and there is no feature limit.
   "kind": "raster",
   "opacity": 0.8,
   "resampling": "linear",
-  "render": { "type": "terrain", "method": "standard", "direction": 315, "altitude": 45, "exaggeration": 0.5 },
+  "render": { "type": "hillshade", "method": "standard", "direction": 315, "altitude": 45, "exaggeration": 0.5 },
   "legend": { "show": true, "title": "Elevation", "unit": "m" }
 }
 ```
@@ -1731,7 +1832,7 @@ and there is no feature limit.
   `nearest` for categorical rasters), `render`, `legend`, `popup`;
 - for `image` also the adjustments `brightness`, `contrast`, `saturation` (-1 to 1, default 0) and `hue` (degrees).
 
-**Render types:** `image`, `continuous`, `categorical`, `terrain`. Every type takes:
+**Render types:** `image`, `continuous`, `categorical`, `hillshade`. Every type takes:
 
 - `no_data: { "values": [...] }`, cells with these values are transparent. The default is the file's own no-data
   value from the raster metadata, so most styles leave it out.
@@ -1949,7 +2050,7 @@ break statistics as a vector field's when the style is checked (section 12).
   "version": 1,
   "kind": "raster",
   "opacity": 0.6,
-  "render": { "type": "terrain", "method": "multidirectional", "direction": 315, "altitude": 45, "exaggeration": 0.6, "shadow_color": "#2d3a4a", "highlight_color": "#ffffff" }
+  "render": { "type": "hillshade", "method": "multidirectional", "direction": 315, "altitude": 45, "exaggeration": 0.6, "shadow_color": "#2d3a4a", "highlight_color": "#ffffff" }
 }
 ```
 
@@ -1961,7 +2062,7 @@ break statistics as a vector field's when the style is checked (section 12).
   "version": 1,
   "kind": "raster",
   "render": {
-    "type": "terrain",
+    "type": "hillshade",
     "method": "standard",
     "direction": 315,
     "altitude": 45,
@@ -1984,17 +2085,17 @@ The other methods:
 
 <!-- check: elevation -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "terrain", "method": "combined", "exaggeration": 0.5 } }
+{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "method": "combined", "exaggeration": 0.5 } }
 ```
 
 <!-- check: elevation -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "terrain", "method": "igor", "exaggeration": 0.7 } }
+{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "method": "igor", "exaggeration": 0.7 } }
 ```
 
 <!-- check: elevation -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "terrain", "method": "basic", "shadow_color": "#000000" } }
+{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "method": "basic", "shadow_color": "#000000" } }
 ```
 
 ### 9.7 Popup and zooms on rasters
@@ -2068,7 +2169,7 @@ uses) or `all`. The values come from the raster service's point query.
 - **Legend:** the service's legend image for that style (WMS `GetLegendGraphic`, WMTS `LegendURL`) when it has one.
   `title` and `caption` apply; `"legend": false` hides it.
 - **Not for services** (`render_not_for_source`): `bands`, `no_data`, and the `continuous`, `categorical` and
-  `terrain` renders.
+  `hillshade` renders.
 - **Popup:** the service's feature info (WMS `GetFeatureInfo`) for layers the service marks as queryable, with
   `enabled` and `trigger`. Later (`not_supported_yet`, section 19); the default is no popup.
 - **Where the pictures come from is not style:** `url`, `layers`, `srs`, `dpi`, `tile_size`, the service version and
@@ -2124,7 +2225,121 @@ carry a project's map state.
   MapLibre's `beforeId`.
 - **`locale`** (optional) fixes the number and date locale for public maps, dashboards and print; otherwise the
   viewer's language is used.
-- **`view`**: `center`, `zoom`, `pitch`, `bearing`, and optional `bounds` (the area the map may not leave).
+- **`view`**: `center`, `zoom`, `pitch`, `bearing`, optional `bounds` (the area the map may not leave), and the 3D
+  keys `mode` and `projection` (10.1).
+- **`scene`** (optional): the 3D look of the whole map: terrain, basemap buildings, sky, fog, globe glow and light
+  (10.2).
+
+### 10.1 The view in 3D
+
+| Key | Values | Missing means |
+|---|---|---|
+| `pitch` | degrees, 0 to 85 (GOAT's limit inside MapLibre's wider range) | 0 |
+| `bearing` | degrees, any number; core stores it from 0 up to (not including) 360 | 0 |
+| `mode` | `2d`, `3d` | `3d` when `pitch` is above 0, else `2d` |
+| `projection` | `mercator`, `globe` | `mercator` |
+
+- In `2d` the map neither tilts nor rotates. In `3d` it tilts up to 85 degrees and rotates, and the scene (10.2)
+  applies. Because a missing `mode` follows the pitch, every view stored before 3D keeps its look.
+- `globe` is MapLibre's globe: a sphere when zoomed out that flattens between zoom 8 and 9 and is the flat map from
+  zoom 9. It applies in 2D and 3D.
+- The view is stored per user (each editor opens the project where they left it); a published map carries the
+  publisher's view.
+
+### 10.2 Scene
+
+> "The Alps in 3D in a low evening light from the west, terrain a little steeper, the basemap's buildings, a custom sky."
+
+<!-- check: map -->
+```json
+{
+  "version": 1,
+  "basemap": { "id": "light" },
+  "view": { "center": [11.09, 47.49], "zoom": 13, "pitch": 60, "bearing": 30, "mode": "3d", "projection": "globe" },
+  "layers": [],
+  "scene": {
+    "terrain": { "exaggeration": 1.5 },
+    "buildings": true,
+    "sky": { "color": "#79B8EC", "horizon_blend": { "zoom": [[10, 0.8], [16, 0.4]] } },
+    "light": { "direction": 285, "altitude": 15, "intensity": 0.5 }
+  }
+}
+```
+
+Every key is optional, and a missing key is automatic: its value comes from the auto table (18.9) for the basemap's
+tone, `light` or `dark` (the dark basemap, and solid or custom basemaps with a dark background, are dark; imagery
+follows the app theme). Colors and numbers are fixed or by zoom (4.1, 4.2), never by attribute: they hold for the
+whole map.
+
+| Key | Values | Missing means |
+|---|---|---|
+| `terrain` | `false`, or `{ "exaggeration"? }` | on when the deployment has a terrain source |
+| `terrain.exaggeration` | 1 to 3, fixed | 1 |
+| `buildings` | boolean, or `{ "on"?, "opacity"? }` | on, unless a drawn layer extrudes (3.6, 8.3) |
+| `buildings.on` | boolean, the same as `buildings: true` or `false` | on, unless a drawn layer extrudes |
+| `buildings.opacity` | 0 to 1, fixed | 0.6 |
+| `sky.color`, `sky.horizon_color` | color | auto |
+| `sky.horizon_blend` | 0 to 1 (sky to horizon) | auto |
+| `fog` | `{ "color"?, "horizon_blend"?, "ground_blend"? }` | no fog |
+| `fog.color` | color | auto |
+| `fog.horizon_blend`, `fog.ground_blend` | 0 to 1 (horizon to fog, fog to ground) | auto |
+| `glow.strength` | 0 to 1 (the glow around the globe) | auto |
+| `glow.color` | color (the halo around the globe) | auto |
+| `light.direction` | compass degrees the light comes from, 0 up to (not including) 360, fixed | with the camera |
+| `light.altitude` | degrees above the horizon, 0 to 90, fixed | with the camera |
+| `light.intensity` | 0 to 1 | auto |
+| `light.color` | color | auto |
+
+- **Where it applies.** Terrain, buildings, sky, fog and light apply in 3D; sky and light also on the globe. `terrain`
+  and `buildings` are kept in 2D for the next switch to 3D. Rasters drape over the terrain.
+- **Terrain** is the deployment's elevation source (Terrarium tiles) with a hillshade over it, except over imagery
+  basemaps, which carry their own shading. On the globe the relief shows as shading only; once the map is flat the
+  raised terrain rises (zoom 9 to 10, in ten steps) and stands at full `exaggeration` from zoom 10, so points, labels
+  and volumes draw correctly on the zoomed-out globe. **Buildings** are the basemap's own 3D buildings, or an extrusion of its
+  OpenMapTiles `building` layer, or the deployment's building overlay source on basemaps without heights. Their
+  `opacity` lets flat layers on the ground show through them; a layer's own `extrude` keeps its own opacity.
+- **Sky and fog.** The automatic sky meets the map without a seam: its horizon colour, and a set fog's missing
+  colour, come from the colour of the ground the basemap draws (a vector style's `background` layer, else its lowest
+  fill; a solid basemap's colour), leaning towards the tone's sky and horizon colours; over imagery they are one
+  neutral blue-grey haze. Where no ground colour is known the auto table's colours apply. A missing `fog` draws no
+  fog; a set one shows on terrain, and on the globe it comes in over 1.5 zooms after the globe has handed over to the
+  flat map (MapLibre draws no fog on the globe).
+- **Light.** One light lights the volumes, the terrain, every hillshade on the map and the globe: it comes from
+  `direction` at `altitude`. A missing `light` stands with the viewer instead (MapLibre's viewport light, from 210
+  degrees of the view): volumes are lit from the camera's side and the globe's face stays evenly lit, since
+  MapLibre's globe atmosphere scatters a sun that stands in front of the planet into a white haze; it stands straight
+  behind the planet up to zoom 5 and 30 degrees from straight above from zoom 10. A set light does the same on the
+  zoomed-out globe (below zoom 9, where the atmosphere shows), its sun behind the planet toward `direction`, so the
+  rim is brighter on that side.
+  Sun position returns with shadows (3.6).
+- **Globe glow.** Around the zoomed-out globe GOAT draws a halo behind the map: a thin lighter edge in `glow.color`,
+  then the colour fading out over a quarter of the globe's radius, as strong as `glow.strength` at the map's zoom (0:
+  none). `glow.color` is GOAT's own; MapLibre has no such property. MapLibre's own atmosphere follows the same
+  strength: a hairline rim under the automatic light, a crescent on the sun's side under a set light. The automatic
+  strength is 1: the glow shows only while the globe draws, and fades with its handover to the flat map.
+- **Auto in the UI** means none of `sky`, `fog`, `glow`, `light` is set. A document with only some of them is valid:
+  the others stay automatic. Turning Auto off writes nothing; a section's first edit writes it whole from the values
+  shown, the light as the automatic light stands on the map for the camera then (direction: 210 plus the map's
+  bearing).
+- **Warnings:** `fog_without_terrain` (fog shows only over terrain), `buildings_with_extruded_layer` (buildings
+  switched on, `true` or `{ "on": true }`, while a drawn layer extrudes, so basemap buildings stand inside it),
+  `scene_source_missing` (terrain or buildings the deployment has no source for; only when the caller knows the
+  deployment's sources).
+- The scene belongs to the project (one for all editors); publishing freezes it into the published map document.
+
+<!-- check: map -->
+<!-- expect: fog_without_terrain -->
+```json
+{
+  "version": 1,
+  "basemap": { "id": "light" },
+  "layers": [],
+  "scene": {
+    "terrain": false,
+    "fog": { "color": "#E9F1F7" }
+  }
+}
+```
 
 ## 11. Validation
 
@@ -2211,6 +2426,9 @@ Every write is checked: structure first, then against the data. Each issue has:
 | `mixed_icon_kinds` | info | library and uploaded icons in one marker: compiles to two layers, icons of the two kinds do not sort together |
 | `unclassified_values`, `low_opacity` | info | raster values without a class, a layer under 15% opacity |
 | `unknown_layer`, `unknown_style`, `duplicate_layer`, `unknown_position` | error | map document: a layer or named style that does not exist, a layer twice, a position the basemap does not have |
+| `base_above_height` | error | a fixed `extrude.base` above a fixed `extrude.height` |
+| `extrude_drops_pattern` | warning | a fill pattern on a layer with `extrude` on: extruded polygons draw no pattern |
+| `fog_without_terrain`, `buildings_with_extruded_layer`, `scene_source_missing` | warning | map document `scene`: fog while terrain is off or has no source, basemap buildings while a layer draws its own heights, terrain or buildings the installation has no source for |
 
 Examples that fail:
 
@@ -2243,7 +2461,7 @@ Examples that fail:
 <!-- check: satellite -->
 <!-- expect: unknown_band, render_type_mismatch -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "terrain", "band": 7 } }
+{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "band": 7 } }
 ```
 
 <!-- check: schools -->
@@ -2277,7 +2495,7 @@ to the intent, with the data it came from.
 | categories with `count` (top N) | the N most frequent values as classes, the rest in `other` | `classes` + `computed` |
 | value form without `domain` | the field's minimum and maximum (over the values a `sqrt` scale can map, from 0, or a `log` scale, above 0) | `computed.domain` on the value form |
 | H3 `classify` or continuous H3 colors | breaks or domain per resolution | `render.computed`, keyed by resolution |
-| raster classes with a method | breaks from the band histogram | `render.classify.classes` + `computed` |
+| raster `continuous` or `hillshade` palette without `domain`; raster classes with a method | the minimum and maximum, and class breaks, of the band or band formula, from a sample of its values (the file's overviews) | `render.computed`; `render.classify.classes` + `computed` |
 
 - **`computed`** holds `at`, `data` (the data fingerprint) and `scope`, and on a classification `generated`: the
   target and the value the server wrote per class id.
@@ -2286,6 +2504,7 @@ to the intent, with the data it came from.
     DuckLake's change log (inserts and deletes, also inlined ones, and schema changes; not compaction), so every
     import, edit, workflow run or column change that writes the layer moves it, whoever writes;
   - a promoted catalog layer: its catalog version (one immutable file per version, so it never goes stale);
+    `catalog:unversioned` for an item published without a version, whose promoted copy never changes either;
   - a raster: the file's checksum.
 - **Stale:** the layer's last data change is newer than the stored fingerprint.
 - **A recompute that gives the same values** updates `computed.at` and `computed.data` in place, without a new
@@ -2330,7 +2549,7 @@ to the intent, with the data it came from.
 | Upgrade an older version | goatlib, on read (section 14) |
 | Validate structure | goatlib Pydantic models |
 | Validate against the data | goatlib with the dataset's field metadata, the icon list, the palette catalogue and raster band metadata |
-| Compute (section 12) | goatlib functions over the layer's data in DuckLake; raster histograms in the raster service on import |
+| Compute (section 12) | goatlib functions over the layer's data in DuckLake, and over a sample of a raster's band values (processes, when the style is checked) |
 | Respond | core returns the stored document, with `computed` filled, and the issues; the client replaces its copy and keeps edits made meanwhile (13.1) |
 | Compile to MapLibre | one TypeScript compiler in `apps/web`, used by the map, print, thumbnails and the catalog preview |
 | Render, legend, popup | `apps/web` |
@@ -2508,8 +2727,10 @@ are part of the format: an output that breaks one of them draws something else t
 | highlight | each part's paint reads `["feature-state", "active"]` (and `"hover"`): color, width, halo, opacity; sizes of icons and labels cannot change |
 | heatmap | `heatmap` layer; `heatmap-color` over `heatmap-density`, transparent at 0; `points_from_zoom` = the heatmap's `maxzoom` and the point layers' `minzoom` |
 | cluster | GeoJSON source with `cluster`, `clusterRadius`, `clusterMinPoints`, `clusterMaxZoom` = `cluster_until_zoom` - 1 (MapLibre's is inclusive); cluster layers filter on `["has", "point_count"]`; `count` = `point_count` |
-| H3 | vector source of geoapi's H3 tiles; `fill` + `line` layers over the cell value |
-| raster | `raster` source of the raster service's colored tiles and a `raster` layer (adjustments as in 9.1); terrain: `hillshade` on a terrarium DEM source, the layer opacity in the alpha of its colors |
+| H3 | vector source of geoapi's H3 tiles; `fill` + `line` layers over the cell value; with `extrude`, one `fill-extrusion` layer instead (no outline), height `base` + scaled value x `tallest`, one expression per computed resolution chosen with `match` on the tile's resolution |
+| polygon `extrude` | the fill becomes one `fill-extrusion` layer with the fill layer's id: color from the fill cascade, `fill-extrusion-height` from the `extrude.height` cascade (raw storeys x 3, `false` and missing values 0), `fill-extrusion-base` = `["min", base, height]`, `fill-extrusion-opacity` = fill opacity x layer opacity; no pattern layer, no sort key; point-placed labels get `symbol-height-offset` = the height |
+| map document `scene` and `view` | not layers: root `projection` (`globe` as a zoom expression from `vertical-perspective` at 8 to `mercator` at 9), `terrain` (a `raster-dem` source of the deployment's Terrarium tiles), `sky` and `light` (a set light's position from `global-state`; a missing one is a `viewport` light), a terrain hillshade layer and the building layer `goat-buildings` (`buildings.opacity` is its `fill-extrusion-opacity` and that of the basemap's own 3D building layers); every hillshade's illumination reads the light from `global-state`. `maxPitch` 85 in 3D, 0 in 2D |
+| raster | `raster` source of the raster service's colored tiles and a `raster` layer (adjustments as in 9.1); hillshade: a `hillshade` layer on a terrarium DEM source, the layer opacity in the alpha of its colors |
 | map service | `raster` source with the service's tile URL (WMS `GetMap` with `{bbox-epsg-3857}` and `STYLES` = `service_style`; WMTS with `Style`; XYZ as given) and a `raster` layer with `raster-opacity`, the adjustments as in 9.1 and `raster-resampling` |
 
 > "Cycle routes with a white edge, width by zoom, shifted 2 px, an arrow in the middle; planned routes dashed, faded,
@@ -2727,7 +2948,7 @@ not kept.
 | raster `style_type: image`, `brightness_min`, `brightness_max`, `contrast`, `saturation`, `hue` | `render.type: image` and adjustments | **brightness = brightness_min if > 0, else brightness_max - 1** | **yes** when both are set |
 | raster `color_range` (`color_map`, `interpolate`, `min_value`, `max_value`, `no_data_color`, `min_label`, `max_label`) | `render.type: continuous` with `stops`, `interpolate` (`false` to `nearest`), `legend.min_label`, `legend.max_label` | `no_data_color` dropped (no-data is transparent) | **yes** for `no_data_color` |
 | raster `categories` (`categories`, `default_color`) | `render.type: categorical`, `classes`, `other_color` | | no |
-| raster `hillshade` (`azimuth`, `altitude`, `z_factor`) | `render.type: terrain` (`direction`, `altitude`, `exaggeration`) | **exaggeration = min(1, z_factor / 2)**, checked visually in the dry run; azimuth 360 is direction 0 | **yes** above 2 |
+| raster `hillshade` (`azimuth`, `altitude`, `z_factor`) | `render.type: hillshade` (`direction`, `altitude`, `exaggeration`) | **exaggeration = min(1, z_factor / 2)**, checked visually in the dry run; azimuth 360 is direction 0 | **yes** above 2 |
 | WMS, WMTS, XYZ layers: `opacity`, `min_zoom`, `max_zoom`, `resampling`, `legend` | a map service style (9.8) with the same keys and `render.type: image`; `service_style` left out (the first style, as drawn today); `visibility` to the map document; the service keys (`url`, `layers`, `srs`, `dpi`, `legend_urls`, `tile_size`) stay on the layer | | no |
 
 Where a key is absent, the converter writes what today's renderer draws, not the web form's defaults: the
@@ -2817,6 +3038,9 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 | `label.lines` | list of `{ size, color, font }` per line | F (per layer) | none |
 | `label.priority` | `{ field, top }` | F (per layer) | none |
 | `label.allow_overlap` | boolean | F (per layer) | false |
+| `extrude.height` | metres 0 to 5000 | F Z A C | 10 |
+| `extrude.base` | metres 0 to 5000 | F Z A C | 0 |
+| `extrude.unit` | `m`, `storeys` | F (per layer) | `m` |
 | every part `.min_zoom`, `.max_zoom` | number 0 to 24 | F | the layer's |
 
 ### 18.3 Value forms and format
@@ -2865,7 +3089,7 @@ part overrides.
 | `features` | none |
 | `heatmap` | `radius` (F Z, 26), `intensity` (F Z, 1), `opacity` (F Z, 1), `weight` (F A, 1), `palette` (`d3:magma`), `reverse`, `points_from_zoom` (none) |
 | `cluster` | `radius` (50), `cluster_until_zoom` (14), `min_points` (2), `symbol` (parts over `count`) |
-| `h3` | `resolution` (`auto`), `value` (`{ "op": "count" }`), `palette` (`colorbrewer:OrRd`), `reverse`, `classify` (shape of 18.4 without `field`), `opacity` (0.85), `outline`, `points_from_zoom` (none), `computed` (server, per resolution) |
+| `h3` | `resolution` (`auto`), `value` (`{ "op": "count" }`), `palette` (`colorbrewer:OrRd`), `reverse`, `classify` (shape of 18.4 without `field`), `opacity` (0.85), `outline`, `points_from_zoom` (none), `extrude` (`tallest` F Z 1000, `base` F Z 0, `scale` `sqrt`; absent: flat), `computed` (server, per resolution) |
 
 ### 18.8 Raster
 
@@ -2875,7 +3099,44 @@ part overrides.
 | `image` | `bands` (`[1, 2, 3]` for 3+ bands), `no_data`; on a map service only `service_style` (the service's first style) |
 | `continuous` | `band` (1), `palette` (`goat:elevation`) + `reverse` + `domain` (band min and max), or `stops`; `interpolate` (`linear`, `nearest`); `outside` (`clamp`); `classify`; `no_data` |
 | `categorical` | `band` (1), `classes` (`value`, `name`, `color`, `visible`), `other_color` (transparent), `no_data` |
-| `terrain` | `band` (1), `method` (`standard`), `direction` (315), `altitude` (45), `exaggeration` (0.5), `shadow_color` (`#000000`), `highlight_color` (`#ffffff`), `accent_color` (`#000000`), optional `palette`, `domain`, `classify`, `outside`; `no_data` |
+| `hillshade` | `band` (1), `method` (`standard`), `direction` (315), `altitude` (45), `exaggeration` (0.5), `shadow_color` (`#000000`), `highlight_color` (`#ffffff`), `accent_color` (`#000000`), optional `palette`, `domain`, `classify`, `outside`; `no_data` |
+
+### 18.9 Map document `view` and `scene`
+
+| Key | Type | Forms | Default |
+|---|---|---|---|
+| `view.pitch` | degrees 0 to 85 | F | 0 |
+| `view.bearing` | degrees | F | 0 |
+| `view.mode` | `2d`, `3d` | F | `3d` when `pitch` > 0, else `2d` |
+| `view.projection` | `mercator`, `globe` | F | `mercator` |
+| `scene.terrain` | `false` or object | F | on with a terrain source |
+| `scene.terrain.exaggeration` | 1 to 3 | F | 1 |
+| `scene.buildings` | boolean or object | F | on, unless a drawn layer extrudes |
+| `scene.buildings.on` | boolean | F | on, unless a drawn layer extrudes |
+| `scene.buildings.opacity` | 0 to 1 | F | 0.6 |
+| `scene.sky.*`, `scene.fog.*`, `scene.glow.*`, `scene.light.intensity`, `scene.light.color` | color or 0 to 1 | F Z | auto table |
+| `scene.fog` | object | F | no fog |
+| `scene.light.direction`, `scene.light.altitude` | degrees: 0 up to 360, 0 to 90 | F | with the camera (10.2) |
+
+The auto table, by the basemap's tone (published in the JSON Schema as `x-scene-auto`, with `x-scene-defaults`;
+goatlib `style/scene.py`):
+
+| Key | light | dark |
+|---|---|---|
+| `sky.color` | `#79B8EC` | `#1D4877` |
+| `sky.horizon_color` | `#DFEEFA` | `#3B6A99` |
+| `sky.horizon_blend` | 0.6 | 0.7 |
+| `fog.color` | `#E9F1F7` | `#1B2633` |
+| `fog.horizon_blend` | 0.5 | 0.5 |
+| `fog.ground_blend` | 0.6 | 0.6 |
+| `glow.strength` | 1 | 1 |
+| `glow.color` | `#6EA5F5` | `#6EA5F5` |
+| `light.intensity` | 0.45 | 0.35 |
+| `light.color` | `#FFFFFF` | `#FFFFFF` |
+
+The table's fog values are where a set fog starts: a missing `fog` draws none. `sky.horizon_color` and `fog.color`
+give way to the basemap's ground colour where the map knows it (10.2), and a missing light's direction and height
+stand with the camera.
 
 ## 19. Scope
 
@@ -2885,14 +3146,19 @@ what it cannot render yet, so the AI and the panel never offer it:
 | First release | Later (in the format, `not_supported_yet` until built) |
 |---|---|
 | vector parts, value forms, classifications, rules, order, legend, time, popup, named styles, map document | H3 (geoapi H3 tiles) |
-| heatmap, clusters, map services (9.8) | raster band formulas and values computed from a band's histogram (raster service) |
-| raster `image`, `continuous`, `categorical`, `terrain` (9) | map service popups (`GetFeatureInfo`) |
+| heatmap, clusters, map services (9.8) | raster band formulas, ranges and class breaks computed from a band's values, colored tiles and point values (raster service) |
+| raster `image`, `continuous`, `categorical`, `hillshade` (9) | map service popups (`GetFeatureInfo`) |
+| 3D: polygon `extrude` (3.6), H3 columns (8.3), `view.mode` and `view.projection` (10.1), `scene` (10.2) | |
 
 GOAT's services draw H3 and the raster service's constructs; map service popups answer `not_supported_yet`.
 
+3D covers what MapLibre draws natively: tilt and rotation, terrain, basemap buildings, volumes from polygons and H3
+hexagons, sky, fog, the globe's glow and one light. Not in it: 3D models (glTF, 3D Tiles), extruded points and lines,
+a user's elevation layer as the terrain, terrain exaggeration by zoom, and cast shadows (3.6: they follow once MapLibre
+ships them).
+
 **Not in 1.0, on purpose:**
 
-- `extrude` (3D), and with it light, terrain and label heights: one later package;
 - a highlight color and width (the active feature uses GOAT's highlight);
 - `font.italic`, label backgrounds, text alignment;
 - dash patterns as lists, line patterns, double lines, line gradients;
@@ -2915,6 +3181,8 @@ GOAT's services draw H3 and the raster service's constructs; map service popups 
 | features hidden below a zoom | `min_zoom` on the class or rule (whole number) |
 | labels | `label.text` with `{field}`; numbers through `format` |
 | many points as a surface | `render: heatmap`; as counts per area, `render: h3` |
+| buildings or areas as volumes | `symbol.extrude.height` (a number field: `{ "field" }`, with `unit: "storeys"` for levels) |
+| a 3D view of the map | the map document's `view.mode: "3d"` and a `pitch`; leave `scene` out unless asked (automatic) |
 
 Common mistakes the validator answers with a fix:
 

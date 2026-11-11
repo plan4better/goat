@@ -164,3 +164,65 @@ def test_coarser_resolutions_roll_up_to_what_grouping_the_points_gives(
         rows = [v for _, v, _ in duck.execute(sql).fetchall()]
         stored = out["render"]["computed"]["resolutions"][str(res)]
         assert (stored["min"], stored["max"]) == pytest.approx((min(rows), max(rows)))
+
+
+def test_h3_extrude() -> None:
+    from goatlib.style.models.layer import VectorStyle
+
+    from .conftest import codes
+
+    doc: dict = {
+        "version": 1,
+        "kind": "vector",
+        "geometry": "point",
+        "render": {
+            "type": "h3",
+            "value": {"op": "sum", "field": "pupils"},
+            "extrude": {"tallest": 1700, "scale": "sqrt"},
+        },
+    }
+    assert codes(VectorStyle, doc) == []
+    doc["render"]["extrude"] = {"tallest": {"zoom": [[8, 3000], [13, 600]]}, "base": 20}
+    assert codes(VectorStyle, doc) == []
+    doc["render"]["extrude"] = {"scale": "log"}
+    assert codes(VectorStyle, doc) == ["invalid_value"]
+    # Columns chart a value over hexagons up to ~20 km wide: far taller than a
+    # building (polygon heights stop at 5000 m).
+    doc["render"]["extrude"] = {"tallest": {"zoom": [[5, 60000], [13, 600]]}}
+    assert codes(VectorStyle, doc) == []
+    doc["render"]["extrude"] = {"tallest": 200001}
+    assert codes(VectorStyle, doc) == ["invalid_value"]
+    doc["render"]["extrude"] = {"tallest": {"field": "x", "range": [0, 100]}}
+    assert codes(VectorStyle, doc) == ["value_form_not_allowed"]
+
+
+def test_extrude_only_on_h3_renders() -> None:
+    from goatlib.style.models.layer import VectorStyle
+
+    from .conftest import codes
+
+    doc = {"version": 1, "kind": "vector", "render": {"type": "heatmap", "extrude": {}}}
+    assert codes(VectorStyle, doc) == ["unknown_key"]
+
+
+def test_h3_extrude_defaults() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    assert REFERENCE_DEFAULTS["h3.extrude.tallest"] == 1000
+    assert REFERENCE_DEFAULTS["h3.extrude.base"] == 0
+    assert REFERENCE_DEFAULTS["h3.extrude.scale"] == "sqrt"
+
+
+def test_columns_over_manual_classes_need_the_cell_range(duck) -> None:
+    manual = {"method": "manual", "classes": [{"to": 3}, {"from": 3}]}
+    style = doc(resolution=8, classify=manual, extrude={"tallest": 500})
+    assert computed_missing(style)
+    out, _ = compute_into(duck, "t", style, geometry="point", fingerprint="f")
+    assert out["render"]["computed"]["resolutions"]["8"] == {"min": 1, "max": 3}
+    assert not computed_missing(out)
+    assert [
+        i.code for i in validate(out, DataContext(kind="vector", geometry="point"))
+    ] == []
+    assert needed_stats(
+        doc(resolution=8, classify=manual, extrude={"tallest": 500})
+    ) == [("h3", "count", "", "8", "", "")]

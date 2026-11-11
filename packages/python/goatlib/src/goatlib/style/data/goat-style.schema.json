@@ -1005,6 +1005,26 @@
      "default": null,
      "title": "Label"
     },
+    "extrude": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "$ref": "#/$defs/Extrude"
+        },
+        {
+         "const": false,
+         "type": "boolean"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Extrude"
+    },
     "id": {
      "anyOf": [
       {
@@ -1166,6 +1186,9 @@
         "casing.color",
         "casing.opacity",
         "casing.width",
+        "extrude.base",
+        "extrude.height",
+        "extrude.unit",
         "fill.color",
         "fill.opacity",
         "fill.pattern",
@@ -2024,6 +2047,112 @@
    "title": "DividerBlock",
    "type": "object"
   },
+  "Extrude": {
+   "additionalProperties": false,
+   "description": "The height part of polygons: each feature drawn as a volume from `base` to `height`.",
+   "properties": {
+    "min_zoom": {
+     "anyOf": [
+      {
+       "maximum": 24,
+       "minimum": 0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Min Zoom"
+    },
+    "max_zoom": {
+     "anyOf": [
+      {
+       "maximum": 24,
+       "minimum": 0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Max Zoom"
+    },
+    "height": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "maximum": 5000,
+         "minimum": 0,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomHeight"
+        },
+        {
+         "$ref": "#/$defs/ByAttributeNumber"
+        },
+        {
+         "$ref": "#/$defs/RawField"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Height"
+    },
+    "base": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "maximum": 5000,
+         "minimum": 0,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomHeight"
+        },
+        {
+         "$ref": "#/$defs/ByAttributeNumber"
+        },
+        {
+         "$ref": "#/$defs/RawField"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Base"
+    },
+    "unit": {
+     "anyOf": [
+      {
+       "enum": [
+        "m",
+        "storeys"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Unit"
+    }
+   },
+   "title": "Extrude",
+   "type": "object"
+  },
   "FeaturesRender": {
    "additionalProperties": false,
    "properties": {
@@ -2490,6 +2619,72 @@
    "title": "H3Computed",
    "type": "object"
   },
+  "H3Extrude": {
+   "additionalProperties": false,
+   "description": "Hexagons drawn as columns: the cell value, scaled, sets each column's height\nfrom `base` up to `base + tallest`.",
+   "properties": {
+    "tallest": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "maximum": 200000,
+         "minimum": 0,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomH3Height"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Tallest"
+    },
+    "base": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "maximum": 200000,
+         "minimum": 0,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomH3Height"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Base"
+    },
+    "scale": {
+     "anyOf": [
+      {
+       "enum": [
+        "linear",
+        "sqrt"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Scale"
+    }
+   },
+   "title": "H3Extrude",
+   "type": "object"
+  },
   "H3Outline": {
    "additionalProperties": false,
    "properties": {
@@ -2630,6 +2825,17 @@
      ],
      "default": null,
      "title": "Points From Zoom"
+    },
+    "extrude": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/H3Extrude"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
     },
     "computed": {
      "anyOf": [
@@ -2908,6 +3114,230 @@
     "field"
    ],
    "title": "HeatmapWeight",
+   "type": "object"
+  },
+  "HillshadeRender": {
+   "additionalProperties": false,
+   "properties": {
+    "band": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "$ref": "#/$defs/BandFormula"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Band"
+    },
+    "no_data": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/NoData"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "palette": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Palette"
+    },
+    "reverse": {
+     "default": false,
+     "title": "Reverse",
+     "type": "boolean"
+    },
+    "domain": {
+     "anyOf": [
+      {
+       "maxItems": 2,
+       "minItems": 2,
+       "prefixItems": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "number"
+        }
+       ],
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Domain"
+    },
+    "classify": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ColorClassification"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "outside": {
+     "anyOf": [
+      {
+       "enum": [
+        "clamp",
+        "hide"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Outside"
+    },
+    "computed": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Computed"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "type": {
+     "const": "hillshade",
+     "title": "Type",
+     "type": "string"
+    },
+    "method": {
+     "anyOf": [
+      {
+       "enum": [
+        "standard",
+        "multidirectional",
+        "combined",
+        "igor",
+        "basic"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Method"
+    },
+    "direction": {
+     "anyOf": [
+      {
+       "maximum": 359,
+       "minimum": 0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Direction"
+    },
+    "altitude": {
+     "anyOf": [
+      {
+       "maximum": 90,
+       "minimum": 0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Altitude"
+    },
+    "exaggeration": {
+     "anyOf": [
+      {
+       "maximum": 1,
+       "minimum": 0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Exaggeration"
+    },
+    "shadow_color": {
+     "anyOf": [
+      {
+       "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Shadow Color"
+    },
+    "highlight_color": {
+     "anyOf": [
+      {
+       "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Highlight Color"
+    },
+    "accent_color": {
+     "anyOf": [
+      {
+       "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Accent Color"
+    }
+   },
+   "required": [
+    "type"
+   ],
+   "title": "HillshadeRender",
    "type": "object"
   },
   "ImageBlock": {
@@ -3924,6 +4354,17 @@
      ],
      "default": null,
      "title": "Layers"
+    },
+    "scene": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Scene"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
     }
    },
    "required": [
@@ -5154,7 +5595,7 @@
          "$ref": "#/$defs/CategoricalRender"
         },
         {
-         "$ref": "#/$defs/TerrainRender"
+         "$ref": "#/$defs/HillshadeRender"
         }
        ]
       },
@@ -5475,6 +5916,26 @@
      "default": null,
      "title": "Label"
     },
+    "extrude": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "$ref": "#/$defs/Extrude"
+        },
+        {
+         "const": false,
+         "type": "boolean"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Extrude"
+    },
     "id": {
      "anyOf": [
       {
@@ -5540,6 +6001,410 @@
     "when"
    ],
    "title": "Rule",
+   "type": "object"
+  },
+  "Scene": {
+   "additionalProperties": false,
+   "properties": {
+    "terrain": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "$ref": "#/$defs/SceneTerrain"
+        },
+        {
+         "const": false,
+         "type": "boolean"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Terrain"
+    },
+    "buildings": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "$ref": "#/$defs/SceneBuildings"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Buildings"
+    },
+    "sky": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/SceneSky"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "fog": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/SceneFog"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "glow": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/SceneGlow"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "light": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/SceneLight"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "title": "Scene",
+   "type": "object"
+  },
+  "SceneBuildings": {
+   "additionalProperties": false,
+   "description": "3D buildings: `on` (missing: automatic) and how opaque they are.",
+   "properties": {
+    "on": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "On"
+    },
+    "opacity": {
+     "anyOf": [
+      {
+       "maximum": 1,
+       "minimum": 0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Opacity"
+    }
+   },
+   "title": "SceneBuildings",
+   "type": "object"
+  },
+  "SceneFog": {
+   "additionalProperties": false,
+   "properties": {
+    "color": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+         "type": "string"
+        },
+        {
+         "$ref": "#/$defs/ZoomSceneColor"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Color"
+    },
+    "horizon_blend": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "maximum": 1,
+         "minimum": 0,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomSceneUnit"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Horizon Blend"
+    },
+    "ground_blend": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "maximum": 1,
+         "minimum": 0,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomSceneUnit"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Ground Blend"
+    }
+   },
+   "title": "SceneFog",
+   "type": "object"
+  },
+  "SceneGlow": {
+   "additionalProperties": false,
+   "description": "The glow around the globe: how strong it is, and the colour of GOAT's halo.",
+   "properties": {
+    "strength": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "maximum": 1,
+         "minimum": 0,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomSceneUnit"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Strength"
+    },
+    "color": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+         "type": "string"
+        },
+        {
+         "$ref": "#/$defs/ZoomSceneColor"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Color"
+    }
+   },
+   "title": "SceneGlow",
+   "type": "object"
+  },
+  "SceneLight": {
+   "additionalProperties": false,
+   "description": "Where the light comes from: a compass direction and an altitude above the\nhorizon, with its intensity and colour.",
+   "properties": {
+    "direction": {
+     "anyOf": [
+      {
+       "maximum": 359.99,
+       "minimum": 0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Direction"
+    },
+    "altitude": {
+     "anyOf": [
+      {
+       "maximum": 90,
+       "minimum": 0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Altitude"
+    },
+    "intensity": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "maximum": 1,
+         "minimum": 0,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomSceneUnit"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Intensity"
+    },
+    "color": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+         "type": "string"
+        },
+        {
+         "$ref": "#/$defs/ZoomSceneColor"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Color"
+    }
+   },
+   "title": "SceneLight",
+   "type": "object"
+  },
+  "SceneSky": {
+   "additionalProperties": false,
+   "properties": {
+    "color": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+         "type": "string"
+        },
+        {
+         "$ref": "#/$defs/ZoomSceneColor"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Color"
+    },
+    "horizon_color": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+         "type": "string"
+        },
+        {
+         "$ref": "#/$defs/ZoomSceneColor"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Horizon Color"
+    },
+    "horizon_blend": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "maximum": 1,
+         "minimum": 0,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomSceneUnit"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Horizon Blend"
+    }
+   },
+   "title": "SceneSky",
+   "type": "object"
+  },
+  "SceneTerrain": {
+   "additionalProperties": false,
+   "properties": {
+    "exaggeration": {
+     "anyOf": [
+      {
+       "maximum": 3,
+       "minimum": 1,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Exaggeration"
+    }
+   },
+   "title": "SceneTerrain",
    "type": "object"
   },
   "Stop": {
@@ -5704,233 +6569,29 @@
      ],
      "default": null,
      "title": "Label"
+    },
+    "extrude": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "$ref": "#/$defs/Extrude"
+        },
+        {
+         "const": false,
+         "type": "boolean"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Extrude"
     }
    },
    "title": "Symbol",
-   "type": "object"
-  },
-  "TerrainRender": {
-   "additionalProperties": false,
-   "properties": {
-    "band": {
-     "anyOf": [
-      {
-       "type": "integer"
-      },
-      {
-       "$ref": "#/$defs/BandFormula"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Band"
-    },
-    "no_data": {
-     "anyOf": [
-      {
-       "$ref": "#/$defs/NoData"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null
-    },
-    "palette": {
-     "anyOf": [
-      {
-       "type": "string"
-      },
-      {
-       "items": {
-        "type": "string"
-       },
-       "type": "array"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Palette"
-    },
-    "reverse": {
-     "default": false,
-     "title": "Reverse",
-     "type": "boolean"
-    },
-    "domain": {
-     "anyOf": [
-      {
-       "maxItems": 2,
-       "minItems": 2,
-       "prefixItems": [
-        {
-         "type": "number"
-        },
-        {
-         "type": "number"
-        }
-       ],
-       "type": "array"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Domain"
-    },
-    "classify": {
-     "anyOf": [
-      {
-       "$ref": "#/$defs/ColorClassification"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null
-    },
-    "outside": {
-     "anyOf": [
-      {
-       "enum": [
-        "clamp",
-        "hide"
-       ],
-       "type": "string"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Outside"
-    },
-    "computed": {
-     "anyOf": [
-      {
-       "$ref": "#/$defs/Computed"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null
-    },
-    "type": {
-     "const": "terrain",
-     "title": "Type",
-     "type": "string"
-    },
-    "method": {
-     "anyOf": [
-      {
-       "enum": [
-        "standard",
-        "multidirectional",
-        "combined",
-        "igor",
-        "basic"
-       ],
-       "type": "string"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Method"
-    },
-    "direction": {
-     "anyOf": [
-      {
-       "maximum": 359,
-       "minimum": 0,
-       "type": "number"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Direction"
-    },
-    "altitude": {
-     "anyOf": [
-      {
-       "maximum": 90,
-       "minimum": 0,
-       "type": "number"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Altitude"
-    },
-    "exaggeration": {
-     "anyOf": [
-      {
-       "maximum": 1,
-       "minimum": 0,
-       "type": "number"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Exaggeration"
-    },
-    "shadow_color": {
-     "anyOf": [
-      {
-       "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
-       "type": "string"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Shadow Color"
-    },
-    "highlight_color": {
-     "anyOf": [
-      {
-       "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
-       "type": "string"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Highlight Color"
-    },
-    "accent_color": {
-     "anyOf": [
-      {
-       "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
-       "type": "string"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Accent Color"
-    }
-   },
-   "required": [
-    "type"
-   ],
-   "title": "TerrainRender",
    "type": "object"
   },
   "TextBlock": {
@@ -6329,6 +6990,38 @@
      ],
      "default": null,
      "title": "Bounds"
+    },
+    "mode": {
+     "anyOf": [
+      {
+       "enum": [
+        "2d",
+        "3d"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Mode"
+    },
+    "projection": {
+     "anyOf": [
+      {
+       "enum": [
+        "mercator",
+        "globe"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Projection"
     }
    },
    "title": "View",
@@ -6445,6 +7138,53 @@
    "title": "ZoomDegrees",
    "type": "object"
   },
+  "ZoomH3Height": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "maximum": 200000,
+        "minimum": 0,
+        "type": "number"
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomH3Height",
+   "type": "object"
+  },
   "ZoomHeatmapOpacity": {
    "additionalProperties": false,
    "properties": {
@@ -6536,6 +7276,63 @@
     "zoom"
    ],
    "title": "ZoomHeatmapRadius",
+   "type": "object"
+  },
+  "ZoomHeight": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "oneOf": [
+         {
+          "maximum": 5000,
+          "minimum": 0,
+          "type": "number"
+         },
+         {
+          "$ref": "#/$defs/ByAttributeNumber"
+         },
+         {
+          "$ref": "#/$defs/RawField"
+         }
+        ]
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomHeight",
    "type": "object"
   },
   "ZoomIntensity": {
@@ -6852,6 +7649,99 @@
     "zoom"
    ],
    "title": "ZoomPx",
+   "type": "object"
+  },
+  "ZoomSceneColor": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+        "type": "string"
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomSceneColor",
+   "type": "object"
+  },
+  "ZoomSceneUnit": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "maximum": 1,
+        "minimum": 0,
+        "type": "number"
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomSceneUnit",
    "type": "object"
   },
   "ZoomSpacing": {
@@ -11258,6 +12148,9 @@
   ],
   "label.max_width": 120,
   "label.allow_overlap": false,
+  "extrude.height": 10,
+  "extrude.base": 0,
+  "extrude.unit": "m",
   "format.decimals": "auto",
   "format.thousands_separator": true,
   "format.abbreviate": false,
@@ -11280,6 +12173,9 @@
   "h3.opacity": 0.85,
   "h3.outline.color": "#ffffff",
   "h3.outline.width": 1,
+  "h3.extrude.tallest": 1000,
+  "h3.extrude.base": 0,
+  "h3.extrude.scale": "sqrt",
   "raster.opacity": 1,
   "raster.resampling": "linear",
   "raster.brightness": 0,
@@ -11289,13 +12185,13 @@
   "continuous.palette": "goat:elevation",
   "continuous.interpolate": "linear",
   "continuous.outside": "clamp",
-  "terrain.method": "standard",
-  "terrain.direction": 315,
-  "terrain.altitude": 45,
-  "terrain.exaggeration": 0.5,
-  "terrain.shadow_color": "#000000",
-  "terrain.highlight_color": "#ffffff",
-  "terrain.accent_color": "#000000",
+  "hillshade.method": "standard",
+  "hillshade.direction": 315,
+  "hillshade.altitude": 45,
+  "hillshade.exaggeration": 0.5,
+  "hillshade.shadow_color": "#000000",
+  "hillshade.highlight_color": "#ffffff",
+  "hillshade.accent_color": "#000000",
   "popup.enabled": true,
   "popup.trigger": "click",
   "popup.mode": "simple",
@@ -11308,6 +12204,7 @@
   "arrows.direction",
   "arrows.placement",
   "arrows.spacing",
+  "extrude.unit",
   "label.allow_overlap",
   "label.format",
   "label.formats",
@@ -11360,6 +12257,14 @@
   "max_width": [
    60,
    240
+  ],
+  "extrude.height": [
+   0,
+   50
+  ],
+  "extrude.base": [
+   0,
+   10
   ]
  },
  "x-icon-groups": [
@@ -11648,5 +12553,36 @@
    14,
    10
   ]
- ]
+ ],
+ "x-scene-auto": {
+  "light": {
+   "sky.color": "#79B8EC",
+   "sky.horizon_color": "#DFEEFA",
+   "sky.horizon_blend": 0.6,
+   "fog.color": "#E9F1F7",
+   "fog.horizon_blend": 0.5,
+   "fog.ground_blend": 0.6,
+   "light.intensity": 0.45,
+   "light.color": "#FFFFFF",
+   "glow.strength": 1,
+   "glow.color": "#6EA5F5"
+  },
+  "dark": {
+   "sky.color": "#1D4877",
+   "sky.horizon_color": "#3B6A99",
+   "sky.horizon_blend": 0.7,
+   "fog.color": "#1B2633",
+   "fog.horizon_blend": 0.5,
+   "fog.ground_blend": 0.6,
+   "light.intensity": 0.35,
+   "light.color": "#FFFFFF",
+   "glow.strength": 1,
+   "glow.color": "#6EA5F5"
+  }
+ },
+ "x-scene-defaults": {
+  "terrain.exaggeration": 1,
+  "buildings.opacity": 0.6,
+  "storey_height": 3
+ }
 }

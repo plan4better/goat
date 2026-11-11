@@ -115,17 +115,19 @@ class CategoricalRender(StyleModel):
     other_color: Color | None = None
 
 
-class TerrainRender(_Ramp):
-    type: Literal["terrain"]
+class HillshadeRender(_Ramp):
+    type: Literal["hillshade"]
     method: (
         Literal["standard", "multidirectional", "combined", "igor", "basic"] | None
     ) = None
-    direction: Annotated[float, Field(**limits.bounds("terrain.direction"))] | None = (
+    direction: (
+        Annotated[float, Field(**limits.bounds("hillshade.direction"))] | None
+    ) = None
+    altitude: Annotated[float, Field(**limits.bounds("hillshade.altitude"))] | None = (
         None
     )
-    altitude: Annotated[float, Field(**limits.bounds("terrain.altitude"))] | None = None
     exaggeration: (
-        Annotated[float, Field(**limits.bounds("terrain.exaggeration"))] | None
+        Annotated[float, Field(**limits.bounds("hillshade.exaggeration"))] | None
     ) = None
     shadow_color: Color | None = None
     highlight_color: Color | None = None
@@ -141,12 +143,12 @@ RasterRender = Annotated[
         Annotated[ImageRender, Tag("render:image")],
         Annotated[ContinuousRender, Tag("render:continuous")],
         Annotated[CategoricalRender, Tag("render:categorical")],
-        Annotated[TerrainRender, Tag("render:terrain")],
+        Annotated[HillshadeRender, Tag("render:hillshade")],
     ],
     Discriminator(
         _type_of,
         custom_error_type="invalid_value",
-        custom_error_message="render type is image, continuous, categorical or terrain.",
+        custom_error_message="render type is image, continuous, categorical or hillshade.",
     ),
 ]
 

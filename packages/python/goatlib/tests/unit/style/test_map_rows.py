@@ -1,6 +1,12 @@
 """The map document from plain rows, and the layers it draws."""
 
-from goatlib.style.map_rows import GroupRow, LayerRow, build_map_document, drawn_layers
+from goatlib.style.map_rows import (
+    GroupRow,
+    LayerRow,
+    build_map_document,
+    drawn_layers,
+    map_view,
+)
 
 
 def layer(
@@ -30,3 +36,53 @@ def test_drawn_layers_are_top_first_and_skip_hidden_layers_and_groups() -> None:
         ],
     )
     assert [entry["id"] for entry in drawn_layers(document)] == [1, 2, 3, 6]
+
+
+def test_old_documents_unchanged() -> None:
+    document = build_map_document(
+        basemap="light",
+        locale=None,
+        view_state={
+            "latitude": 48.1,
+            "longitude": 11.5,
+            "zoom": 12,
+            "pitch": 0,
+            "bearing": 0,
+        },
+        bounds=None,
+        groups=[],
+        layers=[],
+    )
+    assert "scene" not in document and "mode" not in document["view"]
+    assert "projection" not in document["view"]
+
+
+def test_map_view_copies_mode_projection_and_scene() -> None:
+    state = {
+        "latitude": 48.1,
+        "longitude": 11.5,
+        "zoom": 15.5,
+        "pitch": 55.0,
+        "bearing": 340.0,
+        "mode": "3d",
+        "projection": "globe",
+    }
+    assert map_view(state, None) == {
+        "center": [11.5, 48.1],
+        "zoom": 15.5,
+        "pitch": 55.0,
+        "bearing": 340.0,
+        "mode": "3d",
+        "projection": "globe",
+    }
+    scene = {"terrain": {"exaggeration": 1.5}, "buildings": False}
+    document = build_map_document(
+        basemap=None,
+        locale=None,
+        view_state=state,
+        bounds=None,
+        groups=[],
+        layers=[],
+        scene=scene,
+    )
+    assert document["scene"] == scene

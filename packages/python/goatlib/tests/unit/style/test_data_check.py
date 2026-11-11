@@ -397,7 +397,7 @@ def test_one_band_with_written_values_needs_no_raster_service(contexts: dict) ->
                 {"value": 9, "color": "#ffffff"},
             ],
         },
-        {"type": "terrain", "method": "igor"},
+        {"type": "hillshade", "method": "igor"},
         {
             "type": "continuous",
             "domain": [0, 9],

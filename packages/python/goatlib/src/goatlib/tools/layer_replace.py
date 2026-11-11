@@ -13,7 +13,6 @@ The mixin expects the host class to provide ``duckdb_con``, ``settings``, and
 already do.
 """
 
-import json
 import logging
 import uuid as uuid_module
 from pathlib import Path
@@ -25,41 +24,21 @@ import duckdb
 from goatlib.io.bbox_columns import star_excluding, stray_bbox_columns
 from goatlib.io.sql import sql_identifier
 from goatlib.storage.ducklake import fetch_one
+from goatlib.style.context import DataContext
+from goatlib.style.defaults import default_style
+from goatlib.tools.style_rows import insert_dataset_default, insert_first_style
 
 logger = logging.getLogger(__name__)
 
-#: The style keys without which the map does not draw a feature layer's
-#: project entry: it hides the layer unless `visibility`, and fills nothing
-#: without `filled` and `color` (the web's `transformers/layer.ts`).
-DRAWN_STYLE_KEYS = ("visibility", "filled", "color")
-
-
-def _object_or_empty(column: str) -> str:
-    """SQL for ``column`` when it holds a JSON object, else an empty one: a
-    NULL or a JSON scalar would make ``||`` build an array."""
-    return (
-        f"CASE WHEN jsonb_typeof({column}) = 'object' THEN {column} "
-        "ELSE '{}'::jsonb END"
-    )
-
-
-def merged_style_sql(column: str, style_param: str) -> str:
-    """SQL for ``column`` with the style ``style_param`` beneath it: the keys
-    ``column`` holds win, the ones it lacks come from the style."""
-    return f"{style_param}::jsonb || {_object_or_empty(column)}"
-
 
 async def entry_needs_feature_style(conn: Any, schema: str, link_id: int) -> bool:
-    """Whether project entry ``link_id`` was made for a table or holds no
-    style the map can draw, as an entry of a layer that has become a
-    feature layer has to have."""
-    keys = ", ".join(f"'{key}'" for key in DRAWN_STYLE_KEYS)
+    """Whether project entry ``link_id`` was made for a table or has no
+    active style, as an entry of a layer that has become a feature layer has
+    to have: the map draws a project layer by its active style."""
     return bool(
         await conn.fetchval(
             f"""
-            SELECT shown.type = 'table'
-                OR NOT (jsonb_typeof(link.properties) = 'object'
-                        AND link.properties ?& ARRAY[{keys}])
+            SELECT shown.type = 'table' OR link.active_style_id IS NULL
             FROM {schema}.layer_project link
             JOIN {schema}.layer shown ON shown.id = link.layer_id
             WHERE link.id = $1
@@ -77,25 +56,25 @@ async def style_entries_as_feature_layer(
     *,
     link_id: int | None = None,
 ) -> None:
-    """Give the project entries showing ``layer_id``, or only entry
-    ``link_id``, what the map needs to draw a feature layer: ``style``
-    beneath the keys they hold, which win.
+    """Give a layer that has just become a feature layer what the map needs
+    to draw it: ``style`` as its dataset's default style, unless it has one,
+    and that default as the first style of the project entries showing it
+    (only entry ``link_id`` when given) that have no style.
 
-    For a layer that has just become a feature layer, whose entries were made
-    for a table: they hold no style, or only what the web's layer tree writes
-    into every entry it rearranges (``legend``). An entry's own style stays.
+    The entries were made for a table, so they hold no style. An entry's own
+    styles stay.
     """
-    await conn.execute(
-        f"""
-        UPDATE {schema}.layer_project
-        SET properties = {merged_style_sql("properties", "$2")},
-            updated_at = NOW()
-        WHERE layer_id = $1 AND ($3::integer IS NULL OR id = $3)
-        """,
-        uuid_module.UUID(layer_id),
-        json.dumps(style),
-        link_id,
-    )
+    layer_uuid = uuid_module.UUID(layer_id)
+    await insert_dataset_default(conn, schema, layer_uuid, style)
+    if link_id is not None:
+        link_ids = [link_id]
+    else:
+        rows = await conn.fetch(
+            f"SELECT id FROM {schema}.layer_project WHERE layer_id = $1", layer_uuid
+        )
+        link_ids = [row["id"] for row in rows]
+    for entry in link_ids:
+        await insert_first_style(conn, schema, entry)
 
 
 class _HasReplaceDeps(Protocol):
@@ -397,12 +376,11 @@ class LayerReplaceMixin:
 
         A table layer whose new data has a geometry type becomes a feature
         layer of that type (``feature_layer_type`` when it has none), and it
-        and every project entry showing it get a default style beneath the
-        keys they hold (`style_entries_as_feature_layer`): the map draws no
-        layer without one. A feature layer stays one.
+        and every project entry showing it get a default style
+        (`style_entries_as_feature_layer`): the map draws no layer without
+        one. A feature layer stays one.
         """
         from goatlib.tools.db import normalize_geometry_type
-        from goatlib.tools.style import get_default_style
 
         schema = self.settings.customer_schema
         pool = await self.get_postgres_pool()
@@ -432,20 +410,16 @@ class LayerReplaceMixin:
                 param_idx += 1
                 # Every expression reads the row as it was, so `type` is the
                 # old type in each CASE.
-                style = get_default_style(normalized_geom)
+                style = default_style(
+                    DataContext(kind="vector", geometry=normalized_geom),
+                    seed=layer_id,
+                )
                 updates.append(
                     "feature_layer_type = CASE WHEN type = 'table' "
                     f"THEN COALESCE(feature_layer_type, ${param_idx}) "
                     "ELSE feature_layer_type END"
                 )
                 params.append(feature_layer_type)
-                param_idx += 1
-                updates.append(
-                    "properties = CASE WHEN type = 'table' "
-                    f"THEN {merged_style_sql('properties', f'${param_idx}')} "
-                    "ELSE properties END"
-                )
-                params.append(json.dumps(style))
                 param_idx += 1
                 updates.append(
                     "type = CASE WHEN type = 'table' THEN 'feature' ELSE type END"

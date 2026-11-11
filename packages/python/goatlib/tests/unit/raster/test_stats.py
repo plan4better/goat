@@ -51,7 +51,7 @@ def test_equal_classes_inside_the_authors_domain_split_the_domain(
     cog_server: str,
 ) -> None:
     doc = raster(
-        type="terrain",
+        type="hillshade",
         palette="goat:elevation",
         domain=[200, 300],
         classify={"method": "equal_interval", "count": 4},

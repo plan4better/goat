@@ -365,7 +365,7 @@ async def test_the_raster_address_comes_from_a_raster_file_layer_only(
     async def pool() -> Pool:
         return Pool()
 
-    monkeypatch.setattr(access, "_get_pool", pool)
+    monkeypatch.setattr(access, "get_pool", pool)
     assert await access.raster_file_url(LAYER) == "https://cdn.example/dem.tif"
     assert await access.raster_file_url("8b3b4b8e-0000-4000-8000-000000000000") is None
     assert await access.raster_file_url("not-a-uuid") is None

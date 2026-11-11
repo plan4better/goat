@@ -17,6 +17,7 @@ from goatlib.style.models.base import LAX, StyleModel
 from goatlib.style.models.parts import (
     ArrowsPart,
     CasingPart,
+    ExtrudePart,
     FillPart,
     LabelPart,
     LinePart,
@@ -147,6 +148,7 @@ class Overrides(StyleModel):
     arrows: ArrowsPart | None = None
     marker: MarkerPart | None = None
     label: LabelPart | None = None
+    extrude: ExtrudePart | None = None
 
 
 class Rule(Overrides):

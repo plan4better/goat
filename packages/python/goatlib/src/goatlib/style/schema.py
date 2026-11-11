@@ -24,13 +24,15 @@ def json_schema() -> dict[str, Any]:
     (`x-defaults`), the per-layer keys (`x-per-layer`), the default ranges of number
     targets (`x-default-ranges`) and the icon groups (`x-icon-groups`) for editors; the
     zoom from which each H3 resolution draws under "auto" (`x-h3-auto`) for the
-    compiler; the root is a layer style."""
+    compiler; what missing scene keys mean (`x-scene-auto` by basemap tone,
+    `x-scene-defaults`); the root is a layer style."""
     from goatlib.style.colors import DEFAULT_RANGES
     from goatlib.style.defaults import REFERENCE_DEFAULTS
     from goatlib.style.h3 import AUTO_FROM_ZOOM
     from goatlib.style.models.layer import LayerStyle
     from goatlib.style.models.map_document import MapDocument
     from goatlib.style.models.parts import PER_LAYER_KEYS
+    from goatlib.style.scene import SCENE_AUTO, SCENE_DEFAULTS
 
     keys, schema = TypeAdapter.json_schemas(
         [
@@ -69,6 +71,8 @@ def json_schema() -> dict[str, Any]:
         "x-default-ranges": {k: list(v) for k, v in DEFAULT_RANGES.items()},
         "x-icon-groups": icon_groups(),
         "x-h3-auto": [list(pair) for pair in AUTO_FROM_ZOOM],
+        "x-scene-auto": SCENE_AUTO,
+        "x-scene-defaults": SCENE_DEFAULTS,
     }
 
 

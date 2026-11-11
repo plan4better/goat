@@ -80,6 +80,20 @@ def test_sum_and_mean_read_the_field(duck) -> None:
         assert sums[cell][0] == pytest.approx(means[cell][0] * n)
 
 
+def test_cells_without_a_value_are_not_drawn(duck) -> None:
+    """Points whose field is empty (a census suppresses small counts) give a sum
+    or mean no value: their cells are left out, not drawn in a no-data color, so
+    the map shows through as a gap. A count still draws them."""
+    duck.execute("UPDATE pts SET pop = NULL WHERE ST_X(geometry) < 13.38")
+    z = 12
+    x, y = _tile_of(z, 13.398125, 52.52)
+    counts = _cells(duck, z, x, y, resolution=8)
+    for op in ("sum", "mean"):
+        values = _cells(duck, z, x, y, op=op, field="pop", resolution=8)
+        assert values and set(values) < set(counts)
+        assert all(value is not None for value, _, _ in values.values())
+
+
 def test_the_tile_is_a_vector_tile_with_an_h3_layer(duck) -> None:
     z = 12
     x, y = _tile_of(z, 13.398125, 52.52)

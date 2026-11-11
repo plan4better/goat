@@ -143,11 +143,35 @@ def test_every_bound_in_the_models_is_the_tables_or_goats_own() -> None:
 
 def test_settings_that_share_a_type_must_agree() -> None:
     assert limits.bounds("fill.opacity", "line.opacity") == {"ge": 0, "le": 1}
-    with pytest.raises(ValueError, match="terrain.direction"):
-        limits.bounds("fill.opacity", "terrain.direction")
+    with pytest.raises(ValueError, match="hillshade.direction"):
+        limits.bounds("fill.opacity", "hillshade.direction")
     assert limits.forms("line.cap", attribute=None) == {
         "zoom": "step",
         "attribute": None,
     }
     with pytest.raises(ValueError, match="fill.pattern"):
         limits.forms("fill.pattern", "fill.color", attribute="color")
+
+
+def test_scene_and_height_limits() -> None:
+    exaggeration = limits.effective("scene.terrain.exaggeration")
+    assert (exaggeration["min"], exaggeration["max"], exaggeration["zoom"]) == (
+        1,
+        3,
+        None,
+    )
+    assert limits.bounds("scene.glow.strength") == {"ge": 0, "le": 1}
+    # GOAT's own: no MapLibre property, fixed or by zoom, never by attribute.
+    glow_color = limits.effective("scene.glow.color")
+    assert limits.SETTINGS["scene.glow.color"]["maplibre"] == []
+    assert (glow_color["zoom"], glow_color["attribute"]) == ("blend", False)
+    assert limits.effective("extrude.height")["min"] == 0
+    assert limits.effective("extrude.height")["max"] == 5000
+    assert limits.effective("extrude.height")["per_feature"] is True
+    assert limits.effective("scene.sky.color")["attribute"] is False
+    assert limits.effective("h3.extrude.tallest")["attribute"] is False
+    # H3 columns chart a value over hexagons up to ~20 km wide, not a real height.
+    assert limits.effective("h3.extrude.tallest")["max"] == 200000
+    assert limits.effective("h3.extrude.base")["max"] == 200000
+    assert limits.effective("extrude.base")["max"] == 5000
+    assert limits.inside("scene.light.direction", 365) == 5

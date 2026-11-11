@@ -596,6 +596,76 @@
   }
  },
  {
+  "line": 575,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#d9d9d9",
+     "opacity": 0.9
+    },
+    "outline": {
+     "color": "#636363",
+     "width": 1
+    },
+    "extrude": {
+     "height": {
+      "field": "density",
+      "range": [
+       0,
+       300
+      ]
+     }
+    },
+    "label": {
+     "text": "{name}"
+    }
+   },
+   "classify": [
+    {
+     "id": "use",
+     "field": "land_use",
+     "method": "categories",
+     "classes": [
+      {
+       "id": "green",
+       "values": [
+        "green"
+       ],
+       "name": "Green",
+       "extrude": false
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 620,
+  "target": "districts",
+  "expect": [
+   "base_above_height",
+   "extrude_drops_pattern"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#fdb462",
+     "pattern": "hatch_45"
+    },
+    "extrude": {
+     "height": 20,
+     "base": 30
+    }
+   }
+  }
+ },
+ {
   "line": 638,
   "target": "routes",
   "expect": [],
@@ -2422,6 +2492,35 @@
   }
  },
  {
+  "line": 1789,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "render": {
+    "type": "h3",
+    "resolution": "auto",
+    "value": {
+     "op": "sum",
+     "field": "pupils"
+    },
+    "palette": "colorbrewer:OrRd",
+    "extrude": {
+     "tallest": 1500,
+     "scale": "sqrt"
+    }
+   },
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 7
+    }
+   }
+  }
+ },
+ {
   "line": 1776,
   "target": "elevation",
   "expect": [],
@@ -2431,7 +2530,7 @@
    "opacity": 0.8,
    "resampling": "linear",
    "render": {
-    "type": "terrain",
+    "type": "hillshade",
     "method": "standard",
     "direction": 315,
     "altitude": 45,
@@ -2750,7 +2849,7 @@
    "kind": "raster",
    "opacity": 0.6,
    "render": {
-    "type": "terrain",
+    "type": "hillshade",
     "method": "multidirectional",
     "direction": 315,
     "altitude": 45,
@@ -2768,7 +2867,7 @@
    "version": 1,
    "kind": "raster",
    "render": {
-    "type": "terrain",
+    "type": "hillshade",
     "method": "standard",
     "direction": 315,
     "altitude": 45,
@@ -2794,7 +2893,7 @@
    "version": 1,
    "kind": "raster",
    "render": {
-    "type": "terrain",
+    "type": "hillshade",
     "method": "combined",
     "exaggeration": 0.5
    }
@@ -2808,7 +2907,7 @@
    "version": 1,
    "kind": "raster",
    "render": {
-    "type": "terrain",
+    "type": "hillshade",
     "method": "igor",
     "exaggeration": 0.7
    }
@@ -2822,7 +2921,7 @@
    "version": 1,
    "kind": "raster",
    "render": {
-    "type": "terrain",
+    "type": "hillshade",
     "method": "basic",
     "shadow_color": "#000000"
    }
@@ -2990,6 +3089,75 @@
   }
  },
  {
+  "line": 2252,
+  "target": "map",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "basemap": {
+    "id": "light"
+   },
+   "view": {
+    "center": [
+     11.09,
+     47.49
+    ],
+    "zoom": 13,
+    "pitch": 60,
+    "bearing": 30,
+    "mode": "3d",
+    "projection": "globe"
+   },
+   "layers": [],
+   "scene": {
+    "terrain": {
+     "exaggeration": 1.5
+    },
+    "buildings": true,
+    "sky": {
+     "color": "#79B8EC",
+     "horizon_blend": {
+      "zoom": [
+       [
+        10,
+        0.8
+       ],
+       [
+        16,
+        0.4
+       ]
+      ]
+     }
+    },
+    "light": {
+     "direction": 285,
+     "altitude": 15,
+     "intensity": 0.5
+    }
+   }
+  }
+ },
+ {
+  "line": 2313,
+  "target": "map",
+  "expect": [
+   "fog_without_terrain"
+  ],
+  "doc": {
+   "version": 1,
+   "basemap": {
+    "id": "light"
+   },
+   "layers": [],
+   "scene": {
+    "terrain": false,
+    "fog": {
+     "color": "#E9F1F7"
+    }
+   }
+  }
+ },
+ {
   "line": 2284,
   "target": "districts",
   "expect": [
@@ -3077,7 +3245,7 @@
    "version": 1,
    "kind": "raster",
    "render": {
-    "type": "terrain",
+    "type": "hillshade",
     "band": 7
    }
   }

@@ -263,6 +263,27 @@ def project_layer_payload(
     return [layer_payload(drawable[entry["id"]]) for entry in drawn_layers(document)]
 
 
+#: The view a thumbnail opens at when nothing better is known.
+DEFAULT_VIEW_STATE: dict[str, Any] = {
+    "latitude": 48.13,
+    "longitude": 11.57,
+    "zoom": 10,
+    "bearing": 0,
+    "pitch": 0,
+}
+
+
+def project_view_state(ivs: dict[str, Any]) -> dict[str, Any]:
+    """A project's stored view as the thumbnail page reads it. The 3D keys
+    (`mode`, `projection`) travel only when stored, so a view from before 3D
+    keeps its payload and hash."""
+    view = {key: ivs.get(key, default) for key, default in DEFAULT_VIEW_STATE.items()}
+    for key in ("mode", "projection"):
+        if ivs.get(key) is not None:
+            view[key] = ivs[key]
+    return view
+
+
 @dataclass
 class ItemToProcess:
     """Information about an item needing thumbnail generation.
@@ -283,6 +304,8 @@ class ItemToProcess:
     layers: list[dict] = field(default_factory=list)
     bounds: list[float] | None = None  # [west, south, east, north]
     use_bounds: bool = True  # Whether to use fitBounds or viewState
+    # The project's 3D scene (map document `scene`); layers have none
+    scene: dict | None = None
     # Hash of visual content for change detection
     content_hash: str = ""
 
@@ -315,6 +338,9 @@ class ItemToProcess:
                 "bounds": self.bounds,
                 "layers": [],
             }
+            # Only when set, so the hash of a project without a scene stays.
+            if self.scene:
+                content["scene"] = self.scene
 
             for layer in self.layers:
                 content["layers"].append(
@@ -359,6 +385,22 @@ class ItemToProcess:
 
         # Regenerate if no existing thumbnail or hash doesn't match
         return existing_hash != self.content_hash
+
+
+def thumbnail_data(item: ItemToProcess) -> dict[str, Any]:
+    """What the thumbnail page draws: the view, the basemap, the layers, and for
+    a project with a 3D scene the scene (3D spec 10)."""
+    data: dict[str, Any] = {
+        "viewState": item.view_state or dict(DEFAULT_VIEW_STATE),
+        "basemap": item.basemap,
+        "layers": item.layers,
+        "useBounds": item.use_bounds,
+    }
+    if item.bounds:
+        data["bounds"] = item.bounds
+    if item.scene:
+        data["scene"] = item.scene
+    return data
 
 
 class ThumbnailGeneratorTask:
@@ -552,6 +594,7 @@ class ThumbnailGeneratorTask:
                         p.updated_at,
                         p.thumbnail_url,
                         p.basemap,
+                        p.scene::text AS scene,
                         up.initial_view_state
                     FROM customer.project p
                     LEFT JOIN customer.user_project up ON p.id = up.project_id
@@ -571,6 +614,7 @@ class ThumbnailGeneratorTask:
                         p.updated_at,
                         p.thumbnail_url,
                         p.basemap,
+                        p.scene::text AS scene,
                         up.initial_view_state
                     FROM customer.project p
                     LEFT JOIN customer.user_project up ON p.id = up.project_id
@@ -590,6 +634,7 @@ class ThumbnailGeneratorTask:
                         p.updated_at,
                         p.thumbnail_url,
                         p.basemap,
+                        p.scene::text AS scene,
                         up.initial_view_state
                     FROM customer.project p
                     LEFT JOIN customer.user_project up ON p.id = up.project_id
@@ -608,13 +653,7 @@ class ThumbnailGeneratorTask:
                         ivs = row["initial_view_state"]
                         if isinstance(ivs, str):
                             ivs = json.loads(ivs)
-                        view_state = {
-                            "latitude": ivs.get("latitude", 48.13),
-                            "longitude": ivs.get("longitude", 11.57),
-                            "zoom": ivs.get("zoom", 10),
-                            "bearing": ivs.get("bearing", 0),
-                            "pitch": ivs.get("pitch", 0),
-                        }
+                        view_state = project_view_state(ivs)
                     except Exception as e:
                         logger.warning(
                             f"Failed to parse view state for project {row['id']}: {e}"
@@ -643,6 +682,7 @@ class ThumbnailGeneratorTask:
                         layers=layers,
                         bounds=bounds,
                         use_bounds=project_use_bounds,
+                        scene=_json(row["scene"]),
                     )
                 )
 
@@ -1159,23 +1199,7 @@ class ThumbnailGeneratorTask:
 
     def _build_thumbnail_data(self: Self, item: ItemToProcess) -> str:
         """Build base64-encoded JSON data for the thumbnail URL."""
-        data = {
-            "viewState": item.view_state
-            or {
-                "latitude": 48.13,
-                "longitude": 11.57,
-                "zoom": 10,
-                "bearing": 0,
-                "pitch": 0,
-            },
-            "basemap": item.basemap,
-            "layers": item.layers,
-            "useBounds": item.use_bounds,
-        }
-
-        if item.bounds:
-            data["bounds"] = item.bounds
-
+        data = thumbnail_data(item)
         # Serialize and encode
         json_str = json.dumps(data, separators=(",", ":"))  # Compact JSON
         return base64.b64encode(json_str.encode()).decode()

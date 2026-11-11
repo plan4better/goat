@@ -6,6 +6,7 @@ from goatlib.style.fingerprint import (
     changed_table_ids,
     fingerprint,
     is_stale,
+    layer_fingerprint,
 )
 
 CLASSIFIED = {
@@ -52,6 +53,18 @@ def test_fingerprints() -> None:
     assert fingerprint(data_snapshot=7, catalog_version="3") == "catalog:3"
     assert fingerprint(data_snapshot=7, catalog_version=None) == "ducklake:7"
     assert fingerprint(data_snapshot=None, catalog_version=None) == "ducklake:0"
+
+
+def test_an_unversioned_catalog_layer_is_still_a_catalog_layer() -> None:
+    # A catalog item published without a version is promoted with
+    # catalog_version "": its data is the one copy GOAT made, not a DuckLake table.
+    assert fingerprint(data_snapshot=None, catalog_version="") == "catalog:unversioned"
+    assert (
+        fingerprint(data_snapshot=452393, catalog_version="") == "catalog:unversioned"
+    )
+    assert (
+        layer_fingerprint("feature", None, catalog_version="") == "catalog:unversioned"
+    )
 
 
 def test_stale_when_computed_data_differs_or_computed_values_are_missing() -> None:

@@ -766,10 +766,10 @@ class ProjectImportRunner(SimpleToolRunner):
                     f"""
                     INSERT INTO {schema}.project
                         (id, user_id, folder_id, space_id, name, description, basemap,
-                         custom_basemaps, max_extent, tags,
+                         custom_basemaps, max_extent, tags, locale, scene,
                          created_at, updated_at)
                     VALUES
-                        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+                        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
                     """,
                     uuid.UUID(new_project_id),
                     uuid.UUID(new_user_id),
@@ -781,6 +781,8 @@ class ProjectImportRunner(SimpleToolRunner):
                     project_data.custom_basemaps or [],
                     project_data.max_extent,
                     project_data.tags,
+                    project_data.locale,
+                    project_data.scene,
                 )
 
                 # 2. Insert user_project. The column is NOT NULL; an archive

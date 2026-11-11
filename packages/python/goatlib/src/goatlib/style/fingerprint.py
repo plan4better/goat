@@ -137,10 +137,17 @@ FROM (
 """.strip()
 
 
+#: The fingerprint version of a catalog item published without a version: the
+#: promoted layer still holds the one copy GOAT made of it, which never changes.
+UNVERSIONED = "unversioned"
+
+
 def fingerprint(*, data_snapshot: int | None, catalog_version: str | None) -> str:
-    """The data a layer's computed values are computed from (spec 12)."""
-    if catalog_version:
-        return f"catalog:{catalog_version}"
+    """The data a layer's computed values are computed from (spec 12). A promoted
+    catalog layer has a `catalog_version`, "" when its item has none; any other
+    layer has None and is read from DuckLake."""
+    if catalog_version is not None:
+        return f"catalog:{catalog_version or UNVERSIONED}"
     return f"ducklake:{data_snapshot or 0}"
 
 

@@ -132,6 +132,8 @@ async def extended_test_schemas(postgres_pool: Any, test_schemas: None) -> None:
             ("custom_basemaps", "JSONB"),
             ("max_extent", "FLOAT[]"),
             ("builder_config", "JSONB"),
+            ("locale", "TEXT"),
+            ("scene", "JSONB"),
         ]:
             col_name, col_type = col_def
             await conn.execute(f"""

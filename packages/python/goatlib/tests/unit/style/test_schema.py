@@ -67,3 +67,16 @@ def test_schema_carries_the_icon_groups() -> None:
     from goatlib.style.catalog import icon_groups
 
     assert json_schema()["x-icon-groups"] == icon_groups()
+
+
+def test_schema_carries_scene_tables() -> None:
+    from goatlib.style.schema import json_schema
+
+    schema = json_schema()
+    assert schema["x-scene-auto"]["dark"]["sky.color"] == "#1D4877"
+    assert "x-scene-night" not in schema
+    assert schema["x-scene-defaults"] == {
+        "terrain.exaggeration": 1,
+        "buildings.opacity": 0.6,
+        "storey_height": 3,
+    }

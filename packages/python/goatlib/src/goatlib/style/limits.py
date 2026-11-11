@@ -40,7 +40,7 @@ def effective(key: str) -> dict[str, Any]:
 
 
 #: Settings that go round a circle: a value outside 0 to 360 is the same angle (360 is 0).
-_ANGLES = frozenset({"terrain.direction"})
+_ANGLES = frozenset({"hillshade.direction", "scene.light.direction"})
 
 
 def inside(key: str, value: float) -> float:

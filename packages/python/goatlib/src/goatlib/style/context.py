@@ -94,9 +94,17 @@ class DataContext:
 @dataclass(frozen=True)
 class MapContext:
     """What a map document is checked against: the project's layers, each with the
-    ids of its named styles, and the positions the basemap offers."""
+    ids of its named styles, and the positions the basemap offers.
+
+    `extruded` holds the project layer ids whose active style draws heights;
+    `terrain_source` and `buildings_source` say whether the deployment has a
+    terrain and a building source for this map (None: unknown, so no
+    `scene_source_missing`)."""
 
     layers: Mapping[int, frozenset[str]]
     positions: frozenset[str] = field(
         default=frozenset({"top", "below_labels", "below_roads"})
     )
+    extruded: frozenset[int] = frozenset()
+    terrain_source: bool | None = None
+    buildings_source: bool | None = None

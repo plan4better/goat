@@ -83,10 +83,10 @@ def _value_validates(path: str, value: object) -> bool:
                     rest: value,
                 }
             )
-        elif head in ("continuous", "terrain"):
-            from goatlib.style.models.raster import ContinuousRender, TerrainRender
+        elif head in ("continuous", "hillshade"):
+            from goatlib.style.models.raster import ContinuousRender, HillshadeRender
 
-            model = ContinuousRender if head == "continuous" else TerrainRender
+            model = ContinuousRender if head == "continuous" else HillshadeRender
             model.model_validate({"type": head, rest: value})
         elif head == "popup":
             Popup.model_validate({rest: value})
@@ -118,10 +118,10 @@ def test_the_schema_carries_the_defaults() -> None:
 def test_raster_render_defaults_follow_the_reference() -> None:
     from goatlib.style.defaults import REFERENCE_DEFAULTS
 
-    assert REFERENCE_DEFAULTS["terrain.direction"] == 315
-    assert REFERENCE_DEFAULTS["terrain.altitude"] == 45
-    assert REFERENCE_DEFAULTS["terrain.exaggeration"] == 0.5
-    assert REFERENCE_DEFAULTS["terrain.shadow_color"] == "#000000"
-    assert REFERENCE_DEFAULTS["terrain.highlight_color"] == "#ffffff"
+    assert REFERENCE_DEFAULTS["hillshade.direction"] == 315
+    assert REFERENCE_DEFAULTS["hillshade.altitude"] == 45
+    assert REFERENCE_DEFAULTS["hillshade.exaggeration"] == 0.5
+    assert REFERENCE_DEFAULTS["hillshade.shadow_color"] == "#000000"
+    assert REFERENCE_DEFAULTS["hillshade.highlight_color"] == "#ffffff"
     assert REFERENCE_DEFAULTS["continuous.palette"] == "goat:elevation"
     assert REFERENCE_DEFAULTS["continuous.outside"] == "clamp"

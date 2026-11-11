@@ -728,22 +728,22 @@ class _Converter:
             if parse_color(style.get("default_color")):
                 render["other_color"] = parse_color(style.get("default_color"))
         elif style_type == "hillshade":
-            render = {"type": "terrain"}
+            render = {"type": "hillshade"}
             if band:
                 render["band"] = band
             for src, dst in (("azimuth", "direction"), ("altitude", "altitude")):
                 v = _num(style.get(src))
                 if v is not None:
-                    render[dst] = limits.inside(f"terrain.{dst}", v)
+                    render[dst] = limits.inside(f"hillshade.{dst}", v)
             z = _num(style.get("z_factor"))
             if z is not None:
                 render["exaggeration"] = limits.inside(
-                    "terrain.exaggeration", round(z / 2, 4)
+                    "hillshade.exaggeration", round(z / 2, 4)
                 )
                 if z > 2:
                     self.lose(
                         "style.z_factor",
-                        f"z_factor {z} is above what terrain shading shows; exaggeration is capped at 1.",
+                        f"z_factor {z} is above what hillshading shows; exaggeration is capped at 1.",
                     )
         else:
             render = {"type": "image"}

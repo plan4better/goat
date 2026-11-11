@@ -311,6 +311,8 @@ class TestProjectExportRunner:
                     "name": "Test Project",
                     "description": None,
                     "basemap": None,
+                    "locale": None,
+                    "scene": None,
                     "custom_basemaps": None,
                     "max_extent": None,
                     "builder_config": None,
@@ -387,6 +389,8 @@ class TestProjectExportRunner:
                     "name": "Test Project",
                     "description": None,
                     "basemap": None,
+                    "locale": None,
+                    "scene": None,
                     "custom_basemaps": None,
                     "max_extent": None,
                     "builder_config": None,
@@ -535,6 +539,8 @@ def _project_row(project_id: uuid.UUID, owner_id: uuid.UUID) -> dict[str, Any]:
         "name": "Shared Project",
         "description": None,
         "basemap": None,
+        "locale": "de",
+        "scene": {"terrain": {"exaggeration": 2}},
         "custom_basemaps": None,
         "max_extent": None,
         "builder_config": None,
@@ -630,3 +636,17 @@ class TestExportInitialViewState:
             runner, self.project_id, self.owner_id, self.exporter_id, []
         )
         assert "initial_view_state" not in metadata["project_metadata"]
+
+
+@pytest.mark.asyncio
+async def test_project_json_carries_scene_and_locale() -> None:
+    """The archive keeps the project's 3D scene and its label locale."""
+    runner = ProjectExportRunner()
+    settings = MagicMock()
+    settings.customer_schema = "customer"
+    runner.settings = settings
+    project_id = uuid.UUID("00000000-0000-0000-0000-000000000098")
+    owner_id = uuid.UUID("00000000-0000-0000-0000-000000000012")
+    metadata = await _gather_with_view_rows(runner, project_id, owner_id, owner_id, [])
+    assert metadata["project_metadata"]["scene"] == {"terrain": {"exaggeration": 2}}
+    assert metadata["project_metadata"]["locale"] == "de"

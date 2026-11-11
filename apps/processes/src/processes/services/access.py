@@ -522,7 +522,7 @@ async def raster_file_url(layer_id: str) -> str | None:
         uuid = str(UUID(layer_id))
     except ValueError:
         return None
-    pool = await _get_pool()
+    pool = await get_pool()
     return await pool.fetchval(
         f"SELECT url FROM {settings.CUSTOMER_SCHEMA}.layer "
         "WHERE id = $1::uuid AND type = 'raster' AND data_type = 'cog'",

@@ -821,8 +821,7 @@ class FinalizeLayerRunner(
             )
 
         async def create_db_records() -> int:
-            from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
-            from goatlib.tools.style import get_default_style
+            from goatlib.tools.db import ToolDatabaseService
 
             pool = await self.get_postgres_pool()
             try:
@@ -841,12 +840,10 @@ class FinalizeLayerRunner(
                 # failure cannot leave a layer that no project shows.
                 assert params.export_node_id is not None
                 async with pool.acquire() as conn, conn.transaction():
-                    layer_properties = await create_layer_record(
-                        ToolDatabaseService(conn, schema=schema)
-                    )
+                    await create_layer_record(ToolDatabaseService(conn, schema=schema))
                     # The entry was made for the layer it shows now; one made
-                    # for a table, or without a style, is styled for the
-                    # feature layer it is about to show.
+                    # for a table, or without a style, gets the new layer's
+                    # default style as its first.
                     restyle = bool(geometry_type) and await entry_needs_feature_style(
                         conn, schema, claim_link_id
                     )
@@ -864,12 +861,7 @@ class FinalizeLayerRunner(
                             conn,
                             schema,
                             new_layer_id,
-                            {
-                                **get_default_style(
-                                    normalize_geometry_type(geometry_type)
-                                ),
-                                **(layer_properties or {}),
-                            },
+                            layer_style,
                             link_id=claim_link_id,
                         )
                     await retarget_dataset_nodes(

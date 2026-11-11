@@ -139,6 +139,7 @@ def test_per_layer_keys_match_the_spec() -> None:
             "label.allow_overlap",
             "label.format",
             "label.formats",
+            "extrude.unit",
         }
     )
 
@@ -168,3 +169,22 @@ def test_arrow_spacing_is_at_least_one_px() -> None:
     assert codes(Arrows, {"spacing": {"zoom": [[10, 0], [14, 80]]}}) == [
         "invalid_value"
     ]
+
+
+def test_extrude_value_forms() -> None:
+    for height in (
+        12,
+        {"zoom": [[14, 0], [16, 12]]},
+        {"field": "height"},
+        {"field": "height", "range": [0, 100]},
+    ):
+        assert codes(Symbol, {"extrude": {"height": height, "base": 0}}) == []
+    assert codes(Symbol, {"extrude": {"height": -1}}) == ["invalid_value"]
+    assert codes(Symbol, {"extrude": {"base": 5001}}) == ["invalid_value"]
+    assert codes(Symbol, {"extrude": {"unit": "feet"}}) == ["invalid_value"]
+    assert codes(Symbol, {"extrude": False}) == []
+
+
+def test_extrude_unit_is_per_layer_key() -> None:
+    assert "extrude.unit" in PER_LAYER_KEYS
+    assert "extrude.height" not in PER_LAYER_KEYS

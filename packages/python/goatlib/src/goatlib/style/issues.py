@@ -69,6 +69,11 @@ CODES: dict[str, Level] = {
     "unknown_style": "error",
     "duplicate_layer": "error",
     "unknown_position": "error",
+    "base_above_height": "error",
+    "extrude_drops_pattern": "warning",
+    "fog_without_terrain": "warning",
+    "buildings_with_extruded_layer": "warning",
+    "scene_source_missing": "warning",
 }
 
 

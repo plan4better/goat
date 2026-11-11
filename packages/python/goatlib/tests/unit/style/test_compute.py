@@ -59,6 +59,20 @@ def test_breaks_for_classes_drop_edges_and_merge() -> None:
     assert breaks_for_classes([], None, None, 5) == Breaks((), None, None, False)
 
 
+def test_the_same_data_gives_the_same_breaks() -> None:
+    """A parallel sum adds in any order, so a mean's last digits differ from run
+    to run; the values stored are equal for the same data (12, 13.1)."""
+    one = breaks_for_classes(
+        [20.940186207873126, 23.71392531232111], 9.950000000000001, 100.0, 3
+    )
+    two = breaks_for_classes([20.940186207873122, 23.713925312321116], 9.95, 100.0, 3)
+    assert one == two
+    assert one.breaks == (20.9401862079, 23.7139253123)
+    assert one.min == 9.95
+    assert breaks_for_classes([3], 1, 9, 2) == Breaks((3,), 1, 9, False)
+    assert isinstance(breaks_for_classes([3], 1, 9, 2).min, int)
+
+
 def test_intent_becomes_the_stored_classes_of_spec_5_2() -> None:
     doc, notes = compute(
         QUANTILE, STATS, fingerprint="ducklake:7", at="2026-10-24T10:00:00Z"

@@ -175,15 +175,18 @@ READMEs means section N of that file.
   show the data's ends. A
   part with an error of its own is not computed, so a malformed style comes back
   as issues. `same_ignoring_stamps` lets a save tell a recompute with the same
-  result from a change.
+  result from a change; computed numbers keep 12 significant digits (`stable`),
+  because DuckDB sums in parallel and the last digits of a mean would otherwise
+  differ between two runs over the same data.
   A raster style's computed values are the same kind of statistics over the band
   (or band formula) as the field: its range as `render.computed.domain`, classes
   into `render.classify`, computed by `raster.stats` from an overview sample with
   the shared class breaks.
 
 - **The data fingerprint** (`fingerprint.py`): computed values record the data
-  they come from (`ducklake:<layer.data_snapshot>`, `catalog:<catalog_version>`,
-  a raster file's `url:<hash of its address>`: core reads no file, so a file
+  they come from (`ducklake:<layer.data_snapshot>`; a promoted catalog layer's
+  `catalog:<catalog_version>`, or `catalog:unversioned` for an item without a
+  version, since a catalog layer's data is never in DuckLake; a raster file's `url:<hash of its address>`: core reads no file, so a file
   replaced under the same address is not noticed) and `is_stale` compares. `layer.data_snapshot` is moved by one Postgres
   statement, `advance_data_snapshots_sql`, which reads DuckLake's change log after
   a cursor; core runs it when a map loads (after `data_snapshots_pending_sql`,
@@ -197,6 +200,20 @@ READMEs means section N of that file.
   and layers share one `order` per parent, top first) with the map state of
   every entry. core's map request, publishing and data migration assemble it with
   `build_map_document`; the thumbnail task draws a project's `drawn_layers`.
+- **3D is map state plus one layer part.** The map document's `view.mode`,
+  `view.projection` and `scene` (terrain, basemap buildings, sky, fog, globe glow,
+  light; `style/models/scene.py`) say how the map looks; heights stay in the layer
+  style (the polygon part `extrude`, H3 `render.extrude`; spec 3.6, 8.3, 10.1,
+  10.2). Every `scene` key is
+  optional and a missing one is automatic, so documents from before 3D stay
+  valid unchanged. What automatic means (`style/scene.py`: the auto table by basemap
+  tone; a missing `fog` draws none and a missing `light` stands with the camera,
+  and the web takes the horizon colour from the basemap's ground, spec 10.2) is
+  goatlib's, published to the web in the JSON Schema's `x-scene-*` extras, so the
+  compiler never holds its own copy. `validate_map`
+  checks the scene against what only the caller knows, through `MapContext`:
+  which layers draw heights and whether the deployment has terrain and building
+  sources.
 
 ## Raster files (`raster/`)
 

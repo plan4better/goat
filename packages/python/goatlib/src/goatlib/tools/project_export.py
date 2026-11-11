@@ -129,8 +129,8 @@ class ProjectExportRunner(SimpleToolRunner):
             # 1. Project record
             project_row = await conn.fetchrow(
                 f"""
-                SELECT id, user_id, name, description, basemap, custom_basemaps,
-                       max_extent, builder_config, tags, thumbnail_url
+                SELECT id, user_id, name, description, basemap, locale, custom_basemaps,
+                       max_extent, builder_config, scene, tags, thumbnail_url
                 FROM {schema}.project
                 WHERE id = $1
                 """,
@@ -144,9 +144,11 @@ class ProjectExportRunner(SimpleToolRunner):
                 "name": project_row["name"],
                 "description": project_row["description"],
                 "basemap": project_row["basemap"],
+                "locale": project_row["locale"],
                 "custom_basemaps": project_row["custom_basemaps"],
                 "max_extent": project_row["max_extent"],
                 "builder_config": project_row["builder_config"],
+                "scene": project_row["scene"],
                 "tags": project_row["tags"],
             }
 

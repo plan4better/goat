@@ -6,6 +6,7 @@ from pydantic import Discriminator, Field, Tag
 
 from goatlib.style import limits
 from goatlib.style.models.base import LAX, StyleModel
+from goatlib.style.models.scene import Scene
 
 
 class Basemap(StyleModel):
@@ -18,6 +19,10 @@ class View(StyleModel):
     pitch: Annotated[float, Field(**limits.bounds("view.pitch"))] | None = None
     bearing: float | None = None
     bounds: Annotated[tuple[float, float, float, float], LAX] | None = None
+    #: Missing: "3d" when the pitch is above 0, else "2d".
+    mode: Literal["2d", "3d"] | None = None
+    #: Missing: "mercator".
+    projection: Literal["mercator", "globe"] | None = None
 
 
 class LayerTime(StyleModel):
@@ -72,3 +77,4 @@ class MapDocument(StyleModel):
     view: View | None = None
     locale: str | None = None
     layers: list[MapEntry] | None = None
+    scene: Scene | None = None

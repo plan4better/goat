@@ -28,6 +28,7 @@ from goatlib.style.compute import (
     apply_computed,
     breaks_for_classes,
     needed_stats,
+    stable,
 )
 from goatlib.style.context import DataContext, FieldInfo, FieldType
 from goatlib.style.cql import as_text
@@ -69,7 +70,7 @@ def _min_max(
     result = calculate_class_breaks(
         con, relation, field, num_breaks=0, where_clause=where
     )
-    return result.min, result.max
+    return stable(result.min), stable(result.max)
 
 
 def describe(

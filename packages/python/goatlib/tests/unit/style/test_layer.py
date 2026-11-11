@@ -128,11 +128,11 @@ def test_heatmap_radius_and_weight_take_maplibres_minimums(render: dict) -> None
 @pytest.mark.parametrize(
     "render",
     [
-        {"type": "terrain", "direction": 360},
-        {"type": "terrain", "exaggeration": 1.5},
+        {"type": "hillshade", "direction": 360},
+        {"type": "hillshade", "exaggeration": 1.5},
     ],
 )
-def test_terrain_direction_and_exaggeration_take_maplibres_maximums(
+def test_hillshade_direction_and_exaggeration_take_maplibres_maximums(
     render: dict,
 ) -> None:
     doc = {"version": 1, "kind": "raster", "render": render}

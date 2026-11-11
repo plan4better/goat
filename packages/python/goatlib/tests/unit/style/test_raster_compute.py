@@ -40,7 +40,7 @@ def test_a_palette_without_a_domain_needs_the_bands_range() -> None:
         needed_stats(raster(type="continuous", palette="goat:elevation", domain=[0, 1]))
         == []
     )
-    assert needed_stats(raster(type="terrain")) == []
+    assert needed_stats(raster(type="hillshade")) == []
     assert needed_stats(raster(type="image")) == []
 
 
@@ -52,7 +52,7 @@ def test_computed_classes_need_the_bands_breaks() -> None:
     )
     assert needed_stats(doc) == [("range", "b1"), ("breaks", "b1", "quantile", "4")]
     inside = raster(
-        type="terrain",
+        type="hillshade",
         palette="goat:elevation",
         domain=[181, 440],
         classify={"method": "equal_interval", "count": 6},

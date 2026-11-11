@@ -97,6 +97,23 @@ class H3Outline(StyleModel):
     width: Px | None = None
 
 
+#: Column heights in metres, fixed or by zoom: one value for the whole layer.
+H3HeightValue = value_type(
+    "H3Height",
+    Annotated[float, Field(**limits.bounds("h3.extrude.tallest", "h3.extrude.base"))],
+    **limits.forms("h3.extrude.tallest", "h3.extrude.base", attribute=None),
+)
+
+
+class H3Extrude(StyleModel):
+    """Hexagons drawn as columns: the cell value, scaled, sets each column's height
+    from `base` up to `base + tallest`."""
+
+    tallest: H3HeightValue | None = None
+    base: H3HeightValue | None = None
+    scale: Literal["linear", "sqrt"] | None = None
+
+
 def _check_resolution(v: Any) -> Any:
     if v == "auto" or (isinstance(v, int) and not isinstance(v, bool) and 5 <= v <= 10):
         return v
@@ -136,6 +153,7 @@ class H3Render(StyleModel):
     opacity: Unit | None = None
     outline: H3Outline | None = None
     points_from_zoom: ZoomLevel | None = None
+    extrude: H3Extrude | None = None
     computed: H3Computed | None = None
 
 

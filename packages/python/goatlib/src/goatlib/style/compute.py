@@ -6,6 +6,7 @@ into a copy of the document next to the intent. No IO here.
 """
 
 import copy
+import math
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -65,13 +66,30 @@ StatResults = Mapping[
 ]
 
 
+#: Significant digits a computed number keeps. A sum over the data adds in any
+#: order (DuckDB aggregates in parallel), so the last digits of a mean differ
+#: from run to run; rounded, the same data gives the same stored values, and a
+#: recompute or save that changes nothing writes nothing (12, 13.1).
+STABLE_DIGITS = 12
+
+
+def stable(value: Any) -> Any:
+    """A float rounded to `STABLE_DIGITS` significant digits; anything else as is."""
+    if isinstance(value, float) and math.isfinite(value):
+        return float(f"{value:.{STABLE_DIGITS}g}")
+    return value
+
+
 def breaks_for_classes(
     raw: list[float], minimum: float | None, maximum: float | None, classes: int
 ) -> Breaks:
-    """Breaks as classes use them: none at or beyond the data's edges, none twice."""
+    """Breaks as classes use them: none at or beyond the data's edges, none twice,
+    every number `stable`."""
+    minimum, maximum = stable(minimum), stable(maximum)
     if minimum is None or maximum is None:
         return Breaks((), minimum, maximum, False)
-    kept = tuple(sorted({b for b in raw if minimum < b < maximum}))
+    kept = tuple(sorted({stable(b) for b in raw} - {None}))
+    kept = tuple(b for b in kept if minimum < b < maximum)
     return Breaks(kept, minimum, maximum, len(kept) < classes - 1)
 
 
@@ -158,9 +176,9 @@ def _value_forms(doc: dict[str, Any]) -> Iterator[dict[str, Any]]:
 
 
 def _raster_render(doc: dict[str, Any]) -> dict[str, Any] | None:
-    """A raster file style's color range render (continuous, terrain)."""
+    """A raster file style's color range render (continuous, hillshade)."""
     render = doc.get("render")
-    if isinstance(render, dict) and render.get("type") in ("continuous", "terrain"):
+    if isinstance(render, dict) and render.get("type") in ("continuous", "hillshade"):
         return render
     return None
 
@@ -234,16 +252,16 @@ def _h3_render(doc: dict[str, Any]) -> dict[str, Any] | None:
 
 def _h3_keys(render: dict[str, Any]) -> dict[str, StatKey]:
     """The statistics an H3 render needs, by resolution: the breaks of a
-    computed classification, or the cell values' range for continuous colors.
-    Manual classes need none."""
+    computed classification, or the cell values' range for continuous colors
+    and for columns (`extrude`). Manual classes of flat hexagons need none."""
     value = render.get("value") if isinstance(render.get("value"), dict) else {}
     op = value.get("op", "count")
     field = value.get("field", "") if op != "count" else ""
     c = render.get("classify")
-    if isinstance(c, dict):
-        if c.get("method") not in NUMERIC_METHODS:
-            return {}
+    if isinstance(c, dict) and c.get("method") in NUMERIC_METHODS:
         method, count = c["method"], str(_count(c) or DEFAULT_COUNT)
+    elif isinstance(c, dict) and not isinstance(render.get("extrude"), dict):
+        return {}
     else:
         method, count = "", ""
     return {

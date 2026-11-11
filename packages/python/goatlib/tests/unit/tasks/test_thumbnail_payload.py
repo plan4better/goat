@@ -10,6 +10,8 @@ from goatlib.tasks.generate_thumbnails import (
     ItemToProcess,
     layer_payload,
     project_layer_payload,
+    project_view_state,
+    thumbnail_data,
 )
 
 pytestmark = pytest.mark.unit
@@ -146,3 +148,67 @@ def test_a_stamps_only_recompute_keeps_the_hash() -> None:
 
 def test_a_style_edit_changes_the_hash() -> None:
     assert item(RED).compute_content_hash() != item(BLUE).compute_content_hash()
+
+
+TILTED = {
+    "latitude": 47.49,
+    "longitude": 11.09,
+    "zoom": 13,
+    "bearing": 30,
+    "pitch": 60,
+    "mode": "3d",
+    "projection": "globe",
+}
+
+
+def project_item(scene: dict[str, Any] | None, view: dict[str, Any]) -> ItemToProcess:
+    return ItemToProcess(
+        type="project",
+        id=uuid.UUID(int=1),
+        updated_at=datetime.now(timezone.utc),
+        old_thumbnail_url=None,
+        view_state=project_view_state(view),
+        scene=scene,
+    )
+
+
+def test_a_3d_project_sends_its_scene_and_view_mode() -> None:
+    """3D spec 10: the project thumbnail shows the saved 3D view with its scene."""
+    scene = {"terrain": {"exaggeration": 2}}
+    data = thumbnail_data(project_item(scene, TILTED))
+    assert data["scene"] == scene
+    assert data["viewState"]["mode"] == "3d"
+    assert data["viewState"]["projection"] == "globe"
+    assert data["viewState"]["pitch"] == 60
+
+
+def test_a_scene_change_renews_the_thumbnail() -> None:
+    scene = {"terrain": {"exaggeration": 2}}
+    assert (
+        project_item(scene, TILTED).compute_content_hash()
+        != project_item(None, TILTED).compute_content_hash()
+    )
+
+
+def test_a_view_without_3d_keys_keeps_its_hash() -> None:
+    """A view stored before 3D has no mode or projection: its payload and hash
+    stay as they were, so no thumbnail is redrawn for nothing."""
+    flat = {"latitude": 48.1, "longitude": 11.5, "zoom": 12, "bearing": 0, "pitch": 0}
+    view = project_view_state(flat)
+    assert view == flat
+    data = thumbnail_data(project_item(None, flat))
+    assert "scene" not in data and "mode" not in data["viewState"]
+
+
+def test_a_layer_thumbnail_stays_flat_without_a_scene() -> None:
+    item = ItemToProcess(
+        type="layer",
+        id=uuid.UUID(int=2),
+        updated_at=datetime.now(timezone.utc),
+        old_thumbnail_url=None,
+        layer_type="feature",
+        bounds=[11.0, 48.0, 11.2, 48.2],
+    )
+    data = thumbnail_data(item)
+    assert data["viewState"]["pitch"] == 0
+    assert "scene" not in data
