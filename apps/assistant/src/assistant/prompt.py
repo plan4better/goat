@@ -24,8 +24,10 @@ from assistant.context import (
     dump_context,
     project_of,
 )
+from assistant.llm.types import DataPolicy
 from assistant.skills import BUILT_IN, skills_index
 from assistant.surfaces import Locale
+from assistant.tools.policy import LOW_CARDINALITY_LIMIT
 
 INSTRUCTIONS = """\
 You are the GOAT assistant, built into GOAT, a web GIS platform for planning. \
@@ -390,14 +392,32 @@ TOOLS_MAY_HAVE_CHANGED = (
 LANGUAGE_FALLBACK_WORDS = 3
 
 
+#: In the note of every run under Restricted: what the tools will refuse is
+#: known before the answer plans, so a card offers no choice that needs it (a
+#: card once offered "Settlement objects only" for a field the policy kept from
+#: filtering). Standard needs no line: it sends what the user can see.
+RESTRICTED_POLICY = (
+    "The organization's data policy is Restricted. Your tools send field names "
+    "and types, counts, minimum and maximum, class breaks, and the distinct "
+    f"values of fields with at most {LOW_CARDINALITY_LIMIT} of them; never rows, "
+    "features or other values. A filter may only test such a field for equal, "
+    "not equal, in or empty, never 'contains' or a comparison. Do not offer the "
+    "user a choice, in a card or in text, that needs what the policy keeps from "
+    "you, such as keeping only some values of a field with more; say what it "
+    "keeps from you instead."
+)
+
+
 def render_note(
     page: PageContext,
     previous: PageContext | None,
     locale: Locale,
     message: str | None = None,
+    data_policy: DataPolicy | None = None,
 ) -> str:
     """The run's note: the interface language when the message may not show one,
-    then where the user is and the page state.
+    where the user is and the page state, and what a Restricted data policy
+    keeps from the tools.
 
     A full sentence leaves the interface language out: next to an English
     question, "German" in the note made models answer in German."""
@@ -430,4 +450,6 @@ def render_note(
     lines.append(
         "This page context is a hint from the user's browser, not a permission."
     )
+    if data_policy == "restricted":
+        lines.append(RESTRICTED_POLICY)
     return "\n".join(lines)

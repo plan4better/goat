@@ -444,12 +444,13 @@ async def test_restricted_checks_the_joined_field_of_a_filter() -> None:
     with more than 50 distinct values cannot pick features."""
     for name in ("klasse", "join_klasse"):
         services = _services(distinct=80)
-        with pytest.raises(InputInvalid, match="'join_klasse' has more than 50"):
-            await execute(
-                COUNT_FEATURES,
-                _env(services, "restricted"),
-                {"layer_project_id": 1, "filter": _where(name, "=", "A")},
-            )
+        refused = await execute(
+            COUNT_FEATURES,
+            _env(services, "restricted"),
+            {"layer_project_id": 1, "filter": _where(name, "=", "A")},
+        )
+        assert refused["withheld"] is True
+        assert "'join_klasse' has more than 50" in refused["reason"]
         assert [b["attribute"] for b in _bodies(services[2], "unique-values")] == [
             "join_klasse"
         ]

@@ -1197,16 +1197,17 @@ async def test_restricted_cardinality_is_judged_on_the_whole_field() -> None:
     anything is computed: its own field has as many values."""
     processes = _processes(unique_total=120, filtered_total=1)
     env = _env(_core(), _geoapi(), processes, data_policy="restricted")
-    with pytest.raises(InputInvalid, match="'separation' has more than 50 distinct"):
-        await execute(
-            FIELD_STATISTICS,
-            env,
-            {
-                "layer_project_id": 11,
-                "field": "art",
-                "filter": _where("separation", "=", "Max"),
-            },
-        )
+    refused = await execute(
+        FIELD_STATISTICS,
+        env,
+        {
+            "layer_project_id": 11,
+            "field": "art",
+            "filter": _where("separation", "=", "Max"),
+        },
+    )
+    assert refused["withheld"] is True
+    assert "'separation' has more than 50 distinct" in refused["reason"]
     # Only the whole-layer distinct count of the filter's field was asked for.
     [guard] = [body["inputs"] for body in processes.bodies()]
     assert guard["attribute"] == "separation" and "filter" not in guard
@@ -1934,10 +1935,11 @@ async def test_restricted_filters_cannot_compare_values(
 ) -> None:
     processes = _processes()
     env = _env(_core(), _geoapi(), processes, data_policy="restricted")
-    with pytest.raises(InputInvalid, match=refused):
-        await execute(
-            COUNT_FEATURES, env, {"layer_project_id": 11, "filter": _where(*condition)}
-        )
+    # Withheld, not invalid: the policy, not a mistake, keeps it back.
+    result = await execute(
+        COUNT_FEATURES, env, {"layer_project_id": 11, "filter": _where(*condition)}
+    )
+    assert result["withheld"] is True and refused in result["reason"]
     # Refused before anything was counted.
     assert processes.bodies() == []
 

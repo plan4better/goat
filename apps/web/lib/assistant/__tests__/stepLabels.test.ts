@@ -320,10 +320,16 @@ describe("workflow step labels", () => {
 
   it("have a label for each of the assistant's new tools", () => {
     expect(label(call("ask_user", { questions: [] }, {}))).toBe("Asked for your choice");
-    expect(label(call("skills_load", { name: "build-a-workflow" }, {}))).toBe("Read the instructions for the task");
+    expect(label(call("skills_load", { name: "build-a-workflow" }, {}))).toBe(
+      "Read the instructions for the task"
+    );
     expect(label(call("workflow_tools", {}, {}))).toBe("Read the available tools");
-    expect(label(call("workflow_describe_tool", { tool_ids: ["buffer"] }, {}))).toBe("Read the settings of tools");
-    expect(label(call("workflow_find_templates", { query: "catchment" }, {}))).toBe("Searched workflow templates");
+    expect(label(call("workflow_describe_tool", { tool_ids: ["buffer"] }, {}))).toBe(
+      "Read the settings of tools"
+    );
+    expect(label(call("workflow_find_templates", { query: "catchment" }, {}))).toBe(
+      "Searched workflow templates"
+    );
     expect(label(call("workflow_check_draft", { draft: {} }, {}))).toBe("Checked the workflow draft");
     expect(label(call("project_add_catalog_layer", { catalog_id: "c1" }, {}))).toBe(
       "Added a catalog dataset to the project"
@@ -657,5 +663,16 @@ describe("step results", () => {
     expect(stepResult(counted, deTranslate)).toBe("4.766 Features");
     const found = call("catalog_search", { q: "a" }, { numberMatched: 12500 });
     expect(stepResult(found, deTranslate)).toBe("12.500 Datensätze");
+  });
+
+  it("say that the data policy kept a result back, for any tool", () => {
+    const withheld = {
+      withheld: true,
+      reason: "Withheld: The data policy (Restricted) allows no 'contains'.",
+    };
+    const counted = call("project_count_features", { layer_project_id: 1 }, withheld);
+    expect(stepResult(counted, enTranslate)).toBe("withheld by the data policy");
+    const sampled = call("project_sample_features", { layer_project_id: 1 }, withheld);
+    expect(stepResult(sampled, deTranslate)).toBe("durch die Datenrichtlinie zurückgehalten");
   });
 });

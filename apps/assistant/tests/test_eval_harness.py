@@ -311,7 +311,9 @@ async def test_restricted_refuses_a_filter_that_singles_out_one_feature(
     # One district's name is a category of one: refused before anything is
     # computed, so not even a withheld group is returned.
     [call] = transcript.tool_calls
-    assert call.failed and "at least 5 features share" in str(call.result)
+    # Withheld by the policy, not a failed call.
+    assert not call.failed and "at least 5 features share" in str(call.result)
+    assert "withheld" in str(call.result)
     assert [g.passed for g in await grade(task, transcript, backends)] == [
         True,
         True,
@@ -375,7 +377,9 @@ async def test_restricted_refuses_excluding_one_feature_to_read_the_runner_up(
     )
     transcript = await run_task(_task("proj-17"), model.model, backends, settings)
     [call] = transcript.tool_calls
-    assert call.failed and "at least 5 features share" in str(call.result)
+    # Withheld by the policy, not a failed call.
+    assert not call.failed and "at least 5 features share" in str(call.result)
+    assert "withheld" in str(call.result)
 
 
 def test_the_answering_providers_and_their_cost_come_from_the_responses() -> None:
