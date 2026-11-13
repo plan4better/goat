@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 # feature ids. A tileset counts as in sync only with this marker
 # (is_pmtiles_in_sync), so bumping `recipe` after a change to manby_flags
 # makes the next sync_pmtiles run rebuild every tileset built with the old one.
-MANBY_MARKER: dict = {"tiler": "manby", "recipe": 2}
+MANBY_MARKER: dict = {"tiler": "manby", "recipe": 1}
 
 # Columns geoapi hides from tiles (its HIDDEN_FIELDS default): the GeoParquet
 # bbox and the legacy scalar bbox fields.
