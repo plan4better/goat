@@ -428,6 +428,16 @@ _EXPRESSION_TO_CQL_OP = {
 }
 
 
+def _or_empty(prop: dict, negation: dict) -> dict:
+    """A negation with the empty value as an alternative.
+
+    `x <> v` is unknown, not true, where x is empty, so on its own a negation
+    drops the rows without a value. The web app's filter writes its negations
+    the same way.
+    """
+    return {"op": "or", "args": [negation, {"op": "isNull", "args": prop}]}
+
+
 def _convert_expression_to_cql(expression: dict) -> dict | None:
     """Convert a single frontend Expression object to a CQL2-JSON node."""
     expr_type = expression.get("expression")
@@ -450,10 +460,10 @@ def _convert_expression_to_cql(expression: dict) -> dict | None:
     if expr_type == "contains_the_text":
         return {"op": "like", "args": [prop, f"%{value}%"]}
     if expr_type == "does_not_contains_the_text":
-        return {
-            "op": "not",
-            "args": [{"op": "like", "args": [prop, f"%{value}%"]}],
-        }
+        return _or_empty(
+            prop,
+            {"op": "not", "args": [{"op": "like", "args": [prop, f"%{value}%"]}]},
+        )
     if expr_type == "is_between":
         parts = str(value).split("-")
         v1, v2 = float(parts[0]), float(parts[1])
@@ -476,7 +486,7 @@ def _convert_expression_to_cql(expression: dict) -> dict | None:
     if expr_type == "excludes":
         values = value if isinstance(value, list) else [value]
         args = [{"op": "!=", "args": [prop, v]} for v in values]
-        return {"op": "and", "args": args}
+        return _or_empty(prop, {"op": "and", "args": args})
     if expr_type in ("is_empty_string", "is_not_empty_string"):
         op = "=" if expr_type == "is_empty_string" else "!="
         return {"op": op, "args": [prop, ""]}
@@ -484,7 +494,8 @@ def _convert_expression_to_cql(expression: dict) -> dict | None:
     # Simple comparison operators (is, is_not, is_at_least, etc.)
     cql_op = _EXPRESSION_TO_CQL_OP.get(expr_type)
     if cql_op:
-        return {"op": cql_op, "args": [prop, value]}
+        comparison = {"op": cql_op, "args": [prop, value]}
+        return _or_empty(prop, comparison) if expr_type == "is_not" else comparison
 
     return None
 

@@ -111,6 +111,127 @@ describe("parseCQLQueryToObject", () => {
   });
 });
 
+describe("negations and empty values", () => {
+  const prop = { property: "status" };
+  const empty = { op: "isNull", args: prop };
+  const write = (input: Expression) =>
+    (createTheCQLBasedOnExpression([input], FIELDS, "and") as { args: unknown[] }).args[0];
+
+  // SQL drops a row with an empty value from `status <> 'a'`: the comparison is unknown, not true. A reader of
+  // "is not a" expects that row, so every negation also takes the empty value.
+  it("writes is not with the empty value as an alternative", () => {
+    expect(write(expression({ expression: "is_not", value: "a" }))).toEqual({
+      op: "or",
+      args: [{ op: "!=", args: [prop, "a"] }, empty],
+    });
+  });
+
+  it("writes excludes with the empty value as an alternative", () => {
+    expect(write(expression({ expression: "excludes", value: ["a", "b"] }))).toEqual({
+      op: "or",
+      args: [
+        {
+          op: "and",
+          args: [
+            { op: "!=", args: [prop, "a"] },
+            { op: "!=", args: [prop, "b"] },
+          ],
+        },
+        empty,
+      ],
+    });
+  });
+
+  it("writes does not contain with the empty value as an alternative", () => {
+    expect(write(expression({ expression: "does_not_contains_the_text", value: "school" }))).toEqual({
+      op: "or",
+      args: [{ op: "not", args: [{ op: "like", args: [prop, "%school%"] }] }, empty],
+    });
+  });
+
+  it("writes the date negations with the empty value as an alternative", () => {
+    const date = { property: "lstmoddate" };
+    const written = write(
+      expression({
+        attribute: "lstmoddate",
+        expression: "is_not_between",
+        value: ["2024-01-01", "2024-03-01"],
+      })
+    ) as { op: string; args: { op: string }[] };
+    expect(written.op).toBe("or");
+    expect(written.args.map((arg) => arg.op)).toEqual(["<", ">", "isNull"]);
+    expect(written.args[2]).toEqual({ op: "isNull", args: date });
+
+    for (const input of [
+      expression({ attribute: "lstmoddate", expression: "is_not_on", value: "2024-01-01" }),
+      expression({ attribute: "lstmoddate", expression: "not_in_the_last", value: 7 }),
+    ]) {
+      const other = write(input) as { op: string; args: { op: string }[] };
+      expect(other.args.map((arg) => arg.op)).toEqual(["<", ">", "isNull"]);
+    }
+  });
+
+  it("leaves is not empty as it is", () => {
+    expect(write(expression({ expression: "is_not_empty_string" }))).toEqual({
+      op: "!=",
+      args: [prop, ""],
+    });
+  });
+
+  it("reads the values back", () => {
+    expect(roundTrip(expression({ expression: "is_not", value: "a" }))).toMatchObject({
+      attribute: "status",
+      expression: "is_not",
+      value: "a",
+    });
+    expect(
+      roundTrip(expression({ attribute: "groundelev", expression: "is_not", value: 5 }))
+    ).toMatchObject({ attribute: "groundelev", expression: "is_not", value: 5 });
+    expect(roundTrip(expression({ expression: "excludes", value: ["a"] }))).toMatchObject({
+      attribute: "status",
+      expression: "excludes",
+      value: ["a"],
+    });
+  });
+
+  it("still reads filters saved before", () => {
+    const saved = (node: unknown) => parseCQLQueryToObject({ op: "and", args: [node] })[0];
+
+    expect(saved({ op: "!=", args: [prop, "a"] })).toMatchObject({
+      attribute: "status",
+      expression: "is_not",
+      value: "a",
+    });
+    expect(
+      saved({
+        op: "and",
+        args: [
+          { op: "!=", args: [prop, "a"] },
+          { op: "!=", args: [prop, "b"] },
+        ],
+      })
+    ).toMatchObject({ attribute: "status", expression: "excludes", value: ["a", "b"] });
+    expect(saved({ op: "not", args: [{ op: "like", args: [prop, "%school%"] }] })).toMatchObject({
+      attribute: "status",
+      expression: "does_not_contains_the_text",
+      value: "school",
+    });
+    expect(
+      saved({
+        op: "or",
+        args: [
+          { op: "<", args: [{ property: "lstmoddate" }, "2024-01-01"] },
+          { op: ">", args: [{ property: "lstmoddate" }, "2024-03-01"] },
+        ],
+      })
+    ).toMatchObject({
+      attribute: "lstmoddate",
+      expression: "is_not_between",
+      value: ["2024-01-01", "2024-03-01"],
+    });
+  });
+});
+
 describe("createTheCQLBasedOnExpression", () => {
   it("accepts numeric bounds as a pair and as the legacy string", () => {
     const fromPair = createTheCQLBasedOnExpression(

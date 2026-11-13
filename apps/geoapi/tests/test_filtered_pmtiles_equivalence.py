@@ -364,6 +364,7 @@ class Case:
         return {"filter": text, "lang": "cql2-json"}
 
 
+NAME_EMPTY = {"op": "isNull", "args": prop("name")}
 ATTRIBUTE_CASES = [
     Case("n < 30", op("<", prop("n"), 30)),
     Case("n <> 50", op("<>", prop("n"), 50)),
@@ -384,6 +385,27 @@ ATTRIBUTE_CASES = [
     Case("not or", op("not", op("or", op("<", prop("n"), 10), op(">", prop("d"), 9)))),
     Case("id in", op("in", prop("id"), [1, 2, 3, 50, 77, 250, 499])),
     Case("and", op("and", op(">=", prop("n"), 50), op("like", prop("name"), "%str%"))),
+    # The negations as the web app writes them: with the empty value as an alternative.
+    Case(
+        "is not, or empty",
+        op("or", op("!=", prop("name"), "Hauptstraße"), NAME_EMPTY),
+    ),
+    Case(
+        "excludes, or empty",
+        op(
+            "or",
+            op(
+                "and",
+                op("!=", prop("name"), "Hauptstraße"),
+                op("!=", prop("name"), "Bahnhofstraße"),
+            ),
+            NAME_EMPTY,
+        ),
+    ),
+    Case(
+        "does not contain, or empty",
+        op("or", op("not", op("like", prop("name"), "%weg%")), NAME_EMPTY),
+    ),
 ]
 AREA_CASES = [
     Case("district", areas=(DISTRICT,)),

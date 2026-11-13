@@ -35,8 +35,14 @@ export function is(key: string, value: string | number) {
   return createComparisonCondition("=", key, value);
 }
 
+// `x <> v` is unknown, not true, where x is empty, so on its own a negation drops the rows without a value. Every
+// negation is written with the empty value as an alternative: "is not a" keeps the rows that have no value.
+function or_empty(key: string, conditions: string[]) {
+  return or_operator([...conditions, is_blank(key)]);
+}
+
 export function is_not(key: string, value: string | number) {
-  return createComparisonCondition("!=", key, value);
+  return or_empty(key, [createComparisonCondition("!=", key, value)]);
 }
 
 export function includes(key: string, values: (string | number)[]) {
@@ -45,8 +51,9 @@ export function includes(key: string, values: (string | number)[]) {
 }
 
 export function excludes(key: string, values: (string | number)[]) {
-  const args = typeof values === "string" ? [] : values.map((value) => is_not(key, value));
-  return and_operator(args);
+  const args =
+    typeof values === "string" ? [] : values.map((value) => createComparisonCondition("!=", key, value));
+  return or_empty(key, [and_operator(args)]);
 }
 
 export function starts_with(key: string, value: string) {
@@ -62,7 +69,7 @@ export function contains_the_text(key: string, value: string) {
 }
 
 export function does_not_contains_the_text(key: string, value: string) {
-  return createNestedCondition("not", key, `%${value}%`, "like");
+  return or_empty(key, [createNestedCondition("not", key, `%${value}%`, "like")]);
 }
 
 export function is_true(key: string) {
@@ -164,7 +171,7 @@ export function date_is_between(key: string, from: string, to: string) {
 }
 
 export function date_is_not_between(key: string, from: string, to: string) {
-  return or_operator([
+  return or_empty(key, [
     createComparisonCondition("<", key, from),
     createComparisonCondition(">", key, to),
   ]);
@@ -184,7 +191,7 @@ export function date_not_in_the_last(key: string, days: number) {
   const now = dayjs();
   const lower = formatDateLiteral(now.subtract(days, "day"));
   const upper = formatDateLiteral(now);
-  return or_operator([
+  return or_empty(key, [
     createComparisonCondition("<", key, lower),
     createComparisonCondition(">", key, upper),
   ]);
@@ -308,8 +315,18 @@ export function createTheCQLBasedOnExpression(
   }
 }
 
+/** A negation without the empty value it is written with (`or_empty`); any other node as it is. Filters saved
+ * before negations took the empty value have the bare negation, and read the same. */
+function withoutEmptyAlternative(node) {
+  if (node.op !== "or" || !Array.isArray(node.args)) return node;
+  const rest = node.args.filter((arg) => arg.op !== "isNull");
+  if (rest.length === 0 || rest.length === node.args.length) return node;
+  return rest.length === 1 ? rest[0] : { ...node, args: rest };
+}
+
 function toExpressionObject(expressionsInsideLogicalOperator): Expression[] {
-  return expressionsInsideLogicalOperator.map((expressionToBeProcessed) => {
+  return expressionsInsideLogicalOperator.map((written) => {
+    const expressionToBeProcessed = withoutEmptyAlternative(written);
     const expression: Expression = {
       expression: "",
       attribute: "",
