@@ -37,3 +37,7 @@ DefaultProvider = Literal[
 ]
 
 DataPolicy = Literal["standard", "restricted"]
+#: What an organization gets until an admin chooses: the assistant reads what
+#: the user can see. Restricted is a choice an admin makes, since it keeps
+#: back the sums and values most analyses ask for.
+DEFAULT_DATA_POLICY: DataPolicy = "standard"

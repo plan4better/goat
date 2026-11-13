@@ -440,6 +440,16 @@ dock shows in the user's language by its kind, the run completes, and a warning 
 text in the history after everything the run found, so the user can ask for the numbers. Otherwise the answer still
 fails: after a failed run or one without layers there are no numbers, and `workflow_last_run` shows no run card.
 
+**Data policy.** An organization's data policy says what data tools may send to the model (`tools/policy.py`):
+Standard sends what the user can see, Restricted keeps back rows, features, geometries, sums and means and still sends
+field names, types, counts, a field's smallest and largest value, class breaks and the values of fields with few
+distinct values. An organization without saved AI settings has Standard (`DEFAULT_DATA_POLICY` in `llm/types.py`), and
+Restricted is a choice an admin makes. It was the other way round at first: in production no organization had chosen
+Restricted, all of them were on it unknowingly, and the assistant could then build and run an analysis but not name its
+result, the residents reached, which is what most analyses ask for. The dock's notice and the privacy policy say that
+the data the assistant reads goes to the model. Runs built without a policy (`RunDeps`) and the MCP endpoint keep
+Restricted as their fallback, so a caller that forgot the policy fails closed.
+
 **AI credits.** Answers of GOAT AI draw on the organization's pool of AI credits, which core owns with the
 allowance, the trial amount and the price tiers (`apps/core/README.md`); the assistant holds none of these numbers and
 calls core's two functions (`assistant/credits.py`). Before an answer, the run route (before the login) and

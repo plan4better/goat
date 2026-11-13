@@ -135,7 +135,7 @@ async def test_member_status(db: Database, authed: AssistantSettings) -> None:
         "is_admin": False,
         "provider": "test",
         "model": "test",
-        "data_policy": "restricted",
+        "data_policy": "standard",
         "disabled_surfaces": [],
         "goat_ai": True,
     }
@@ -179,6 +179,34 @@ async def test_user_without_an_organization(
     )
 
 
+async def test_settings_saved_without_a_data_policy_get_the_default(
+    db: Database, authed: AssistantSettings
+) -> None:
+    async with _client(db, authed, ADMIN) as client:
+        response = await client.put(
+            "/settings", json={"enabled": True, "active_connection_id": None}
+        )
+        saved = (await client.get("/settings")).json()
+    assert response.status_code == 200, response.text
+    assert saved["data_policy"] == "standard"
+
+
+async def test_a_save_without_a_data_policy_keeps_the_stored_one(
+    db: Database, authed: AssistantSettings
+) -> None:
+    async with _client(db, authed, ADMIN) as client:
+        chosen = await client.put(
+            "/settings", json=_settings_body(data_policy="restricted")
+        )
+        partial = await client.put(
+            "/settings", json={"enabled": False, "active_connection_id": None}
+        )
+        saved = (await client.get("/settings")).json()
+    assert chosen.status_code == 200, chosen.text
+    assert partial.status_code == 200, partial.text
+    assert (saved["enabled"], saved["data_policy"]) == (False, "restricted")
+
+
 async def test_admin_reads_the_defaults(
     db: Database, authed: AssistantSettings
 ) -> None:
@@ -187,7 +215,7 @@ async def test_admin_reads_the_defaults(
     assert body == {
         "enabled": True,
         "active_connection_id": None,
-        "data_policy": "restricted",
+        "data_policy": "standard",
         "allow_default_fallback": False,
         "status": "ok",
         "instance": {

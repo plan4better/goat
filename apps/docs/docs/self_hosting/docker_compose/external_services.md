@@ -256,7 +256,7 @@ docker compose exec assistant python -m assistant.dbcheck
 
 It prints `ok` or lists every missing privilege.
 
-**Data processing.** User questions and, depending on the organization's data policy, data from GOAT go to the model provider of the connection in use. For GOAT AI that is the provider you configure; for an organization's own connection, the organization's provider. An organization's data policy is **Restricted** until one of its admins selects **Standard** under **Settings → AI**: until then only field names, types, counts and statistics leave GOAT, never rows or geometries.
+**Data processing.** User questions and, depending on the organization's data policy, data from GOAT go to the model provider of the connection in use. For GOAT AI that is the provider you configure; for an organization's own connection, the organization's provider. An organization's data policy is **Standard** until one of its admins selects **Restricted** under **Settings → AI**: under Standard the assistant sends what the user can see in GOAT, sample rows and query results included. Restricted keeps back rows, features, geometries, sums and averages; field names, types, counts, value ranges and the values of fields with few different values still leave GOAT. Earlier versions had it the other way round, so an upgrade moves every organization that never saved its AI settings to Standard. Tell your organizations' admins before you enable GOAT AI or upgrade, and make sure your agreement with the model provider covers the data they hold.
 
 ## Optional integrations {#integrations}
 

@@ -3462,7 +3462,7 @@
   "ai_settings_data_policy_standard": "Standard",
   "ai_settings_data_policy_standard_help": "Der Assistent darf alles an das Modell senden, was ein Mitglied sehen kann, einschließlich Beispielzeilen und Abfrageergebnissen.",
   "ai_settings_data_policy_restricted": "Eingeschränkt",
-  "ai_settings_data_policy_restricted_help": "Der Assistent sendet nur Feldnamen, Typen, Anzahlen und Statistiken. Einzelne Zeilen, Objekte und Geometrien werden nie gesendet.",
+  "ai_settings_data_policy_restricted_help": "Zeilen, Objekte, Geometrien, Summen und Mittelwerte werden nie gesendet, der Assistent kann deshalb keine Summen nennen. Feldnamen, Typen, Anzahlen und Wertebereiche werden weiterhin gesendet.",
   "ai_settings_edit_connection": "Verbindung bearbeiten",
   "ai_settings_org_connections_off": "Eigene Verbindungen sind auf dieser Instanz deaktiviert.",
   "ai_settings_test_passed": "Test bestanden",

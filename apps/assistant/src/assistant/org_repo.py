@@ -14,7 +14,7 @@ import asyncpg
 
 from assistant.db import Database
 from assistant.llm.providers import ConnectionFields
-from assistant.llm.types import DataPolicy
+from assistant.llm.types import DEFAULT_DATA_POLICY, DataPolicy
 
 #: Columns an update may set; everything else is fixed or bookkeeping.
 _UPDATABLE = frozenset(
@@ -60,9 +60,8 @@ class OrgSettings:
     organization_id: UUID
     enabled: bool = True
     active_connection_id: UUID | None = None
-    #: Restricted until an admin chooses Standard: nothing but metadata leaves
-    #: GOAT for an organization that never looked at its AI settings.
-    data_policy: DataPolicy = "restricted"
+    #: Standard until an admin chooses Restricted (`DEFAULT_DATA_POLICY`).
+    data_policy: DataPolicy = DEFAULT_DATA_POLICY
     allow_default_fallback: bool = False
 
 

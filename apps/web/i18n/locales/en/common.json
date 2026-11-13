@@ -3462,7 +3462,7 @@
   "ai_settings_data_policy_standard": "Standard",
   "ai_settings_data_policy_standard_help": "The assistant may send everything a member can see to the model, including sample rows and query results.",
   "ai_settings_data_policy_restricted": "Restricted",
-  "ai_settings_data_policy_restricted_help": "The assistant sends only field names, types, counts and statistics. Individual rows, features and geometries are never sent.",
+  "ai_settings_data_policy_restricted_help": "Rows, features, geometries, sums and averages are never sent, so the assistant cannot report totals. Field names, types, counts and value ranges still are.",
   "ai_settings_edit_connection": "Edit connection",
   "ai_settings_org_connections_off": "Own connections are switched off on this instance.",
   "ai_settings_test_passed": "Test passed",

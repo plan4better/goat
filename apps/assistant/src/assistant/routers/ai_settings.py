@@ -132,7 +132,9 @@ class SettingsOut(BaseModel):
 class SettingsIn(BaseModel):
     enabled: bool
     active_connection_id: UUID | None = None
-    data_policy: DataPolicy = "restricted"
+    #: Left out, the organization keeps the policy it has (its stored choice,
+    #: else the default): a save that names no policy must not undo Restricted.
+    data_policy: DataPolicy | None = None
     allow_default_fallback: bool = False
 
 
@@ -489,7 +491,7 @@ async def put_settings(
             organization_id,
             enabled=body.enabled,
             active_connection_id=body.active_connection_id,
-            data_policy=body.data_policy,
+            data_policy=body.data_policy or stored.data_policy,
             allow_default_fallback=body.allow_default_fallback,
             updated_by=caller.member.user_id,
             # A model that cannot complete the tool call cannot be activated (§4.3).
