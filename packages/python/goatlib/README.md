@@ -506,7 +506,11 @@ DuckDB spills to disk only at its own `memory_limit`, and a connection without
 one takes 80% of the container. A job's connections therefore take shares of
 the container's memory limit (`goatlib.utils.container_memory`): half for its
 work connection (an analysis, or a tool's own DuckDB), a quarter for the
-runner's DuckLake connection.
+runner's DuckLake connection. The scheduled tile tasks (`sync_pmtiles`,
+`rebuild_edited_pmtiles`) give their DuckLake connection the work share, as it
+does their work (it sorts each layer for manby, which starts only once the sort
+is written), and make its spill directory themselves, as DuckDB's default is
+`.tmp` in the working directory, which need not be writable.
 
 Sessions carry an `application_name` (`goat-geoapi-ducklake`, `goat-tools`,
 …) so operators can tell them apart in `pg_stat_activity`.
@@ -602,6 +606,18 @@ directory:
 
     createdb goat_chains_test && psql -d goat_chains_test -c "CREATE EXTENSION postgis"
     POSTGRES_DB=goat_chains_test DUCKLAKE_DATA_DIR="$(mktemp -d)" uv run --no-sync --env-file ../../../.env pytest tests/integration/tools/chains -v
+
+## PMTiles are built with manby
+
+One builder, `PMTilesGenerator` in `io/pmtiles.py`, makes the PMTiles of every layer: tool results, imports and copies, catalog materialization, `sync_pmtiles` and `rebuild_edited_pmtiles`, and the workflow previews in `tools/temp_writer.py`. It writes the layer from a DuckDB query (`tile_query`), ordered by feature id, to a GeoParquet file in the build's temporary directory, then runs manby on that file with a recipe per geometry type (`manby_flags` holds them). A polygon layer gets its label points in a second file, `_anchor.pmtiles`, built from the same input.
+
+- **The marker**: the tileset's description records `MANBY_MARKER` next to the DuckLake snapshot id. geoapi filters a stored tile only when it finds the marker, so tiles from before manby (whose point tiles merged nearby points at every zoom) keep the DuckDB path until they are rebuilt. `is_pmtiles_in_sync` wants the marker of the current recipe as well as the snapshot, so a plain `sync_pmtiles` run after the deploy rebuilds those tiles; stopped and started again, it goes on with the layers still stale, where `force` would rebuild every layer. Bumping `recipe` after a change to `manby_flags` rolls the new recipe out the same way. A polygon layer's anchor file has to be in sync too, and is published before the main file, so a main file in sync always has its anchors.
+- **Catalog layers**: `sync_pmtiles` also rebuilds the tiles of promoted catalog layers (its `layers` parameter picks DuckLake layers, catalog layers or both), from their local GeoParquet copy with the materialize job's own step (`generate_catalog_pmtiles` in `tools/catalog_materialize.py`). It never downloads or changes the copy. Catalog layers have no snapshot: their tiles are in sync with the current marker when they are no older than the copy, which the job writes before it builds the tiles, so a dataset materialized again makes its old tiles stale. The layers come from the layer rows, never from listing the directory: feature layers a project uses, without a materialize job queued or running, because `catalog_gc` deletes the files of the others.
+- **Recipes per geometry type** (`manby_flags`): points and label points end each branch of the pyramid where its tile holds everything below (variable depth). Lines and polygons do not: such a tile holds its features whole at full detail, which made the zoomed out tiles of large polygons and of sparse networks the heaviest of a layer. They are stored at every zoom down to the one manby guesses from the spacing of the vertices, at most `max_zoom` (`--largest-maximum-zoom-guess`, so one build), with full precision at the deepest zoom for the tiles geoapi overzooms from it.
+- **manby is the only builder**: a build manby fails returns None and never fails the tool. geoapi serves a layer without PMTiles from DuckDB, and `sync_pmtiles` builds the missing files when it runs. When only a polygon layer's label build fails, its main tiles are published without anchors (older anchors are removed, or they would leave the layer stale on every sync): the layer is drawn from its tiles, and its label requests go to DuckDB. The one retry is for points whose spacing `-zg` cannot guess a max zoom from (`MANBY_EXIT_NO_ZOOM_GUESS`): they are built to the configured max zoom.
+- **DuckDB first, then manby**: streamed straight from the query, manby and the DuckDB connection sorting the layer had to fit in the worker at the same time, and manby slowed to a crawl under the small memory budget that left it. With the file in between, DuckDB has finished before manby starts, so manby gets half the container (`MANBY_MEMORY_SHARE` in `utils/container_memory.py` says why not more). Streaming also crashed the process on a second build unless pyarrow was imported first (`tests/unit/io/test_manby_repeat_calls.py`); with a file, manby's feeder thread does not run.
+- **Threads follow the container**: manby starts one thread per core of the machine. On a big node that is dozens of threads in a two-CPU worker, each costing memory, so the builder passes `TIPPECANOE_MAX_THREADS`, which manby reads, from the container's CPU quota (`utils/container_cpu.py`) to manby's process. Without a CPU limit, and the Helm chart and compose set none for the tools workers, that is the CPUs the process may run on: the node's.
+- **The pin**: manby comes from PyPI, at the exact version in the `full` extra (the Windmill workers) and in geoapi's own dependencies, never in base goatlib, which core depends on and which stays minimal. What GOAT needs beyond plain tippecanoe (the `like`, `ilike` and `intersects` filter operators, a memory budget kept while reading the input, `--largest-maximum-zoom-guess`) went upstream; `test_manby_available.py` fails on a version without it.
 
 ## Development
 

@@ -25,6 +25,7 @@ raster = [
 ]
 full = [
   "routing>=0.1.0",
+  "manby==0.2.6",
   "asyncpg>=0.29.0",
   "boto3>=1.35.0",
   "cachetools>=5.0.0",

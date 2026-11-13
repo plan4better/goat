@@ -214,7 +214,7 @@ def test_refresh_failure_after_the_rows_are_in_still_reports_them(
     # The rows are committed; failing the step now would make a re-run add
     # them twice. The refresh is logged and retried by the next write.
     h = _Harness(tmp_path, [_target()])
-    h.refresh_error = RuntimeError("tippecanoe crashed")
+    h.refresh_error = RuntimeError("manby crashed")
     out = h.run(_params())
     assert out.rows_appended == 3
 

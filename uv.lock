@@ -2,9 +2,17 @@ version = 1
 revision = 3
 requires-python = "==3.11.*"
 resolution-markers = [
-    "sys_platform == 'win32'",
-    "sys_platform == 'emscripten'",
-    "sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'win32'",
+    "platform_machine == 'x86_64' and sys_platform == 'win32'",
+    "platform_machine == 'aarch64' and sys_platform == 'win32'",
+    "platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'emscripten'",
+    "platform_machine == 'x86_64' and sys_platform == 'emscripten'",
+    "platform_machine == 'aarch64' and sys_platform == 'emscripten'",
+    "platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "platform_machine == 'x86_64' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "platform_machine == 'aarch64' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
 
 [manifest]
@@ -945,6 +953,7 @@ dependencies = [
     { name = "fastapi", extra = ["standard-no-fastapi-cloud-cli"] },
     { name = "goatlib", extra = ["raster"] },
     { name = "goatobs" },
+    { name = "manby" },
     { name = "pmtiles" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -975,6 +984,7 @@ requires-dist = [
     { name = "fastapi", extras = ["standard-no-fastapi-cloud-cli"], specifier = ">=0.115.0" },
     { name = "goatlib", extras = ["raster"], editable = "packages/python/goatlib" },
     { name = "goatobs", editable = "packages/python/goatobs" },
+    { name = "manby", specifier = "==0.2.6" },
     { name = "pmtiles", specifier = ">=3.5.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
@@ -1090,6 +1100,7 @@ full = [
     { name = "gdal" },
     { name = "geopandas" },
     { name = "httpx" },
+    { name = "manby" },
     { name = "numba" },
     { name = "numpy" },
     { name = "pandas" },
@@ -1122,6 +1133,7 @@ requires-dist = [
     { name = "gdal", marker = "extra == 'full'", specifier = ">=3.6.0,<3.7.0" },
     { name = "geopandas", marker = "extra == 'full'", specifier = ">=1.0.0" },
     { name = "httpx", marker = "extra == 'full'", specifier = ">=0.27.0" },
+    { name = "manby", marker = "extra == 'full'", specifier = "==0.2.6" },
     { name = "maxminddb", specifier = "==3.2.0" },
     { name = "numba", marker = "extra == 'full'", specifier = ">=0.60.0" },
     { name = "numpy", marker = "extra == 'full'", specifier = ">=1.26.0" },
@@ -1521,6 +1533,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/00/62/791b31e69ae182791ec67f04850f2f062716bbd205483d63a215f3e062d3/mako-1.3.12.tar.gz", hash = "sha256:9f778e93289bd410bb35daadeb4fc66d95a746f0b75777b942088b7fd7af550a", size = 400219, upload-time = "2026-04-28T19:01:08.512Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/b1/a0ec7a5a9db730a08daef1fdfb8090435b82465abbf758a596f0ea88727e/mako-1.3.12-py3-none-any.whl", hash = "sha256:8f61569480282dbf557145ce441e4ba888be453c30989f879f0d652e39f53ea9", size = 78521, upload-time = "2026-04-28T19:01:10.393Z" },
+]
+
+[[package]]
+name = "manby"
+version = "0.2.6"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/15/30/707fd2113e624818e1da3a1933bf72794115620ac62e14e9767535d85edd/manby-0.2.6-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:69141af82cb6cd8cd35a07d6708ef6bcb0fab1c65f8753d0d0368aef21060bda", size = 10205511, upload-time = "2026-11-12T17:29:42.248Z" },
+    { url = "https://files.pythonhosted.org/packages/52/63/6cfe3f3a2011994782a7e524dbca0755b59a9351203c4916e83df6164aec/manby-0.2.6-py3-none-macosx_11_0_arm64.whl", hash = "sha256:c960fa2e5ef8733d4e7e39b6c5e5ef2552598969ad4778d7f20a8f68c95ee820", size = 8986592, upload-time = "2026-11-12T17:29:44.525Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/e6/77f3fdff3ef99a3d478d9483d4d208afbbbdfafdf1d47037e05187006d6d/manby-0.2.6-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:8df6cf94428e21c60ed2ec8d938142dce3ae0260505e7a5b48d9355a8b90bcf7", size = 9811000, upload-time = "2026-11-12T17:29:51.683Z" },
+    { url = "https://files.pythonhosted.org/packages/70/ee/226323f55bc7c9066e74bed5c85d46878229ab37edb6385d9d8d0657eb58/manby-0.2.6-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:5af2042793dcb53acce9719482862633d79989a18a28a28570ba1062733741ad", size = 10574896, upload-time = "2026-11-12T17:29:53.613Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/a8/e549b94d101319944a1c65b812c194156ba30d7ecb6114f57f3b51d28c85/manby-0.2.6-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:e516f079015b044f020269ab28e2581f543379f4b8985fddedc51d1bf40c8c41", size = 9964510, upload-time = "2026-11-12T17:29:55.578Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/9e/f8f58f5543f76c27648c5a0021dee5c24d9cab86ac31140260f09eb14220/manby-0.2.6-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:f36dbdb40cdb0e71ee218606a50794c565486bfca79e519bbb963427dbf72039", size = 10660661, upload-time = "2026-11-12T17:29:57.729Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/ba/be14762cca75f2c63d7ba1d5f09848dbe9abcc3c7e9b312060001d73f1dc/manby-0.2.6-py3-none-win_amd64.whl", hash = "sha256:35e0cac266205e3ad1cd18dbaa0df0db5d1a87f3c2c4c396fb587950273506cb", size = 10037444, upload-time = "2026-11-12T17:30:00.212Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/df/9854c4872dac9ff65e71dd14b38634ae97061a823d194ce5f43d683a7bea/manby-0.2.6-py3-none-win_arm64.whl", hash = "sha256:051e92f5b99d299243a0b2a7f501c406f97b93e37cd20e39412b74e290630b7d", size = 9546384, upload-time = "2026-11-12T17:30:02.192Z" },
 ]
 
 [[package]]

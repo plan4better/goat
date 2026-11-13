@@ -88,9 +88,6 @@ def test_tiles_are_written_to_the_catalog_tiles_directory(
         def generate_from_table(self, **_kwargs):  # noqa: ANN003
             return tmp_path / "catalog" / "tiles" / "t_x.pmtiles"
 
-        def generate_anchor_from_table(self, **_kwargs):  # noqa: ANN003
-            return None
-
     import goatlib.io.pmtiles as pmtiles_module
 
     monkeypatch.setattr(pmtiles_module, "PMTilesGenerator", _Generator)
@@ -116,6 +113,45 @@ def test_tiles_are_written_to_the_catalog_tiles_directory(
     # cleared without touching it.
     assert seen["dir"] != catalog_layers_dir()
     assert seen["dir"].parent == catalog_layers_dir().parent
+
+
+def test_catalog_materialize_builds_anchor_once(tmp_path, monkeypatch) -> None:
+    """generate_from_table builds a polygon layer's label anchors with the
+    layer; a second anchor build only repeated that work."""
+    monkeypatch.setenv("CATALOG_TILES_DIR", str(tmp_path / "catalog" / "tiles"))
+    from goatlib.io.pmtiles import PMTilesGenerator
+    from goatlib.utils.layer import catalog_tiles_dir
+
+    builds: list[bool] = []
+    real_build = PMTilesGenerator._build
+
+    def build(self, **kwargs):  # noqa: ANN001, ANN003, ANN202
+        builds.append(kwargs.get("label_anchor", False))
+        return real_build(self, **kwargs)
+
+    monkeypatch.setattr(PMTilesGenerator, "_build", build)
+
+    runner = CatalogMaterializeRunner()
+    runner.settings = SimpleNamespace(
+        pmtiles_enabled=True, pmtiles_min_zoom=0, pmtiles_max_zoom=14
+    )
+    parquet = tmp_path / "src.parquet"
+    fixture = duckdb.connect()
+    fixture.execute("INSTALL spatial; LOAD spatial;")
+    fixture.execute(
+        "COPY (SELECT 1 AS id, ST_GeomFromText("
+        "'POLYGON((7.5 47.5, 7.6 47.5, 7.6 47.6, 7.5 47.5))') AS geom) "
+        f"TO '{parquet}' (FORMAT PARQUET)"
+    )
+    fixture.close()
+
+    runner._generate_catalog_pmtiles(
+        "3fa85f64-5717-4562-b3fc-2c963f66afa6", parquet, "geom"
+    )
+
+    assert builds == [False, True]  # the layer, then its anchors, once
+    anchor = catalog_tiles_dir() / "t_3fa85f6457174562b3fc2c963f66afa6_anchor.pmtiles"
+    assert anchor.exists()
 
 
 @pytest.mark.parametrize(
