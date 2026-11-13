@@ -255,12 +255,9 @@ jobs:
           cache-suffix: goatlib
       # Only suite that needs real gdal (WFS/converter tests). The compiled
       # wheel lands in the uv cache, so the source build runs once per
-      # lockfile change, not per run. `tippecanoe` is needed because
-      # `PMTilesGenerator.__init__` refuses to construct without the binary
-      # on PATH, so the tests/io and tests/unit/io PMTiles suites cannot even
-      # reach their assertions without it.
-      - name: 🌍 Install libgdal-dev and tippecanoe
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgdal-dev tippecanoe
+      # lockfile change, not per run.
+      - name: 🌍 Install libgdal-dev
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgdal-dev
       # routing is the C++ package, and building it is most of this job's
       # install. uv rebuilds a path dependency after every checkout because its
       # files look new, so the wheel is cached here instead. The key covers what

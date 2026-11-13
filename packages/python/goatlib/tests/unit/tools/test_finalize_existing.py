@@ -214,7 +214,7 @@ def test_refresh_failure_after_the_rows_are_in_still_reports_them(
     # The rows are committed; failing the step now would make a re-run add
     # them twice. The refresh is logged and retried by the next write.
     h = _Harness(tmp_path, [_target()])
-    h.refresh_error = RuntimeError("tippecanoe crashed")
+    h.refresh_error = RuntimeError("manby crashed")
     out = h.run(_params())
     assert out.rows_appended == 3
 
@@ -249,7 +249,6 @@ def test_refuses_raster_target(tmp_path: Path) -> None:
     with pytest.raises(AppendError, match="feature layer or a table"):
         h.run(_params())
     assert "append" not in h.log
-
 
 
 def test_add_to_project_off_leaves_project_alone(tmp_path: Path) -> None:

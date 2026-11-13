@@ -92,23 +92,36 @@ def get_redis_client(*, for_tile_cache: bool = True) -> Optional[redis.Redis]:
 
 
 def _cache_key(
-    layer_id: str, z: int, x: int, y: int, version: str | None = None
+    layer_id: str,
+    z: int,
+    x: int,
+    y: int,
+    version: str | None = None,
+    filter_digest: str | None = None,
 ) -> str:
     """Generate cache key for a tile.
 
     Format: tile:{layer_id}:{z}/{x}/{y}, or tile:{layer_id}:v{version}:{z}/{x}/{y}
     when the tiles have a version (the PMTiles file's mtime), so a regenerated
-    file never hits tiles cached from the one it replaced.
+    file never hits tiles cached from the one it replaced. A tile filtered
+    from the stored tiles has the request's filter digest after the version:
+    tile:{layer_id}:v{version}:f{filter_digest}:{z}/{x}/{y}.
     """
     # Normalize layer_id (remove hyphens for consistency)
     layer_id_normalized = layer_id.replace("-", "")
     if version is not None:
-        return f"tile:{layer_id_normalized}:v{version}:{z}/{x}/{y}"
+        filtered = f"f{filter_digest}:" if filter_digest is not None else ""
+        return f"tile:{layer_id_normalized}:v{version}:{filtered}{z}/{x}/{y}"
     return f"tile:{layer_id_normalized}:{z}/{x}/{y}"
 
 
 def get_cached_tile(
-    layer_id: str, z: int, x: int, y: int, version: str | None = None
+    layer_id: str,
+    z: int,
+    x: int,
+    y: int,
+    version: str | None = None,
+    filter_digest: str | None = None,
 ) -> Optional[tuple[bytes, bool]]:
     """Get tile from Redis cache.
 
@@ -116,6 +129,8 @@ def get_cached_tile(
         layer_id: Layer UUID
         z, x, y: Tile coordinates
         version: Version of the tiles' source (see ``_cache_key``)
+        filter_digest: Digest of the request's filter, for a tile filtered
+            from the stored tiles (see ``_cache_key``)
 
     Returns:
         Tuple of (tile_data, is_gzip) or None if not cached
@@ -125,7 +140,7 @@ def get_cached_tile(
         return None
 
     try:
-        key = _cache_key(layer_id, z, x, y, version)
+        key = _cache_key(layer_id, z, x, y, version, filter_digest)
         # Use pipeline for atomic read of data + metadata
         pipe = client.pipeline()
         pipe.get(key)
@@ -155,6 +170,7 @@ def cache_tile(
     is_gzip: bool,
     ttl: Optional[int] = None,
     version: str | None = None,
+    filter_digest: str | None = None,
 ) -> bool:
     """Store tile in Redis cache.
 
@@ -165,6 +181,8 @@ def cache_tile(
         is_gzip: Whether tile is gzip compressed
         ttl: Optional TTL override (uses settings.TILE_CACHE_TTL by default)
         version: Version of the tiles' source (see ``_cache_key``)
+        filter_digest: Digest of the request's filter, for a tile filtered
+            from the stored tiles (see ``_cache_key``)
 
     Returns:
         True if cached successfully, False otherwise
@@ -178,7 +196,7 @@ def cache_tile(
         return False
 
     try:
-        key = _cache_key(layer_id, z, x, y, version)
+        key = _cache_key(layer_id, z, x, y, version, filter_digest)
         cache_ttl = ttl if ttl is not None else settings.TILE_CACHE_TTL
 
         # Use pipeline for atomic write

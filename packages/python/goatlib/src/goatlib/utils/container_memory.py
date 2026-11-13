@@ -26,6 +26,17 @@ _UNLIMITED = 1 << 60
 # DuckLake connection a quarter; Python, routing and the worker share the rest.
 JOB_WORK_MEMORY_SHARE = 0.5
 JOB_DUCKLAKE_MEMORY_SHARE = 0.25
+# A tile build writes the layer to a file with one of those connections first
+# and runs manby on it afterwards, so manby never shares the container with a
+# running query: it keeps its features and tiles under this share and spills
+# the rest to disk. The connection that wrote the file hands the memory of its
+# sort back once the file is written (`_write_tile_input` in io/pmtiles.py), so
+# the other half holds only what the job's connections keep between queries (a
+# tool's tables in memory, catalog metadata), Python and the job runner, and
+# manby passing its budget a little. A larger share barely sped up builds of
+# millions of features, and a layer that fills the budget could then take the
+# container over its limit.
+MANBY_MEMORY_SHARE = 0.5
 
 
 def container_memory_limit() -> int | None:

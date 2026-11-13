@@ -120,13 +120,13 @@ def test_delete_pmtiles_file_not_exists() -> None:
         assert result is False
 
 
-@patch("shutil.which")
-def test_check_dependencies_missing(mock_which: MagicMock) -> None:
-    """Test that missing tippecanoe raises RuntimeError."""
-    mock_which.return_value = None
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with pytest.raises(RuntimeError, match="tippecanoe is required"):
+def test_check_dependencies_missing() -> None:
+    """Without manby's program nothing can build tiles."""
+    with (
+        tempfile.TemporaryDirectory() as tmpdir,
+        patch("manby.binary", side_effect=FileNotFoundError("no manby")),
+    ):
+        with pytest.raises(RuntimeError, match="manby is required"):
             PMTilesGenerator(tiles_data_dir=tmpdir)
 
 
@@ -146,70 +146,10 @@ def test_generate_disabled() -> None:
         assert result is None
 
 
-def test_tippecanoe_command_default_zoom() -> None:
-    """Test tippecanoe command uses -z14 by default for polygons."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        config = PMTilesConfig()  # Uses default max_zoom=14
-        generator = PMTilesGenerator(tiles_data_dir=tmpdir, config=config)
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stderr="")
-            # Pass polygon geometry type (or None for default polygon behavior)
-            generator._run_tippecanoe(
-                "/input.fgb", "/output.pmtiles", geometry_type="POLYGON"
-            )
-
-            cmd = mock_run.call_args[0][0]
-            assert "-z14" in cmd  # Default max zoom 14
-            assert "-Z0" in cmd  # Default min zoom 0
-            assert "--extend-zooms-if-still-dropping" in cmd
-            assert "--drop-densest-as-needed" in cmd  # Polygon-specific
-            # Note: --use-attribute-for-id is NOT used because it removes id from properties
-
-
-def test_tippecanoe_command_custom_zoom() -> None:
-    """Test tippecanoe command generation with custom max zoom."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        config = PMTilesConfig(max_zoom=12)
-        generator = PMTilesGenerator(tiles_data_dir=tmpdir, config=config)
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stderr="")
-            generator._run_tippecanoe("/input.fgb", "/output.pmtiles")
-
-            cmd = mock_run.call_args[0][0]
-            assert "-z12" in cmd
-            assert "-z15" not in cmd
-
-
-def test_tippecanoe_command_point_layer() -> None:
-    """Test tippecanoe uses point-optimized settings for point layers."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        config = PMTilesConfig()
-        generator = PMTilesGenerator(tiles_data_dir=tmpdir, config=config)
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stderr="")
-            generator._run_tippecanoe(
-                "/input.geojson", "/output.pmtiles", geometry_type="POINT"
-            )
-
-            cmd = mock_run.call_args[0][0]
-            # Point-specific settings: keep every feature, spread them evenly
-            # at low zooms by clustering on a Hilbert curve.
-            assert "-r1" in cmd
-            assert "--cluster-distance=5" in cmd
-            assert "--hilbert" in cmd
-            assert "--extend-zooms-if-still-dropping" in cmd
-            # Should NOT have polygon-specific settings
-            assert "--drop-densest-as-needed" not in cmd
-            assert "--no-tiny-polygon-reduction" not in cmd
-
-
 def test_tiles_are_built_on_local_disk_and_published_whole() -> None:
-    """tippecanoe builds PMTiles in an SQLite database at its output path, which
-    is unsafe on network storage: it writes to a local work directory, and only
-    the finished file lands in the tiles directory."""
+    """manby reads its input file and spills to its temporary directory: all
+    of it is in a local work directory, and only the finished file lands in
+    the tiles directory."""
     import duckdb
 
     con = duckdb.connect()
@@ -222,21 +162,24 @@ def test_tiles_are_built_on_local_disk_and_published_whole() -> None:
         tiles_dir = pathlib.Path(tmpdir)
         generator = PMTilesGenerator(tiles_data_dir=tiles_dir)
         outputs: list[pathlib.Path] = []
+        temp_dirs: list[pathlib.Path] = []
 
-        def fake_tippecanoe(**kwargs: object) -> None:
-            output = pathlib.Path(str(kwargs["output_path"]))
-            outputs.append(output)
+        def fake_manby(
+            input_path: pathlib.Path, output: pathlib.Path, flags: list[str]
+        ) -> None:
+            outputs.extend([input_path, output])
+            temp_dirs.append(pathlib.Path(flags[flags.index("-t") + 1]))
             output.write_bytes(b"tiles")
 
-        with patch.object(generator, "_run_tippecanoe", side_effect=fake_tippecanoe):
+        with patch.object(generator, "_run_manby", side_effect=fake_manby):
             path = generator.generate_from_table(
                 duckdb_con=con,
                 table_name="lines",
                 layer_id="layer1",
-                show_progress=False,
             )
 
         assert path == generator.get_pmtiles_path("layer1")
         assert path.read_bytes() == b"tiles"
         assert outputs and all(tiles_dir not in p.parents for p in outputs)
+        assert temp_dirs and all(tiles_dir not in [p, *p.parents] for p in temp_dirs)
         assert [p.name for p in tiles_dir.iterdir()] == [path.name]
