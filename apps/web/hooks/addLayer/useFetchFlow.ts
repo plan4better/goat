@@ -488,13 +488,11 @@ export const useFetchFlow = ({
     filterMode === "sql"
       ? !!sql.trim()
       : withValues.length > 0 && (match === "all" || withValues.length === usedFilters.length);
-  // Over the cap, filters with values are asked about too: how many match, and whether the
-  // mirror's counts let an area too large to read through. Under it the area alone decides.
+  // Filters with values are asked about too: how many match, and over the read limit whether
+  // the mirror's counts let the area through.
   const matchFor =
     !isNetwork && filterMode === "builder" && narrowed && sized?.for === sizedFor && sized.filtersCanFit
-      ? sized.tooLarge || (sized.estimate ?? 0) > MAX_FEATURES
-        ? JSON.stringify([sizedFor, usedFilters.map(filterParam), match])
-        : undefined
+      ? JSON.stringify([sizedFor, usedFilters.map(filterParam), match])
       : undefined;
   const [matched, setMatched] = useState<{
     for: string;
