@@ -1,23 +1,10 @@
-import { LoadingButton } from "@mui/lab";
-import {
-  Box,
-  Button,
-  ClickAwayListener,
-  Divider,
-  ListItemIcon,
-  Menu,
-  MenuItem,
-  MenuList,
-  Stack,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { Box, Stack, Typography } from "@mui/material";
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 import { v4 } from "uuid";
 
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import { updateProjectLayer } from "@/lib/api/projects";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
@@ -34,8 +21,11 @@ import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
 import { useProcessExecution } from "@/hooks/map/useOgcProcesses";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
+import SearchableMenu from "@/components/common/SearchableMenu";
 import Selector from "@/components/map/panels/common/Selector";
 import Expression from "@/components/map/panels/filter/Expression";
+import { FilterFoot } from "@/components/map/panels/filter/FilterFoot";
+import { AddButton } from "@/components/map/panels/styleEditor/rows";
 
 /** A fresh, empty expression of one kind, ready to be filled in. */
 export const createExpression = (type: FilterType): ExpressionType => ({
@@ -67,7 +57,6 @@ export const validateExpressions = (expressions: ExpressionType[]): boolean =>
 
 const FilterPanel = ({ activeLayer, projectId }: { activeLayer: ProjectLayer; projectId: string }) => {
   const { t } = useTranslation("common");
-  const theme = useTheme();
   const dispatch = useAppDispatch();
   const runningJobIds = useAppSelector((state) => state.jobs.runningJobIds);
   const [previousLayerId, setPreviousLayerId] = useState<string | null>(null);
@@ -78,28 +67,21 @@ const FilterPanel = ({ activeLayer, projectId }: { activeLayer: ProjectLayer; pr
 
   // Add filter expression
   const [addExpressionAnchorEl, setAddExpressionAnchorEl] = React.useState<null | HTMLElement>(null);
+  // The menu opens under the button, its left edge on the content's (the button's plus sits on that edge, its box
+  // reaches into the gutter); Escape gives the focus back to the button.
+  const addMenuEdge = React.useRef<HTMLDivElement>(null);
+  const [addButton, setAddButton] = React.useState<HTMLButtonElement | null>(null);
   const handleAddExpressionClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (activeLayer?.type === layerType.Values.feature) {
-      setAddExpressionAnchorEl(event.currentTarget);
+      setAddButton(event.currentTarget);
+      setAddExpressionAnchorEl(addMenuEdge.current);
     } else {
       addExpression(FilterType.Logical);
     }
   };
-  const handleAddExpressionClose = () => {
-    setAddExpressionAnchorEl(null);
-  };
-  const open = Boolean(addExpressionAnchorEl);
   const addExpressionItems = [
-    {
-      sourceType: FilterType.Logical,
-      iconName: ICON_NAME.TABLE,
-      label: t("logical_expression"),
-    },
-    {
-      sourceType: FilterType.Spatial,
-      iconName: ICON_NAME.MAP,
-      label: t("spatial_expression"),
-    },
+    { sourceType: FilterType.Logical, iconName: ICON_NAME.TABLE, label: t("logical_expression") },
+    { sourceType: FilterType.Spatial, iconName: ICON_NAME.MAP, label: t("spatial_expression") },
   ];
 
   const [expressions, setExpressions] = useState<ExpressionType[]>([]);
@@ -212,133 +194,92 @@ const FilterPanel = ({ activeLayer, projectId }: { activeLayer: ProjectLayer; pr
     }
   };
 
+  // The body scrolls; the foot with the actions stays under it, in view.
   return (
-    <Box sx={{ p: 3 }}>
-      {/* DESCRIPTION */}
-      {!expressions?.length && (
-        <Typography variant="body2" sx={{ fontStyle: "italic", marginBottom: theme.spacing(4) }}>
-          {t("filter_layer_message")}
-        </Typography>
-      )}
-      {expressions && expressions?.length > 1 && (
-        <>
-          <Divider />
-          <Selector
-            selectedItems={logicalOperator}
-            setSelectedItems={(item: SelectorItem[] | SelectorItem | undefined) => {
-              setLogicalOperator(item as SelectorItem);
-              updateLayerQuery(expressions, item);
-            }}
-            items={logicalOperators}
-            label={t("filter_results")}
-          />
-        </>
-      )}
+    <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 3, pt: 3, pb: 4 }}>
+        {!expressions?.length && (
+          <Typography variant="caption" component="p" color="text.secondary">
+            {t("filter_layer_message")}
+          </Typography>
+        )}
+        {/* The expressions, each closed by its own rule; with two or more, how they combine heads them. */}
+        {!!expressions?.length && (
+          <Stack spacing={4}>
+            {expressions.length > 1 && (
+              <Selector
+                selectedItems={logicalOperator}
+                setSelectedItems={(item: SelectorItem[] | SelectorItem | undefined) => {
+                  setLogicalOperator(item as SelectorItem);
+                  updateLayerQuery(expressions, item);
+                }}
+                items={logicalOperators}
+                label={t("filter_results")}
+              />
+            )}
+            {expressions.map((expression: ExpressionType) => (
+              <Expression
+                key={expression.id}
+                expression={expression}
+                onDelete={async (expression) => {
+                  const updatedExpressions = expressions.filter((e) => e.id !== expression.id);
+                  setExpressions(updatedExpressions);
+                  await updateLayerQuery(updatedExpressions, logicalOperator);
+                }}
+                onDuplicate={async (expression: ExpressionType) => {
+                  const updatedExpressions = [...expressions, { ...expression, id: v4() }];
+                  setExpressions(updatedExpressions);
+                  await updateLayerQuery(updatedExpressions, logicalOperator);
+                }}
+                onUpdate={async (expression: ExpressionType) => {
+                  const updatedExpressions = expressions.map((e) =>
+                    e.id === expression.id ? expression : e
+                  );
+                  setExpressions(updatedExpressions);
+                  await updateLayerQuery(updatedExpressions, logicalOperator);
+                }}
+              />
+            ))}
+          </Stack>
+        )}
 
-      {expressions && !!expressions?.length && (
-        <Stack spacing={4} sx={{ pt: 4 }}>
-          <Divider />
-          {expressions.map((expression: ExpressionType) => (
-            <Expression
-              key={expression.id}
-              expression={expression}
-              onDelete={async (expression) => {
-                const updatedExpressions = expressions.filter((e) => e.id !== expression.id);
-                setExpressions(updatedExpressions);
-                await updateLayerQuery(updatedExpressions, logicalOperator);
-              }}
-              onDuplicate={async (expression: ExpressionType) => {
-                const updatedExpressions = [...expressions, { ...expression, id: v4() }];
-                setExpressions(updatedExpressions);
-                await updateLayerQuery(updatedExpressions, logicalOperator);
-              }}
-              onUpdate={async (expression: ExpressionType) => {
-                const updatedExpressions = expressions.map((e) => (e.id === expression.id ? expression : e));
-                setExpressions(updatedExpressions);
-                await updateLayerQuery(updatedExpressions, logicalOperator);
-              }}
-            />
-          ))}
-        </Stack>
-      )}
-
-      {activeLayer && (
-        <Stack spacing={2} sx={{ pt: 4 }}>
-          {/* ADD EXPRESSION */}
-          <Button
+        {/* Under the last expression, its plus on the content's edge (as a rule's "Add a condition"). */}
+        {activeLayer && (
+          <AddButton
             onClick={handleAddExpressionClick}
-            fullWidth
-            size="small"
             disabled={!areAllExpressionsValid}
-            startIcon={<Icon iconName={ICON_NAME.PLUS} style={{ fontSize: "15px" }} />}>
-            <Typography variant="body2" fontWeight="bold" color="inherit">
-              {t("common:add_expression")}
-            </Typography>
-          </Button>
-          {activeLayer.type === layerType.Values.feature && (
-            <Menu
-              anchorEl={addExpressionAnchorEl}
-              anchorOrigin={{ vertical: "top", horizontal: "center" }}
-              transformOrigin={{ vertical: "bottom", horizontal: "center" }}
-              open={open}
-              MenuListProps={{
-                "aria-labelledby": "basic-button",
-                sx: {
-                  width: addExpressionAnchorEl && addExpressionAnchorEl.offsetWidth - 10,
-                  p: 0,
-                },
-              }}
-              onClose={handleAddExpressionClose}>
-              <Box>
-                <ClickAwayListener onClickAway={handleAddExpressionClose}>
-                  <MenuList>
-                    {addExpressionItems.map((item, index) => (
-                      <MenuItem
-                        key={index}
-                        onClick={() => {
-                          addExpression(item.sourceType);
-                          handleAddExpressionClose();
-                        }}>
-                        <ListItemIcon>
-                          <Icon iconName={item.iconName} style={{ fontSize: "15px" }} />
-                        </ListItemIcon>
-                        <Typography variant="body2">{item.label}</Typography>
-                      </MenuItem>
-                    ))}
-                  </MenuList>
-                </ClickAwayListener>
-              </Box>
-            </Menu>
-          )}
-          {/* CLEAR FILTER */}
-          <Button
-            variant="outlined"
-            fullWidth
-            size="small"
-            color="error"
-            disabled={!expressions?.length}
-            onClick={clearFilter}>
-            <Typography variant="body2" color="inherit">
-              {t("common:clear_filter")}
-            </Typography>
-          </Button>
-          {/* SAVE AS NEW LAYER */}
-          {activeLayer?.query?.cql && expressions?.length > 0 && areAllExpressionsValid && (
-            <>
-              <Divider />
-              <LoadingButton
-                fullWidth
-                size="small"
-                loading={isSaving}
-                startIcon={<Icon iconName={ICON_NAME.SAVE} style={{ fontSize: "15px" }} />}
-                onClick={saveAsNewLayer}>
-                <Typography variant="body2" fontWeight="bold" color="inherit">
-                  {t("save_as_new_layer")}
-                </Typography>
-              </LoadingButton>
-            </>
-          )}
-        </Stack>
+            sx={{ ml: -2.5, mt: 2 }}>
+            {t("add_expression")}
+          </AddButton>
+        )}
+        <Box ref={addMenuEdge} sx={{ width: 0, height: 0 }} />
+        {activeLayer?.type === layerType.Values.feature && (
+          <SearchableMenu
+            anchorEl={addExpressionAnchorEl}
+            role="menu"
+            placement="bottom-start"
+            items={addExpressionItems.map((item) => ({
+              label: item.label,
+              icon: item.iconName,
+              onClick: () => addExpression(item.sourceType),
+            }))}
+            focusOnClose={addButton}
+            onClose={() => setAddExpressionAnchorEl(null)}
+          />
+        )}
+      </Box>
+
+      {!!expressions?.length && (
+        <FilterFoot
+          onClear={clearFilter}
+          action={{
+            label: t("save_as_new_layer"),
+            onClick: saveAsNewLayer,
+            loading: isSaving,
+            // A filter that is saved and complete: the new layer is made from the stored query.
+            disabled: !activeLayer?.query?.cql || !areAllExpressionsValid,
+          }}
+        />
       )}
     </Box>
   );

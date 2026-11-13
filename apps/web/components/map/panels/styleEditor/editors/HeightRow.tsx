@@ -4,12 +4,10 @@
 // opening its editor in a popover with the part's switch in the header. Height is None, Fixed, By zoom, By attribute (a number
 // field read as it is, metres or storeys) or By classes; while Height is set, Base height (Fixed or By attribute); the
 // unit while either reads a field. The first height on a 2D map tilts it to 3D once, with Undo; a layer whose tilt
-// was undone says "Viewing in 2D · Show in 3D" under the row instead.
-import { Box, Button, Typography } from "@mui/material";
+// was undone says "Viewing in 2D. Show in 3D" under the row instead.
+import { Box, Link, Typography } from "@mui/material";
 import { memo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { addClassification, classifyShape, recordPathOf, scopedView } from "@/lib/style/editor/classify";
 import {
@@ -50,6 +48,7 @@ import {
   useNextLevel,
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
+import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import { FormButton, GroupRow, Row, SegmentedRow, SliderRow } from "@/components/map/panels/styleEditor/rows";
 import { FieldButton } from "@/components/map/panels/styleEditor/rows/FieldButton";
 import { type ModeChoice, ValueModeButton } from "@/components/map/panels/styleEditor/rows/ValueModeButton";
@@ -101,6 +100,8 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
   // A height read from a field says its unit.
   useStyleValue(`${PART}.unit`);
   const label = t(prop === "height" ? "style_editor.height" : "style_editor.base_height");
+  // The popover is titled Height: its rows are the top and the bottom (titles and the mode menu keep the full names).
+  const rowLabel = t(prop === "height" ? "style_editor.height_top" : "style_editor.height_bottom");
   const modeBox = useRef<HTMLDivElement | null>(null);
   // The field menu: for a height read from a field, or for the classes' field.
   const [menu, setMenu] = useState<{ purpose: "raw" | "classes"; anchor: HTMLElement } | null>(null);
@@ -234,7 +235,7 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
 
   if (mode === "none")
     return (
-      <Row label={label} actions={actions}>
+      <Row label={rowLabel} actions={actions}>
         {/* The value opens the mode menu, as the canvas's "None" field does. */}
         <FieldButton
           popup="menu"
@@ -248,7 +249,7 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
   if (mode === "fixed")
     return (
       <SliderRow
-        label={label}
+        label={rowLabel}
         {...HEIGHT_SLIDER}
         value={typeof value === "number" ? value : (DEFAULTS[key] as number)}
         onChange={(v) => store.set(writePath, v)}
@@ -259,7 +260,7 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
   if (mode === "raw")
     // A field picked from a list: the field opens the field menu under it.
     return (
-      <Row label={label} actions={actions} active={editorOpen}>
+      <Row label={rowLabel} actions={actions} active={editorOpen}>
         <FormButton
           popup="listbox"
           open={menu?.purpose === "raw"}
@@ -278,7 +279,7 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
   const shown = scope ? scopedView(store.document, scope).view : store.document;
   return (
     <GroupRow
-      label={label}
+      label={rowLabel}
       value={summarize(shown, path, t, { fields: data.fields, mapZoom, geometry: data.geometry })}
       curve={mode === "zoom"}
       mode={actions}
@@ -294,24 +295,23 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
   );
 }
 
-/** "Viewing in 2D · Show in 3D": a height the 2D map draws flat. */
+/** "Viewing in 2D. Show in 3D", the note of a height row while the 2D map draws the height flat: the way to 3D as a
+ * text link. */
 export function ViewingIn2D({ onShow }: { onShow: () => void }) {
   const { t } = useTranslation("common");
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 3, pb: 1, color: "text.secondary" }}>
-      <Icon iconName={ICON_NAME.CUBE} sx={{ fontSize: 14 }} />
-      <Typography variant="caption">{t("style_editor.height_viewing_2d")}</Typography>
-      <Typography variant="caption" aria-hidden="true">
-        ·
-      </Typography>
-      <Button
-        variant="text"
-        size="small"
+    <>
+      {t("style_editor.height_viewing_2d")}{" "}
+      <Link
+        component="button"
+        type="button"
+        variant="caption"
+        underline="hover"
         onClick={onShow}
-        sx={{ textTransform: "none", minWidth: 0, p: 0, typography: "caption", fontWeight: 700 }}>
+        sx={{ verticalAlign: "baseline" }}>
         {t("style_editor.height_show_3d")}
-      </Button>
-    </Box>
+      </Link>
+    </>
   );
 }
 
@@ -398,24 +398,27 @@ export const HeightRow = memo(function HeightRow() {
   if (on && getIn(store.document, `${PART}.unit`) === "storeys")
     text = t("style_editor.height_summary_storeys", { value: text });
   return (
-    <>
-      <GroupRow
-        label={label}
-        off={!on}
-        value={text}
-        curve={on && heightMode === "zoom"}
-        overrideDot={overridden}
-        onOpen={(anchor) =>
-          popover.open(next, {
-            key: "part:height",
-            title: label,
-            anchorTop: anchorTopOf(anchor),
-            actions: <HeightSwitch />,
-            render: () => <HeightEditor />,
-          })
-        }
-      />
-      {on && mode === "2d" && <ViewingIn2D onShow={show3d} />}
-    </>
+    <GroupRow
+      label={label}
+      off={!on}
+      value={text}
+      curve={on && heightMode === "zoom"}
+      overrideDot={overridden}
+      note={on && mode === "2d" ? <ViewingIn2D onShow={show3d} /> : undefined}
+      onOpen={(anchor) =>
+        popover.open(next, {
+          key: "part:height",
+          title: label,
+          anchorTop: anchorTopOf(anchor),
+          actions: (
+            <>
+              <ResetToDataset paths={[PART]} />
+              <HeightSwitch />
+            </>
+          ),
+          render: () => <HeightEditor />,
+        })
+      }
+    />
   );
 });

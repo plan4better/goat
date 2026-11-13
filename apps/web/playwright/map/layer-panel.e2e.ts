@@ -80,7 +80,7 @@ const openProject = async (page: Page, layerName: string) => {
 
 const rowMenu = async (page: Page, layerName: string, item: string) => {
   const row = await openProject(page, layerName);
-  await row.getByRole("button", { name: "More Options" }).click();
+  await row.getByRole("button", { name: "More options" }).click();
   await page.getByRole("button", { name: item, exact: true }).click();
 };
 

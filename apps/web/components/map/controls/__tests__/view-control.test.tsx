@@ -96,6 +96,13 @@ describe("ViewPanel", () => {
     expect(screen.getByText("view3d.hint")).toBeTruthy();
   });
 
+  it("opens Sky and atmosphere from the style editor's row that opens an editor", async () => {
+    const onOpenSky = vi.fn();
+    setup(panel({ onOpenSky }), "3d");
+    await userEvent.click(screen.getByRole("button", { name: "view3d.sky, view3d.auto" }));
+    expect(onOpenSky).toHaveBeenCalledTimes(1);
+  });
+
   it("hides the rows the map has no source for, and their divider", () => {
     setup(panel({ terrainUrl: undefined, hasBuildings: false }), "3d");
     expect(screen.queryByRole("switch", { name: "view3d.terrain" })).toBeNull();
@@ -108,7 +115,14 @@ describe("ViewPanel", () => {
     const slider = screen.getByRole("slider", { name: "view3d.exaggeration" });
     fireEvent.change(slider, { target: { value: 2 } });
     expect(sceneSeen).toEqual({ terrain: { exaggeration: 2 } });
-    expect(screen.getByText("2x")).toBeTruthy();
+    // The style editor's slider row: the value as a number box with its unit.
+    expect(screen.getByRole("textbox", { name: "view3d.exaggeration" })).toHaveProperty("value", "2");
+    expect(screen.getByText("x")).toBeTruthy();
+    // A typed value stays inside the range the style allows (1 to 3).
+    fireEvent.change(screen.getByRole("textbox", { name: "view3d.exaggeration" }), {
+      target: { value: "5" },
+    });
+    expect(sceneSeen).toEqual({ terrain: { exaggeration: 3 } });
     await userEvent.click(screen.getByRole("switch", { name: "view3d.terrain" }));
     expect(sceneSeen).toEqual({ terrain: false });
     expect(screen.queryByRole("slider", { name: "view3d.exaggeration" })).toBeNull();
@@ -125,10 +139,10 @@ describe("ViewPanel", () => {
   it("sets the buildings' opacity under their switch and keeps it when they go off", async () => {
     setup(panel(), "3d");
     const slider = screen.getByRole("slider", { name: "view3d.buildings_opacity" });
-    expect(slider.getAttribute("aria-valuetext")).toBe("60%");
-    fireEvent.change(slider, { target: { value: 35 } });
+    expect(screen.getByRole("textbox", { name: "view3d.buildings_opacity" })).toHaveProperty("value", "60");
+    fireEvent.change(slider, { target: { value: 0.35 } });
     expect(sceneSeen).toEqual({ buildings: { opacity: 0.35 } });
-    expect(screen.getByText("35%")).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "view3d.buildings_opacity" })).toHaveProperty("value", "35");
     await userEvent.click(screen.getByRole("switch", { name: "view3d.buildings" }));
     expect(sceneSeen).toEqual({ buildings: { on: false, opacity: 0.35 } });
     expect(screen.queryByRole("slider", { name: "view3d.buildings_opacity" })).toBeNull();
@@ -162,6 +176,34 @@ describe("ViewControl", () => {
     const popover = screen.getByRole("dialog", { name: "view3d.title" });
     expect(within(popover).getByRole("radiogroup", { name: "view3d.map_view" })).toBeTruthy();
     await userEvent.click(within(popover).getByRole("button", { name: "style_editor.close" }));
+    expect(screen.queryByRole("dialog", { name: "view3d.title" })).toBeNull();
+  });
+
+  it("closes on Escape", async () => {
+    setup(<ViewControl showSky />);
+    await userEvent.click(screen.getByRole("button", { name: "view3d.title" }));
+    expect(screen.getByRole("dialog", { name: "view3d.title" })).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "view3d.title" })).toBeNull();
+  });
+
+  it("closes on a press outside it, such as a row of the style panel, but stays open while the map is moved", async () => {
+    setup(
+      <>
+        <canvas className="maplibregl-canvas" data-testid="map" />
+        <div data-style-panel>
+          <button type="button">row</button>
+        </div>
+        <ViewControl showSky />
+      </>
+    );
+    await userEvent.click(screen.getByRole("button", { name: "view3d.title" }));
+    fireEvent.pointerDown(screen.getByTestId("map"));
+    expect(screen.getByRole("dialog", { name: "view3d.title" })).toBeTruthy();
+    // A press inside the popover keeps it.
+    fireEvent.pointerDown(screen.getByRole("switch", { name: "view3d.globe" }));
+    expect(screen.getByRole("dialog", { name: "view3d.title" })).toBeTruthy();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "row" }));
     expect(screen.queryByRole("dialog", { name: "view3d.title" })).toBeNull();
   });
 });

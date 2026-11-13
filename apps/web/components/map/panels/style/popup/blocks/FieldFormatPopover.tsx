@@ -19,7 +19,14 @@ import type { SelectorItem } from "@/types/map/common";
 import Selector from "@/components/map/panels/common/Selector";
 import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
 
-import { MiniLabel } from "./_shared";
+/** A control's name above it: the panels' caption in the secondary text color. */
+function MiniLabel({ children }: { children: string }) {
+  return (
+    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+      {children}
+    </Typography>
+  );
+}
 
 // Same ladder the layer-schema FieldEditor exposes, so the format panel
 // speaks the same vocabulary across the app.

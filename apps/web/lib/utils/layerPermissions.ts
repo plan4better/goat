@@ -100,22 +100,27 @@ export function canEditLayerFeatures({
 /**
  * Whether to offer "Set as default style".
  *
- * That button writes this project's styling back to the DATASET row, where it
+ * That action copies a named style over the DATASET's default style, where it
  * becomes the default for everyone who adds the dataset afterwards — so it
- * needs write access to the dataset, not to the project.
+ * needs write access to the dataset, not only to the project (core's
+ * `set-as-default` checks `layer` `write` on the dataset).
  *
  * A catalog layer never qualifies. It is a shared read-only snapshot with no
- * owner, so `check_layer` grants it only `layer-viewer` and the `PUT
- * layer/{id}` behind the button is refused — verified against the function
- * itself, where GET is granted and PUT and DELETE are not. Offering it can
- * only produce an error toast, or, on a deployment running with auth off,
- * quietly rewrite the default style of a dataset shared with everyone.
+ * owner: core keeps its default style read only, and `check_layer` grants it
+ * only `layer-viewer`. Offering it can only produce an error toast.
  *
- * Deliberately narrower than the server rule for now: a project VIEWER is also
- * refused this PUT, and this does not yet say so. Extending it means adding the
- * same ownership arguments {@link canEditLayerFields} takes.
+ * Otherwise the dataset write is approximated as {@link canEditLayerFields}
+ * does for columns: a project editor who owns the dataset, or a dataset of the
+ * project's owner; a locked row never.
  */
-export function canSetDefaultStyle(layer: Layer | ProjectLayer | null | undefined): boolean {
-  if (!layer) return false;
-  return !isCatalogLayer(layer);
+export function canSetDefaultStyle(
+  layer: Layer | ProjectLayer | null | undefined,
+  access: Pick<CanEditLayerFieldsArgs, "currentUserId" | "projectOwnerId" | "isProjectEditor">
+): boolean {
+  if (!layer || isCatalogLayer(layer)) return false;
+  return canEditLayerFields({
+    ...access,
+    layerOwnerId: layer.user_id,
+    locked: "locked" in layer ? layer.locked : false,
+  });
 }

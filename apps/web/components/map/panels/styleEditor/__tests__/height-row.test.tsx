@@ -22,6 +22,12 @@ import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/Po
 
 import { echoTransport } from "./renderPanel";
 
+// The parts' reset reads the dataset's style from core; none here.
+vi.mock("@/lib/api/map", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useDatasetStyle: () => ({ style: undefined, error: undefined, isLoading: true }),
+}));
+
 const { toasts } = vi.hoisted(() => ({ toasts: [] as ReactElement[] }));
 vi.mock("react-toastify", () => ({
   toast: Object.assign((content: ReactElement) => toasts.push(content), {
@@ -112,6 +118,9 @@ describe("HeightRow", () => {
     expect(summary()).toBe("None");
     await openHeight();
     expect(within(popover()).getByRole("checkbox", { name: "Turn height on" })).toBeTruthy();
+    // The title says Height once; its rows are the top and the bottom, as Fill's first row is Color.
+    expect(within(popover()).getAllByText("Height")).toHaveLength(1);
+    expect(within(popover()).getByText("Top")).toBeTruthy();
     await pick("Fixed");
     expect(summary()).toBe("10 m");
     // Off remembers the height, on brings it back.
@@ -132,7 +141,10 @@ describe("HeightRow", () => {
     expect(screen.getByText("Switched to 3D view")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(redux.getState().map.view?.mode).toBe("2d");
-    expect(screen.getByText(/Viewing in 2D/)).toBeTruthy();
+    // The row's note under its field: the state in words, then the way back as a text link.
+    const note = within(sidebarRow()).getByText(/Viewing in 2D/);
+    expect(note.textContent).toBe("Viewing in 2D. Show in 3D");
+    expect(within(note).getByRole("button", { name: "Show in 3D" })).toBeTruthy();
     // Declined for this layer: no tilt again.
     await pick("None");
     expect(store.get("symbol.extrude")).toBeUndefined();
@@ -155,7 +167,7 @@ describe("HeightRow", () => {
     await userEvent.click(items[0]);
     expect(store.get("symbol.extrude")).toEqual({ height: { field: "levels" }, unit: "storeys" });
     expect(screen.getByRole("button", { name: "Storeys × 3 m" }).getAttribute("aria-pressed")).toBe("true");
-    expect(within(popover()).getByText("Base height")).toBeTruthy();
+    expect(within(popover()).getByText("Bottom")).toBeTruthy();
     expect(summary()).toBe("By levels · storeys");
   });
 
@@ -205,6 +217,6 @@ describe("HeightRow", () => {
     act(() => store.setScope({ classify: 0, key: 0 }));
     expect(summary()).toBe("30 m");
     await openHeight();
-    expect(screen.getByRole("slider", { name: "Height" }).getAttribute("value")).toBe("30");
+    expect(screen.getByRole("slider", { name: "Top" }).getAttribute("value")).toBe("30");
   });
 });

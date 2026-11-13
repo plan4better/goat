@@ -55,6 +55,9 @@ export interface PartGroup {
   rows: PartRow[];
   /** A group shown as this one row in the section instead of a row that opens an editor (point Size). */
   inline?: PartRow;
+  /** The keys of the part its editor's reset puts back, where groups share a part (the points' marker); else the
+   * whole part. */
+  resetKeys?: readonly string[];
 }
 
 const DASHES = ["solid", "dashed", "dotted", "dash_dot"] as const;
@@ -215,6 +218,7 @@ const POINT_FILL: PartGroup = {
   switchKey: "fill",
   summary: "color",
   swatch: "color",
+  resetKeys: ["fill", "color", "opacity"],
   rows: [
     { type: "color", key: "color", label: "style_editor.color" },
     { type: "number", key: "opacity", label: "style_editor.opacity" },
@@ -232,6 +236,7 @@ const ICON: PartGroup = {
   part: "marker",
   toggle: false,
   summary: "icon",
+  resetKeys: ["icon", "icon_color", "shape", "rotation", "offset", "anchor", "allow_overlap"],
   rows: [
     { type: "icon", key: "icon", label: "style_editor.icon" },
     { type: "color", key: "color", label: "style_editor.color", when: (m) => hasIcon(m) && alone(m) },

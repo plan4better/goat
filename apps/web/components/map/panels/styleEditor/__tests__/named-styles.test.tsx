@@ -22,7 +22,18 @@ const api = vi.hoisted(() => ({
   deleteNamedStyle: vi.fn(async () => undefined),
   setStyleAsDefault: vi.fn(async () => ({})),
 }));
-vi.mock("@/lib/api/map", async (importOriginal) => ({ ...(await importOriginal<object>()), ...api }));
+/** The dataset's default style and the other styles' stored documents. */
+const ds = vi.hoisted(() => ({ dataset: undefined as unknown, others: {} as Record<string, unknown> }));
+vi.mock("@/lib/api/map", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ...api,
+  useDatasetStyle: () => ({ style: ds.dataset ? { document: ds.dataset } : undefined, error: undefined }),
+  useProjectStyles: () => ({
+    styles: Object.fromEntries(Object.entries(ds.others).map(([id, document]) => [id, { document }])),
+  }),
+}));
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("react-toastify", () => ({ toast }));
 
 const POLYGON = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const POINT = { version: 1, kind: "vector", symbol: { marker: { color: "#ff0000" } } } as LayerStyle;
@@ -69,14 +80,18 @@ function setup(layer: MapLayer, opts: { canSetDefault?: boolean } = {}) {
 /** The pill names the active style; it opens the styles beside the panel. */
 const openStyles = () =>
   userEvent.click(screen.getByRole("button", { name: "style_editor.styles: Default" }));
-const button = (name: string) => screen.getByRole("button", { name });
+const button = (name: string | RegExp) => screen.getByRole("button", { name });
 /** An item of a style's menu (the layer list's menu: its items are buttons). */
 const item = (name: string) => screen.getByRole("button", { name });
 /** A style's own menu, from its row's ⋯. */
 const openMenu = () => userEvent.click(screen.getAllByRole("button", { name: "style_editor.style_more" })[0]);
 
 describe("named styles", () => {
-  beforeEach(() => Object.values(api).forEach((fn) => fn.mockClear()));
+  beforeEach(() => {
+    [...Object.values(api), ...Object.values(toast)].forEach((fn) => fn.mockClear());
+    ds.dataset = undefined;
+    ds.others = {};
+  });
 
   it("the toolbar shows the active style, the save state and undo/redo", () => {
     setup(layerWith(["Other"]));
@@ -101,6 +116,10 @@ describe("named styles", () => {
     await openStyles();
     expect(screen.getByRole("list", { name: "style_editor.styles" })).toBeDefined();
     expect(button("Default").classList.contains("Mui-selected")).toBe(true);
+    // As the app's menus mark the option in force: a check, no fill.
+    expect(button("Default").querySelectorAll("svg")).toHaveLength(1);
+    expect(button("Night").querySelectorAll("svg")).toHaveLength(0);
+    expect(getComputedStyle(button("Default")).backgroundColor).toMatch(/^(rgba\(0, 0, 0, 0\)|transparent)$/);
     await userEvent.click(button("Night"));
     // Selected at once, while the switch is on its way.
     expect(button("Night").classList.contains("Mui-selected")).toBe(true);
@@ -197,7 +216,7 @@ describe("named styles", () => {
     });
   });
 
-  it("set as default only when allowed", async () => {
+  it("set as default only when allowed, without a toast", async () => {
     const first = setup(layerWith([]));
     await openStyles();
     await openMenu();
@@ -208,5 +227,68 @@ describe("named styles", () => {
     await openMenu();
     await userEvent.click(item("style_editor.set_default_style"));
     expect(api.setStyleAsDefault).toHaveBeenCalledWith("p1", 5, "a");
+    await waitFor(() => expect(api.setStyleAsDefault).toHaveBeenCalledTimes(1));
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("a failed set as default says so", async () => {
+    api.setStyleAsDefault.mockRejectedValueOnce(new Error("forbidden"));
+    setup(layerWith([]), { canSetDefault: true });
+    await openStyles();
+    await openMenu();
+    await userEvent.click(item("style_editor.set_default_style"));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("style_editor.default_style_failed"));
+  });
+
+  it("a style the same as the dataset's default style says so in its row, the active one as edited", async () => {
+    ds.dataset = { ...POLYGON, symbol: { fill: { color: "#cccccc", computed: { by: "server" } } } };
+    ds.others = { o0: POINT, o1: POLYGON };
+    const { editor } = setup(layerWith(["Night", "Copy"]));
+    await openStyles();
+    expect(button(/^Default/).textContent).toContain("style_editor.dataset_default");
+    expect(button(/^Night/).textContent).not.toContain("style_editor.dataset_default");
+    expect(button(/^Copy/).textContent).toContain("style_editor.dataset_default");
+    act(() => editor.set("symbol.fill.color", "#00ff00"));
+    expect(button(/^Default/).textContent).not.toContain("style_editor.dataset_default");
+  });
+
+  it("the active style's menu puts the whole style back as the dataset's, as one undo step", async () => {
+    const dataset = {
+      ...POLYGON,
+      symbol: { fill: { color: "#2bb381" }, label: { text: "x" } },
+    } as LayerStyle;
+    ds.dataset = dataset;
+    const { editor } = setup(layerWith(["Night"]));
+    await openStyles();
+    await openMenu();
+    await userEvent.click(item("style_editor.reset_to_dataset"));
+    expect(editor.document).toEqual(dataset);
+    expect(button(/^Default/).textContent).toContain("style_editor.dataset_default");
+    act(() => editor.undo());
+    expect(editor.document).toEqual(POLYGON);
+    // Only the active style's menu has it.
+    await userEvent.click(screen.getAllByRole("button", { name: "style_editor.style_more" })[1]);
+    expect(screen.queryByRole("button", { name: "style_editor.reset_to_dataset" })).toBeNull();
+  });
+
+  it("no whole-style reset while the style is the dataset's, or while the dataset's style is not there", async () => {
+    ds.dataset = POLYGON;
+    const first = setup(layerWith([]));
+    await openStyles();
+    await openMenu();
+    expect(screen.queryByRole("button", { name: "style_editor.reset_to_dataset" })).toBeNull();
+    first.unmount();
+    ds.dataset = undefined;
+    setup(layerWith([]));
+    await openStyles();
+    await openMenu();
+    expect(screen.queryByRole("button", { name: "style_editor.reset_to_dataset" })).toBeNull();
+  });
+
+  it("copy and paste are the panel's text buttons, not outlined boxes", async () => {
+    setup(layerWith([]));
+    await openStyles();
+    for (const name of ["style_editor.copy_style", "style_editor.paste_style"])
+      expect(button(name).classList.contains("MuiButton-text")).toBe(true);
   });
 });

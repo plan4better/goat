@@ -43,6 +43,7 @@ import { GROUPS, type PartGroup } from "@/components/map/panels/styleEditor/edit
 import { IconStops } from "@/components/map/panels/styleEditor/pickers/IconGlyph";
 import { useIconLabel } from "@/components/map/panels/styleEditor/pickers/iconRefs";
 import { type DropdownItem, DropdownMenu } from "@/components/map/panels/styleEditor/popovers/DropdownMenu";
+import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import {
   GroupRow,
@@ -137,11 +138,16 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
           title: label,
           anchorTop: anchorTopOf(anchor),
           render: () => <PartEditor part={group.id} />,
-          actions: group.toggle ? (
-            <PartSwitch part={group.id} />
-          ) : group.id === "icon" ? (
-            <IconSwitch />
-          ) : undefined,
+          actions: (
+            <>
+              <ResetToDataset
+                paths={
+                  group.resetKeys?.map((key) => `${partPath(group)}.${key}`) ?? [partPath(group)]
+                }
+              />
+              {group.toggle ? <PartSwitch part={group.id} /> : group.id === "icon" ? <IconSwitch /> : null}
+            </>
+          ),
         })
       }
     />

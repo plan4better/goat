@@ -1,13 +1,10 @@
-import { InputAdornment, Stack, TextField } from "@mui/material";
-import { useMemo } from "react";
+// The popup's appearance as the style editor's rows: its layout, the corner a pinned popup sits in, its width and
+// greatest height (empty for Auto) and its header.
 import { useTranslation } from "react-i18next";
 
 import type { PopupProperties } from "@/lib/validations/layer";
 
-import type { SelectorItem } from "@/types/map/common";
-
-import FormLabelHelper from "@/components/common/FormLabelHelper";
-import Selector from "@/components/map/panels/common/Selector";
+import { ChoiceRow, NumberInput, Row } from "@/components/map/panels/styleEditor/rows";
 
 interface Props {
   popup: PopupProperties;
@@ -17,123 +14,69 @@ interface Props {
 // Phase 1 renders only popup + pinned. modal/sidebar are valid in the schema
 // but hidden here until their render slots exist.
 const ENABLED_LAYOUTS = ["popup", "pinned"] as const;
+const ANCHORS = ["top_left", "top_right", "bottom_left", "bottom_right"] as const;
+const HEADERS = ["standard", "compact", "none"] as const;
 
-// Parse a numeric text input to a positive integer, or undefined (= auto).
-// Mirrors the schema constraint z.number().int().positive().
-function parsePositiveInt(raw: string): number | undefined {
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : undefined;
+/** A size in px, or undefined (Auto) for anything but a positive whole number (the schema's constraint). */
+const positiveInt = (n: number) => (Number.isInteger(n) && n > 0 ? n : undefined);
+
+/** A size in px that is Auto while empty. */
+function SizeRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+}) {
+  const { t } = useTranslation("common");
+  return (
+    <Row label={label}>
+      <NumberInput
+        value={value}
+        unit="px"
+        min={1}
+        width={96}
+        placeholder={t("auto")}
+        ariaLabel={label}
+        onChange={(n) => onChange(positiveInt(n))}
+        onClear={() => onChange(undefined)}
+      />
+    </Row>
+  );
 }
 
 export function PopupAppearanceSettings({ popup, onChange }: Props) {
   const { t } = useTranslation("common");
-
-  const layoutItems: SelectorItem[] = useMemo(
-    () => ENABLED_LAYOUTS.map((value) => ({ value, label: t(`popup_layout_${value}`) })),
-    [t],
-  );
-  const selectedLayout = useMemo(
-    () => layoutItems.find((i) => i.value === popup.layout),
-    [layoutItems, popup.layout],
-  );
-
-  const anchorItems: SelectorItem[] = useMemo(
-    () => [
-      { value: "top_left", label: t("anchor_top_left") },
-      { value: "top_right", label: t("anchor_top_right") },
-      { value: "bottom_left", label: t("anchor_bottom_left") },
-      { value: "bottom_right", label: t("anchor_bottom_right") },
-    ],
-    [t],
-  );
-  const selectedAnchor = useMemo(
-    () => anchorItems.find((i) => i.value === (popup.anchor ?? "top_right")),
-    [anchorItems, popup.anchor],
-  );
-
-  const headerItems: SelectorItem[] = useMemo(
-    () => [
-      { value: "standard", label: t("popup_header_standard") },
-      { value: "compact", label: t("popup_header_compact") },
-      { value: "none", label: t("popup_header_none") },
-    ],
-    [t],
-  );
-  const selectedHeader = useMemo(
-    () => headerItems.find((i) => i.value === popup.header),
-    [headerItems, popup.header],
-  );
-
-  const pxAdornment = (
-    <InputAdornment position="end">
-      <span style={{ fontSize: 12, opacity: 0.7 }}>px</span>
-    </InputAdornment>
-  );
-
   return (
-    <Stack spacing={3}>
-      <Selector
+    <>
+      <ChoiceRow<PopupProperties["layout"]>
         label={t("popup_layout")}
-        items={layoutItems}
-        selectedItems={selectedLayout}
-        setSelectedItems={(item) => {
-          if (item && !Array.isArray(item)) {
-            onChange({ layout: item.value as PopupProperties["layout"] });
-          }
-        }}
+        value={popup.layout}
+        options={ENABLED_LAYOUTS.map((value) => ({ value, label: t(`popup_layout_${value}`) }))}
+        onChange={(layout) => onChange({ layout })}
       />
-
       {popup.layout === "pinned" && (
-        <Selector
+        <ChoiceRow<NonNullable<PopupProperties["anchor"]>>
           label={t("anchor")}
-          items={anchorItems}
-          selectedItems={selectedAnchor}
-          setSelectedItems={(item) => {
-            if (item && !Array.isArray(item)) {
-              onChange({ anchor: item.value as PopupProperties["anchor"] });
-            }
-          }}
+          value={popup.anchor ?? "top_right"}
+          options={ANCHORS.map((value) => ({ value, label: t(`anchor_${value}`) }))}
+          onChange={(anchor) => onChange({ anchor })}
         />
       )}
-
-      <Stack spacing={1}>
-        <FormLabelHelper label={t("popup_width")} color="inherit" />
-        <TextField
-          size="small"
-          fullWidth
-          type="number"
-          placeholder={t("auto")}
-          value={popup.width ?? ""}
-          onChange={(e) => onChange({ width: parsePositiveInt(e.target.value) })}
-          inputProps={{ "aria-label": t("popup_width"), min: 1 }}
-          InputProps={{ endAdornment: pxAdornment }}
-        />
-      </Stack>
-
-      <Stack spacing={1}>
-        <FormLabelHelper label={t("popup_max_height")} color="inherit" />
-        <TextField
-          size="small"
-          fullWidth
-          type="number"
-          placeholder={t("auto")}
-          value={popup.max_height ?? ""}
-          onChange={(e) => onChange({ max_height: parsePositiveInt(e.target.value) })}
-          inputProps={{ "aria-label": t("popup_max_height"), min: 1 }}
-          InputProps={{ endAdornment: pxAdornment }}
-        />
-      </Stack>
-
-      <Selector
-        label={t("popup_header_label")}
-        items={headerItems}
-        selectedItems={selectedHeader}
-        setSelectedItems={(item) => {
-          if (item && !Array.isArray(item)) {
-            onChange({ header: item.value as PopupProperties["header"] });
-          }
-        }}
+      <SizeRow label={t("popup_width")} value={popup.width} onChange={(width) => onChange({ width })} />
+      <SizeRow
+        label={t("popup_max_height")}
+        value={popup.max_height}
+        onChange={(max_height) => onChange({ max_height })}
       />
-    </Stack>
+      <ChoiceRow<PopupProperties["header"]>
+        label={t("popup_header_label")}
+        value={popup.header}
+        options={HEADERS.map((value) => ({ value, label: t(`popup_header_${value}`) }))}
+        onChange={(header) => onChange({ header })}
+      />
+    </>
   );
 }

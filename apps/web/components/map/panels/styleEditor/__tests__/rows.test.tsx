@@ -1,5 +1,6 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -162,6 +163,38 @@ describe("rows", () => {
     expect(onChange).toHaveBeenLastCalledWith(1.5);
   });
 
+  it("an optional NumberInput reports an emptied box and shows what applies then", async () => {
+    const onChange = vi.fn();
+    const onClear = vi.fn();
+    function Width() {
+      const [value, setValue] = useState<number | undefined>(420);
+      return (
+        <NumberInput
+          value={value}
+          unit="px"
+          placeholder="Auto"
+          onChange={(v) => {
+            onChange(v);
+            setValue(v);
+          }}
+          onClear={() => {
+            onClear();
+            setValue(undefined);
+          }}
+        />
+      );
+    }
+    renderPanel(<Width />);
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    await userEvent.clear(input);
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+    // Empty stays empty on leaving, with what applies then in its place.
+    fireEvent.blur(input);
+    expect(input.value).toBe("");
+    expect(input.placeholder).toBe("Auto");
+  });
+
   it("ColorField is one button: the swatch and the color open the picker, by click and by key", async () => {
     const onOpen = vi.fn();
     renderPanel(<ColorField value="#cc00aa" onOpenPicker={onOpen} />);
@@ -260,6 +293,24 @@ describe("rows", () => {
     expect(onChange).toHaveBeenLastCalledWith(undefined, 14);
     fireEvent.change(high, { target: { value: 24 } });
     expect(onChange).toHaveBeenLastCalledWith(8, undefined);
+  });
+
+  it("a group or nav row carries a note under its field and a nav row its actions", () => {
+    renderPanel(
+      <>
+        <GroupRow label="Height" value="10 m" note={<span>flat in 2D</span>} onOpen={vi.fn()} />
+        <NavRow value="Quiet" note="Hidden" actions={<button type="button">up</button>} onOpen={vi.fn()} />
+      </>
+    );
+    // Under the field, in the control column (Row's note).
+    const column = (el: HTMLElement) => getComputedStyle(el).gridColumn.replace(/\s/g, "");
+    expect(column(screen.getByText("flat in 2D").parentElement as HTMLElement)).toBe("2/-1");
+    // Without a label the row is the field alone, its note under it across the row.
+    const rule = screen.getByText("Hidden");
+    expect(column(rule)).toBe("1/-1");
+    const row = rule.parentElement as HTMLElement;
+    expect(getComputedStyle(row).gridTemplateColumns).toBe("minmax(0, 1fr) auto");
+    expect(within(row).getByRole("button", { name: "up" })).toBeDefined();
   });
 
   it("rows have accessible names", () => {

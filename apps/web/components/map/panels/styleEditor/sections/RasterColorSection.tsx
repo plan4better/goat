@@ -20,6 +20,7 @@ import {
   paletteStrip,
   renderColors,
 } from "@/components/map/panels/styleEditor/editors/RasterColorsEditor";
+import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import {
   anchorTopOf,
   useNextLevel,
@@ -59,6 +60,7 @@ function ColorsRow() {
           key: "raster:colors",
           title: hillshade ? t("style_editor.hillshade_colors") : label,
           anchorTop: anchorTopOf(anchor),
+          actions: <ResetToDataset paths={["render"]} />,
           render: () => <RasterColorsEditor />,
         })
       }

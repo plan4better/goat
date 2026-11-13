@@ -2,8 +2,10 @@
 
 // A project layer's named styles (spec 10), at the top of the style tab: the active style in a pill, the save state
 // and undo/redo. The pill opens the styles beside the panel: a row per style to switch to, each with its own menu
-// (rename, duplicate, move, make it the dataset's default, delete, never the last), a new style (at most ten), and
-// copy or paste of the active style between layers of the same kind and geometry.
+// (rename, duplicate, move, make it the dataset's default, put the active one back as the dataset's style, delete,
+// never the last), a new style (at most ten), and copy or paste of the active style between layers of the same kind
+// and geometry. The style in force is marked as the app's menus mark an option (primary ink and a check); a style the
+// same as the dataset's default style, what the server computed aside, says so in its row.
 import {
   Box,
   Button,
@@ -17,17 +19,28 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import { type KeyboardEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
+import { mutate } from "swr";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { createNamedStyle, deleteNamedStyle, setStyleAsDefault, updateNamedStyle } from "@/lib/api/map";
+import {
+  createNamedStyle,
+  datasetStyleUrl,
+  deleteNamedStyle,
+  setStyleAsDefault,
+  updateNamedStyle,
+  useProjectStyles,
+} from "@/lib/api/map";
 import { setStyleClipboard } from "@/lib/store/layer/slice";
 import type { Geometry } from "@/lib/style/compile/types";
 import type { EditorStore } from "@/lib/style/editor/store";
+import type { LayerStyle } from "@/lib/style/generated/types";
+import { clone, sameAsWritten } from "@/lib/style/json";
+import { readableText } from "@/lib/utils/credits";
 
 import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
@@ -36,6 +49,7 @@ import PopperMenu, { type PopperMenuItem } from "@/components/common/PopperMenu"
 import ToolPill from "@/components/dashboard/common/ToolPill";
 import { useSaverState, useStatusText } from "@/components/map/panels/styleEditor/StatusLine";
 import { type EditorLayer, HistoryButtons } from "@/components/map/panels/styleEditor/StyleEditor";
+import { useDatasetReference } from "@/components/map/panels/styleEditor/datasetDefault";
 import {
   anchorTopOf,
   useIsOpener,
@@ -45,6 +59,8 @@ import { AddButton } from "@/components/map/panels/styleEditor/rows/AddButton";
 
 /** Named styles per project layer (spec 10). */
 export const MAX_STYLES = 10;
+
+const noSubscribe = () => () => undefined;
 
 export interface NamedStylesProps {
   projectId: string;
@@ -115,10 +131,12 @@ interface ListedStyle {
   id: string;
   name: string;
   active: boolean;
+  /** Made the dataset's default on this page. */
+  datasetDefault?: boolean;
 }
 
-/** One style as the panel's lists draw an item (the active one selected): a click switches to it, a double click
- * renames it in place; its menu is the secondary action. */
+/** One style as the panel's lists draw an item (the active one in primary ink with a check, as the menus mark the
+ * option in force): a click switches to it, a double click renames it in place; its menu is the secondary action. */
 function StyleRow({
   style,
   renaming,
@@ -136,6 +154,8 @@ function StyleRow({
   menu: PopperMenuItem[];
 }) {
   const { t } = useTranslation("common");
+  const theme = useTheme();
+  const ink = readableText(theme, theme.palette.primary.main);
   const [draft, setDraft] = useState(style.name);
   useEffect(() => setDraft(style.name), [style.name, renaming]);
   const done = useRef(false);
@@ -205,20 +225,27 @@ function StyleRow({
         aria-current={style.active ? "true" : undefined}
         onClick={onPick}
         onDoubleClick={onRename}
-        // An item of the panel's menus (the Selector's): full width, its name in body2 bold in the secondary text
-        // color, the selected one on the primary tint.
-        sx={(theme) => ({
+        // Full width, its name in body2 bold; the selected one in primary ink with a check and no fill (MenuRow).
+        sx={{
           py: 2,
           pl: 3,
+          gap: 2,
           borderRadius: 0,
-          color: "text.secondary",
+          color: style.active ? ink : "text.primary",
           "& .MuiListItemText-root": { my: 0 },
           "& .MuiListItemText-primary": { ...theme.typography.body2, fontWeight: "bold", color: "inherit" },
           "&:hover": { bgcolor: "action.hover" },
-          "&.Mui-selected": { bgcolor: alpha(theme.palette.primary.main, 0.08) },
-          "&.Mui-selected:hover": { bgcolor: alpha(theme.palette.primary.main, 0.12) },
-        })}>
-        <ListItemText primary={style.name} primaryTypographyProps={{ noWrap: true }} />
+          "&.Mui-selected": { bgcolor: "transparent" },
+          "&.Mui-selected:hover": { bgcolor: "action.hover" },
+          "&.Mui-selected.Mui-focusVisible": { bgcolor: "action.focus" },
+        }}>
+        <ListItemText
+          primary={style.name}
+          primaryTypographyProps={{ noWrap: true }}
+          secondary={style.datasetDefault ? t("style_editor.dataset_default") : undefined}
+          secondaryTypographyProps={{ variant: "caption", color: "text.secondary", noWrap: true }}
+        />
+        {style.active && <Icon iconName={ICON_NAME.CHECK} sx={{ fontSize: 12, color: ink, flex: "none" }} />}
       </ListItemButton>
     </ListItem>
   );
@@ -231,6 +258,13 @@ function StylesPopover({ live }: { live: Live }) {
   const props = useSyncExternalStore(live.subscribe, live.get, live.get);
   const { projectId, layer, store, kind, geometry, canSetDefault, onSwitch, onChanged } = props;
   const [renaming, setRenaming] = useState<string | null>(null);
+  // The dataset's default style; the active style as edited now, the others as stored.
+  const reference = useDatasetReference(layer.layer_id, geometry, kind === "vector" ? "vector" : "raster");
+  const activeDoc = useSyncExternalStore(store?.subscribe ?? noSubscribe, () => store?.document);
+  const otherIds = (layer.otherStyles ?? []).map((style) => style.id);
+  const { styles: stored } = useProjectStyles(projectId, layer.id, otherIds);
+  const isDatasetDefault = (doc: LayerStyle | undefined) =>
+    !!reference && !!doc && sameAsWritten(doc, reference);
   // The style clicked, shown selected while the switch is on its way.
   const [pending, setPending] = useState<string | null>(null);
   const active = layer.style;
@@ -243,11 +277,17 @@ function StylesPopover({ live }: { live: Live }) {
   const canPaste = !!store && !!clipboard && clipboard.kind === kind && clipboard.geometry === geometry;
   const run = (action: () => Promise<unknown>) => void action().then(() => onChanged());
   // The styles in their order: the active one at its position among the others.
-  const listed: ListedStyle[] = others.map((style) => ({ id: style.id, name: style.name, active: false }));
+  const listed: ListedStyle[] = others.map((style) => ({
+    id: style.id,
+    name: style.name,
+    active: false,
+    datasetDefault: isDatasetDefault(stored?.[style.id]?.document as LayerStyle | undefined),
+  }));
   listed.splice(Math.min(active.position, listed.length), 0, {
     id: active.id,
     name: active.name,
     active: true,
+    datasetDefault: isDatasetDefault(activeDoc),
   });
 
   const pick = (id: string) => {
@@ -316,12 +356,26 @@ function StylesPopover({ live }: { live: Live }) {
               group: "edit",
               label: t("style_editor.set_default_style"),
               icon: ICON_NAME.STAR,
-              // A copy over the dataset's default, kept apart from this style: say that it happened.
+              // A copy over the dataset's default: read again, the style's row says it (and the resets compare
+              // with it); a failure says so in a toast.
               onClick: () =>
                 void setStyleAsDefault(projectId, layer.id, style.id).then(
-                  () => toast.success(t("style_editor.default_style_set", { name: style.name })),
+                  () => void mutate(datasetStyleUrl(layer.layer_id)),
                   () => toast.error(t("style_editor.default_style_failed"))
                 ),
+            },
+          ]
+        : []),
+      // The active style back as the dataset's, whole, as one edit the panel's undo takes back; its name and place
+      // stay. Not while it is the dataset's already (its row says so).
+      ...(style.active && store && reference && !style.datasetDefault
+        ? [
+            {
+              id: "reset",
+              group: "edit",
+              label: t("style_editor.reset_to_dataset"),
+              icon: ICON_NAME.REFRESH,
+              onClick: () => store.update(() => clone(reference)),
             },
           ]
         : []),
@@ -373,11 +427,11 @@ function StylesPopover({ live }: { live: Live }) {
         </Typography>
       )}
       <Divider sx={{ mx: -3, my: 3 }} />
+      {/* Secondary actions: the panel's text buttons. */}
       <Box sx={{ display: "flex", gap: 2 }}>
         <Button
-          fullWidth
           size="small"
-          variant="outlined"
+          variant="text"
           color="inherit"
           disabled={!store}
           startIcon={<Icon iconName={ICON_NAME.COPY} sx={{ fontSize: "13px !important" }} />}
@@ -386,22 +440,19 @@ function StylesPopover({ live }: { live: Live }) {
               dispatch(
                 setStyleClipboard({ sourceLayerName: layer.name, document: store.document, kind, geometry })
               );
-          }}
-          sx={HALF}>
+          }}>
           {t("style_editor.copy_style")}
         </Button>
         <Button
-          fullWidth
           size="small"
-          variant="outlined"
+          variant="text"
           color="inherit"
           disabled={!canPaste}
           startIcon={<Icon iconName={ICON_NAME.PASTE} sx={{ fontSize: "13px !important" }} />}
           // One undo step: the whole copied document replaces this one.
           onClick={() => {
             if (canPaste && clipboard) store?.update(() => clipboard.document);
-          }}
-          sx={HALF}>
+          }}>
           {t("style_editor.paste_style")}
         </Button>
       </Box>
@@ -413,17 +464,6 @@ function StylesPopover({ live }: { live: Live }) {
     </Box>
   );
 }
-
-/** Copy and paste side by side: the prototype's outlined 32 px buttons with an 8 px radius. */
-const HALF = {
-  height: 32,
-  borderRadius: 2,
-  borderColor: "divider",
-  fontSize: 13,
-  fontWeight: 600,
-  textTransform: "none",
-  "&:hover": { borderColor: "text.disabled" },
-} as const;
 
 export function NamedStyles(props: NamedStylesProps) {
   const { t } = useTranslation("common");

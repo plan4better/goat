@@ -1,5 +1,6 @@
 // A part of the symbol (Fill, Outline, Line, …) as one row: a swatch and a summary that open the part's editor, and
-// the value mode button when the row is one property. NavRow is the same without a mode: a row that opens an editor.
+// the value mode button when the row is one property. NavRow is the same without a mode: a row that opens an editor,
+// with a label or as the field alone (a rule), and actions of its own. Both carry a note under the field (Row's).
 import { Box, Tooltip, Typography } from "@mui/material";
 import { type ReactNode, memo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -118,13 +119,14 @@ export interface GroupRowProps extends ValueButtonProps {
   off?: boolean;
   active?: boolean;
   mode?: ReactNode;
+  note?: ReactNode;
 }
 
-export const GroupRow = memo(function GroupRow({ label, off, active, mode, ...value }: GroupRowProps) {
+export const GroupRow = memo(function GroupRow({ label, off, active, mode, note, ...value }: GroupRowProps) {
   const [button, setButton] = useState<HTMLButtonElement | null>(null);
   const expanded = useIsOpener(button);
   return (
-    <Row label={label} actions={mode} off={off} active={active || expanded}>
+    <Row label={label} actions={mode} note={note} off={off} active={active || expanded}>
       <ValueButton {...value} buttonRef={setButton} expanded={expanded} active={!!active || expanded} />
     </Row>
   );
@@ -133,13 +135,15 @@ export const GroupRow = memo(function GroupRow({ label, off, active, mode, ...va
 export interface NavRowProps extends ValueButtonProps {
   label?: ReactNode;
   active?: boolean;
+  actions?: ReactNode;
+  note?: ReactNode;
 }
 
-export const NavRow = memo(function NavRow({ label, active, ...value }: NavRowProps) {
+export const NavRow = memo(function NavRow({ label, active, actions, note, ...value }: NavRowProps) {
   const [button, setButton] = useState<HTMLButtonElement | null>(null);
   const expanded = useIsOpener(button);
   return (
-    <Row label={label} active={active || expanded}>
+    <Row label={label} actions={actions} note={note} active={active || expanded}>
       <ValueButton {...value} buttonRef={setButton} expanded={expanded} active={!!active || expanded} />
     </Row>
   );

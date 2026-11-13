@@ -2,7 +2,7 @@
 
 // Rules (spec 6, prototype 2.6): conditions on any field and what they change, applied after the classifications in
 // list order, so their order is their precedence.
-import { Box, ButtonBase, IconButton, Typography } from "@mui/material";
+import { Box, IconButton } from "@mui/material";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -22,7 +22,7 @@ import {
   useNextLevel,
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
-import { PanelSection, Row } from "@/components/map/panels/styleEditor/rows";
+import { NavRow, PanelSection } from "@/components/map/panels/styleEditor/rows";
 import { zoomText } from "@/components/map/panels/styleEditor/sections/LayerSection";
 
 const PARTS = ["fill", "outline", "line", "casing", "arrows", "marker", "label"];
@@ -45,7 +45,8 @@ const ruleIds = (doc: unknown): string => {
     .join("\n");
 };
 
-/** One rule's row: it reads its own rule, so an edit of another rule does not render it. */
+/** One rule's row: its name in the field across the row (no label column: a name is longer than a label), what it
+ * changes as the note under it. It reads its own rule, so an edit of another rule does not render it. */
 function RuleRow({
   index,
   count,
@@ -65,43 +66,32 @@ function RuleRow({
   const id = typeof rule.id === "string" ? rule.id : String(index);
   return (
     <Box data-rule-row>
-      <Row
-        label={label(rule)}
+      <NavRow
+        value={label(rule)}
+        note={effectsOf(rule, t)}
+        onOpen={(anchor) => onOpen(id, anchorTopOf(anchor))}
+        // Both moves on every row of a list (the ends disabled), so the fields of the rules end at one place.
         actions={
-          <>
-            {index > 0 && (
+          count > 1 && (
+            <>
               <IconButton
                 size="small"
+                disabled={index === 0}
                 aria-label={t("style_editor.move_rule_up")}
                 onClick={() => onMove(index, index - 1)}>
                 <Icon iconName={ICON_NAME.CHEVRON_UP} sx={{ fontSize: 10 }} />
               </IconButton>
-            )}
-            {index < count - 1 && (
               <IconButton
                 size="small"
+                disabled={index === count - 1}
                 aria-label={t("style_editor.move_rule_down")}
                 onClick={() => onMove(index, index + 1)}>
                 <Icon iconName={ICON_NAME.CHEVRON_DOWN} sx={{ fontSize: 10 }} />
               </IconButton>
-            )}
-          </>
-        }>
-        <ButtonBase
-          onClick={(event) => onOpen(id, anchorTopOf(event.currentTarget))}
-          sx={{
-            flex: 1,
-            minWidth: 0,
-            justifyContent: "flex-start",
-            textAlign: "left",
-            py: 1,
-            borderRadius: 0.5,
-          }}>
-          <Typography variant="body2" noWrap>
-            {effectsOf(rule, t)}
-          </Typography>
-        </ButtonBase>
-      </Row>
+            </>
+          )
+        }
+      />
     </Box>
   );
 }

@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next";
 
 import { useProjectMap } from "@/lib/api/map";
 import { useFeatureCount } from "@/lib/api/processes";
+import { useProject } from "@/lib/api/projects";
+import { useUserProfile } from "@/lib/api/users";
 import { setSelectedLayers } from "@/lib/store/layer/slice";
 import { setActiveRightPanel } from "@/lib/store/map/slice";
 import type { Geometry } from "@/lib/style/compile/types";
@@ -89,6 +91,15 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
   const store = useLayerStyle(projectId, layerType === "table" ? undefined : (activeLayer ?? undefined));
   const { setLayerState, mutate } = useProjectMap(projectId);
   const { featureCount } = useFeatureCount(activeLayer?.layer_id ?? undefined);
+  // Who may make a style the dataset's default: a project editor who may write the dataset.
+  const { userProfile } = useUserProfile();
+  const { project } = useProject(projectId);
+  const datasetAccess = {
+    currentUserId: userProfile?.id,
+    projectOwnerId: project?.owned_by?.id,
+    // The panel is the project's editing panel; a role the project names decides.
+    isProjectEditor: !project?.my_role || ["project-owner", "project-editor"].includes(project.my_role),
+  };
   const editorLayer = useMemo<EditorLayer>(() => {
     const g = activeLayer?.feature_layer_geometry_type?.toLowerCase();
     const geometry = (g === "point" || g === "line" || g === "polygon" ? g : undefined) as
@@ -169,7 +180,7 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
           store={store}
           kind={editorLayer.kind}
           geometry={editorLayer.geometry}
-          canSetDefault={canSetDefaultStyle(activeLayer)}
+          canSetDefault={canSetDefaultStyle(activeLayer, datasetAccess)}
           onSwitch={(styleId) => setLayerState(activeLayer.id, { active_style_id: styleId })}
           onChanged={() => mutate()}
         />

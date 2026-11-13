@@ -231,27 +231,42 @@ describe("canEditLayerFields", () => {
 });
 
 describe("canSetDefaultStyle", () => {
-  const catalogLayer = { other_properties: { catalog_item: { id: "x" } } } as never;
-  const ownLayer = { other_properties: {} } as never;
+  const catalogLayer = { other_properties: { catalog_item: { id: "x" } }, user_id: "me" } as never;
+  const ownLayer = { other_properties: {}, user_id: "me" } as never;
+  const othersLayer = { other_properties: {}, user_id: "someone" } as never;
+  const editor = { currentUserId: "me", projectOwnerId: "owner", isProjectEditor: true };
 
-  it("refuses a catalog layer", () => {
-    // The button PUTs the dataset row, which `check_layer` grants only
-    // `layer-viewer` on — GET is allowed, PUT and DELETE are not.
-    expect(canSetDefaultStyle(catalogLayer)).toBe(false);
+  it("refuses a catalog layer, whoever asks", () => {
+    // The dataset row of a catalog layer is read only: `check_layer` grants
+    // only `layer-viewer` on it, and core refuses its default style.
+    expect(canSetDefaultStyle(catalogLayer, editor)).toBe(false);
+    expect(canSetDefaultStyle(catalogLayer, { ...editor, currentUserId: "owner" })).toBe(false);
   });
 
   it("refuses a layer still being materialized", () => {
     expect(
-      canSetDefaultStyle({ other_properties: { catalog_materialize: { status: "pending" } } } as never)
+      canSetDefaultStyle(
+        { other_properties: { catalog_materialize: { status: "pending" } }, user_id: "me" } as never,
+        editor
+      )
     ).toBe(false);
   });
 
-  it("allows a layer the user holds", () => {
-    expect(canSetDefaultStyle(ownLayer)).toBe(true);
+  it("allows a project editor who may write the dataset: its owner, or a layer of the project's owner", () => {
+    expect(canSetDefaultStyle(ownLayer, editor)).toBe(true);
+    expect(canSetDefaultStyle({ other_properties: {}, user_id: "owner" } as never, editor)).toBe(true);
+  });
+
+  it("refuses a dataset the user may not write, and a project viewer", () => {
+    expect(canSetDefaultStyle(othersLayer, editor)).toBe(false);
+    expect(canSetDefaultStyle(ownLayer, { ...editor, isProjectEditor: false })).toBe(false);
+    expect(canSetDefaultStyle({ other_properties: {}, user_id: "me", locked: true } as never, editor)).toBe(
+      false
+    );
   });
 
   it("refuses when there is no layer", () => {
-    expect(canSetDefaultStyle(null)).toBe(false);
-    expect(canSetDefaultStyle(undefined)).toBe(false);
+    expect(canSetDefaultStyle(null, editor)).toBe(false);
+    expect(canSetDefaultStyle(undefined, editor)).toBe(false);
   });
 });

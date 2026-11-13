@@ -300,6 +300,22 @@ export const fetchProjectStyle = (
 ): Promise<StyleRead> => fetchStyle(`${layerUrl(projectId, layerProjectId)}/style/${styleId}`);
 
 /** Named styles of a project layer (spec 10: at most ten, one active). */
+/** Named styles of a project layer, whole, by id, loaded together (the styles popover compares them with the
+ * dataset's default style). */
+export function useProjectStyles(projectId: string, layerProjectId: number, styleIds: string[]) {
+  const { data, error, isLoading } = useSWR<Record<string, StyleRead>>(
+    styleIds.length ? ["project-styles", projectId, layerProjectId, ...styleIds] : null,
+    async () => {
+      const styles = await Promise.all(
+        styleIds.map((id) => fetchProjectStyle(projectId, layerProjectId, id))
+      );
+      return Object.fromEntries(styleIds.map((id, i) => [id, styles[i]]));
+    },
+    { revalidateOnFocus: false }
+  );
+  return { styles: data, error, isLoading };
+}
+
 export async function createNamedStyle(
   projectId: string,
   layerProjectId: number,

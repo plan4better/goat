@@ -1,104 +1,80 @@
-import {
-  Box,
-  Button,
-  IconButton,
-  Paper,
-  Stack,
-  Switch,
-  Typography,
-} from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { Box, IconButton, Typography } from "@mui/material";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { LayerFieldType, PopupBadgeBlock } from "@/lib/validations/layer";
-
-import { rgbToHex } from "@/lib/utils/helpers";
-
-import type { RGBColor } from "@/types/map/color";
-
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { ArrowPopper } from "@/components/ArrowPoper";
-import LayerFieldSelector from "@/components/map/common/LayerFieldSelector";
-import type { LayerField } from "@/components/map/popover/formatFeatureProperties";
-import SingleColorSelector from "@/components/map/panels/style/color/SingleColorSelector";
-import { LayerValueSelectorPopper } from "@/components/map/panels/style/other/LayerValueSelectorPopper";
+import type { PopupBadgeBlock } from "@/lib/validations/layer";
 
-import { MiniLabel, PillToggleGroup } from "./_shared";
+import { LayerValueSelectorPopper } from "@/components/map/panels/style/other/LayerValueSelectorPopper";
+import { useStyleData } from "@/components/map/panels/styleEditor/context";
+import { FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
+import {
+  AddButton,
+  ColorField,
+  Row,
+  SegmentedRow,
+  SwitchRow,
+} from "@/components/map/panels/styleEditor/rows";
+
+import { BlockColorRow, type OpenBlockColor } from "./_shared";
 
 interface Props {
   block: PopupBadgeBlock;
-  fields: LayerField[];
   layerId: string;
   onChange: (next: PopupBadgeBlock) => void;
+  openColor: OpenBlockColor;
 }
 
 const DEFAULT_COLOR = "#56CA00";
 const FALLBACK_COLOR = "#8A8D93";
 
-export function BadgeBlockEditor({ block, fields, layerId, onChange }: Props) {
+export function BadgeBlockEditor({ block, layerId, onChange, openColor }: Props) {
   const { t } = useTranslation("common");
-
-  // Categorical badge values come from string/text fields. Anything else
-  // (numbers, dates) doesn't fit the "label chip" mental model.
-  const badgeFields = fields.filter((f) => f.type === "string") as LayerFieldType[];
-  const selectedField = badgeFields.find((f) => f.name === block.field);
-
-  const removePaletteEntry = (key: string) => {
-    const next = { ...block.palette };
-    delete next[key];
-    onChange({ ...block, palette: next });
-  };
-
-  const setPaletteColor = (key: string, color: string) => {
-    onChange({ ...block, palette: { ...block.palette, [key]: color } });
-  };
+  const { fields } = useStyleData();
+  const field = fields.find((f) => f.name === block.field);
 
   return (
-    <Stack spacing={2} sx={{ px: 2, pb: 2 }}>
-      <Box>
-        <MiniLabel>{t("badge_field")}</MiniLabel>
-        <LayerFieldSelector
-          fields={badgeFields}
-          selectedField={selectedField}
-          setSelectedField={(field) => {
-            if (field && !Array.isArray(field)) {
-              onChange({ ...block, field: field.name });
-            }
-          }}
+    <>
+      {/* Categorical badge values come from text fields: numbers and dates don't fit a label chip. */}
+      <Row label={t("badge_field")}>
+        <FieldPickerButton
+          ariaLabel={t("badge_field")}
+          text={field?.label ?? t("style_editor.pick_field")}
+          fields={fields}
+          filter="text"
+          value={block.field}
+          onChange={(name) => onChange({ ...block, field: name })}
         />
-      </Box>
-
-      <Box>
-        <MiniLabel>{t("color_mode")}</MiniLabel>
-        <PillToggleGroup
-          value={block.mode}
-          onChange={(v) =>
-            onChange({ ...block, mode: v as PopupBadgeBlock["mode"] })
-          }
-          options={[
-            { value: "single", label: t("single_color") },
-            { value: "per_value", label: t("by_value") },
-          ]}
-        />
-      </Box>
-
+      </Row>
+      <SegmentedRow<PopupBadgeBlock["mode"]>
+        label={t("color_mode")}
+        value={block.mode}
+        onChange={(mode) => onChange({ ...block, mode })}
+        options={[
+          { value: "single", label: t("single_color") },
+          { value: "per_value", label: t("by_value") },
+        ]}
+      />
       {block.mode === "single" ? (
-        <Box>
-          <MiniLabel>{t("color")}</MiniLabel>
-          <ColorSwatchButton
-            color={block.color || DEFAULT_COLOR}
-            onPick={(hex) => onChange({ ...block, color: hex })}
-          />
-        </Box>
+        <BlockColorRow<PopupBadgeBlock>
+          label={t("color")}
+          value={block.color || DEFAULT_COLOR}
+          openColor={openColor}
+          read={(b) => b.color || DEFAULT_COLOR}
+          write={(b, color) => ({ ...b, color })}
+        />
       ) : (
         <PerValuePalette
           layerId={layerId}
-          fieldName={block.field}
+          fieldName={field ? block.field : ""}
           palette={block.palette}
-          onRemove={removePaletteEntry}
-          onChangeColor={setPaletteColor}
+          openColor={openColor}
+          onRemove={(key) => {
+            const next = { ...block.palette };
+            delete next[key];
+            onChange({ ...block, palette: next });
+          }}
           onAddValues={(values) => {
             const next = { ...block.palette };
             for (const v of values) {
@@ -108,96 +84,35 @@ export function BadgeBlockEditor({ block, fields, layerId, onChange }: Props) {
           }}
         />
       )}
-
-      <Stack
-        direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        spacing={2}>
-        <Typography variant="body2">{t("full_width")}</Typography>
-        <Switch
-          size="small"
-          checked={block.full_width}
-          onChange={(_, v) => onChange({ ...block, full_width: v })}
-        />
-      </Stack>
-    </Stack>
-  );
-}
-
-function ColorSwatchButton({
-  color,
-  onPick,
-}: {
-  color: string;
-  onPick: (hex: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <ArrowPopper
-      open={open}
-      placement="bottom"
-      arrow={false}
-      disablePortal={false}
-      isClickAwayEnabled={true}
-      onClose={() => setOpen(false)}
-      content={
-        <Paper
-          sx={{
-            py: 2,
-            boxShadow: "rgba(0, 0, 0, 0.16) 0px 6px 12px 0px",
-            width: 235,
-            maxHeight: 500,
-          }}>
-          <SingleColorSelector
-            selectedColor={color}
-            onSelectColor={(c) => {
-              if (Array.isArray(c) && c.length === 3) {
-                onPick(rgbToHex(c as RGBColor));
-              }
-            }}
-          />
-        </Paper>
-      }>
-      <Box
-        onClick={() => setOpen((v) => !v)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") setOpen((v) => !v);
-        }}
-        sx={(theme) => ({
-          height: 28,
-          borderRadius: 1,
-          bgcolor: color,
-          cursor: "pointer",
-          border: `1px solid ${alpha(theme.palette.text.primary, 0.1)}`,
-          transition: "box-shadow 150ms",
-          "&:hover": { boxShadow: theme.shadows[2] },
-        })}
+      <SwitchRow
+        label={t("full_width")}
+        on={block.full_width}
+        onToggle={() => onChange({ ...block, full_width: !block.full_width })}
       />
-    </ArrowPopper>
+    </>
   );
 }
 
+/** A color per value: a row per value (its color in the field, removed with the button beside it), then "Add value"
+ * with the layer's values to pick from. */
 function PerValuePalette({
   layerId,
   fieldName,
   palette,
+  openColor,
   onRemove,
-  onChangeColor,
   onAddValues,
 }: {
   layerId: string;
   fieldName: string;
   palette: Record<string, string>;
+  openColor: OpenBlockColor;
   onRemove: (key: string) => void;
-  onChangeColor: (key: string, color: string) => void;
   onAddValues: (values: string[]) => void;
 }) {
   const { t } = useTranslation("common");
   const entries = Object.entries(palette);
-  const addButtonRef = useRef<HTMLButtonElement | null>(null);
+  const addButtonRef = useRef<HTMLElement | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   // Local selection inside the popper — what the user is currently
   // ticking. Committed to the palette in onDone (with the fallback
@@ -213,74 +128,55 @@ function PerValuePalette({
     setPickerOpen(false);
   };
 
-  const fieldDisabled = !fieldName;
-
   return (
-    <Box>
-      <MiniLabel>{t("value_colors")}</MiniLabel>
-      <Stack spacing={0.75}>
-        {entries.length === 0 ? (
+    <>
+      {entries.length === 0 ? (
+        <Row label={t("value_colors")}>
           <Typography variant="caption" color="text.secondary">
             {t("badge_no_values_yet")}
           </Typography>
-        ) : (
-          entries.map(([val, color]) => (
-            <Stack
-              key={val}
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              sx={{ minWidth: 0 }}>
-              <ValueColorSwatch
-                color={color}
-                onPick={(hex) => onChangeColor(val, hex)}
-              />
-              <Typography
-                variant="body2"
-                sx={{
-                  flex: 1,
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={val}>
-                {val}
-              </Typography>
+        </Row>
+      ) : (
+        entries.map(([value, color]) => (
+          <Row
+            key={value}
+            label={<span title={value}>{value}</span>}
+            actions={
               <IconButton
                 size="small"
-                disableRipple
-                onClick={() => onRemove(val)}
-                sx={(theme) => ({
-                  p: 0.5,
-                  color: alpha(theme.palette.text.primary, 0.55),
-                  "&:hover": {
-                    bgcolor: "transparent",
-                    color: theme.palette.error.main,
-                  },
-                })}>
-                <Icon iconName={ICON_NAME.TRASH} style={{ fontSize: 12 }} />
+                aria-label={t("style_editor.remove_value", { value })}
+                onClick={() => onRemove(value)}>
+                <Icon iconName={ICON_NAME.CLOSE} sx={{ fontSize: 12 }} />
               </IconButton>
-            </Stack>
-          ))
-        )}
-
-        <Button
-          ref={addButtonRef}
-          size="small"
-          variant="text"
-          disabled={fieldDisabled}
-          startIcon={
-            <Icon iconName={ICON_NAME.PLUS} style={{ fontSize: 12 }} />
-          }
-          onClick={() => {
-            setPickerValues(null);
-            setPickerOpen(true);
-          }}
-          sx={{ alignSelf: "center", textTransform: "none", mt: 0.5 }}>
-          {t("add_value")}
-        </Button>
-      </Stack>
+            }>
+            <ColorField
+              value={color}
+              onOpenPicker={(anchor) =>
+                openColor<PopupBadgeBlock>(
+                  anchor,
+                  value,
+                  (b) => b.palette[value] ?? color,
+                  (b, hex) => ({ ...b, palette: { ...b.palette, [value]: hex } })
+                )
+              }
+            />
+          </Row>
+        ))
+      )}
+      {/* Under the last value, its plus on the content's edge. */}
+      <Box sx={{ px: 3 }}>
+        <Box ref={addButtonRef} component="span" sx={{ display: "inline-flex" }}>
+          <AddButton
+            disabled={!fieldName}
+            onClick={() => {
+              setPickerValues(null);
+              setPickerOpen(true);
+            }}
+            sx={{ ml: -2.5 }}>
+            {t("add_value")}
+          </AddButton>
+        </Box>
+      </Box>
 
       {pickerOpen && (
         <LayerValueSelectorPopper
@@ -299,63 +195,6 @@ function PerValuePalette({
           offset={[0, 4]}
         />
       )}
-    </Box>
-  );
-}
-
-function ValueColorSwatch({
-  color,
-  onPick,
-}: {
-  color: string;
-  onPick: (hex: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <ArrowPopper
-      open={open}
-      placement="bottom-start"
-      arrow={false}
-      disablePortal={false}
-      isClickAwayEnabled={true}
-      onClose={() => setOpen(false)}
-      content={
-        <Paper
-          sx={{
-            py: 2,
-            boxShadow: "rgba(0, 0, 0, 0.16) 0px 6px 12px 0px",
-            width: 235,
-            maxHeight: 500,
-          }}>
-          <SingleColorSelector
-            selectedColor={color}
-            onSelectColor={(c) => {
-              if (Array.isArray(c) && c.length === 3) {
-                onPick(rgbToHex(c as RGBColor));
-              }
-            }}
-          />
-        </Paper>
-      }>
-      <Box
-        onClick={() => setOpen((v) => !v)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") setOpen((v) => !v);
-        }}
-        sx={(theme) => ({
-          width: 22,
-          height: 22,
-          borderRadius: "50%",
-          bgcolor: color,
-          cursor: "pointer",
-          flexShrink: 0,
-          border: `1px solid ${alpha(theme.palette.text.primary, 0.15)}`,
-          transition: "box-shadow 150ms",
-          "&:hover": { boxShadow: theme.shadows[2] },
-        })}
-      />
-    </ArrowPopper>
+    </>
   );
 }

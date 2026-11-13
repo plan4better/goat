@@ -1,15 +1,7 @@
-import type { DragEndEvent } from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";
-import {
-  Box,
-  Button,
-  Menu,
-  MenuItem,
-  MenuList,
-  Stack,
-  Typography,
-  useTheme,
-} from "@mui/material";
+// The popup's blocks as the style editor lists rules: a row per block (its kind's icon and name in the field, opening
+// its editor), moved up and down with the arrows beside it, removed from its editor's header; "Add block" opens the
+// panel's menu of block kinds.
+import { Box, IconButton } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { v4 } from "uuid";
@@ -18,9 +10,8 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { PopupBlock } from "@/lib/validations/layer";
 
-import { OverflowTypograpy } from "@/components/common/OverflowTypography";
-import { SortableItem } from "@/components/map/panels/style/other/SortableItem";
-import SortableWrapper from "@/components/map/panels/style/other/SortableWrapper";
+import { DropdownMenu } from "@/components/map/panels/styleEditor/popovers/DropdownMenu";
+import { AddButton, NavRow } from "@/components/map/panels/styleEditor/rows";
 
 interface BlockTypeMeta {
   value: PopupBlock["type"];
@@ -79,108 +70,72 @@ interface PopupBlockListProps {
   blocks: PopupBlock[];
   onChange: (next: PopupBlock[]) => void;
   onEdit: (block: PopupBlock, anchorEl: HTMLElement) => void;
-  editingId: string | null;
 }
 
-export function PopupBlockList({
-  blocks,
-  onChange,
-  onEdit,
-  editingId,
-}: PopupBlockListProps) {
+export function PopupBlockList({ blocks, onChange, onEdit }: PopupBlockListProps) {
   const { t } = useTranslation("common");
-  const theme = useTheme();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
-  const handleDragEnd = (e: DragEndEvent) => {
-    const from = blocks.findIndex((b) => b.id === e.active.id);
-    const to = blocks.findIndex((b) => b.id === e.over?.id);
-    if (from === -1 || to === -1 || from === to) return;
-    onChange(arrayMove(blocks, from, to));
+  const move = (from: number, to: number) => {
+    const next = [...blocks];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    onChange(next);
   };
 
   return (
-    <Box>
-      <SortableWrapper handleDragEnd={handleDragEnd} items={blocks}>
-        {blocks.map((b) => {
-          const meta = BLOCK_TYPES.find((bt) => bt.value === b.type)!;
-          return (
-            <SortableItem
-              key={b.id}
-              item={b}
-              label={t(meta.label)}
-              active={b.id === editingId}
+    <>
+      {blocks.map((block, index) => {
+        const meta = BLOCK_TYPES.find((bt) => bt.value === block.type)!;
+        return (
+          <Box key={block.id} data-block-row>
+            <NavRow
+              value={t(meta.label)}
+              glyph={<Icon iconName={meta.icon} sx={{ fontSize: 14, color: "text.secondary" }} />}
+              onOpen={(anchor) => onEdit(block, anchor)}
+              // Both moves on every row of a list (the ends disabled), as the rules have them.
               actions={
-                <Icon
-                  onClick={() => onChange(blocks.filter((x) => x.id !== b.id))}
-                  iconName={ICON_NAME.TRASH}
-                  style={{ fontSize: 12, cursor: "pointer" }}
-                  htmlColor={theme.palette.text.secondary}
-                />
-              }>
-              <Stack
-                direction="row"
-                spacing={1}
-                alignItems="center"
-                onClick={(e) => onEdit(b, e.currentTarget)}
-                sx={{
-                  py: 1,
-                  cursor: "pointer",
-                  "&:hover": { color: "primary.main" },
-                }}>
-                <Icon iconName={meta.icon} style={{ fontSize: 14 }} htmlColor="inherit" />
-                <OverflowTypograpy variant="body2" fontWeight={600}>
-                  {t(meta.label)}
-                </OverflowTypograpy>
-              </Stack>
-            </SortableItem>
-          );
-        })}
-      </SortableWrapper>
-
-      <Button
-        fullWidth
-        variant="text"
-        size="small"
-        startIcon={<Icon iconName={ICON_NAME.PLUS} style={{ fontSize: 14 }} />}
-        onClick={(e) => setMenuAnchor(e.currentTarget)}>
-        {t("add_block")}
-      </Button>
-      <Menu
+                blocks.length > 1 && (
+                  <>
+                    <IconButton
+                      size="small"
+                      disabled={index === 0}
+                      aria-label={t("style_editor.move_rule_up")}
+                      onClick={() => move(index, index - 1)}>
+                      <Icon iconName={ICON_NAME.CHEVRON_UP} sx={{ fontSize: 10 }} />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      disabled={index === blocks.length - 1}
+                      aria-label={t("style_editor.move_rule_down")}
+                      onClick={() => move(index, index + 1)}>
+                      <Icon iconName={ICON_NAME.CHEVRON_DOWN} sx={{ fontSize: 10 }} />
+                    </IconButton>
+                  </>
+                )
+              }
+            />
+          </Box>
+        );
+      })}
+      {/* Under the last block, its plus on the content's edge. */}
+      <Box sx={{ px: 3, pt: blocks.length ? 1 : 0 }}>
+        <AddButton
+          onClick={(event) => setMenuAnchor(menuAnchor ? null : event.currentTarget)}
+          sx={{ ml: -2.5 }}>
+          {t("add_block")}
+        </AddButton>
+      </Box>
+      <DropdownMenu
         anchorEl={menuAnchor}
-        open={Boolean(menuAnchor)}
+        placement="bottom-start"
+        items={BLOCK_TYPES.map((bt) => ({
+          label: t(bt.label),
+          icon: bt.icon,
+          onClick: () => onChange([...blocks, makeBlock(bt.value, t("open"))]),
+        }))}
         onClose={() => setMenuAnchor(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        transformOrigin={{ vertical: "top", horizontal: "center" }}
-        slotProps={{
-          paper: {
-            sx: {
-              width: menuAnchor ? menuAnchor.offsetWidth : undefined,
-              mt: 0.5,
-            },
-          },
-        }}>
-        <MenuList dense sx={{ py: 0.5 }}>
-          {BLOCK_TYPES.map((bt) => (
-            <MenuItem
-              key={bt.value}
-              onClick={() => {
-                onChange([...blocks, makeBlock(bt.value, t("open"))]);
-                setMenuAnchor(null);
-              }}
-              sx={{ py: 0.75, px: 1.5, gap: 1.5 }}>
-              <Icon
-                iconName={bt.icon}
-                style={{ fontSize: 14 }}
-                htmlColor={theme.palette.text.secondary}
-              />
-              <Typography variant="body2" sx={{ fontSize: 13 }}>
-                {t(bt.label)}
-              </Typography>
-            </MenuItem>
-          ))}
-        </MenuList>
-      </Menu>
-    </Box>
+      />
+    </>
   );
 }

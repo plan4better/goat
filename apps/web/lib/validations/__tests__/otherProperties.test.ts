@@ -33,7 +33,12 @@ describe("projectLayerSchema", () => {
   });
 
   it("still hides the dataset-level style action after parsing", () => {
-    expect(canSetDefaultStyle(projectLayerSchema.parse(catalogProjectLayer))).toBe(false);
+    expect(
+      canSetDefaultStyle(projectLayerSchema.parse(catalogProjectLayer), {
+        currentUserId: "u1",
+        isProjectEditor: true,
+      })
+    ).toBe(false);
   });
 
   it("keeps the declared WMS fields as they were", () => {

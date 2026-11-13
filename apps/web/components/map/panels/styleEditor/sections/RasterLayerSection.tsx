@@ -26,6 +26,7 @@ import {
 } from "@/components/map/panels/styleEditor/editors/AdjustmentsEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
+import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import {
   anchorTopOf,
   useNextLevel,
@@ -33,6 +34,7 @@ import {
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { ChoiceRow, NavRow, PanelSection, Row } from "@/components/map/panels/styleEditor/rows";
 import { VisibleRow } from "@/components/map/panels/styleEditor/sections/LayerSection";
+import { ADJUSTMENTS } from "@/components/map/panels/styleEditor/sections/RasterGeneralSection";
 
 const OPACITY: PartRow = { type: "number", key: "opacity", label: "style_editor.opacity" };
 
@@ -127,6 +129,7 @@ function AdjustmentsRow() {
           key: "raster:adjustments",
           title: label,
           anchorTop: anchorTopOf(anchor),
+          actions: <ResetToDataset paths={[...ADJUSTMENTS]} />,
           render: () => <AdjustmentsEditor />,
         })
       }

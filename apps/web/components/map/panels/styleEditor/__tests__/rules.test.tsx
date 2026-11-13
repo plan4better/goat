@@ -138,11 +138,28 @@ describe("rules", () => {
     ).toContain("traffic");
   });
 
+  it("a rule is a row of its own: its name in the field across the row, what it changes under it", async () => {
+    setup([{ ...QUIET, visible: false }]);
+    const row = screen.getByText("Quiet").closest("[data-rule-row]") as HTMLElement;
+    // No label column: the name is the field's value, not squeezed beside it.
+    const field = within(row).getAllByRole("button")[0];
+    expect(field.textContent).toBe("Quiet");
+    expect(within(row).getByText("style_editor.effect_hidden")).toBeDefined();
+    await userEvent.click(field);
+    expect(screen.getByText("style_editor.rule")).toBeDefined();
+    expect(field.getAttribute("aria-expanded")).toBe("true");
+  });
+
   it("Visible off hides the matching features; moving a rule up changes its place", async () => {
     const { store } = setup([QUIET, UNNAMED]);
     await openRule("Quiet");
     await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.rule_visible" }));
     expect(store.get("rules.0.visible")).toBe(false);
+    // Both moves on each row, the ends disabled: the rules' fields end at one place.
+    const first = screen.getByText("Quiet").closest("[data-rule-row]") as HTMLElement;
+    expect(
+      (within(first).getByRole("button", { name: "style_editor.move_rule_up" }) as HTMLButtonElement).disabled
+    ).toBe(true);
     await userEvent.click(
       within(screen.getByText("Unnamed").closest("[data-rule-row]") as HTMLElement).getByRole("button", {
         name: "style_editor.move_rule_up",

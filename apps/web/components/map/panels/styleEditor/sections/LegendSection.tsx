@@ -14,6 +14,7 @@ import {
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import { LegendEditor } from "@/components/map/panels/styleEditor/editors/LegendEditor";
+import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import {
   anchorTopOf,
   useNextLevel,
@@ -65,6 +66,7 @@ export function LegendSection() {
             key: "legend:contents",
             title: t("style_editor.section_legend"),
             anchorTop: anchorTopOf(anchor),
+            actions: <ResetToDataset paths={["legend"]} />,
             render: () => <LegendEditor />,
           })
         }

@@ -9,27 +9,36 @@ import { useTranslation } from "react-i18next";
 
 import { symbolShown } from "@/lib/style/editor/parts";
 import type { EditorStore } from "@/lib/style/editor/store";
+import { colorsIn } from "@/lib/style/editor/summaries";
 import { fromPopupConfig, toPopupConfig } from "@/lib/style/popup";
 import type { PopupBlock, PopupProperties } from "@/lib/validations/layer";
 
 import { HtmlModeCard } from "@/components/map/panels/style/popup/HtmlModeCard";
 import { PopupAppearanceSettings } from "@/components/map/panels/style/popup/PopupAppearanceSettings";
 import { PopupBlockList } from "@/components/map/panels/style/popup/PopupBlockList";
-import { PopupModeToggle } from "@/components/map/panels/style/popup/PopupModeToggle";
 import { PopupPreviewController } from "@/components/map/panels/style/popup/PopupPreviewController";
 import { BadgeBlockEditor } from "@/components/map/panels/style/popup/blocks/BadgeBlockEditor";
 import { ButtonBlockEditor } from "@/components/map/panels/style/popup/blocks/ButtonBlockEditor";
 import { DividerBlockEditor } from "@/components/map/panels/style/popup/blocks/DividerBlockEditor";
 import { FieldListBlockEditor } from "@/components/map/panels/style/popup/blocks/FieldListBlockEditor";
 import { ImageBlockEditor } from "@/components/map/panels/style/popup/blocks/ImageBlockEditor";
+import type { OpenBlockColor } from "@/components/map/panels/style/popup/blocks/_shared";
 import { blocksToHtml } from "@/components/map/panels/style/popup/blocksToHtml";
 import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import { ColorPicker } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
+import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import {
   anchorTopOf,
   useNextLevel,
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
-import { ChoiceRow, NavRow, PanelSection, Row, SwitchRow } from "@/components/map/panels/styleEditor/rows";
+import {
+  ChoiceRow,
+  NavRow,
+  PanelSection,
+  SegmentedRow,
+  SwitchRow,
+} from "@/components/map/panels/styleEditor/rows";
 import type { LayerField } from "@/components/map/popover/formatFeatureProperties";
 
 const TextBlockEditor = dynamic(
@@ -77,25 +86,64 @@ function usePopupConfig() {
   return { config, update, fields, layerId: data.layerId, layerName: data.layerName ?? "" };
 }
 
+/** The editor's color picker for one color of a block, reading the block as stored now (it renders apart from the
+ * block's editor), writing it back in the block. */
+function BlockColorPicker<B extends PopupBlock>({
+  id,
+  read,
+  write,
+}: {
+  id: string;
+  read: (block: B) => string | undefined;
+  write: (block: B, hex: string) => B;
+}) {
+  const store = useEditor();
+  const { config, update } = usePopupConfig();
+  const block = config?.blocks.find((b) => b.id === id) as B | undefined;
+  if (!config || !block) return null;
+  return (
+    <ColorPicker
+      value={read(block)}
+      onChange={(hex) => update({ blocks: config.blocks.map((b) => (b.id === id ? write(b as B, hex) : b)) })}
+      docColors={colorsIn(store.document)}
+    />
+  );
+}
+
 function PopupBlockEditor({ id }: { id: string }) {
+  const popover = usePopover();
   const { config, update, fields, layerId } = usePopupConfig();
   const block = config?.blocks.find((b) => b.id === id);
   if (!config || !block) return null;
   const onChange = (next: PopupBlock) =>
     update({ blocks: config.blocks.map((b) => (b.id === id ? next : b)) });
+  const openColor: OpenBlockColor = (anchor, title, read, write) =>
+    popover.open("picker", {
+      key: `popup-color:${id}:${title}`,
+      title,
+      anchorTop: anchorTopOf(anchor),
+      anchorEl: anchor,
+      render: () => (
+        <BlockColorPicker
+          id={id}
+          read={read as (b: PopupBlock) => string}
+          write={write as (b: PopupBlock, hex: string) => PopupBlock}
+        />
+      ),
+    });
   switch (block.type) {
     case "text":
-      return <TextBlockEditor block={block} fields={fields} onChange={onChange} />;
+      return <TextBlockEditor block={block} onChange={onChange} />;
     case "fieldList":
       return <FieldListBlockEditor block={block} fields={fields} layerId={layerId} onChange={onChange} />;
     case "image":
-      return <ImageBlockEditor block={block} fields={fields} onChange={onChange} />;
+      return <ImageBlockEditor block={block} onChange={onChange} />;
     case "button":
-      return <ButtonBlockEditor block={block} onChange={onChange} />;
+      return <ButtonBlockEditor block={block} onChange={onChange} openColor={openColor} />;
     case "badge":
-      return <BadgeBlockEditor block={block} fields={fields} layerId={layerId} onChange={onChange} />;
+      return <BadgeBlockEditor block={block} layerId={layerId} onChange={onChange} openColor={openColor} />;
     case "divider":
-      return <DividerBlockEditor block={block} onChange={onChange} />;
+      return <DividerBlockEditor block={block} onChange={onChange} openColor={openColor} />;
   }
 }
 
@@ -107,21 +155,23 @@ function PopupContentEditor() {
   if (!config) return null;
   return (
     <>
-      <Row label={t("style_editor.popup_mode")}>
-        <PopupModeToggle
-          value={config.mode}
-          onChange={(mode) =>
-            // HTML is seeded once from the blocks; after that it is its own source.
-            update(
-              mode === "html" && !config.html ? { mode, html: blocksToHtml(config.blocks, fields) } : { mode }
-            )
-          }
-        />
-      </Row>
+      <SegmentedRow<PopupProperties["mode"]>
+        label={t("style_editor.popup_mode")}
+        value={config.mode}
+        options={[
+          { value: "simple", label: t("popup_mode_simple") },
+          { value: "html", label: t("popup_mode_html") },
+        ]}
+        onChange={(mode) =>
+          // HTML is seeded once from the blocks; after that it is its own source.
+          update(
+            mode === "html" && !config.html ? { mode, html: blocksToHtml(config.blocks, fields) } : { mode }
+          )
+        }
+      />
       {config.mode === "simple" ? (
         <PopupBlockList
           blocks={config.blocks}
-          editingId={null}
           onChange={(blocks) => update({ blocks })}
           onEdit={(block, anchorEl) =>
             popover.open(next, {
@@ -217,6 +267,7 @@ export function PopupSection() {
               key: "popup:content",
               title: t("style_editor.popup_content"),
               anchorTop: anchorTopOf(anchor),
+              actions: <ResetToDataset paths={["popup"]} />,
               render: () => <PopupContentEditor />,
             })
           }
@@ -234,13 +285,19 @@ export function PopupSection() {
               key: "popup:appearance",
               title: t("style_editor.popup_appearance"),
               anchorTop: anchorTopOf(anchor),
+              actions: <ResetToDataset paths={["popup"]} />,
               render: () => <PopupAppearanceEditor />,
             })
           }
         />
       )}
       {config && layerId && (
-        <SwitchRow label={t("show_preview")} on={preview} onToggle={() => setPreview(!preview)} />
+        <SwitchRow
+          label={t("style_editor.preview")}
+          valueText={t("style_editor.popup_preview_value")}
+          on={preview}
+          onToggle={() => setPreview(!preview)}
+        />
       )}
       {config && layerId && preview && <PopupPreviewController layerId={layerId} enabled />}
     </PanelSection>

@@ -73,7 +73,7 @@ function Strip({
         height: 22,
         borderRadius: 1.5,
         background: stripBackground(colors, stepped),
-        boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.06)",
+        boxShadow: (theme) => `inset 0 0 0 1px ${theme.palette.divider}`,
         outline: selected ? 2 : 0,
         outlineColor: "primary.main",
         outlineOffset: 2,
@@ -298,7 +298,7 @@ export function PaletteEditor({
             height: 28,
             borderRadius: 2,
             background: stripBackground(colors, false),
-            boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.08)",
+            boxShadow: (theme) => `inset 0 0 0 1px ${theme.palette.divider}`,
           }}
         />
         <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2, pt: 3, pb: 1 }}>
@@ -327,7 +327,7 @@ export function PaletteEditor({
                   boxShadow: (theme) =>
                     i === at
                       ? `0 0 0 2px ${theme.palette.background.paper}, 0 0 0 4px ${theme.palette.primary.main}`
-                      : "inset 0 0 0 1px rgba(255, 255, 255, 0.12)",
+                      : `inset 0 0 0 1px ${theme.palette.divider}`,
                 }}
               />
               {colors.length > MIN_COLORS && (

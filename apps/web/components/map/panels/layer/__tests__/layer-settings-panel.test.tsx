@@ -29,6 +29,14 @@ vi.mock("@/hooks/style/useStyleData", () => ({ useStyleData: () => EMPTY_DATA })
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({}) }));
 vi.mock("@/components/map/panels/filter/Filter", () => ({ default: () => null }));
 vi.mock("@/components/map/panels/properties/Properties", () => ({ default: () => null }));
+vi.mock("@/lib/api/projects", async (original) => ({
+  ...(await original<object>()),
+  useProject: () => ({ project: { owned_by: { id: "u1" }, my_role: "project-owner" } }),
+}));
+vi.mock("@/lib/api/users", async (original) => ({
+  ...(await original<object>()),
+  useUserProfile: () => ({ userProfile: { id: "u1" } }),
+}));
 vi.mock("@/lib/api/map", async (original) => ({
   ...(await original<object>()),
   useProjectMap: () => ({ setLayerState: async () => undefined, mutate: async () => undefined }),

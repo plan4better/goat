@@ -161,6 +161,27 @@ describe("Sky and atmosphere", () => {
     expect(String(seen.scene?.glow?.color).toUpperCase()).toBe("#6EA5F5");
   });
 
+  it("closes the open section on Escape, then the panel", async () => {
+    const panel = await openSky();
+    await userEvent.click(autoSwitch());
+    await userEvent.click(within(panel).getByRole("button", { name: /^Sky/ }));
+    expect(screen.getByText("Sky to horizon")).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByText("Sky to horizon")).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Sky and atmosphere" })).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Sky and atmosphere" })).toBeNull();
+  });
+
+  it("keeps the panel open while a section's popover is used", async () => {
+    const panel = await openSky();
+    await userEvent.click(autoSwitch());
+    await userEvent.click(within(panel).getByRole("button", { name: /^Sky/ }));
+    fireEvent.pointerDown(screen.getByRole("slider", { name: "Sky to horizon" }));
+    expect(screen.getByRole("dialog", { name: "Sky and atmosphere" })).toBeTruthy();
+    expect(screen.getByText("Sky to horizon")).toBeTruthy();
+  });
+
   it("shows sky and fog unmuted when tilted steeply", async () => {
     const panel = await openSky({}, { zoom: 15, pitch: 75 });
     expect(within(panel).queryByLabelText(/^Shows above the horizon/)).toBeNull();

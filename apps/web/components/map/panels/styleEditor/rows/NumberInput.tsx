@@ -1,6 +1,7 @@
 // A number box that keeps what is typed as a draft until it reads as a number; percent boxes show 0 to 100 and
 // report 0 to 1. A box grows with its value, so long numbers are never cut; `plain` draws the number as text beside a
-// slider, as wide as its digits, a field on hover and focus.
+// slider, as wide as its digits, a field on hover and focus. An optional number (`onClear`) may be emptied, its
+// placeholder saying what applies then.
 import { Box, InputBase, Typography } from "@mui/material";
 import { type MouseEvent, memo, useEffect, useRef, useState } from "react";
 
@@ -26,6 +27,8 @@ export interface NumberInputProps {
   /** Shown while the box is empty: the value that applies then. */
   placeholder?: string;
   onChange: (value: number) => void;
+  /** The number is optional: an emptied box reports this. */
+  onClear?: () => void;
   onBlur?: () => void;
 }
 
@@ -56,6 +59,7 @@ export const NumberInput = memo(function NumberInput({
   reserve = 2,
   placeholder,
   onChange,
+  onClear,
   onBlur,
 }: NumberInputProps) {
   const [draft, setDraft] = useState(() => shown(value, pct));
@@ -69,6 +73,11 @@ export const NumberInput = memo(function NumberInput({
 
   const type = (text: string) => {
     setDraft(text);
+    if (text === "" && onClear) {
+      sent.current = undefined;
+      onClear();
+      return;
+    }
     if (!NUMBER.test(text)) return;
     const next = pct ? Number(text) / 100 : Number(text);
     sent.current = next;
@@ -151,6 +160,7 @@ export const NumberInput = memo(function NumberInput({
       <TextFieldInput
         value={draft}
         unit={unitText}
+        placeholder={placeholder}
         clearable={false}
         inputProps={{
           inputMode: "decimal",

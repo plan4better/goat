@@ -477,16 +477,12 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
           {/* Tabs */}
           <Box sx={{ borderBottom: 1, borderColor: "divider", mx: -3 }}>
             <Tabs value={tabValue} onChange={handleTabChange} variant="fullWidth" sx={{ minHeight: 40 }}>
-              <Tab
-                label={t("source")}
-                {...a11yProps(0)}
-                sx={{ textTransform: "uppercase", fontWeight: 600, minHeight: 40, py: 1 }}
-              />
+              <Tab label={t("source")} {...a11yProps(0)} sx={{ fontWeight: 600, minHeight: 40, py: 1 }} />
               <Tab
                 label={t("filter")}
                 {...a11yProps(1)}
                 disabled={!selectedLayer}
-                sx={{ textTransform: "uppercase", fontWeight: 600, minHeight: 40, py: 1 }}
+                sx={{ fontWeight: 600, minHeight: 40, py: 1 }}
               />
             </Tabs>
           </Box>

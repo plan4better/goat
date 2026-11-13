@@ -43,7 +43,7 @@ const rows = async (api: APIRequestContext, layerId: string): Promise<Record<str
 
 const layerMenu = async (page: Page, layerName: string) => {
   const row = page.locator(".tree-item").filter({ hasText: layerName });
-  await row.getByRole("button", { name: "More Options" }).click({ timeout: 30000 });
+  await row.getByRole("button", { name: "More options" }).click({ timeout: 30000 });
 };
 
 /** Adds a field in the field editor (Create layer's or Edit fields'). */

@@ -17,13 +17,10 @@
  * The expression lives and dies with the panel — cleared once the copy is on
  * its way, and never written back to the bundle or the project.
  */
-import { LoadingButton } from "@mui/lab";
-import { Box, Button, Divider, Stack, Typography, useTheme } from "@mui/material";
+import { Box, Stack, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
-
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { BundleRead } from "@/lib/api/bundles";
 import { useProject } from "@/lib/api/projects";
@@ -38,6 +35,8 @@ import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import Expression from "@/components/map/panels/filter/Expression";
 import { createExpression, validateExpressions } from "@/components/map/panels/filter/Filter";
+import { FilterFoot } from "@/components/map/panels/filter/FilterFoot";
+import { AddButton } from "@/components/map/panels/styleEditor/rows";
 
 type BundleFilterProps = {
   bundle: BundleRead;
@@ -49,7 +48,6 @@ type BundleFilterProps = {
 
 const BundleFilter = ({ bundle, projectId, memberLayerId }: BundleFilterProps) => {
   const { t } = useTranslation("common");
-  const theme = useTheme();
   const dispatch = useAppDispatch();
   const runningJobIds = useAppSelector((state) => state.jobs.runningJobIds);
   const { execute: executeProcess } = useProcessExecution();
@@ -91,70 +89,45 @@ const BundleFilter = ({ bundle, projectId, memberLayerId }: BundleFilterProps) =
     }
   };
 
+  // As a layer's Filter tab: the body scrolls, the foot with the actions stays under it.
   return (
-    <Box sx={{ p: 3 }}>
-      {/* DESCRIPTION */}
-      {!expression && (
-        <Typography variant="body2" sx={{ fontStyle: "italic", marginBottom: theme.spacing(4) }}>
-          {t("filter_bundle_message")}
-        </Typography>
-      )}
-
-      {expression && (
-        <Stack spacing={4} sx={{ pt: 4 }}>
-          <Divider />
-          <Expression
-            expression={expression}
-            layerId={memberLayerId}
-            onUpdate={setExpression}
-            onDelete={() => setExpression(null)}
-          />
-        </Stack>
-      )}
-
-      <Stack spacing={2} sx={{ pt: 4 }}>
-        {/* A bundle takes exactly one expression, so once it is added there is
-            nothing left to add — the slot becomes the action the expression
-            exists for. Filtered as a whole, the only kind that applies to
-            every member's schema is spatial, so there is no type menu either,
-            unlike a layer. */}
-        {!expression ? (
-          <Button
-            onClick={() => setExpression(createExpression(FilterType.Spatial))}
-            fullWidth
-            size="small"
-            startIcon={<Icon iconName={ICON_NAME.PLUS} style={{ fontSize: "15px" }} />}>
-            <Typography variant="body2" fontWeight="bold" color="inherit">
-              {t("common:add_expression")}
-            </Typography>
-          </Button>
+    <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 3, pt: 3, pb: 4 }}>
+        {expression ? (
+          <Stack spacing={4}>
+            <Expression
+              expression={expression}
+              layerId={memberLayerId}
+              onUpdate={setExpression}
+              onDelete={() => setExpression(null)}
+            />
+          </Stack>
         ) : (
-          <LoadingButton
-            variant="contained"
-            fullWidth
-            size="small"
-            loading={isSaving}
-            disabled={!isComplete || !project?.folder_id}
-            startIcon={<Icon iconName={ICON_NAME.SAVE} style={{ fontSize: "15px" }} />}
-            onClick={saveAsNewBundle}>
-            <Typography variant="body2" fontWeight="bold" color="inherit">
-              {t("save_as_new_bundle")}
+          <>
+            <Typography variant="caption" component="p" color="text.secondary">
+              {t("filter_bundle_message")}
             </Typography>
-          </LoadingButton>
+            {/* A bundle takes exactly one expression, and filtered as a whole the only kind that applies to every
+                member's schema is spatial: no menu of kinds, and nothing to add once it is there. */}
+            <AddButton
+              onClick={() => setExpression(createExpression(FilterType.Spatial))}
+              sx={{ ml: -2.5, mt: 2 }}>
+              {t("add_expression")}
+            </AddButton>
+          </>
         )}
-        {/* CLEAR FILTER */}
-        <Button
-          variant="outlined"
-          fullWidth
-          size="small"
-          color="error"
-          disabled={!expression}
-          onClick={() => setExpression(null)}>
-          <Typography variant="body2" color="inherit">
-            {t("common:clear_filter")}
-          </Typography>
-        </Button>
-      </Stack>
+      </Box>
+      {expression && (
+        <FilterFoot
+          onClear={() => setExpression(null)}
+          action={{
+            label: t("save_as_new_bundle"),
+            onClick: saveAsNewBundle,
+            loading: isSaving,
+            disabled: !isComplete || !project?.folder_id,
+          }}
+        />
+      )}
     </Box>
   );
 };

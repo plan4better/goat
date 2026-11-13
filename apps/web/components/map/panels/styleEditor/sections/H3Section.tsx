@@ -20,6 +20,7 @@ import { HeaderSwitch } from "@/components/map/panels/styleEditor/editors/PartEd
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
 import { anchorTopOf, useNextLevel, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
+import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import {
   ChoiceRow,
   ColorField,
@@ -251,23 +252,26 @@ function HeightRows() {
   const { mode, show3d } = useAutoTilt(layerId);
   const label = t("style_editor.height");
   return (
-    <>
-      <GroupRow
-        label={label}
-        off={!on}
-        value={on ? t("style_editor.h3_height_value") : t("style_editor.none")}
-        onOpen={(anchor) =>
-          popover.open(next, {
-            key: "h3:height",
-            title: label,
-            anchorTop: anchorTopOf(anchor),
-            actions: <H3HeightSwitch />,
-            render: () => <H3HeightEditor />,
-          })
-        }
-      />
-      {on && mode === "2d" && <ViewingIn2D onShow={show3d} />}
-    </>
+    <GroupRow
+      label={label}
+      off={!on}
+      value={on ? t("style_editor.h3_height_value") : t("style_editor.none")}
+      note={on && mode === "2d" ? <ViewingIn2D onShow={show3d} /> : undefined}
+      onOpen={(anchor) =>
+        popover.open(next, {
+          key: "h3:height",
+          title: label,
+          anchorTop: anchorTopOf(anchor),
+          actions: (
+            <>
+              <ResetToDataset paths={["render.extrude"]} />
+              <H3HeightSwitch />
+            </>
+          ),
+          render: () => <H3HeightEditor />,
+        })
+      }
+    />
   );
 }
 

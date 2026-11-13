@@ -89,7 +89,7 @@ const isMain = (key: string, geometry?: Geometry) =>
   geometry ? MAIN_COLOR[geometry] === key : Object.values(MAIN_COLOR).includes(key);
 
 /** A free classification id: the field name, else `k1`, `k2` (goatlib's assign_ids). */
-function freshId(doc: LayerStyle, field: string): string {
+export function freshId(doc: LayerStyle, field: string): string {
   const taken = new Set<string>();
   const walk = (node: unknown) => {
     if (Array.isArray(node)) node.forEach(walk);
@@ -132,7 +132,7 @@ export function addClassification(
 const recordWith = (key: string, value: unknown): JsonObject =>
   key.split(".").reduceRight<unknown>((inner, part) => ({ [part]: inner }), value) as JsonObject;
 
-const recordPaths = (c: JsonObject): string[] => [
+export const recordPaths = (c: JsonObject): string[] => [
   ...list(c.classes).map((_, i) => `classes.${i}`),
   ...["other", "no_data"].filter((r) => isObject(c[r])),
 ];

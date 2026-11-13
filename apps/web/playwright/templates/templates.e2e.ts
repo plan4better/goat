@@ -167,7 +167,7 @@ test.describe("Templates", () => {
     const workflowItem = page.locator("li").filter({ hasText: workflowName });
     await expect(workflowItem).toBeVisible({ timeout: 15000 });
 
-    await workflowItem.getByRole("button", { name: "More Options" }).click();
+    await workflowItem.getByRole("button", { name: "More options" }).click();
     // The kebab's menu renders into a portal (`disablePortal={false}`), so the
     // click is scoped to the popper rather than the panel.
     await page.locator(".MuiPopper-root").getByRole("button", { name: "Save as template…" }).click();
