@@ -348,6 +348,9 @@ class AssistantOrganizationSettings(SQLModel, table=True):
             nullable=True,
         ),
     )
+    # The column's default is not what an organization without a row gets:
+    # the assistant applies its own (DEFAULT_DATA_POLICY in assistant/llm/types.py)
+    # and writes the value with every save.
     data_policy: str = Field(
         default="restricted",
         sa_column=Column(Text, nullable=False, server_default=text("'restricted'")),

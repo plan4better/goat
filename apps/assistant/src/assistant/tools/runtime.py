@@ -292,6 +292,17 @@ class InputInvalid(Exception):  # noqa: N818
         self.message = message
 
 
+class PolicyWithheld(Exception):  # noqa: N818
+    """The organization's data policy keeps what was asked for from the AI: the
+    call is answered as withheld, with the message saying what the policy
+    allows instead. Not invalid input, so the user sees no failed step and the
+    model does not take it for a mistake to retry."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
 def _shorten(value: Any, depth: int) -> Any:
     if isinstance(value, str):
         return (
@@ -388,6 +399,10 @@ async def execute(
             raise ToolFailed(reason)
         status, error = ("withheld" if isinstance(result, Withheld) else "ok"), None
         return payload
+    except PolicyWithheld as exc:
+        withheld = Withheld(reason=f"Withheld: {exc.message}")
+        status, error = "withheld", None
+        return withheld.model_dump(mode="json", by_alias=True, exclude_none=True)
     except InputInvalid as exc:
         # Reaches the model (as a retry prompt) and MCP clients, and can quote a
         # service's answer: masked here, so no tool has to remember it.

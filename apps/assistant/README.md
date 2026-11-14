@@ -205,6 +205,11 @@ sends counts only, for few groups (judged over the whole layer, also with a filt
 tools and the count's filter read `join_x` for a field `x` the layer lacks and say so in the result's note. The name is
 resolved before anything else, so the Restricted checks judge `join_x` exactly as when the model names it.
 
+What Restricted keeps back is known before an answer plans: the run's note says so (`prompt.RESTRICTED_POLICY`), so a
+card offers no choice the tools would refuse, such as keeping only some values of a field with many. A call the policy
+refuses (`runtime.PolicyWithheld`, a filter Restricted does not allow) is answered as withheld with the reason, like a
+withheld result: not invalid input, so the user sees no failed step and the model does not retry it as a mistake.
+
 **Building a workflow.** The model is shown only the tools of the user's toolbox (`offered` in
 `tools/workflow_tools.py`: `GET /processes` for the user, without the tools hidden from the toolbox, such as custom
 SQL), and the check and the create refuse a draft naming any other tool: processes describes, checks and runs every
@@ -439,6 +444,16 @@ the layers are there: such an answer ends with a fixed text instead (`runs/turn.
 dock shows in the user's language by its kind, the run completes, and a warning is logged. The next answer finds the
 text in the history after everything the run found, so the user can ask for the numbers. Otherwise the answer still
 fails: after a failed run or one without layers there are no numbers, and `workflow_last_run` shows no run card.
+
+**Data policy.** An organization's data policy says what data tools may send to the model (`tools/policy.py`):
+Standard sends what the user can see, Restricted keeps back rows, features, geometries, sums and means and still sends
+field names, types, counts, a field's smallest and largest value, class breaks and the values of fields with few
+distinct values. An organization without saved AI settings has Standard (`DEFAULT_DATA_POLICY` in `llm/types.py`), and
+Restricted is a choice an admin makes. It was the other way round at first: in production no organization had chosen
+Restricted, all of them were on it unknowingly, and the assistant could then build and run an analysis but not name its
+result, the residents reached, which is what most analyses ask for. The dock's notice and the privacy policy say that
+the data the assistant reads goes to the model. Runs built without a policy (`RunDeps`) and the MCP endpoint keep
+Restricted as their fallback, so a caller that forgot the policy fails closed.
 
 **AI credits.** Answers of GOAT AI draw on the organization's pool of AI credits, which core owns with the
 allowance, the trial amount and the price tiers (`apps/core/README.md`); the assistant holds none of these numbers and

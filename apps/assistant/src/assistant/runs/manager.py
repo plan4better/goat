@@ -495,7 +495,9 @@ class RunManager:
         setup = RunSetup(
             page=page,
             locale=locale,
-            note=render_note(page, previous, locale, text),
+            note=render_note(
+                page, previous, locale, text, data_policy=resolution.data_policy
+            ),
             login=login or StaticLogin(None),
             answer=answer_text,
             asks=asks,

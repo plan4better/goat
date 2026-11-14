@@ -47,7 +47,7 @@ from assistant.tools.proposals import (
     proposal_row,
     show,
 )
-from assistant.tools.runtime import InputInvalid, ToolEnv, ToolSpec
+from assistant.tools.runtime import InputInvalid, PolicyWithheld, ToolEnv, ToolSpec
 from assistant.workflows.tool_info import JOINED_PREFIX
 
 #: Every project mode, and pages without a project (Home, content, settings),
@@ -295,7 +295,7 @@ async def _guard_restricted_filter(
         return
     for condition in feature_filter.conditions:
         if condition.op not in _RESTRICTED_FILTER_OPS:
-            raise InputInvalid(
+            raise PolicyWithheld(
                 f"The data policy (Restricted) allows no {condition.op!r} in a filter: "
                 "comparing values would reveal values it withholds. Filter by "
                 "categories only (=, !=, in, is_null, is_not_null), or answer without "
@@ -321,7 +321,7 @@ async def _guard_restricted_filter(
     counts: dict[str, dict[str, int]] = {}
     for field, answer in zip(fields, answers):
         if _distinct_total(answer) > LOW_CARDINALITY_LIMIT:
-            raise InputInvalid(
+            raise PolicyWithheld(
                 f"The data policy (Restricted) allows filters on category fields "
                 f"only; {field!r} has more than {LOW_CARDINALITY_LIMIT} distinct "
                 "values, so filtering by it could single out features."
@@ -343,7 +343,7 @@ async def _guard_restricted_filter(
         for value in values:
             held = counts[condition.field].get(str(value), 0)
             if held < MIN_RESTRICTED_GROUP:
-                raise InputInvalid(
+                raise PolicyWithheld(
                     f"The data policy (Restricted) allows filtering only by values "
                     f"that at least {MIN_RESTRICTED_GROUP} features share; "
                     f"{condition.field} {value!r} is shared by fewer, so the filter "

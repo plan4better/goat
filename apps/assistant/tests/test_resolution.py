@@ -60,7 +60,8 @@ async def test_defaults_resolve_to_goat_ai(
 ) -> None:
     resolution = await ModelResolver(org_repo, settings).resolve(USER)
     assert resolution.organization_id == ORG
-    assert resolution.data_policy == "restricted"
+    # An organization that never saved AI settings reads data under Standard.
+    assert resolution.data_policy == "standard"
     assert (
         resolution.main.provider,
         resolution.main.model,
