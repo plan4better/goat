@@ -36,8 +36,8 @@ export function openingMode(
 }
 
 /**
- * The tilt a page opens a map at: the URL's (a link keeps its tilt), else the saved view's; a 3D view without a tilt
- * (a URL written flat, or a saved 3D view at 0) opens at the 3D entry tilt, so 3D never opens flat.
+ * The tilt a page opens a map at: the URL's (a link keeps its tilt), else the saved view's, as it was left (a 3D view
+ * left flat opens flat); only a 3D view saved without a tilt opens at the 3D entry tilt.
  */
 export function openingPitch(
   saved: { mode?: ViewMode | null; pitch?: number | null } | null | undefined,
@@ -45,7 +45,7 @@ export function openingPitch(
 ): number {
   if (urlPitch !== undefined && urlPitch > 0) return urlPitch;
   if (openingMode(saved, urlPitch) !== "3d") return 0;
-  return saved?.pitch && saved.pitch > 0 ? saved.pitch : ENTER_3D.pitch;
+  return typeof saved?.pitch === "number" ? saved.pitch : ENTER_3D.pitch;
 }
 
 /** Web Mercator's latitude limit. */

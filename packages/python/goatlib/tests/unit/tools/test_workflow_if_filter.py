@@ -79,29 +79,19 @@ class _Run:
     If takes its True branch; what each tool job and each If got is kept, and
     each job's step and tool in the order they ran. A tool in `failing` fails
     with that message; one in `raising` raises it, as the run does for a job
-    that was cancelled. A dataset layer's style comes from `styles`, and the
-    dataset steps whose style was looked up are kept."""
+    that was cancelled."""
 
     def __init__(
         self,
         failing: dict[str, str] | None = None,
-        styles: dict[str, dict[str, Any]] | None = None,
         raising: dict[str, str] | None = None,
     ) -> None:
         self.failing = failing or {}
         self.raising = raising or {}
-        self.styles = styles or {}
         self.tool_inputs: dict[str, dict[str, Any]] = {}
         self.jobs: list[tuple[str, str]] = []
         self.if_filters: dict[str, dict[str, Any] | None] = {}
         self.if_layers: dict[str, str | None] = {}
-        self.styled: list[str] = []
-
-    def _dataset_layer_style(
-        self, params: workflow_runner.WorkflowRunnerParams, node: dict[str, Any]
-    ) -> dict[str, Any] | None:
-        self.styled.append(node["id"])
-        return self.styles.get(node["data"].get("layerId"))
 
     def _run_tool_node(
         self, node_id: str, process_id: str, inputs: dict[str, Any]
@@ -157,11 +147,6 @@ class _Run:
             ),
             patch.object(
                 workflow_runner, "execute_if_node", side_effect=self._execute_if_node
-            ),
-            patch.object(
-                workflow_runner,
-                "dataset_layer_style",
-                side_effect=self._dataset_layer_style,
             ),
         ):
             result: dict[str, Any] = workflow_runner.main(
@@ -572,51 +557,50 @@ def test_a_dataset_step_without_a_layer_saves_nothing() -> None:
 
 # -- the style of a saved dataset ------------------------------------------------
 
-STYLE = {"color": [12, 34, 56], "visibility": True}
+ENTRY = 41
 REMEMBERED = {"color": [200, 0, 0], "visibility": True}
 
 
-def test_a_dataset_is_saved_in_its_own_style() -> None:
-    """The copy carries the dataset layer's style into its temp metadata,
-    which finalize_layer applies when the export brings no style of its
-    own."""
-    run = _Run(styles={LAYER: STYLE})
+def test_a_dataset_is_saved_in_its_project_entrys_style() -> None:
+    """The copy takes the active style of the dataset's project entry, which
+    layer_create_filtered reads and finalize_layer applies when the export
+    brings no style of its own."""
+    run = _Run()
 
     run(
-        [_dataset(filter=SCHOOLS_ONLY), _export()],
+        [_dataset(filter=SCHOOLS_ONLY, projectLayerId=ENTRY), _export()],
         [_edge("n-data", "n-export", "input")],
     )
 
-    assert run.tool_inputs["n-data"]["source_properties"] == STYLE
-    assert run.styled == ["n-data"]
+    assert run.tool_inputs["n-data"]["source_layer_project_id"] == ENTRY
+    assert "source_properties" not in run.tool_inputs["n-data"]
     assert "style" not in run.tool_inputs["n-export"]
 
 
-def test_a_dataset_behind_an_if_is_saved_in_its_own_style() -> None:
-    run = _Run(styles={LAYER: STYLE})
+def test_a_dataset_behind_an_if_is_saved_in_its_project_entrys_style() -> None:
+    run = _Run()
 
     run(
-        [_dataset(filter=SCHOOLS_ONLY), _if("n-if"), _export()],
+        [_dataset(filter=SCHOOLS_ONLY, projectLayerId=ENTRY), _if("n-if"), _export()],
         [_edge("n-data", "n-if", "input"), _true("n-if", "n-export", "input")],
     )
 
-    # The style of the dataset the If passes on, copied into the If's folder.
-    assert run.tool_inputs["n-if"]["source_properties"] == STYLE
-    assert run.styled == ["n-data"]
+    # The entry of the dataset the If passes on, for the copy in the If's folder.
+    assert run.tool_inputs["n-if"]["source_layer_project_id"] == ENTRY
     assert "style" not in run.tool_inputs["n-export"]
 
 
-def test_a_dataset_without_a_style_gets_the_default_style() -> None:
+def test_a_dataset_without_a_project_entry_gets_the_default_style() -> None:
     run = _Run()
 
     run([_dataset(), _export()], [_edge("n-data", "n-export", "input")])
 
-    assert run.tool_inputs["n-data"]["source_properties"] is None
+    assert run.tool_inputs["n-data"]["source_layer_project_id"] is None
     assert "style" not in run.tool_inputs["n-export"]
 
 
 def test_a_remembered_style_wins_over_the_datasets_own() -> None:
-    run = _Run(styles={LAYER: STYLE})
+    run = _Run()
 
     run(
         [_dataset(), _export(outputStyle=REMEMBERED)],

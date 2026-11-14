@@ -69,9 +69,10 @@ describe("view modes", () => {
     expect(maxPitchAtZoom(15)).toBe(85);
   });
 
-  it("opens a saved 3D view tilted: the URL's tilt, else the saved one, else the 3D entry tilt", () => {
+  it("opens a saved 3D view as it was left: the URL's tilt, else the saved one (flat too), else the 3D entry tilt", () => {
     expect(openingPitch({ mode: "3d", pitch: 62 }, 0)).toBe(62);
-    expect(openingPitch({ mode: "3d", pitch: 0 }, undefined)).toBe(ENTER_3D.pitch);
+    expect(openingPitch({ mode: "3d", pitch: 0 }, undefined)).toBe(0);
+    expect(openingPitch({ mode: "3d" }, undefined)).toBe(ENTER_3D.pitch);
     expect(openingPitch({ mode: "3d", pitch: 62 }, 40)).toBe(40);
     expect(openingPitch({ mode: "2d", pitch: 0 }, 0)).toBe(0);
     expect(openingPitch(undefined, undefined)).toBe(0);

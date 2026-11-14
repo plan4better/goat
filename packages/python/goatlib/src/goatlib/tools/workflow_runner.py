@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from goatlib.tools.if_node import IF_FALSE_HANDLE, execute_if_node
 from goatlib.tools.workflow_dataset_nodes import (
     current_layer_ids,
-    dataset_style,
+    entry_id,
     project_layer_ids,
     with_current_layer_ids,
 )
@@ -919,8 +919,8 @@ def copy_passed_on_dataset(
     Only a tool step writes its result to a temp folder; a dataset step
     delivers its layer as it is, with its filter, and an If passes both on
     (`dataset_filter_for_source`). `layer_create_filtered` in temp mode reads
-    the layer with that filter and writes the rows there, with the dataset
-    layer's style (`dataset_layer_style`) in their temp metadata.
+    the layer with that filter and writes the rows there, with the active
+    style of the dataset step's project entry in their temp metadata.
     """
     dataset = passed_on_step(step, edges, all_nodes) or step
     inputs = add_run_context(
@@ -928,7 +928,7 @@ def copy_passed_on_dataset(
             "source_layer_id": layer_id,
             # The tool takes a filter; an empty one keeps every row.
             "cql_filter": dataset_filter_for_source(step, edges, all_nodes) or {},
-            "source_properties": dataset_layer_style(params, dataset),
+            "source_layer_project_id": entry_id(dataset),
         },
         step,
         user_id=params.user_id,
@@ -988,42 +988,6 @@ def resolve_dataset_layers(params: WorkflowRunnerParams) -> list[dict[str, Any]]
         return params.nodes
     nodes: list[dict[str, Any]] = with_current_layer_ids(params.nodes, current)
     return nodes
-
-
-def dataset_layer_style(
-    params: WorkflowRunnerParams, dataset_node: dict[str, Any]
-) -> dict[str, Any] | None:
-    """The style an export saves a dataset step's rows in (``dataset_style``);
-    None gives the saved layer the default style, also when the look-up
-    fails: the style must not fail the export."""
-    if not (dataset_node.get("data") or {}).get("layerId"):
-        return None
-
-    async def lookup() -> dict[str, Any] | None:
-        conn, schema = await _connect()
-        try:
-            return await dataset_style(
-                conn,
-                schema,
-                user_id=params.user_id,
-                project_id=params.project_id,
-                node=dataset_node,
-            )
-        finally:
-            await conn.close()
-
-    try:
-        return asyncio.run(lookup())
-    except Exception as e:
-        # Only the error type: job output is shown to the user (see
-        # resolve_dataset_layers).
-        message = (
-            f"Could not look up the style of dataset node {dataset_node['id']} "
-            f"({type(e).__name__}); its rows are saved in the default style"
-        )
-        logger.warning(message)
-        print(f"[workflow_runner] {message}")
-        return None
 
 
 def cleanup_previous_results(params: WorkflowRunnerParams) -> None:
