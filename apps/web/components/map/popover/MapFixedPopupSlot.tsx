@@ -59,8 +59,8 @@ export function MapFixedPopupSlot({ layers }: MapFixedPopupSlotProps) {
 
   const previewPopupConfig = useMemo(() => layerPopup(previewLayer), [previewLayer]);
 
-  // Same feature-property resolution as the popover body below, so a
-  // marker_mapping layer's header icon matches the clicked feature.
+  // Same feature-property resolution as the popover body below, so the
+  // header icon of a layer styled by a field shows the clicked feature's class.
   const clickedFeatureProperties = (popupInfo?.featureProperties ??
     highlightedFeature?.properties ??
     popupInfo?.properties) as Record<string, unknown> | undefined;

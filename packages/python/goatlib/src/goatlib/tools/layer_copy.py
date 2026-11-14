@@ -11,10 +11,10 @@ layer owned by the user who ran it, in the project's folder:
   a geometry that arrives as WKB BLOB (an empty catalog file, see
   ``project_import``) is turned back into GEOMETRY;
 * a ``customer.layer`` row carrying the source's name, description, tags,
-  geometry type, style (``properties``), column settings (``field_config``)
-  and thumbnail, with a ``template_copy`` stamp naming the source. The
-  source's catalog and workflow-output stamps are not carried: the copy is
-  user data, not a catalog dataset or some workflow's result.
+  geometry type, default style (its ``layer_style`` rows), column settings
+  (``field_config``) and thumbnail, with a ``template_copy`` stamp naming the
+  source. The source's catalog and workflow-output stamps are not carried: the
+  copy is user data, not a catalog dataset or some workflow's result.
 
 Then, in one transaction, the project entries named in ``layer_project_ids``
 that still show the source are pointed at the copy (the entry keeps its id,
