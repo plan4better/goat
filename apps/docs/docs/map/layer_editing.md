@@ -11,17 +11,17 @@ In GOAT, you can **create your own layers** and **edit features directly on the 
 
 <div class="step">
   <div class="step-number">1</div>
-  <div class="content">Click on <code>+ Add Layer</code> in the left panel and select <code>Create Layer</code>.</div>
+  <div class="content">Click on <code>+ Add layer</code> in the left panel and select <code>Create layer</code>. The dialog shows everything on one page: the layer's name, its geometry type and its fields.</div>
 </div>
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Enter a <b>Layer name</b> and select the <b>Geometry type</b>: <code>Point</code>, <code>Line</code>, <code>Polygon</code>, or <code>Table</code>. Click <code>Next</code> to continue.</div>
+  <div class="content">Enter a <b>Layer name</b> and select the <b>Geometry type</b>: <code>Point</code>, <code>Line</code>, <code>Polygon</code>, or <code>Table</code>.</div>
 </div>
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">In the <b>Define Fields</b> step, you will see a default <code>name</code> field. Click <code>+ Add field</code> to add more fields. For each field, enter a <b>field name</b> and select its <b>Field type</b>: <code>Text</code>, <code>Number</code>, <code>Date</code>, <code>Boolean</code>, <code>Serial</code> or <code>UUID</code>. A <code>Serial</code> or <code>UUID</code> field is filled in by GOAT for every feature you add (see <a href="../data/data_types">Field Types</a>); for a Serial field you can set the first number under <code>Start at</code>. To remove a field, click the <code>—</code> icon next to it. Click <code>Create Layer</code> when done.</div>
+  <div class="content">Under <b>Fields</b>, the layer starts with a <code>name</code> field. Click <code>+ Add field</code> to add more fields. Type each field's name in the list on the left, and select a field to set its <code>Field type</code> on the right: <code>Text</code>, <code>Number</code>, <code>Date</code>, <code>Boolean</code>, <code>Serial</code> or <code>UUID</code>. A <code>Serial</code> or <code>UUID</code> field is filled in by GOAT for every feature you add (see <a href="../data/data_types">Field Types</a>); for a Serial field you can set the first number under <code>Start at</code>. To remove a field, point at it and click the <code>—</code> icon next to it. Click <code>Create layer</code> when done.</div>
 </div>
 
 ## Edit Features
