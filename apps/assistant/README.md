@@ -457,11 +457,14 @@ an answer could end after its cards with a single space. Such an answer is asked
 the user has already seen. The same check asks once per run for an answer in the other language than the user's
 message, English or German (`agent.wrong_language`): the instructions and the note after a longer message say it
 already, and still some answers came in the language of the data or of the interface. More wording did not help.
-It reads both languages from grammar words (`assistant/language.py`, shared with the evals' language check), only
-prose (no code, bold names, quotes, table rows or titles in a list), and acts only when both are clear: a message under
-three words (answered in the interface language), a card's answer, a message that names a language or asks to
-translate, and an answer of names or titles are never asked again, nor is an answer when another answer step does not
-fit in the run's tokens. The answer already streamed is replaced, not added to: the check names its text parts
+It reads both languages from grammar words and the verbs a request starts with (`assistant/language.py`, shared with
+the evals' language check), only prose (no code, bold names, quotes, table rows or titles in a list), and acts only
+when both are clear. A message of three words or more with no grammar word of either language (nouns, names, numbers)
+shows none: the note names the interface language for it, as for a shorter one, and the check holds the answer to
+that language, unless a German answer follows nouns with German letters. A message under three words, a card's answer,
+a message that names a language or asks to translate, one with a few grammar words but no clear language, and an
+answer of names or titles are never asked again, nor is an answer when another answer step does not fit in the run's
+tokens. The answer already streamed is replaced, not added to: the check names its text parts
 (`events.TextReplaced`, a `data-replaced-text` part naming them by the id each text-start carries in its provider
 metadata), the dock leaves them out, live and after a reload (the stored parts keep them, marked), and the next
 answer's history holds only the answer that replaced them (`runs/turn.py`, `without_replaced`). The retry counts with

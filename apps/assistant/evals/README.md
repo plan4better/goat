@@ -6,7 +6,7 @@ catalog app over its fixture catalog plus its named rows, and canned answers for
 ("Radverkehr Leipzig"). Checks are deterministic (expected records, filters, numbers, named values, tools, docs pages
 read, layers never sent, values not stated, cards asked, workflows created); six free-text tasks go to an LLM judge.
 The answer graded is what the dock shows: the text of every response of the last turn, the text before a tool call or a
-card too, but not text an answer asked for again in the message's language replaced; a card counts as asked for an option's `value` and for the datasets its `adds` names.
+card too, but not text an answer asked for again in the message's language (or the interface's) replaced; a card counts as asked for an option's `value` and for the datasets its `adds` names.
 Questions about GOAT's own interface (`proj-26` to `proj-30`) are graded on the docs page the answer read with
 `docs_read` and the interface labels from that page in the answer, in the language of the user's interface. An `answer` check
 with `with_shown_items` also counts the names on the cards of the user's own items, since the prompt has the model show

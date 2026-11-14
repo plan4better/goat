@@ -65,6 +65,37 @@ async def test_a_model_that_proposes_the_right_filters_passes(
     assert transcript.proposals[-1]["kind"] == "catalog.filters"
 
 
+async def test_the_harness_hands_the_interface_language_to_the_check(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """cat-07's prompt shows no language: the task's interface language
+    answers it, so a German answer is asked for again in English."""
+    task = _task("cat-07")
+    assert task.locale == "en"
+    german = (
+        "Für München gibt es einen Datensatz mit den Einwohnern je Stadtbezirk, und "
+        "die Werte sind nach Bezirk aufgeteilt."
+    )
+    english = "There is a dataset of the residents per city district in Munich."
+    replies = iter([german, english])
+    sent: list[list[object]] = []
+
+    async def stream(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str]:
+        sent.append(list(messages[-1].parts))
+        yield next(replies)
+
+    transcript = await run_task(
+        task, FunctionModel(stream_function=stream), backends, settings
+    )
+    assert transcript.error is None, transcript.error
+    assert [p for p in sent[1] if isinstance(p, RetryPromptPart)][
+        0
+    ].content == answer_in_language("en", "de", interface=True)
+    assert transcript.answer == english
+
+
 async def test_the_harness_hands_the_message_to_the_language_check(
     backends: Backends, settings: AssistantSettings
 ) -> None:
