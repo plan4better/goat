@@ -155,8 +155,9 @@ results, so it starts without asking only for a workflow this conversation creat
 whose latest run, if any, this conversation started (`run_permission` in `workflows/runs.py`, read from the
 conversation's stored parts); any other run needs the user's pick of Run in a card, one pick per run, and the refusal
 names the condition that failed, so the card says what a run does. Asked to run such a workflow, the assistant shows
-the Run card first, also when the workflow shows issues, and never changes or replaces it unasked (build-a-workflow
-skill): an edit there saves over the user's workflow, and a refused run's issues are what the answer reports. A workflow with a dataset step without a layer is
+the Run card first, also when the workflow shows issues that stop a run, and never offers a correction in its place,
+changes it or replaces it unless the user asks in their own words (build-a-workflow skill, `workflow_get`'s note): an
+edit there saves over the user's workflow, and a refused run's issues are what the answer reports. A workflow with a dataset step without a layer is
 not started: processes refuses such a run anyway, and the refusal names the steps whose layer the user chooses first.
 A run processes refuses and a wait on a run already going use up the pick as well. A run already going is waited for, never started twice. The answer keeps one clock:
 `ASSISTANT_RUN_MAX_SECONDS`, which a waiting run moves to `ASSISTANT_RUN_WAIT_MAX_SECONDS` from the answer's start

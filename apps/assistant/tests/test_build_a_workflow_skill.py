@@ -481,17 +481,20 @@ def test_a_workflow_the_user_asked_to_run_is_run_not_changed() -> None:
     assistant skipped the Run card, changed the workflow unasked (in
     production that saves) and reported the numbers of another one it built.
     The Run card comes first, the workflow stays as it is unless the user
-    asks to change it, and a refused run's issues go into the answer."""
+    asks to change it, and a refused run's issues go into the answer. Later
+    runs showed a card that offered to correct the settings instead: "unless
+    the user asks" let a card of the assistant's own ask, so the Run card
+    offers the run only and a change waits for the user's own words."""
     running = _plain(
         SKILL.instructions.split("## Running and explaining")[1].split("\n## ")[0]
     )
     assert (
         "When the user asked to run such a workflow, the Run card comes first, "
-        "also when it shows issues" in running
+        "with Run and Not now only, also when it shows issues" in running
     )
     assert (
-        "never change it or build another in its place unless the user asks "
-        "for that" in running
+        "never offer a correction, change it or build another in its place "
+        "unless the user asked for that in their own words" in running
     )
     assert "refused: the same, from its issues; nothing ran." in running
 
