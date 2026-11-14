@@ -1,6 +1,6 @@
 # GOAT eval set
 
-36 catalog, 24 project and 11 workflow tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
+36 catalog, 25 project and 13 workflow tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
 prompt, tools and limits are the production ones; the services behind the tools are fixed (decision E16): the
 catalog app over its fixture catalog plus its named rows, and canned answers for one fixture project
 ("Radverkehr Leipzig"). Checks are deterministic (expected records, filters, numbers, named values, tools, layers

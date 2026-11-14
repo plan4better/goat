@@ -199,8 +199,8 @@ residents in reach) comes last in its order, where a model reading a long list m
 row for a group with no features in it (no resident in reach), so a ranked count or sum gets a row of 0 for each group
 the denominator lists: the lowest shares would miss them otherwise. A denominator from another layer gets a note: if the
 layers come from different sources, check that both count the same population (source and year). Under Restricted it
-sends counts only, for few groups (judged over the whole layer, also with a filter), no count of a group under
-`MIN_RESTRICTED_GROUP` features, nothing for a filter that matches fewer features than that, and nothing at all with
+sends counts only, for few groups (judged over the whole layer, also with a filter), no group under
+`MIN_RESTRICTED_GROUP` features (neither its count nor its key, which can be one feature's own value), nothing for a filter that matches fewer features than that, and nothing at all with
 `share_of`. A join names the fields it adds `join_<name>`, and models often leave the prefix out, so the statistics
 tools and the count's filter read `join_x` for a field `x` the layer lacks and say so in the result's note. The name is
 resolved before anything else, so the Restricted checks judge `join_x` exactly as when the model names it.
@@ -448,7 +448,10 @@ fails: after a failed run or one without layers there are no numbers, and `workf
 **Data policy.** An organization's data policy says what data tools may send to the model (`tools/policy.py`):
 Standard sends what the user can see, Restricted keeps back rows, features, geometries, sums and means and still sends
 field names, types, counts, a field's smallest and largest value, class breaks and the values of fields with few
-distinct values. An organization without saved AI settings has Standard (`DEFAULT_DATA_POLICY` in `llm/types.py`), and
+distinct values. Nothing is sent that fewer than `MIN_RESTRICTED_GROUP` features make up, with a filter or without
+one: no smallest and largest value (of a field or of the area) or class breaks of fewer features with a value, and no
+value of a field, listed or as a group's key, that fewer features hold. A result layer of one row would otherwise send
+its value, often a sum, as all of these. An organization without saved AI settings has Standard (`DEFAULT_DATA_POLICY` in `llm/types.py`), and
 Restricted is a choice an admin makes. It was the other way round at first: in production no organization had chosen
 Restricted, all of them were on it unknowingly, and the assistant could then build and run an analysis but not name its
 result, the residents reached, which is what most analyses ask for. The dock's notice and the privacy policy say that

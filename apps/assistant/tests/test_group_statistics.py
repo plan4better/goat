@@ -194,7 +194,7 @@ async def test_a_sum_needs_a_numeric_field() -> None:
         )
 
 
-async def test_restricted_sends_counts_only_and_masks_small_groups() -> None:
+async def test_restricted_sends_counts_only_and_leaves_out_small_groups() -> None:
     sums = await execute(
         GROUP_STATISTICS,
         _env(_services(), "restricted"),
@@ -211,10 +211,10 @@ async def test_restricted_sends_counts_only_and_masks_small_groups() -> None:
         _env(_services(), "restricted"),
         {"layer_project_id": 90, "operation": "count", "group_by": "name"},
     )
+    # Ost has fewer than 5 features: its key could be one feature's value.
     assert [(r["group"], r.get("value")) for r in counts["rows"]] == [
         ("Mitte", 1200.0),
         ("Nord", 300.0),
-        ("Ost", None),
     ]
     assert "fewer than 5" in counts["note"]
 
@@ -258,7 +258,8 @@ async def test_restricted_with_a_filter_judges_the_groups_on_the_whole_layer(
     few = await execute(
         GROUP_STATISTICS, _env(_filtered_services(3), "restricted"), request
     )
-    assert [r["group"] for r in few["rows"]] == ["Mitte", "Nord", "Ost"]
+    # Ost, under 5 features, is left out.
+    assert [r["group"] for r in few["rows"]] == ["Mitte", "Nord"]
 
 
 async def test_restricted_withholds_a_filter_that_matches_few_features() -> None:
@@ -332,7 +333,8 @@ async def test_restricted_counts_of_50_groups_carry_no_shares() -> None:
         _env(_services(groups={BANDS: 50}), "restricted"),
         {"layer_project_id": 90, "operation": "count", "group_by": "name"},
     )
-    assert len(out["rows"]) == 3
+    # Ost, under 5 features, is left out.
+    assert len(out["rows"]) == 2
     assert not {"denominator", "share", "unmatched", "withheld"} & _keys(out)
 
 
@@ -528,10 +530,16 @@ async def test_null_values_are_named_in_the_note_under_both_policies() -> None:
     restricted = await execute(
         GROUP_STATISTICS, _env(_services(rows=rows), "restricted"), request
     )
+    # The small group is left out, its key with it: a key held by fewer than
+    # 5 features can be one feature's own value.
+    assert [(row.get("group"), row.get("then")) for row in restricted["rows"]] == [
+        ("Mitte", "5"),
+        ("Mitte", None),
+    ]
     assert restricted["note"] == (
-        "A row without group holds the features with no value in 'name'. "
         "A row without then holds the features with no value in 'band'. "
-        "1 group(s) have fewer than 5 features; the data policy (Restricted) withholds their counts."
+        "1 group(s) have fewer than 5 features; the data policy (Restricted) "
+        "withholds them, their values and counts."
     )
 
 
@@ -1222,7 +1230,7 @@ async def test_order_by_share_needs_share_of() -> None:
 
 async def test_restricted_withholds_a_ranking_by_share_and_limits_counts() -> None:
     """Restricted sends counts only: a ranking by share has a share_of and
-    is withheld; a limit on counts keeps the masking of small groups."""
+    is withheld; a limit on counts still leaves out small groups."""
     ranked = await execute(
         GROUP_STATISTICS,
         _env(_services(rows=RANKED, groups={BANDS: 3}), "restricted"),
@@ -1245,7 +1253,7 @@ async def test_restricted_withholds_a_ranking_by_share_and_limits_counts() -> No
     ]
     assert not {"denominator", "share", "note"} & _keys(counts)
     # The fake ignores the order: the rows as processes lists them, the
-    # group under 5 masked as without a limit.
+    # group under 5 left out as without a limit.
     lowest = await execute(
         GROUP_STATISTICS,
         _env(_services(), "restricted"),
@@ -1257,5 +1265,5 @@ async def test_restricted_withholds_a_ranking_by_share_and_limits_counts() -> No
             "limit": 3,
         },
     )
-    assert [r.get("value") for r in lowest["rows"]] == [1200.0, 300.0, None]
+    assert [r.get("value") for r in lowest["rows"]] == [1200.0, 300.0]
     assert "fewer than 5" in lowest["note"]
