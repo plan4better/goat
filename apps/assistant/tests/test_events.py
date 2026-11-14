@@ -7,6 +7,7 @@ from assistant.events import (
     RunStarted,
     TextDelta,
     TextEnded,
+    TextReplaced,
     TextStarted,
     ToolCalled,
     ToolReturned,
@@ -52,6 +53,31 @@ def test_fold_parts_concatenates_text_and_keeps_order() -> None:
             "id": "m1:2",
             "data": {"title": "Filters"},
         },
+    ]
+
+
+def test_replaced_text_is_kept_marked_and_left_out_of_the_message() -> None:
+    """An answer asked for again in the message's language replaces the text
+    written before: the stored parts keep it, marked, and the message the
+    dock reloads has only the answer that replaced it."""
+    events = [
+        RunStarted(message_id="m1"),
+        TextStarted(part_id="m1:1"),
+        TextDelta(part_id="m1:1", delta="Die Antwort."),
+        TextEnded(part_id="m1:1"),
+        TextReplaced(part_ids=["m1:1"]),
+        TextStarted(part_id="m1:2"),
+        TextDelta(part_id="m1:2", delta="The answer."),
+        TextEnded(part_id="m1:2"),
+        RunEnded(status="succeeded"),
+    ]
+    parts = fold_parts(events)
+    assert parts == [
+        {"type": "text", "id": "m1:1", "text": "Die Antwort.", "replaced": True},
+        {"type": "text", "id": "m1:2", "text": "The answer."},
+    ]
+    assert to_ui_message("m1", "assistant", parts)["parts"] == [
+        {"type": "text", "text": "The answer.", "state": "done"}
     ]
 
 

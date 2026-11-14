@@ -215,6 +215,13 @@ export interface WorkflowRunData {
   started_at: string | null;
   saved: number;
 }
+/**
+ * The text parts of an answer the run asked for again (`data-replaced-text`), by the ids their
+ * text-start carried (`providerMetadata.goat.partId`): the answer that follows replaces them.
+ */
+export interface ReplacedTextData {
+  part_ids: string[];
+}
 export type AssistantDataParts = {
   proposal: Proposal;
   caveat: CaveatData;
@@ -222,6 +229,7 @@ export type AssistantDataParts = {
   context: PageContext;
   ask: AskCardData;
   "workflow-run": WorkflowRunData;
+  "replaced-text": ReplacedTextData;
 };
 export type AssistantMessage = UIMessage<AssistantMetadata, AssistantDataParts>;
 

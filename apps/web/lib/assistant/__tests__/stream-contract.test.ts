@@ -107,6 +107,19 @@ describe("assistant stream contract (spec §6.2)", () => {
     });
   });
 
+  it("names a replaced answer's text parts by the ids their text parts keep", async () => {
+    // The dock leaves out the text parts a data-replaced-text part names.
+    const message = await finalMessage(chunksOf("replaced_text"));
+    const texts = message.parts.filter((part) => part.type === "text");
+    expect(texts).toMatchObject([
+      { text: "Die Antwort.", providerMetadata: { goat: { partId: `${MESSAGE_ID}:1` } } },
+      { text: "The answer.", providerMetadata: { goat: { partId: `${MESSAGE_ID}:2` } } },
+    ]);
+    expect(message.parts.find((part) => part.type === "data-replaced-text")).toMatchObject({
+      data: { part_ids: [`${MESSAGE_ID}:1`] },
+    });
+  });
+
   it("carries usage as message metadata", async () => {
     const message = await finalMessage(chunksOf("text_only"));
     expect(message.metadata).toMatchObject({

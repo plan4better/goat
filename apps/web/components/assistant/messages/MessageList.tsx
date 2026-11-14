@@ -198,6 +198,15 @@ function Answer({
 }) {
   const blocks: ReactNode[] = [];
   let tools: DynamicToolUIPart[] = [];
+  // Text the run asked for again in the message's language: the answer after it replaces it.
+  // A reloaded answer no longer holds such text.
+  const replaced = new Set(
+    message.parts.flatMap((part) => (part.type === "data-replaced-text" ? part.data.part_ids : []))
+  );
+  const shownText = (part: TextUIPart) => {
+    const partId = part.providerMetadata?.goat?.partId;
+    return typeof partId !== "string" || !replaced.has(partId);
+  };
   // What the answer's steps named, for every group: a change names the workflow an earlier group read.
   const names = stepNames(
     message.parts.filter((part): part is DynamicToolUIPart => part.type === "dynamic-tool")
@@ -252,7 +261,8 @@ function Answer({
       tools.push(part);
       return;
     }
-    if (part.type === "step-start") return;
+    if (part.type === "step-start" || part.type === "data-replaced-text") return;
+    if (part.type === "text" && !shownText(part)) return;
     flush(String(index));
     if (part.type === "text") {
       blocks.push(<SafeMarkdown key={index}>{part.text}</SafeMarkdown>);
@@ -308,7 +318,7 @@ function Answer({
   });
   flush("end");
   const text = message.parts
-    .filter((part): part is TextUIPart => part.type === "text")
+    .filter((part): part is TextUIPart => part.type === "text" && shownText(part))
     .map((part) => part.text)
     .join("\n\n");
   // A stopped or failed answer keeps Copy for what it said; it has details only when it was

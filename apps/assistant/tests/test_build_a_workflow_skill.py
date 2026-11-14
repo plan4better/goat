@@ -476,6 +476,26 @@ def test_the_run_card_is_no_question_whether_to_run() -> None:
     assert "it is the permission workflow_run needs" in flat
 
 
+def test_a_workflow_the_user_asked_to_run_is_run_not_changed() -> None:
+    """wf-11: asked to run a workflow whose settings looked invalid, the
+    assistant skipped the Run card, changed the workflow unasked (in
+    production that saves) and reported the numbers of another one it built.
+    The Run card comes first, the workflow stays as it is unless the user
+    asks to change it, and a refused run's issues go into the answer."""
+    running = _plain(
+        SKILL.instructions.split("## Running and explaining")[1].split("\n## ")[0]
+    )
+    assert (
+        "When the user asked to run such a workflow, the Run card comes first, "
+        "also when it shows issues" in running
+    )
+    assert (
+        "never change it or build another in its place unless the user asks "
+        "for that" in running
+    )
+    assert "refused: the same, from its issues; nothing ran." in running
+
+
 def test_an_area_result_and_residents_by_area_share_are_labelled_apart() -> None:
     """Square metres are an area; residents spread by area share are people,
     as an estimate. The rule in the skill and the recipe say the same."""

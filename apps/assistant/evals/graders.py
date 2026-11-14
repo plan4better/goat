@@ -7,6 +7,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
+from assistant.language import answer_language
 from evals.backends import EDIT_WORKFLOW, Backends, layer_project_id
 from evals.harness import ToolCall, Transcript
 from evals.tasks import (
@@ -108,20 +109,6 @@ def numbers_in(text: str) -> set[float]:
     return found
 
 
-#: Grammar words that only one of the two languages uses. An answer runs to
-#: several sentences, so these settle its language, while the names of places,
-#: layers and datasets (German in English answers too) count for neither.
-_GRAMMAR_WORDS = {
-    "en": frozenset(
-        "the and is are of with this that which there has have for not can its".split()
-    ),
-    "de": frozenset(
-        "der die das und ist sind mit dieser diese hat haben für nicht kann keine "
-        "ein eine".split()
-    ),
-}
-
-
 def _card_text(transcript: Transcript) -> str:
     """The questions and options of the cards the answer showed."""
     texts: list[str] = []
@@ -136,18 +123,6 @@ def _card_text(transcript: Transcript) -> str:
                 if isinstance(option, dict):
                     texts.append(str(option.get("label") or ""))
     return " ".join(texts)
-
-
-def answer_language(text: str) -> str | None:
-    """English or German, by the grammar words; None when neither leads."""
-    words = re.findall(r"[^\W\d_]+", text.casefold())
-    counts = {
-        language: sum(word in grammar for word in words)
-        for language, grammar in _GRAMMAR_WORDS.items()
-    }
-    if counts["en"] == counts["de"]:
-        return None
-    return "en" if counts["en"] > counts["de"] else "de"
 
 
 def _contains(haystack: str, needle: str) -> bool:
@@ -392,13 +367,21 @@ def _asked(check: AskedCheck, transcript: Transcript) -> tuple[bool, str]:
     if not cards:
         return False, "no ask_user card"
     first = [q for q in cards[0].get("questions") or [] if isinstance(q, dict)]
-    values = {
-        str(option["value"])
+    options = [
+        option
         for card in cards
         for question in card.get("questions") or []
         if isinstance(question, dict)
         for option in question.get("options") or []
-        if isinstance(option, dict) and option.get("value") is not None
+        if isinstance(option, dict)
+    ]
+    # An option that adds data names it by its ids in ``adds``, and its value
+    # is then a short key (``assistant.asks``): both count as offered.
+    values = {
+        str(value)
+        for option in options
+        for value in [option.get("value"), *(option.get("adds") or [])]
+        if value is not None
     }
 
     def offered(value: str) -> bool:

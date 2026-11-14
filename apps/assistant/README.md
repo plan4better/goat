@@ -154,7 +154,9 @@ again after `HEARTBEAT_SECONDS` without a change, `tools/workflow_runs.py`). A r
 results, so it starts without asking only for a workflow this conversation created, with no export set to overwrite and
 whose latest run, if any, this conversation started (`run_permission` in `workflows/runs.py`, read from the
 conversation's stored parts); any other run needs the user's pick of Run in a card, one pick per run, and the refusal
-names the condition that failed, so the card says what a run does. A workflow with a dataset step without a layer is
+names the condition that failed, so the card says what a run does. Asked to run such a workflow, the assistant shows
+the Run card first, also when the workflow shows issues, and never changes or replaces it unasked (build-a-workflow
+skill): an edit there saves over the user's workflow, and a refused run's issues are what the answer reports. A workflow with a dataset step without a layer is
 not started: processes refuses such a run anyway, and the refusal names the steps whose layer the user chooses first.
 A run processes refuses and a wait on a run already going use up the pick as well. A run already going is waited for, never started twice. The answer keeps one clock:
 `ASSISTANT_RUN_MAX_SECONDS`, which a waiting run moves to `ASSISTANT_RUN_WAIT_MAX_SECONDS` from the answer's start
@@ -451,7 +453,18 @@ reasoning, or nothing), with the same tools, and a model that gave one often gav
 on its output retries ("Exceeded maximum output retries"). It also takes any text that is not empty as the answer, so
 an answer could end after its cards with a single space. Such an answer is asked for its text
 (`agent.ends_with_text`); only the last retry's answer is taken as it is, since failing the run then would lose what
-the user has already seen. And the second response of a run without a tool call or text beyond whitespace ends its
+the user has already seen. The same check asks once per run for an answer in the other language than the user's
+message, English or German (`agent.wrong_language`): the instructions and the note after a longer message say it
+already, and still some answers came in the language of the data or of the interface. More wording did not help.
+It reads both languages from grammar words (`assistant/language.py`, shared with the evals' language check), only
+prose (no code, bold names, quotes, table rows or titles in a list), and acts only when both are clear: a message under
+three words (answered in the interface language), a card's answer, a message that names a language or asks to
+translate, and an answer of names or titles are never asked again, nor is an answer when another answer step does not
+fit in the run's tokens. The answer already streamed is replaced, not added to: the check names its text parts
+(`events.TextReplaced`, a `data-replaced-text` part naming them by the id each text-start carries in its provider
+metadata), the dock leaves them out, live and after a reload (the stored parts keep them, marked), and the next
+answer's history holds only the answer that replaced them (`runs/turn.py`, `without_replaced`). The retry counts with
+the others, and its answer goes out whatever its language. And the second response of a run without a tool call or text beyond whitespace ends its
 look-ups (`SILENT_RESPONSES` in `assistant/tools/toolset.py`): the next call is the answer step, told why
 (`prompt.ANSWER_IN_TEXT`). A model can still give no text until Pydantic AI gives up. After a `workflow_run` that
 succeeded and saved layers, with nothing written since, that would end the answer as a failure while the run card and

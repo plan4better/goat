@@ -18,6 +18,7 @@ from assistant.events import (
     StepStarted,
     TextDelta,
     TextEnded,
+    TextReplaced,
     TextStarted,
     ToolApprovalRequested,
     ToolCalled,
@@ -66,7 +67,20 @@ class AiSdkEncoder:
             self._step_open = True
             return [*chunks, {"type": "start-step"}]
         if isinstance(event, TextStarted):
-            return [{"type": "text-start", "id": event.part_id}]
+            # The AI SDK keeps a text-start's provider metadata on the text
+            # part, the only way the part keeps its id in the message: the dock
+            # finds there the parts a ``data-replaced-text`` part names.
+            return [
+                {
+                    "type": "text-start",
+                    "id": event.part_id,
+                    "providerMetadata": {"goat": {"partId": event.part_id}},
+                }
+            ]
+        if isinstance(event, TextReplaced):
+            return [
+                {"type": "data-replaced-text", "data": {"part_ids": event.part_ids}}
+            ]
         if isinstance(event, TextDelta):
             return [{"type": "text-delta", "id": event.part_id, "delta": event.delta}]
         if isinstance(event, TextEnded):
