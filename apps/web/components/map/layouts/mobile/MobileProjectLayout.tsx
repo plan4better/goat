@@ -764,7 +764,7 @@ const MobileProjectLayout = ({
                   gap: 2,
                 }}>
                 {activeRightPanel === MapSidebarItemID.PROPERTIES && (
-                  <PropertiesPanel activeLayer={activeLayer} />
+                  <PropertiesPanel activeLayer={activeLayer} showFields={false} />
                 )}
                 {activeRightPanel === MapSidebarItemID.STYLE && (
                   <SimpleLayerStyle

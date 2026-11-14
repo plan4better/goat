@@ -2,7 +2,7 @@
 
 // The app's one field list: a layer's fields on the shared menu (SearchableMenu), each with its kind (FieldKindIcon in
 // one column, so the names line up) and the chosen one marked. Searched by name and display name once the list is
-// long; "No fields match" when nothing does. A field the use cannot take is either left out by the caller or shown
+// long; "No fields match" when nothing does, "No fields available" when the layer has none. A field the use cannot take is either left out by the caller or shown
 // disabled with why (`disabledReason`).
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -99,7 +99,7 @@ export default function FieldMenu<F extends FieldMenuField>({
       role="listbox"
       items={items}
       searchLabel={searchLabel ?? t("search_fields")}
-      emptyText={t("no_fields_match")}
+      emptyText={t(fields.length ? "no_fields_match" : "no_fields_available")}
       searchFrom={SEARCH_FROM_FIELDS}
     />
   );

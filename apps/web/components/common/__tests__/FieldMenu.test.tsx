@@ -63,6 +63,12 @@ describe("FieldMenu", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
+  it("says so when there is no field to list", () => {
+    menu({ fields: [] });
+    expect(screen.queryAllByRole("option")).toHaveLength(0);
+    expect(screen.getByText("no_fields_available")).toBeDefined();
+  });
+
   it("starts at its field's width (240 px under a narrower one) and grows with its labels up to 360 px", () => {
     const field = (width: number) => {
       const box = document.createElement("div");

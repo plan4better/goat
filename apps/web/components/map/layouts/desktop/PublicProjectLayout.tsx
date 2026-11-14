@@ -181,7 +181,7 @@ const PublicProjectLayout = ({
 
       if (activeRight === MapSidebarItemID.PROPERTIES) {
         title = `${t("data_source_info")}: ${activeLayer.name || t("layer")}`;
-        content = <PropertiesPanel activeLayer={activeLayer} />;
+        content = <PropertiesPanel activeLayer={activeLayer} showFields={false} />;
       } else if (activeRight === MapSidebarItemID.STYLE) {
         title = `${t("style")}: ${activeLayer.name || t("layer")}`;
         // The map's layer, with its style (the builder's rows have none).

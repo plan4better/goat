@@ -1,12 +1,39 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import PropertiesPanel from "@/components/map/panels/properties/Properties";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { exists: () => false } }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { exists: () => false, language: "en" } }),
 }));
 vi.mock("@/i18n/utils", () => ({ useDateFnsLocale: () => undefined }));
+
+// The dataset's queryables and feature count: what the other tabs already asked for, keyed by the layer.
+const data = vi.hoisted(() => ({
+  queryables: undefined as { properties: Record<string, unknown> } | undefined,
+  featureCount: undefined as number | undefined,
+  asked: { queryables: [] as string[], count: [] as (string | undefined)[] },
+}));
+vi.mock("@/lib/api/layers", async (original) => ({
+  ...(await original<object>()),
+  useLayerQueryables: (layerId: string) => {
+    data.asked.queryables.push(layerId);
+    return { queryables: layerId ? data.queryables : undefined, isLoading: false };
+  },
+}));
+vi.mock("@/lib/api/processes", async (original) => ({
+  ...(await original<object>()),
+  useFeatureCount: (layerId: string | undefined) => {
+    data.asked.count.push(layerId);
+    return { featureCount: layerId ? data.featureCount : undefined, isLoading: false };
+  },
+}));
+
+afterEach(() => {
+  data.queryables = undefined;
+  data.featureCount = undefined;
+  data.asked = { queryables: [], count: [] };
+});
 
 const CATALOG_ITEM = {
   id: "da6143c8-519a-4f10-8095-b87c8f34ce74",
@@ -141,5 +168,108 @@ describe("PropertiesPanel layout", () => {
 
     const value = screen.getByText(/Tiefbauamt\/Leitung/);
     expect(getComputedStyle(value).overflowWrap).toBe("anywhere");
+  });
+});
+
+const QUERYABLES = {
+  properties: {
+    geom: { $ref: "https://geojson.org/schema/Geometry.json" },
+    id: { name: "id", type: "integer" },
+    layer_id: { name: "layer_id", type: "string" },
+    h3_3: { name: "h3_3", type: "integer" },
+    name: { name: "name", type: "string" },
+    population: { name: "population", type: "integer", display_config: { label: "Population" } },
+    opened: { name: "opened", type: "string", format: "date" },
+    row_no: { name: "row_no", type: "integer", kind: "serial" },
+  },
+};
+
+const featureLayer = (extra: Record<string, unknown> = {}) =>
+  ({
+    id: 1,
+    layer_id: "layer-1",
+    type: "feature",
+    feature_layer_geometry_type: "polygon",
+    size: 2_500_000,
+    other_properties: {},
+    ...extra,
+  }) as never;
+
+describe("PropertiesPanel dataset", () => {
+  it("lists the dataset's size in the details, and neither geometry type nor feature count (the panel's header says both)", () => {
+    render(<PropertiesPanel activeLayer={featureLayer()} />);
+
+    const details = screen.getByRole("heading", { name: "details" }).closest("section") as HTMLElement;
+    expect(within(details).getByText("size").parentElement).toBe(
+      within(details).getByText(/^2\.5\sMB$/).parentElement?.parentElement
+    );
+    expect(screen.queryByText("metadata.headings.geometry_type")).toBeNull();
+    expect(screen.queryByText("features")).toBeNull();
+    // The same request the style and filter tabs make, so the fields come from the cache.
+    expect(data.asked.queryables).toContain("layer-1");
+  });
+
+  it("lists every field with its type, leaving out the columns every layer carries", () => {
+    data.queryables = QUERYABLES;
+    render(<PropertiesPanel activeLayer={featureLayer()} />);
+
+    const fields = screen.getByRole("heading", { name: "fields" }).closest("section") as HTMLElement;
+    const rows = within(fields).getAllByRole("listitem");
+    // Each row: the kind's glyph (a date's is an icon), the display name, the type.
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "Aname" + "field_kind_string",
+      "123Population" + "integer",
+      "opened" + "field_kind_date",
+      "#row_no" + "integer",
+    ]);
+  });
+
+  it("shows the first 30 fields and the rest on demand", () => {
+    data.queryables = {
+      properties: Object.fromEntries(
+        Array.from({ length: 45 }, (_, i) => [`f${i}`, { name: `f${i}`, type: "string" }])
+      ),
+    };
+    render(<PropertiesPanel activeLayer={featureLayer()} />);
+
+    const fields = screen.getByRole("heading", { name: "fields" }).closest("section") as HTMLElement;
+    expect(within(fields).getAllByRole("listitem")).toHaveLength(30);
+    fireEvent.click(within(fields).getByRole("button", { name: "metadata.show_all_fields" }));
+    expect(within(fields).getAllByRole("listitem")).toHaveLength(45);
+    expect(within(fields).queryByRole("button")).toBeNull();
+  });
+
+  it("lists a table's fields", () => {
+    data.queryables = QUERYABLES;
+    render(<PropertiesPanel activeLayer={featureLayer({ type: "table", feature_layer_geometry_type: undefined })} />);
+
+    expect(screen.getByRole("heading", { name: "fields" })).toBeDefined();
+  });
+
+  it("says nothing of fields for a raster, and does not ask for them", () => {
+    data.queryables = QUERYABLES;
+    render(
+      <PropertiesPanel
+        activeLayer={featureLayer({ type: "raster", feature_layer_geometry_type: undefined, size: undefined })}
+      />
+    );
+
+    expect(screen.queryByRole("heading", { name: "fields" })).toBeNull();
+    expect(data.asked.queryables.every((id) => !id)).toBe(true);
+  });
+
+  it("without the fields (a public map) lists none and does not ask for them, the details staying", () => {
+    data.queryables = QUERYABLES;
+    render(<PropertiesPanel activeLayer={featureLayer()} showFields={false} />);
+
+    expect(screen.queryByRole("heading", { name: "fields" })).toBeNull();
+    expect(data.asked.queryables.every((id) => !id)).toBe(true);
+    expect(screen.getByText("size")).toBeDefined();
+  });
+
+  it("never asks for a feature count", () => {
+    render(<PropertiesPanel activeLayer={featureLayer()} />);
+
+    expect(data.asked.count).toEqual([]);
   });
 });

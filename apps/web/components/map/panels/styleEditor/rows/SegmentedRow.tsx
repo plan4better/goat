@@ -19,10 +19,7 @@ function SegmentedRowInner<T extends string>({ label, value, options, onChange }
         size="small"
         value={value}
         onChange={(_, next: T | null) => next !== null && onChange(next)}
-        sx={{
-          flex: 1,
-          "& .MuiToggleButton-root": { flex: 1, textTransform: "none", py: 0.5, minHeight: 32 },
-        }}>
+        sx={{ flex: 1, "& .MuiToggleButton-root": { flex: 1 } }}>
         {options.map((option) => (
           <ToggleButton
             key={option.value}

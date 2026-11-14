@@ -118,8 +118,7 @@ export function ViewPanel({
           value={mode}
           role="radiogroup"
           aria-label={t("view3d.map_view")}
-          onChange={(_, next: ViewMode | null) => next && next !== mode && dispatch(setViewMode(next))}
-          sx={{ "& .MuiToggleButton-root": { textTransform: "none", py: 0.5, minHeight: 32 } }}>
+          onChange={(_, next: ViewMode | null) => next && next !== mode && dispatch(setViewMode(next))}>
           {(["2d", "3d"] as const).map((m) => (
             <ToggleButton
               key={m}

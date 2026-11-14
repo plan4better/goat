@@ -68,6 +68,8 @@ export interface SearchableMenuItem {
   heading?: boolean;
   /** Matched by the search besides the label (a field's name under its display name). */
   keywords?: string;
+  /** At the row's end: a count. */
+  trailing?: ReactNode;
   onClick?: () => void;
 }
 
@@ -92,12 +94,16 @@ export interface SearchableMenuProps {
   /** Under the control, its start or its end aligned. */
   placement?: MenuPlacement;
   searchLabel?: string;
-  /** Shown when the search matches nothing. */
+  /** Shown when there is nothing to list: the search matches nothing, or the menu has no rows at all. */
   emptyText?: string;
   /** The search row from this many rows on. */
   searchFrom?: number;
   /** The element focused when the menu closes by keyboard (the control's own focusable part). */
   focusOnClose?: HTMLElement | null;
+  /** Hears every change of the search text, for a list the server searches (`items` then gives its rows as they are). */
+  onSearchChange?: (text: string) => void;
+  /** The rows were scrolled to their end: a list loaded page by page loads the next. */
+  onReachEnd?: () => void;
 }
 
 const matches = (item: SearchableMenuItem, needle: string) =>
@@ -141,6 +147,8 @@ export default function SearchableMenu({
   emptyText,
   searchFrom = SEARCH_FROM_CHOICES,
   focusOnClose,
+  onSearchChange,
+  onReachEnd,
 }: SearchableMenuProps) {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -208,7 +216,9 @@ export default function SearchableMenu({
     if (printable || event.key === "Backspace") {
       event.preventDefault();
       event.stopPropagation();
-      setSearch((text) => (printable ? text + event.key : text.slice(0, -1)));
+      const next = printable ? search + event.key : search.slice(0, -1);
+      setSearch(next);
+      onSearchChange?.(next);
       input.current?.focus();
     } else if (event.key === "ArrowUp" && rows()[0] === event.target) {
       event.preventDefault();
@@ -256,6 +266,7 @@ export default function SearchableMenu({
         }
         label={item.label}
         secondary={item.sub}
+        trailing={item.trailing}
         // Long labels wrap: two options that differ only at their end stay apart.
         sx={{ whiteSpace: "normal" }}
         onClick={() => pick(item)}
@@ -346,7 +357,10 @@ export default function SearchableMenu({
                       "aria-label": searchLabel ?? t("search_placeholder_short"),
                       ref: input,
                     }}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      onSearchChange?.(event.target.value);
+                    }}
                     onKeyDown={onSearchKey}
                     sx={{
                       fontSize: POPOVER_ROW_SX.fontSize,
@@ -366,6 +380,13 @@ export default function SearchableMenu({
             role={role}
             disablePadding
             autoFocusItem={!searchable}
+            onScroll={
+              onReachEnd &&
+              ((event) => {
+                const el = event.currentTarget;
+                if (el.scrollTop + el.clientHeight >= el.scrollHeight - 48) onReachEnd();
+              })
+            }
             sx={{
               p: POPOVER_LIST_PADDING,
               overflowY: "auto",
@@ -376,7 +397,7 @@ export default function SearchableMenu({
             {shown.map((item, i) =>
               item.heading ? <MenuHeading key={`h-${i}`}>{item.label}</MenuHeading> : rowOf(item, i)
             )}
-            {needle && !shown.some((item) => !item.heading) && (
+            {!shown.some((item) => !item.heading) && (
               <Typography
                 component="li"
                 role="presentation"

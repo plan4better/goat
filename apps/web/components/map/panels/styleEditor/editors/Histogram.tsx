@@ -1,5 +1,5 @@
 // The field's distribution under a classification (prototype 4.5): bars over the field's range in their class
-// colors, the breaks as dashed lines, the minimum and maximum under it.
+// colors, the breaks as dashed lines, the minimum and maximum under it (without `format`, the bars alone).
 import { useTheme } from "@mui/material";
 
 const WIDTH = 270;
@@ -20,7 +20,7 @@ export function Histogram({
   bins: HistogramBin[];
   breaks: number[];
   colorAt: (value: number) => string;
-  format: (value: number) => string;
+  format?: (value: number) => string;
 }) {
   const theme = useTheme();
   if (!bins.length) return null;
@@ -29,7 +29,11 @@ export function Histogram({
   const top = Math.max(...bins.map((b) => b.count), 1);
   const x = (v: number) => (max === min ? 0 : ((v - min) / (max - min)) * WIDTH);
   return (
-    <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} aria-hidden="true" style={{ display: "block" }}>
+    <svg
+      width="100%"
+      viewBox={`0 0 ${WIDTH} ${format ? HEIGHT : BARS}`}
+      aria-hidden="true"
+      style={{ display: "block" }}>
       {bins.map((bin) => {
         const h = (bin.count / top) * BARS;
         return (
@@ -57,12 +61,16 @@ export function Histogram({
             strokeWidth={0.75}
           />
         ))}
-      <text x={0} y={HEIGHT - 4} fontSize={9} fill={theme.palette.text.secondary}>
-        {format(min)}
-      </text>
-      <text x={WIDTH} y={HEIGHT - 4} fontSize={9} textAnchor="end" fill={theme.palette.text.secondary}>
-        {format(max)}
-      </text>
+      {format && (
+        <>
+          <text x={0} y={HEIGHT - 4} fontSize={9} fill={theme.palette.text.secondary}>
+            {format(min)}
+          </text>
+          <text x={WIDTH} y={HEIGHT - 4} fontSize={9} textAnchor="end" fill={theme.palette.text.secondary}>
+            {format(max)}
+          </text>
+        </>
+      )}
     </svg>
   );
 }
