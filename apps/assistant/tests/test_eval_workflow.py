@@ -30,6 +30,7 @@ from assistant.tools.catalog import NO_SUCH_WORD, NOTHING_FOUND
 from assistant.tools.runtime import InputInvalid, execute
 from assistant.tools.testing import ScriptedModel, TurnModel, stage_note, tool_env
 from assistant.tools.toolset import FRUITLESS_SEARCHES, SEARCHED_ENOUGH
+from assistant.tools.workflow_edits import VIEWER_EDITS
 from assistant.tools.workflow_tools import clear_description_cache
 from assistant.workflows.draft import Draft, ProjectLayer, to_config
 from evals.backends import (
@@ -377,6 +378,38 @@ async def test_the_asked_check_reads_the_cards_values(backends: Backends) -> Non
         )
     ] == [False]
     assert [g.passed for g in await grade(task, _transcript([]), backends)] == [False]
+
+
+async def test_the_asked_check_counts_the_datasets_an_option_adds(
+    backends: Backends,
+) -> None:
+    """wf-09: an option that uses data not yet in the project carries the
+    dataset's catalog id in ``adds`` and a short key as its value, as the
+    skill says; the check counts the ids it adds as offered."""
+    task = _check_task(
+        '{"kind": "asked", "offers_any": ["eval-supermaerkte-bayern"]}',
+        '{"kind": "asked", "offers": ["eval-schulen-bayern"]}',
+    )
+    card = {
+        "questions": [
+            {
+                "question": "Which data should the workflow use?",
+                "header": "Data",
+                "options": [
+                    {
+                        "label": "Supermärkte and Schulen Bayern",
+                        "description": "Adds them to the project",
+                        "recommended": True,
+                        "value": "both",
+                        "adds": ["eval-supermaerkte-bayern", "eval-schulen-bayern"],
+                    },
+                    {"label": "Leave it open", "description": "Choose it later"},
+                ],
+            }
+        ]
+    }
+    asked = _transcript([ToolCall("ask_user", card, {"card_id": "ask-1"}, False)])
+    assert [g.passed for g in await grade(task, asked, backends)] == [True, True]
 
 
 async def test_the_workflow_created_check_reads_what_was_saved(
@@ -1882,7 +1915,76 @@ async def test_the_build_and_run_task_can_pass(
         {key: row[key] for key in ("group", "then", "value")} for row in rows
     ]
     grades = await grade(_task("wf-10"), transcript, backends)
-    assert [g.passed for g in grades] == [True] * 5, grades
+    assert [g.passed for g in grades] == [True] * 6, grades
+
+
+#: wf-10 by the heatmap, which the skill builds when both methods fit and
+#: no card is shown anyway (SKILL.md, step 1; heatmap.md, Shares per district).
+HEAT_BANDS_DRAFT: dict[str, Any] = {
+    "name": "Residents by walking time to a supermarket per district",
+    "steps": [
+        {"id": "shops", "kind": "dataset", "layer": 34},
+        {"id": "people", "kind": "dataset", "layer": 33},
+        {"id": "districts", "kind": "dataset", "layer": 35},
+        {
+            "id": "heat",
+            "kind": "tool",
+            "tool": "heatmap_closest_average",
+            "settings": {
+                "routing_mode": "walking",
+                "show_advanced": True,
+                "opportunity_1_n_destinations": 1,
+            },
+        },
+        {"id": "cut", "kind": "tool", "tool": "intersection", "settings": {}},
+        {
+            "id": "count",
+            "kind": "tool",
+            "tool": "aggregate_polygon",
+            "settings": {
+                "area_type": "polygon",
+                "column_statistics": [{"operation": "sum", "field": "einwohner"}],
+            },
+        },
+        {"id": "save", "kind": "export", "name": "Residents per district"},
+    ],
+    "connections": [
+        {"from": "shops", "to": "heat", "input": "opportunity_layer_1_id"},
+        {"from": "districts", "to": "heat", "input": "reference_area_layer_id"},
+        {"from": "heat", "to": "cut", "input": "input_layer_id"},
+        {"from": "districts", "to": "cut", "input": "overlay_layer_id"},
+        {"from": "cut", "to": "count", "input": "area_layer_id"},
+        {"from": "people", "to": "count", "input": "source_layer_id"},
+        {"from": "count", "to": "save"},
+    ],
+}
+
+
+async def test_the_build_and_run_task_passes_with_the_heatmap(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """wf-10 by the heatmap: the skill recommends it for residents near the
+    nearest of many places, so the task accepts it as it accepts catchment
+    areas; the numbers are graded the same."""
+    created = "0b6f0000-0000-0000-0000-000000000001"
+    model = ScriptedModel(
+        calls=[
+            ("workflow_check_draft", {"draft": HEAT_BANDS_DRAFT}),
+            ("workflow_create", {"draft": HEAT_BANDS_DRAFT}),
+            ("workflow_run", {"workflow_id": created}),
+        ],
+        answer=(
+            "Within 5 minutes on foot of a supermarket live 1,200 residents in "
+            "Mitte and 300 in Nord; the table has the 10 and 15 minutes too."
+        ),
+    )
+    task = _task("wf-10")
+    transcript = await run_task(task, model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    assert not any(call.failed for call in transcript.tool_calls), transcript.tool_calls
+    assert transcript.tool_calls[0].result["blocking"] == 0
+    grades = await grade(task, transcript, backends)
+    assert [g.passed for g in grades] == [True] * 6, grades
 
 
 async def test_the_saved_result_is_read_right_after_its_run(
@@ -1916,7 +2018,7 @@ async def test_the_saved_result_is_read_right_after_its_run(
             ),
         ],
         answer=(
-            "Within 15 minutes live 8,500 residents across all districts; the "
+            "The 15-minute band holds 8,500 residents across all districts; the "
             "largest value for one district and band is 4,100."
         ),
     )
@@ -2038,6 +2140,44 @@ async def test_the_run_task_runs_after_the_card_and_can_pass(
     assert "band edges" in issue
     grades = await grade(_task("wf-11"), transcript, backends)
     assert [g.passed for g in grades] == [True] * 4, grades
+
+
+async def test_a_change_of_the_run_task_workflow_ends_at_its_refusal(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """wf-11 asks to run the project's workflow, not to change it. A change
+    the model makes anyway is refused for good, as for a user who may not
+    change the workflow, never with a refusal that asks to try again, so a
+    run cannot spend its steps on retries; nothing is saved."""
+    fix = {
+        "workflow_id": RUN_WORKFLOW_ID,
+        "operations": [
+            {
+                "op": "set_settings",
+                "id": "tool-walk",
+                "settings": {"step_sizes": [5, 10, 15]},
+            }
+        ],
+    }
+    model = ScriptedModel(
+        calls=[
+            ("workflow_get", {"workflow_id": RUN_WORKFLOW_ID}),
+            ("workflow_update", fix),
+        ],
+        answer="I could not change the workflow.",
+    )
+    transcript = await run_task(_task("wf-11"), model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    read, update = transcript.tool_calls
+    assert not read.failed, read.result
+    # Reading a workflow invites no change of it: only one the user asks for.
+    assert read.result["note"].startswith("When the user asks to change it,")
+    assert update.failed and VIEWER_EDITS in str(update.result), update.result
+    assert transcript.saved == []
+    # The attempt itself is the harm in production, where the save succeeds.
+    grades = await grade(_task("wf-11"), transcript, backends)
+    [tools] = [g for g in grades if g.check == "tools"]
+    assert tools.passed is False and "workflow_update" in tools.detail, tools
 
 
 def _edit(max_cost: int) -> dict[str, Any]:

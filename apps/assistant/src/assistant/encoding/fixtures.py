@@ -15,6 +15,7 @@ from assistant.events import (
     StepStarted,
     TextDelta,
     TextEnded,
+    TextReplaced,
     TextStarted,
     ToolApprovalRequested,
     ToolCalled,
@@ -90,6 +91,19 @@ SCENARIOS: dict[str, list[RunEvent]] = {
             error="Your organization's AI provider isn't reachable.",
             code="provider_unreachable",
         ),
+    ],
+    # An answer in the other language than the message, asked for again.
+    "replaced_text": [
+        RunStarted(message_id=_M),
+        StepStarted(),
+        TextStarted(part_id=f"{_M}:1"),
+        TextDelta(part_id=f"{_M}:1", delta="Die Antwort."),
+        TextEnded(part_id=f"{_M}:1"),
+        TextReplaced(part_ids=[f"{_M}:1"]),
+        TextStarted(part_id=f"{_M}:2"),
+        TextDelta(part_id=f"{_M}:2", delta="The answer."),
+        TextEnded(part_id=f"{_M}:2"),
+        RunEnded(status="succeeded"),
     ],
 }
 

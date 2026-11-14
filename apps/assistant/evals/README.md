@@ -5,6 +5,8 @@ prompt, tools and limits are the production ones; the services behind the tools 
 catalog app over its fixture catalog plus its named rows, and canned answers for one fixture project
 ("Radverkehr Leipzig"). Checks are deterministic (expected records, filters, numbers, named values, tools, docs pages
 read, layers never sent, values withheld, cards asked, workflows created); six free-text tasks go to an LLM judge.
+The answer graded is what the dock shows: the text of every response of the last turn, the text before a tool call or a
+card too, but not text an answer asked for again in the message's language replaced; a card counts as asked for an option's `value` and for the datasets its `adds` names.
 Questions about GOAT's own interface (`proj-26` to `proj-30`) are graded on the docs page the answer read with
 `docs_read` and the interface labels from that page in the answer, in the language of the user's interface. An `answer` check
 with `with_shown_items` also counts the names on the cards of the user's own items, since the prompt has the model show
@@ -13,7 +15,7 @@ those as cards and not list them again.
 The workflow suite (`workflow_tasks.jsonl`, `wf-NN`) builds workflows in three more fixture projects: one to build in
 ("Erreichbarkeit Leipzig"), the same layers for a user who may only view them, and an empty one in Munich, where
 adding a catalog dataset adds its layers. A fourth project ("Schulwege Leipzig") holds one workflow whose run is
-refused before it starts, and a fifth ("Nahversorgung zu Fuß") one workflow the assistant changes, which core saves
+refused before it starts and whose save core refuses as for a viewer (the task asks to run it, never to change it), and a fifth ("Nahversorgung zu Fuß") one workflow the assistant changes, which core saves
 on its revision only (`base_revision`, 409 `changed_elsewhere` otherwise), keeping each version for the graders.
 Processes answers with descriptions captured from processes
 (`tests/fixtures/process_descriptions.json`: what processes' `tool_registry.get_process_list` and

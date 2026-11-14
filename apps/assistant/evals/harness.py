@@ -166,14 +166,15 @@ async def press_undo(audit: AuditRows, services: Any, run_id: UUID) -> str:
 
 
 def _text(messages: Iterable[ModelMessage]) -> str:
-    """The text of an answer's model responses, in order."""
-    return "".join(
-        part.content
+    """The text of an answer's model responses, in order, as the dock shows
+    it: each response's text a paragraph of its own, the text written before
+    a tool call too; a response of whitespace only adds nothing."""
+    texts = (
+        "".join(part.content for part in message.parts if isinstance(part, TextPart))
         for message in messages
         if isinstance(message, ModelResponse)
-        for part in message.parts
-        if isinstance(part, TextPart)
     )
+    return "\n\n".join(text.strip() for text in texts if text.strip())
 
 
 def stalls(messages: Iterable[ModelMessage]) -> tuple[int, int]:
@@ -397,6 +398,7 @@ async def run_task(
             env=env,
             prompt_note=render_note(page, previous, task.locale, prompt),
             prompt_answer=answer,
+            prompt_text=prompt,
             budget=budget,
         )
         env.emit_data = deps.emit_data
@@ -425,9 +427,12 @@ async def run_task(
                 usage_limits=budget.usage_limits(),
                 usage=usage,
             )
-        # A shown card ends the answer: its text is what came before the card.
-        output = result.output if result.output is not None else _text(result.messages)
-        answered.extend(result.messages)
+        # What the dock shows: the text of every response of the answer, the
+        # one before a card that ended it too.
+        output = _text(result.messages)
+        # The replaced responses and the requests that asked again count too:
+        # each cost a model call.
+        answered.extend([*result.messages, *result.replaced])
         return [*history, *result.messages]
 
     try:

@@ -9,6 +9,7 @@ from assistant.events import (
     StepStarted,
     TextDelta,
     TextEnded,
+    TextReplaced,
     TextStarted,
     ToolApprovalRequested,
     ToolCalled,
@@ -34,7 +35,11 @@ def test_text_run_encodes_start_step_text_and_finish() -> None:
     assert chunks == [
         {"type": "start", "messageId": "m1"},
         {"type": "start-step"},
-        {"type": "text-start", "id": "m1:1"},
+        {
+            "type": "text-start",
+            "id": "m1:1",
+            "providerMetadata": {"goat": {"partId": "m1:1"}},
+        },
         {"type": "text-delta", "id": "m1:1", "delta": "Hi"},
         {"type": "text-end", "id": "m1:1"},
         {"type": "finish-step"},
@@ -74,6 +79,15 @@ def test_tool_data_and_approval_chunks() -> None:
     ) == [{"type": "tool-approval-request", "approvalId": "a1", "toolCallId": "c1"}]
     assert encoder.encode(DataPart(name="proposal", part_id="m1:2", data={"k": 1})) == [
         {"type": "data-proposal", "id": "m1:2", "data": {"k": 1}}
+    ]
+
+
+def test_replaced_text_goes_out_as_a_data_part_naming_its_parts() -> None:
+    """The text part keeps its id in the message (the AI SDK keeps a
+    text-start's provider metadata on the part), so the dock can leave out the
+    parts a later answer replaced."""
+    assert AiSdkEncoder().encode(TextReplaced(part_ids=["m1:1", "m1:2"])) == [
+        {"type": "data-replaced-text", "data": {"part_ids": ["m1:1", "m1:2"]}}
     ]
 
 
