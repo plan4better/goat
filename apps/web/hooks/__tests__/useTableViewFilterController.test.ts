@@ -1,77 +1,81 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { FilterType, type Expression } from "@/lib/validations/filter";
+import type { FilterRow } from "@/lib/filter/model";
 
 import { combineCqlFilters, useTableViewFilterController } from "@/hooks/useTableViewFilterController";
 
-const FIELDS = [
-  { name: "status", type: "string" },
-  { name: "height", type: "number" },
-];
+const FIELDS = { status: "string", height: "number" } as const;
 
-const expression = (partial: Partial<Expression>): Expression => ({
+const row = (partial: Partial<FilterRow>): FilterRow => ({
   id: "e1",
-  attribute: "status",
-  expression: "is",
+  field: "status",
+  op: "is",
   value: "open",
-  type: FilterType.Logical,
+  enabled: true,
   ...partial,
 });
 
 describe("useTableViewFilterController", () => {
   it("starts with nothing filtered and no query filter", () => {
     const { result } = renderHook(() => useTableViewFilterController(FIELDS));
-    expect(result.current.controller.expressions).toEqual([]);
+    expect(result.current.controller.model.rows).toEqual([]);
     expect(result.current.cqlFilter).toBeUndefined();
   });
 
-  it("adds an expression and compiles it to CQL for the query", () => {
+  it("adds a row and writes it as the filter's CQL for the query", () => {
     const { result } = renderHook(() => useTableViewFilterController(FIELDS));
-    act(() => result.current.controller.upsert(expression({})));
+    act(() => result.current.controller.upsert(row({})));
 
-    expect(result.current.controller.expressions).toHaveLength(1);
-    const cql = JSON.parse(result.current.cqlFilter!);
-    expect(cql).toMatchObject({ op: "and" });
-    expect(JSON.stringify(cql)).toContain("status");
+    expect(result.current.controller.model.rows).toHaveLength(1);
+    expect(JSON.parse(result.current.cqlFilter!)).toEqual({
+      op: "and",
+      args: [{ op: "=", args: [{ property: "status" }, "open"] }],
+    });
   });
 
   it("replaces by id rather than accumulating duplicates", () => {
     const { result } = renderHook(() => useTableViewFilterController(FIELDS));
-    act(() => result.current.controller.upsert(expression({ id: "e1", value: "open" })));
-    act(() => result.current.controller.upsert(expression({ id: "e1", value: "closed" })));
+    act(() => result.current.controller.upsert(row({ id: "e1", value: "open" })));
+    act(() => result.current.controller.upsert(row({ id: "e1", value: "closed" })));
 
-    expect(result.current.controller.expressions).toHaveLength(1);
-    expect(result.current.controller.expressions[0].value).toBe("closed");
+    expect(result.current.controller.model.rows).toHaveLength(1);
+    expect((result.current.controller.model.rows[0] as FilterRow).value).toBe("closed");
   });
 
-  it("keeps filters on different columns side by side", () => {
+  it("keeps filters on different columns side by side, written with the fields' types", () => {
     const { result } = renderHook(() => useTableViewFilterController(FIELDS));
-    act(() => result.current.controller.upsert(expression({ id: "e1" })));
+    act(() => result.current.controller.upsert(row({ id: "e1" })));
     act(() =>
-      result.current.controller.upsert(
-        expression({ id: "e2", attribute: "height", expression: "is_at_least", value: 5 })
-      )
+      result.current.controller.upsert(row({ id: "e2", field: "height", op: "is_at_least", value: "5" }))
     );
-    expect(result.current.controller.expressions.map((e) => e.attribute)).toEqual(["status", "height"]);
+    expect(result.current.controller.model.rows.map((r) => (r as FilterRow).field)).toEqual([
+      "status",
+      "height",
+    ]);
+    expect(JSON.parse(result.current.cqlFilter!).args[1]).toEqual({
+      op: ">=",
+      args: [{ property: "height" }, 5],
+    });
   });
 
   it("removes one and clears all", () => {
     const { result } = renderHook(() => useTableViewFilterController(FIELDS));
-    act(() => result.current.controller.upsert(expression({ id: "e1" })));
-    act(() => result.current.controller.upsert(expression({ id: "e2", attribute: "height" })));
+    act(() => result.current.controller.upsert(row({ id: "e1" })));
+    act(() => result.current.controller.upsert(row({ id: "e2", field: "height" })));
 
     act(() => result.current.controller.remove("e1"));
-    expect(result.current.controller.expressions.map((e) => e.id)).toEqual(["e2"]);
+    expect(result.current.controller.model.rows.map((r) => r.id)).toEqual(["e2"]);
 
     act(() => result.current.clear());
-    expect(result.current.controller.expressions).toEqual([]);
+    expect(result.current.controller.model.rows).toEqual([]);
     expect(result.current.cqlFilter).toBeUndefined();
   });
 
-  it("reports itself as an and-controller, matching how it compiles", () => {
+  it("matches all of its rows and hands its fields on", () => {
     const { result } = renderHook(() => useTableViewFilterController(FIELDS));
-    expect(result.current.controller.logicalOperator).toBe("and");
+    expect(result.current.controller.model.match).toBe("all");
+    expect(result.current.controller.fields).toBe(FIELDS);
   });
 
   it("can be marked read-only for viewers who may not filter", () => {

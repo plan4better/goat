@@ -9,7 +9,6 @@ import de from "@/i18n/locales/de/common.json";
 import en from "@/i18n/locales/en/common.json";
 
 import { fieldEditability } from "@/lib/utils/allowedValues";
-import { filterColumnType } from "@/lib/utils/columnFilterOperators";
 import { formatFieldValue } from "@/lib/utils/formatFieldValue";
 import {
   ALLOWED_KINDS_BY_GEOM_TYPE,
@@ -66,10 +65,7 @@ describe("generated kinds", () => {
     expect(formatFieldValue(null, "serial", {})).toBe("");
   });
 
-  it("filter and style as a number and as text", () => {
-    expect(filterColumnType({ kind: "serial", type: "integer" })).toBe("number");
-    expect(filterColumnType({ kind: "serial" })).toBe("number");
-    expect(filterColumnType({ kind: "uuid", type: "string" })).toBe("string");
+  it("style as a number and as text", () => {
     expect(resolveDisplayKind({ kind: "serial" })).toBe("number");
     expect(resolveDisplayKind({ kind: "uuid" })).toBe("string");
   });
