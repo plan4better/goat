@@ -380,13 +380,15 @@ def test_the_area_and_the_sql_are_checked(tmp_path) -> None:
     # A tag the files also hold as a column is counted from that column, if every file has it.
     col = tmp_path / "col.parquet"
     con.execute(f"""COPY (SELECT i AS osm_id, CASE WHEN i < 3 THEN 'primary' WHEN i < 4 THEN 'bus_stop' END AS highway,
-        {bbox} AS bbox FROM range(6) t(i)) TO '{col}' (FORMAT PARQUET)""")
+        {bbox} AS bbox, ST_Point(CASE WHEN i = 2 THEN 20 ELSE 11.5 END, 48.1) AS geom FROM range(6) t(i)) TO '{col}' (FORMAT PARQUET)""")
     assert values._key_column(con, [str(col)], "highway") and not values._key_column(
         con, [str(col), str(text)], "highway"
     )
-    assert values._column_counts(con, [str(col)], env, "highway", 10) == (
-        [("primary", 3), ("bus_stop", 1)],
-        4,
+    # Inside the area itself, as the fetch cuts it: the point at 20° E is left out.
+    (shape,) = con.execute("SELECT ST_AsHEXWKB(ST_MakeEnvelope(11, 48, 12, 49))").fetchone()
+    assert values._column_counts(con, [str(col)], env, "highway", 10, "geom", shape) == (
+        [("primary", 2), ("bus_stop", 1)],
+        3,
     )
 
     # The columns named before fetching are the ones the SELECT list writes.

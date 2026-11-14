@@ -162,20 +162,21 @@ def _column_values(
     envelope: tuple,
     key: str | None,
     limit: int,
+    shape: str,
 ) -> dict:
     """The same answer for a typed source, without any of the machinery.
 
     No hstore to parse, so no cache either: the values are a plain count over one
     column.
     """
-    # By each feature's bbox only, as for OSM: the exact test reads the geometry
-    # column and changes nothing a dropdown shows.
+    # Inside the area itself, as the fetch cuts it, so the counts are what it keeps.
     xmin, ymin, xmax, ymax = envelope
     listed = ", ".join(f"'{_quote(f)}'" for f in files)
     capped = f"""SELECT * FROM read_parquet([{listed}], union_by_name = true)
         WHERE bbox.xmin <= {xmax} AND bbox.xmax >= {xmin}
           AND bbox.ymin <= {ymax} AND bbox.ymax >= {ymin}
           AND {source.geometry_filter(type_key, files)}
+          AND ST_Intersects("{source.geom}", ST_GeomFromHEXWKB('{shape}'))
         LIMIT {SUGGESTION_ROWS}"""
     column = source.field_sql(type_key, key)
     rows = con.execute(f"""
@@ -294,10 +295,24 @@ def _key_column(con: "Any", files: list[str], key: str) -> bool:
     )
 
 
+def _area_shape(con: "Any", area: str) -> str:
+    """The area as one hex WKB constant: joined as a table it was indexed per row."""
+    (shape,) = con.execute(
+        f"SELECT ST_AsHEXWKB(ST_Union_Agg(geom)) FROM {area}"
+    ).fetchone()
+    return shape
+
+
 def _column_counts(
-    con: "Any", files: list[str], envelope: tuple, key: str, limit: int
+    con: "Any",
+    files: list[str],
+    envelope: tuple,
+    key: str,
+    limit: int,
+    geom: str,
+    shape: str,
 ) -> tuple[list, int]:
-    """A tag's commonest values from its own column, and how many were counted."""
+    """A tag's commonest values from its own column, inside the area as the fetch cuts it."""
     xmin, ymin, xmax, ymax = envelope
     listed = ", ".join(f"'{_quote(f)}'" for f in files)
     column = '"' + key.replace('"', '""') + '"'
@@ -306,6 +321,7 @@ def _column_counts(
             SELECT {column} AS value FROM read_parquet([{listed}], union_by_name = true)
             WHERE bbox.xmin <= {xmax} AND bbox.xmax >= {xmin}
               AND bbox.ymin <= {ymax} AND bbox.ymax >= {ymin} AND {column} IS NOT NULL
+              AND ST_Intersects("{geom}", ST_GeomFromHEXWKB('{shape}'))
             LIMIT {SUGGESTION_ROWS}
         ) GROUP BY value ORDER BY count DESC, value LIMIT {int(limit)}
     """).fetchall()
@@ -318,27 +334,24 @@ def _matching_rows(
     source: Source,
     type_key: str,
     envelope: tuple,
-    boxes: list[tuple],
+    area: str,
     filters: list,
     match_mode: str = "all",
 ) -> int:
-    """Features matching the filters whose bbox touches the area, without their geometry."""
+    """Features matching the filters in the area itself, as the fetch keeps them."""
     storage = tag_storage(mirror_columns(con, files))
     own = frozenset(
         f.key for f in filters if source.tagged and _key_column(con, files, f.key)
     )
     prefilter, exact = filter_sql(filters, source, match_mode, type_key, storage, own)
     prefilter = f"({prefilter}) AND {source.geometry_filter(type_key, files)}"
-    touches = " OR ".join(
-        f"(c.bbox.xmin <= {x1} AND c.bbox.xmax >= {x0} "
-        f"AND c.bbox.ymin <= {y1} AND c.bbox.ymax >= {y0})"
-        for x0, y0, x1, y1 in boxes
-    )
+    shape = _area_shape(con, area)
     candidates = candidates_sql(
         files, source, envelope, prefilter, storage, exact_area=False
     )
     (n,) = con.execute(
-        f"SELECT count(*) FROM ({candidates}) c WHERE {exact} AND ({touches})"
+        f"SELECT count(*) FROM ({candidates}) c WHERE {exact} "
+        f"AND ST_Intersects(c.\"{source.geom}\", ST_GeomFromHEXWKB('{shape}'))"
     ).fetchone()
     return int(n)
 
@@ -486,7 +499,7 @@ def mirror_values(
             too_large = matches is None or matches > MAX_FEATURES
         elif filters and not too_large:
             matches = _matching_rows(
-                con, files, src, feature_type, envelope, boxes, filters, match_mode
+                con, files, src, feature_type, envelope, table, filters, match_mode
             )
         return {
             "key": None,
@@ -543,7 +556,16 @@ def mirror_values(
     if not src.tagged:
         # Read whole already: a quick ask needs no second, full one.
         return {
-            **_column_values(con, src, files, feature_type, envelope, key, limit),
+            **_column_values(
+                con,
+                src,
+                files,
+                feature_type,
+                envelope,
+                key,
+                limit,
+                _area_shape(con, table),
+            ),
             "complete": True,
         }
     storage = tag_storage(mirror_columns(con, files))
@@ -558,13 +580,12 @@ def mirror_values(
         cache = _tag_cache_path(cache_key, feature_type, parts, envelope)
     except OSError as e:
         logger.warning("tag cache disabled: %s", e)
-    if (
-        key is not None
-        and not (cache is not None and cache.exists())
-        and _key_column(con, files, key)
-    ):
-        # Uncached, a tag with its own column is counted from that column alone.
-        rows, seen = _column_counts(con, files, envelope, key, limit)
+    if key is not None and _key_column(con, files, key):
+        # A tag with its own column is counted from that column, inside the area
+        # itself, so the list shows what the fetch keeps; the cache covers the bbox.
+        rows, seen = _column_counts(
+            con, files, envelope, key, limit, src.geom, _area_shape(con, table)
+        )
         return {
             "key": key,
             "total": len(rows),
