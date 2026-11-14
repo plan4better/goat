@@ -793,6 +793,25 @@ def test_the_answer_language_counts_grammar_words_not_names(
     assert answer_language(answer) == language
 
 
+async def test_looking_further_with_core_find_passes_the_workflows_task(
+    backends: Backends,
+) -> None:
+    """proj-19: core_find looks for workflows across projects and changes
+    nothing, so a run that also calls it passes; searching layers or showing
+    items in place of the empty list still fails."""
+    task = _project_task("proj-19")
+    answer = "This project has no workflows."
+
+    def calls(*names: str) -> list[ToolCall]:
+        return [ToolCall(name, {}, {}, False) for name in names]
+
+    looked = _transcript(answer, tool_calls=calls("project_get_workflows", "core_find"))
+    assert all(g.passed for g in await grade(task, looked, backends))
+    for extra in ("core_find_layers", "core_show_items"):
+        shown = _transcript(answer, tool_calls=calls("project_get_workflows", extra))
+        assert not all(g.passed for g in await grade(task, shown, backends)), extra
+
+
 async def test_an_answer_in_the_language_of_the_earlier_turns_fails(
     backends: Backends,
 ) -> None:

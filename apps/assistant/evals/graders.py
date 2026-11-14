@@ -383,13 +383,21 @@ def _asked(check: AskedCheck, transcript: Transcript) -> tuple[bool, str]:
     if not cards:
         return False, "no ask_user card"
     first = [q for q in cards[0].get("questions") or [] if isinstance(q, dict)]
-    values = {
-        str(option["value"])
+    options = [
+        option
         for card in cards
         for question in card.get("questions") or []
         if isinstance(question, dict)
         for option in question.get("options") or []
-        if isinstance(option, dict) and option.get("value") is not None
+        if isinstance(option, dict)
+    ]
+    # An option that adds data names it by its ids in ``adds``, and its value
+    # is then a short key (``assistant.asks``): both count as offered.
+    values = {
+        str(value)
+        for option in options
+        for value in [option.get("value"), *(option.get("adds") or [])]
+        if value is not None
     }
 
     def offered(value: str) -> bool:

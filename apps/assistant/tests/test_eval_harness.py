@@ -14,7 +14,12 @@ from pydantic_ai.messages import (
     ThinkingPart,
     UserPromptPart,
 )
-from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.models.function import (
+    AgentInfo,
+    DeltaToolCall,
+    DeltaToolCalls,
+    FunctionModel,
+)
 
 from assistant.config import AssistantSettings
 from assistant.prompt import answer_in_language
@@ -87,6 +92,54 @@ async def test_the_harness_hands_the_message_to_the_language_check(
     assert [p for p in sent[1] if isinstance(p, RetryPromptPart)][
         0
     ].content == answer_in_language("en", "de")
+    # The answer asked for again replaces the first one in the dock, so the
+    # graders read only what the user ends up seeing.
+    assert transcript.answer == english
+    grades = await grade(_task("cat-11"), transcript, backends)
+    assert [(g.check, g.passed) for g in grades][1:] == [
+        ("answer", True),
+        ("language", True),
+    ]
+
+
+async def test_the_answer_graded_is_the_text_of_every_response(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """cat-11: the dock shows the text of every response of an answer, the
+    text written before a tool call too, so the graders read all of it; a
+    response of whitespace only adds nothing."""
+    replies = iter(
+        [
+            ("The street tree dataset for Cologne is published under CC0.", True),
+            (" ", False),
+            ("Its record names the license.", False),
+        ]
+    )
+
+    async def stream(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | DeltaToolCalls]:
+        text, search = next(replies)
+        yield text
+        if search:
+            yield {
+                1: DeltaToolCall(
+                    name="catalog_search",
+                    json_args=json.dumps({"q": "Straßenbäume Köln"}),
+                    tool_call_id="c1",
+                )
+            }
+
+    task = _task("cat-11")
+    transcript = await run_task(
+        task, FunctionModel(stream_function=stream), backends, settings
+    )
+    assert transcript.error is None, transcript.error
+    assert transcript.answer == (
+        "The street tree dataset for Cologne is published under CC0.\n\n"
+        "Its record names the license."
+    )
+    assert [g.passed for g in await grade(task, transcript, backends)] == [True] * 3
 
 
 async def test_a_model_that_answers_without_searching_fails(
