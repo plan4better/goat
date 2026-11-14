@@ -18,7 +18,6 @@ from assistant.context import (
 from assistant.prompt import (
     ANSWER_IN_MESSAGE_LANGUAGE,
     INSTRUCTIONS,
-    RESTRICTED_POLICY,
     SELECTION_LABEL,
     SKILLS_INDEX,
     SOURCES_LABEL,
@@ -27,7 +26,6 @@ from assistant.prompt import (
     render_note,
     static_instructions,
 )
-from assistant.tools.policy import RESTRICTED_REASON
 from assistant.user_docs import DOCS_INDEX
 
 PROJECT = UUID(int=500)
@@ -127,17 +125,6 @@ def _state(note: str) -> dict[str, object]:
     [line] = [line for line in note.splitlines() if line.startswith(STATE_LABEL)]
     state: dict[str, object] = json.loads(line[len(STATE_LABEL) :])
     return state
-
-
-def test_the_note_says_what_restricted_keeps_back() -> None:
-    """Known before the answer plans: a card then offers no choice the tools
-    would refuse. Standard sends what the user can see and needs no line."""
-    page = parse_context({"surface": "catalog"})
-    assert RESTRICTED_POLICY in render_note(page, None, "en", data_policy="restricted")
-    assert RESTRICTED_POLICY not in render_note(
-        page, None, "en", data_policy="standard"
-    )
-    assert RESTRICTED_POLICY not in render_note(page, None, "en")
 
 
 def test_the_note_carries_the_language_and_the_page() -> None:
@@ -607,26 +594,6 @@ def test_the_interface_language_is_left_out_next_to_a_full_sentence() -> None:
     assert render_note(page, None, "de", "Leipzig").startswith(
         "Interface language: German"
     )
-
-
-def test_one_rule_says_what_to_do_when_the_data_policy_withholds_data() -> None:
-    """Given a withheld sample, a model ran statistics and ended with "The card
-    above opens the Radwege layer", never saying why no values came. The rule
-    uses the words of the tool's result, says what to tell the user, and
-    keeps a card from standing in for the data."""
-    bullets = INSTRUCTIONS.split("\n- ")
-    [rule] = [bullet for bullet in bullets if "withheld" in bullet]
-    flat = " ".join(rule.split())
-    for words in ("withheld", "data policy"):
-        assert words in RESTRICTED_REASON.casefold() and words in flat
-    assert "say so plainly" in flat
-    assert "which data the policy keeps from you" in flat
-    assert "what you can still do" in flat
-    assert "Do not show a card in place of the data the user asked for." in flat
-    # An exception to the cards rule, not a part of it.
-    [cards] = [bullet for bullet in bullets if "core_show_items" in bullet]
-    assert rule != cards
-    assert bullets.index(rule) == bullets.index(cards) + 1
 
 
 @pytest.mark.parametrize(

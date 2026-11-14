@@ -2,7 +2,7 @@
 adapters; the MCP adapter is ``assistant.mcp_server``).
 
 Every tool is registered once with its input model's JSON schema; validation,
-the data policy and the audit happen in ``execute``. A filter keeps the tools of
+the size cap and the audit happen in ``execute``. A filter keeps the tools of
 the run's surface, in registry order, the same in every step of an answer: a
 provider reads the tool definitions as part of the cached prefix. Near the
 run's limits the stage of the step (``answer_step``) decides which calls run,

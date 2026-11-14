@@ -14,12 +14,10 @@ from pydantic_ai.exceptions import ToolFailed
 
 from assistant.context import parse_context
 from assistant.db import Database
-from assistant.llm.types import DataPolicy
 from assistant.login import Login
 from assistant.repo import Repository
 from assistant.surfaces import Locale
 from assistant.tools.http import SIGN_IN_EXPIRED
-from assistant.tools.policy import MIN_RESTRICTED_GROUP
 from assistant.tools.runtime import InputInvalid, execute
 from assistant.tools.testing import (
     Answer,
@@ -287,14 +285,12 @@ def _env(
     geoapi: Recorder,
     catalog: Recorder,
     login: Login | None = None,
-    data_policy: DataPolicy = "standard",
     locale: Locale = "en",
 ) -> Any:
     return tool_env(
         fake_clients(core=core, processes=processes, geoapi=geoapi, catalog=catalog),
         page=PAGE,
         login=login,
-        data_policy=data_policy,
         locale=locale,
     )
 
@@ -943,66 +939,28 @@ FILTERED_ORIGINS_DRAFT: dict[str, Any] = {
 }
 
 
-@pytest.mark.parametrize(
-    ("policy", "origins", "reported"),
-    [
-        ("standard", 3, True),
-        # project_count_features withholds a filtered count below
-        # MIN_RESTRICTED_GROUP, and the issue's message would name it.
-        ("restricted", 3, False),
-        ("restricted", MIN_RESTRICTED_GROUP, True),
-    ],
-)
-async def test_under_restricted_a_small_filtered_count_is_not_named(
-    policy: DataPolicy, origins: int, reported: bool
-) -> None:
-    services = _counted_services({SCHOOLS_LAYER: origins, RESIDENTS_LAYER: 5000})
-    env = _env(*services, data_policy=policy)
-    result = await execute(CHECK_DRAFT, env, {"draft": FILTERED_ORIGINS_DRAFT})
+async def test_a_small_filtered_count_is_named() -> None:
+    services = _counted_services({SCHOOLS_LAYER: 3, RESIDENTS_LAYER: 5000})
+    result = await execute(
+        CHECK_DRAFT, _env(*services), {"draft": FILTERED_ORIGINS_DRAFT}
+    )
     assert result["checked"] is True
-    issues = _too_many_pairs(result)
-    assert bool(issues) is reported
-    assert result["blocking"] == int(reported)
-    if reported:
-        assert issues[0]["message"].startswith(
-            f"Travel times pairs {origins} origins with 5,000 destinations"
-        )
+    [issue] = _too_many_pairs(result)
+    assert result["blocking"] == 1
+    assert issue["message"].startswith(
+        "Travel times pairs 3 origins with 5,000 destinations"
+    )
 
 
-@pytest.mark.parametrize(
-    ("policy", "reported"), [("standard", True), ("restricted", False)]
-)
-async def test_under_restricted_start_points_with_a_small_filtered_part_are_not_summed(
-    policy: DataPolicy, reported: bool
-) -> None:
-    """The start-point check reads the same counts: a sum with a withheld
-    count is unknown."""
+async def test_start_points_with_a_small_filtered_part_are_summed() -> None:
+    """The start-point check reads the same counts."""
     draft = json.loads(json.dumps(MERGED_DRAFT))
     draft["steps"][0]["filter"] = {
         "where": [{"field": "schulart", "op": "=", "value": "Gymnasium"}]
     }
     services = _counted_services({SCHOOLS_LAYER: 3, RESIDENTS_LAYER: 2000})
-    result = await execute(
-        CHECK_DRAFT, _env(*services, data_policy=policy), {"draft": draft}
-    )
+    result = await execute(CHECK_DRAFT, _env(*services), {"draft": draft})
     assert result["checked"] is True
-    issues = _too_many(result)
-    assert bool(issues) is reported
-    if reported:
-        assert issues[0]["message"].startswith(
-            "5 minutes on foot starts from 2,003 points"
-        )
-
-
-async def test_under_restricted_an_unfiltered_count_is_still_used() -> None:
-    """Only a filtered count is withheld: a whole layer's count is allowed
-    under Restricted."""
-    services = _counted_services({SCHOOLS_LAYER: 3, RESIDENTS_LAYER: 2000})
-    result = await execute(
-        CHECK_DRAFT,
-        _env(*services, data_policy="restricted"),
-        {"draft": MERGED_DRAFT},
-    )
     [issue] = _too_many(result)
     assert issue["message"].startswith("5 minutes on foot starts from 2,003 points")
 

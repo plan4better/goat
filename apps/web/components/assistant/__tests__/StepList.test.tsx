@@ -140,13 +140,14 @@ describe("StepList", () => {
       }),
     ];
     render(<StepList steps={steps} />);
-    const [search, region, layers, withheld, workflows, found] = rowTexts();
+    const [search, region, layers, uncounted, workflows, found] = rowTexts();
     expect(found).toContain("Searched workflows for “Anna” · 4 found");
     expect(workflows).toContain("· 2 workflows");
     expect(search).toContain("· 47 datasets");
     expect(region).toContain("· DE212 München, Kreisfreie Stadt");
     expect(layers).toContain("· 3 layers · 2 projects");
-    expect(withheld).toContain("· withheld");
+    // A count an earlier release kept back: the row names the step and no result.
+    expect(uncounted).not.toContain("·");
   });
 
   it("lists every row it is given: the group around it does the folding", () => {

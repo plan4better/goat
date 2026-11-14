@@ -2,8 +2,7 @@
 
 A join's result names the fields it carries over from the joined layer
 ``join_<name>``. The statistics tools read ``join_x`` for a field ``x`` the
-layer does not have, and say so in the result's note; under Restricted the
-read is checked exactly as a read of ``join_x`` is."""
+layer does not have, and say so in the result's note."""
 
 import json
 from typing import Any
@@ -167,14 +166,10 @@ def _services(
     return core, geoapi, processes
 
 
-def _env(
-    services: tuple[Recorder, Recorder, Recorder], policy: str = "standard"
-) -> ToolEnv:
+def _env(services: tuple[Recorder, Recorder, Recorder]) -> ToolEnv:
     core, geoapi, processes = services
     return tool_env(
-        fake_clients(core=core, geoapi=geoapi, processes=processes),
-        page=PAGE,
-        data_policy=policy,  # type: ignore[arg-type]
+        fake_clients(core=core, geoapi=geoapi, processes=processes), page=PAGE
     )
 
 
@@ -341,30 +336,6 @@ async def test_a_count_reads_no_field_and_says_none_was_read() -> None:
     assert _read("einwohner") not in out["note"]
 
 
-@pytest.mark.parametrize(
-    ("spec", "args"),
-    [
-        (COUNT_FEATURES, {}),
-        (FIELD_STATISTICS, {"field": "klasse"}),
-        (GROUP_STATISTICS, {"operation": "count", "group_by": "klasse"}),
-        (AREA_STATISTICS, {}),
-    ],
-)
-async def test_restricted_names_an_unknown_filter_field_before_any_service(
-    spec: Any, args: dict[str, Any]
-) -> None:
-    """The filter is checked against the layer's fields first: an unknown
-    name gets its fixable message, and processes is not asked about it."""
-    services = _services()
-    with pytest.raises(InputInvalid, match="Field 'nichts' doesn't exist"):
-        await execute(
-            spec,
-            _env(services, "restricted"),
-            {"layer_project_id": 1, "filter": _where("nichts", "=", "A"), **args},
-        )
-    assert services[2].requests == []
-
-
 async def test_a_field_the_layer_has_is_read_as_named() -> None:
     """``wert`` and ``join_wert`` both exist: ``wert`` is the field named."""
     services = _services()
@@ -437,97 +408,3 @@ async def test_a_name_with_neither_field_still_fails(
 ) -> None:
     with pytest.raises(InputInvalid, match="nichts"):
         await execute(spec, _env(_services()), {"layer_project_id": 1, **args})
-
-
-async def test_restricted_checks_the_joined_field_of_a_filter() -> None:
-    """The filter is checked on ``join_klasse``, as one naming it is: a field
-    with more than 50 distinct values cannot pick features."""
-    for name in ("klasse", "join_klasse"):
-        services = _services(distinct=80)
-        refused = await execute(
-            COUNT_FEATURES,
-            _env(services, "restricted"),
-            {"layer_project_id": 1, "filter": _where(name, "=", "A")},
-        )
-        assert refused["withheld"] is True
-        assert "'join_klasse' has more than 50" in refused["reason"]
-        assert [b["attribute"] for b in _bodies(services[2], "unique-values")] == [
-            "join_klasse"
-        ]
-        assert _bodies(services[2], "feature-count") == []
-
-
-async def test_restricted_results_keep_the_note_and_withhold_as_before() -> None:
-    env_args = {"layer_project_id": 1}
-    # Field statistics: the group size is counted on the joined field.
-    services = _services(count=3)
-    stats = await execute(
-        FIELD_STATISTICS,
-        _env(services, "restricted"),
-        {**env_args, "field": "oev_guete_mittel", "filter": _where("klasse", "=", "A")},
-    )
-    [counted] = _bodies(services[2], "feature-count")
-    assert json.loads(counted["filter"])["args"][1] == {
-        "op": "not",
-        "args": [{"op": "isNull", "args": [{"property": "join_oev_guete_mittel"}]}],
-    }
-    assert "mean" not in stats and "min" not in stats and "breaks" not in stats
-    assert _read("oev_guete_mittel") in stats["note"] and "withheld" in stats["note"]
-    # A categorical field with many values: its values stay withheld.
-    services = _services(distinct=80)
-    values = await execute(
-        FIELD_STATISTICS, _env(services, "restricted"), {**env_args, "field": "klasse"}
-    )
-    assert "values" not in values
-    assert _read("klasse") in values["note"] and "withheld" in values["note"]
-    # A small filtered count.
-    count = await execute(
-        COUNT_FEATURES,
-        _env(_services(count=3), "restricted"),
-        {**env_args, "filter": _where("klasse", "=", "A")},
-    )
-    assert "count" not in count
-    assert _read("klasse") in count["note"] and "withholds" in count["note"]
-    # Counts per group: sent with the note; a sum: withheld whole.
-    services = _services()
-    groups = await execute(
-        GROUP_STATISTICS,
-        _env(services, "restricted"),
-        {**env_args, "operation": "count", "group_by": "klasse"},
-    )
-    assert [row["value"] for row in groups["rows"]] == [30.0, 10.0]
-    assert _read("klasse") in groups["note"]
-    summed = await execute(
-        GROUP_STATISTICS,
-        _env(_services(), "restricted"),
-        {**env_args, "operation": "sum", "field": "oev_guete_mittel"},
-    )
-    assert summed["withheld"] is True
-    # Area per group: withheld, the note says which field was read.
-    area = await execute(
-        AREA_STATISTICS,
-        _env(_services(), "restricted"),
-        {**env_args, "group_by": "klasse"},
-    )
-    assert "groups" not in area and "total_area" not in area
-    assert _read("klasse") in area["note"] and "withheld" in area["note"]
-
-
-async def test_restricted_group_statistics_judge_the_joined_field_on_the_whole_layer() -> (
-    None
-):
-    services = _services(distinct=80)
-    out = await execute(
-        GROUP_STATISTICS,
-        _env(services, "restricted"),
-        {
-            "layer_project_id": 1,
-            "operation": "count",
-            "group_by": "klasse",
-            "filter": _where("name", "is_not_null"),
-        },
-    )
-    assert out["withheld"] is True
-    assert [b["attribute"] for b in _bodies(services[2], "unique-values")] == [
-        "join_klasse"
-    ]

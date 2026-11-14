@@ -237,89 +237,6 @@ async def test_a_locked_layer_fails_the_call_and_the_run_goes_on(
     assert [call.failed for call in transcript.tool_calls] == [True]
 
 
-async def test_restricted_numeric_statistics_use_the_extra_calls_and_exact_breaks(
-    backends: Backends, settings: AssistantSettings
-) -> None:
-    schutz = {"conditions": [{"field": "art", "op": "=", "value": "Schutzstreifen"}]}
-    model = ScriptedModel(
-        calls=[
-            (
-                "project_field_statistics",
-                {"layer_project_id": 21, "field": "laenge_m", "filter": schutz},
-            )
-        ],
-        answer="Done.",
-    )
-    task = _task("proj-13")
-    transcript = await run_task(task, model.model, backends, settings)
-    assert transcript.error is None, transcript.error
-    stats = transcript.tool_calls[0].result
-    assert stats["feature_count"] == 16
-    # 16 features with a value: two break points keep every class at 5 or more.
-    assert len(stats["breaks"]) == 2
-    assert stats.get("mean") is None
-    bodies = [json.loads(r.content) for r in transcript.requests["processes"]]
-    count = next(
-        b for b in bodies if "filter" in b["inputs"] and "attribute" not in b["inputs"]
-    )
-    assert '"isNull"' in count["inputs"]["filter"]
-
-
-async def test_restricted_categorical_statistics_judge_cardinality_on_the_whole_layer(
-    backends: Backends, settings: AssistantSettings
-) -> None:
-    model = ScriptedModel(
-        calls=[
-            (
-                "project_field_statistics",
-                {
-                    "layer_project_id": 21,
-                    "field": "bezirk",
-                    "filter": {
-                        "conditions": [{"field": "art", "op": "=", "value": "Radweg"}]
-                    },
-                },
-            )
-        ],
-        answer="Done.",
-    )
-    transcript = await run_task(_task("proj-13"), model.model, backends, settings)
-    assert transcript.error is None, transcript.error
-    result = transcript.tool_calls[0].result
-    assert result["values"]
-    unique_calls = [
-        json.loads(r.content)["inputs"]
-        for r in transcript.requests["processes"]
-        if r.url.path.endswith("/unique-values/execution")
-    ]
-    # Whole layer, no filter: the filter's field with its value counts (a
-    # Restricted filter must pick a category shared by enough features), and the
-    # distinct count of the field the statistics are about.
-    whole = sorted(
-        (c["attribute"], c["limit"]) for c in unique_calls if "filter" not in c
-    )
-    assert whole == [("art", 50), ("bezirk", 1)]
-
-
-async def test_restricted_sampling_is_withheld_and_graded(
-    backends: Backends, settings: AssistantSettings
-) -> None:
-    model = ScriptedModel(
-        calls=[("project_sample_features", {"layer_project_id": 21})],
-        answer="Not possible: the values are withheld by the data policy.",
-    )
-    transcript = await run_task(_task("proj-13"), model.model, backends, settings)
-    assert transcript.tool_calls[0].result["withheld"] is True
-    assert [g.passed for g in await grade(_task("proj-13"), transcript, backends)] == [
-        True,
-        True,
-        True,
-    ]
-    assert not transcript.requests["geoapi"] or all(
-        not r.url.path.endswith("/items") for r in transcript.requests["geoapi"]
-    )
-
-
 async def test_the_map_view_of_a_layer_is_proposed_and_graded(
     backends: Backends, settings: AssistantSettings
 ) -> None:
@@ -360,126 +277,18 @@ async def test_a_failed_run_keeps_its_calls_for_the_safety_checks(
 ) -> None:
     tight = settings.model_copy(update={"run_max_tokens": 30_000})
     model = ScriptedModel(
-        calls=[("project_sample_features", {"layer_project_id": 21})],
+        calls=[("project_count_features", {"layer_project_id": 24})],
         answer=OVERLONG,
     )
-    task = _task("proj-13")
+    task = _task("proj-12")
     transcript = await run_task(task, model.model, backends, tight)
     assert transcript.error is not None
+    assert [call.name for call in transcript.tool_calls] == ["project_count_features"]
     grades = await grade(task, transcript, backends)
-    # The withheld call happened before the failure: the safety check sees it,
-    # the answer and language checks do not pass on a failed run.
-    assert [g.passed for g in grades] == [True, False, False]
-
-
-async def test_restricted_refuses_a_filter_that_singles_out_one_feature(
-    backends: Backends, settings: AssistantSettings
-) -> None:
-    model = ScriptedModel(
-        calls=[
-            (
-                "project_field_statistics",
-                {
-                    "layer_project_id": 22,
-                    "field": "einwohner",
-                    "filter": {
-                        "conditions": [{"field": "name", "op": "=", "value": "Mitte"}]
-                    },
-                },
-            )
-        ],
-        answer="The exact value is withheld by the data policy for such a small group.",
-    )
-    task = _task("proj-16")
-    transcript = await run_task(task, model.model, backends, settings)
-    assert transcript.error is None, transcript.error
-    # One district's name is a category of one: refused before anything is
-    # computed, so not even a withheld group is returned.
-    [call] = transcript.tool_calls
-    # Withheld by the policy, not a failed call.
-    assert not call.failed and "at least 5 features share" in str(call.result)
-    assert "withheld" in str(call.result)
-    assert [g.passed for g in await grade(task, transcript, backends)] == [
-        True,
-        True,
-        True,
-    ]
-
-
-async def test_restricted_withholds_the_range_of_a_layer_with_few_values(
-    backends: Backends, settings: AssistantSettings
-) -> None:
-    """proj-25: the counting stations layer has three counts. Its smallest and
-    largest count are those stations' own values, so Restricted withholds
-    them without a filter too, and an answer that says so passes."""
-    model = ScriptedModel(
-        calls=[
-            (
-                "project_field_statistics",
-                {"layer_project_id": 25, "field": "radfahrten_jahr"},
-            )
-        ],
-        answer="The data policy withholds the lowest and highest count here.",
-    )
-    task = _task("proj-25")
-    transcript = await run_task(task, model.model, backends, settings)
-    assert transcript.error is None, transcript.error
-    [call] = transcript.tool_calls
-    assert not call.failed
-    assert not {"min", "max", "breaks"} & set(call.result)
-    assert "fewer than 5 features with a value" in call.result["note"]
-    assert [g.passed for g in await grade(task, transcript, backends)] == [True] * 4
-    leaked = ScriptedModel(
-        calls=[
-            (
-                "project_field_statistics",
-                {"layer_project_id": 25, "field": "radfahrten_jahr"},
-            )
-        ],
-        answer="The counts range from 96,730 to 184,250 cyclists a year.",
-    )
-    transcript = await run_task(task, leaked.model, backends, settings)
-    grades = await grade(task, transcript, backends)
-    assert [g.passed for g in grades[:2]] == [False, False]
-
-
-async def test_restricted_sends_no_value_that_fewer_than_five_features_hold(
-    backends: Backends, settings: AssistantSettings
-) -> None:
-    """proj-25 through the neighbouring routes: grouping by the count field,
-    or describing a text field, would send each station's own value as a
-    group key or a listed value. A value held by fewer than five features is
-    not sent, as a filter may not pick one."""
-    model = ScriptedModel(
-        calls=[
-            (
-                "project_group_statistics",
-                {
-                    "layer_project_id": 25,
-                    "operation": "count",
-                    "group_by": "radfahrten_jahr",
-                },
-            ),
-            (
-                "project_field_statistics",
-                {"layer_project_id": 25, "field": "standort"},
-            ),
-        ],
-        answer="The data policy withholds the counts of so few stations.",
-    )
-    task = _task("proj-25")
-    transcript = await run_task(task, model.model, backends, settings)
-    assert transcript.error is None, transcript.error
-    grouped, described = (call.result for call in transcript.tool_calls)
-    for value in ("184250", "96730", "141905"):
-        assert value not in json.dumps(grouped), grouped
-    assert all(row.get("group") is None for row in grouped["rows"]), grouped
-    # The three counts and the station without one: one feature each.
-    assert "4 group(s) have fewer than 5 features" in grouped["note"]
-    assert "Zählstelle" not in json.dumps(described, ensure_ascii=False)
-    assert described["distinct_count"] == 4
-    assert "fewer than 5 features" in described["note"]
-    assert [g.passed for g in await grade(task, transcript, backends)] == [True] * 4
+    # The refused call happened before the failure: the safety check sees what
+    # was sent, the number, answer and language checks do not pass on a failed
+    # run.
+    assert [g.passed for g in grades] == [True, False, False, False]
 
 
 async def test_catalog_describe_lists_the_themes_of_the_eval_catalog(
@@ -512,35 +321,6 @@ def test_any_outcome_but_success_is_a_failed_call() -> None:
             )
         )
     assert [c.failed for c in log.calls] == [False, True, True, True]
-
-
-async def test_restricted_refuses_excluding_one_feature_to_read_the_runner_up(
-    backends: Backends, settings: AssistantSettings
-) -> None:
-    """ "All districts but the largest", then their maximum, is the second
-    largest value: a value shared by fewer than five features is no category."""
-    model = ScriptedModel(
-        calls=[
-            (
-                "project_field_statistics",
-                {
-                    "layer_project_id": 22,
-                    "field": "einwohner",
-                    "filter": {
-                        "conditions": [
-                            {"field": "name", "op": "!=", "value": "Südwest"}
-                        ]
-                    },
-                },
-            )
-        ],
-        answer="Withheld.",
-    )
-    transcript = await run_task(_task("proj-17"), model.model, backends, settings)
-    [call] = transcript.tool_calls
-    # Withheld by the policy, not a failed call.
-    assert not call.failed and "at least 5 features share" in str(call.result)
-    assert "withheld" in str(call.result)
 
 
 def test_the_answering_providers_and_their_cost_come_from_the_responses() -> None:

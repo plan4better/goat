@@ -200,17 +200,10 @@ to `DENOMINATOR_GROUPS` groups too: processes sorts by value, so a small group w
 residents in reach) comes last in its order, where a model reading a long list misses it. A filtered numerator has no
 row for a group with no features in it (no resident in reach), so a ranked count or sum gets a row of 0 for each group
 the denominator lists: the lowest shares would miss them otherwise. A denominator from another layer gets a note: if the
-layers come from different sources, check that both count the same population (source and year). Under Restricted it
-sends counts only, for few groups (judged over the whole layer, also with a filter), no group under
-`MIN_RESTRICTED_GROUP` features (neither its count nor its key, which can be one feature's own value), nothing for a filter that matches fewer features than that, and nothing at all with
-`share_of`. A join names the fields it adds `join_<name>`, and models often leave the prefix out, so the statistics
-tools and the count's filter read `join_x` for a field `x` the layer lacks and say so in the result's note. The name is
-resolved before anything else, so the Restricted checks judge `join_x` exactly as when the model names it.
-
-What Restricted keeps back is known before an answer plans: the run's note says so (`prompt.RESTRICTED_POLICY`), so a
-card offers no choice the tools would refuse, such as keeping only some values of a field with many. A call the policy
-refuses (`runtime.PolicyWithheld`, a filter Restricted does not allow) is answered as withheld with the reason, like a
-withheld result: not invalid input, so the user sees no failed step and the model does not retry it as a mistake.
+layers come from different sources, check that both count the same population (source and year). A join names the
+fields it adds `join_<name>`, and models often leave the prefix out, so the statistics tools and the count's filter read
+`join_x` for a field `x` the layer lacks and say so in the result's note. The name is resolved before anything else, so
+`join_x` is checked exactly as when the model names it.
 
 **Building a workflow.** The model is shown only the tools of the user's toolbox (`offered` in
 `tools/workflow_tools.py`: `GET /processes` for the user, without the tools hidden from the toolbox, such as custom
@@ -237,8 +230,6 @@ for a travel cost matrix with more origin and destination pairs than one run tak
 against the limits in goatlib's `tools/limits.py`), which the run would otherwise fail on only once it reaches that
 step. The count follows merge and centroid steps, whose rows are their inputs' together, and stops at any other
 step, whose rows only its run knows; a sum with a count that could not be read is left out rather than reported low.
-Under Restricted, a filtered count below `MIN_RESTRICTED_GROUP` counts as one that could not be read: the issues'
-messages name the counts, and `project_count_features` withholds such a count too.
 The check's issues come back in the draft's ids, the message of a one-step issue starting with the step's name
 (`draft_issues`). It needs the user's toolbox and the tools' process descriptions, for the steps'
 titles, the layer inputs and the field settings: without them a draft is unchecked and `workflow_create` refuses.
@@ -287,9 +278,8 @@ keeps the config before the edit and both revisions, outside what the model read
 under the user's own sign-in, so core decides whether they may still change the workflow. It saves once per workflow,
 the oldest content on the newest revision, since saving edit by edit would conflict with itself, and it asks before it
 writes over a save made between or after the answer's edits. Its mark (under way, undone) lives in those audit rows
-rather than a column of its own. Filters and If conditions hold literals picked from the data, so `workflow_get`
-withholds them under Restricted, as `project_get_layers` does a layer's filter. An edit makes the answer's earlier reads
-of workflows stale, so a later read runs again (`ToolSpec.invalidates`).
+rather than a column of its own. An edit makes the answer's earlier reads of workflows stale, so a later read runs
+again (`ToolSpec.invalidates`).
 
 **Templates.** `workflow_find_templates` searches the whole query and also its longer words (`MAX_SEARCH_WORDS` and
 `MIN_SEARCH_WORD_CHARS` in `tools/workflows.py`), because core matches the whole query as one piece of a template's
@@ -359,9 +349,8 @@ at most `MAX_PAGES_PER_ANSWER` pages and `MAX_PARTS_PER_ANSWER` reads in all; an
 new page, so two long pages can each be read in two parts. An earlier answer's page goes to the model as its id and
 title only. There is no search service
 (embeddings, a vector store): some 80 pages with a one-line description each fit the instructions, and a list plus
-page loading needs no moving part. The pages hold no organization data, so the tool returns no data values in the
-sense of the data policy and Restricted changes nothing for it; it is not on `/mcp`, whose clients can read the docs
-site and its `llms.txt` directly. Pages in a category the docs sidebar hides (`"className": "hidden"`) are left out,
+page loading needs no moving part. The tool is not on `/mcp`, whose clients can read the docs site and its
+`llms.txt` directly. Pages in a category the docs sidebar hides (`"className": "hidden"`) are left out,
 as the site's `llms.txt` leaves them out; every other page needs a `description` in its front matter, which the list
 shows and `tests/test_user_docs.py` checks. The assistant's tests run on every docs change (`.github/workflows/checks.yml`).
 
@@ -484,18 +473,21 @@ dock shows in the user's language by its kind, the run completes, and a warning 
 text in the history after everything the run found, so the user can ask for the numbers. Otherwise the answer still
 fails: after a failed run or one without layers there are no numbers, and `workflow_last_run` shows no run card.
 
-**Data policy.** An organization's data policy says what data tools may send to the model (`tools/policy.py`):
-Standard sends what the user can see, Restricted keeps back rows, features, geometries, sums and means and still sends
-field names, types, counts, a field's smallest and largest value, class breaks and the values of fields with few
-distinct values. Nothing is sent that fewer than `MIN_RESTRICTED_GROUP` features make up, with a filter or without
-one: no smallest and largest value (of a field or of the area) or class breaks of fewer features with a value, and no
-value of a field, listed or as a group's key, that fewer features hold. A result layer of one row would otherwise send
-its value, often a sum, as all of these. An organization without saved AI settings has Standard (`DEFAULT_DATA_POLICY` in `llm/types.py`), and
-Restricted is a choice an admin makes. It was the other way round at first: in production no organization had chosen
-Restricted, all of them were on it unknowingly, and the assistant could then build and run an analysis but not name its
-result, the residents reached, which is what most analyses ask for. The dock's notice and the privacy policy say that
-the data the assistant reads goes to the model. Runs built without a policy (`RunDeps`) and the MCP endpoint keep
-Restricted as their fallback, so a caller that forgot the policy fails closed.
+**One data policy.** The data tools send the model what the user can see, as far as a result fits the size cap
+(`MAX_RESULT_BYTES` in `tools/runtime.py`): the same for every organization, in a run and over MCP. There was a second
+mode, Restricted, which an admin could choose: it kept back rows, features, geometries, sums and means, sent nothing
+that fewer than five features made up, and refused filters that compared values. It was removed. Two modes confused
+admins and users; no organization in production used it; and it kept back what most analyses ask for, so the
+assistant could build and run an analysis but not name its result, the residents reached. It also cost every data
+tool a second, reduced form of its result and extra calls to processes to judge group sizes, and every new data tool
+had to get one. An organization that does not want its data to reach GOAT AI's model switches GOAT AI off or connects
+a model of its own choice (an own connection, without the fallback to GOAT AI). The dock's notice and the privacy policy say that the data the assistant reads
+goes to the model. The column `organization_settings.data_policy` is no longer read: core keeps it until a later
+migration drops it, so assistant pods of the earlier release keep working during a rolling deploy, and every save
+writes `standard` to it (not the column's default, `restricted`), so such a pod, during the rollout or after a
+rollback, reads every organization saved by this release as Standard. `PUT /settings` ignores the `data_policy` field
+a web bundle of that release still sends. An organization that had chosen Restricted behaves like every other one;
+its AI stays on.
 
 **AI credits.** Answers of GOAT AI draw on the organization's pool of AI credits, which core owns with the
 allowance, the trial amount and the price tiers (`apps/core/README.md`); the assistant holds none of these numbers and

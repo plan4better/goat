@@ -570,7 +570,7 @@ def test_ask_user_is_never_answered_from_an_earlier_call() -> None:
 
 def test_ask_user_is_on_every_page_and_not_on_mcp() -> None:
     assert ASK_USER.wire_name == "ask_user"
-    assert ASK_USER.risk == "read" and not ASK_USER.mcp and not ASK_USER.returns_data
+    assert ASK_USER.risk == "read" and not ASK_USER.mcp
 
 
 async def test_a_shown_card_ends_the_answer_before_the_model_is_called_again() -> None:
@@ -2375,7 +2375,6 @@ def test_the_result_is_read_with_the_project_reads_and_tool_descriptions() -> No
     assert "project_group_statistics" in RESULT_READ_TOOLS
     # What a result's scale or field means, from the tool that made it.
     assert "workflow_describe_tool" in RESULT_READ_TOOLS
-    assert BY_WIRE_NAME["workflow_describe_tool"].returns_data is False
     for name in RESULT_READ_TOOLS:
         assert BY_WIRE_NAME[name].risk == "read"
     # Not a proposal, and not a run read, which would arm the gate again.

@@ -83,7 +83,6 @@ WAIT = ToolSpec(
     output_model=_Waited,
     run=_wait_a_while,
     surfaces=frozenset(SURFACES),
-    returns_data=False,
 )
 
 

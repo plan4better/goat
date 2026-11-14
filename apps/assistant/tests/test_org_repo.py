@@ -75,26 +75,23 @@ async def test_settings_default_and_upsert(org_repo: OrgSettingsRepository) -> N
         ORG,
         enabled=True,
         active_connection_id=connection_id,
-        data_policy="restricted",
         allow_default_fallback=True,
         updated_by=ADMIN,
     )
-    assert saved == OrgSettings(ORG, True, connection_id, "restricted", True)
+    assert saved == OrgSettings(ORG, True, connection_id, True)
     again = await org_repo.save_settings(
         ORG,
         enabled=False,
         active_connection_id=None,
-        data_policy="standard",
         allow_default_fallback=False,
         updated_by=ADMIN,
     )
-    assert again == OrgSettings(ORG, False, None, "standard", False)
+    assert again == OrgSettings(ORG, False, None, False)
     with pytest.raises(UnknownConnection):
         await org_repo.save_settings(
             ORG,
             enabled=True,
             active_connection_id=uuid4(),
-            data_policy="standard",
             allow_default_fallback=False,
             updated_by=ADMIN,
         )
@@ -177,7 +174,6 @@ async def test_the_active_connection_cannot_be_deleted(
         ORG,
         enabled=True,
         active_connection_id=connection_id,
-        data_policy="standard",
         allow_default_fallback=False,
         updated_by=ADMIN,
     )
@@ -187,7 +183,6 @@ async def test_the_active_connection_cannot_be_deleted(
         ORG,
         enabled=True,
         active_connection_id=None,
-        data_policy="standard",
         allow_default_fallback=False,
         updated_by=ADMIN,
     )
@@ -203,7 +198,6 @@ async def test_activation_requires_a_passed_test_in_the_same_statement(
             ORG,
             enabled=True,
             active_connection_id=connection_id,
-            data_policy="standard",
             allow_default_fallback=False,
             updated_by=ADMIN,
             require_tested=True,
@@ -213,7 +207,6 @@ async def test_activation_requires_a_passed_test_in_the_same_statement(
         ORG,
         enabled=True,
         active_connection_id=connection_id,
-        data_policy="standard",
         allow_default_fallback=False,
         updated_by=ADMIN,
         require_tested=True,
@@ -225,7 +218,6 @@ async def test_activation_requires_a_passed_test_in_the_same_statement(
             OTHER_ORG,
             enabled=True,
             active_connection_id=connection_id,
-            data_policy="standard",
             allow_default_fallback=False,
             updated_by=OTHER_ADMIN,
             require_tested=True,
@@ -287,7 +279,6 @@ async def test_another_organizations_connection_is_unknown_even_without_the_test
             OTHER_ORG,
             enabled=True,
             active_connection_id=connection_id,
-            data_policy="standard",
             allow_default_fallback=False,
             updated_by=OTHER_ADMIN,
         )
@@ -301,7 +292,6 @@ async def test_requiring_a_test_does_not_block_clearing_the_active_connection(
         ORG,
         enabled=True,
         active_connection_id=None,
-        data_policy="standard",
         allow_default_fallback=False,
         updated_by=ADMIN,
         require_tested=True,

@@ -256,7 +256,15 @@ docker compose exec assistant python -m assistant.dbcheck
 
 Der Befehl gibt `ok` aus oder listet jedes fehlende Recht auf.
 
-**Datenverarbeitung.** Fragen von Benutzern und, je nach Datenrichtlinie der Organisation, Daten aus GOAT gehen an den Modellanbieter der verwendeten Verbindung. Bei GOAT AI ist das der Anbieter, den Sie einrichten; bei einer eigenen Verbindung der Anbieter der Organisation. Die Datenrichtlinie einer Organisation ist **Standard**, bis ein Admin der Organisation unter **Einstellungen → KI** **Eingeschränkt** wählt: Unter Standard sendet der Assistent, was der Benutzer in GOAT sehen kann, einschließlich Beispielzeilen und Abfrageergebnissen. Eingeschränkt hält Zeilen, Objekte, Geometrien, Summen und Mittelwerte zurück; Feldnamen, Typen, Anzahlen, Wertebereiche und die Werte von Feldern mit wenigen verschiedenen Werten verlassen GOAT weiterhin. In früheren Versionen war es umgekehrt, ein Upgrade stellt daher jede Organisation, die ihre KI-Einstellungen nie gespeichert hat, auf Standard um. Informieren Sie die Admins Ihrer Organisationen, bevor Sie GOAT AI aktivieren oder ein Upgrade einspielen, und stellen Sie sicher, dass Ihre Vereinbarung mit dem Modellanbieter deren Daten abdeckt.
+**Datenverarbeitung.** Fragen von Benutzern und die Daten, die der Assistent für die Antwort liest, gehen an den Modellanbieter der verwendeten Verbindung: alles, was der Benutzer in GOAT sehen kann, einschließlich Beispielzeilen und Abfrageergebnissen. Bei GOAT AI ist das der Anbieter, den Sie einrichten; bei einer eigenen Verbindung der Anbieter der Organisation. Eine Organisation, deren Daten nicht an den Anbieter von GOAT AI gehen sollen, schaltet KI unter **Einstellungen → KI** aus oder nutzt eine eigene Verbindung ohne Ausweichen auf GOAT AI. Informieren Sie die Admins Ihrer Organisationen, bevor Sie GOAT AI aktivieren, und stellen Sie sicher, dass Ihre Vereinbarung mit dem Modellanbieter deren Daten abdeckt.
+
+**Upgrade von einem Release mit Datenrichtlinien.** Frühere Releases hatten eine zweite Datenrichtlinie, **Eingeschränkt**, die Zeilen, Objekte, Geometrien, Summen und Mittelwerte vom Modell zurückhielt. Sie entfällt. Eine Organisation, die Eingeschränkt gewählt hatte, behält GOAT AI eingeschaltet und sendet ab dem Upgrade, was jede andere Organisation sendet. Solche Organisationen finden Sie vor dem Upgrade mit dieser Abfrage in der Datenbank von GOAT:
+
+```sql
+SELECT organization_id FROM assistant.organization_settings WHERE data_policy = 'restricted';
+```
+
+Informieren Sie deren Admins, damit sie KI ausschalten oder eine eigene Verbindung wählen können, wenn sie das nicht möchten. Führen Sie die Abfrage vor dem Upgrade aus: Sobald eine Organisation ihre KI-Einstellungen im neuen Release speichert, steht in ihrer Zeile `standard`.
 
 ## Optionale Integrationen {#integrations}
 

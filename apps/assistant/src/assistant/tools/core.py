@@ -34,7 +34,6 @@ class NoInput(BaseModel):
 class WhoAmI(BaseModel):
     name: str
     organization: str | None = None
-    data_policy: str
     language: str
     page: str
 
@@ -57,7 +56,6 @@ async def _whoami(env: ToolEnv, args: NoInput) -> WhoAmI:
     return WhoAmI(
         name=name or "unknown",
         organization=(org or {}).get("name"),
-        data_policy=env.data_policy,
         language=env.locale,
         page=SURFACE_LABELS[env.page.surface],
     )
@@ -66,14 +64,13 @@ async def _whoami(env: ToolEnv, args: NoInput) -> WhoAmI:
 WHOAMI: ToolSpec[NoInput, WhoAmI] = ToolSpec(
     name="core.whoami",
     description=(
-        "The signed-in user's name and organization, the organization's data "
-        "policy for the assistant, the interface language and the current page."
+        "The signed-in user's name and organization, the interface language and "
+        "the current page."
     ),
     input_model=NoInput,
     output_model=WhoAmI,
     run=_whoami,
     surfaces=ALL_SURFACES,
-    returns_data=False,
 )
 
 
@@ -105,7 +102,6 @@ PAGE_CONTEXT: ToolSpec[NoInput, PageContextResult] = ToolSpec(
     output_model=PageContextResult,
     run=_page_context,
     surfaces=ALL_SURFACES,
-    returns_data=False,
 )
 
 
@@ -317,7 +313,6 @@ FIND: ToolSpec[FindInput, FindResult] = ToolSpec(
     output_model=FindResult,
     run=_find,
     surfaces=ALL_SURFACES,
-    returns_data=False,
 )
 
 
@@ -406,7 +401,6 @@ FIND_LAYERS: ToolSpec[FindLayersInput, FindLayersResult] = ToolSpec(
     output_model=FindLayersResult,
     run=_find_layers,
     surfaces=ALL_SURFACES,
-    returns_data=False,
 )
 
 # -- core.show_items -----------------------------------------------------------
@@ -724,7 +718,6 @@ SHOW_ITEMS: ToolSpec[ShowItemsInput, ShowItemsResult] = ToolSpec(
     output_model=ShowItemsResult,
     run=_show_items,
     surfaces=ALL_SURFACES,
-    returns_data=False,
 )
 
 CORE_TOOLS: tuple[ToolSpec[Any, Any], ...] = (

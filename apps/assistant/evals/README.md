@@ -1,10 +1,10 @@
 # GOAT eval set
 
-36 catalog, 30 project and 13 workflow tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
+36 catalog, 26 project and 13 workflow tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
 prompt, tools and limits are the production ones; the services behind the tools are fixed (decision E16): the
 catalog app over its fixture catalog plus its named rows, and canned answers for one fixture project
 ("Radverkehr Leipzig"). Checks are deterministic (expected records, filters, numbers, named values, tools, docs pages
-read, layers never sent, values withheld, cards asked, workflows created); six free-text tasks go to an LLM judge.
+read, layers never sent, values not stated, cards asked, workflows created); six free-text tasks go to an LLM judge.
 The answer graded is what the dock shows: the text of every response of the last turn, the text before a tool call or a
 card too, but not text an answer asked for again in the message's language replaced; a card counts as asked for an option's `value` and for the datasets its `adds` names.
 Questions about GOAT's own interface (`proj-26` to `proj-30`) are graded on the docs page the answer read with

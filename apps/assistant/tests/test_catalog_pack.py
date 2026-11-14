@@ -461,7 +461,6 @@ def test_the_proposal_and_the_cards_are_not_published_over_mcp() -> None:
         "catalog_suggest_terms",
         "catalog_find_region",
     }
-    assert not any(spec.returns_data for spec in CATALOG_TOOLS)
 
 
 def _strings(value: Any) -> list[str]:

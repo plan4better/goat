@@ -71,7 +71,7 @@ async def test_the_active_connection_cannot_be_deleted(db: Database) -> None:
         )
 
 
-async def test_settings_defaults_and_data_policy_check(db: Database) -> None:
+async def test_settings_defaults(db: Database) -> None:
     await db.pool.execute(
         f"INSERT INTO {db.t('organization_settings')} (organization_id) VALUES ($1)",
         ORG,
@@ -82,12 +82,7 @@ async def test_settings_defaults_and_data_policy_check(db: Database) -> None:
     assert row is not None
     assert row["enabled"] is True
     assert row["active_connection_id"] is None
-    assert row["data_policy"] == "restricted"
     assert row["allow_default_fallback"] is False
-    with pytest.raises(asyncpg.CheckViolationError):
-        await db.pool.execute(
-            f"UPDATE {db.t('organization_settings')} SET data_policy = 'open'"
-        )
 
 
 async def test_one_usage_row_per_run_and_purpose(db: Database) -> None:

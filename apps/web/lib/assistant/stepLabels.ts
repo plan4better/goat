@@ -307,8 +307,8 @@ const shownCount = (output: Fields): number =>
 export function stepResult(step: DynamicToolUIPart, t: Translate): string | undefined {
   if (step.state !== "output-available") return undefined;
   const output = outputOf(step);
-  // Kept back by the organization's data policy (Restricted): an expected answer, not a failure.
-  if (output.withheld === true) return t("assistant_result_withheld_policy");
+  // An answer stored while a data policy could keep results back may hold one: nothing to count.
+  if (output.withheld === true) return undefined;
   const count = (key: string, value: number | undefined) =>
     value === undefined ? undefined : value === 0 ? t("assistant_result_none") : t(key, { count: value });
   switch (step.toolName) {
@@ -352,10 +352,7 @@ export function stepResult(step: DynamicToolUIPart, t: Translate): string | unde
     case "project_get_layouts":
       return count("assistant_result_layouts", list(output.layouts).length);
     case "project_count_features":
-      // Withheld under the Restricted policy (a filtered count below the minimum).
-      return output.count === null
-        ? t("assistant_result_withheld")
-        : count("assistant_result_features", num(output.count));
+      return count("assistant_result_features", num(output.count));
     case "project_area_statistics":
       return count("assistant_result_features", num(output.feature_count));
     case "project_field_statistics":

@@ -28,7 +28,6 @@ from pydantic_ai.models.function import (
 )
 
 from assistant.context import NO_PAGE, PageContext
-from assistant.llm.types import DataPolicy
 from assistant.login import Login, StaticLogin
 from assistant.prompt import NOTE_CLOSE, NOTE_OPEN
 from assistant.repo import Repository
@@ -137,7 +136,6 @@ def tool_env(
     *,
     login: Login | None = None,
     user_id: UUID = UUID(int=1),
-    data_policy: DataPolicy = "standard",
     page: PageContext = NO_PAGE,
     locale: Locale = "en",
     run_id: UUID | None = None,
@@ -149,7 +147,6 @@ def tool_env(
         services=services,
         login=login or StaticLogin(None),
         user_id=user_id,
-        data_policy=data_policy,
         page=page,
         locale=locale,
         run_id=run_id,

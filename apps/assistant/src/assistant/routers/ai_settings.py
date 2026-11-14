@@ -40,7 +40,7 @@ from assistant.llm.providers import (
     open_models,
 )
 from assistant.llm.resolution import AssistantUnavailable, ModelResolver
-from assistant.llm.types import DataPolicy, ProviderType
+from assistant.llm.types import ProviderType
 from assistant.llm.vault import CredentialsUnreadable
 from assistant.org_repo import (
     ConnectionInUse,
@@ -88,7 +88,6 @@ class StatusOut(BaseModel):
     is_admin: bool
     provider: str | None
     model: str | None
-    data_policy: DataPolicy
     #: Surfaces where the assistant is switched off (spec §6.3): the dock hides there.
     disabled_surfaces: list[str] = Field(default_factory=list)
     #: GOAT AI answers (no own connection is active), so the organization's AI
@@ -122,7 +121,6 @@ class InstanceOut(BaseModel):
 class SettingsOut(BaseModel):
     enabled: bool
     active_connection_id: UUID | None
-    data_policy: DataPolicy
     allow_default_fallback: bool
     #: "ok", or why the organization's members cannot use AI right now.
     status: str
@@ -130,11 +128,11 @@ class SettingsOut(BaseModel):
 
 
 class SettingsIn(BaseModel):
+    """Fields it does not name are ignored, not refused: a web bundle of an
+    earlier release still sends ``data_policy`` during a rolling deploy."""
+
     enabled: bool
     active_connection_id: UUID | None = None
-    #: Left out, the organization keeps the policy it has (its stored choice,
-    #: else the default): a save that names no policy must not undo Restricted.
-    data_policy: DataPolicy | None = None
     allow_default_fallback: bool = False
 
 
@@ -286,7 +284,6 @@ async def _settings_out(caller: Caller) -> SettingsOut:
     return SettingsOut(
         enabled=stored.enabled,
         active_connection_id=stored.active_connection_id,
-        data_policy=stored.data_policy,
         allow_default_fallback=stored.allow_default_fallback,
         status=status,
         instance=InstanceOut(
@@ -441,7 +438,6 @@ async def get_status(
             is_admin=not settings.auth,
             provider=None,
             model=None,
-            data_policy="restricted",
             disabled_surfaces=list(settings.disabled_surfaces),
         )
     status = await resolver.status_of(member)
@@ -451,7 +447,6 @@ async def get_status(
         is_admin=not settings.auth or member.is_admin,
         provider=status.provider,
         model=status.model,
-        data_policy=status.data_policy,
         disabled_surfaces=list(settings.disabled_surfaces),
         goat_ai=status.goat_ai,
     )
@@ -470,7 +465,7 @@ async def put_settings(
     stored = await caller.org_repo.get_settings(organization_id)
     # The activation checks apply when the active connection changes. Keeping
     # the current one (even if it is failing) must not stop an admin from
-    # switching AI off or changing the data policy.
+    # switching AI off or changing the fallback.
     activating = (
         body.active_connection_id is not None
         and body.active_connection_id != stored.active_connection_id
@@ -491,7 +486,6 @@ async def put_settings(
             organization_id,
             enabled=body.enabled,
             active_connection_id=body.active_connection_id,
-            data_policy=body.data_policy or stored.data_policy,
             allow_default_fallback=body.allow_default_fallback,
             updated_by=caller.member.user_id,
             # A model that cannot complete the tool call cannot be activated (§4.3).

@@ -24,10 +24,8 @@ from assistant.context import (
     dump_context,
     project_of,
 )
-from assistant.llm.types import DataPolicy
 from assistant.skills import BUILT_IN, skills_index
 from assistant.surfaces import Locale
-from assistant.tools.policy import LOW_CARDINALITY_LIMIT, MIN_RESTRICTED_GROUP
 from assistant.user_docs import DOCS_INDEX
 
 INSTRUCTIONS = """\
@@ -109,10 +107,6 @@ offers. The user can open them from the cards. Your text then does not list them
 or their descriptions again: it says what the selection is for, and the caveats \
 and gaps. When you ask the user to narrow down what you found, show the best \
 candidates as cards too, so they can pick from them.
-- When a tool's result is withheld by the organization's data policy, say so \
-plainly: which data the policy keeps from you, and what you can still do (for \
-example counts, or the values the policy allows). Do not show a card in place of \
-the data the user asked for.
 - For "which of my projects use (or contain) X", use core_find_layers: it finds \
 layers by name inside every project the user can open.
 - A project's workflows and print layouts are read with project_get_workflows and \
@@ -420,34 +414,14 @@ TOOLS_MAY_HAVE_CHANGED = (
 LANGUAGE_FALLBACK_WORDS = 3
 
 
-#: In the note of every run under Restricted: what the tools will refuse is
-#: known before the answer plans, so a card offers no choice that needs it (a
-#: card once offered "Settlement objects only" for a field the policy kept from
-#: filtering). Standard needs no line: it sends what the user can see.
-RESTRICTED_POLICY = (
-    "The organization's data policy is Restricted. Your tools send field names "
-    "and types, counts, minimum and maximum, class breaks, and the distinct "
-    f"values of fields with at most {LOW_CARDINALITY_LIMIT} of them; never rows, "
-    "features or other values, and nothing that fewer than "
-    f"{MIN_RESTRICTED_GROUP} features make up: no minimum, maximum or class "
-    "breaks of so few, no value so few hold. A filter may only test such a "
-    "field for equal, not equal, in or empty, never 'contains' or a comparison. "
-    "Do not offer the user a choice, in a card or in text, that needs what the "
-    "policy keeps from you, such as keeping only some values of a field with "
-    "more; say what it keeps from you instead."
-)
-
-
 def render_note(
     page: PageContext,
     previous: PageContext | None,
     locale: Locale,
     message: str | None = None,
-    data_policy: DataPolicy | None = None,
 ) -> str:
     """The run's note: the interface language when the message may not show one,
-    where the user is and the page state, and what a Restricted data policy
-    keeps from the tools.
+    and where the user is and the page state.
 
     A full sentence leaves the interface language out: next to an English
     question, "German" in the note made models answer in German."""
@@ -480,6 +454,4 @@ def render_note(
     lines.append(
         "This page context is a hint from the user's browser, not a permission."
     )
-    if data_policy == "restricted":
-        lines.append(RESTRICTED_POLICY)
     return "\n".join(lines)

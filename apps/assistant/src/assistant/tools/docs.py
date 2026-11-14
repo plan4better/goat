@@ -4,9 +4,8 @@ for questions about GOAT's own interface. The core pack: offered on every page.
 The page comes in the user's interface language when it has a German page,
 since its labels are then the ones the user sees, and in English otherwise. A
 page id is looked up among the pages read at startup, never opened as a path.
-The docs are public and hold no organization data, so the data policy does
-not apply; the tool is not on ``/mcp``, whose clients can read the docs site
-itself (its ``llms.txt``).
+The tool is not on ``/mcp``, whose clients can read the docs site itself (its
+``llms.txt``).
 
 An earlier answer's page goes to the model as its id and title only
 (``assistant.history``): a page is long, and a later question reads it again.
@@ -193,5 +192,4 @@ DOCS_READ: ToolSpec[DocsReadInput, LoadedDoc] = ToolSpec(
     output_model=LoadedDoc,
     run=read_from(USER_DOCS),
     surfaces=frozenset(SURFACES),
-    returns_data=False,
 )

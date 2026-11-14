@@ -13,7 +13,6 @@ from uuid import UUID
 
 from assistant.config import AssistantSettings
 from assistant.llm.providers import Target, default_target
-from assistant.llm.types import DataPolicy
 from assistant.llm.vault import CredentialsUnreadable, SecretBox
 from assistant.org_repo import Member, OrgSettingsRepository
 
@@ -35,7 +34,6 @@ class AssistantUnavailable(Exception):  # noqa: N818
 @dataclass(frozen=True)
 class Resolution:
     organization_id: UUID
-    data_policy: DataPolicy
     main: Target
     #: GOAT AI, when the admin enabled the fallback and an own connection is active.
     fallback: Target | None
@@ -47,7 +45,6 @@ class AssistantStatus:
     reason: UnavailableReason | None
     provider: str | None
     model: str | None
-    data_policy: DataPolicy
     #: GOAT AI is the main target, so the organization's AI credits apply. An own
     #: connection with GOAT AI as its fallback is not.
     goat_ai: bool = False
@@ -115,9 +112,7 @@ class ModelResolver:
         if settings.active_connection_id is None:
             if goat_ai is None:
                 raise AssistantUnavailable("no_connection")
-            return Resolution(
-                member.organization_id, settings.data_policy, goat_ai, None
-            )
+            return Resolution(member.organization_id, goat_ai, None)
         connection = await self.org_repo.get_connection(
             member.organization_id, settings.active_connection_id
         )
@@ -130,19 +125,17 @@ class ModelResolver:
         except CredentialsUnreadable as exc:
             raise AssistantUnavailable("credentials_unreadable") from exc
         fallback = goat_ai if settings.allow_default_fallback else None
-        return Resolution(member.organization_id, settings.data_policy, main, fallback)
+        return Resolution(member.organization_id, main, fallback)
 
     async def status_of(self, member: Member) -> AssistantStatus:
         try:
             resolution = await self.resolve_member(member)
         except AssistantUnavailable as exc:
-            settings = await self.org_repo.get_settings(member.organization_id)
-            return AssistantStatus(False, exc.reason, None, None, settings.data_policy)
+            return AssistantStatus(False, exc.reason, None, None)
         return AssistantStatus(
             True,
             None,
             resolution.main.provider,
             resolution.main.model,
-            resolution.data_policy,
             goat_ai=not resolution.main.own,
         )

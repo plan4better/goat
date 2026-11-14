@@ -744,18 +744,6 @@ class StepInput(BaseModel):
     branch: str | None = None
 
 
-#: Under Restricted, what a view leaves out of a condition: the literals of
-#: filters and conditions are values picked from the data
-#: (``ProjectLayers.restricted``, ``runs._says_nothing``).
-_LITERAL = "value"
-
-
-def _without_values(rows: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
-    if rows is None:
-        return None
-    return [{key: item for key, item in row.items() if key != _LITERAL} for row in rows]
-
-
 class FilterView(BaseModel):
     """A dataset step's filter in the draft's terms (``StepFilter``)."""
 
@@ -764,16 +752,6 @@ class FilterView(BaseModel):
     where: list[dict[str, Any]] | None = None
     #: Conditions the draft's operators do not express.
     other: int | None = None
-    #: Under Restricted: the conditions' values are left out.
-    values_withheld: bool | None = None
-
-    def restricted(self) -> "FilterView":
-        return self.model_copy(
-            update={
-                "where": _without_values(self.where),
-                "values_withheld": True if self.where else None,
-            }
-        )
 
 
 class StepView(BaseModel):
@@ -803,20 +781,7 @@ class StepView(BaseModel):
     mode: str | None = None
     condition: list[dict[str, Any]] | None = None
     expression: str | None = None
-    #: Under Restricted: the values of the condition are left out.
-    values_withheld: bool | None = None
     inputs: list[StepInput]
-
-    def restricted(self) -> "StepView":
-        withheld = bool(self.condition) or self.expression is not None
-        return self.model_copy(
-            update={
-                "filter": self.filter.restricted() if self.filter else None,
-                "condition": _without_values(self.condition),
-                "expression": None,
-                "values_withheld": True if withheld else None,
-            }
-        )
 
 
 class NoteView(BaseModel):
@@ -829,13 +794,6 @@ class VariableView(BaseModel):
     name: str
     type: str | None = None
     default: Setting | None = None
-    #: Under Restricted: a text default can be a filter's or SQL's literal.
-    default_withheld: bool | None = None
-
-    def restricted(self) -> "VariableView":
-        if not isinstance(self.default, str):
-            return self.model_copy()
-        return self.model_copy(update={"default": None, "default_withheld": True})
 
 
 @dataclass(frozen=True)

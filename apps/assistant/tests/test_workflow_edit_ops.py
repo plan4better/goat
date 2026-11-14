@@ -1201,40 +1201,21 @@ def test_the_view_names_the_settings_it_shortens() -> None:
     assert step.shortened == ["step_sizes", "start_time", "note_text"]
 
 
-def test_the_restricted_view_withholds_literal_values() -> None:
+def test_the_view_keeps_literal_values() -> None:
     view = workflow_view(STORED)
-    steps = [step.restricted() for step in view.steps]
-    dataset, _, condition, _ = (s.model_dump(exclude_none=True) for s in steps)
-    assert dataset["filter"] == {
-        "where": [{"field": "art", "op": "="}],
-        "values_withheld": True,
-    }
-    assert condition["condition"] == [
-        {"method": "count", "op": ">"},
-        {"field": "art", "op": "="},
-    ]
-    assert condition["values_withheld"] is True
-    variables = [v.restricted().model_dump(exclude_none=True) for v in view.variables]
-    assert variables == [
-        {"name": "minutes", "type": "number", "default": 15},
-        {"name": "kind", "type": "string", "default_withheld": True},
-    ]
-    # The view itself keeps them, for Standard.
     assert view.steps[0].filter is not None
     assert view.steps[0].filter.where == [{"field": "art", "op": "=", "value": "GS"}]
     assert isinstance(view.steps[0], StepView)
     assert isinstance(view.variables[1], VariableView)
 
 
-def test_a_custom_if_expression_is_withheld_under_restricted() -> None:
+def test_a_custom_if_expression_is_shown() -> None:
     config = copy.deepcopy(STORED)
     _node(config, "if-big")["data"].update(
         mode="custom", customExpression="name = 'Jane Doe'"
     )
     step = workflow_view(config).steps[2]
     assert step.expression == "name = 'Jane Doe'"
-    hidden = step.restricted()
-    assert hidden.expression is None and hidden.values_withheld is True
 
 
 def test_the_notes_of_a_workflow_are_capped_as_a_drafts() -> None:

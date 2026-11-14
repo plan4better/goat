@@ -393,15 +393,12 @@ async def test_mcp_tool_call_in_the_2026_07_28_revision(
     assert response.json()["result"]["isError"] is False
 
 
-# -- data policy and redaction over MCP ----------------------------------------
+# -- data and redaction over MCP -----------------------------------------------
 
 
 class _Rows(BaseModel):
     rows: list[dict[str, Any]]
     count: int
-
-    def restricted(self) -> "_RowCount":
-        return _RowCount(count=self.count)
 
 
 class _RowCount(BaseModel):
@@ -420,14 +417,15 @@ def _publish(monkeypatch: pytest.MonkeyPatch, spec: ToolSpec[Any, Any]) -> None:
     monkeypatch.setattr("assistant.mcp_server.MCP_TOOLS", (spec,))
 
 
-async def test_data_tools_get_the_restricted_form_over_mcp(
+async def test_data_tools_send_their_full_result_over_mcp(
     settings: AssistantSettings,
     db: Database,
     repo: Repository,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No published tool returns data values today; should one be flagged, MCP
-    callers get its Restricted form, as a Restricted organization does in a run."""
+    """No published tool returns data values today; should one be published,
+    MCP callers get what a run gets: there is one data policy, and no
+    fallback to a stricter one."""
     _publish(
         monkeypatch,
         ToolSpec(
@@ -437,7 +435,6 @@ async def test_data_tools_get_the_restricted_form_over_mcp(
             output_model=_Rows,
             run=_rows,
             surfaces=frozenset(),
-            returns_data=True,
             mcp=True,
         ),
     )
@@ -448,7 +445,10 @@ async def test_data_tools_get_the_restricted_form_over_mcp(
         )
     result = response.json()["result"]
     assert result["isError"] is False
-    assert result["structuredContent"] == {"count": 2}
+    assert result["structuredContent"] == {
+        "rows": [{"name": "A"}, {"name": "B"}],
+        "count": 2,
+    }
 
 
 @pytest.mark.parametrize("error", [ToolFailed, InputInvalid])
@@ -476,7 +476,6 @@ async def test_a_tool_error_never_carries_the_bearer(
             output_model=_RowCount,
             run=echo_the_token,
             surfaces=frozenset(),
-            returns_data=False,
             mcp=True,
         ),
     )

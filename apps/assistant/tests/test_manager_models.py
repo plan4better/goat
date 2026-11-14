@@ -79,7 +79,6 @@ async def _activate(
     settings: AssistantSettings,
     *,
     fallback: bool = False,
-    data_policy: str = "standard",
 ) -> UUID:
     box = SecretBox.from_settings(settings)
     assert box is not None
@@ -97,7 +96,6 @@ async def _activate(
         ORG,
         enabled=True,
         active_connection_id=connection_id,
-        data_policy=data_policy,  # type: ignore[arg-type]
         allow_default_fallback=fallback,
         updated_by=ADMIN,
     )
@@ -159,7 +157,6 @@ async def test_runs_are_refused_when_ai_is_disabled(
         ORG,
         enabled=False,
         active_connection_id=None,
-        data_policy="standard",
         allow_default_fallback=False,
         updated_by=ADMIN,
     )
@@ -429,38 +426,6 @@ def test_clean_title() -> None:
     assert long is not None and len(long) == MAX_TITLE_CHARS and long.endswith("…")
 
 
-async def test_the_data_policy_reaches_the_tools(
-    repo: Repository, org_repo: OrgSettingsRepository, settings: AssistantSettings
-) -> None:
-    await org_repo.save_settings(
-        ORG,
-        enabled=True,
-        active_connection_id=None,
-        data_policy="restricted",
-        allow_default_fallback=False,
-        updated_by=ADMIN,
-    )
-    seen: list[str] = []
-
-    def factory(model: Model | str) -> Agent[RunDeps, str]:
-        agent: Agent[RunDeps, str] = Agent(
-            TestModel(), deps_type=RunDeps, instructions=INSTRUCTIONS
-        )
-
-        @agent.tool(name="peek")
-        async def peek(ctx: RunContext[RunDeps], /) -> str:
-            seen.append(ctx.deps.data_policy)
-            return "ok"
-
-        return agent
-
-    manager = RunManager(
-        repo, InMemoryEventBus(), settings, owner="a", agent_factory=factory
-    )
-    await _run(manager, repo)
-    assert seen == ["restricted"]
-
-
 async def test_the_run_endpoint_refuses_when_ai_is_disabled(
     repo: Repository, org_repo: OrgSettingsRepository, settings: AssistantSettings
 ) -> None:
@@ -468,7 +433,6 @@ async def test_the_run_endpoint_refuses_when_ai_is_disabled(
         ORG,
         enabled=False,
         active_connection_id=None,
-        data_policy="standard",
         allow_default_fallback=False,
         updated_by=ADMIN,
     )
