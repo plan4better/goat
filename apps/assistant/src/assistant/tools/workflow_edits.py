@@ -125,10 +125,11 @@ REPEATED_EDIT = (
     "was changed again."
 )
 GET_NOTE = (
+    "When the user asks to change it, change it with workflow_update, naming "
+    "steps and notes by these ids; a workflow to run or explain stays as it is. "
     "A tool step's settings are shortened (shortened names the ones not shown "
     "whole) and leave out ids, filters and the names results are saved under; "
-    "set_settings replaces a setting whole. Change the workflow with "
-    "workflow_update, naming steps and notes by these ids."
+    "set_settings replaces a setting whole."
 )
 
 

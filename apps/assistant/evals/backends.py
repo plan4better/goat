@@ -685,13 +685,16 @@ RESULT_LAYER = FixtureLayer(
 )
 #: The run project's workflow: walking catchments in three bands whose band
 #: edges do not rise, so the check finds its catchment's settings invalid and
-#: processes refuses its run before it starts.
+#: processes refuses its run before it starts. The task asks to run it, not
+#: to change it: core refuses a save of it as for a user who may not change
+#: it (``_workflow_core_routes``), a refusal the assistant does not retry.
 RUN_WORKFLOW: dict[str, Any] = {
     "id": RUN_WORKFLOW_ID,
     "project_id": RUN_PROJECT_ID,
     "name": "Schulwege 15 Minuten",
     "description": None,
     "is_default": False,
+    "revision": 1,
     "config": {
         "nodes": [
             {
@@ -2490,6 +2493,9 @@ def _workflow_core_routes(
     run_base = f"/api/v2/project/{RUN_PROJECT_ID}"
     routes[("GET", f"{run_base}/workflow")] = [RUN_WORKFLOW]
     routes[("GET", f"{run_base}/workflow/{RUN_WORKFLOW_ID}")] = RUN_WORKFLOW
+    routes[("PUT", f"{run_base}/workflow/{RUN_WORKFLOW_ID}")] = httpx.Response(
+        403, json={"detail": "Changing this workflow requires editor access"}
+    )
     edit_base = f"/api/v2/project/{EDIT_PROJECT_ID}/workflow"
     routes[("GET", edit_base)] = lambda request: httpx.Response(200, json=[editable])
     routes[("GET", f"{edit_base}/{EDIT_WORKFLOW_ID}")] = lambda request: httpx.Response(

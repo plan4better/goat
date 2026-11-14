@@ -30,6 +30,7 @@ from assistant.tools.catalog import NO_SUCH_WORD, NOTHING_FOUND
 from assistant.tools.runtime import InputInvalid, execute
 from assistant.tools.testing import ScriptedModel, TurnModel, stage_note, tool_env
 from assistant.tools.toolset import FRUITLESS_SEARCHES, SEARCHED_ENOUGH
+from assistant.tools.workflow_edits import VIEWER_EDITS
 from assistant.tools.workflow_tools import clear_description_cache
 from assistant.workflows.draft import Draft, ProjectLayer, to_config
 from evals.backends import (
@@ -2038,6 +2039,40 @@ async def test_the_run_task_runs_after_the_card_and_can_pass(
     assert "band edges" in issue
     grades = await grade(_task("wf-11"), transcript, backends)
     assert [g.passed for g in grades] == [True] * 4, grades
+
+
+async def test_a_change_of_the_run_task_workflow_ends_at_its_refusal(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """wf-11 asks to run the project's workflow, not to change it. A change
+    the model makes anyway is refused for good, as for a user who may not
+    change the workflow, never with a refusal that asks to try again, so a
+    run cannot spend its steps on retries; nothing is saved."""
+    fix = {
+        "workflow_id": RUN_WORKFLOW_ID,
+        "operations": [
+            {
+                "op": "set_settings",
+                "id": "tool-walk",
+                "settings": {"step_sizes": [5, 10, 15]},
+            }
+        ],
+    }
+    model = ScriptedModel(
+        calls=[
+            ("workflow_get", {"workflow_id": RUN_WORKFLOW_ID}),
+            ("workflow_update", fix),
+        ],
+        answer="I could not change the workflow.",
+    )
+    transcript = await run_task(_task("wf-11"), model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    read, update = transcript.tool_calls
+    assert not read.failed, read.result
+    # Reading a workflow invites no change of it: only one the user asks for.
+    assert read.result["note"].startswith("When the user asks to change it,")
+    assert update.failed and VIEWER_EDITS in str(update.result), update.result
+    assert transcript.saved == []
 
 
 def _edit(max_cost: int) -> dict[str, Any]:

@@ -154,7 +154,9 @@ again after `HEARTBEAT_SECONDS` without a change, `tools/workflow_runs.py`). A r
 results, so it starts without asking only for a workflow this conversation created, with no export set to overwrite and
 whose latest run, if any, this conversation started (`run_permission` in `workflows/runs.py`, read from the
 conversation's stored parts); any other run needs the user's pick of Run in a card, one pick per run, and the refusal
-names the condition that failed, so the card says what a run does. A workflow with a dataset step without a layer is
+names the condition that failed, so the card says what a run does. Asked to run such a workflow, the assistant shows
+the Run card first, also when the workflow shows issues, and never changes or replaces it unasked (build-a-workflow
+skill): an edit there saves over the user's workflow, and a refused run's issues are what the answer reports. A workflow with a dataset step without a layer is
 not started: processes refuses such a run anyway, and the refusal names the steps whose layer the user chooses first.
 A run processes refuses and a wait on a run already going use up the pick as well. A run already going is waited for, never started twice. The answer keeps one clock:
 `ASSISTANT_RUN_MAX_SECONDS`, which a waiting run moves to `ASSISTANT_RUN_WAIT_MAX_SECONDS` from the answer's start
