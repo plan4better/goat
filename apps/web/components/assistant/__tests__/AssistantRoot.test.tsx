@@ -37,7 +37,6 @@ const available = {
   is_admin: false,
   provider: "test",
   model: "test",
-  data_policy: "standard",
 };
 
 beforeEach(() => {

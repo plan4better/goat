@@ -10,7 +10,6 @@ import AiPage from "@/app/(dashboard)/settings/ai/page";
 const SETTINGS = {
   enabled: true,
   active_connection_id: null,
-  data_policy: "standard",
   allow_default_fallback: false,
   status: "ok",
   instance: {

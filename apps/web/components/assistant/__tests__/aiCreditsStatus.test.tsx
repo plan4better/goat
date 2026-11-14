@@ -17,7 +17,6 @@ const { server, fetcherMock } = vi.hoisted(() => {
     settings: {
       enabled: true,
       active_connection_id: null as string | null,
-      data_policy: "standard",
       allow_default_fallback: false,
       status: "ok",
       instance: {

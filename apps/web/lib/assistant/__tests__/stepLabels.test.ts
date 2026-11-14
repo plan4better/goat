@@ -670,14 +670,14 @@ describe("step results", () => {
     expect(stepResult(found, deTranslate)).toBe("12.500 Datensätze");
   });
 
-  it("say that the data policy kept a result back, for any tool", () => {
-    const withheld = {
-      withheld: true,
-      reason: "Withheld: The data policy (Restricted) allows no 'contains'.",
-    };
-    const counted = call("project_count_features", { layer_project_id: 1 }, withheld);
-    expect(stepResult(counted, enTranslate)).toBe("withheld by the data policy");
+  it("say nothing about a result an earlier release kept back, for any tool", () => {
+    // Stored before the data policy was removed: neither a count nor "none".
+    const withheld = { withheld: true, reason: "Withheld: the data policy allows no 'contains'." };
     const sampled = call("project_sample_features", { layer_project_id: 1 }, withheld);
-    expect(stepResult(sampled, deTranslate)).toBe("durch die Datenrichtlinie zurückgehalten");
+    expect(stepResult(sampled, enTranslate)).toBeUndefined();
+    const counted = call("project_count_features", { layer_project_id: 1 }, withheld);
+    expect(stepResult(counted, deTranslate)).toBeUndefined();
+    const uncounted = call("project_count_features", { layer_project_id: 1 }, { layer: "A", count: null });
+    expect(stepResult(uncounted, enTranslate)).toBeUndefined();
   });
 });

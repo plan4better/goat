@@ -22,14 +22,12 @@ import type {
   AssistantConnection,
   AssistantSettings,
   AssistantSettingsUpdate,
-  DataPolicy,
 } from "@/lib/validations/assistant";
 
 import { ConfirmLoadFailed, DialogLoadFailed, orLoadFailed } from "@/components/assistant/LoadFailed";
 import PageHeader from "@/components/dashboard/common/PageHeader";
 import AiSwitchCard, { type AiCredits } from "@/components/settings/ai/AiSwitchCard";
 import ConnectionsCard from "@/components/settings/ai/ConnectionsCard";
-import DataPolicyCard from "@/components/settings/ai/DataPolicyCard";
 import {
   STATUS_MESSAGES,
   assistantErrorText,
@@ -51,11 +49,10 @@ const ConfirmModal = dynamic(() => orLoadFailed(import("@/components/modals/Conf
 
 const PLAIN = { interpolation: { escapeValue: false } } as const;
 
-/** The four fields of PUT /settings as they are. */
+/** The three fields of PUT /settings as they are. */
 const fieldsOf = (settings: AssistantSettings): AssistantSettingsUpdate => ({
   enabled: settings.enabled,
   active_connection_id: settings.active_connection_id,
-  data_policy: settings.data_policy,
   allow_default_fallback: settings.allow_default_fallback,
 });
 
@@ -129,12 +126,6 @@ export default function AiPage() {
       <SettingsPage header={header}>
         <CardSkeleton title={t("settings_ai_switch_title")} rows={1} variant="list" />
         <CardSkeleton title={t("settings_ai_answers_title")} rows={2} variant="list" />
-        <CardSkeleton
-          title={t("settings_ai_policy_title")}
-          hint={t("settings_ai_policy_hint")}
-          rows={1}
-          variant="list"
-        />
       </SettingsPage>
     );
   }
@@ -150,7 +141,7 @@ export default function AiPage() {
     Promise.all([mutateConnections(), refreshAssistantStatus()]).catch(() => undefined);
   const refresh = () => Promise.all([mutate().catch(() => undefined), refreshOthers()]);
 
-  /** PUT /settings with the four fields as they are and `patch` changed; a failure puts the old value back. */
+  /** PUT /settings with the three fields as they are and `patch` changed; a failure puts the old value back. */
   const put = async (patch: Partial<AssistantSettingsUpdate>): Promise<PutResult> => {
     const current = latest.current;
     if (!current) return "failed";
@@ -296,13 +287,8 @@ export default function AiPage() {
         onDelete={setDeleting}
         onFallback={(on) => void put({ allow_default_fallback: on })}
       />
-      <DataPolicyCard
-        value={view.data_policy}
-        disabled={pending !== null}
-        onChange={(policy: DataPolicy) => void put({ data_policy: policy })}
-      />
       <Typography variant="caption" color="text.secondary">
-        {t("settings_ai_footnote")}
+        {t("settings_ai_data_note")} {t("settings_ai_footnote")}
       </Typography>
       {dialog !== null && (
         <ConnectionDialog
