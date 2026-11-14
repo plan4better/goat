@@ -1127,7 +1127,7 @@ class _Slow(TurnModel):
     async def _stream(
         self, messages: list[ModelMessage], info: AgentInfo
     ) -> AsyncIterator[str | DeltaToolCalls]:
-        await asyncio.sleep(0.6)
+        await asyncio.sleep(1.0)
         async for item in super()._stream(messages, info):
             yield item
 
@@ -1141,9 +1141,11 @@ async def test_each_turn_has_its_own_time_limit(
             ([("catalog_find_region", {"name": "München"})], "Thanks."),
         ]
     )
-    # The card ends the first turn after one call (about 0.6 s), the second
-    # takes two (about 1.2 s): each fits the limit, both together do not.
-    limited = settings.model_copy(update={"run_max_seconds": 1.5})
+    # The card ends the first turn after one call (about 1 s), the second
+    # takes two (about 2 s): each fits the limit, both together do not. The
+    # limit leaves the second turn most of a second for everything besides the
+    # model's wait, since a loaded runner takes several times longer for it.
+    limited = settings.model_copy(update={"run_max_seconds": 2.8})
     transcript = await run_task(_task("wf-09"), model.model, backends, limited)
     assert transcript.error is None, transcript.error
     assert len(model.requests) == 3
