@@ -637,6 +637,7 @@ class RunManager:
                 prompt_note=setup.note,
                 prompt_answer=setup.answer,
                 prompt_text=text,
+                prompt_locale=setup.locale,
                 budget=self._budget(),
             )
             # A write repeated in this answer returns its first result, as in

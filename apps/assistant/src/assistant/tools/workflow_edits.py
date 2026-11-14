@@ -123,7 +123,10 @@ REPEATED_EDIT = (
 )
 GET_NOTE = (
     "When the user asks to change it, change it with workflow_update, naming "
-    "steps and notes by these ids; a workflow to run or explain stays as it is. "
+    "steps and notes by these ids. A workflow to run or explain stays as it is, "
+    "also when its issues stop a run: to run it, call workflow_run, which says "
+    "when it needs your Run card, and never show a card that offers a "
+    "correction instead; a refused run's answer explains the issues. "
     "A tool step's settings are shortened (shortened names the ones not shown "
     "whole) and leave out ids, filters and the names results are saved under; "
     "set_settings replaces a setting whole."

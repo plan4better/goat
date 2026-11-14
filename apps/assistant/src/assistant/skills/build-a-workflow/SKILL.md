@@ -274,9 +274,10 @@ workflow for it.
   (the user's, one from an earlier conversation, one they ran by hand) it refuses
   until the user picked Run in your card: ask with ask_user, options Run (value
   `run:<workflow id>`, recommended) and Not now, and end your answer. When the user
-  asked to run such a workflow, the Run card comes first, also when it shows issues
-  or settings that look wrong: never change it or build another in its place unless
-  the user asks for that. A refused run is answered as `refused` says, below.
+  asked to run such a workflow, the Run card comes first, with Run and Not now only,
+  also when it shows issues or settings that look wrong: never offer a correction,
+  change it or build another in its place unless the user asked for that in their
+  own words. A refused run is answered as `refused` says, below.
 - Its summary has a `note`: do what it says.
 - `succeeded`: read each saved layer by its `layer_project_id` before you answer.
   Shares and totals come from project_group_statistics: per group (per district
