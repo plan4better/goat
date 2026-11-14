@@ -52,17 +52,17 @@ Once you have added the layers to your map and computed the analysis, you can cu
 
 <div class="step">
   <div class="step-number">6</div>
-  <div class="content">Click a layer in the <code>Layers</code> panel. Its settings panel opens on the right with the <code>Style</code> tab selected. In the <code>Style</code> section, pick the color you want under <code>Fill Color</code> (<code>Color</code> for a line layer). To style by attribute, click the options icon <img src={require('/img/icons/options.png').default} alt="Options Icon" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/> next to it and choose a field in <code>Color based on</code>.</div>
+  <div class="content">Click a layer in the <code>Layers</code> panel. Its settings panel opens on the right with the <code>Style</code> tab selected. In the <code>Polygons</code>, <code>Lines</code> or <code>Points</code> section, click <code>Fill</code> (<code>Line</code> for a line layer) and pick the color you want under <code>Color</code>. To style by attribute, click the button next to <code>Color</code> and choose <code>By attribute</code> or <code>By classes</code>, then a field.</div>
 </div>
 
 <div class="step">
   <div class="step-number">7</div>
-  <div class="content">You can continue in the <code>Style</code> section: choose a <code>Palette</code> for the attribute-based colors, set the <code>Stroke Color</code>, or, for a point layer, switch on <code>Custom Marker</code> to use an icon as the marker.</div>
+  <div class="content">You can continue in the same section: choose a <code>Palette</code> for the colors by attribute or by classes, set the <code>Outline</code>, or, for a point layer, choose an <code>Icon</code> for the markers.</div>
 </div>
 
 <div class="step">
   <div class="step-number">8</div>
-  <div class="content">In the sections below, open <code>Labels</code> and choose a field in <code>Label by</code>, switch on the <code>Popup</code> and set up its content, and in <code>Legend</code> choose whether the layer is shown and add a <code>Caption</code>. For more detail, see [Layer Styling](../map/layer_style/style/styling).</div>
+  <div class="content">Click <code>Label</code> and choose a field under <code>Text</code>. In the sections below, set <code>Show on</code> in <code>Popup</code> and set up its <code>Content</code>, and in <code>Legend</code> choose whether the legend shows and add a <code>Caption</code> under <code>Contents</code>. For more detail, see [Layer Styling](../map/layer_style/style/styling).</div>
 </div>
 
 ## Ready to share your work

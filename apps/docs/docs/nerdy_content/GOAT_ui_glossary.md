@@ -331,7 +331,7 @@ This glossary lists the English and German labels of the main tools, features an
 | Edit features | Features bearbeiten | Start editing the layer's features |
 | Data source info | Datenquelle | View layer metadata and details |
 | Delete Layer | Layer löschen | Remove layer from project |
-| Zoom Visibility | Zoom-Sichtbarkeit | Control at which zoom levels a layer is visible |
+| Visible | Sichtbar | Zoom levels at which a layer or part of its style is drawn |
 
 ## Project Management
 
@@ -380,24 +380,29 @@ This glossary lists the English and German labels of the main tools, features an
 | Appearance | Aussehen | Appearance settings of a dashboard panel or popup |
 | Color | Farbe | Color settings |
 | Preset Colors | Standardfarben | Predefined colors in the color picker |
-| Fill Color | Füllfarbe | Fill color for polygons |
-| Stroke Color | Strichfarbe | Outline color |
-| Stroke Width | Strichbreite | Line thickness |
-| Cap | Linienende | Line end style in the Style panel |
-| Join | Linienverbindung | Line corner style in the Style panel (not the Join Features tool) |
+| Styles | Stile | The named styles of a layer in the Style panel |
+| Fill | Füllung | Interior of polygons and point markers |
+| Outline | Umriss | Outline of polygons and point markers |
+| Casing | Randlinie | Border along both sides of a line |
+| Width | Breite | Thickness of a line or outline |
+| Ends | Enden | Line end style in the Style panel |
+| Corners | Ecken | Line corner style in the Style panel |
 | Opacity | Deckkraft | Transparency level |
 | Marker | Marker | Point symbol |
-| Custom Marker | Benutzerdefiniertes Symbol | Custom icon |
-| Marker Size | Symbolgröße | Size of point marker icon |
-| Color based on | Farbe basierend auf | Field used to drive color classification |
-| Marker based on | Symbol basierend auf | Field used to assign different icons |
-| Label by | Beschriftung nach | Field used for map label text |
-| **Labels** | **Beschriftungen** | Text labels |
-| Label Settings | Beschriftungseinstellungen | Label configuration |
-| Color scale | Farbskala | Color ramp for classified visualization |
-| Equal Interval | Gleiches Intervall | Classification with equal-width breaks |
-| Quantile | Quantil | Classification with equal-count breaks |
-| Custom Breaks | Benutzerdefinierte Schritte | User-defined classification thresholds |
+| Icon | Symbol | Symbol drawn on a point marker |
+| Size | Größe | Size of a point marker |
+| Fixed | Fest | One value everywhere |
+| By zoom | Nach Zoom | Value that changes as the map zooms |
+| By attribute | Nach Attribut | Value that follows a number field |
+| By classes | Nach Klassen | One value per category or range of a field |
+| Style one class | Eine Klasse gestalten | Edit one class of a classification on its own |
+| Rules | Regeln | Conditions on fields and what they change |
+| **Label** | **Beschriftung** | Text shown on map features |
+| Custom text | Eigener Text | Label text that mixes fields and your own words |
+| Method | Methode | How a field's values are split into classes |
+| Equal intervals | Gleiche Intervalle | Classification with equal-width breaks |
+| Quantiles | Quantile | Classification with equal-count breaks |
+| Manual breaks | Manuelle Grenzen | User-defined classification thresholds |
 | Sequential | Sequenziell | Single-hue color progression |
 | Diverging | Divergierend | Two-hue color progression from center |
 | Base Color | Grundfarbe | Primary color for styling |

@@ -1,203 +1,196 @@
 ---
-description: "Set fill and stroke color, opacity, stroke width, line patterns and arrows, point clustering, custom markers and point size, and copy styles between layers."
+description: "Open a layer's style panel, keep several named styles per layer, and set the fill, outline, line, icon and size of points, lines and polygons, or draw points as a heatmap, clusters or H3 hexagons."
 sidebar_position: 1
 ---
 
 # Basic styling
 
-**Layer styling allows you to customize the visual appearance of your data to create clear, appealing maps.** GOAT automatically assigns default styles based on your data type (points, lines, or polygons), but you can customize colors, strokes, opacity, and other visual properties.
+**The style panel sets how a layer looks on the map.** GOAT gives every new layer a style that fits its data (points, lines, polygons or a raster). In the panel you change colors, widths and symbols, keep several styles per layer and switch between them. Every change shows on the map at once and is saved automatically.
 
-<iframe width="100%" height="500" src="https://www.youtube.com/embed/R7nefHqPnBk?si=KWndAFlcb2uuC7CZ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-
-## How to style your layers
+## Open the style panel
 
 <div class="step">
   <div class="step-number">1</div>
-  <div class="content">In the <code>Layers</code> panel, click your layer. Its settings panel opens on the right with the tabs <code>Style</code>, <code>Filter</code> and <code>Metadata</code>, and the <code>Style</code> tab selected. The styling options are in the <code>Style</code> section of this tab.</div>
+  <div class="content">In the <code>Layers</code> panel, click your layer. Its settings panel opens on the right with the tabs <code>Style</code>, <code>Filter</code> and <code>Metadata</code>, and the <code>Style</code> tab selected. A raster layer has the tabs <code>Style</code> and <code>Metadata</code>.</div>
 </div>
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Choose the styling category you want to modify: <code>Fill Color</code> (point and polygon layers), <code>Stroke Color</code> (labelled <code>Color</code> for line layers), <code>Stroke Width</code>, <code>Line style</code> (line layers only), <code>Clustering</code>, <code>Custom Marker</code> and <code>Point Settings</code> (point layers only).</div>
+  <div class="content">The header shows the layer's name, a dot in its main color and what it holds, for example <code>Points · 1,250 features</code>. Below it, the styles row shows the name of the active style (see <a href="#named-styles">Named styles</a>), whether your changes are saved, and the buttons <code>Undo (Ctrl+Z)</code> and <code>Redo (Ctrl+Shift+Z)</code>.</div>
 </div>
-
-### Fill color
-Fill color defines the interior appearance of point and polygon features.
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">
-    <p>
-     On <code>Color</code> use the <strong>Color Picker to select your color</strong> or the <strong>Preset Colors to choose from the predefined color palette</strong>.
-    </p>
-  </div>
+  <div class="content">Below the styles row are the sections of the panel. Click a row to open its editor next to the panel, and change the values there. The map follows each change.</div>
+</div>
+
+:::info Saving
+There is no save button. A check mark in the styles row means <code>Saved</code>; while a change is on its way it says <code>Saving…</code>. Without a connection the panel says <code>Offline, changes are kept while this page is open</code> and saves once the connection is back. If someone else changed the same style in the meantime, the panel says <code>Someone changed this style meanwhile.</code> and offers <code>Apply my changes</code> or <code>Discard my changes</code>.
+:::
+
+## How the panel works
+
+The sections of a vector layer, from top to bottom:
+
+| Section | What it holds |
+| ------- | ------------- |
+| <code>General</code> | Point layers only: <code>Draw as</code>, see [How points are drawn](#how-points-are-drawn). |
+| <code>Heatmap</code>, <code>Clusters</code> or <code>H3 hexagons</code> | The settings of the drawing chosen in <code>Draw as</code>. |
+| <code>Polygons</code>, <code>Lines</code> or <code>Points</code> | The symbol: one row per part, such as <code>Fill</code>, <code>Outline</code> or <code>Label</code>. |
+| <code>Rules</code> | Conditions on fields and what they change, see [Rules](./attribute_based_styling.md#rules). |
+| <code>Layer</code> | <code>Opacity</code>, <code>Visible</code>, <code>Draw order</code>, <code>Position</code> and <code>Time</code>, see [Layer settings](#layer-settings). |
+| <code>Legend</code> | See [Legend](../legend.md). |
+| <code>Popup</code> | See [Popup](../popup.md). |
+
+**Editors.** A row shows a summary of its part, such as a color swatch and a width. Clicking it opens the part's editor to the left of the panel. Some rows inside an editor open a further editor next to it, for example a color picker or the editor of a value that changes by zoom. Press `Esc` to close the last one.
+
+**How a value is set.** To the right of many rows sits a small button with an icon and an arrow. It shows how the value is set and lets you change that: <code>Fixed</code> (one value everywhere), <code>By zoom</code>, <code>By attribute</code>, <code>Field values</code> or <code>By classes</code>. The menu lists only what the property allows. See [Attribute-based styling](./attribute_based_styling.md).
+
+**Switching parts on and off.** Parts you can do without, such as <code>Outline</code>, <code>Casing</code>, <code>Arrows</code>, <code>Label</code> or <code>Icon</code>, have a switch in the header of their editor. A part that is off shows <code>None</code> in its row. Switching it on again brings back its last settings.
+
+**Back to the dataset's style.** While a part differs from the dataset's default style, its editor header shows the button <code>Reset to the dataset's style</code> (a circular arrow). It puts that part back as the dataset's style has it, classes included. <code>Undo</code> takes it back.
+
+**Zoom range of a part.** Each part's editor ends with <code>Visible</code>: the zooms at which this part is drawn, within the zooms of the layer. See [Zoom visibility](../zoom.md).
+
+## Polygons
+
+The <code>Polygons</code> section has the rows <code>Fill</code>, <code>Outline</code>, <code>Height</code> and <code>Label</code>.
+
+- <code>Fill</code>: <code>Color</code>, <code>Opacity</code> and <code>Pattern</code>. <code>Pattern</code> opens the patterns: <code>None</code>, <code>Diagonal lines</code>, <code>Diagonal lines, other way</code>, <code>Vertical lines</code>, <code>Horizontal lines</code>, <code>Crosshatch</code>, <code>Grid</code> and <code>Dots</code>. With a pattern, set its <code>Line color</code> (<code>Dot color</code> for dots; <code>Same as fill</code> by default), <code>Spacing</code> and <code>Thickness</code> (<code>Dot size</code> for dots). The pattern is drawn over the fill color.
+- <code>Outline</code>: <code>Color</code> (a color of its own or <code>Same as fill</code>), <code>Width</code>, <code>Opacity</code> and <code>Dash</code> (<code>Solid</code>, <code>Dashed</code>, <code>Dotted</code> or <code>Dash dot</code>).
+- <code>Height</code>: raises the polygons in the 3D view, see [Height](#height).
+- <code>Label</code>: text on each polygon, see [Labels](../labels.md).
+
+## Lines
+
+The <code>Lines</code> section has the rows <code>Line</code>, <code>Casing</code>, <code>Arrows</code> and <code>Label</code>.
+
+- <code>Line</code>: <code>Color</code>, <code>Width</code>, <code>Opacity</code>, <code>Dash</code> (<code>Solid</code>, <code>Dashed</code>, <code>Dotted</code> or <code>Dash dot</code>), <code>Ends</code> (<code>Flat</code>, <code>Round</code> or <code>Square</code>, which extends past the end by half the width), <code>Corners</code> (<code>Sharp</code>, <code>Round</code> or <code>Bevel</code>), <code>Offset</code> and <code>Blur</code>. <code>Offset</code> shifts the line sideways, so both directions of a road show. It moves the drawing only: clicking and snapping still use the line itself.
+- <code>Casing</code>: a border along both sides of the line, as roads have on many maps: <code>Color</code>, <code>Width</code> (the extra width on each side of the line) and <code>Opacity</code>.
+- <code>Arrows</code>: <code>Direction</code> (<code>Forward</code>, in the drawing direction of the line, <code>Backward</code> or <code>Both ways</code>), <code>Size</code>, <code>Color</code> (a color of its own or <code>Same as line</code>), <code>Placement</code> (<code>Along the line</code>, <code>In the middle</code>, <code>At the start</code>, <code>At the end</code> or <code>At both ends</code>) and, along the line, <code>Spacing</code>.
+- <code>Label</code>: text along or on each line, see [Labels](../labels.md).
+
+## Points
+
+The <code>Points</code> section has the rows <code>Size</code>, <code>Fill</code>, <code>Outline</code>, <code>Icon</code> and <code>Label</code>.
+
+- <code>Size</code>: the size of the marker in px, set with the slider right in the section.
+- <code>Fill</code>: <code>Color</code> and <code>Opacity</code> of the marker, and for a plain circle <code>Offset x</code> and <code>Offset y</code>. With the switch in the header off, the markers are drawn hollow: only their outline and icon show. If they have neither, the row warns <code>Markers are invisible: turn on the outline or add an icon.</code>
+- <code>Outline</code>: <code>Color</code> (a color of its own or <code>Same as fill</code>), <code>Width</code> and <code>Opacity</code>.
+- <code>Icon</code>: the symbol on the marker. The switch in the header takes the icon off, and the points are drawn as plain circles again; switched on, your last icon and shape come back.
+- <code>Label</code>: text next to each point, see [Labels](../labels.md).
+
+### Icons and marker shapes
+
+<div class="step">
+  <div class="step-number">1</div>
+  <div class="content">In the <code>Points</code> section, click <code>Icon</code> and make sure the switch in the editor's header is on.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">2</div>
+  <div class="content">Click the <code>Icon</code> row. The icon picker opens with the tabs <code>Symbols</code>, <code>Emoji</code> and <code>Custom</code>, each with its own search. Click an icon to use it.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">3</div>
+  <div class="content">At the top of the picker, <code>Shape</code> sets the marker the icon sits on: <code>Circle</code>, <code>Square</code>, <code>Diamond</code>, <code>Hexagon</code>, <code>Shield</code>, one of the <code>Pins</code> (<code>Pin</code>, <code>Round pin</code>, <code>Needle</code>, <code>Square pin</code>, <code>Tag pin</code> or <code>Flag</code>), or <code>Icon alone</code> without a marker.</div>
 </div>
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Click the options icon <img src={require('/img/icons/options.png').default} alt="Options Icon" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/> next to <code>Fill Color</code> to show its advanced options. Under <code>Opacity</code>, move the slider or enter a value between 0 (transparent) and 1 (opaque) to <strong>control transparency</strong>.</div>
+  <div class="content">Back in the <code>Icon</code> editor, set <code>Icon color</code> (<code>Color</code> for an icon alone), <code>Rotation</code>, <code>Offset x</code> and <code>Offset y</code>. For an icon alone or a pin, <code>Anchor</code> sets which point of the icon sits on the location: <code>Center</code>, <code>Bottom</code> (the tip, as for pins) or another side or corner. <code>Overlap</code> on draws the markers even where they overlap other symbols.</div>
 </div>
 
-:::info
-<code>Opacity</code> applies to the fill only. <code>Stroke Color</code> has no opacity setting: outlines of points and polygons are always drawn fully opaque. Line layers have no fill, so their <code>Opacity</code> slider is in the advanced options of <code>Color</code>.
+To use your own icon, open the <code>Custom</code> tab, drop an image on the upload field or click it to choose one (square, with a transparent background, up to 4 MB), give it a <code>Name</code> and click <code>Upload</code>. Your icons are listed under <code>Your icons</code>; click <code>Manage</code> to rename or delete them.
+
+:::tip
+To give each category its own icon, set the icon <code>By classes</code> of a field. See [Attribute-based styling](./attribute_based_styling.md).
 :::
 
-### Stroke color
-Stroke color applies to the outlines and edges of map features. It helps distinguish features and enhance their visibility.
+## How points are drawn {#how-points-are-drawn}
 
-<div class="step">
-  <div class="step-number">5</div>
-  <div class="content">  On <code>Color</code> use the <strong>Color Picker</strong> or the <strong>Preset Colors</strong> to <strong>customize stroke appearance</strong>.</div>
-</div>
+For a point layer, the <code>General</code> section sets <code>Draw as</code>:
 
-### Stroke width
+| Option | What it draws |
+| ------ | ------------- |
+| <code>Points</code> | Each feature as its own symbol (the default). |
+| <code>Heatmap</code> | The density of the points as a color surface. |
+| <code>Clusters</code> | Nearby points merge into circles with a count. |
+| <code>H3 hexagons</code> | The points counted or summed per hexagon, computed on the server. |
 
-<div class="step">
-  <div class="step-number">6</div>
-  <div class="content">  On <code>Stroke Width</code> move the slider to <strong>adjust the thickness</strong> of lines and feature outlines.</div>
-</div>
+**Heatmap.** The <code>Heatmap</code> section has <code>Colors</code> (the palette), <code>Radius</code>, <code>Intensity</code>, <code>Opacity</code> and <code>Weight</code>: <code>Each point counts once</code> or <code>By</code> a number field, with the field's <code>Range</code>. <code>Points</code> sets whether the single points show too: <code>Never, density only</code> or from a zoom level on. While they never show, the <code>Points</code>, <code>Rules</code> and <code>Popup</code> sections are hidden.
 
-### Line style
+**Clusters.** The <code>Clusters</code> section has <code>Color</code> (the circles), <code>Count</code> (the number on them), <code>Radius</code> (how close points must be to merge), <code>Until</code> (the zoom up to which points are clustered) and <code>Smallest</code> (the fewest points a cluster takes). The single points keep the look set in the <code>Points</code> section. Clusters are computed in the browser and work for layers with up to 100,000 features; for larger layers, use a heatmap or H3 hexagons.
 
-The **Line style** section is available for **line layers only** and controls the pattern and decoration of lines.
-
-**Pattern:**
-
-<div class="step">
-  <div class="step-number">7</div>
-  <div class="content">Under <code>Pattern</code>, choose how the line is drawn: <code>Solid</code>, <code>Dashed</code>, <code>Dotted</code>, or <code>Dash-dot</code>. When a non-solid pattern is selected, a <code>Density</code> dropdown appears with options <code>Tight</code>, <code>Normal</code>, or <code>Loose</code>.</div>
-</div>
-
-**Arrows:**
-
-<div class="step">
-  <div class="step-number">8</div>
-  <div class="content">
-  Under <code>Arrows</code>, choose the arrowhead direction: <code>None</code>, <code>Forward</code>, <code>Backward</code>, or <code>Both</code>. When any direction is selected, additional controls appear:
-    <ul>
-      <li><code>Placement</code>: where the arrows are placed (<code>Repeat along line</code>, <code>Start of line</code>, <code>End of line</code>, <code>Both ends</code>, or <code>Center (one per line)</code>).</li>
-      <li><code>Arrow size</code>: slider to control the arrowhead size.</li>
-      <li><code>Arrow spacing</code>: slider to control the distance between repeated arrows (only visible when Placement is <code>Repeat along line</code>).</li>
-      <li><code>Allow overlap</code>: checkbox to prevent arrows from being hidden when they overlap.</li>
-    </ul>
-  </div>
-</div>
-
-**Advanced Options** (expand to access):
-
-<div class="step">
-  <div class="step-number">9</div>
-  <div class="content">
-  Expand <code>Advanced Options</code> to configure:
-    <ul>
-      <li><code>Cap</code>: how line endpoints are rendered (<code>Butt</code>, <code>Round</code>, or <code>Square</code>).</li>
-      <li><code>Join</code>: how corners between line segments look (<code>Bevel</code>, <code>Round</code>, or <code>Miter</code>).</li>
-      <li><code>Offset</code>: shifts the line visually left or right of its actual geometry. Useful for parallel roads or directional lanes. Note: this is a visual shift only. Hit-testing and snapping still use the original geometry.</li>
-    </ul>
-  </div>
-</div>
-
-### Clustering
-Clustering groups nearby point features into a single marker with a count, keeping the map readable when many points overlap.
-
-<div class="step">
-  <div class="step-number">7</div>
-  <div class="content">Enable the <code>Clustering</code> toggle to activate clustering for your point layer.</div>
-</div>
-
-<div class="step">
-  <div class="step-number">8</div>
-  <div class="content">Use the <code>Cluster radius</code> slider to control how close points need to be to merge into a cluster. A larger radius groups more points together.</div>
-</div>
-
-<div class="step">
-  <div class="step-number">9</div>
-  <div class="content">Optionally, expand <code>Advanced Options</code> to further configure <code>Min cluster size</code>, <code>Max zoom to cluster</code>, <code>Cluster color</code>, and <code>Text color</code>.</div>
-</div>
-
-### Custom markers
-For point layers, you can use custom markers instead of basic shapes.
-
-<div class="step">
-  <div class="step-number">10</div>
-  <div class="content">In the styling menu, turn on the <code>Custom Marker</code> toggle to <strong>enable custom markers</strong></div>
-</div>
-
-<div class="step">
-  <div class="step-number">11</div>
-  <div class="content"> Click on <code>Select Marker</code> and <strong>browse the icon library</strong> or <strong>upload your own marker</strong> by clicking on the <code>Custom</code> tab and uploading your file (JPEG, PNG, or SVG format).</div>
-</div>
-
-<div class="step">
-  <div class="step-number">12</div>
-  <div class="content">Name your icon (this name will be used for searching). You can later click on <code>Manage icons</code> to <strong>rename or delete uploaded icons</strong></div>
-</div>
-
-<div class="step">
-  <div class="step-number">13</div>
-  <div class="content">On <code>Size</code> adjust the <strong>marker size</strong> using the slider</div>
-</div>
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <Video src={require('/img/map/styling/custom_marker.mp4').default} alt="Custom marker selection" style={{ maxHeight: "450px", maxWidth: "auto", objectFit: "cover"}}/>
-</div>
-<p></p>
-
-:::info
-You can only edit the color of icons from the library, not uploaded custom icons.
-:::
-
-### Point settings 
-
-<div class="step">
-  <div class="step-number">14</div>
-  <div class="content">
-  Under <code>Point Settings</code>, on <code>Size</code> <strong>adjust the radius</strong> using the slider or enter precise values in the text box for exact control.
-  </div>
-</div>
+**H3 hexagons.** The <code>H3 hexagons</code> section has <code>Size</code> (<code>Automatic</code>, with smaller hexagons as you zoom in, or a fixed resolution), <code>Value</code> (<code>Number of points</code>, or the sum or mean of a number field), <code>Colors</code>, <code>Classes</code> (<code>Continuous</code> or a classification method, with <code>Count</code>), <code>Opacity</code>, <code>Height</code>, <code>Outline</code> and <code>Points</code> (<code>Never, hexagons only</code> or from a zoom level on).
 
 ### Height {#height}
 
 Polygons and H3 hexagons can stand in the map's [3D view](../../map_interface.md#3d-view) as volumes.
 
-**Polygons.** In the polygon settings, <code>Height</code> sets how tall each polygon stands:
+**Polygons.** In the <code>Polygons</code> section, click <code>Height</code>. The switch in the editor's header raises the polygons or lays them flat. In the editor, <code>Top</code> sets how tall each polygon stands; its button chooses how:
 
 - <code>None</code>: flat, no height.
 - <code>Fixed</code>: one height for every polygon, in metres.
 - <code>By zoom</code>: the height grows as the map zooms in.
-- <code>By attribute</code>: the height from a number field, such as height or levels. Fields named like `height`, `render_height`, `building_height`, `levels`, `building_levels`, `storeys` or `floors` are suggested first. For a field that counts levels, set <code>Unit</code> to <code>Storeys × 3 m</code>.
+- <code>By attribute</code>: the height from a number field, such as height or levels. Fields named like `height`, `render_height`, `building_height`, `levels`, `building_levels`, `storeys` or `floors` are listed first under <code>Suggested for height</code>. For a field that counts levels, set <code>Unit</code> to <code>Storeys × 3 m</code>.
 - <code>By classes</code>: one height per class of a field.
 
-While <code>Height</code> is set, <code>Base height</code> lifts the volume off the ground, for example for a bridge or an upper floor. A raised layer has one opacity for the whole layer and draws no fill pattern; its outline stays on the ground and its labels sit on the roofs. Setting a height while the map is in 2D switches it to 3D.
+While a height is set, <code>Bottom</code> sets the base height, <code>Fixed</code> or <code>By attribute</code> (such as a field `min_height`). It lifts the volume off the ground, for example for a bridge or an upper floor. A raised layer has one opacity for the whole layer and draws no fill pattern; its outline stays on the ground and its labels sit on the roofs. Setting a height while the map is in 2D switches it to 3D; if you go back to 2D, the row says <code>Viewing in 2D.</code> with the link <code>Show in 3D</code>.
 
-**H3 hexagons.** <code>Height</code> turns the hexagons into columns as tall as their value. <code>Tallest</code> sets the height of the column with the highest value, and <code>Scale</code> chooses <code>Linear</code> or <code>Square root</code>.
+**H3 hexagons.** In the <code>H3 hexagons</code> section, click <code>Height</code> and switch it on: the hexagons become columns as tall as their value. <code>Tallest</code> sets the height of the column with the highest value, <code>Base height</code> lifts the columns, and <code>Scale</code> chooses <code>Linear</code> or <code>Square root</code>. Columns draw no outline.
 
 The legend names the height under the layer's colors.
 
-## Copy and paste style
+## Layer settings {#layer-settings}
 
-The <code>Style</code> tab of a layer's settings panel has three quick-action icons at the top to manage styles across layers: **Copy Style**, **Paste Style**, and **Set as Default**. This lets you apply a consistent look across multiple layers without reconfiguring each one manually.
+The <code>Layer</code> section holds what applies to the whole layer:
+
+- <code>Opacity</code>: the opacity of the whole layer.
+- <code>Visible</code>: the zooms at which the layer is drawn, see [Zoom visibility](../zoom.md).
+- <code>Draw order</code>: which features are drawn on top: <code>As in the data</code>, <code>First class on top</code> (with classes, see [Attribute-based styling](./attribute_based_styling.md)), or the smallest or largest values of a number field on top.
+- <code>Position</code>: where the layer is drawn among the basemap's layers: <code>On top</code>, <code>Below the basemap's labels</code> or <code>Below the basemap's roads</code>. The position belongs to the layer in this project, not to the style, so it stays when you switch styles or basemaps.
+- <code>Time</code>: adds a time slider under the layer's row in the <code>Layers</code> panel. The options name the field: a whole-number field such as `year` steps one value at a time (<code>One year at a time</code>), a date field by year, month or day (for example <code>date by month</code>). The slider shows the features of one step at a time and starts at the latest one. <code>Off</code> removes it.
+
+## Named styles {#named-styles}
+
+A layer can keep up to 10 named styles, for example one by population and one by building age. One of them is active: the map draws it and the panel edits it.
 
 <div class="step">
   <div class="step-number">1</div>
-  <div class="content">In the <code>Layers</code> panel, click the layer whose style you want to copy. Its settings panel opens with the <code>Style</code> tab selected.</div>
+  <div class="content">In the styles row at the top of the <code>Style</code> tab, click the name of the active style. <code>Styles</code> opens next to the panel with the layer's styles; the active one is marked with a check.</div>
 </div>
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Click the <code>Copy Style</code> icon at the top of the tab.</div>
+  <div class="content">Click a style to make it the active one. Click <code>New style</code> to add one: it becomes active, ready for its name.</div>
 </div>
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Click the target layer in the <code>Layers</code> panel and click <code>Paste Style</code> at the top of its <code>Style</code> tab to apply the copied style.</div>
+  <div class="content">Double-click a style to rename it, or open its menu (<code>More options</code>, the three dots) for <code>Rename</code>, <code>Duplicate</code>, <code>Move up</code>, <code>Move down</code>, <code>Set as dataset default</code>, <code>Reset to the dataset's style</code> (for the active style, while it differs from the dataset's) and <code>Delete</code>. The last style of a layer cannot be deleted.</div>
 </div>
 
-<div class="step">
-  <div class="step-number">4</div>
-  <div class="content">Optionally, click <code>Set as Default</code> to save the current style as the default for future uses of this dataset.</div>
-</div>
+**The dataset's default style.** A dataset has a default style of its own: a layer's first style in a project is a copy of it, and <code>Reset to the dataset's style</code> goes back to it. <code>Set as dataset default</code> makes a copy of a style the dataset's default. It is offered to project editors who may edit the dataset, and never for catalog layers. A style that matches the dataset's default says <code>Dataset default</code> in the list.
+
+**Copy a style to another layer.** At the bottom of <code>Styles</code>, click <code>Copy style</code>. Then open the other layer and click <code>Paste style</code> there: the copied style replaces the active style of that layer, and <code>Undo</code> takes it back. Styles can be pasted on layers of the same kind and geometry only, for example from one polygon layer to another.
+
+:::info Viewers of a published map
+In a published project, viewers can switch between a layer's styles in its settings (<code>Style</code>). Their choice is not saved.
+:::
+
+## Raster layers and map services
+
+A raster file has the sections <code>General</code>, a section for its colors, <code>Layer</code>, <code>Legend</code> and <code>Popup</code>.
+
+- <code>General</code>: <code>Draw as</code> <code>Hillshade</code> (shaded relief from elevation), <code>Color range</code> (a palette over the cell values), <code>Categories</code> (one color per cell value) or <code>Image</code> (as stored). With several bands, choose the <code>Band</code>, or for an image the <code>Combination</code>: <code>True color</code>, <code>False color</code> or <code>Custom</code>.
+- The colors: for a color range, <code>Colors</code> opens the colors editor, with a palette over a range or your own colors at your own values; for categories, one class per cell value (<code>Add a class</code>); for a hillshade, its <code>Method</code>, <code>Light from</code>, <code>Light height</code>, <code>Strength</code>, the colors of <code>Shadow</code>, <code>Highlight</code> and <code>Accent</code>, and <code>Colors</code> under the shading.
+- <code>Layer</code>: <code>Opacity</code>, <code>Resampling</code> (<code>Smooth</code> or <code>Nearest</code>), <code>Adjustments</code> for an image (<code>Brightness</code>, <code>Contrast</code>, <code>Saturation</code>, <code>Hue</code>), <code>No data</code> (cell values drawn transparent; pick one on the map) and <code>Visible</code>.
+- <code>Popup</code>: <code>Show on</code> <code>Off</code>, <code>On click</code> or <code>Only on hover</code>; with several bands, <code>Values</code> shows the <code>Styled values</code> or <code>All bands</code>.
+
+A map service (WMS, WMTS or XYZ) sends finished pictures: it is drawn as an <code>Image</code>, in one of the styles the service offers (<code>Service style</code>). Its <code>Layer</code> section has <code>Opacity</code>, <code>Resampling</code>, <code>Adjustments</code> and <code>Visible</code>, and its legend shows the service's own legend image when it has one.
 
 :::tip Smart styling
-Explore [attribute-based styling](./attribute_based_styling) for advanced visualization options based on your data values.
+Explore [attribute-based styling](./attribute_based_styling.md) to style features by their data values, by zoom or with rules.
 :::

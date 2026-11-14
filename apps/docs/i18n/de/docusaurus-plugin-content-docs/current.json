@@ -40,7 +40,7 @@
     "description": "Das Label für die Kategorie Styling in der Seitenleiste tutorialSidebar"
   },
   "sidebar.tutorialSidebar.category.Style.link.generated-index.description": {
-    "message": "Alle zur Karte hinzugefügten Layer können stilisiert werden. Dies kann durch die Verwendung der gleichen Farbe und Darstellung für alle Features erfolgen, oder durch ein attributbasiertes Styling.",
+    "message": "Alle zu der Karte hinzugefügten Layer können im Stil-Panel gestaltet werden: mit einem Aussehen für alle Objekte, nach Attribut, nach Klassen, nach Zoom oder mit Regeln, in mehreren benannten Stilen je Layer.",
     "description": "Die generierte Index-Seite Beschreibung für die Kategorie Layer Styling in der Seitenleiste tutorialSidebar"
   },
   "sidebar.tutorialSidebar.category.Toolbox": {
