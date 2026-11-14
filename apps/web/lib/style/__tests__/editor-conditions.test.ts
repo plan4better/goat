@@ -8,6 +8,7 @@ import {
   fromRows,
   operatorsFor,
   toRows,
+  writtenWhen,
 } from "@/lib/style/editor/conditions";
 
 const FIELDS = {
@@ -77,6 +78,27 @@ describe("rule conditions", () => {
     expect(fromRows(one({ field: "pupils", op: "is", value: "abc" }), FIELDS)).toBeNull();
     expect(fromRows(one({ field: "name", op: "contains_the_text", value: "a_b" }), FIELDS)).toBeNull();
     expect(fromRows({ match: "all", rows: [] }, FIELDS)).toBeNull();
+  });
+
+  it("writes the complete rows of a draft and leaves the ones being written out", () => {
+    const traffic = { field: "traffic", op: "is_less_than", value: 1500 } as const;
+    // The filter panel's draft rows, with their ids.
+    const complete = { id: "c1", enabled: true, ...traffic } as const;
+    const unfinished = { id: "c2", field: "name", op: "is", enabled: true } as const;
+    expect(writtenWhen({ match: "any", rows: [complete, unfinished] }, FIELDS)).toEqual({
+      op: "<",
+      args: [{ property: "traffic" }, 1500],
+    });
+    expect(writtenWhen({ match: "any", rows: [traffic, { field: "name", op: "is_blank" }] }, FIELDS)).toEqual(
+      {
+        op: "or",
+        args: [
+          { op: "<", args: [{ property: "traffic" }, 1500] },
+          { op: "isNull", args: [{ property: "name" }] },
+        ],
+      }
+    );
+    expect(writtenWhen({ match: "all", rows: [unfinished] }, FIELDS)).toBeNull();
   });
 
   it("offers the operators that fit the field type", () => {

@@ -186,7 +186,7 @@ A rule is a condition on any fields and what it changes for the features that ma
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Under <code>When</code>, build the condition: a <code>Field</code>, a <code>Comparison</code> such as <code>Is</code>, <code>Is between</code> or <code>Contains the text</code>, and a <code>Value</code>. <code>Add a condition</code> adds another; <code>Match all of these</code> or <code>any</code> sets whether every condition must hold or one is enough.</div>
+  <div class="content">Under <code>When</code>, click <code>Add a condition</code> and choose a field. The condition's editor opens next to the rule: choose the comparison under <code>Condition</code> and set the value as in the <a href="../../filter#filter-by-attribute">filter</a>, from the list of the field's values with how often each occurs or with the slider over the histogram. Each condition then shows as a sentence in its row: click the row to change it, or point at it and click the bin icon to remove it (a rule keeps one condition at least). From two conditions on, the menu next to <code>When</code> sets whether features meet every condition (<code>Match all</code>) or at least one (<code>Match any</code>).</div>
 </div>
 
 <div class="step">

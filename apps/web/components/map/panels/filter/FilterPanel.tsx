@@ -6,7 +6,7 @@
 // Above the conditions is the filter's area (the area folder): one for the whole filter, which the conditions'
 // "all or any" does not reach. It knows nothing of where the filter is kept: the caller gives the saved model and
 // saves what it hands up.
-import { Alert, Box, ButtonBase, Typography } from "@mui/material";
+import { Alert, Box, Typography } from "@mui/material";
 import {
   type ReactNode,
   useCallback,
@@ -17,8 +17,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useTranslation } from "react-i18next";
-
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { areaPolygons, pointCount } from "@/lib/filter/area";
 import { FILTER_LIMITS } from "@/lib/filter/generated/operators";
@@ -35,6 +33,7 @@ import {
   issueText,
 } from "@/components/map/panels/filter/ConditionRow";
 import { CustomRow } from "@/components/map/panels/filter/CustomRow";
+import { MatchMenu } from "@/components/map/panels/filter/MatchMenu";
 import { ResultHeader } from "@/components/map/panels/filter/ResultHeader";
 import { editorKey } from "@/components/map/panels/filter/RowShell";
 import { AreaSection, SavedArea } from "@/components/map/panels/filter/area/AreaSection";
@@ -63,7 +62,6 @@ import {
 } from "@/components/map/panels/filter/draft";
 import type { FieldInfo } from "@/components/map/panels/styleEditor/context";
 import { FieldPicker } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
-import { DropdownMenu } from "@/components/map/panels/styleEditor/popovers/DropdownMenu";
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
 import {
   anchorTopOf,
@@ -262,53 +260,6 @@ export function FilterPanel({
         )}
       </Box>
     </FilterPanelContext.Provider>
-  );
-}
-
-/** How the conditions combine, in the section's head: every one of them, or at least one. */
-function MatchMenu({
-  match,
-  onChange,
-}: {
-  match: FilterModel["match"];
-  onChange: (match: FilterModel["match"]) => void;
-}) {
-  const { t } = useTranslation("common");
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  return (
-    <>
-      <ButtonBase
-        aria-haspopup="menu"
-        aria-expanded={!!anchor}
-        onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}
-        sx={{
-          height: 24,
-          mr: -1.5,
-          pl: 2,
-          pr: 1.5,
-          gap: 1,
-          borderRadius: 1.5,
-          color: "text.secondary",
-          typography: "caption",
-          fontWeight: "bold",
-          "&:hover, &.Mui-focusVisible": { bgcolor: "action.hover" },
-        }}>
-        {t(`filter_panel.match_${match}`)}
-        <Icon iconName={ICON_NAME.CHEVRON_DOWN} sx={{ fontSize: 10 }} />
-      </ButtonBase>
-      <DropdownMenu
-        anchorEl={anchor}
-        role="menu"
-        width={260}
-        onClose={() => setAnchor(null)}
-        items={(["all", "any"] as const).map((value) => ({
-          label: t(`filter_panel.match_${value}`),
-          sub: t(`filter_panel.match_${value}_note`),
-          selected: match === value,
-          onClick: () => onChange(value),
-        }))}
-      />
-    </>
   );
 }
 

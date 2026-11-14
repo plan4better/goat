@@ -4,8 +4,8 @@
 // lib/filter/rows.ts, in the style's spelling (`orEmpty: false`).
 import type { TFunction } from "i18next";
 
-import type { ConditionOp } from "@/lib/filter/model";
-import { cqlToRow, rowToCql, takesValue as filterTakesValue } from "@/lib/filter/rows";
+import type { ConditionOp, FilterCondition } from "@/lib/filter/model";
+import { cqlToRow, takesValue as filterTakesValue, rowToCql } from "@/lib/filter/rows";
 import type { FieldType } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 
@@ -24,6 +24,12 @@ export interface ConditionRows {
 }
 
 type Fields = Record<string, FieldType>;
+
+/** Rows to write: a rule's own, or the rows of the filter panel's draft the rule's editor keeps (with ids). */
+interface RowsToWrite {
+  match: ConditionRows["match"];
+  rows: readonly FilterCondition[];
+}
 
 const BLANKS: ConditionOp[] = ["is_blank", "is_not_blank"];
 
@@ -63,13 +69,21 @@ export function operatorsFor(type: FieldType | undefined): ConditionOp[] {
 /** Whether the operator takes a value (and a second one). */
 export const takesValue = (op: ConditionOp) => filterTakesValue(op);
 
+const writeRow = (row: FilterCondition, fields: Fields) =>
+  rowToCql(row, fields[row.field], { orEmpty: false });
+
 /** The rows as a rule's `when`, or null while a row is unfinished. */
-export function fromRows(rows: ConditionRows, fields: Fields): JsonObject | null {
-  const parts = rows.rows.map((row) => rowToCql(row, fields[row.field], { orEmpty: false }));
+export function fromRows(rows: RowsToWrite, fields: Fields): JsonObject | null {
+  const parts = rows.rows.map((row) => writeRow(row, fields));
   if (!parts.length || parts.some((part) => part === null)) return null;
   if (parts.length === 1) return parts[0];
   return { op: rows.match === "all" ? "and" : "or", args: parts as JsonObject[] };
 }
+
+/** The complete rows as a rule's `when`, or null while none is: a row being written stays out until it reads, as
+ * an unfinished row of the filter panel saves nothing. */
+export const writtenWhen = (rows: RowsToWrite, fields: Fields): JsonObject | null =>
+  fromRows({ match: rows.match, rows: rows.rows.filter((row) => writeRow(row, fields) !== null) }, fields);
 
 /** One condition as a row, or null when no single row says it. */
 const parseRow = (node: unknown, fields: Fields) =>

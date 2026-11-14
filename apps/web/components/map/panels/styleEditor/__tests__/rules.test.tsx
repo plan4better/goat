@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LayerStyle } from "@/lib/style/generated/types";
 
@@ -10,14 +10,55 @@ import { SymbolSection } from "@/components/map/panels/styleEditor/sections/Symb
 
 import { openGroup, pickColor, renderPanel } from "./renderPanel";
 
+// The layer's values of a field with how many features hold each; one answer per request, as SWR keeps it.
+const uniqueValues = vi.hoisted(() => {
+  const answers = new Map<string, unknown>();
+  return vi.fn((layerId: string, field: string, params?: { page?: number }) => {
+    const key = `${layerId}|${field}|${params?.page ?? 1}`;
+    if (layerId && field && !answers.has(key))
+      answers.set(key, {
+        items: [
+          { value: "Gymnasium", count: 12 },
+          { value: "Realschule", count: 5 },
+        ],
+        total: 2,
+        page: params?.page ?? 1,
+      });
+    return { data: answers.get(key), isLoading: false };
+  });
+});
+vi.mock("@/lib/api/layers", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useLayerUniqueValues: uniqueValues,
+}));
+// The whole dataset's traffic, 0 to 100 in ten bins.
+const histogram = vi.hoisted(() => {
+  const stats = {
+    bins: Array.from({ length: 10 }, (_, i) => ({ range: [i * 10, i * 10 + 10], count: i + 1 })),
+    missing_count: 0,
+    total_rows: 55,
+  };
+  return vi.fn((layerId?: string, _params?: object) => ({
+    histogramStats: layerId ? stats : undefined,
+    isLoading: false,
+  }));
+});
+vi.mock("@/lib/api/projects", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  useProjectLayerHistogramStats: histogram,
+}));
+
 const FIELDS = [
   { name: "traffic", type: "number" as const, label: "traffic" },
   { name: "name", type: "string" as const, label: "name" },
+  { name: "built", type: "date" as const, label: "built" },
 ];
 const QUIET = { id: "r1", name: "Quiet", when: { op: "<", args: [{ property: "traffic" }, 1500] } };
 const UNNAMED = { id: "r2", name: "Unnamed", when: { op: "isNull", args: [{ property: "name" }] } };
 
-function setup(rules: object[] = [], geometry: "line" | "point" = "line") {
+/** `layerId` is the dataset the value lists and the histogram read; a part's editor asks the server for that
+ * dataset's own style (Reset to dataset), so the tests that open one go without. */
+function setup(rules: object[] = [], geometry: "line" | "point" = "line", layerId = "dataset-1") {
   return renderPanel(
     <PopoverProvider>
       <SymbolSection />
@@ -32,6 +73,7 @@ function setup(rules: object[] = [], geometry: "line" | "point" = "line") {
         ...(rules.length ? { rules } : {}),
       } as LayerStyle,
       data: {
+        layerId,
         geometry,
         fields: FIELDS,
         fieldTypes: Object.fromEntries(FIELDS.map((f) => [f.name, f.type])),
@@ -45,64 +87,145 @@ const openRule = (name: string) =>
     within(screen.getByText(name).closest("[data-rule-row]") as HTMLElement).getAllByRole("button")[0]
   );
 
+/** The rule's conditions, each a row as the filter panel's are. */
+const conditionRows = () => [...document.querySelectorAll<HTMLElement>("[data-filter-row]")];
+const openCondition = (i: number) => userEvent.click(within(conditionRows()[i]).getAllByRole("button")[0]);
+/** "Add a condition": the field first (the field picker), then its editor opens. */
+async function addCondition(field: string) {
+  await userEvent.click(screen.getByRole("button", { name: "style_editor.add_condition" }));
+  const picker = screen
+    .getAllByRole("listbox")
+    .find((list) => list.getAttribute("aria-label") !== "style_editor.condition_value") as HTMLElement;
+  await userEvent.click(within(picker).getByText(field));
+}
+async function pickOp(op: string) {
+  await userEvent.click(screen.getByRole("combobox", { name: "style_editor.condition_compare" }));
+  await userEvent.click(screen.getByRole("option", { name: `filter_panel.op.${op}` }));
+}
+/** Types into the condition editor's value box and leaves it. */
+async function typeValue(text: string, name = "style_editor.condition_value") {
+  const box = screen.getByRole("textbox", { name });
+  await userEvent.clear(box);
+  await userEvent.type(box, text);
+  fireEvent.blur(box);
+}
+const valueList = () => screen.getByRole("listbox", { name: "style_editor.condition_value" });
+const confirmButton = () => screen.getByRole("button", { name: "style_editor.add_rule_confirm" });
+
 describe("rules", () => {
-  /** Picks `option` from the dropdown named `name` in condition `n` (from 1). */
-  const pickIn = async (n: number, name: string, option: string) => {
-    const groups = screen.getAllByRole("group", { name: "style_editor.condition_n" });
-    await userEvent.click(within(groups[n - 1]).getByRole("combobox", { name }));
-    await userEvent.click(within(screen.getByRole("listbox")).getByText(option));
-  };
+  beforeEach(() => {
+    uniqueValues.mockClear();
+    histogram.mockClear();
+  });
+
+  it("a rule's condition is a row with its sentence that opens its editor one level further", async () => {
+    setup([QUIET]);
+    await openRule("Quiet");
+    const rows = conditionRows();
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByTitle("traffic filter_panel.op.is_less_than 1500")).toBeDefined();
+    await openCondition(0);
+    // Beside the rule's popover, headed by its field, the comparison as the filter's editor has it.
+    const editor = document.querySelector("[data-popover-level='2']") as HTMLElement;
+    expect(
+      within(editor).getByRole("button", { name: "style_editor.condition_field: traffic" })
+    ).toBeDefined();
+    expect(within(editor).getByRole("combobox", { name: "style_editor.condition_compare" }).textContent).toBe(
+      "filter_panel.op.is_less_than"
+    );
+  });
+
+  it("an edit in the condition's editor writes the rule in the style's spelling", async () => {
+    const { store } = setup([QUIET]);
+    await openRule("Quiet");
+    await openCondition(0);
+    await typeValue("2000");
+    expect(store.get("rules.0.when")).toEqual({ op: "<", args: [{ property: "traffic" }, 2000] });
+    expect(within(conditionRows()[0]).getByTitle("traffic filter_panel.op.is_less_than 2000")).toBeDefined();
+  });
+
+  it("a text field's values are picked from the layer's list, with their counts", async () => {
+    const notA = { id: "r5", name: "Not A", when: { op: "<>", args: [{ property: "name" }, "a"] } };
+    const { store } = setup([notA]);
+    await openRule("Not A");
+    expect(uniqueValues).not.toHaveBeenCalled();
+    await openCondition(0);
+    expect(uniqueValues).toHaveBeenCalledWith("dataset-1", "name", expect.objectContaining({ page: 1 }));
+    expect(within(valueList()).getByText("12")).toBeDefined();
+    await userEvent.click(within(valueList()).getByText("Gymnasium"));
+    // "is not" in the style's spelling: a bare `<>`, not the filter's alternative of an empty value.
+    expect(store.get("rules.0.when")).toEqual({ op: "<>", args: [{ property: "name" }, "Gymnasium"] });
+  });
+
+  it("a number comparison has the slider over the layer's histogram", async () => {
+    const { store } = setup([QUIET]);
+    await openRule("Quiet");
+    await openCondition(0);
+    expect(histogram).toHaveBeenCalledWith("dataset-1", expect.objectContaining({ column_name: "traffic" }));
+    fireEvent.change(screen.getByRole("slider", { name: "style_editor.condition_value" }), {
+      target: { value: 70 },
+    });
+    expect(store.get("rules.0.when")).toEqual({ op: "<", args: [{ property: "traffic" }, 70] });
+  });
+
+  it("a date condition offers no relative dates: a style does not change with the day", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule" }));
+    await addCondition("built");
+    const compare = screen.getByRole("combobox", { name: "style_editor.condition_compare" });
+    expect(compare.textContent).toBe("filter_panel.op.is");
+    await userEvent.click(compare);
+    const offered = screen.getAllByRole("option").map((option) => option.textContent);
+    expect(offered).toContain("filter_panel.op.is_before");
+    expect(offered).not.toContain("filter_panel.op.in_the_last");
+    expect(offered).not.toContain("filter_panel.op.is_on");
+  });
 
   it("a new rule is written once its condition is complete", async () => {
     const { store } = setup();
     await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule" }));
-    const add = screen.getByRole("button", { name: "style_editor.add_rule_confirm" });
-    expect(add.hasAttribute("disabled")).toBe(true);
-    // One condition on one line: the field, the comparison and the value.
-    const [condition] = screen.getAllByRole("group", { name: "style_editor.condition_n" });
-    expect(
-      within(condition).getByRole("combobox", { name: "style_editor.condition_field" }).textContent
-    ).toBe("style_editor.condition_field");
-    await pickIn(1, "style_editor.condition_field", "traffic");
-    await pickIn(1, "style_editor.condition_compare", "filter_expressions.is_less_than");
-    expect(add.hasAttribute("disabled")).toBe(true);
-    fireEvent.change(within(condition).getByRole("textbox", { name: "style_editor.condition_value" }), {
-      target: { value: "1500" },
-    });
+    expect(confirmButton().hasAttribute("disabled")).toBe(true);
+    expect(conditionRows()).toHaveLength(0);
+    await addCondition("traffic");
+    expect(conditionRows()).toHaveLength(1);
+    await pickOp("is_less_than");
+    // Not complete yet: the row says so, and the rule waits.
+    expect(within(conditionRows()[0]).getByText("filter_panel.unfinished")).toBeDefined();
+    expect(confirmButton().hasAttribute("disabled")).toBe(true);
+    await typeValue("1500");
     expect(store.get("rules")).toBeUndefined();
-    expect(add.hasAttribute("disabled")).toBe(false);
-    await userEvent.click(add);
+    expect(confirmButton().hasAttribute("disabled")).toBe(false);
+    await userEvent.click(confirmButton());
     expect(store.get("rules.0.when")).toEqual({ op: "<", args: [{ property: "traffic" }, 1500] });
     expect(typeof store.get("rules.0.id")).toBe("string");
+    // The rule's editor takes the new rule's place, its condition a row.
+    expect(screen.getByText("style_editor.rule")).toBeDefined();
+    expect(within(conditionRows()[0]).getByTitle("traffic filter_panel.op.is_less_than 1500")).toBeDefined();
   });
 
   it("a second condition brings the all or any choice and a remove button per condition", async () => {
     const { store } = setup();
     await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule" }));
-    // One condition: "When", no all or any.
+    await addCondition("traffic");
+    await pickOp("is_greater_than");
+    await typeValue("10");
+    // One condition: "When", no all or any, nothing to remove (a rule keeps one).
     expect(screen.getByText("style_editor.when")).toBeDefined();
-    expect(screen.queryByText("style_editor.match_lead")).toBeNull();
-    expect(screen.queryByRole("button", { name: "style_editor.remove_condition" })).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_condition" }));
-    expect(screen.getAllByRole("group", { name: "style_editor.condition_n" })).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "style_editor.remove_condition" })).toHaveLength(2);
-    await pickIn(1, "style_editor.condition_field", "traffic");
-    await pickIn(1, "style_editor.condition_compare", "filter_expressions.is_greater_than");
-    fireEvent.change(
-      within(screen.getAllByRole("group", { name: "style_editor.condition_n" })[0]).getByRole("textbox"),
-      { target: { value: "10" } }
-    );
-    await pickIn(2, "style_editor.condition_field", "name");
-    await pickIn(2, "style_editor.condition_compare", "filter_expressions.is_blank");
-    // A comparison without a value has no value box.
+    expect(screen.queryByRole("button", { name: "filter_panel.match_all" })).toBeNull();
     expect(
-      within(screen.getAllByRole("group", { name: "style_editor.condition_n" })[1]).queryByRole("textbox")
+      within(conditionRows()[0]).queryByRole("button", { name: "style_editor.remove_condition" })
     ).toBeNull();
-    // Two: "Match all of these", with a menu for all or any.
-    expect(screen.queryByText("style_editor.when")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: /^style_editor.match_lead/ }));
-    await userEvent.click(within(screen.getByRole("listbox")).getByText("style_editor.match_any"));
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule_confirm" }));
+    await addCondition("name");
+    await pickOp("is_blank");
+    expect(conditionRows()).toHaveLength(2);
+    for (const row of conditionRows())
+      expect(within(row).getByRole("button", { name: "style_editor.remove_condition" })).toBeDefined();
+    // The filter panel's match menu, beside "When".
+    expect(screen.getByText("style_editor.when")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "filter_panel.match_all" }));
+    await userEvent.click(within(screen.getByRole("menu")).getByText("filter_panel.match_any"));
+    expect(screen.getByRole("button", { name: "filter_panel.match_any" })).toBeDefined();
+    await userEvent.click(confirmButton());
     expect(store.get("rules.0.when")).toEqual({
       op: "or",
       args: [
@@ -112,30 +235,51 @@ describe("rules", () => {
     });
   });
 
-  it("Cancel closes the new rule without writing it; the comparison shows its short label", async () => {
+  it("Cancel closes the new rule and its condition's editor without writing it", async () => {
     const { store } = setup();
     await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule" }));
-    await pickIn(1, "style_editor.condition_field", "traffic");
-    await pickIn(1, "style_editor.condition_compare", "filter_expressions.is_less_than");
-    expect(screen.getByRole("combobox", { name: "style_editor.condition_compare" }).textContent).toBe(
-      "style_editor.op_short_is_less_than"
-    );
+    await addCondition("traffic");
+    await pickOp("is_less_than");
+    await typeValue("5");
     await userEvent.click(screen.getByRole("button", { name: "cancel" }));
     expect(screen.queryByText("style_editor.new_rule")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "style_editor.condition_compare" })).toBeNull();
     expect(store.get("rules")).toBeUndefined();
   });
 
-  it("removing a condition leaves the others", async () => {
-    setup();
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_rule" }));
-    await pickIn(1, "style_editor.condition_field", "traffic");
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_condition" }));
-    await userEvent.click(screen.getAllByRole("button", { name: "style_editor.remove_condition" })[1]);
-    const groups = screen.getAllByRole("group", { name: "style_editor.condition_n" });
-    expect(groups).toHaveLength(1);
-    expect(
-      within(groups[0]).getByRole("combobox", { name: "style_editor.condition_field" }).textContent
-    ).toContain("traffic");
+  it("removing a condition leaves the others and writes the rule without it", async () => {
+    const both = { id: "r4", name: "Both", when: { op: "and", args: [QUIET.when, UNNAMED.when] } };
+    const { store } = setup([both]);
+    await openRule("Both");
+    expect(conditionRows()).toHaveLength(2);
+    await userEvent.click(
+      within(conditionRows()[1]).getByRole("button", { name: "style_editor.remove_condition" })
+    );
+    expect(conditionRows()).toHaveLength(1);
+    expect(within(conditionRows()[0]).getByTitle("traffic filter_panel.op.is_less_than 1500")).toBeDefined();
+    expect(store.get("rules.0.when")).toEqual(QUIET.when);
+  });
+
+  it("a condition being written stays out of the rule until it is complete", async () => {
+    const { store } = setup([QUIET]);
+    await openRule("Quiet");
+    await addCondition("name");
+    expect(conditionRows()).toHaveLength(2);
+    expect(store.get("rules.0.when")).toEqual(QUIET.when);
+    await userEvent.click(within(valueList()).getByText("Gymnasium"));
+    expect(store.get("rules.0.when")).toEqual({
+      op: "and",
+      args: [QUIET.when, { op: "=", args: [{ property: "name" }, "Gymnasium"] }],
+    });
+  });
+
+  it("an undo puts the rule's condition rows back as they were", async () => {
+    const { store } = setup([QUIET]);
+    await openRule("Quiet");
+    await openCondition(0);
+    await typeValue("2000");
+    act(() => store.undo());
+    expect(within(conditionRows()[0]).getByTitle("traffic filter_panel.op.is_less_than 1500")).toBeDefined();
   });
 
   it("a rule is a row of its own: its name in the field across the row, what it changes under it", async () => {
@@ -169,7 +313,7 @@ describe("rules", () => {
   });
 
   it("Style the matching features makes the symbol rows edit the rule", async () => {
-    const { store } = setup([QUIET]);
+    const { store } = setup([QUIET], "line", "");
     await openRule("Quiet");
     await userEvent.click(screen.getByRole("button", { name: "style_editor.style_matching" }));
     expect(store.scope).toEqual({ rule: "r1", index: 0 });
@@ -182,7 +326,7 @@ describe("rules", () => {
     expect(store.get("symbol.line.color")).toBe("#2166ac");
   });
 
-  it("a condition the builder cannot show is text; Edit as CQL2 writes valid JSON only", async () => {
+  it("a condition the rows cannot show is text; Edit as CQL2 writes valid JSON only", async () => {
     const nested = {
       id: "r3",
       name: "Deep",
@@ -202,12 +346,16 @@ describe("rules", () => {
     };
     const { store } = setup([nested]);
     await openRule("Deep");
+    expect(conditionRows()).toHaveLength(0);
+    expect(screen.getByText("style_editor.condition_custom")).toBeDefined();
     const editor = screen.getByRole("textbox", { name: "style_editor.edit_cql" });
     fireEvent.change(editor, { target: { value: "{ not json" } });
     expect(store.get("rules.0.when")).toEqual(nested.when);
     const simpler = { op: "isNull", args: [{ property: "name" }] };
     fireEvent.change(editor, { target: { value: JSON.stringify(simpler) } });
     expect(store.get("rules.0.when")).toEqual(simpler);
+    // Rows can show it now.
+    expect(within(conditionRows()[0]).getByTitle("name filter_panel.op.is_blank")).toBeDefined();
     await act(async () => {});
   });
 
@@ -227,7 +375,7 @@ describe("rules", () => {
   });
 
   it("per-layer keys have no row in rule scope", async () => {
-    const { store } = setup([{ ...QUIET }], "point");
+    const { store } = setup([{ ...QUIET }], "point", "");
     act(() => store.setScope({ rule: "r1", index: 0 }));
     await openGroup("style_editor.part_fill");
     expect(screen.queryByText("style_editor.shape")).toBeNull();

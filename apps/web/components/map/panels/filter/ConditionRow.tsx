@@ -3,10 +3,11 @@
 // One condition of the filter. In the panel a row of its own: the field's kind and the condition as a sentence, which
 // opens its editor beside the panel, a switch and a remove button; for a viewer the sentence alone. The editor (a
 // popover of the panel) is headed by the field, which changes there, and holds the condition's fields
-// (ConditionFields: the comparison, the value and the row's issues), each change going straight into the draft.
+// (ConditionFields: the comparison, the value and the row's issues), each change going straight into the draft. A
+// style rule's conditions are these rows and editors too, over the rule's own draft (RuleConditions.tsx).
 import { Box, ButtonBase, Typography } from "@mui/material";
 import type { TFunction } from "i18next";
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -81,7 +82,8 @@ export interface ConditionRowProps {
   onOpen: (id: string, anchorTop: number) => void;
   /** Switches the row on or off; no switch without it. */
   onToggle?: (id: string) => void;
-  onRemove: (id: string) => void;
+  /** Removes the row; no remove button without it. */
+  onRemove?: (id: string) => void;
 }
 
 export const ConditionRow = memo(function ConditionRow({
@@ -110,7 +112,7 @@ export const ConditionRow = memo(function ConditionRow({
       onOpen={(anchor) => onOpen(row.id, anchorTopOf(anchor))}
       // A row that saves nothing has nothing to switch.
       onToggle={!unfinished && onToggle ? () => onToggle(row.id) : undefined}
-      onRemove={() => onRemove(row.id)}>
+      onRemove={onRemove && (() => onRemove(row.id))}>
       {/* The field stands out, the comparison steps back, the value reads plain. */}
       <Typography
         variant="body2"
@@ -130,11 +132,11 @@ export const ConditionRow = memo(function ConditionRow({
 
 /** A condition's field changed to another: the comparison stays where the new field takes it, the value goes. */
 function useFieldChange(row: FilterRow | undefined) {
-  const { actions, fields } = useFilterPanel();
+  const { actions, fields, operators = operatorsFor } = useFilterPanel();
   return useCallback(
     (field: string) => {
       if (!row || field === row.field) return;
-      const allowed = operatorsFor(fields[field]);
+      const allowed = operators(fields[field]);
       actions.update(row.id, {
         field,
         op: allowed.includes(row.op) ? row.op : allowed[0],
@@ -143,7 +145,7 @@ function useFieldChange(row: FilterRow | undefined) {
         type: undefined,
       });
     },
-    [row, actions, fields]
+    [row, actions, fields, operators]
   );
 }
 
@@ -197,18 +199,21 @@ export function ConditionHeading({ id }: { id: string }) {
 
 /** The editor of one condition, in a popover of the panel; it reads its row live and closes once the row is gone. */
 export function ConditionEditor({ id }: { id: string }) {
-  const { actions, fields, layerId } = useFilterPanel();
+  const { actions, fields, layerId, operators } = useFilterPanel();
   const row = useCondition(id);
   useCloseWhenGone(!row);
   const update = useCallback((patch: Partial<FilterCondition>) => actions.update(id, patch), [actions, id]);
+  const type = row && typeOfRow(row, fields);
+  const ops = useMemo(() => operators?.(type), [operators, type]);
   if (!row) return null;
   return (
     <Box sx={{ pt: 1 }}>
       <ConditionFields
         row={row}
-        type={typeOfRow(row, fields)}
+        type={type}
         issues={rowIssues(row, fields)}
         layerId={layerId}
+        ops={ops}
         onChange={update}
       />
     </Box>

@@ -7,7 +7,8 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 export interface PanelSectionProps {
   title: ReactNode;
-  add?: { label: string; onClick: () => void };
+  /** The section's add button; it is handed itself, so what it opens is placed beside it. */
+  add?: { label: string; onClick: (anchor: HTMLElement) => void };
   scope?: ReactNode;
   scopeNote?: ReactNode;
   empty?: ReactNode;
@@ -46,7 +47,10 @@ export const PanelSection = memo(function PanelSection({
         </Typography>
         {scope}
         {add && (
-          <IconButton size="small" aria-label={add.label} onClick={add.onClick}>
+          <IconButton
+            size="small"
+            aria-label={add.label}
+            onClick={(event) => add.onClick(event.currentTarget)}>
             <Icon iconName={ICON_NAME.PLUS} sx={{ fontSize: 12 }} />
           </IconButton>
         )}

@@ -2,7 +2,8 @@
 
 // The filter panel's draft: the rows and the area as the user is editing them, in a small store so that a row's editor
 // (drawn once in a popover) reads its row live and a change of one row renders only what shows that row. Unfinished
-// rows live here and nowhere else until they are complete.
+// rows live here and nowhere else until they are complete. A style rule's conditions are such a draft too
+// (styleEditor/editors/RuleConditions.tsx), so its rows and editors are the panel's.
 import { createContext, useContext, useSyncExternalStore } from "react";
 
 import type { FilterArea } from "@/lib/filter/area";
@@ -10,6 +11,7 @@ import {
   type Fields,
   type FilterCondition,
   type FilterModel,
+  type FilterOp,
   type FilterRow,
   isCustomRow,
 } from "@/lib/filter/model";
@@ -117,6 +119,9 @@ export interface FilterPanelContextValue {
   fieldInfos: FieldInfo[];
   /** The dataset the value lists are read from; without it values are typed. */
   layerId?: string;
+  /** The comparisons a field of `type` offers, the first one a new row's; the filter's own without it (a style
+   * rule's leave out relative dates). */
+  operators?: (type: FieldType | undefined) => FilterOp[];
 }
 
 export const FilterPanelContext = createContext<FilterPanelContextValue | null>(null);

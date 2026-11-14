@@ -3,10 +3,10 @@
 // One rule (spec 6, prototype 4.8): its name, the condition, and what it does to the matching features: hide them,
 // show them at fewer zooms, leave them out of the legend, or style them (the symbol section edits the rule then).
 import { Box, Button, Divider, Typography } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 
-import { type ConditionRows, conditionSentence, fromRows, toRows } from "@/lib/style/editor/conditions";
+import { conditionSentence, fromRows, toRows, writtenWhen } from "@/lib/style/editor/conditions";
 import { setIn } from "@/lib/style/editor/store";
 import { existingIds, freshId } from "@/lib/style/ids";
 import { type JsonObject, deepEqual, isObject } from "@/lib/style/json";
@@ -19,10 +19,11 @@ import {
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import {
-  ConditionBuilder,
-  EMPTY_ROW,
+  RuleConditions,
   RuleHeading,
-} from "@/components/map/panels/styleEditor/editors/ConditionBuilder";
+  draftRows,
+  useConditionDraft,
+} from "@/components/map/panels/styleEditor/editors/RuleConditions";
 import { NavRow, SwitchRow, TextRow, ZoomRangeRow } from "@/components/map/panels/styleEditor/rows";
 
 /** A rule's name, else its condition as a sentence. */
@@ -36,21 +37,28 @@ export function useRuleLabel(): (rule: unknown) => string {
       : conditionSentence(isObject(rule) ? rule.when : undefined, label, t, fieldTypes);
 }
 
-/** The condition of the rule at `index`: rows while they can show it, else its CQL2 as text to edit. */
+/** The condition of the rule at `index`: rows while they can show it, else its CQL2 as text to edit. Each change of
+ * the rows writes their complete ones; a row being written stays in the rows until it reads. */
 function RuleCondition({ index }: { index: number }) {
   const { t } = useTranslation("common");
   const store = useEditor();
   const { fieldTypes } = useStyleData();
-  const when = useStyleValue<unknown>(`rules.${index}.when`);
-  const [rows, setRows] = useState<ConditionRows | null>(() => toRows(when, fieldTypes));
+  const path = `rules.${index}.when`;
+  const when = useStyleValue<unknown>(path);
+  const draft = useConditionDraft(
+    () => toRows(when, fieldTypes),
+    (model) => {
+      const cql = writtenWhen(draftRows(model), fieldTypes);
+      if (cql && !deepEqual(cql, store.get(path))) store.set(path, cql);
+    }
+  );
   const [text, setText] = useState(() => JSON.stringify(when, null, 2));
   // An edit elsewhere (undo, the text editor) replaces the rows unless they already say the same.
   useEffect(() => {
-    setRows((current) =>
-      current && deepEqual(fromRows(current, fieldTypes), when) ? current : toRows(when, fieldTypes)
-    );
-  }, [when, fieldTypes]);
-  if (!rows)
+    if (!deepEqual(writtenWhen(draftRows(draft.store.get()), fieldTypes), when))
+      draft.reset(toRows(when, fieldTypes));
+  }, [draft, when, fieldTypes]);
+  if (!toRows(when, fieldTypes))
     return (
       <>
         <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 1 }}>
@@ -72,17 +80,7 @@ function RuleCondition({ index }: { index: number }) {
         />
       </>
     );
-  return (
-    <ConditionBuilder
-      rows={rows}
-      title={t("style_editor.when")}
-      onChange={(next) => {
-        setRows(next);
-        const cql = fromRows(next, fieldTypes);
-        if (cql) store.set(`rules.${index}.when`, cql);
-      }}
-    />
-  );
+  return <RuleConditions draft={draft} />;
 }
 
 export function RuleEditor({ id }: { id: string }) {
@@ -136,8 +134,9 @@ export function RuleEditor({ id }: { id: string }) {
   );
 }
 
-/** A new rule: written once its condition is complete and confirmed. Its foot carries the popover's one action, as
- * the app's dialogs do: Cancel beside the primary "Add rule", which waits for a complete condition. */
+/** A new rule: written once its condition is complete (every row of it) and confirmed. Its foot carries the
+ * popover's one action, as the app's dialogs do: Cancel beside the primary "Add rule", which waits for a complete
+ * condition. */
 export function NewRuleEditor({
   onAdded,
   onCancel,
@@ -148,11 +147,12 @@ export function NewRuleEditor({
   const { t } = useTranslation("common");
   const store = useEditor();
   const { fieldTypes } = useStyleData();
-  const [rows, setRows] = useState<ConditionRows>({ match: "all", rows: [EMPTY_ROW] });
-  const when = fromRows(rows, fieldTypes);
+  const draft = useConditionDraft(() => null);
+  const model = useSyncExternalStore(draft.store.subscribe, draft.store.get, draft.store.get);
+  const when = fromRows(draftRows(model), fieldTypes);
   return (
     <>
-      <ConditionBuilder rows={rows} title={t("style_editor.when")} onChange={setRows} />
+      <RuleConditions draft={draft} />
       <Divider sx={{ mt: 2 }} />
       <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2, px: 3, pt: 3 }}>
         <Button variant="text" size="small" onClick={onCancel}>

@@ -186,7 +186,7 @@ Eine Regel ist eine Bedingung auf beliebigen Feldern und das, was sie für die p
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Bauen Sie unter <code>Wenn</code> die Bedingung: ein <code>Feld</code>, ein <code>Vergleich</code> wie <code>Ist</code>, <code>Liegt zwischen</code> oder <code>Enthält den Text</code> und ein <code>Wert</code>. <code>Bedingung hinzufügen</code> fügt eine weitere hinzu; <code>Erfüllt alle dieser Bedingungen</code> oder <code>eine</code> legt fest, ob jede Bedingung gelten muss oder eine genügt.</div>
+  <div class="content">Klicken Sie unter <code>Wenn</code> auf <code>Bedingung hinzufügen</code> und wählen Sie ein Feld. Der Editor der Bedingung öffnet sich neben der Regel: Wählen Sie unter <code>Bedingung</code> den Vergleich und legen Sie den Wert fest wie beim <a href="../../filter#nach-attributen-filtern">Filtern</a>, aus der Liste der Werte des Felds mit ihrer Häufigkeit oder mit dem Schieberegler über dem Histogramm. Jede Bedingung steht danach als Satz in ihrer Zeile: Ein Klick auf die Zeile ändert sie; zeigen Sie auf die Zeile und klicken Sie auf das Papierkorb-Symbol, um sie zu entfernen (eine Regel behält mindestens eine Bedingung). Ab zwei Bedingungen legt das Menü neben <code>Wenn</code> fest, ob Objekte jede Bedingung erfüllen (<code>Alle erfüllt</code>) oder mindestens eine (<code>Eine erfüllt</code>).</div>
 </div>
 
 <div class="step">

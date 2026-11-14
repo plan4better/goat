@@ -134,15 +134,18 @@ export function RulesSection() {
       title={t("style_editor.section_rules")}
       add={{
         label: t("style_editor.add_rule"),
-        onClick: () =>
+        // Beside the section's add button, and the rule it adds opens there too.
+        onClick: (anchor) => {
+          const anchorTop = anchorTopOf(anchor);
           popover.open(next, {
             key: "rule:new",
             title: t("style_editor.new_rule"),
-            anchorTop: 120,
+            anchorTop,
             render: () => (
-              <NewRuleEditor onAdded={(id) => open(id, 120)} onCancel={() => popover.close(next)} />
+              <NewRuleEditor onAdded={(id) => open(id, anchorTop)} onCancel={() => popover.close(next)} />
             ),
-          }),
+          });
+        },
       }}
       empty={keys.length ? undefined : t("style_editor.rules_empty")}>
       {keys.map((key, i) => (
