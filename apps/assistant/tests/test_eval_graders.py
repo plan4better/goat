@@ -8,8 +8,9 @@ from pathlib import Path
 import pytest
 
 from assistant.context import parse_context
+from assistant.language import answer_language
 from evals.backends import FIXTURE_LAYERS, Backends, matches, write_eval_catalog
-from evals.graders import answer_language, grade, numbers_in
+from evals.graders import grade, numbers_in
 from evals.harness import ToolCall, Transcript
 from evals.tasks import EvalTask, load_tasks
 

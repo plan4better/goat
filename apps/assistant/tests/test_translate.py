@@ -9,6 +9,7 @@ from pydantic_ai.messages import (
     RetryPromptPart,
     TextPart,
     TextPartDelta,
+    ThinkingPart,
     ToolCallPart,
     ToolReturnPart,
 )
@@ -147,6 +148,19 @@ def test_text_tool_text_in_one_response_is_one_step() -> None:
         "TextEnded",
         "ToolCalled",
     ]
+
+
+def test_the_text_parts_of_the_latest_response_are_kept() -> None:
+    """``response_texts`` holds the text parts of the response streamed
+    last, which an answer asked for again replaces (``ends_with_text``); a
+    response starts with its part 0."""
+    texts: list[str] = []
+    translator = EventTranslator(PartIds("m"), response_texts=texts)
+    _feed(translator, _text_start(0), _text_delta(0, "a"), _text_start(1, "b"))
+    assert texts == ["m:1", "m:2"]
+    thinking = ThinkingPart(content="...")
+    _feed(translator, PartStartEvent(index=0, part=thinking), _text_start(1, "c"))
+    assert texts == ["m:3"]
 
 
 def test_two_text_parts_in_one_response_get_distinct_ids() -> None:

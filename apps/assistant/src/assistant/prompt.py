@@ -234,6 +234,22 @@ NO_ANSWER_TEXT = (
     "that, one sentence on what the cards are for."
 )
 
+LANGUAGE_NAMES: dict[Locale, str] = {"en": "English", "de": "German"}
+
+
+def answer_in_language(asked: Locale, answered: Locale) -> str:
+    """Sent back once when a final response is clearly in another language
+    than the user's message (assistant.agent.ends_with_text): the
+    instructions and the note after a longer message say so already, and
+    still some answers came in the language of the data or the interface."""
+    return (
+        f"The user's message is in {LANGUAGE_NAMES[asked]}, but this response is in "
+        f"{LANGUAGE_NAMES[answered]}. Write it again in {LANGUAGE_NAMES[asked]}, "
+        "without a word about the language; names of layers, fields, projects and "
+        "places stay as they are."
+    )
+
+
 #: The built-in skills, one line each (assistant.skills); empty without skills.
 SKILLS_INDEX = skills_index(BUILT_IN)
 

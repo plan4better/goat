@@ -2,10 +2,11 @@
 backends. Scripted models stand in for a provider, so no token is spent."""
 
 import json
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from pydantic_ai.messages import (
+    ModelMessage,
     ModelRequest,
     ModelResponse,
     RetryPromptPart,
@@ -13,8 +14,10 @@ from pydantic_ai.messages import (
     ThinkingPart,
     UserPromptPart,
 )
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from assistant.config import AssistantSettings
+from assistant.prompt import answer_in_language
 from assistant.tools.testing import ScriptedModel
 from evals.backends import PROJECT_ID, Backends, write_eval_catalog
 from evals.graders import grade
@@ -55,6 +58,35 @@ async def test_a_model_that_proposes_the_right_filters_passes(
         True,
     ]
     assert transcript.proposals[-1]["kind"] == "catalog.filters"
+
+
+async def test_the_harness_hands_the_message_to_the_language_check(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """The eval runs as RunManager does: the validation gets the task's
+    prompt, so an answer in the other language is asked for again."""
+    german = (
+        "Die Straßenbäume von Köln sind unter CC0 veröffentlicht, und für die Daten "
+        "gibt es keine weiteren Bedingungen."
+    )
+    english = "The street trees of Cologne are published under CC0."
+    replies = iter([german, english])
+    sent: list[list[object]] = []
+
+    async def stream(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str]:
+        sent.append(list(messages[-1].parts))
+        yield next(replies)
+
+    transcript = await run_task(
+        _task("cat-11"), FunctionModel(stream_function=stream), backends, settings
+    )
+    assert transcript.error is None, transcript.error
+    assert transcript.retries == 1
+    assert [p for p in sent[1] if isinstance(p, RetryPromptPart)][
+        0
+    ].content == answer_in_language("en", "de")
 
 
 async def test_a_model_that_answers_without_searching_fails(

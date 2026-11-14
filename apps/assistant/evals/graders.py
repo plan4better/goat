@@ -7,6 +7,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
+from assistant.language import answer_language
 from evals.backends import EDIT_WORKFLOW, Backends, layer_project_id
 from evals.harness import ToolCall, Transcript
 from evals.tasks import (
@@ -109,20 +110,6 @@ def numbers_in(text: str) -> set[float]:
     return found
 
 
-#: Grammar words that only one of the two languages uses. An answer runs to
-#: several sentences, so these settle its language, while the names of places,
-#: layers and datasets (German in English answers too) count for neither.
-_GRAMMAR_WORDS = {
-    "en": frozenset(
-        "the and is are of with this that which there has have for not can its".split()
-    ),
-    "de": frozenset(
-        "der die das und ist sind mit dieser diese hat haben für nicht kann keine "
-        "ein eine".split()
-    ),
-}
-
-
 def _card_text(transcript: Transcript) -> str:
     """The questions and options of the cards the answer showed."""
     texts: list[str] = []
@@ -137,18 +124,6 @@ def _card_text(transcript: Transcript) -> str:
                 if isinstance(option, dict):
                     texts.append(str(option.get("label") or ""))
     return " ".join(texts)
-
-
-def answer_language(text: str) -> str | None:
-    """English or German, by the grammar words; None when neither leads."""
-    words = re.findall(r"[^\W\d_]+", text.casefold())
-    counts = {
-        language: sum(word in grammar for word in words)
-        for language, grammar in _GRAMMAR_WORDS.items()
-    }
-    if counts["en"] == counts["de"]:
-        return None
-    return "en" if counts["en"] > counts["de"] else "de"
 
 
 def _contains(haystack: str, needle: str) -> bool:

@@ -397,6 +397,7 @@ async def run_task(
             env=env,
             prompt_note=render_note(page, previous, task.locale, prompt),
             prompt_answer=answer,
+            prompt_text=prompt,
             budget=budget,
         )
         env.emit_data = deps.emit_data
@@ -427,7 +428,9 @@ async def run_task(
             )
         # A shown card ends the answer: its text is what came before the card.
         output = result.output if result.output is not None else _text(result.messages)
-        answered.extend(result.messages)
+        # The replaced responses and the requests that asked again count too:
+        # each cost a model call.
+        answered.extend([*result.messages, *result.replaced])
         return [*history, *result.messages]
 
     try:

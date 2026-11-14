@@ -39,9 +39,10 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.result import FinalResult
 from pydantic_graph import End
 
-from assistant.budget import RunBudget, StepGuard
-from assistant.events import DataPart, RunEvent
+from assistant.budget import RunBudget, StepGuard, next_call
+from assistant.events import DataPart, RunEvent, TextReplaced
 from assistant.history import shorten_earlier_results
+from assistant.language import clear_language, names_a_language
 from assistant.llm.types import DataPolicy
 from assistant.prompt import (
     ADD_WHAT_WAS_PICKED,
@@ -50,8 +51,10 @@ from assistant.prompt import (
     ANSWER_NOW_CARD,
     CARD_AFTER_TEXT,
     INSTRUCTIONS,
+    LANGUAGE_FALLBACK_WORDS,
     NO_ANSWER_TEXT,
     RUN_WHAT_YOU_BUILT,
+    answer_in_language,
     as_note,
     read_the_result,
     static_instructions,
@@ -117,6 +120,17 @@ class RunDeps:
     #: The user's answer to a card, as the model reads it (assistant.asks);
     #: it follows the text of the user message (assistant.prompt.with_note).
     prompt_answer: str = ""
+    #: The text of the user message, without the notes: the answer's language
+    #: is checked against it (``ends_with_text``). Empty: no check.
+    prompt_text: str = ""
+    #: The runs (their ids) whose answer was asked for again in the language
+    #: of the user message (``ends_with_text``): once per run.
+    language_asked: set[str | None] = field(default_factory=set)
+    #: The ids of the text parts of the response streamed last, kept by the
+    #: run's event translator (``assistant.runs.translate``): the parts an
+    #: answer asked for again replaces (``events.TextReplaced``). Empty
+    #: without a translator (the eval harness).
+    response_texts: list[str] = field(default_factory=list)
     #: The run's limits; near them the model is told to answer, or to ask with
     #: a card, and its other calls are refused as they run (assistant.budget).
     #: None: no early answer (the hard limits still apply).
@@ -407,15 +421,59 @@ class StageNote(AbstractCapability[RunDeps]):
         return End(FinalResult(text))
 
 
-def ends_with_text(ctx: RunContext[RunDeps], output: str) -> str:
+#: The grammar words (``assistant.language.clear_language``) a user message
+#: and an answer need at the least for their language to count.
+MESSAGE_LANGUAGE_WORDS = 2
+ANSWER_LANGUAGE_WORDS = 5
+
+
+def wrong_language(deps: RunDeps, output: str) -> tuple[Locale, Locale] | None:
+    """The language of the user message and the other one ``output`` is in,
+    when both are clear; None in doubt. A message under
+    ``LANGUAGE_FALLBACK_WORDS`` words has the interface language answer it,
+    a card's answer is the labels of the options picked, and a message that
+    names a language may ask for it: none of them is checked."""
+    message = deps.prompt_text
+    if (
+        deps.prompt_answer
+        or len(message.split()) < LANGUAGE_FALLBACK_WORDS
+        or names_a_language(message)
+    ):
+        return None
+    asked = clear_language(message, MESSAGE_LANGUAGE_WORDS)
+    answered = clear_language(output, ANSWER_LANGUAGE_WORDS)
+    if asked is None or answered is None or asked == answered:
+        return None
+    return asked, answered
+
+
+async def ends_with_text(ctx: RunContext[RunDeps], output: str) -> str:
     """Asks again for an answer whose last response holds only whitespace:
     Pydantic AI asks again only after a response without any text, and takes
     a single space as the answer, so an answer could end after its cards
-    without a word on them. The last retry's answer is taken as it is: a run
-    that fails at that point would lose an answer the user has partly seen."""
-    if output.strip() or ctx.partial_output or ctx.retry >= ctx.max_retries:
+    without a word on them. Asks again, once per run, for a last response in
+    the other language than the user message (``wrong_language``), while
+    another answer step fits in the run's tokens: past them the retry would
+    end the run at its limit. The dock then leaves out the text the answer
+    asked for again replaces (``TextReplaced``). The last retry's answer is
+    taken as it is: a run that fails at that point would lose an answer the
+    user has partly seen."""
+    if ctx.partial_output or ctx.retry >= ctx.max_retries:
         return output
-    raise ModelRetry(NO_ANSWER_TEXT)
+    if not output.strip():
+        raise ModelRetry(NO_ANSWER_TEXT)
+    wrong = wrong_language(ctx.deps, output)
+    if wrong is None or ctx.run_id in ctx.deps.language_asked:
+        return output
+    budget = ctx.deps.budget
+    if budget is not None and not budget.answer_fits(
+        ctx.usage, next_call(ctx.messages, ctx.run_id)
+    ):
+        return output
+    ctx.deps.language_asked.add(ctx.run_id)
+    if ctx.deps.response_texts:
+        await ctx.deps.emit(TextReplaced(part_ids=list(ctx.deps.response_texts)))
+    raise ModelRetry(answer_in_language(*wrong))
 
 
 def build_agent(model: Model | str) -> Agent[RunDeps, str]:

@@ -286,6 +286,51 @@ describe("assistant messages", () => {
     expect(screen.queryByText("The assistant could not write this answer.")).toBeNull();
   });
 
+  it("leaves out the text a later answer replaced, also from what Copy copies", async () => {
+    // An answer in the other language than the message, asked for again: the
+    // server names the replaced text parts by the ids their text-start carried.
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(
+      <DockActionsContext.Provider value={actions}>
+        <MessageList
+          messages={[
+            {
+              id: "a0",
+              role: "assistant",
+              parts: [
+                search,
+                {
+                  type: "text",
+                  text: "Die Antwort auf Deutsch.",
+                  state: "done",
+                  providerMetadata: { goat: { partId: "a0:1" } },
+                },
+                { type: "data-replaced-text", data: { part_ids: ["a0:1"] } },
+                {
+                  type: "text",
+                  text: "The answer in English.",
+                  state: "done",
+                  providerMetadata: { goat: { partId: "a0:2" } },
+                },
+              ],
+            },
+          ]}
+          busy={false}
+          conversationId="c1"
+          conversationProjectId={null}
+          projectName={null}
+          readOnly={false}
+        />
+      </DockActionsContext.Provider>
+    );
+    expect(screen.queryByText("Die Antwort auf Deutsch.")).toBeNull();
+    expect(screen.getByText("The answer in English.")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("assistant_copy_answer"));
+    await Promise.resolve();
+    expect(writeText).toHaveBeenCalledWith("The answer in English.");
+  });
+
   it("shows no cards for search results the answer did not recommend", () => {
     render(
       <DockActionsContext.Provider value={actions}>
