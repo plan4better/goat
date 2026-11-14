@@ -98,16 +98,12 @@
 
   --docusaurus-highlighted-code-line-bg: rgba(43, 179, 129, 0.12);
 
-  --docsearch-primary-color: var(--goat-color-brand-ink);
-  --docsearch-highlight-color: var(--goat-color-brand-ink);
-  --docsearch-text-color: var(--goat-color-ink);
-  --docsearch-muted-color: var(--goat-color-body);
-  --docsearch-container-background: rgba(20, 27, 36, 0.6);
-  --docsearch-modal-background: var(--goat-color-surface-muted);
-  --docsearch-hit-background: var(--goat-color-surface);
-  --docsearch-hit-shadow: none;
-  --docsearch-searchbox-focus-background: var(--goat-color-surface);
-  --docsearch-searchbox-shadow: inset 0 0 0 2px var(--goat-color-brand);
+  --search-local-highlight-color: var(--goat-color-brand-ink);
+  --search-local-muted-color: var(--goat-color-body);
+  --search-local-modal-background: var(--goat-color-surface-muted);
+  --search-local-hit-background: var(--goat-color-surface);
+  --search-local-hit-color: var(--goat-color-ink);
+  --search-local-hit-shadow: none;
 }
 
 html[data-theme="dark"] {
@@ -140,18 +136,11 @@ html[data-theme="dark"] {
 
   --docusaurus-highlighted-code-line-bg: rgba(43, 179, 129, 0.18);
 
-  --docsearch-text-color: var(--goat-color-on-dark);
-  --docsearch-muted-color: var(--goat-color-on-dark-muted);
-  --docsearch-container-background: rgba(8, 12, 17, 0.7);
-  --docsearch-modal-background: var(--goat-color-surface-dark);
-  --docsearch-modal-shadow: none;
-  --docsearch-footer-background: var(--goat-color-surface-darker);
-  --docsearch-footer-shadow: none;
-  --docsearch-hit-background: var(--goat-color-surface-dark-soft);
-  --docsearch-hit-color: var(--goat-color-on-dark);
-  --docsearch-searchbox-focus-background: var(--goat-color-surface-darker);
-  --docsearch-key-gradient: none;
-  --docsearch-key-shadow: none;
+  --search-local-muted-color: var(--goat-color-on-dark-muted);
+  --search-local-modal-background: var(--goat-color-surface-dark);
+  --search-local-modal-shadow: none;
+  --search-local-hit-background: var(--goat-color-surface-dark-soft);
+  --search-local-hit-color: var(--goat-color-on-dark);
 }
 
 body {
@@ -248,54 +237,55 @@ body {
   display: none;
 }
 
-/* Search: a wide pill in the middle of the top bar. */
-.navbar .DocSearch-Button {
+/* Search: a wide pill in the middle of the top bar. The markup comes from
+   @easyops-cn/docusaurus-search-local; its own classes are CSS modules, so
+   these rules use the stable Infima classes and elements. */
+.navbar .navbar__search {
+  width: 100%;
+  margin: 0;
+}
+
+.navbar .navbar__search > span {
+  width: 100%;
+}
+
+.navbar .navbar__search-input {
   width: 100%;
   height: 2.5rem;
-  margin: 0;
-  padding: 0 0.5rem 0 1rem;
+  padding: 0 4.5rem 0 2.75rem;
   border: 1px solid rgba(237, 241, 245, 0.1);
   border-radius: var(--goat-radius-pill);
   background: var(--goat-color-surface-dark-soft);
-  box-shadow: none;
-  color: var(--goat-color-on-dark-muted);
+  color: var(--goat-color-on-dark);
   font-family: var(--goat-font-family);
+  font-size: 0.9375rem;
   transition:
     border-color var(--ifm-transition-fast),
     background-color var(--ifm-transition-fast);
 }
 
-.navbar .DocSearch-Button:hover,
-.navbar .DocSearch-Button:focus {
+.navbar .navbar__search-input::placeholder {
+  color: var(--goat-color-on-dark-muted);
+  opacity: 1;
+}
+
+.navbar .navbar__search-input:hover,
+.navbar .navbar__search-input:focus {
   border-color: var(--goat-color-brand);
   background: #2d3d52;
-  box-shadow: none;
-  color: var(--goat-color-on-dark);
+  outline: none;
 }
 
-.navbar .DocSearch-Button .DocSearch-Search-Icon {
+.navbar .navbar__search > svg {
+  left: 1rem;
   width: 1.125rem;
   height: 1.125rem;
-  color: currentColor;
-}
-
-.navbar .DocSearch-Button-Placeholder {
-  padding: 0 0 0 0.625rem;
   color: var(--goat-color-on-dark-muted);
-  font-size: 0.9375rem;
-  font-weight: 400;
 }
 
-.navbar .DocSearch-Button-Keys {
-  min-width: auto;
-  gap: 0.25rem;
-}
-
-.navbar .DocSearch-Button-Key {
-  top: 0;
+.navbar .navbar__search kbd {
   min-width: 1.5rem;
   height: 1.5rem;
-  margin: 0;
   padding: 0 0.375rem;
   border: 0;
   border-radius: 0.375rem;
@@ -305,6 +295,14 @@ body {
   font-family: var(--goat-font-family);
   font-size: 0.75rem;
   font-weight: 600;
+  line-height: 1.5rem;
+  text-align: center;
+}
+
+.navbar .navbar__search button {
+  right: 1rem;
+  color: var(--goat-color-on-dark-muted);
+  cursor: pointer;
 }
 
 @media (max-width: 1279px) {
@@ -312,23 +310,63 @@ body {
     padding: 0.375rem 0.5rem;
   }
 
-  .navbar .DocSearch-Button-Keys {
+  .navbar .navbar__search kbd {
     display: none;
+  }
+
+  .navbar .navbar__search-input {
+    padding-right: 2.5rem;
   }
 }
 
+/* Below the desktop breakpoint the search is an icon next to the menu toggle;
+   while it has the focus it spans the top bar. */
 @media (max-width: 996px) {
-  .navbar .DocSearch-Button {
+  .navbar .navbar__search {
     width: 2.5rem;
-    padding: 0;
-    justify-content: center;
-    border-color: transparent;
-    background: transparent;
   }
 
-  .navbar .DocSearch-Button-Placeholder,
-  .navbar .DocSearch-Button-Keys {
-    display: none;
+  .navbar .navbar__search-input {
+    padding: 0 0 0 2.5rem;
+    border-color: transparent;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .navbar .navbar__search-input::placeholder {
+    color: transparent;
+  }
+
+  .navbar .navbar__search > svg {
+    left: 0.6875rem;
+  }
+
+  .navbar .navbar__search:focus-within {
+    position: absolute;
+    top: 0;
+    right: var(--ifm-navbar-padding-horizontal);
+    left: var(--ifm-navbar-padding-horizontal);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    width: auto;
+    height: 100%;
+    background: var(--ifm-navbar-background-color);
+  }
+
+  .navbar .navbar__search:focus-within > svg {
+    left: 1rem;
+  }
+
+  .navbar .navbar__search:focus-within .navbar__search-input {
+    padding: 0 2.5rem 0 2.75rem;
+    border-color: var(--goat-color-brand);
+    background: #2d3d52;
+    cursor: text;
+  }
+
+  .navbar .navbar__search:focus-within .navbar__search-input::placeholder {
+    color: var(--goat-color-on-dark-muted);
   }
 }
 

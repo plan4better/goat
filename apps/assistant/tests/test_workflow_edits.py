@@ -1068,7 +1068,7 @@ async def test_the_stored_and_the_edited_config_are_checked_at_once() -> None:
     assert [issue["existing"] for issue in result["issues"]] == [True]
 
 
-# -- fix round 1: Restricted ---------------------------------------------------------
+# -- filter values ------------------------------------------------------------------
 
 
 def _filtered_row(value: str = "Grundschule") -> dict[str, Any]:
@@ -1088,22 +1088,12 @@ def _filtered_row(value: str = "Grundschule") -> dict[str, Any]:
     return row
 
 
-async def test_get_withholds_filter_values_under_restricted() -> None:
+async def test_get_shows_filter_values() -> None:
     core, processes, geoapi = _services(row=_filtered_row())
-    standard = await execute(GET, _env(core, processes, geoapi), {"workflow_id": WF})
-    assert standard["steps"][0]["filter"]["where"] == [
+    result = await execute(GET, _env(core, processes, geoapi), {"workflow_id": WF})
+    assert result["steps"][0]["filter"]["where"] == [
         {"field": "art", "op": "=", "value": "Grundschule"}
     ]
-    restricted = await execute(
-        GET,
-        _env(core, processes, geoapi, data_policy="restricted"),
-        {"workflow_id": WF},
-    )
-    assert restricted["steps"][0]["filter"] == {
-        "where": [{"field": "art", "op": "="}],
-        "values_withheld": True,
-    }
-    assert "Grundschule" not in json.dumps(restricted)
 
 
 async def test_an_edits_result_carries_no_filter_value() -> None:

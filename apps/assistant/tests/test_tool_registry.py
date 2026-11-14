@@ -17,6 +17,7 @@ from assistant.tools.testing import (
     tool_env,
 )
 from assistant.tools.toolset import REPEATED_CALL
+from assistant.user_docs import DOCS_INDEX
 
 _URLISH = {"url", "href", "uri", "link", "endpoint", "host"}
 
@@ -39,7 +40,7 @@ def test_names_are_unique_namespaced_and_sorted() -> None:
     assert names == sorted(names) and len(set(names)) == len(names)
     for spec in ALL_TOOLS:
         assert re.fullmatch(
-            r"(core|catalog|project|map|ask|skills|workflow)\.[a-z_]+", spec.name
+            r"(core|catalog|project|map|ask|skills|docs|workflow)\.[a-z_]+", spec.name
         )
         assert re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", spec.wire_name)
         assert BY_WIRE_NAME[spec.wire_name] is spec
@@ -63,6 +64,7 @@ def test_packs_per_surface_follow_the_spec() -> None:
         "core_page_context",
         "core_show_items",
         "core_whoami",
+        "docs_read",
         "skills_load",
     }
     catalog_read = {
@@ -118,9 +120,9 @@ def test_packs_per_surface_follow_the_spec() -> None:
     for surface in SURFACES:
         # The spec's target is 10-20 per page (§7.3); the map and Workflows pages
         # carry the workflows pack (with runs, edits and both add tools), the
-        # card and the skills, 36 on the map. Raising this again is a decision,
-        # not a fix.
-        assert len(tools_for(surface)) <= 36
+        # card, the skills and the user docs, 37 on the map. Raising this again
+        # is a decision, not a fix.
+        assert len(tools_for(surface)) <= 37
         assert [s.wire_name for s in tools_for(surface)] == sorted(
             s.wire_name for s in tools_for(surface)
         )
@@ -134,7 +136,7 @@ def test_mcp_publishes_the_five_read_only_catalog_tools() -> None:
         "catalog_suggest_terms",
         "catalog_find_region",
     }
-    assert all(spec.risk == "read" and not spec.returns_data for spec in MCP_TOOLS)
+    assert all(spec.risk == "read" for spec in MCP_TOOLS)
 
 
 #: The write tools (spec 2026-10-17 §3): they create, run a workflow or change
@@ -182,12 +184,6 @@ def test_what_a_write_makes_stale_are_tools_whose_results_repeat() -> None:
     for name in named:
         spec = BY_WIRE_NAME[name]
         assert spec.risk == "read" or spec.repeatable is not None, name
-
-
-def test_every_data_tool_has_a_restricted_form() -> None:
-    for spec in ALL_TOOLS:
-        if spec.returns_data:
-            assert hasattr(spec.output_model, "restricted"), spec.wire_name
 
 
 #: The largest count a pattern in a tool's schema may repeat up to. A provider
@@ -257,9 +253,10 @@ async def test_the_model_sees_fixed_instructions_the_tools_in_order_and_the_note
     # Only the fixed instructions, identical in every request: the cached prefix.
     for info in (first, second):
         parts = info.model_request_parameters.instruction_parts or []
-        # The skills index follows the instructions in the same cached part.
+        # The skills index and the docs list follow the instructions in the
+        # same cached part.
         assert [(p.content, p.dynamic) for p in parts] == [
-            (f"{INSTRUCTIONS}\n\n{SKILLS_INDEX}", False)
+            (f"{INSTRUCTIONS}\n\n{SKILLS_INDEX}\n\n{DOCS_INDEX}", False)
         ]
     # The note leads the user message.
     note = script.note(0)

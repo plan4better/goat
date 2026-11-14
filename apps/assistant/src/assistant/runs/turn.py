@@ -19,7 +19,7 @@ in the history after everything the run found.
 
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from pydantic_ai import Agent
@@ -34,6 +34,7 @@ from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    RetryPromptPart,
     TextPart,
     ToolReturnPart,
 )
@@ -41,6 +42,7 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 
 from assistant.agent import RunDeps
 from assistant.asks import ASK_TOOL
+from assistant.prompt import LANGUAGE_NAMES, answer_in_language
 from assistant.tools.registry import BY_WIRE_NAME
 from assistant.tools.toolset import silent
 from assistant.tools.workflow_runs import RUN
@@ -59,12 +61,63 @@ NO_ANSWER_CAVEAT = (
 )
 
 
+#: The requests that ask for an answer again in the language of the user
+#: message (``assistant.agent.ends_with_text``).
+LANGUAGE_RETRIES = frozenset(
+    answer_in_language(asked, answered)
+    for asked in LANGUAGE_NAMES
+    for answered in LANGUAGE_NAMES
+    if asked != answered
+)
+
+
+def _language_retry(part: object) -> bool:
+    return (
+        isinstance(part, RetryPromptPart)
+        and isinstance(part.content, str)
+        and part.content in LANGUAGE_RETRIES
+    )
+
+
+def without_replaced(
+    messages: list[ModelMessage],
+) -> tuple[list[ModelMessage], list[ModelMessage]]:
+    """``messages`` without the responses an answer asked for again in the
+    language of the user message replaced, nor the requests that asked; and
+    those left out. The dock does not show such a response
+    (``events.TextReplaced``), so the next answer does not read it as given."""
+    kept: list[ModelMessage] = []
+    replaced: list[ModelMessage] = []
+    for message in messages:
+        if (
+            isinstance(message, ModelRequest)
+            and any(_language_retry(part) for part in message.parts)
+            and kept
+            and isinstance(kept[-1], ModelResponse)
+        ):
+            replaced += [kept.pop(), message]
+            rest = [part for part in message.parts if not _language_retry(part)]
+            if rest:
+                kept.append(replace(message, parts=rest))
+            continue
+        kept.append(message)
+    return kept, replaced
+
+
 @dataclass
 class Turn:
-    #: The answer's own messages, for the conversation's history.
+    #: The answer's own messages, for the conversation's history, without
+    #: the responses an answer asked for again replaced (``without_replaced``).
     messages: list[ModelMessage]
     #: The answer the model ended with; None when a shown card ended it.
     output: str | None
+    #: The messages left out of ``messages``: the replaced responses and the
+    #: requests that asked again, for what the evals count of a run.
+    replaced: list[ModelMessage] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.messages, replaced = without_replaced(self.messages)
+        self.replaced += replaced
 
 
 def card_shown(event: AgentStreamEvent) -> bool:

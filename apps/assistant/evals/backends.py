@@ -511,6 +511,16 @@ def _build_layers() -> tuple[FixtureLayer, ...]:
         for b in racks_by_district
     )
     planung = tuple({"status": "Entwurf", "_at": _at(rng)} for _ in range(5))
+    # Fixed, not drawn: the other layers keep the values the seed gives them.
+    zaehlstellen = tuple(
+        {"standort": standort, "radfahrten_jahr": count, "_at": at}
+        for standort, count, at in (
+            ("Zählstelle A", 184_250, (12.37, 51.34)),
+            ("Zählstelle B", 96_730, (12.41, 51.32)),
+            ("Zählstelle C", 141_905, (12.33, 51.36)),
+            ("Zählstelle D", None, (12.39, 51.30)),
+        )
+    )
     return (
         FixtureLayer(
             21,
@@ -552,6 +562,15 @@ def _build_layers() -> tuple[FixtureLayer, ...]:
             {"status": "string"},
             planung,
             locked=True,
+        ),
+        FixtureLayer(
+            25,
+            "e1000000-0000-0000-0000-000000000025",
+            "Fahrradzählstellen",
+            "point",
+            {"standort": "string", "radfahrten_jahr": "integer"},
+            zaehlstellen,
+            group_id=1,
         ),
     )
 
@@ -664,13 +683,16 @@ RESULT_LAYER = FixtureLayer(
 )
 #: The run project's workflow: walking catchments in three bands whose band
 #: edges do not rise, so the check finds its catchment's settings invalid and
-#: processes refuses its run before it starts.
+#: processes refuses its run before it starts. The task asks to run it, not
+#: to change it: core refuses a save of it as for a user who may not change
+#: it (``_workflow_core_routes``), a refusal the assistant does not retry.
 RUN_WORKFLOW: dict[str, Any] = {
     "id": RUN_WORKFLOW_ID,
     "project_id": RUN_PROJECT_ID,
     "name": "Schulwege 15 Minuten",
     "description": None,
     "is_default": False,
+    "revision": 1,
     "config": {
         "nodes": [
             {
@@ -2469,6 +2491,9 @@ def _workflow_core_routes(
     run_base = f"/api/v2/project/{RUN_PROJECT_ID}"
     routes[("GET", f"{run_base}/workflow")] = [RUN_WORKFLOW]
     routes[("GET", f"{run_base}/workflow/{RUN_WORKFLOW_ID}")] = RUN_WORKFLOW
+    routes[("PUT", f"{run_base}/workflow/{RUN_WORKFLOW_ID}")] = httpx.Response(
+        403, json={"detail": "Changing this workflow requires editor access"}
+    )
     edit_base = f"/api/v2/project/{EDIT_PROJECT_ID}/workflow"
     routes[("GET", edit_base)] = lambda request: httpx.Response(200, json=[editable])
     routes[("GET", f"{edit_base}/{EDIT_WORKFLOW_ID}")] = lambda request: httpx.Response(

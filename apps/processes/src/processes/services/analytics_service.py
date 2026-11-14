@@ -5,13 +5,14 @@ These are synchronous operations that return immediate results.
 """
 
 import dataclasses
+import functools
 import json
 import logging
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 from uuid import UUID
 
 import duckdb
@@ -34,7 +35,7 @@ from goatlib.analysis.statistics import (
 from goatlib.io.remote_source.url_guard import UnsafeUrlError
 from goatlib.raster.source import RasterSource, RasterUnavailableError
 from goatlib.raster.stats import compute_raster_into, raster_context
-from goatlib.storage import build_cql_filter, load_extensions
+from goatlib.storage import build_cql_filter, is_pin_miss_error, load_extensions
 from goatlib.style.context import DataContext
 from goatlib.style.data import compute_into, describe
 from goatlib.style.data_check import referenced_fields
@@ -73,6 +74,36 @@ logger = logging.getLogger(__name__)
 STYLE_CAPABILITIES: frozenset[str] = frozenset(
     {"h3", "raster_service", "band_formulas"}
 )
+
+
+_Read = TypeVar("_Read", bound=Callable[..., Any])
+
+
+def _reads_the_latest_layer(read: _Read) -> _Read:
+    """Run a layer read once more after bringing the pin to the newest snapshot
+    when the pinned snapshot does not hold the layer's table yet.
+
+    The analytics connection is pinned to a DuckLake snapshot that the poll
+    moves forward off the request path, every DUCKLAKE_SNAPSHOT_REFRESH_SECONDS
+    plus the seconds a rebuild takes. A layer a workflow run has just saved is
+    already in the catalog, so its schema resolves (`get_schema_for_layer`
+    reads Postgres), but its table "does not exist" on the pinned connection
+    until then, and the statistics asked right after the run failed with 500.
+    The refresh runs once the read has left every connection: the swap takes
+    the manager's lock, which a read holds while it uses a connection.
+    """
+
+    @functools.wraps(read)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return read(*args, **kwargs)
+        except Exception as e:
+            if not is_pin_miss_error(e) or not ducklake_manager.force_pin_refresh():
+                raise
+            logger.info("Pin miss, refreshed snapshot and retrying: %s", e)
+            return read(*args, **kwargs)
+
+    return wrapper  # type: ignore[return-value]
 
 
 class AnalyticsService:
@@ -152,7 +183,11 @@ class AnalyticsService:
     def column_names(self, layer_id: str) -> list[str]:
         """The column names of a layer, whichever home it has: a DuckLake
         table or a promoted catalog file. Raises HTTPException 404 when it has
-        neither."""
+        neither.
+
+        Not `_reads_the_latest_layer`: the workflow check, its caller, judges
+        nothing on a failed read and answers at once, where a refresh would
+        hold every check for the seconds a rebuild takes."""
         return self._get_column_names(self._get_table_name(layer_id))
 
     def _detect_geometry_column(self, table_name: str) -> str:
@@ -232,9 +267,15 @@ class AnalyticsService:
             logger.warning("Failed to parse filter JSON '%s': %s", filter_expr, e)
             return "TRUE", []
         except Exception as e:
+            if is_pin_miss_error(e):
+                # The table is not in the pinned snapshot yet: dropping the
+                # filter would let the statistic count everything once the
+                # next connection sees it (`_reads_the_latest_layer`).
+                raise
             logger.warning("Failed to build filter '%s': %s", filter_expr, e)
             return "TRUE", []
 
+    @_reads_the_latest_layer
     def feature_count(
         self,
         collection: str,
@@ -265,6 +306,7 @@ class AnalyticsService:
 
         return result.model_dump()
 
+    @_reads_the_latest_layer
     def unique_values(
         self,
         collection: str,
@@ -356,6 +398,7 @@ class AnalyticsService:
                 where=where,
             )
 
+    @_reads_the_latest_layer
     def class_breaks(
         self,
         collection: str,
@@ -403,6 +446,7 @@ class AnalyticsService:
 
         return result.model_dump()
 
+    @_reads_the_latest_layer
     def area_statistics(
         self,
         collection: str,
@@ -447,6 +491,7 @@ class AnalyticsService:
 
         return result.model_dump()
 
+    @_reads_the_latest_layer
     def extent(
         self,
         collection: str,
@@ -485,6 +530,7 @@ class AnalyticsService:
             )
         return result.model_dump()
 
+    @_reads_the_latest_layer
     def aggregation_stats(
         self,
         collection: str,
@@ -556,6 +602,7 @@ class AnalyticsService:
 
         return result.model_dump()
 
+    @_reads_the_latest_layer
     def histogram(
         self,
         collection: str,

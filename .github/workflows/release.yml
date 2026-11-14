@@ -194,14 +194,16 @@ jobs:
       title: "GOAT Assistant"
       description: "GOAT's AI assistant: conversations, agent runs, the model layer and the MCP endpoint."
       # AUTH=false: with auth on the settings require a Keycloak URL, which an
-      # import check does not need. The last two lines check what the
-      # deployments rely on: no fixture generator in the wheel, and the
-      # graceful-shutdown bound the platforms' grace periods are sized for.
+      # import check does not need. The user docs line checks that the package
+      # reads the docs the Dockerfile bundled into it. The last two lines check
+      # what the deployments rely on: no fixture generator in the wheel, and
+      # the graceful-shutdown bound the platforms' grace periods are sized for.
       smoke-command: |
         cd /app
         export AUTH=false
         python -c "import assistant.main"
         python -c "from assistant.llm.capabilities import TESTED_MODELS; print(len(TESTED_MODELS), 'tested models')"
+        python -c "from assistant.user_docs import USER_DOCS, bundled_roots, docs_roots; assert docs_roots() == bundled_roots(); print(len(USER_DOCS['en']), 'docs pages')"
         python -c "import importlib.util, sys; sys.exit(importlib.util.find_spec('assistant.encoding.fixtures') is not None)"
         test ! -e /app/apps/assistant/evals && test ! -e /app/apps/assistant/e2e
         test "$UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN" = 20

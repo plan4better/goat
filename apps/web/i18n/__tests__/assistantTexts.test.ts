@@ -34,6 +34,7 @@ const TOOLS = [
   "project_sample_features",
   "ask_user",
   "skills_load",
+  "docs_read",
   "workflow_tools",
   "workflow_describe_tool",
   "workflow_find_templates",

@@ -42,6 +42,15 @@ class TextEnded(BaseModel):
     part_id: str
 
 
+class TextReplaced(BaseModel):
+    """The text parts of a response the run asked for again: the answer that
+    follows replaces them (``assistant.agent.ends_with_text``). They stay in
+    the stored parts, marked, and the dock leaves them out."""
+
+    type: Literal["text_replaced"] = "text_replaced"
+    part_ids: list[str]
+
+
 class ToolCalled(BaseModel):
     type: Literal["tool_called"] = "tool_called"
     tool_call_id: str
@@ -141,6 +150,7 @@ RunEvent = Annotated[
     | TextStarted
     | TextDelta
     | TextEnded
+    | TextReplaced
     | ToolCalled
     | ToolReturned
     | ToolFailed
@@ -174,6 +184,10 @@ def fold_parts(events: list[RunEvent]) -> list[dict[str, Any]]:
                 texts[event.part_id] = {"type": "text", "id": event.part_id, "text": ""}
                 parts.append(texts[event.part_id])
             texts[event.part_id]["text"] += event.delta
+        elif isinstance(event, TextReplaced):
+            for part_id in event.part_ids:
+                if part_id in texts:
+                    texts[part_id]["replaced"] = True
         elif isinstance(event, ToolCalled):
             tools[event.tool_call_id] = {
                 "type": "tool",
@@ -282,7 +296,10 @@ def to_ui_message(
         metadata = {"run_id": run_id, **({"undone": True} if undone else {})}
     for part in parts:
         if part["type"] == "text":
-            ui_parts.append({"type": "text", "text": part["text"], "state": "done"})
+            # Text a later answer of the run replaced (``TextReplaced``) is
+            # kept for the record, never shown.
+            if not part.get("replaced"):
+                ui_parts.append({"type": "text", "text": part["text"], "state": "done"})
         elif part["type"] == "tool":
             ui_part: dict[str, Any] = {
                 "type": "dynamic-tool",

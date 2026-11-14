@@ -29,7 +29,7 @@ Das Teilen **dupliziert nicht** Ihre Daten, sondern gewährt nur Zugriff darauf.
    Wenn Sie <b>Eigentümer des Teams</b> sind, können Sie:
       <ul>
          <li>Auf <code>Mitglieder hinzufügen</code> klicken, um Personen Ihrer Organisation zum Team hinzuzufügen.</li>
-         <li>Auf das Menü <code>Weitere Aktionen</code> <img src={require('/img/icons/3dots.png').default} alt="Weitere Aktionen" style={{ maxHeight: '20px', maxWidth: '20px', verticalAlign: 'middle'}}/> eines Mitglieds und dann auf <code>Aus dem Team entfernen</code> klicken.</li>
+         <li>Auf das Drei-Punkte-Symbol <img src={require('/img/icons/3dots.png').default} alt="Weitere Aktionen" style={{ maxHeight: '20px', maxWidth: '20px', verticalAlign: 'middle'}}/> am Ende der Zeile eines Mitglieds und dann auf <code>Aus dem Team entfernen</code> klicken.</li>
       </ul>
    </div>
 </div>

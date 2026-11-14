@@ -1,5 +1,5 @@
 ---
-description: "Fragen Sie GOAT AI, den KI-Assistenten, zu Ihren Projekten und Daten: Er findet Datensätze in Ihrem Workspace und im Katalog, liest Layer und Statistiken, schlägt Kartenansichten und Filter vor und erstellt, ändert und startet Workflows. Antworten von GOAT AI verbrauchen KI-Credits."
+description: "Fragen Sie GOAT AI, den KI-Assistenten, zu Ihren Projekten und Daten: Er findet Datensätze in Ihrem Workspace und im Katalog, liest Layer und Statistiken, schlägt Kartenansichten und Filter vor, erstellt, ändert und startet Workflows und erklärt GOAT selbst anhand dieser Dokumentation. Antworten von GOAT AI verbrauchen KI-Credits."
 sidebar_position: 2.5
 ---
 
@@ -17,7 +17,7 @@ Der Assistent öffnet sich in einer Seitenleiste neben der Seite, auf der Sie ar
 
 - **Er arbeitet mit Ihren Berechtigungen.** Jeder Schritt läuft mit Ihrer Anmeldung: Der Assistent findet nur, was Sie öffnen können, und ändert nur, was Sie bearbeiten dürfen. In einem Projekt, das Sie nur ansehen können, beantwortet er Fragen, erstellt und ändert aber nichts.
 - **Er kennt die Seite, auf der Sie sind.** Jede Nachricht teilt dem Assistenten mit, von welcher Seite, aus welchem Projekt und welcher Ansicht sie kommt und was dort ausgewählt ist. In einem Projekt antwortet er zu dessen Layern, auf der Seite Katalog zum Katalog.
-- **Ihre Organisation legt fest, wie er arbeitet.** Administratoren der Organisation schalten KI ein oder aus, wählen die Modellverbindung und legen eine Datenrichtlinie fest, die bestimmt, was das Modell erreicht (siehe [KI-Einstellungen](./workspace/settings.md#ki)). Nutzt Ihre Organisation **GOAT AI (inklusive)**, verbrauchen Antworten [KI-Credits](#ai-credits).
+- **Ihre Organisation legt fest, wie er arbeitet.** Administratoren der Organisation schalten KI ein oder aus und wählen die Modellverbindung (siehe [KI-Einstellungen](./workspace/settings.md#ki)). Nutzt Ihre Organisation **GOAT AI (inklusive)**, verbrauchen Antworten [KI-Credits](#ai-credits).
 
 :::info
 Der Assistent ist in der Beta-Phase, und KI-Antworten können fehlerhaft sein. Prüfen Sie Ergebnisse, bevor Sie sie verwenden. Ist eine Antwort falsch oder fehlt etwas, sagen Sie es uns mit den Feedback-Schaltflächen darunter (siehe [Antworten](#answers)).
@@ -82,6 +82,10 @@ Fragen Sie, welche Daten es gibt, zum Beispiel <code>Welche Datensätze gibt es 
 
 Möchten Sie die Ergebnisse auf der Seite Katalog selbst sehen, bitten Sie darum: Der Assistent schlägt Suche und Filter in einer Karte vor (siehe [Vorschläge anwenden](#suggestions)).
 
+### Erklären, wie GOAT funktioniert {#how-to}
+
+Fragen Sie, wie etwas in GOAT geht, wo Sie es finden oder ob GOAT es kann, zum Beispiel <code>Wo ändere ich die Farben eines Layers?</code> Der Assistent liest die passende Seite dieser Dokumentation in der Sprache Ihrer Oberfläche und antwortet mit den Namen der Schaltflächen und Menüs, wie GOAT sie anzeigt. Wenn die Dokumentation eine Frage nicht abdeckt, sagt er das, statt zu raten.
+
 ### Fragen zu den Daten eines Projekts beantworten
 
 In einem Projekt liest der Assistent die Layer des Projekts und beantwortet Fragen dazu, zum Beispiel <code>Welche Felder hat „Schulen“?</code> oder <code>Wie viele Bushaltestellen liegen im Stadtbezirk Pasing?</code> Er kann:
@@ -142,7 +146,7 @@ Eine Unterhaltung, die in einem Projekt begonnen wurde, gehört zu diesem Projek
 ## 6. Berechtigungen und Daten
 
 - **Ihre Berechtigungen.** Der Assistent nutzt für jeden Schritt Ihre Anmeldung. Er findet nur Inhalte, die Sie öffnen können, liest nie einen gesperrten Layer und erstellt oder ändert Workflows und fügt Datensätze nur in einem Projekt hinzu, das Sie bearbeiten dürfen. Er löscht nie ein Projekt, einen Datensatz oder einen Workflow.
-- **Was das Modell erreicht.** Ihre Nachrichten und die Daten, die der Assistent liest, werden an das KI-Modell übermittelt, das Ihre Organisation nutzt. Wie viel, legt die Datenrichtlinie der Organisation fest: Unter `Standard` alles, was ein Mitglied sehen kann, einschließlich Beispielzeilen und Abfrageergebnissen; unter `Eingeschränkt` nur Feldnamen, Typen, Anzahlen und Statistiken, nie einzelne Zeilen, Objekte oder Geometrien. Administratoren legen sie in den [KI-Einstellungen](./workspace/settings.md#ki) fest.
+- **Was das Modell erreicht.** Ihre Nachrichten und die Daten, die der Assistent für die Antwort liest, werden an das KI-Modell übermittelt, das Ihre Organisation nutzt: alles, was Sie in GOAT sehen können, einschließlich Beispielzeilen und Abfrageergebnissen. Eine Organisation, deren Daten nicht an das Modell von GOAT AI gehen sollen, schaltet KI aus oder nutzt eine eigene Verbindung ohne Ausweichen auf GOAT AI, in den [KI-Einstellungen](./workspace/settings.md#ki).
 - **Welches Modell.** <code>GOAT AI (inklusive)</code> ist GOATs eigene Modellverbindung. Eine Organisation kann stattdessen eine eigene Verbindung mit eigenem Anbieter und Schlüssel nutzen; Anfragen daran unterliegen der Vereinbarung der Organisation mit diesem Anbieter. Fällt dieser Anbieter aus und lässt die Organisation es zu, kann eine Antwort auf GOAT AI ausweichen, und die Antwort weist dann darauf hin.
 
 ## 7. KI-Credits {#ai-credits}

@@ -37,6 +37,11 @@ COPY packages/python/goatobs/pyproject.toml /app/packages/python/goatobs/
 RUN uv sync --frozen --no-dev --no-editable --no-install-workspace --package=assistant
 
 COPY apps/assistant /app/apps/assistant
+# GOAT's user docs of this release, English and German, for docs_read: the
+# package reads them from here, since the image has no apps/docs
+# (assistant/user_docs).
+COPY apps/docs/docs /app/apps/assistant/src/assistant/user_docs/pages/en
+COPY apps/docs/i18n/de/docusaurus-plugin-content-docs/current /app/apps/assistant/src/assistant/user_docs/pages/de
 COPY packages/python/goatlib /app/packages/python/goatlib
 COPY packages/python/goatobs /app/packages/python/goatobs
 RUN uv sync --frozen --no-dev --no-editable --package=assistant

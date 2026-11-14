@@ -78,5 +78,4 @@ SKILLS_LOAD: ToolSpec[SkillsLoadInput, LoadedSkill] = ToolSpec(
     output_model=LoadedSkill,
     run=load_from(BUILT_IN),
     surfaces=frozenset(SURFACES),
-    returns_data=False,
 )

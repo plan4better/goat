@@ -23,7 +23,7 @@ export interface RadioCardOption<V extends string> {
 
 /**
  * Options as bordered cards with a radio dot (Sprache, Erscheinungsbild, the
- * invite dialog's roles, KI's connections and data policy). One tab stop; the
+ * invite dialog's roles, KI's connections). One tab stop; the
  * arrow keys move to the next enabled card and pick it, as native radios do.
  */
 export default function RadioCardGroup<V extends string>({

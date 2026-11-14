@@ -31,7 +31,7 @@ Sharing **does not duplicate** your data, only grants access to it.
    If you are the <b>owner of the team</b>, you can:
       <ul>
          <li>Click <code>Add members</code> to add people of your organization to the team.</li>
-         <li>Click the <code>More actions</code> <img src={require('/img/icons/3dots.png').default} alt="More actions" style={{ maxHeight: '20px', maxWidth: '20px', verticalAlign: 'middle'}}/> menu of a member and then <code>Remove from the team</code>.</li>
+         <li>Click the <img src={require('/img/icons/3dots.png').default} alt="More actions" style={{ maxHeight: '20px', maxWidth: '20px', verticalAlign: 'middle'}}/> three dots icon at the end of a member's row and then <code>Remove from the team</code>.</li>
       </ul>
    </div>
 </div>

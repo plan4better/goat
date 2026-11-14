@@ -80,7 +80,6 @@ vi.mock("@/lib/api/assistant", () => ({
 const SETTINGS = {
   enabled: true,
   active_connection_id: null,
-  data_policy: "standard",
   allow_default_fallback: false,
   status: "ok",
   instance: {
@@ -256,13 +255,12 @@ describe("AI page", () => {
     ).toBeInTheDocument();
   });
 
-  it("switches AI off at once, sending the four fields with one changed, and undoes it", async () => {
+  it("switches AI off at once, sending the three fields with one changed, and undoes it", async () => {
     renderPage();
     await userEvent.click(aiSwitch());
     expect(api.updateAssistantSettings).toHaveBeenCalledWith({
       enabled: false,
       active_connection_id: null,
-      data_policy: "standard",
       allow_default_fallback: false,
     });
     await waitFor(() => expect(api.undoMessage).toBe("AI is off for the organization."));
@@ -289,7 +287,7 @@ describe("AI page", () => {
     const save = deferred<unknown>();
     api.updateAssistantSettings.mockReturnValue(save.promise);
     renderPage();
-    await userEvent.click(screen.getByRole("radio", { name: /^Restricted/ }));
+    await userEvent.click(aiSwitch());
     await userEvent.click(within(choices()).getByRole("radio", { name: /^Own vLLM/ }));
     expect(api.updateAssistantSettings).toHaveBeenCalledTimes(1);
     expect(toast.info).not.toHaveBeenCalled();
@@ -308,11 +306,8 @@ describe("AI page", () => {
       { ...CONNECTION, id: "c2", name: "Second" },
     ];
     renderPage();
-    await userEvent.click(screen.getByRole("radio", { name: /^Restricted/ }));
-    for (const radio of [
-      ...within(choices()).getAllByRole("radio"),
-      ...within(screen.getByRole("radiogroup", { name: "Data policy" })).getAllByRole("radio"),
-    ]) {
+    await userEvent.click(screen.getByRole("switch", { name: FALLBACK }));
+    for (const radio of within(choices()).getAllByRole("radio")) {
       await expect(radio).toHaveAttribute("aria-disabled", "true");
     }
     await expect(screen.getByRole("switch", { name: FALLBACK })).toBeDisabled();
@@ -333,7 +328,7 @@ describe("AI page", () => {
     await waitFor(() => expect(api.undo).toBeDefined());
     const save = deferred<unknown>();
     api.updateAssistantSettings.mockReturnValue(save.promise);
-    await userEvent.click(screen.getByRole("radio", { name: /^Restricted/ }));
+    await userEvent.click(aiSwitch());
     await expect(api.undo?.()).rejects.toThrow();
     expect(api.updateAssistantSettings).toHaveBeenCalledTimes(2);
     save.resolve(SETTINGS);
@@ -357,14 +352,13 @@ describe("AI page", () => {
     const { rerender } = renderPage();
     await userEvent.click(aiSwitch());
     await waitFor(() => expect(api.undo).toBeDefined());
-    // Meanwhile the data policy changed (and the settings were read again).
-    api.settings = { ...SETTINGS, enabled: false, data_policy: "restricted" };
+    // Meanwhile the active connection changed (and the settings were read again).
+    api.settings = { ...SETTINGS, enabled: false, active_connection_id: "c1" };
     rerender(page());
     await api.undo?.();
     expect(api.updateAssistantSettings).toHaveBeenLastCalledWith({
       enabled: true,
-      active_connection_id: null,
-      data_policy: "restricted",
+      active_connection_id: "c1",
       allow_default_fallback: false,
     });
   });
@@ -390,7 +384,6 @@ describe("AI page", () => {
     expect(api.updateAssistantSettings).toHaveBeenCalledWith({
       enabled: true,
       active_connection_id: null,
-      data_policy: "standard",
       allow_default_fallback: false,
     });
     await waitFor(() => expect(api.undoMessage).toBe("GOAT AI (included) now answers all questions."));
@@ -652,16 +645,13 @@ describe("AI page", () => {
     await expect(within(dialog).getByLabelText(/^API key/)).toHaveValue("");
   });
 
-  it("saves the data policy at once", async () => {
+  it("says what the assistant sends to the model, and offers no data policy to choose", () => {
     renderPage();
-    await userEvent.click(screen.getByRole("radio", { name: /^Restricted/ }));
-    expect(api.updateAssistantSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ data_policy: "restricted" })
-    );
-    // The radio shows it: no toast, and no undo.
-    await waitFor(() => expect(aiSwitch()).toBeEnabled());
-    expect(toast.success).not.toHaveBeenCalled();
-    expect(api.undo).toBeUndefined();
+    expect(
+      screen.getByText(/^The assistant sends the model each question and the data it reads to answer it/)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Data policy" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: /^Restricted/ })).toBeNull();
   });
 
   it("picks and undoes a connection with the fallback off while the instance has no GOAT AI", async () => {
@@ -680,7 +670,6 @@ describe("AI page", () => {
     expect(api.updateAssistantSettings).toHaveBeenCalledWith({
       enabled: true,
       active_connection_id: "c2",
-      data_policy: "standard",
       allow_default_fallback: false,
     });
     await waitFor(() => expect(api.undo).toBeDefined());
@@ -688,7 +677,6 @@ describe("AI page", () => {
     expect(api.updateAssistantSettings).toHaveBeenLastCalledWith({
       enabled: true,
       active_connection_id: "c1",
-      data_policy: "standard",
       allow_default_fallback: false,
     });
   });
@@ -702,11 +690,10 @@ describe("AI page", () => {
     };
     api.connections = [{ ...CONNECTION, active: true }];
     renderPage();
-    await userEvent.click(screen.getByRole("radio", { name: /^Restricted/ }));
+    await userEvent.click(aiSwitch());
     expect(api.updateAssistantSettings).toHaveBeenCalledWith({
-      enabled: true,
+      enabled: false,
       active_connection_id: "c1",
-      data_policy: "restricted",
       allow_default_fallback: false,
     });
   });
@@ -772,7 +759,7 @@ describe("AI page", () => {
     expect(screen.queryByRole("radiogroup", { name: "What the assistant answers with" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(api.mutateConnections).toHaveBeenCalled();
-    expect(screen.getByRole("radiogroup", { name: "Data policy" })).toBeInTheDocument();
+    expect(aiSwitch()).toBeInTheDocument();
   });
 
   it("offers a retry when the settings fail to load", async () => {

@@ -1,5 +1,5 @@
 ---
-description: "Ask GOAT AI, the AI assistant, about your projects and data: it finds datasets in your workspace and the catalog, reads layers and statistics, suggests map views and filters, and builds, changes and runs workflows. Answers of GOAT AI use AI credits."
+description: "Ask GOAT AI, the AI assistant, about your projects and data: it finds datasets in your workspace and the catalog, reads layers and statistics, suggests map views and filters, builds, changes and runs workflows, and explains GOAT itself from this documentation. Answers of GOAT AI use AI credits."
 sidebar_position: 2.5
 ---
 
@@ -17,7 +17,7 @@ The assistant opens in a panel next to the page you are working on, the **dock**
 
 - **It works with your permissions.** Every step runs with your sign-in: the assistant only finds what you can open and only changes what you may edit. In a project you can only view, it answers questions but creates and changes nothing.
 - **It knows the page you are on.** Each message tells the assistant which page, project and view it was sent from, and what is selected there. In a project it answers about that project's layers; on the Catalog page about the catalog.
-- **Your organization decides how it works.** Organization admins switch AI on or off, choose the model connection, and set a data policy for what reaches the model (see [AI settings](./workspace/settings.md#ai)). Where your organization uses **GOAT AI (included)**, answers use [AI credits](#ai-credits).
+- **Your organization decides how it works.** Organization admins switch AI on or off and choose the model connection (see [AI settings](./workspace/settings.md#ai)). Where your organization uses **GOAT AI (included)**, answers use [AI credits](#ai-credits).
 
 :::info
 The assistant is in beta, and AI answers can be wrong. Check results before you use them. If an answer is wrong or misses something, tell us with the feedback buttons below it (see [Answers](#answers)).
@@ -82,6 +82,10 @@ Ask what data exists, for example <code>Which datasets are there about populatio
 
 To see the results on the Catalog page itself, ask for it: the assistant suggests the search and filters in a card (see [Suggestions you apply](#suggestions)).
 
+### Explain how GOAT works {#how-to}
+
+Ask how to do something in GOAT, where to find it or whether GOAT can do it, for example <code>Where do I change the colors of a layer?</code> The assistant reads the matching page of this documentation, in the language of your interface, and answers with the names of buttons and menus as GOAT shows them. When the documentation does not cover a question, it says so instead of guessing.
+
 ### Answer questions about a project's data
 
 In a project, the assistant reads the project's layers and answers questions about them, for example <code>Which fields does "Schools" have?</code> or <code>How many bus stops lie in the district of Pasing?</code> It can:
@@ -142,7 +146,7 @@ A conversation started in a project belongs to that project and can only be cont
 ## 6. Permissions and data
 
 - **Your permissions.** The assistant uses your sign-in for every step. It finds only content you can open, never reads a locked layer, and creates or changes workflows and adds datasets only in a project you may edit. It never deletes a project, dataset or workflow.
-- **What reaches the model.** Your messages and the data the assistant reads are sent to the AI model your organization uses. The organization's data policy sets how much: under `Standard`, everything a member can see, including sample rows and query results; under `Restricted`, only field names, types, counts and statistics, never single rows, features or geometries. Admins set it under [AI settings](./workspace/settings.md#ai).
+- **What reaches the model.** Your messages and the data the assistant reads to answer them are sent to the AI model your organization uses: anything you can see in GOAT, including sample rows and query results. An organization whose data should not go to GOAT AI's model switches AI off, or uses a connection of its own without the fallback to GOAT AI, under [AI settings](./workspace/settings.md#ai).
 - **Which model.** <code>GOAT AI (included)</code> is GOAT's own model connection. An organization can instead use a connection of its own, with its own provider and key; requests to it are covered by the organization's agreement with that provider. If that provider fails and the organization allows it, an answer can fall back to GOAT AI, and the answer then says so.
 
 ## 7. AI credits {#ai-credits}
