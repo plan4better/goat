@@ -64,8 +64,8 @@ import TabItem from '@theme/TabItem';
 | Ist weniger als      | Endet mit              |
 | Ist höchstens        | Enthält den Text       |
 | Ist größer als       | Enthält nicht den Text |
-| Liegt zwischen       | Ist leer (leerer String) |
-|                      | Ist nicht leer (kein leerer String) |
+| Liegt zwischen       | Ist leer               |
+|                      | Ist nicht leer         |
 
 </div>
 
