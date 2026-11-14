@@ -47,11 +47,54 @@ def test_resolutions_of_a_render() -> None:
     assert resolutions_of({"type": "h3", "resolution": 8}) == (8,)
 
 
-def test_the_margin_covers_two_edges_and_grows_towards_the_poles() -> None:
+def test_the_margin_covers_two_and_a_half_edges_and_grows_towards_the_poles() -> None:
     lat, lng = tile_margin_degrees(8, 0)
-    assert lat == pytest.approx(2 * 0.531414 / 111.32, rel=0.01)
+    assert lat == pytest.approx(2.5 * 0.531414 / 111.32, rel=0.01)
     assert lng == pytest.approx(lat, rel=0.01)
     assert tile_margin_degrees(8, 60)[1] == pytest.approx(2 * lat, rel=0.01)
+
+
+def test_the_margin_reaches_across_the_widest_hexagons(duck) -> None:
+    """A tile reads the points of every hexagon that touches it: as far as a
+    hexagon is wide. The widest are about 1.1 times two average edges (central
+    Europe 0.9 to 1.0, Madrid 1.04), so two edges missed points of the far
+    side of some border cells."""
+    for res in AUTO_RESOLUTIONS:
+        widest = duck.execute(
+            f"""
+            WITH c AS (
+                SELECT unnest(h3_grid_disk(h3_latlng_to_cell(lat, lng, {res}), 3)) AS cell
+                FROM (VALUES (40.4, -3.7), (0.0, 20.0), (65.0, 30.0), (-30.0, 140.0)) v(lat, lng)
+            ), g AS (
+                SELECT ST_GeomFromText(h3_cell_to_boundary_wkt(cell)) AS h,
+                       h3_cell_to_lat(cell) AS lat FROM c
+            )
+            SELECT max(greatest(ST_YMax(h) - ST_YMin(h),
+                                (ST_XMax(h) - ST_XMin(h)) * cos(radians(lat))))
+            FROM g
+            """
+        ).fetchone()[0]
+        assert widest < tile_margin_degrees(res, 0)[0]
+
+
+# A point in Berlin whose res-10 cell's res-5 parent (851f18b3fffffff) does not
+# contain it; its own res-5 cell does.
+STRAY = (13.374887889918698, 52.49010891250051)
+
+
+def test_a_point_counts_in_the_hexagon_that_contains_it(duck) -> None:
+    lng, lat = STRAY
+    duck.execute(f"CREATE TABLE stray AS SELECT ST_Point({lng}, {lat}) AS geom")
+
+    ((cell, _, _),) = duck.execute(
+        cell_values_sql("stray", "geom", "count", None, 5)
+    ).fetchall()
+
+    assert duck.execute(
+        f"SELECT h3_h3_to_string({cell}::UBIGINT) <> '851f18b3fffffff', "
+        f"ST_Contains(ST_GeomFromText(h3_cell_to_boundary_wkt({cell}::UBIGINT)), "
+        f"ST_Point({lng}, {lat}))"
+    ).fetchone() == (True, True)
 
 
 def test_cell_values_count_sum_and_mean(duck) -> None:
@@ -152,9 +195,7 @@ def test_a_relation_without_geometry_stores_empty_resolutions() -> None:
 
 
 @pytest.mark.parametrize("op", ["count", "sum", "mean"])
-def test_coarser_resolutions_roll_up_to_what_grouping_the_points_gives(
-    duck, op
-) -> None:
+def test_classes_are_computed_from_the_cells_the_tiles_draw(duck, op) -> None:
     value = {"op": op} if op == "count" else {"op": op, "field": "pop"}
     out, _ = compute_into(
         duck, "t", doc(value=value), geometry="point", fingerprint="f"
@@ -226,3 +267,34 @@ def test_columns_over_manual_classes_need_the_cell_range(duck) -> None:
     assert needed_stats(
         doc(resolution=8, classify=manual, extrude={"tallest": 500})
     ) == [("h3", "count", "", "8", "", "")]
+
+
+@pytest.mark.parametrize("op", ["count", "sum", "mean"])
+def test_classes_count_the_points_inside_each_hexagon(duck, op) -> None:
+    """Every resolution groups the points by their own cell. Rolled up from
+    the finest resolution, a few percent of the points landed in a coarse
+    hexagon that does not contain them."""
+    lng, lat = STRAY
+    duck.execute(f"INSERT INTO t VALUES (100, ST_Point({lng}, {lat}))")
+    duck.execute(
+        "INSERT INTO t SELECT 5, ST_Point(13.30 + i * 0.01, 52.45 + i * 0.002) FROM range(30) r(i)"
+    )
+    value = {"op": op} if op == "count" else {"op": op, "field": "pop"}
+    agg = {"count": "count(*)", "sum": "sum(pop)", "mean": "avg(pop)"}[op]
+
+    out, _ = compute_into(
+        duck, "t", doc(value=value), geometry="point", fingerprint="f"
+    )
+
+    for res in AUTO_RESOLUTIONS:
+        low, high = duck.execute(
+            f"""
+            SELECT min(v), max(v) FROM (
+                SELECT h3_latlng_to_cell(ST_Y(geom), ST_X(geom), {res}) AS cell,
+                       CAST({agg} AS DOUBLE) AS v
+                FROM t GROUP BY cell
+            ) WHERE v IS NOT NULL
+            """
+        ).fetchone()
+        stored = out["render"]["computed"]["resolutions"][str(res)]
+        assert (stored["min"], stored["max"]) == pytest.approx((low, high)), res

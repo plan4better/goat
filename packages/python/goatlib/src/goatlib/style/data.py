@@ -32,7 +32,7 @@ from goatlib.style.compute import (
 )
 from goatlib.style.context import DataContext, FieldInfo, FieldType
 from goatlib.style.cql import as_text
-from goatlib.style.h3 import cell_sql
+from goatlib.style.h3 import value_sql
 from goatlib.style.issues import Issue
 from goatlib.utils.column_types import column_types, type_class
 
@@ -144,37 +144,34 @@ def _h3_stats(
     """The cell values of H3 keys sharing one value (op and field), per resolution:
     breaks for a method, else their range; none for a relation without geometry.
 
-    The points are read once, grouped by the finest resolution's cells, and each
-    coarser resolution groups those cells by their parent: counts and sums add
-    up, a mean is the sum over the values counted."""
+    The points' locations and values are read once; each resolution then groups
+    them by the cell that contains each point (as `cell_sql`, which geoapi's
+    tiles use). A coarse cell is no sum of its children's cells: they do not
+    nest. The cells of a resolution are a table, as the class methods read
+    them more than once."""
     geometry = _geometry_column(con, relation)
     if geometry is None:
         return {key: (None, None) for key in keys}
     _, op, field = keys[0][:3]
     load_h3(con)
-    finest = max(int(key[3]) for key in keys)
     column = f"CAST({quote_identifier(field)} AS DOUBLE)" if field else "NULL"
-    value = {
-        "sum": "sum(s)",
-        "mean": "sum(s) / nullif(sum(k), 0)",
-    }.get(op, "CAST(sum(n) AS DOUBLE)")
+    point = f"ST_Centroid({quote_identifier(geometry)})"
     con.execute(f"""
         CREATE OR REPLACE TEMP TABLE goat_h3_base AS
-        SELECT {cell_sql(geometry, finest)} AS cell, count(*) AS n,
-               sum({column}) AS s, count({column}) AS k
+        SELECT ST_Y({point}) AS lat, ST_X({point}) AS lng, {column} AS v
         FROM {relation}
         WHERE {quote_identifier(geometry)} IS NOT NULL
-        GROUP BY cell
     """)
     out: dict[StatKey, Breaks | tuple[float | None, float | None]] = {}
     try:
         for key in keys:
             resolution, method, count = int(key[3]), key[4], key[5]
             con.execute(f"""
-                CREATE OR REPLACE TEMP VIEW goat_h3_cells AS
+                CREATE OR REPLACE TEMP TABLE goat_h3_cells AS
                 SELECT value FROM (
-                    SELECT h3_cell_to_parent(cell, {resolution}) AS parent, {value} AS value
-                    FROM goat_h3_base GROUP BY parent
+                    SELECT h3_latlng_to_cell(lat, lng, {resolution}) AS cell,
+                           {value_sql(op, "v" if field else None)} AS value
+                    FROM goat_h3_base GROUP BY cell
                 ) WHERE value IS NOT NULL
             """)
             if method in _METHODS:
@@ -189,7 +186,7 @@ def _h3_stats(
             else:
                 out[key] = _min_max(con, "goat_h3_cells", "value")
     finally:
-        con.execute("DROP VIEW IF EXISTS goat_h3_cells")
+        con.execute("DROP TABLE IF EXISTS goat_h3_cells")
         con.execute("DROP TABLE IF EXISTS goat_h3_base")
     return out
 

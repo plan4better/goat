@@ -22,6 +22,7 @@ import asyncpg
 import duckdb
 
 from goatlib.io.bbox_columns import star_excluding, stray_bbox_columns
+from goatlib.io.spatial_order import hilbert_key
 from goatlib.io.sql import sql_identifier
 from goatlib.storage.ducklake import fetch_one
 from goatlib.style.context import DataContext
@@ -194,13 +195,15 @@ class LayerReplaceMixin:
             columns = star_excluding(stray_bbox_columns(cols))
 
             if geom_col:
+                # goatlib.io.spatial_order: rows near each other share row groups
+                order = hilbert_key(sql_identifier(geom_col), "read_parquet(?)")
                 con.execute(
                     f"""
                     CREATE TABLE {full_table} AS
                     SELECT {columns} FROM read_parquet(?)
-                    ORDER BY ST_Hilbert({sql_identifier(geom_col)})
+                    ORDER BY {order}
                 """,
-                    [str(parquet_path)],
+                    [str(parquet_path), str(parquet_path)],
                 )
             else:
                 con.execute(

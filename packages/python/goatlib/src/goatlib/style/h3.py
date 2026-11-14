@@ -2,8 +2,9 @@
 how far around a tile its points are read, and the per-cell values.
 
 geoapi draws the hexagon tiles with `cell_values_sql`; processes computes the
-classes from the same cells (`cell_sql`, rolled up to coarser resolutions). The
-SQL needs DuckDB's h3 community extension on the connection.
+classes from the same cells (`cell_sql`). A point counts in the hexagon that
+contains it, at every resolution. The SQL needs DuckDB's h3 community
+extension on the connection.
 """
 
 import math
@@ -35,9 +36,13 @@ EDGE_KM: dict[int, float] = {
 }
 
 _KM_PER_DEGREE = 111.32
-#: Hexagon edges vary around their average; reading two edges beyond a tile
-#: reaches every point of a cell that touches the tile.
-_MARGIN_EDGES = 2
+#: How far beyond a tile its points are read, in average edges. A cell that
+#: touches the tile holds points up to one hexagon width away, and a hexagon is
+#: up to about 1.1 times two average edges wide (central Europe 0.9 to 1.0,
+#: Madrid 1.04, the widest anywhere about 1.1): two edges missed points on the
+#: far side of some border cells, which neighbouring tiles then drew with
+#: different values. 2.5 leaves room above the widest.
+_MARGIN_EDGES = 2.5
 
 
 def quote_identifier(name: str) -> str:
@@ -81,14 +86,13 @@ def value_sql(op: str, field: str | None) -> str:
 
 
 def cell_sql(geometry: str, resolution: int) -> str:
-    """A point's cell: the parent of its cell at the finest auto resolution. H3
-    children do not nest exactly in their parent, so the cell holding a point at
-    a coarse resolution can differ from its fine cell's parent; reading every
-    resolution through the finest lets processes roll fine cells up and still
-    match geoapi's tiles."""
+    """A point's cell at `resolution`: the hexagon that contains it. H3 cells
+    do not nest exactly in their parent, so the parent of a point's fine cell
+    can be a coarse hexagon beside it (a few percent of the points, and up to
+    a fifth of a cell's count); each resolution is therefore found from the
+    point itself."""
     point = f"ST_Centroid({quote_identifier(geometry)})"
-    finest = f"h3_latlng_to_cell(ST_Y({point}), ST_X({point}), {AUTO_RESOLUTIONS[-1]})"
-    return f"h3_cell_to_parent({finest}, {int(resolution)})"
+    return f"h3_latlng_to_cell(ST_Y({point}), ST_X({point}), {int(resolution)})"
 
 
 def cell_values_sql(

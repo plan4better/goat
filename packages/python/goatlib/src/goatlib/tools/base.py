@@ -65,6 +65,7 @@ from goatlib.io.config import (
     PARQUET_VERSION,
     parquet_copy_options,
 )
+from goatlib.io.spatial_order import hilbert_key
 from goatlib.io.sql import sql_identifier, sql_literal
 from goatlib.models.bundle import BundleArtifactState, artifact_state
 from goatlib.models.io import DatasetMetadata
@@ -2057,17 +2058,18 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 # (goatlib.io.bbox_columns).
                 columns = star_excluding(stray_bbox_columns(cols))
 
-                # Create table from parquet with Hilbert ordering for spatial locality
-                # This ensures spatially-close rows are stored together in row groups,
-                # enabling efficient bbox-based row group pruning during queries
+                # Rows in Hilbert order over the layer's extent: spatially close
+                # rows share row groups, which bbox filters then skip
+                # (goatlib.io.spatial_order). The order fixes the feature ids.
                 if geom_col:
+                    order = hilbert_key(sql_identifier(geom_col), "read_parquet(?)")
                     con.execute(
                         f"""
                         CREATE TABLE {table_name} AS
                         SELECT {columns} FROM read_parquet(?)
-                        ORDER BY ST_Hilbert({sql_identifier(geom_col)})
+                        ORDER BY {order}
                     """,
-                        [str(parquet_path)],
+                        [str(parquet_path), str(parquet_path)],
                     )
                     logger.info(
                         "Created DuckLake table: %s from %s (Hilbert-sorted by %s)",

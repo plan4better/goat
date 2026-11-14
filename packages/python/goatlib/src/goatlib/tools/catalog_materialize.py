@@ -8,8 +8,11 @@ Hilbert-ordered so spatial queries prune row groups — to::
     {DATA_DIR}/catalog/layers/t_<layer_id>.parquet
 
 plus PMTiles at the shared flat tiles location. The file is written next to
-its final name and moved into place, so a re-run (or a crash mid-way)
-overwrites cleanly; the job is idempotent.
+its final name and moved into place, so a crash mid-way leaves no partial
+file. A re-run keeps a file that is already in place: the layer's feature ids
+are its rows' positions in it (`file_row_number`), and written again the rows
+could come out in another order (a changed sort, ties broken differently).
+The re-run redoes the tiles and the layer row; the job is idempotent.
 
 Dispatch is by format so the catalog is not limited to vectors: a handler per
 ``FormatProfile`` key, ``vector`` and ``raster``. A raster item's data asset is
@@ -46,6 +49,7 @@ from pydantic import Field
 
 from goatlib.catalog.item import RASTER_SUFFIXES
 from goatlib.io.config import parquet_copy_options
+from goatlib.io.spatial_order import hilbert_key
 from goatlib.tools.base import SimpleToolRunner
 from goatlib.tools.schemas import ToolInputBase
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
@@ -155,6 +159,34 @@ def generate_catalog_pmtiles(
         geometry_column=geometry_column,
         exclude_columns=["rowid"],
     )
+
+
+def _feature_count_and_bounds(
+    con: duckdb.DuckDBPyConnection, path: Path, geom_col: str | None
+) -> tuple[int, tuple[float, float, float, float] | None]:
+    """The features a tool can use, and their bounds.
+
+    Tools read the rows that have a geometry, and the workflow check compares
+    this count with their limits. A table without a geometry counts every row.
+    """
+    # Double any embedded quote of the untrusted name so it stays inside its
+    # "..." quoting.
+    geom = f'"{geom_col.replace(chr(34), chr(34) * 2)}"' if geom_col else None
+    stats = con.execute(
+        f"SELECT count({geom or '*'}) FROM read_parquet('{path}')"
+    ).fetchone()
+    feature_count = int(stats[0]) if stats else 0
+    if not geom or not feature_count:
+        return feature_count, None
+    b = con.execute(f"""
+        SELECT MIN(ST_XMin({geom})), MIN(ST_YMin({geom})),
+               MAX(ST_XMax({geom})), MAX(ST_YMax({geom}))
+        FROM read_parquet('{path}')
+        WHERE {geom} IS NOT NULL
+    """).fetchone()
+    if not b or b[0] is None:
+        return feature_count, None
+    return feature_count, (float(b[0]), float(b[1]), float(b[2]), float(b[3]))
 
 
 class CatalogMaterializeRunner(SimpleToolRunner):
@@ -330,6 +362,13 @@ class CatalogMaterializeRunner(SimpleToolRunner):
         set_memory_share(con, JOB_WORK_MEMORY_SHARE)
         try:
             con.execute("INSTALL spatial; LOAD spatial;")
+            if out_path.exists():
+                # Written by an earlier run: its row order is the layer's
+                # feature ids (module docstring).
+                logger.info("Keeping the materialized file %s", out_path)
+                geom_col = parquet_geometry_column(con, out_path)
+                count, bounds = _feature_count_and_bounds(con, out_path, geom_col)
+                return out_path, count, bounds, geom_col
             with tempfile.TemporaryDirectory(dir=out_dir) as tmp:
                 src = Path(tmp) / "source.parquet"
                 self._catalog_s3().download_file(bucket, key, str(src))
@@ -347,11 +386,11 @@ class CatalogMaterializeRunner(SimpleToolRunner):
 
                 staged = Path(tmp) / "staged.parquet"
                 if geom_col_sql:
+                    source = f"read_parquet('{src}')"
+                    order = hilbert_key(f'"{geom_col_sql}"', source)
                     con.execute(f"""
-                        COPY (
-                            SELECT * FROM read_parquet('{src}')
-                            ORDER BY ST_Hilbert("{geom_col_sql}")
-                        ) TO '{staged}' {parquet_copy_options('COMPRESSION ZSTD')}
+                        COPY (SELECT * FROM {source} ORDER BY {order})
+                        TO '{staged}' {parquet_copy_options('COMPRESSION ZSTD')}
                     """)
                 else:
                     con.execute(f"""
@@ -359,24 +398,7 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                         TO '{staged}' {parquet_copy_options('COMPRESSION ZSTD')}
                     """)
 
-                # The features a tool can use: tools read the rows that have a
-                # geometry, and the workflow check compares this count with
-                # their limits. A table without a geometry counts every row.
-                counted = f'"{geom_col_sql}"' if geom_col_sql else "*"
-                stats = con.execute(
-                    f"SELECT count({counted}) FROM read_parquet('{staged}')"
-                ).fetchone()
-                feature_count = int(stats[0]) if stats else 0
-                bounds = None
-                if geom_col_sql and feature_count:
-                    b = con.execute(f"""
-                        SELECT MIN(ST_XMin("{geom_col_sql}")), MIN(ST_YMin("{geom_col_sql}")),
-                               MAX(ST_XMax("{geom_col_sql}")), MAX(ST_YMax("{geom_col_sql}"))
-                        FROM read_parquet('{staged}')
-                        WHERE "{geom_col_sql}" IS NOT NULL
-                    """).fetchone()
-                    if b and b[0] is not None:
-                        bounds = (float(b[0]), float(b[1]), float(b[2]), float(b[3]))
+                feature_count, bounds = _feature_count_and_bounds(con, staged, geom_col)
 
                 # Same-directory rename: atomic, and a crash leaves only the
                 # TemporaryDirectory to clean up, never a half-written target.

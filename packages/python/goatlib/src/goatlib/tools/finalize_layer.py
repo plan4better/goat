@@ -35,6 +35,8 @@ import asyncpg
 from pydantic import BaseModel, Field
 
 from goatlib.io.bbox_columns import star_excluding, stray_bbox_columns
+from goatlib.io.spatial_order import hilbert_key
+from goatlib.io.sql import sql_identifier
 from goatlib.storage.ducklake import fetch_one
 from goatlib.style.context import DataContext
 from goatlib.style.fingerprint import fingerprint
@@ -717,10 +719,12 @@ class FinalizeLayerRunner(
         columns = star_excluding(stray_bbox_columns(cols))
 
         if geom_col:
+            # goatlib.io.spatial_order: rows near each other share row groups
+            source = f"read_parquet('{parquet_path}')"
             con.execute(f"""
                 CREATE TABLE {table_name} AS
-                SELECT {columns} FROM read_parquet('{parquet_path}')
-                ORDER BY ST_Hilbert({geom_col})
+                SELECT {columns} FROM {source}
+                ORDER BY {hilbert_key(sql_identifier(geom_col), source)}
             """)
         else:
             con.execute(f"""

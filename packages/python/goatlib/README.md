@@ -13,6 +13,7 @@ analysis algorithms, geospatial I/O, and shared models used by the `core`,
 | `io/` | Dataset import/export, format conversion, remote sources (WFS, …), and the readers for GOAT's base data: the OpenStreetMap/Overture mirror, the street network and the public transport network (`io/fetch/`) |
 | `models/` | Pydantic models shared across services |
 | `style/` | GOAT Style, the layer style format: validation, conversion of today's styles, merge, defaults, JSON Schema |
+| `filter/` | Layer filters (CQL2-JSON): the spellings the services read, the checker, the limits |
 | `raster/` | Raster files read and colored on the server: band formulas, the coloring a tile URL carries, coloring, reading COGs with rio-tiler, statistics for computed values (the `raster` extra) |
 | `services/`, `storage/`, `tasks/` | Service clients, object storage, background task helpers |
 | `workflows/` | Workflow code that needs no analytics dependencies: the shape check core runs on save, the graph helpers and settings-visibility rules the full check in processes builds on, and the operations the assistant edits a stored workflow with |
@@ -215,6 +216,53 @@ READMEs means section N of that file.
   which layers draw heights and whether the deployment has terrain and building
   sources.
 
+## Layer filters (`filter/`)
+
+A project layer's filter is saved in `layer_project.query.cql` as standard OGC
+CQL2-JSON, and that stays its saved form: other applications that speak OGC API
+Features can read and write it, and nothing GOAT-specific goes into it. What only
+the web's filter panel needs (switched-off rows) is kept apart in `query.ui`;
+deleting it never changes which features pass.
+
+- **`normalize` sits in front of the parser.** pygeofilter follows an older CQL2
+  draft in places, and older clients saved legacy spellings; `normalize.py`
+  rewrites both to the one form the evaluator takes, and every place that parses
+  a filter (geoapi, the catalog, the storage query builder, the tools) calls it
+  first. Its module docstring lists the rewrites.
+- **An area is evaluated as its union** (`area.py`). Clients put an area's
+  pieces side by side in one MultiPolygon, so its polygons may overlap or fill
+  one another's holes, and DuckDB and a prepared shapely geometry read a point
+  in two pieces as outside. The evaluator, geoapi's stored tiles and the
+  catalog's `intersects` hand on the union instead, so every writer and every
+  saved filter is answered alike; a valid area passes through as it is.
+  Repairing an outline costs by how often it crosses, touches or lies within
+  itself, not by its points, so those are counted first, at a bounded cost,
+  and an area past a cap is refused instead of repaired: the checker reports
+  `area_crosses_itself` on a save and on a request, and `normalize_area`
+  raises for a caller that skipped the checker. Each area is worked out once
+  and kept by its digest, so a path that asks per tile pays once per filter.
+- **One checker, two modes** (`validate.py`). `validate(cql, ctx)` reports
+  issues with the style's codes and levels (`issues.py`): malformed or
+  unsupported forms, fields the layer does not have, values of the wrong type,
+  the limits. A new save (`stored=False`) is refused on any error; a filter read
+  back (`stored=True`) keeps loading: a field a later data change broke is
+  `damaged` and a limit is a warning. It accepts every form the services
+  evaluate (any `like` pattern, the functions the evaluator allows, the spatial
+  and arithmetic operators), so no saved filter becomes invalid.
+- **Save limits and request ceilings are different things.** The save limits
+  (`data/operators.json`, read by the web too, loaded in `limits.py`) are the
+  product's rule, applied when a save changes a filter. The request ceilings
+  (`REQUEST_MAX_*` in `limits.py`, checked by `over_request_limits` on every
+  filter a request brings to geoapi, the sync analytics of processes and the
+  catalog's search) only protect the services, so they lie well above the save
+  limits and a filter saved over one still filters. CQL2 text has to be parsed
+  to be measured (`over_request_limits_text`).
+- **One set of cases for Python and the web.**
+  `tests/unit/filter/fixtures/filter_cases.json` holds each filter shape with
+  the issues the checker reports and the rows the web's panel reads; the web's
+  tests read the same file, and `test_saved_shapes.py` runs every error-free
+  case through the evaluator and DuckDB.
+
 ## Raster files (`raster/`)
 
 Raster layers are COG addresses read in place over HTTP: geoapi serves colored
@@ -381,10 +429,11 @@ is saved. Behind a dataset, directly or through Ifs, the run first copies the
 dataset's rows, with its filter, into the temp folder of the step the export
 is connected to (`layer_create_filtered` in temp mode, once per step; a
 failed copy is the error of every export behind the step), so they are saved
-like a tool's result. The copy carries the dataset's style, its
-project entry's or else the layer's own, shown even where the dataset is
-hidden (`dataset_style` in `tools/workflow_dataset_nodes.py`); a template's
-remembered style for the export still wins. An export connected to both a
+like a tool's result. The copy carries the active style of the dataset
+step's project entry, which `layer_create_filtered` reads from the entry it is
+given (`entry_id` in `tools/workflow_dataset_nodes.py`); a dataset step without
+an entry saves in the default style, and a template's remembered style for the
+export still wins. An export connected to both a
 step's result and a dataset saves the step's result.
 
 ## Results without rows
@@ -558,6 +607,27 @@ takes one, otherwise written through `sql_literal` or `sql_identifier`
 columns reach a statement: the DuckLake ingest and replace
 (`tools/base.py`, `tools/layer_replace.py`), the workflow preview
 (`tools/temp_writer.py`) and the tiles export (`io/pmtiles.py`).
+
+## Rows are stored in spatial order
+
+A tile or any bbox query skips the row groups whose `bbox` column misses its
+window, which only helps when neighbours on the map are neighbours in the
+file. Every write of a layer's rows (the ingest and replace in `tools/base.py`
+and `tools/layer_replace.py`, the workflow result in `tools/finalize_layer.py`,
+the catalog copy in `tools/catalog_materialize.py`, and the parquet writers in
+`io/parquet.py` and `io/geoparquet.py`) therefore sorts along a Hilbert curve
+over the rows' own extent, with `hilbert_key` (`io/spatial_order.py`).
+DuckDB's `ST_Hilbert` without that box maps the coordinates' raw float bits
+and kept no neighbours together: each row group of a German layer spanned the
+whole country, and every tile read the whole table.
+
+A layer's feature ids are its row positions (rowid + 1, a catalog layer's
+`file_row_number`), and projects keep them (atlas pages, exclusions, picked
+features). Data already written is therefore never reordered: a re-run of
+`catalog_materialize` keeps the file in place, and tables written before the
+key stay as they are. DuckLake offers no way around it: a rewrite, and
+`SET SORTED BY` with `ducklake_merge_adjacent_files`, both number the rows
+anew. The `project_import` copy keeps its export's order on purpose.
 
 ## Files another pod just wrote
 
