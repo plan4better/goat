@@ -1272,15 +1272,16 @@ async def test_restricted_small_filtered_groups_hide_extremes_and_breaks() -> No
     assert _calls(processes, "class-breaks")[0]["breaks"] == 2
     assert enough["min"] == 0.1 and enough["breaks"] == [1.0, 2.0]
     assert "mean" not in enough
-    # Without a filter the whole layer is the group: the extremes stay, and only
-    # the breaks depend on its size.
+    # Without a filter the whole layer is the group: a layer with fewer than
+    # five values isolates its features just the same.
     processes = _processes(count=1)
     whole = await execute(
         FIELD_STATISTICS,
         _env(_core(), _geoapi(), processes, data_policy="restricted"),
         {"layer_project_id": 11, "field": "laenge"},
     )
-    assert whole["min"] == 0.1 and "breaks" not in whole
+    assert not {"min", "max", "breaks", "mean", "std_dev"} & set(whole)
+    assert "The layer has fewer than 5 features with a value" in whole["note"]
     assert "feature_count" not in whole
     assert _calls(processes, "class-breaks")[0]["breaks"] == 2
 
@@ -1330,12 +1331,20 @@ async def test_restricted_small_filtered_area_groups_hide_extremes() -> None:
         args,
     )
     assert big["min_area"] == 10.0 and "total_area" not in big
+    # Without a filter the whole layer is the group: two features are as few.
     unfiltered = await execute(
         AREA_STATISTICS,
         _env(_core(), _geoapi(), areas(2), data_policy="restricted"),
         {"layer_project_id": 12},
     )
-    assert unfiltered["max_area"] == 40.0
+    assert not {"total_area", "mean_area", "min_area", "max_area"} & set(unfiltered)
+    assert "The layer has fewer than 5 features" in unfiltered["note"]
+    whole = await execute(
+        AREA_STATISTICS,
+        _env(_core(), _geoapi(), areas(5), data_policy="restricted"),
+        {"layer_project_id": 12},
+    )
+    assert whole["max_area"] == 40.0
 
 
 async def test_restricted_numeric_breaks_of_other_methods_are_dropped() -> None:
@@ -1350,9 +1359,65 @@ async def test_restricted_numeric_breaks_of_other_methods_are_dropped() -> None:
         breaks=[1.0, 2.0],
         min=0.0,
         max=3.0,
+        valued=10,
     )
     reduced = stats.restricted()
     assert reduced.breaks is None and reduced.min == 0.0
+
+
+def test_restricted_numeric_extremes_fail_closed_without_a_count() -> None:
+    """Without the number of features with a value, nothing says the minimum
+    and maximum are not one feature's own value."""
+    from assistant.tools.project import FieldStatistics
+
+    stats = FieldStatistics(
+        layer="x",
+        field="f",
+        kind="numeric",
+        filter="none (all features)",
+        method="quantile",
+        min=0.0,
+        max=3.0,
+    )
+    reduced = stats.restricted()
+    assert reduced.min is None and reduced.max is None
+
+
+@pytest.mark.parametrize("valued", [1, 4])
+async def test_restricted_extremes_of_a_small_layer_are_withheld(
+    valued: int,
+) -> None:
+    """A layer with a single feature (a result of one row) would send that
+    feature's value as both minimum and maximum: the sum or mean Restricted
+    withholds. Standard sends them as before."""
+    args = {"layer_project_id": 11, "field": "laenge"}
+    processes = _processes(count=valued)
+    small = await execute(
+        FIELD_STATISTICS,
+        _env(_core(), _geoapi(), processes, data_policy="restricted"),
+        args,
+    )
+    assert not {"min", "max", "breaks", "mean", "std_dev"} & set(small)
+    assert "minimum, maximum and class breaks are withheld" in small["note"]
+    processes = _processes(count=valued)
+    standard = await execute(
+        FIELD_STATISTICS, _env(_core(), _geoapi(), processes), args
+    )
+    assert (standard["min"], standard["max"]) == (0.1, 9.9)
+    assert len(processes.requests) == 1
+
+
+async def test_restricted_group_extremes_are_withheld() -> None:
+    """min and max per group are values of the features: Restricted sends
+    counts only."""
+    env = _env(_core(), _geoapi(), _processes(), data_policy="restricted")
+    for operation in ("min", "max"):
+        result = await execute(
+            GROUP_STATISTICS,
+            env,
+            {"layer_project_id": 11, "operation": operation, "field": "laenge"},
+        )
+        assert result.get("withheld") is True
 
 
 async def test_propose_view_only_targets_the_open_project() -> None:

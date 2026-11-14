@@ -721,8 +721,7 @@ class FieldStatistics(BaseModel):
     method: str | None = None
     breaks: list[float] | None = None
     #: How many features the filter matches with a value in the field; set
-    #: only under Restricted with a filter, where it decides whether the
-    #: numbers may be shown.
+    #: only under Restricted with a filter.
     feature_count: int | None = None
     distinct_count: int | None = None
     values: list[ValueCount] | None = None
@@ -730,6 +729,10 @@ class FieldStatistics(BaseModel):
     #: Whether the field has few distinct values over the whole layer, not only
     #: over the filtered features. Set under Restricted; never serialized.
     low_cardinality: bool | None = Field(default=None, exclude=True)
+    #: How many features have a value in the field, filtered or not; counted
+    #: under Restricted, where fewer than MIN_RESTRICTED_GROUP withhold the
+    #: minimum, maximum and breaks. Never serialized.
+    valued: int | None = Field(default=None, exclude=True)
     #: The break points allowed under Restricted: ``points + 1`` classes of at
     #: least MIN_RESTRICTED_GROUP features with a value each. Never
     #: serialized. Fewer than two (the fewest the service computes) means no
@@ -749,15 +752,27 @@ class FieldStatistics(BaseModel):
             if self.method not in _RESTRICTED_METHODS:
                 # Breaks from other methods are built on the mean and deviation.
                 update["breaks"] = None
-            if (
-                self.feature_count is not None
-                and self.feature_count < MIN_RESTRICTED_GROUP
-            ):
+            # A filter or a layer that leaves fewer than MIN_RESTRICTED_GROUP
+            # values makes the minimum and maximum those features' own values
+            # (a result of one row: its sum). Without the count, nothing says
+            # otherwise: withheld too.
+            if self.valued is None or self.valued < MIN_RESTRICTED_GROUP:
                 update.update(min=None, max=None, breaks=None)
-                notes.append(
-                    f"The filter matches fewer than {MIN_RESTRICTED_GROUP} features "
-                    "with a value, so minimum, maximum and class breaks are withheld too."
-                )
+                if self.valued is None:
+                    notes.append(
+                        "The number of features with a value is not known, so "
+                        "minimum, maximum and class breaks are withheld too."
+                    )
+                else:
+                    scope = (
+                        "The filter matches"
+                        if self.feature_count is not None
+                        else "The layer has"
+                    )
+                    notes.append(
+                        f"{scope} fewer than {MIN_RESTRICTED_GROUP} features with a "
+                        "value, so minimum, maximum and class breaks are withheld too."
+                    )
             elif update.get("breaks", self.breaks) is not None and (
                 self.points is None or self.points < 2
             ):
@@ -775,7 +790,27 @@ class FieldStatistics(BaseModel):
             and self.distinct_count <= LOW_CARDINALITY_LIMIT
         )
         if low:
-            return self.model_copy()
+            # A value held by fewer than MIN_RESTRICTED_GROUP features can be
+            # one feature's own (a result of one row: every field), as a
+            # filter may not pick one either (_guard_restricted_filter).
+            kept = [
+                value
+                for value in self.values or []
+                if value.count >= MIN_RESTRICTED_GROUP
+            ]
+            hidden = len(self.values or []) - len(kept)
+            if not hidden:
+                return self.model_copy()
+            return self.model_copy(
+                update={
+                    "values": kept,
+                    "note": _note(
+                        self.note,
+                        f"{hidden} value(s) held by fewer than {MIN_RESTRICTED_GROUP} "
+                        "features are withheld by the data policy (Restricted).",
+                    ),
+                }
+            )
         return self.model_copy(
             update={
                 "values": None,
@@ -848,6 +883,7 @@ async def _field_statistics(env: ToolEnv, args: StatisticsInput) -> FieldStatist
             method=result.get("method"),
             breaks=result.get("breaks"),
             feature_count=valued if cql is not None else None,
+            valued=valued,
             points=points if restricted else None,
             note=_note(*read_as),
             read_as=read_as,
@@ -968,10 +1004,13 @@ class AreaStatistics(BaseModel):
         note = "Total and mean area are withheld by the data policy (Restricted)."
         if self.groups is not None:
             note += " So is the area per group: it is a total too."
-        if self.filtered and self.feature_count < MIN_RESTRICTED_GROUP:
+        # Filtered or not: the smallest and largest of so few features are
+        # their own areas, and with one feature the total.
+        if self.feature_count < MIN_RESTRICTED_GROUP:
             update.update(min_area=None, max_area=None)
+            scope = "The filter matches" if self.filtered else "The layer has"
             note += (
-                f" The filter matches fewer than {MIN_RESTRICTED_GROUP} features, so "
+                f" {scope} fewer than {MIN_RESTRICTED_GROUP} features, so "
                 "smallest and largest area are withheld too."
             )
         return self.model_copy(update={**update, "note": _note(*self.read_as, note)})
@@ -1665,22 +1704,23 @@ class GroupStatistics(BaseModel):
             )
         ):
             return Withheld()
+        # A group of fewer than MIN_RESTRICTED_GROUP features is left out,
+        # its key with it: the key can be one feature's own value (grouped by
+        # a field of a result of one row, its sum), as a filter may not pick
+        # one either (_guard_restricted_filter).
         rows = [
             row
-            if row.value is None or row.value >= MIN_RESTRICTED_GROUP
-            else row.model_copy(update={"value": None})
             for row in self.rows
+            if row.value is None or row.value >= MIN_RESTRICTED_GROUP
         ]
-        hidden = sum(1 for row in rows if row.value is None) - sum(
-            1 for row in self.rows if row.value is None
-        )
+        hidden = len(self.rows) - len(rows)
         # The note is built here, not taken from the full result: only these
         # parts of it may leave under Restricted.
-        notes = [*self.read_as, *_null_notes(self.rows, self.group_by, self.then_by)]
+        notes = [*self.read_as, *_null_notes(rows, self.group_by, self.then_by)]
         if hidden:
             notes.append(
                 f"{hidden} group(s) have fewer than {MIN_RESTRICTED_GROUP} features; "
-                "the data policy (Restricted) withholds their counts."
+                "the data policy (Restricted) withholds them, their values and counts."
             )
         return self.model_copy(update={"rows": rows, "note": " ".join(notes) or None})
 

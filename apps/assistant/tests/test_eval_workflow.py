@@ -186,9 +186,9 @@ def _codes(issues: list[dict[str, Any]]) -> list[str]:
     return [issue["code"] for issue in issues if issue["level"] != "warning"]
 
 
-def test_the_suite_has_twelve_tasks_on_the_two_workflow_pages() -> None:
+def test_the_suite_has_thirteen_tasks_on_the_two_workflow_pages() -> None:
     tasks = load_tasks("workflow")
-    assert [task.id for task in tasks] == [f"wf-{n:02d}" for n in range(1, 13)]
+    assert [task.id for task in tasks] == [f"wf-{n:02d}" for n in range(1, 14)]
     # The existing-workflow task: the eval user presses Undo after the answer.
     assert [task.id for task in tasks if task.undo] == ["wf-12"]
     assert {task.context["surface"] for task in tasks} == {
@@ -1880,6 +1880,52 @@ async def test_the_build_and_run_task_can_pass(
         {key: row[key] for key in ("group", "then", "value")} for row in rows
     ]
     grades = await grade(_task("wf-10"), transcript, backends)
+    assert [g.passed for g in grades] == [True] * 5, grades
+
+
+async def test_the_saved_result_is_read_right_after_its_run(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """wf-13 end to end on the fixture: the statistics of the layer the run
+    has just saved are read in the same answer, a total over one band and
+    the largest single value. The fixture's processes reads the layer at
+    once; that processes itself does is its own test
+    (apps/processes/tests/test_analytics_service.py, TestLayerJustSaved)."""
+    created = "0b6f0000-0000-0000-0000-000000000001"
+    result = RESULT_LAYER.layer_project_id
+    band_15 = {"conditions": [{"field": "band", "op": "=", "value": 15}]}
+    model = ScriptedModel(
+        calls=[
+            ("workflow_check_draft", {"draft": BANDS_DRAFT}),
+            ("workflow_create", {"draft": BANDS_DRAFT}),
+            ("workflow_run", {"workflow_id": created}),
+            (
+                "project_group_statistics",
+                {
+                    "layer_project_id": result,
+                    "operation": "sum",
+                    "field": "einwohner",
+                    "filter": band_15,
+                },
+            ),
+            (
+                "project_field_statistics",
+                {"layer_project_id": result, "field": "einwohner"},
+            ),
+        ],
+        answer=(
+            "Within 15 minutes live 8,500 residents across all districts; the "
+            "largest value for one district and band is 4,100."
+        ),
+    )
+    task = _task("wf-13")
+    transcript = await run_task(task, model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    assert not any(call.failed for call in transcript.tool_calls), transcript.tool_calls
+    total, described = (call.result for call in transcript.tool_calls[3:])
+    assert total["rows"][0]["value"] == 8500.0
+    assert described["max"] == 4100.0
+    grades = await grade(task, transcript, backends)
     assert [g.passed for g in grades] == [True] * 5, grades
 
 
