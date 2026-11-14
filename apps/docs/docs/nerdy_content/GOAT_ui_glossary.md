@@ -662,9 +662,6 @@ This glossary lists the English and German labels of the main tools, features an
 | GOAT AI (included) | GOAT AI (inklusive) | The built-in model connection |
 | Active connection | Aktive Verbindung | The model connection the organization uses |
 | Test connection | Verbindung testen | Checks authentication, streaming and tool calling of a connection |
-| Data policy | Datenrichtlinie | What the assistant may send to the model |
-| Standard | Standard | Data policy level, the default: everything a member can see |
-| Restricted | Eingeschränkt | Data policy level: no rows, features, geometries, sums or averages |
 | Provider | Anbieter | The model provider of a connection |
 | Model ID | Modell-ID | The model name as the provider uses it |
 | API key | API-Schlüssel | The credential of a connection |

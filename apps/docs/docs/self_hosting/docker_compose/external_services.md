@@ -256,7 +256,15 @@ docker compose exec assistant python -m assistant.dbcheck
 
 It prints `ok` or lists every missing privilege.
 
-**Data processing.** User questions and, depending on the organization's data policy, data from GOAT go to the model provider of the connection in use. For GOAT AI that is the provider you configure; for an organization's own connection, the organization's provider. An organization's data policy is **Standard** until one of its admins selects **Restricted** under **Settings → AI**: under Standard the assistant sends what the user can see in GOAT, sample rows and query results included. Restricted keeps back rows, features, geometries, sums and averages; field names, types, counts, value ranges and the values of fields with few different values still leave GOAT. Earlier versions had it the other way round, so an upgrade moves every organization that never saved its AI settings to Standard. Tell your organizations' admins before you enable GOAT AI or upgrade, and make sure your agreement with the model provider covers the data they hold.
+**Data processing.** User questions and the data the assistant reads to answer them go to the model provider of the connection in use: anything the user can see in GOAT, sample rows and query results included. For GOAT AI that is the provider you configure; for an organization's own connection, the organization's provider. An organization whose data should not go to GOAT AI's provider switches AI off under **Settings → AI**, or uses an own connection without the fallback to GOAT AI. Tell your organizations' admins before you enable GOAT AI, and make sure your agreement with the model provider covers the data they hold.
+
+**Upgrading from a release with data policies.** Earlier releases had a second data policy, **Restricted**, which kept rows, features, geometries, sums and averages from the model. It is gone. An organization that had chosen Restricted keeps GOAT AI switched on and from the upgrade on sends what every other organization sends. To find such organizations before you upgrade, run in GOAT's database:
+
+```sql
+SELECT organization_id FROM assistant.organization_settings WHERE data_policy = 'restricted';
+```
+
+Tell their admins, so they can switch AI off or choose an own connection if they do not want that. Run the query before the upgrade: the column's default is `restricted`, so a row first saved after the upgrade shows up too.
 
 ## Optional integrations {#integrations}
 
