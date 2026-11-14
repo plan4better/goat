@@ -1,8 +1,8 @@
 "use client";
 
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import DeleteIcon from "@mui/icons-material/Delete";
 import DuplicateIcon from "@mui/icons-material/ContentCopy";
+import DeleteIcon from "@mui/icons-material/Delete";
 import FilterIcon from "@mui/icons-material/FilterAlt";
 import { Box, IconButton, Link, Stack, Tooltip, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
@@ -20,12 +20,11 @@ import { useProjectLayers } from "@/lib/api/projects";
 import type { AppDispatch } from "@/lib/store";
 import { selectNodes } from "@/lib/store/workflow/selectors";
 import { addNode, removeNodes, selectNode } from "@/lib/store/workflow/slice";
-import { createTheCQLBasedOnExpression } from "@/lib/transformers/filter";
 import { currentDatasetType } from "@/lib/utils/workflowDatasets";
-import type { Expression } from "@/lib/validations/filter";
+import { nodeFilterCql, nodeHasFilter } from "@/lib/utils/workflowFilter";
 import type { DatasetNodeData } from "@/lib/validations/workflow";
 
-import useLayerFields from "@/hooks/map/CommonHooks";
+import { useFilterFields } from "@/hooks/map/useFilterFields";
 
 import StepIssueBadge from "@/components/workflows/issues/StepIssueBadge";
 import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
@@ -133,7 +132,7 @@ const DatasetNode: React.FC<DatasetNodeProps> = ({ id, data, selected }) => {
   const { isExecuting: hasAnyExecution } = useWorkflowExecutionContext();
 
   // Get layer fields for CQL generation
-  const { layerFields } = useLayerFields(data.layerId || "", undefined);
+  const { fields: filterFields } = useFilterFields(data.layerId || undefined);
 
   // Live-lookup the display name from the project layers SWR cache so layer renames
   // propagate without having to update every workflow node.
@@ -151,28 +150,11 @@ const DatasetNode: React.FC<DatasetNodeProps> = ({ id, data, selected }) => {
     return byProjectLayerId?.name ?? byLayerId?.name ?? data.label;
   }, [data.layerId, data.projectLayerId, data.label, projectLayers, t]);
 
-  // Build CQL filter from node's workflow filter
-  const cqlFilter = useMemo(() => {
-    const nodeFilter = data.filter as { op?: string; expressions?: Expression[] } | undefined;
-    if (!nodeFilter || !nodeFilter.expressions || nodeFilter.expressions.length === 0) {
-      return null;
-    }
-    try {
-      return createTheCQLBasedOnExpression(
-        nodeFilter.expressions,
-        layerFields,
-        (nodeFilter.op || "and") as "and" | "or"
-      );
-    } catch {
-      return null;
-    }
-  }, [data.filter, layerFields]);
+  // The CQL of the step's own filter (stored as `{op, expressions}`, or CQL on older steps)
+  const cqlFilter = useMemo(() => nodeFilterCql(data.filter, filterFields), [data.filter, filterFields]);
 
   // Check if filter is applied
-  const hasFilter = useMemo(() => {
-    const nodeFilter = data.filter as { op?: string; expressions?: Expression[] } | undefined;
-    return nodeFilter?.expressions && nodeFilter.expressions.length > 0;
-  }, [data.filter]);
+  const hasFilter = useMemo(() => nodeHasFilter(data.filter), [data.filter]);
 
   // Fetch feature count with filter applied (use limit=1 to minimize data transfer)
   const queryParams = useMemo(() => {

@@ -10,12 +10,10 @@
 import {
   Box,
   Button,
-  ClickAwayListener,
   Divider,
   ListItemIcon,
   Menu,
   MenuItem,
-  MenuList,
   Stack,
   Tab,
   Tabs,
@@ -23,10 +21,9 @@ import {
 } from "@mui/material";
 import { formatDistance } from "date-fns";
 import { useParams } from "next/navigation";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDispatch, useSelector } from "react-redux";
-import { v4 } from "uuid";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
@@ -34,28 +31,27 @@ import { useDateFnsLocale } from "@/i18n/utils";
 
 import { useDataset } from "@/lib/api/layers";
 import { useFeatureCount } from "@/lib/api/processes";
+import { filterIssues } from "@/lib/filter/issues";
+import type { FilterModel } from "@/lib/filter/model";
 import type { AppDispatch } from "@/lib/store";
 import { selectActiveDataPanelView } from "@/lib/store/workflow/selectors";
 import { requestMapView, requestTableView, updateNode } from "@/lib/store/workflow/slice";
-import { parseCQLQueryToObject } from "@/lib/transformers/filter";
-import { layerType } from "@/lib/validations/common";
+import { inheritedNodeFilter, nodeFilterFrom, nodeFilterModel } from "@/lib/utils/workflowFilter";
 import type { ContentItem } from "@/lib/validations/content";
-import type { Expression as ExpressionType } from "@/lib/validations/filter";
-import { FilterType } from "@/lib/validations/filter";
 import type { ProjectLayer } from "@/lib/validations/project";
 import type { WorkflowNode } from "@/lib/validations/workflow";
 
 import type { SelectorItem } from "@/types/map/common";
 
-import useLayerFields from "@/hooks/map/CommonHooks";
 import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
+import { useFilterFields } from "@/hooks/map/useFilterFields";
 import { useStepFieldFocus } from "@/hooks/workflows/useStepFieldFocus";
 
 import DatasetPickerDialog from "@/components/addLayer/DatasetPickerDialog";
 import Container from "@/components/map/panels/Container";
 import Selector from "@/components/map/panels/common/Selector";
 import ToolsHeader from "@/components/map/panels/common/ToolsHeader";
-import Expression from "@/components/map/panels/filter/Expression";
+import { FilterPanel } from "@/components/map/panels/filter/FilterPanel";
 import StepIssuesSummary from "@/components/workflows/issues/StepIssuesSummary";
 import { useStepIssues } from "@/components/workflows/issues/WorkflowIssuesContext";
 
@@ -138,74 +134,12 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
   // Show layer selector (for "From project" option)
   const [showLayerSelector, setShowLayerSelector] = useState(false);
 
-  // Get layer fields for filter
-  useLayerFields(nodeLayerId || "");
-
-  // Filter expressions state - workflow-specific, initialized from layer's existing filter
-  const [expressions, setExpressions] = useState<ExpressionType[]>([]);
-  const [logicalOperator, setLogicalOperator] = useState<SelectorItem | undefined>({
-    value: "and",
-    label: t("and"),
-  });
-
-  // Filter menu state
-  const [filterMenuAnchorEl, setFilterMenuAnchorEl] = useState<null | HTMLElement>(null);
-  const filterMenuOpen = Boolean(filterMenuAnchorEl);
-
-  const logicalOperators = useMemo(
-    () => [
-      { value: "and", label: t("match_all_filters") },
-      { value: "or", label: t("match_at_least_one_filter") },
-    ],
-    [t]
-  );
-
-  const filterExpressionTypes = [
-    { sourceType: FilterType.Logical, iconName: ICON_NAME.TABLE, label: t("logical_expression") },
-    { sourceType: FilterType.Spatial, iconName: ICON_NAME.MAP, label: t("spatial_expression") },
-  ];
-
-  // Track if we've loaded expressions for current node to avoid re-running on every render
-  const loadedNodeIdRef = React.useRef<string | null>(null);
-
-  // Initialize filter expressions from node data (runs once per node selection)
-  useEffect(() => {
-    // Skip if we already loaded for this node
-    if (loadedNodeIdRef.current === node.id) {
-      return;
-    }
-
-    // Only handle dataset nodes with filter capability
-    if (node.type !== "dataset" || node.data.type !== "dataset") {
-      loadedNodeIdRef.current = node.id;
-      setExpressions([]);
-      return;
-    }
-
-    // Load existing filter from node if present
-    if (node.data.filter) {
-      const nodeFilter = node.data.filter as {
-        op?: string;
-        expressions?: ExpressionType[];
-        args?: unknown[];
-      };
-      if (nodeFilter.op && nodeFilter.expressions && nodeFilter.expressions.length > 0) {
-        setLogicalOperator(logicalOperators.find((item) => item.value === nodeFilter.op));
-        setExpressions(nodeFilter.expressions);
-      } else if (nodeFilter.op && nodeFilter.args) {
-        // Fall back to CQL format (with args array) for backward compatibility
-        const savedExpressions = parseCQLQueryToObject(nodeFilter as { op: string; args: unknown[] });
-        setLogicalOperator(logicalOperators.find((item) => item.value === nodeFilter.op));
-        setExpressions(savedExpressions);
-      } else {
-        setExpressions([]);
-      }
-    } else {
-      setExpressions([]);
-    }
-    loadedNodeIdRef.current = node.id;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.id]);
+  // The step's own filter (not the project layer's), as the filter panel's rows. The fields first: read without them
+  // the rows would guess their types.
+  const { fields, fieldInfos, isLoading: areFieldsLoading } = useFilterFields(nodeLayerId || undefined);
+  const storedFilter = node.type === "dataset" && node.data.type === "dataset" ? node.data.filter : undefined;
+  const filterModel = useMemo(() => nodeFilterModel(storedFilter, fields), [storedFilter, fields]);
+  const filterRowIssues = useMemo(() => filterIssues(filterModel, fields), [filterModel, fields]);
 
   // Convert layers to selector items
   const layerSelectorItems: SelectorItem[] = useMemo(() => {
@@ -266,19 +200,7 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
       if (!layer || node.type !== "dataset") return;
 
       // Copy layer's existing filter to the workflow node (one-way sync)
-      let inheritedFilter: Record<string, unknown> | undefined;
-      if (layer.query?.cql) {
-        const layerCql = layer.query.cql as { op?: string; args?: unknown[] };
-        if (layerCql.op && layerCql.args) {
-          const layerExpressions = parseCQLQueryToObject(layerCql as { op: string; args: unknown[] });
-          if (layerExpressions.length > 0) {
-            inheritedFilter = {
-              op: layerCql.op,
-              expressions: layerExpressions,
-            };
-          }
-        }
-      }
+      const inheritedFilter = inheritedNodeFilter(layer.query?.cql);
 
       // Update node data with selected layer and inherited filter.
       // - projectLayerId (ProjectLayer.id) is the canonical reference used to render the live name
@@ -306,17 +228,9 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
         })
       );
 
-      // Update local expressions state with inherited filter
-      if (inheritedFilter) {
-        const expressions = inheritedFilter.expressions as ExpressionType[];
-        setExpressions(expressions);
-        setLogicalOperator(logicalOperators.find((op) => op.value === inheritedFilter.op));
-      } else {
-        setExpressions([]);
-      }
       setShowLayerSelector(false);
     },
-    [layers, node, dispatch, logicalOperators]
+    [layers, node, dispatch]
   );
 
   // Handle dataset selection from the dataset shelf (workflow-only, no project add)
@@ -349,120 +263,33 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
           },
         })
       );
-
-      setExpressions([]);
     },
     [node, dispatch]
   );
 
-  // Create a new filter expression
-  const createExpression = (type: FilterType) => {
-    setExpressions((prev) => [
-      ...prev,
-      {
-        id: v4(),
-        attribute: "",
-        expression: "",
-        value: "",
-        type,
-      },
-    ]);
-
-    // If creating a spatial filter, dispatch action to open map view
-    if (type === FilterType.Spatial) {
-      dispatch(requestMapView());
-    }
-  };
-
-  // Handle filter expression add menu
-  const handleFilterMenuClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (selectedLayer?.type === layerType.Values.feature) {
-      setFilterMenuAnchorEl(event.currentTarget);
-    } else {
-      createExpression(FilterType.Logical);
-    }
-  };
-
-  // Save filter to node data
+  // Save the filter to the node in the shape it is stored in. The node as of now, so a save from a row's editor
+  // opened before another change keeps that change.
+  const latestNode = useRef(node);
+  latestNode.current = node;
   const saveFilterToNode = useCallback(
-    (newExpressions: ExpressionType[], operator: SelectorItem | undefined) => {
-      if (node.type !== "dataset") return;
-
-      // For now, store as simplified structure
-      // The actual CQL generation will happen at workflow execution time
-      const filter =
-        newExpressions.length > 0
-          ? {
-              op: operator?.value || "and",
-              expressions: newExpressions,
-            }
-          : undefined;
-
+    (next: FilterModel) => {
+      const current = latestNode.current;
+      if (current.type !== "dataset" || current.data.type !== "dataset") return;
       dispatch(
         updateNode({
-          id: node.id,
+          id: current.id,
           changes: {
             data: {
-              ...node.data,
-              filter,
+              ...current.data,
+              filter: nodeFilterFrom(next, current.data.filter, fields),
               filterInitialized: true, // Preserve this flag so filter doesn't get re-inherited
             },
           },
         })
       );
     },
-    [node, dispatch]
+    [dispatch, fields]
   );
-
-  // Handle expression delete
-  const handleExpressionDelete = async (expression: ExpressionType) => {
-    const updatedExpressions = expressions.filter((e) => e.id !== expression.id);
-    setExpressions(updatedExpressions);
-    saveFilterToNode(updatedExpressions, logicalOperator);
-  };
-
-  // Handle expression duplicate
-  const handleExpressionDuplicate = async (expression: ExpressionType) => {
-    const updatedExpressions = [...expressions, { ...expression, id: v4() }];
-    setExpressions(updatedExpressions);
-    saveFilterToNode(updatedExpressions, logicalOperator);
-  };
-
-  // Handle expression update
-  const handleExpressionUpdate = async (expression: ExpressionType) => {
-    const updatedExpressions = expressions.map((e) => (e.id === expression.id ? expression : e));
-    setExpressions(updatedExpressions);
-    saveFilterToNode(updatedExpressions, logicalOperator);
-  };
-
-  // Handle logical operator change
-  const handleLogicalOperatorChange = (item: SelectorItem | SelectorItem[] | undefined) => {
-    const newOperator = item as SelectorItem;
-    setLogicalOperator(newOperator);
-    saveFilterToNode(expressions, newOperator);
-  };
-
-  // Clear all filters
-  const clearFilter = () => {
-    setExpressions([]);
-    saveFilterToNode([], logicalOperator);
-  };
-
-  // Validate expressions
-  const areAllExpressionsValid = useMemo(() => {
-    return expressions.every((expression) => {
-      let hasValue = !!expression.value?.toString();
-      if (
-        expression.expression === "is_empty_string" ||
-        expression.expression === "is_not_empty_string" ||
-        expression.expression === "is_blank" ||
-        expression.expression === "is_not_blank"
-      ) {
-        hasValue = true;
-      }
-      return expression.attribute && expression.expression && hasValue;
-    });
-  }, [expressions]);
 
   // Panel title - always "Dataset" for dataset nodes
   const nodeTitle = t("dataset");
@@ -710,98 +537,26 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
 
           {/* FILTER Tab */}
           <TabPanel value={tabValue} index={1}>
-            {/* Description */}
-            {expressions.length === 0 && (
-              <Typography variant="body2" sx={{ fontStyle: "italic", mb: 3 }}>
-                {t("filter_layer_message")}
-              </Typography>
-            )}
-
-            {/* Logical operator selector */}
-            {expressions.length > 1 && (
-              <>
-                <Divider />
-                <Selector
-                  selectedItems={logicalOperator}
-                  setSelectedItems={handleLogicalOperatorChange}
-                  items={logicalOperators}
-                  label={t("filter_results")}
+            {selectedLayer && !areFieldsLoading && (
+              // The panel's rows run edge to edge, as in a layer's Filter tab.
+              <Box sx={{ mx: -3 }}>
+                <FilterPanel
+                  // A draft per step: another step starts from its own filter.
+                  key={node.id}
+                  model={filterModel}
+                  fields={fields}
+                  fieldInfos={fieldInfos}
+                  issues={filterRowIssues}
+                  canEdit
+                  // The step's saved rows have no switch: a row switched off would be lost on save.
+                  canSwitch={false}
+                  // No map to draw on or read here: a step's filter has conditions only.
+                  area={false}
+                  onApply={saveFilterToNode}
+                  layerId={selectedLayer.id}
+                  scope={node.id}
                 />
-              </>
-            )}
-
-            {/* Expression list */}
-            {expressions.length > 0 && (
-              <Stack spacing={4} sx={{ pt: 2 }}>
-                <Divider />
-                {expressions.map((expression) => (
-                  <Expression
-                    key={expression.id}
-                    expression={expression}
-                    onDelete={handleExpressionDelete}
-                    onDuplicate={handleExpressionDuplicate}
-                    onUpdate={handleExpressionUpdate}
-                    layerId={selectedLayer?.id}
-                  />
-                ))}
-              </Stack>
-            )}
-
-            {/* Add expression button */}
-            {selectedLayer && (
-              <Stack spacing={2} sx={{ pt: 4 }}>
-                <Button
-                  onClick={handleFilterMenuClick}
-                  fullWidth
-                  size="small"
-                  disabled={!areAllExpressionsValid}
-                  startIcon={<Icon iconName={ICON_NAME.PLUS} style={{ fontSize: 15 }} />}>
-                  <Typography variant="body2" fontWeight="bold" color="inherit">
-                    {t("add_expression")}
-                  </Typography>
-                </Button>
-
-                {/* Expression type menu (for feature layers) */}
-                {selectedLayer.type === layerType.Values.feature && (
-                  <Menu
-                    anchorEl={filterMenuAnchorEl}
-                    anchorOrigin={{ vertical: "top", horizontal: "center" }}
-                    transformOrigin={{ vertical: "bottom", horizontal: "center" }}
-                    open={filterMenuOpen}
-                    onClose={() => setFilterMenuAnchorEl(null)}>
-                    <ClickAwayListener onClickAway={() => setFilterMenuAnchorEl(null)}>
-                      <MenuList>
-                        {filterExpressionTypes.map((item, index) => (
-                          <MenuItem
-                            key={index}
-                            onClick={() => {
-                              createExpression(item.sourceType);
-                              setFilterMenuAnchorEl(null);
-                            }}>
-                            <ListItemIcon>
-                              <Icon iconName={item.iconName} style={{ fontSize: 15 }} />
-                            </ListItemIcon>
-                            <Typography variant="body2">{item.label}</Typography>
-                          </MenuItem>
-                        ))}
-                      </MenuList>
-                    </ClickAwayListener>
-                  </Menu>
-                )}
-
-                {/* Clear filter button */}
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  size="small"
-                  color="error"
-                  disabled={expressions.length === 0}
-                  onClick={clearFilter}>
-                  <Typography variant="body2" color="inherit">
-                    {t("clear_filter")}
-                  </Typography>
-                </Button>
-              </Stack>
+              </Box>
             )}
           </TabPanel>
 

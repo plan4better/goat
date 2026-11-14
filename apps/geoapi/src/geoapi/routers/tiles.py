@@ -467,12 +467,14 @@ async def get_tile(
 
     # A filter on a layer whose PMTiles manby built: the stored tiles are
     # filtered. They hold every property and the features the tiler kept, so
-    # a request for some `properties` or a `limit` stays with DuckDB. None
+    # a request for some `properties` or a `limit` stays with DuckDB, and so
+    # do H3 hexagons, which count the features instead of drawing them. None
     # (or a failure) leaves the request to DuckDB, as below.
     if (
         (cql_filter or bbox)
         and not dynamic
         and decoration is None
+        and h3 is None
         and not properties
         and limit is None
     ):

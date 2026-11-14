@@ -668,6 +668,21 @@ core:
 A variable you set yourself in `core.config` or `core.extraEnv` wins over the
 block.
 
+## Long request URLs (layer filters)
+
+A layer's filter travels in the URL of geoapi's tile and feature requests
+(OGC API Features). A filter with a detailed area makes URLs of up to about
+60,000 characters. ingress-nginx takes request lines of up to 8 KB by default
+and answers longer ones with 414. It is a setting of the controller, not of an
+Ingress, so set it in the ingress-nginx ConfigMap:
+
+```yaml
+data:
+  large-client-header-buffers: "4 64k"
+```
+
+Any other proxy in front of geoapi needs the same room.
+
 ## Object storage — `global.s3`
 
 GOAT keeps uploads (datasets, exports, prints) in one S3 bucket and uploaded

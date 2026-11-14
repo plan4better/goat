@@ -50,14 +50,14 @@ import {
 import { defaultStyle } from "@/lib/style/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import type { ViewLayer } from "@/lib/style/render/viewLayers";
-import { createTheCQLBasedOnExpression } from "@/lib/transformers/filter";
 import { fitBounds } from "@/lib/utils/map/navigate";
 import { globalExtent, wktToGeoJSON } from "@/lib/utils/map/wkt";
-import type { Expression } from "@/lib/validations/filter";
+import { nodeFilterCql } from "@/lib/utils/workflowFilter";
 import type { DatasetCollectionItems, GetCollectionItemsQueryParams } from "@/lib/validations/layer";
 import type { WorkflowNode } from "@/lib/validations/workflow";
 
 import useLayerFields from "@/hooks/map/CommonHooks";
+import { useFilterFields } from "@/hooks/map/useFilterFields";
 
 import FeatureTable from "@/components/common/FeatureTable";
 import MapViewer from "@/components/map/MapViewer";
@@ -191,7 +191,8 @@ function getNodeDataInfo(
   hasData: boolean;
   layerId: string | null; // UUID of the layer (for regular layers)
   tempLayerId: string | null; // Temp layer ID format: "workflow_id:node_id" (for temp results)
-  nodeFilter: { op: string; expressions: Expression[] } | null;
+  /** The dataset step's own filter as stored (`{op, expressions}`, or CQL on older steps). */
+  nodeFilter: Record<string, unknown> | null;
 } {
   if (!node) {
     return { hasData: false, layerId: null, tempLayerId: null, nodeFilter: null };
@@ -204,7 +205,7 @@ function getNodeDataInfo(
       return { hasData: false, layerId: null, tempLayerId: null, nodeFilter: null };
     }
     // Get node's workflow filter
-    const nodeFilter = node.data.filter as { op: string; expressions: Expression[] } | undefined;
+    const nodeFilter = node.data.filter;
     return {
       hasData: true,
       layerId,
@@ -303,20 +304,13 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
 
   // Build CQL filter from node's workflow filter (only for regular layers)
   // Temp layers don't use CQL filters since they're already filtered by the workflow
-  const cqlFilter = useMemo(() => {
-    if (isTempLayer || !nodeFilter || !nodeFilter.expressions || nodeFilter.expressions.length === 0) {
-      return null;
-    }
-    try {
-      return createTheCQLBasedOnExpression(
-        nodeFilter.expressions,
-        regularFields,
-        nodeFilter.op as "and" | "or"
-      );
-    } catch {
-      return null;
-    }
-  }, [isTempLayer, nodeFilter, regularFields]);
+  const { fields: filterFields, isLoading: areFilterFieldsLoading } = useFilterFields(
+    !isTempLayer ? effectiveLayerId : undefined
+  );
+  const cqlFilter = useMemo(
+    () => (isTempLayer || !nodeFilter ? null : (nodeFilterCql(nodeFilter, filterFields) ?? null)),
+    [isTempLayer, nodeFilter, filterFields]
+  );
 
   // Stringify CQL filter for stable comparison
   const cqlFilterString = useMemo(() => {
@@ -522,7 +516,7 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
     }
 
     // Wait for fields to load if there's a filter, so we can generate proper CQL
-    if (nodeFilter && nodeFilter.expressions.length > 0 && areFieldsLoading) {
+    if (cqlFilter && areFilterFieldsLoading) {
       return;
     }
 
@@ -573,8 +567,8 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
     tabValue,
     isCollapsed,
     cqlFilterString,
-    nodeFilter,
-    areFieldsLoading,
+    cqlFilter,
+    areFilterFieldsLoading,
     performZoom,
   ]);
 

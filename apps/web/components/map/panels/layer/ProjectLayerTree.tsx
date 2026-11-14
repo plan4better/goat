@@ -30,6 +30,7 @@ import { projectLayersKey } from "@/lib/api/projects";
 // Redux
 import { useUserProfile } from "@/lib/api/users";
 import { MAX_EDITABLE_LAYER_SIZE } from "@/lib/constants";
+import { activeParts } from "@/lib/filter/read";
 import { clearRestoreGroup, closeExplorer, openExplorer } from "@/lib/store/explorer/slice";
 import { emitInteractionEvent } from "@/lib/store/interaction/slice";
 import { setSelectedBundle, setSelectedLayers } from "@/lib/store/layer/slice";
@@ -75,6 +76,7 @@ import PopupContentRenderer from "@/components/builder/widgets/common/PopupConte
 import MoreMenu from "@/components/common/PopperMenu";
 import type { PopperMenuItem } from "@/components/common/PopperMenu";
 import { StyleLegend, SwatchIcon } from "@/components/map/legend/StyleLegend";
+import { areaOutlineStore, showSavedArea } from "@/components/map/panels/filter/area/outline";
 import { LayerTimeSlider } from "@/components/map/panels/layer/LayerTimeSlider";
 import { MaskedImageIcon } from "@/components/map/panels/style/other/MaskedImageIcon";
 import ConfirmModal from "@/components/modals/Confirm";
@@ -98,6 +100,8 @@ import {
 
 /** For a visibility change made for the user rather than by a click. */
 const SYNTHETIC_CLICK = { stopPropagation: () => undefined } as React.MouseEvent;
+// Who shows a saved area on the map while a filter badge is hovered.
+const BADGE_HOVER = {};
 
 // 1. HELPER COMPONENTS
 
@@ -972,19 +976,22 @@ export const ProjectLayerTree = ({
         }
       }
 
-      const hasFilter = node.query?.cql?.["args"]?.length;
+      const hasFilter = activeParts(node.query?.cql);
       const isFilterActive = activeLayerId === node.id && activeRightPanel === MapSidebarItemID.FILTER;
 
       return (
         <Stack direction="row" alignItems="center" spacing={1}>
           {/* Filter Badge - Only show in edit mode */}
-          {isEditMode && node.type === "layer" && hasFilter && (
+          {isEditMode && node.type === "layer" && hasFilter > 0 && (
             <Tooltip
               title={isFilterActive ? t("hide_applied_filters") : t("show_applied_filters")}
               placement="top">
               <IconButton
                 size="small"
                 color={isFilterActive ? "primary" : "default"}
+                // The saved filter's area lights up on the map while the badge is hovered.
+                onMouseEnter={() => showSavedArea(BADGE_HOVER, node.query)}
+                onMouseLeave={() => areaOutlineStore.clear(BADGE_HOVER)}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (isFilterActive) dispatch(setActiveRightPanel(undefined));
@@ -1134,8 +1141,8 @@ export const ProjectLayerTree = ({
           )}
 
           {/* Visibility toggle - very right when position is "right".
-            A locked layer has no properties to toggle a `visibility` flag
-            on, and never reaches the map anyway (see D7 / selectDataLayers). */}
+            A locked layer has no map entry to toggle, and never reaches
+            the map anyway (see D7). */}
           {togglePosition !== "left" && !hideActions && node.layer_type !== "table" && !node.locked && (
             <VisibilityToggle
               toggleStyle={toggleStyle}

@@ -10,6 +10,8 @@ export interface PopoverEntry {
   key: string;
   title: string;
   subtitle?: string;
+  /** Shown in the header in place of the title: a control that names what the editor is of (a condition's field). */
+  heading?: () => ReactNode;
   /** The top of the row that opened it, in the panel's coordinates. */
   anchorTop: number;
   /** For pickers: the element they open next to. */
@@ -73,6 +75,11 @@ export function useIsOpener(el: Element | null): boolean {
 /** Whether a popover with one of `keys` is open now, whichever control opened it. */
 export function useIsOpen(...keys: string[]): boolean {
   return useOpenStack((stack) => entriesOf(stack).some((entry) => !!entry && keys.includes(entry.key)));
+}
+
+/** The key of the popover open at `level`; null while none is. */
+export function useOpenKey(level: number): string | null {
+  return useOpenStack((stack) => stack.levels[level - 1]?.key ?? null);
 }
 
 /** The panel each placed popover box belongs to: a page can show two panels with popovers (the style panel and the

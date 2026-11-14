@@ -7,11 +7,15 @@ intersection unless ``bbox_mode == "relevant"``, collection rows never
 leaking into item search, and the sortby whitelist.
 """
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import pytest
+from goatlib.filter.area import CROSSES_ITSELF
+from goatlib.filter.limits import REQUEST_MAX_POINTS
 
 from catalog.config import CatalogSettings
 from catalog.errors import ApiError
@@ -42,6 +46,62 @@ def test_intersects_geojson(store: CatalogStore) -> None:
     }
     _, n = search_items(store, SearchParams(intersects=poly))
     assert n > 0
+
+
+def test_intersects_with_overlapping_polygons_binds_their_union(
+    store: CatalogStore,
+) -> None:
+    # Against a constant MultiPolygon whose polygons overlap, DuckDB reads a
+    # point in two of them as outside, so the search binds the union.
+    area = {
+        "type": "MultiPolygon",
+        "coordinates": [
+            [[[5, 47], [12, 47], [12, 56], [5, 56], [5, 47]]],
+            [[[9, 47], [16, 47], [16, 56], [9, 56], [9, 47]]],
+        ],
+    }
+    _, params = build_filters(SearchParams(intersects=area), registry=store.registry)
+
+    con = duckdb.connect()
+    con.execute("LOAD spatial")
+    (valid,) = con.execute(
+        "SELECT ST_IsValid(ST_GeomFromGeoJSON(?))", params[-1:]
+    ).fetchone()
+    assert json.loads(params[-1])["type"] == "Polygon"
+    assert valid is True
+
+
+def test_intersects_over_the_point_ceiling_is_400(store: CatalogStore) -> None:
+    # A saw blade: teeth along the top, closed underneath.
+    teeth = [[i * 0.001, (i % 2) * 0.001] for i in range(REQUEST_MAX_POINTS)]
+    ring = teeth + [[teeth[-1][0], -1.0], [0.0, -1.0], [0.0, 0.0]]
+    with pytest.raises(ApiError) as e:
+        build_filters(
+            SearchParams(intersects={"type": "Polygon", "coordinates": [ring]}),
+            registry=store.registry,
+        )
+    assert e.value.status_code == 400
+    assert e.value.detail == (
+        f"An area takes at most {REQUEST_MAX_POINTS} points; "
+        f"this one has {len(ring)}."
+    )
+
+
+def test_intersects_that_crosses_itself_too_often_is_400(store: CatalogStore) -> None:
+    # Swept in rows and then in columns: every row crosses every column.
+    lines = 20
+    ring: list[list[float]] = []
+    for i in range(1, lines + 1):
+        start, end = (0, lines + 1) if i % 2 else (lines + 1, 0)
+        ring += [[start, i], [end, i]]
+    for i in range(1, lines + 1):
+        start, end = (0, lines + 1) if i % 2 else (lines + 1, 0)
+        ring += [[i, start], [i, end]]
+    area = {"type": "Polygon", "coordinates": [ring + [ring[0]]]}
+    with pytest.raises(ApiError) as e:
+        build_filters(SearchParams(intersects=area), registry=store.registry)
+    assert e.value.status_code == 400
+    assert e.value.detail == CROSSES_ITSELF
 
 
 def test_bbox_and_intersects_is_400(store: CatalogStore) -> None:

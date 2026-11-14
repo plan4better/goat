@@ -21,7 +21,7 @@ import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 import { useLayerStyle } from "@/hooks/style/useLayerStyle";
 
 import Container from "@/components/map/panels/Container";
-import FilterImpl from "@/components/map/panels/filter/Filter";
+import FilterImpl from "@/components/map/panels/filter/LayerFilterPanel";
 import PropertiesPanelImpl from "@/components/map/panels/properties/Properties";
 import { NamedStyles } from "@/components/map/panels/styleEditor/NamedStyles";
 import { ProjectStylePanel } from "@/components/map/panels/styleEditor/ProjectStylePanel";
@@ -225,7 +225,7 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
             {layerType === "table" && (
               <>
                 <Box role="tabpanel" hidden={activeTab !== 0} sx={{ height: "100%" }}>
-                  {isTabLive(0) && <Filter activeLayer={activeLayer} projectId={projectId} />}
+                  {isTabLive(0) && <Filter projectLayer={activeLayer} projectId={projectId} />}
                 </Box>
                 <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: "100%" }}>
                   {isTabLive(1) && <PropertiesPanel activeLayer={activeLayer} />}
@@ -241,7 +241,9 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
                   )}
                 </Box>
                 <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: "100%" }}>
-                  {isTabLive(1) && <Filter activeLayer={activeLayer} projectId={projectId} />}
+                  {isTabLive(1) && (
+                    <Filter projectLayer={activeLayer} projectId={projectId} visible={activeTab === 1} />
+                  )}
                 </Box>
                 <Box role="tabpanel" hidden={activeTab !== 2} sx={{ height: "100%" }}>
                   {isTabLive(2) && <PropertiesPanel activeLayer={activeLayer} />}

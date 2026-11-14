@@ -1,13 +1,20 @@
 """FastAPI dependencies for GeoAPI."""
 
 import asyncio
+import hashlib
+import json
 import logging
+import re
 import threading
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path as FSPath
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import Depends, HTTPException, Path, Query
+from goatlib.filter.normalize import normalize
+from goatlib.filter.validate import over_request_limits, over_request_limits_text
+from goatlib.storage.cql_evaluator import parse_cql2_filter
 from goatlib.utils.layer import (
     InvalidLayerIdError,
     LayerNotFoundError,
@@ -368,6 +375,46 @@ def reject_unknown_fields(
         )
 
 
+# What `_filter_problem` found for the filters last seen, by digest: a screen
+# of tiles brings the same filter once per tile, and reading a large area
+# takes a while on the event loop, the only thread that comes here.
+_FILTER_PROBLEMS_MAX = 256
+_EMPTY_OBJECT = re.compile(r"\s*\{\s*\}\s*")
+_filter_problems: OrderedDict[bytes, Optional[str]] = OrderedDict()
+
+
+def _filter_problem(text: str, lang: str) -> Optional[str]:
+    """Why a request's filter is refused; None for one the query path reads.
+
+    The query builder skips a filter it cannot parse and answers with every
+    feature, so the filter is parsed here as the builder parses it (cql2-json
+    after `goatlib.filter.normalize`) and refused when that fails. The request
+    ceilings (`goatlib.filter.limits.REQUEST_MAX_*`) come first for cql2-json,
+    so nothing over one is parsed. CQL2 text has to be parsed to be measured:
+    it is held against the ceilings as the CQL2-JSON it stands for. What that
+    form cannot express measures as nothing, as in cql2-json.
+    """
+    try:
+        if lang == "cql2-json":
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                return "The filter is not valid JSON."
+            if not isinstance(parsed, dict):
+                return "The filter is not valid CQL2 JSON."
+            issues = over_request_limits(parsed)
+            if not issues:
+                parse_cql2_filter(normalize(parsed), lang)
+        else:
+            issues = over_request_limits_text(parse_cql2_filter(text, lang))
+    except RecursionError:
+        return "The filter nests too deeply."
+    except Exception:
+        name = "CQL2 JSON" if lang == "cql2-json" else "CQL2 text"
+        return f"The filter is not valid {name}."
+    return " ".join(i.message for i in issues) or None
+
+
 async def cql_filter_query(
     filter: Annotated[
         Optional[str],
@@ -383,13 +430,34 @@ async def cql_filter_query(
     """Parse CQL2 filter query parameter.
 
     Returns a dict with 'filter' (raw string) and 'lang' (cql2-json or cql2-text).
+
+    Every client filter enters here, so one over a request ceiling
+    (`goatlib.filter.limits.REQUEST_MAX_*`) or one that does not parse is
+    answered 400 here (`_filter_problem`) and never reaches the query builder.
+    The ceilings lie well above the save limits: a filter saved over one still
+    filters. The text is passed on as it was sent (the tile cache keys on it).
+    An empty filter is no filter, and so is an empty JSON object: what a client
+    sends for a layer without conditions.
     """
-    if filter is None:
+    if filter is None or not filter.strip():
         return None
 
     lang = filter_lang or "cql2-json"  # Default to cql2-json
     if lang not in ("cql2-json", "cql2-text"):
         raise HTTPException(status_code=400, detail=f"Invalid filter-lang: {lang}")
+    if lang == "cql2-json" and _EMPTY_OBJECT.fullmatch(filter):
+        return None
+
+    key = hashlib.sha1(f"{lang}\n{filter}".encode()).digest()
+    if key in _filter_problems:
+        _filter_problems.move_to_end(key)
+        problem = _filter_problems[key]
+    else:
+        problem = _filter_problems[key] = _filter_problem(filter, lang)
+        while len(_filter_problems) > _FILTER_PROBLEMS_MAX:
+            _filter_problems.popitem(last=False)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
 
     return {"filter": filter, "lang": lang}
 

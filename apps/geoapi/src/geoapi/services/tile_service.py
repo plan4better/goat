@@ -38,7 +38,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from io import BufferedReader
 from pathlib import Path
-from typing import Any, Literal, NamedTuple, Optional
+from typing import Any, Callable, Literal, NamedTuple, Optional, TypeVar
 
 import manby
 from cachetools import LRUCache, TTLCache
@@ -66,6 +66,8 @@ from geoapi.services.tile_filter import (
 from geoapi.tile_cache import cache_tile, get_cached_tile
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 def _qi(name: str) -> str:
@@ -128,6 +130,42 @@ def _manby_concurrency() -> int:
 # to wait. Requests wait in the loop, not in a worker thread, which keeps them
 # off the default executor's few threads that other `to_thread` calls share.
 _manby_slots = asyncio.Semaphore(_manby_concurrency())
+
+
+def _filtered_tile_concurrency() -> int:
+    """How many filtered tiles DuckDB may draw at once: one less than the
+    dynamic-tile threads and than the pool's connections, at least 1."""
+    threads = _dynamic_tile_executor._max_workers
+    return max(1, min(threads, settings.DUCKLAKE_POOL_SIZE) - 1)
+
+
+# Bounds the filtered tiles DuckDB draws at once. One can take seconds and a
+# screen asks for many, so unbounded they hold every dynamic-tile thread and
+# every DuckDB connection, and the tiles of the layers DuckDB draws without a
+# filter wait behind them. Requests wait in the loop, as for `_manby_slots`.
+_filtered_tile_slots = asyncio.Semaphore(_filtered_tile_concurrency())
+
+
+async def _run_dynamic_tile(work: Callable[[], T], filtered: bool) -> T:
+    """Run a tile's DuckDB work on a dynamic-tile thread, a filtered tile's in
+    one of `_filtered_tile_slots`.
+
+    The slot goes back when the thread is done, not when the request is: a
+    request that timed out leaves its query running on the thread.
+    """
+    loop = asyncio.get_running_loop()
+    if not filtered:
+        return await loop.run_in_executor(_dynamic_tile_executor, work)
+    slots = _filtered_tile_slots
+    await slots.acquire()
+    try:
+        job = _dynamic_tile_executor.submit(work)
+    except BaseException:
+        slots.release()
+        raise
+    job.add_done_callback(lambda _: loop.call_soon_threadsafe(slots.release))
+    return await asyncio.wrap_future(job)
+
 
 # Maximum leaf directory entries to cache per PMTiles file (~64KB per file)
 _LEAF_CACHE_MAX_SIZE = 1000
@@ -1891,9 +1929,7 @@ class TileService:
         # If CQL filter, bbox, force_dynamic, or decoration is set, use dynamic GeoParquet generation
         if cql_filter or bbox or force_dynamic or decoration:
             # Run in thread pool to avoid blocking the event loop
-            loop = asyncio.get_event_loop()
-            tile_data = await loop.run_in_executor(
-                _dynamic_tile_executor,
+            tile_data = await _run_dynamic_tile(
                 lambda: self._generate_dynamic_tile(
                     layer_info=layer_info,
                     z=z,
@@ -1908,6 +1944,7 @@ class TileService:
                     geometry_type=geometry_type,
                     decoration=decoration,
                 ),
+                filtered=bool(cql_filter or bbox),
             )
             if tile_data is None:
                 return None
@@ -1977,33 +2014,34 @@ class TileService:
     ) -> Optional[bytes]:
         """An H3 hexagon tile of a point layer (`h3_tile_query`), or None
         without cells. Filters and feature ids apply; there is no feature limit."""
-        filters = build_filters(
-            bbox=bbox,
-            cql_filter=cql_filter,
-            ids=ids,
-            geometry_column=geometry_column,
-            column_names=column_names,
-            has_geometry=True,
-        )
         if all(c in column_names for c in ("$minx", "$miny", "$maxx", "$maxy")):
             bbox_columns: str | None = "scalar"
         else:
             bbox_columns = "struct" if "bbox" in column_names else None
-        sql, params = h3_tile_query(
-            layer_info.full_table_name,
-            geometry_column,
-            z,
-            x,
-            y,
-            resolution,
-            op,
-            field,
-            filters.to_where_sql(),
-            filters.params,
-            bbox_columns,
-        )
 
         def run() -> Optional[bytes]:
+            # In the worker too: preparing a filter's area can take a while.
+            filters = build_filters(
+                bbox=bbox,
+                cql_filter=cql_filter,
+                ids=ids,
+                geometry_column=geometry_column,
+                column_names=column_names,
+                has_geometry=True,
+            )
+            sql, params = h3_tile_query(
+                layer_info.full_table_name,
+                geometry_column,
+                z,
+                x,
+                y,
+                resolution,
+                op,
+                field,
+                filters.to_where_sql(),
+                filters.params,
+                bbox_columns,
+            )
             result = ducklake_pool.execute_with_retry(
                 sql,
                 params=params or None,
@@ -2013,8 +2051,7 @@ class TileService:
             )
             return bytes(result[0]) if result and result[0] else None
 
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(_dynamic_tile_executor, run)
+        return await _run_dynamic_tile(run, filtered=bool(cql_filter or bbox))
 
     def _generate_dynamic_tile(
         self,

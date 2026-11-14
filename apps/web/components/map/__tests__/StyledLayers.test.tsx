@@ -72,6 +72,28 @@ describe("StyledLayers", () => {
     expect((syncMock.mock.calls.at(-1) as unknown[])[3]).toMatchObject({ locale: "de" });
   });
 
+  it("keeps the project layers below the map's overlays: drawing, measuring, the filter's area", async () => {
+    useMapMock.mockReturnValue({
+      current: {
+        getMap: () => ({
+          ...fakeMap,
+          getStyle: () => ({
+            layers: [
+              { id: "background" },
+              { id: "gl-draw-polygon-fill-inactive.cold" },
+              { id: "filter-area-line" },
+            ],
+          }),
+        }),
+      },
+    });
+    render(<StyledLayers layers={[layer("1", "#aaaaaa")]} locale="de" />);
+    await waitFor(() => expect(syncMock).toHaveBeenCalled());
+    expect((syncMock.mock.calls.at(-1) as unknown[])[3]).toMatchObject({
+      overlay: "gl-draw-polygon-fill-inactive.cold",
+    });
+  });
+
   it("waits for the map's style before it draws", async () => {
     const listeners = new Map<string, () => void>();
     let loaded = false;

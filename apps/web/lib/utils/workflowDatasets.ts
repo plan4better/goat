@@ -1,6 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 
-import { parseCQLQueryToObject } from "@/lib/transformers/filter";
+import { inheritedNodeFilter } from "@/lib/utils/workflowFilter";
 import type { ProjectLayer } from "@/lib/validations/project";
 import type { DatasetNodeData, ToolNodeData } from "@/lib/validations/workflow";
 
@@ -103,15 +103,6 @@ export const withCurrentDatasetTypes = <T extends CanvasNode>(
   return changed ? next : nodes;
 };
 
-/** The layer's own CQL filter, copied onto the node the way the dataset
- * node settings do when a project layer is picked there. */
-const inheritedFilter = (layer: ProjectLayer): Record<string, unknown> | undefined => {
-  const cql = layer.query?.cql as { op?: string; args?: unknown[] } | undefined;
-  if (!cql?.op || !cql.args) return undefined;
-  const expressions = parseCQLQueryToObject(cql as { op: string; args: unknown[] });
-  return expressions.length > 0 ? { op: cql.op, expressions } : undefined;
-};
-
 type ScalarMapping = Map<string, unknown>;
 
 const scalarKey = (value: number | string) => `${typeof value}:${value}`;
@@ -171,7 +162,8 @@ export const replaceDatasetLayers = (
       layerName: layer.name,
       geometryType: layer.feature_layer_geometry_type || undefined,
       layerType: (layer.type as DatasetNodeData["layerType"]) || undefined,
-      filter: inheritedFilter(layer),
+      // The layer's own filter, copied as the dataset node settings do when a project layer is picked there.
+      filter: inheritedNodeFilter(layer.query?.cql),
       filterInitialized: true,
     };
     delete next.unresolved;

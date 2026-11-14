@@ -11,8 +11,6 @@ import type { ProjectLayer } from "@/lib/validations/project";
 
 import { ContentActions, MapLayerActions } from "@/types/common";
 
-import { useAppSelector } from "@/hooks/store/ContextHooks";
-
 import type { PopperMenuItem } from "@/components/common/PopperMenu";
 
 export const useLayerSettingsMoreMenu = () => {
@@ -243,14 +241,6 @@ export const useLayerSettingsMoreMenu = () => {
     closeMoreMenu,
     openMoreMenu,
   };
-};
-
-export const useFilterQueries = (projectId: string) => {
-  const { layers: projectLayers, mutate } = useProjectLayers(projectId);
-  const activeLayerId = useAppSelector((state) => state.layers.activeLayerId);
-  const activeLayer = projectLayers?.find((layer) => layer.id === activeLayerId);
-
-  return { activeLayer, mutate };
 };
 
 export const useFilteredProjectLayers = (

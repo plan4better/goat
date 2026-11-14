@@ -21,7 +21,7 @@ import {
   selectWorkflows,
 } from "@/lib/store/workflow/selectors";
 import { addNode, selectWorkflow, setWorkflows } from "@/lib/store/workflow/slice";
-import { parseCQLQueryToObject } from "@/lib/transformers/filter";
+import { inheritedNodeFilter } from "@/lib/utils/workflowFilter";
 import type { Project, ProjectLayer, ProjectLayerGroup } from "@/lib/validations/project";
 import { createIfNode, isDrawableWorkflowConfig } from "@/lib/validations/workflow";
 import type { WorkflowNode } from "@/lib/validations/workflow";
@@ -281,20 +281,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
         // Check if this is a layer drag (has layerId) or empty dataset drag
         if (layerId && layerName) {
           // Convert layer's CQL filter to workflow filter format (one-way copy)
-          let inheritedFilter: { op: string; expressions: unknown[] } | undefined;
-          if (layerCql) {
-            try {
-              const expressions = parseCQLQueryToObject(layerCql);
-              if (expressions.length > 0) {
-                inheritedFilter = {
-                  op: layerCql.op,
-                  expressions,
-                };
-              }
-            } catch {
-              // Ignore parse errors, just don't inherit filter
-            }
-          }
+          const inheritedFilter = inheritedNodeFilter(layerCql);
 
           // Create dataset node pre-populated with layer data and inherited filter
           dispatch(

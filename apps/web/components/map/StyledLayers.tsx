@@ -20,6 +20,7 @@ import {
   syncMapLayers,
 } from "@/lib/style/render/mapLayers";
 import { PENDING_KEY } from "@/lib/style/render/viewLayers";
+import { lowestOverlayId } from "@/lib/utils/map/overlayLayers";
 
 import { useBasemapStacking } from "@/hooks/map/useBasemapStacking";
 
@@ -143,7 +144,8 @@ export function StyledLayers({
         state.current = syncMapLayers(map, state.current, drawn, {
           locale: nextLocale,
           anchors: anchors.current,
-          overlay: nextOverlay,
+          // The map's overlays (drawing, measuring, a filter's area) stay above the project layers.
+          overlay: nextOverlay ?? lowestOverlayId(map.getStyle()?.layers),
           ground: nextGround,
         });
       } catch (error) {

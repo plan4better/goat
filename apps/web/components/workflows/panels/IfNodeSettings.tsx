@@ -38,10 +38,8 @@ import {
 } from "@/lib/store/workflow/selectors";
 import { updateNode } from "@/lib/store/workflow/slice";
 import {
-  type Expression as ExpressionType,
+  type FilterExpression as ExpressionType,
   FilterType,
-} from "@/lib/validations/filter";
-import {
   type IfNodeData,
   type IfStatisticExpression,
   type WorkflowNode,

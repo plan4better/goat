@@ -17,9 +17,11 @@ from typing import Any
 import duckdb
 import manby
 import pytest
+import shapely
 from goatlib.io.pmtiles import PMTilesConfig, PMTilesGenerator
 from goatlib.storage.query_builder import build_cql_filter
 from pmtiles.reader import MmapSource, Reader, all_tiles
+from shapely.geometry import shape
 
 from geoapi.services.tile_filter import TranslatedFilter, translate
 
@@ -143,6 +145,38 @@ def test_between() -> None:
     assert attributes(
         "day BETWEEN '2024-05-01' AND '2024-05-31'", lang="cql2-text"
     ) == ["all", [">=", "day", "2024-05-01"], ["<=", "day", "2024-05-31"]]
+
+
+def test_the_standard_spellings_translate_like_the_parsers() -> None:
+    # what the filter panel saves; DuckDB's path rewrites them before parsing
+    between = ["all", [">=", "n", 1], ["<=", "n", 5]]
+    assert attributes(op("between", prop("n"), 1, 5)) == between
+    assert attributes(op("and", op("between", prop("n"), 1, 5))) == between
+    assert attributes(op("=", {"op": "casei", "args": [prop("zip")]}, "01234")) == [
+        "==",
+        "zip",
+        "01234",
+    ]
+    # a day and a UTC time on columns without a time zone: geoapi reads them in UTC
+    assert attributes(op(">=", prop("day"), {"date": "2024-05-01"})) == [
+        ">=",
+        "day",
+        "2024-05-01",
+    ]
+    assert attributes(op("<", prop("ts"), {"date": "2024-05-02"})) == [
+        "<",
+        "ts",
+        "2024-05-02T00:00:00",
+    ]
+    assert attributes(op(">=", prop("ts"), {"timestamp": "2024-05-01T13:45:00Z"})) == [
+        ">=",
+        "ts",
+        "2024-05-01T13:45:00",
+    ]
+    envelope = run(
+        op("s_intersects", prop("geometry"), {"bbox": [7.0, 47.0, 8.0, 48.0]})
+    )
+    assert envelope is not None and envelope.area is not None
 
 
 def test_like_and_not_like() -> None:
@@ -361,6 +395,59 @@ def test_two_areas_neither_inside_the_other_are_left_to_duckdb() -> None:
 
 
 # =====================================================================
+#  Areas the features lie outside of
+# =====================================================================
+
+FAR = {
+    "type": "Polygon",
+    "coordinates": [[[9.0, 46.0], [9.5, 46.0], [9.5, 46.5], [9.0, 46.5], [9.0, 46.0]]],
+}
+
+
+def test_not_s_intersects_becomes_the_outside_area() -> None:
+    outside = op("not", op("s_intersects", prop("geom"), POLYGON))
+
+    assert run(outside) == TranslatedFilter(attributes=None, area=None, outside=POLYGON)
+    # as the web saves it: the area alone in the top-level `and`
+    assert run(op("and", outside)) == TranslatedFilter(
+        attributes=None, area=None, outside=POLYGON
+    )
+    assert run(op("and", op("=", prop("n"), 5), outside)) == TranslatedFilter(
+        attributes=["==", "n", 5], area=None, outside=POLYGON
+    )
+
+
+def test_not_of_an_or_lies_outside_both_areas() -> None:
+    either = op(
+        "or",
+        op("s_intersects", prop("geom"), POLYGON),
+        op("s_intersects", prop("geom"), FAR),
+    )
+    union = shapely.union(shape(POLYGON), shape(FAR))
+
+    for cql in (
+        op("not", either),
+        op(
+            "and",
+            op("not", op("s_intersects", prop("geom"), POLYGON)),
+            op("not", op("s_intersects", prop("geom"), FAR)),
+        ),
+    ):
+        translated = run(cql)
+        assert translated is not None and translated.area is None
+        assert shape(translated.outside).equals(union)
+
+
+def test_an_area_and_an_area_outside_it_give_both() -> None:
+    cql = op(
+        "and",
+        op("s_intersects", prop("geom"), POLYGON),
+        op("not", op("s_intersects", prop("geom"), INNER)),
+    )
+    assert run(cql) == TranslatedFilter(attributes=None, area=POLYGON, outside=INNER)
+
+
+# =====================================================================
 #  Left to DuckDB
 # =====================================================================
 
@@ -373,8 +460,9 @@ AREA = op("s_intersects", prop("geom"), POLYGON)
     "cql",
     [
         op("or", op("=", prop("n"), 5), AREA),
-        op("not", AREA),
-        op("and", op("=", prop("n"), 5), op("not", AREA)),
+        op("or", op("=", prop("n"), 5), op("not", AREA)),
+        # not (n = 5 and area) is n <> 5 or outside the area
+        op("not", op("and", op("=", prop("n"), 5), AREA)),
         {"op": "s_dwithin", "args": [prop("geom"), POINT, 100, "meters"]},
         op("s_within", prop("geom"), POLYGON),
         op("t_before", prop("ts"), {"timestamp": "2024-05-01T00:00:00Z"}),
@@ -383,9 +471,7 @@ AREA = op("s_intersects", prop("geom"), POLYGON)
         op("=", {"lower": prop("name")}, "a"),
         op("s_intersects", prop("geom"), POINT),
         op("s_intersects", prop("geom"), LINE),
-        op("s_intersects", prop("geom"), {"bbox": [7, 47, 8, 48]}),
         op("=", prop("not_in_tiles"), "a"),
-        op("=", prop("unknown"), "a"),
         op("=", prop("geom"), "a"),
         op("=", 5, prop("n")),
         op("=", prop("n"), prop("d")),
@@ -430,6 +516,37 @@ def test_left_to_duckdb(cql: dict | str) -> None:
 
 def test_nothing_to_filter() -> None:
     assert run(None) is None
+
+
+# =====================================================================
+#  Filters DuckDB skips
+# =====================================================================
+
+# DuckDB's query builder drops the whole CQL filter when it names a field the
+# layer lacks (a filter saved before the column was dropped), even its other
+# tests, and keeps the bbox: the tile holds every feature.
+GONE = op("=", prop("dropped_column"), "a")
+
+
+@pytest.mark.parametrize(
+    "cql",
+    [GONE, op("and", op("<", prop("n"), 30), GONE), op("not", GONE)],
+    ids=["alone", "beside a test", "negated"],
+)
+def test_a_filter_naming_a_missing_field_is_no_filter(cql: dict) -> None:
+    assert run(cql) == TranslatedFilter(attributes=None, area=None)
+
+
+def test_a_filter_naming_a_missing_field_keeps_the_bbox() -> None:
+    rectangle = {
+        "type": "Polygon",
+        "coordinates": [
+            [[6.0, 46.0], [6.0, 49.0], [9.0, 49.0], [9.0, 46.0], [6.0, 46.0]]
+        ],
+    }
+    assert run(GONE, bbox=[6.0, 46.0, 9.0, 49.0]) == TranslatedFilter(
+        attributes=None, area=rectangle
+    )
 
 
 # =====================================================================
@@ -520,6 +637,20 @@ PARITY = [
     op("<", prop("tz"), "2024-05-01T13:45:00"),
     op("<=", prop("tz"), "2024-05-01T13:45:00"),
     op("<=", prop("tz"), "2024-05-01T15:44:59+02:00"),
+    # as the filter panel saves a range, a day and a time
+    op("between", prop("n"), 2, 5),
+    op("=", prop("day"), {"date": "2024-05-01"}),
+    op("<>", prop("day"), {"date": "2024-05-01"}),
+    op(">=", prop("day"), {"date": "2024-05-01"}),
+    op("<", prop("day"), {"timestamp": "2024-05-01T13:45:00Z"}),
+    op(">=", prop("ts"), {"date": "2024-05-01"}),
+    op("<", prop("ts"), {"date": "2024-05-02"}),
+    op(">", prop("ts"), {"timestamp": "2024-05-01T13:45:00Z"}),
+    op(
+        "and",
+        op(">=", prop("tz"), {"timestamp": "2024-05-01T00:00:00Z"}),
+        op("<", prop("tz"), {"timestamp": "2024-05-02T00:00:00Z"}),
+    ),
     op("not", op("and", op("=", prop("n"), 1), op("=", prop("name"), "x"))),
     op("not", op("or", op("=", prop("n"), 1), op("<", prop("d"), 1))),
     op("and", op(">", prop("n"), 1), op("like", prop("name"), "h%")),

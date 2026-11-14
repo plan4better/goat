@@ -235,7 +235,13 @@ async def test_group_statistics_read_joined_fields_of_both_layers() -> None:
     first, second = _bodies(services[2], "aggregation-stats")
     assert first["operation_column"] == "join_oev_guete_mittel"
     assert first["group_by_column"] == "join_klasse"
-    assert json.loads(first["filter"])["args"][0] == {"property": "join_klasse"}
+    assert json.loads(first["filter"]) == {
+        "op": "or",
+        "args": [
+            {"op": "<>", "args": [{"property": "join_klasse"}, "F"]},
+            {"op": "isNull", "args": [{"property": "join_klasse"}]},
+        ],
+    }
     assert second["collection"] == PEOPLE
     assert second["operation_column"] == "join_einwohner"
     assert second["group_by_column"] == "join_name"

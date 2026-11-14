@@ -266,7 +266,12 @@ export const updateProjectLayer = async (projectId: string, layerId: number, cha
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw Error(`Failed to update project layer ${layerId}`);
+    // The status and core's `detail` (a text, or a validation error's list) go with it, for the caller to show.
+    const reply = await response.json().catch(() => undefined);
+    throw Object.assign(new Error(`Failed to update project layer ${layerId}`), {
+      status: response.status,
+      detail: reply?.detail,
+    });
   }
   return await response.json();
 };

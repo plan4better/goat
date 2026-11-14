@@ -137,6 +137,71 @@ def test_a_border_tile_gets_the_area_near_the_tile(tmp_path: Path) -> None:
     assert 0 < vertices < 2000 / 10
 
 
+# An area the features lie outside of: the mirror of the above
+
+
+def test_a_tile_inside_the_outside_area_gets_no_tile(tmp_path: Path) -> None:
+    prepared = PreparedFilter(
+        TranslatedFilter(attributes=ATTRIBUTES, area=None, outside=SQUARE)
+    )
+
+    assert prepared.for_tile(*_tile_of(7.5, 47.5, 12), tmp_path) is False
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_tile_away_from_the_outside_area_gets_only_the_attribute_test(
+    tmp_path: Path,
+) -> None:
+    prepared = PreparedFilter(
+        TranslatedFilter(attributes=ATTRIBUTES, area=None, outside=SQUARE)
+    )
+
+    path = prepared.for_tile(*_tile_of(0.5, 0.5, 10), tmp_path)
+
+    assert isinstance(path, Path)
+    assert json.loads(path.read_text()) == {"*": ATTRIBUTES}
+
+
+def test_a_tile_away_from_the_outside_area_without_attributes_needs_no_filter(
+    tmp_path: Path,
+) -> None:
+    prepared = PreparedFilter(
+        TranslatedFilter(attributes=None, area=None, outside=SQUARE)
+    )
+
+    assert prepared.for_tile(*_tile_of(0.5, 0.5, 10), tmp_path) is None
+
+
+def test_a_border_tile_tests_the_outside_area_near_the_tile(tmp_path: Path) -> None:
+    prepared = PreparedFilter(
+        TranslatedFilter(attributes=ATTRIBUTES, area=None, outside=RAGGED)
+    )
+    path = prepared.for_tile(*_tile_of(7.525, 47.5, 15), tmp_path)
+
+    assert isinstance(path, Path)
+    attributes, (operator, *tests) = json.loads(path.read_text())["*"][1:]
+    assert attributes == ATTRIBUTES and operator == "none"
+    assert tests and all(test[0] == "intersects" for test in tests)
+    vertices = sum(
+        shapely.get_num_coordinates(shapely.from_geojson(json.dumps(test[1])))
+        for test in tests
+    )
+    assert 0 < vertices < 2000 / 10
+
+
+def test_an_area_and_an_outside_area_both_apply(tmp_path: Path) -> None:
+    prepared = PreparedFilter(
+        TranslatedFilter(attributes=None, area=SQUARE, outside=RAGGED)
+    )
+
+    # in the area, away from the outside area: the tile as stored
+    assert prepared.for_tile(*_tile_of(7.1, 47.1, 12), tmp_path) is None
+    # in the area, inside the outside area
+    assert prepared.for_tile(*_tile_of(*CENTRE, 15), tmp_path) is False
+    # outside the area
+    assert prepared.for_tile(*_tile_of(0.5, 0.5, 10), tmp_path) is False
+
+
 # =====================================================================
 #  manby gives the same tiles as with the whole area
 # =====================================================================
@@ -308,6 +373,64 @@ def test_an_area_touching_only_the_margin_gives_no_tile(
     assert _overzoom(layer, z, x, y, whole, tmp_path / "out.mvt.gz") == b""
 
 
+def _outside_area(attributes: list | None, area: dict) -> dict:
+    """The filter of the whole area as an area the features lie outside of."""
+    polygons = (
+        area["coordinates"] if area["type"] == "MultiPolygon" else [area["coordinates"]]
+    )
+    test = ["none"] + [
+        ["intersects", {"type": "Polygon", "coordinates": p}] for p in polygons
+    ]
+    return {"*": test if attributes is None else ["all", attributes, test]}
+
+
+def _has_outside_test(filter_path: Path) -> bool:
+    expression = json.loads(filter_path.read_text())["*"]
+    tests = expression[1:] if expression[0] == "all" else [expression]
+    return any(test[0] == "none" for test in tests)
+
+
+@pytest.mark.parametrize("attributes", [None, ATTRIBUTES], ids=["area", "both"])
+def test_the_cut_outside_area_gives_the_tiles_of_the_whole_area(
+    attributes: list | None, layer: Layer, tmp_path: Path
+) -> None:
+    prepared = PreparedFilter(
+        TranslatedFilter(attributes=attributes, area=None, outside=RAGGED)
+    )
+    whole = tmp_path / "whole.json"
+    whole.write_text(json.dumps(_outside_area(attributes, RAGGED)))
+    out = tmp_path / "out.mvt.gz"
+    outcomes: Counter[tuple[int, str]] = Counter()
+
+    tiles = [tile for z in ZOOMS for tile in _tiles_near(RAGGED, z)] + _EDGE_TILES
+    for z, x, y in tiles:
+        folder = tmp_path / f"{z}-{x}-{y}"
+        folder.mkdir()
+        expected = _overzoom(layer, z, x, y, whole, out)
+        cut = prepared.for_tile(z, x, y, folder)
+        if cut is False:
+            assert expected == b"", (z, x, y)
+            outcomes[(z, "no tile")] += 1
+            continue
+        assert _overzoom(layer, z, x, y, cut, out) == expected, (z, x, y)
+        if cut is None or not _has_outside_test(cut):
+            outcomes[(z, "no area test")] += 1
+            continue
+        outcomes[(z, "cut, features kept" if expected else "cut, none kept")] += 1
+
+    # every way through at zoom 15, and cut tiles along the edges at zoom 18,
+    # where most squares cross the edge and are dropped
+    assert {o for z, o in outcomes if z == 15} >= {
+        "no tile",
+        "no area test",
+        "cut, features kept",
+        "cut, none kept",
+    }
+    assert outcomes[(15, "cut, features kept")] >= 10
+    assert outcomes[(18, "cut, features kept")] >= 1
+    assert outcomes[(18, "cut, none kept")] >= 5
+
+
 # =====================================================================
 #  An area of several parts
 # =====================================================================
@@ -399,6 +522,115 @@ def test_a_polygon_holding_any_part_of_the_area_is_kept(
     assert isinstance(cut, Path)
     tile = _overzoom(woods.layer, z, x, y, cut, out)
     assert _names(tile, z, x, y, tmp_path) == expected
+
+
+@pytest.mark.parametrize(
+    "parts",
+    [(BESIDE_FOREST, IN_FOREST), (IN_FOREST, BESIDE_FOREST)],
+    ids=["inner part second", "inner part first"],
+)
+def test_a_polygon_holding_any_part_of_the_outside_area_is_dropped(
+    parts: tuple[shapely.Polygon, ...], woods: Woods, tmp_path: Path
+) -> None:
+    area = shapely.to_geojson(shapely.MultiPolygon(parts))
+    expected = {
+        name
+        for (name,) in woods.con.execute(
+            "SELECT name FROM woods "
+            "WHERE NOT ST_Intersects(geometry, ST_GeomFromGeoJSON(?))",
+            [area],
+        ).fetchall()
+    }
+    assert expected == {"far"}
+    z, x, y = _tile_of(7.5, 47.5, 6)  # holds both parts and FAR
+    out = tmp_path / "out.mvt.gz"
+
+    prepared = PreparedFilter(
+        TranslatedFilter(attributes=None, area=None, outside=json.loads(area))
+    )
+    cut = prepared.for_tile(z, x, y, tmp_path)
+
+    assert isinstance(cut, Path)
+    tile = _overzoom(woods.layer, z, x, y, cut, out)
+    assert _names(tile, z, x, y, tmp_path) == expected
+
+
+# The web puts an area's pieces side by side in one MultiPolygon, so its parts
+# may overlap, and a part may fill another one's hole. Two squares that
+# overlap around CENTRE:
+WEST_SOUTH = shapely.box(7.40, 47.40, 7.55, 47.55)
+EAST_NORTH = shapely.box(7.45, 47.45, 7.60, 47.60)
+# A square with a hole at CENTRE and a smaller one that fills it
+HOLED = shapely.Polygon(
+    shapely.box(7.30, 47.30, 7.70, 47.70).exterior.coords,
+    [shapely.box(7.48, 47.48, 7.52, 47.52).exterior.coords],
+)
+FILLING = shapely.box(7.45, 47.45, 7.55, 47.55)
+
+
+def _translated_area(parts: tuple[shapely.Polygon, ...], bbox=None) -> dict | None:
+    """The area `translate` takes out of an `s_intersects` with the parts."""
+    area = json.loads(shapely.to_geojson(shapely.MultiPolygon(parts)))
+    cql = {"op": "s_intersects", "args": [{"property": "geom"}, area]}
+    translated = tile_filter.translate(
+        {"filter": json.dumps(cql)},
+        bbox,
+        columns=[{"name": "geometry", "type": "GEOMETRY"}],
+        tile_fields=set(),
+    )
+    return None if translated is None else translated.area
+
+
+@pytest.mark.parametrize(
+    "parts, point",
+    [
+        ((WEST_SOUTH, EAST_NORTH), CENTRE),
+        ((WEST_SOUTH, EAST_NORTH), (7.42, 47.42)),
+        ((HOLED, FILLING), CENTRE),
+        ((HOLED, FILLING), (7.465, 47.465)),
+    ],
+    ids=["in both", "in one", "in the filled hole", "around the hole"],
+)
+def test_a_tile_inside_overlapping_parts_is_inside_the_area(
+    parts: tuple[shapely.Polygon, ...], point: tuple[float, float], tmp_path: Path
+) -> None:
+    assert not shapely.MultiPolygon(parts).is_valid
+    z, x, y = _tile_of(*point, 15)
+    box = shapely.box(*tile_filter._lonlat_box(z, x, y))
+    assert any(part.covers(box) for part in parts)
+
+    area = _translated_area(parts)
+    assert area is not None
+    prepared = PreparedFilter(TranslatedFilter(attributes=None, area=area))
+
+    # covered by the area: no area test, the tile as stored
+    assert prepared.for_tile(z, x, y, tmp_path) is None
+
+
+def test_overlapping_parts_are_taken_out_as_their_union() -> None:
+    area = _translated_area((WEST_SOUTH, EAST_NORTH))
+
+    assert area is not None and area["type"] == "Polygon"
+    assert shapely.equals(
+        shapely.from_geojson(json.dumps(area)), shapely.union(WEST_SOUTH, EAST_NORTH)
+    )
+
+
+@pytest.mark.parametrize(
+    "bbox, inner",
+    [([7.3, 47.3, 7.7, 47.7], "area"), ([7.49, 47.49, 7.51, 47.51], "bbox")],
+    ids=["bbox around the area", "bbox inside both parts"],
+)
+def test_overlapping_parts_and_a_bbox_keep_the_inner_one(
+    bbox: list[float], inner: str
+) -> None:
+    area = _translated_area((WEST_SOUTH, EAST_NORTH), bbox)
+
+    assert area is not None
+    expected = (
+        shapely.union(WEST_SOUTH, EAST_NORTH) if inner == "area" else shapely.box(*bbox)
+    )
+    assert shapely.equals(shapely.from_geojson(json.dumps(area)), expected)
 
 
 # =====================================================================

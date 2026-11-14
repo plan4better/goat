@@ -32,10 +32,17 @@ from goatlib.analysis.statistics import (
     calculate_unique_values,
     search_layer_features,
 )
+from goatlib.filter.normalize import normalize
+from goatlib.filter.validate import over_request_limits
 from goatlib.io.remote_source.url_guard import UnsafeUrlError
 from goatlib.raster.source import RasterSource, RasterUnavailableError
 from goatlib.raster.stats import compute_raster_into, raster_context
-from goatlib.storage import build_cql_filter, is_pin_miss_error, load_extensions
+from goatlib.storage import (
+    build_cql_filter,
+    is_pin_miss_error,
+    load_extensions,
+    parse_cql2_filter,
+)
 from goatlib.style.context import DataContext
 from goatlib.style.data import compute_into, describe
 from goatlib.style.data_check import referenced_fields
@@ -104,6 +111,45 @@ def _reads_the_latest_layer(read: _Read) -> _Read:
             return read(*args, **kwargs)
 
     return wrapper  # type: ignore[return-value]
+
+
+def _checked_filter(filter_expr: Any) -> dict[str, Any] | None:
+    """A request's filter as the builder takes it; None for no filter.
+
+    An empty object is no filter too: what a client sends for a layer without
+    conditions.
+
+    The builder skips a filter it cannot parse, and the answer would then
+    cover every feature. So the filter is parsed here as the builder parses it
+    (after `goatlib.filter.normalize`) and refused when that fails. The request
+    ceilings (`goatlib.filter.limits.REQUEST_MAX_*`) come first, so nothing
+    over one is parsed. Raises the 400 to answer otherwise.
+    """
+    if not filter_expr or (isinstance(filter_expr, str) and not filter_expr.strip()):
+        return None
+    try:
+        if isinstance(filter_expr, str):
+            try:
+                parsed = json.loads(filter_expr)
+            except ValueError:
+                raise HTTPException(400, "The filter is not valid JSON.") from None
+        else:
+            parsed = filter_expr
+        if not isinstance(parsed, dict):
+            raise HTTPException(400, "The filter is not valid CQL2 JSON.")
+        if not parsed:
+            return None
+        issues = over_request_limits(parsed)
+        if issues:
+            raise HTTPException(400, " ".join(i.message for i in issues))
+        parse_cql2_filter(normalize(parsed), "cql2-json")
+    except HTTPException:
+        raise
+    except RecursionError:
+        raise HTTPException(400, "The filter nests too deeply.") from None
+    except Exception:
+        raise HTTPException(400, "The filter is not valid CQL2 JSON.") from None
+    return parsed
 
 
 class AnalyticsService:
@@ -222,17 +268,16 @@ class AnalyticsService:
 
         Returns:
             Tuple of (where_clause, params)
+
+        Raises:
+            HTTPException: 400 for a filter that does not parse or is over a
+                request ceiling (`_checked_filter`)
         """
-        if not filter_expr:
+        filter_dict = _checked_filter(filter_expr)
+        if filter_dict is None:
             return "TRUE", []
 
         try:
-            # Parse the filter JSON string
-            if isinstance(filter_expr, str):
-                filter_dict = json.loads(filter_expr)
-            else:
-                filter_dict = filter_expr
-
             # Get column names and detect geometry column from the table
             with self._connection(table_name) as con:
                 result = con.execute(f"DESCRIBE {table_name}").fetchall()
@@ -263,9 +308,6 @@ class AnalyticsService:
             logger.debug("CQL filter built: %s with params %s", where_clause, params)
             return where_clause, params
 
-        except json.JSONDecodeError as e:
-            logger.warning("Failed to parse filter JSON '%s': %s", filter_expr, e)
-            return "TRUE", []
         except Exception as e:
             if is_pin_miss_error(e):
                 # The table is not in the pinned snapshot yet: dropping the
@@ -1089,7 +1131,15 @@ class AnalyticsService:
 
         Returns:
             Dict with success, columns, rows, error
+
+        Raises:
+            HTTPException: 400 for a filter that does not parse or is over a
+                request ceiling (`_checked_filter`)
         """
+        # Refused before any layer is loaded: the alias views below fall back
+        # to the unfiltered layer when the filter cannot be applied.
+        _checked_filter(filter_expr)
+
         # Validate SQL first: it runs on a connection with DuckLake attached,
         # so it may read only the layers it declares, by their aliases.
         try:

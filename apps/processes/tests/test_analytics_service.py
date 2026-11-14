@@ -1,11 +1,16 @@
 """Tests for analytics service."""
 
 import json
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import duckdb
 import pytest
+from fastapi import HTTPException
+from goatlib.filter.area import CROSSES_ITSELF
+from goatlib.filter.limits import REQUEST_MAX_DEPTH, REQUEST_MAX_VALUES
 
+from processes.routers import processes as analytics_router
 from processes.services.analytics_service import (
     AnalyticsService,
     analytics_service,
@@ -73,17 +78,203 @@ class TestAnalyticsServiceBuildWhereClause:
         assert where == "TRUE"
         assert params == []
 
-    def test_build_where_clause_invalid_json(self):
-        """Test with invalid JSON filter returns TRUE."""
+    def test_build_where_clause_blank(self):
+        """A filter of white space only is no filter."""
         service = AnalyticsService()
 
-        # Invalid JSON should fall back to TRUE
-        where, params = service._build_where_clause(
-            "not valid json", "lake.schema.table"
-        )
+        where, params = service._build_where_clause("  ", "lake.schema.table")
 
         assert where == "TRUE"
         assert params == []
+
+    @pytest.mark.parametrize("filter_expr", ["{}", " { } ", {}])
+    def test_an_empty_object_is_no_filter(self, filter_expr):
+        """What a client sends for a layer without conditions."""
+        service = AnalyticsService()
+
+        where, params = service._build_where_clause(filter_expr, "lake.schema.table")
+
+        assert where == "TRUE"
+        assert params == []
+
+    def test_a_filter_that_parses_is_built(self):
+        """A filter the query path reads becomes the WHERE clause."""
+        service = AnalyticsService()
+
+        with patch.object(service, "_connection", _describes(("kind", "VARCHAR"))):
+            where, params = service._build_where_clause(
+                json.dumps({"op": "=", "args": [{"property": "kind"}, "park"]}),
+                "lake.schema.table",
+            )
+
+        assert "kind" in where
+        assert params == ["park"]
+
+    def test_a_filter_given_as_an_object_is_built(self):
+        """The filter may arrive parsed already."""
+        service = AnalyticsService()
+
+        with patch.object(service, "_connection", _describes(("kind", "VARCHAR"))):
+            where, params = service._build_where_clause(
+                {"op": "=", "args": [{"property": "kind"}, "park"]},
+                "lake.schema.table",
+            )
+
+        assert "kind" in where
+        assert params == ["park"]
+
+    @pytest.mark.parametrize(
+        ("filter_expr", "message"),
+        [
+            ("not valid json", "The filter is not valid JSON."),
+            ("[1, 2]", "The filter is not valid CQL2 JSON."),
+            ('{"op": "nonsense", "args": [1]}', "The filter is not valid CQL2 JSON."),
+            ('{"op": "and", "args": []}', "The filter is not valid CQL2 JSON."),
+            (
+                '{"op": "=", "args": [{"property": "kind"}]}',
+                "The filter is not valid CQL2 JSON.",
+            ),
+            (
+                {"op": "nonsense", "args": [1]},
+                "The filter is not valid CQL2 JSON.",
+            ),
+        ],
+    )
+    def test_a_filter_that_does_not_parse_is_refused(self, filter_expr, message):
+        """Never read as no filter: the answer would cover every feature."""
+        service = AnalyticsService()
+
+        with patch.object(service, "_connection", _no_connection):
+            with pytest.raises(HTTPException) as refused:
+                service._build_where_clause(filter_expr, "lake.schema.table")
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail == message
+
+    def test_a_filter_over_a_request_ceiling_is_refused(self):
+        """Held against the request ceilings before it is parsed."""
+        service = AnalyticsService()
+        values = list(range(REQUEST_MAX_VALUES + 1))
+
+        with patch.object(service, "_connection", _no_connection):
+            with pytest.raises(HTTPException) as refused:
+                service._build_where_clause(
+                    json.dumps({"op": "in", "args": [{"property": "kind"}, values]}),
+                    "lake.schema.table",
+                )
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail == (
+            f"A condition takes at most {REQUEST_MAX_VALUES} values; "
+            f"this one has {REQUEST_MAX_VALUES + 1}."
+        )
+
+    def test_an_area_that_crosses_itself_too_often_is_refused(self):
+        """Its repair is never started."""
+        service = AnalyticsService()
+
+        with patch.object(service, "_connection", _no_connection):
+            with pytest.raises(HTTPException) as refused:
+                service._build_where_clause(
+                    json.dumps(
+                        {
+                            "op": "s_intersects",
+                            "args": [{"property": "geometry"}, _weave(20)],
+                        }
+                    ),
+                    "lake.schema.table",
+                )
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail == CROSSES_ITSELF
+
+    def test_a_filter_that_nests_too_deeply_is_refused(self):
+        """Refused by its depth: the parser would recurse through it."""
+        service = AnalyticsService()
+        deep = {"op": "=", "args": [{"property": "kind"}, "park"]}
+        for _ in range(REQUEST_MAX_DEPTH + 1):
+            deep = {"op": "not", "args": [deep]}
+
+        with patch.object(service, "_connection", _no_connection):
+            with pytest.raises(HTTPException) as refused:
+                service._build_where_clause(json.dumps(deep), "lake.schema.table")
+
+        assert refused.value.status_code == 400
+
+    def test_a_refused_filter_reaches_the_caller_as_a_400(self):
+        """The process answers it as it was raised."""
+        with (
+            patch.object(
+                analytics_router.analytics_service,
+                "_get_table_name",
+                return_value="lake.schema.table",
+            ),
+            patch.object(
+                analytics_router.analytics_service,
+                "_detect_geometry_column",
+                return_value="geometry",
+            ),
+        ):
+            with pytest.raises(HTTPException) as refused:
+                analytics_router._execute_analytics_sync(
+                    "feature-count",
+                    {"collection": "abc", "filter": "not valid json"},
+                )
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail == "The filter is not valid JSON."
+
+    def test_a_sql_preview_refuses_a_filter_that_does_not_parse(self):
+        """The preview never runs over the layers unfiltered instead."""
+        service = AnalyticsService()
+
+        with patch(
+            "processes.services.analytics_service.preview_ducklake_manager"
+        ) as manager:
+            with pytest.raises(HTTPException) as refused:
+                service.preview_sql(
+                    "SELECT * FROM input_1",
+                    {"input_1": "abc"},
+                    filter_expr='{"op": "nonsense", "args": [1]}',
+                )
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail == "The filter is not valid CQL2 JSON."
+        manager.connection.assert_not_called()
+
+
+def _describes(*columns):
+    """A stand-in for `_connection` whose DESCRIBE answers these columns."""
+
+    @contextmanager
+    def connection(table_name, manager=None):
+        con = MagicMock()
+        con.execute.return_value.fetchall.return_value = [
+            (name, kind, "YES", None, None, None) for name, kind in columns
+        ]
+        yield con
+
+    return connection
+
+
+@contextmanager
+def _no_connection(table_name, manager=None):
+    """A stand-in for `_connection` where none may be opened."""
+    raise AssertionError("a refused filter opens no connection")
+    yield
+
+
+def _weave(lines):
+    """An area swept in rows and then in columns: every row crosses every column."""
+    size = lines + 1
+    ring = []
+    for i in range(1, lines + 1):
+        start, end = (0, size) if i % 2 else (size, 0)
+        ring += [[start, i], [end, i]]
+    for i in range(1, lines + 1):
+        start, end = (0, size) if i % 2 else (size, 0)
+        ring += [[i, start], [i, end]]
+    return {"type": "Polygon", "coordinates": [ring + [ring[0]]]}
 
 
 class TestAnalyticsServiceFeatureCount:

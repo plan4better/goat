@@ -106,12 +106,7 @@ const BundleSettingsPanel = ({ projectId }: { projectId: string }) => {
             <Box role="tabpanel" hidden={activeTab !== FILTER_TAB} sx={{ height: "100%" }}>
               {isTabLive(FILTER_TAB) &&
                 (memberLayerId ? (
-                  <BundleFilter
-                    key={bundle.id}
-                    bundle={bundle}
-                    projectId={projectId}
-                    memberLayerId={memberLayerId}
-                  />
+                  <BundleFilter key={bundle.id} bundle={bundle} projectId={projectId} />
                 ) : (
                   <Typography variant="caption" component="p" color="text.secondary" sx={{ p: 3 }}>
                     {t("filter_bundle_no_geometry")}

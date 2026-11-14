@@ -27,7 +27,7 @@ vi.mock("@/lib/style/transports/core", () => ({
 vi.mock("@/lib/api/fetcher", () => ({ renewAccessToken: async () => true }));
 vi.mock("@/hooks/style/useStyleData", () => ({ useStyleData: () => EMPTY_DATA }));
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({}) }));
-vi.mock("@/components/map/panels/filter/Filter", () => ({ default: () => null }));
+vi.mock("@/components/map/panels/filter/LayerFilterPanel", () => ({ default: () => null }));
 vi.mock("@/components/map/panels/properties/Properties", () => ({ default: () => null }));
 vi.mock("@/lib/api/projects", async (original) => ({
   ...(await original<object>()),

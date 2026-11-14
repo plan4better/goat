@@ -7,7 +7,11 @@ equivalent results, spatial predicates must work end-to-end against the
 silently-ignored filter), and only the CRS84 filter-crs is accepted.
 """
 
+from typing import Any
+
 import pytest
+from goatlib.filter.area import CROSSES_ITSELF
+from goatlib.filter.limits import REQUEST_MAX_DEPTH, REQUEST_MAX_VALUES
 
 from catalog.errors import ApiError
 from catalog.services.cql import compile_cql2
@@ -139,6 +143,74 @@ def test_malformed_json_is_400(registry: QueryableRegistry) -> None:
     with pytest.raises(ApiError) as e:
         compile_cql2("{not valid json", "cql2-json", None, registry)
     assert e.value.status_code == 400
+
+
+def _weave(lines: int) -> dict[str, Any]:
+    """An area swept in rows and then in columns: every row crosses every column."""
+    size = lines + 1
+    ring: list[list[float]] = []
+    for i in range(1, lines + 1):
+        start, end = (0, size) if i % 2 else (size, 0)
+        ring += [[start, i], [end, i]]
+    for i in range(1, lines + 1):
+        start, end = (0, size) if i % 2 else (size, 0)
+        ring += [[i, start], [i, end]]
+    return {"type": "Polygon", "coordinates": [ring + [ring[0]]]}
+
+
+def _wkt(polygon: dict[str, Any]) -> str:
+    ring = ", ".join(f"{x} {y}" for x, y in polygon["coordinates"][0])
+    return f"POLYGON(({ring}))"
+
+
+def test_json_over_a_request_ceiling_is_400(registry: QueryableRegistry) -> None:
+    listed = [str(i) for i in range(REQUEST_MAX_VALUES + 1)]
+    with pytest.raises(ApiError) as e:
+        compile_cql2(
+            {"op": "in", "args": [{"property": "license"}, listed]},
+            "cql2-json",
+            None,
+            registry,
+        )
+    assert e.value.status_code == 400
+    assert e.value.detail == (
+        f"A condition takes at most {REQUEST_MAX_VALUES} values; "
+        f"this one has {REQUEST_MAX_VALUES + 1}."
+    )
+
+
+def test_text_over_a_request_ceiling_is_400(registry: QueryableRegistry) -> None:
+    listed = ", ".join(f"'{i}'" for i in range(REQUEST_MAX_VALUES + 1))
+    with pytest.raises(ApiError) as e:
+        compile_cql2(f"license IN ({listed})", "cql2-text", None, registry)
+    assert e.value.status_code == 400
+    assert e.value.detail == (
+        f"A condition takes at most {REQUEST_MAX_VALUES} values; "
+        f"this one has {REQUEST_MAX_VALUES + 1}."
+    )
+
+
+def test_a_long_text_chain_is_within_the_ceilings(registry: QueryableRegistry) -> None:
+    """`a AND b AND c` parses as pairs in pairs: no deeper than its one `and`."""
+    chain = " AND ".join(f"license <> '{i}'" for i in range(REQUEST_MAX_DEPTH * 2))
+    sql, params = compile_cql2(chain, "cql2-text", None, registry)
+    assert len(params) == REQUEST_MAX_DEPTH * 2
+
+
+@pytest.mark.parametrize("lang", ["cql2-json", "cql2-text"])
+def test_an_area_that_crosses_itself_too_often_is_400(
+    registry: QueryableRegistry, lang: str
+) -> None:
+    area = _weave(20)
+    source: Any = (
+        {"op": "s_intersects", "args": [{"property": "geometry"}, area]}
+        if lang == "cql2-json"
+        else f"S_INTERSECTS(geometry, {_wkt(area)})"
+    )
+    with pytest.raises(ApiError) as e:
+        compile_cql2(source, lang, None, registry)
+    assert e.value.status_code == 400
+    assert e.value.detail == CROSSES_ITSELF
 
 
 def test_invalid_filter_lang_is_400(registry: QueryableRegistry) -> None:

@@ -14,7 +14,7 @@ export {
 } from "./GroupRow";
 export { NumberInput, type NumberInputProps } from "./NumberInput";
 export { PanelSection, type PanelSectionProps } from "./PanelSection";
-export { LABEL_WIDTH, ROW_HEIGHT, Row, type RowProps } from "./Row";
+export { DENSE_ROW_HEIGHT, LABEL_WIDTH, ROW_HEIGHT, Row, type RowProps } from "./Row";
 export { SegmentedRow, type SegmentedRowProps } from "./SegmentedRow";
 export { SliderRow, type SliderRowProps } from "./SliderRow";
 export { SwitchRow, type SwitchRowProps } from "./SwitchRow";

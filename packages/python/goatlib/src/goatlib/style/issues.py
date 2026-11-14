@@ -5,7 +5,7 @@ level, and a JSON pointer to the place in the document it is about. One message
 text serves people and the AI.
 """
 
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -108,9 +108,12 @@ def make_issue(
     level: Level | None = None,
     fix: Fix | None = None,
     allowed: list[Any] | None = None,
+    codes: Mapping[str, Level] = CODES,
 ) -> Issue:
-    """An issue with the code's default level unless one is given."""
-    default = CODES[code]
+    """An issue with the code's default level unless one is given. `codes` is the
+    code table the code must be in: the style's, or another format's (layer
+    filters pass theirs)."""
+    default = codes[code]
     return Issue(
         level=level or default,
         code=code,

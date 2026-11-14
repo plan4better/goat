@@ -400,6 +400,23 @@ describe("replaceDatasetLayers", () => {
     });
   });
 
+  it("copies the picked layer's filter as the step's stored rows", () => {
+    const next = layer(21, "L21", "Stops", "point", {
+      query: {
+        cql: { op: "and", args: [{ op: "in", args: [{ property: "kind" }, ["bus", "tram"]] }] },
+        // A switched-off row stays with the layer.
+        ui: { v: 1, off: [{ at: 1, cql: { op: "=", args: [{ property: "kind" }, "ferry"] } }] },
+      },
+    } as Partial<ProjectLayer>);
+    const [change] = replaceDatasetLayers([dataset("d1", "L1", 11)], { d1: next });
+    expect((change.changes.data as Record<string, unknown>).filter).toEqual({
+      op: "and",
+      expressions: [
+        { id: "r0", type: "logical", attribute: "kind", expression: "includes", value: ["bus", "tram"] },
+      ],
+    });
+  });
+
   it("changes nothing for a pick equal to the current layer", () => {
     const nodes = [dataset("d1", "L1", 11)];
     expect(replaceDatasetLayers(nodes, { d1: layer(11, "L1", "Same") })).toEqual([]);

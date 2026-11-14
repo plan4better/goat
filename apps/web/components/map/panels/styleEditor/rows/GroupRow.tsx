@@ -137,13 +137,24 @@ export interface NavRowProps extends ValueButtonProps {
   active?: boolean;
   actions?: ReactNode;
   note?: ReactNode;
+  off?: boolean;
+  /** Shorter, for an entry of a list of names. */
+  dense?: boolean;
 }
 
-export const NavRow = memo(function NavRow({ label, active, actions, note, ...value }: NavRowProps) {
+export const NavRow = memo(function NavRow({
+  label,
+  active,
+  actions,
+  note,
+  off,
+  dense,
+  ...value
+}: NavRowProps) {
   const [button, setButton] = useState<HTMLButtonElement | null>(null);
   const expanded = useIsOpener(button);
   return (
-    <Row label={label} actions={actions} note={note} active={active || expanded}>
+    <Row label={label} actions={actions} note={note} off={off} active={active || expanded} dense={dense}>
       <ValueButton {...value} buttonRef={setButton} expanded={expanded} active={!!active || expanded} />
     </Row>
   );

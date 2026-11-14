@@ -321,7 +321,13 @@ async def test_count_sends_the_layer_and_a_checked_filter() -> None:
     assert json.loads(body["inputs"]["filter"]) == {
         "op": "and",
         "args": [
-            {"op": "<>", "args": [{"property": "art"}, "Weg"]},
+            {
+                "op": "or",
+                "args": [
+                    {"op": "<>", "args": [{"property": "art"}, "Weg"]},
+                    {"op": "isNull", "args": [{"property": "art"}]},
+                ],
+            },
             {"op": ">", "args": [{"property": "laenge"}, 2]},
             {"op": "isNull", "args": [{"property": "separation"}]},
         ],

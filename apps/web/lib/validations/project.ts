@@ -337,8 +337,7 @@ export const projectSchema = contentMetadataSchema.extend({
 // order: int = Field(0, description="Visual sorting order")
 // layer_project_group_id: int | None = Field(None, description="Parent group ID")
 export const projectLayerSchema = layerSchema.extend({
-  /** The dataset's own last change — `updated_at` also moves when this
-   * project restyles the layer, because the tile source keys on it. */
+  /** The dataset's own last change; `updated_at` is the project entry's. */
   dataset_updated_at: z.string().optional(),
   id: z.number(),
   // See layerSchema: absent for a catalog layer.
@@ -353,6 +352,8 @@ export const projectLayerSchema = layerSchema.extend({
         })
         .passthrough()
         .optional(),
+      // The filter panel's notes (switched-off rows); they never change which features pass.
+      ui: z.record(z.unknown()).nullish(),
     })
     .nullable()
     .optional(),
@@ -363,9 +364,8 @@ export const projectLayerSchema = layerSchema.extend({
   // D7: true when the current user has no access of their own to the
   // underlying dataset. The backend then whitelists the row to id/layer_id/
   // name/type/feature_layer_type/feature_layer_geometry_type/order/
-  // layer_project_group_id, with `properties: {}` and every other
-  // style/metadata field null — nothing here may be dereferenced for a
-  // locked row.
+  // layer_project_group_id, with every style/metadata field null — nothing
+  // here may be dereferenced for a locked row.
   locked: z.boolean().default(false),
 });
 
@@ -441,7 +441,6 @@ export const projectLayerTreeNodeSchema = z.object({
   layer_type: z.string().nullable().optional(),
   geometry_type: z.string().nullable().optional(),
   // Dictionary / JSON properties
-  properties: z.record(z.any()).nullable().optional(),
   other_properties: z.record(z.any()).nullable().optional(),
   query: z.record(z.any()).nullable().optional(),
   user_id: z.string().optional(),

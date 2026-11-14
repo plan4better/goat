@@ -41,6 +41,7 @@ vi.mock("@xyflow/react", () => ({
 
 vi.mock("@/lib/api/layers", () => ({
   useDatasetCollectionItems: () => ({ data: undefined }),
+  useLayerQueryables: () => ({ queryables: undefined, isLoading: false }),
 }));
 
 vi.mock("@/lib/api/projects", () => ({
@@ -50,10 +51,6 @@ vi.mock("@/lib/api/projects", () => ({
 vi.mock("@p4b/ui/components/Icon", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@p4b/ui/components/Icon")>()),
   Icon: ({ iconName }: { iconName: string }) => <span data-testid="node-icon" data-icon={iconName} />,
-}));
-
-vi.mock("@/hooks/map/CommonHooks", () => ({
-  default: () => ({ layerFields: [] }),
 }));
 
 vi.mock("@/components/workflows/issues/WorkflowIssuesContext", () => ({

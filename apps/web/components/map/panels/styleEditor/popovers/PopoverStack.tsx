@@ -95,9 +95,13 @@ export const PopoverFrame = memo(function PopoverFrame({
             </IconButton>
           )}
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="body1" fontWeight="bold" noWrap>
-              {entry.title}
-            </Typography>
+            {entry.heading ? (
+              entry.heading()
+            ) : (
+              <Typography variant="body1" fontWeight="bold" noWrap>
+                {entry.title}
+              </Typography>
+            )}
             {entry.subtitle && (
               <Typography component="p" variant="caption" noWrap color="text.secondary">
                 {entry.subtitle}

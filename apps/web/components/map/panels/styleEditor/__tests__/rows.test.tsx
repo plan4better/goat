@@ -313,6 +313,25 @@ describe("rows", () => {
     expect(within(row).getByRole("button", { name: "up" })).toBeDefined();
   });
 
+  it("a dense row is shorter: for a list of names rather than of fields", () => {
+    renderPanel(
+      <>
+        <Row>plain</Row>
+        <Row dense>dense</Row>
+        <NavRow dense value="nav" onOpen={() => undefined} />
+      </>
+    );
+    // The row is the grid around its value.
+    const rowOf = (text: string) => {
+      let element: HTMLElement | null = screen.getByText(text);
+      while (element && getComputedStyle(element).display !== "grid") element = element.parentElement;
+      return element as HTMLElement;
+    };
+    expect(rowOf("plain")).toHaveStyle({ minHeight: "48px" });
+    expect(rowOf("dense")).toHaveStyle({ minHeight: "36px" });
+    expect(rowOf("nav")).toHaveStyle({ minHeight: "36px" });
+  });
+
   it("rows have accessible names", () => {
     renderPanel(
       <PanelSection title="Polygons" add={{ label: "style_editor.add_rule", onClick: vi.fn() }}>

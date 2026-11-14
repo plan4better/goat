@@ -59,6 +59,8 @@ Der Browser ruft core, geoapi, processes, catalog und den Assistenten direkt auf
 Ohne die URLs von core, geoapi, processes und catalog zeigt die Web-App eine leere Seite. Ohne die URL des Assistenten blendet sie nur den Assistenten aus.
 :::
 
+Layer-Filter stehen in der URL der Kachel- und Objektanfragen an geoapi, wie OGC API Features es vorsieht. Ein Filter mit einem detaillierten Gebiet ergibt URLs von bis zu etwa 60.000 Zeichen. ingress-nginx nimmt standardmäßig Anfragezeilen bis 8 KB an und beantwortet längere mit 414: Erhöhen Sie das in der ConfigMap des Controllers mit `large-client-header-buffers: "4 64k"`. Jeder andere Proxy vor geoapi braucht denselben Spielraum.
+
 ### Objektspeicher {#storage}
 
 Beschreiben Sie Ihren S3-Speicher einmal in `global.s3`: den Bucket für Uploads, Anbieter, Endpunkt, Region, ob der Speicher Pfad-URLs (path style) braucht, und ein Secret mit dem Zugangsschlüssel-Paar (`global.s3.existingSecret`). core, geoapi, processes und die Analyse-Worker (siehe unten) erhalten alle diese Einstellungen.

@@ -49,6 +49,7 @@ import { useFeatureEditor } from "@/hooks/map/useFeatureEditor";
 import { useScene } from "@/hooks/map/useScene";
 import { useRenderLayers } from "@/hooks/map/useRenderLayers";
 import { ExplorerMapLayers } from "@/components/explorer/ExplorerMapLayers";
+import FilterAreaLayer from "@/components/map/FilterAreaLayer";
 import GeocoderLayer from "@/components/map/GeocoderLayer";
 import { type EditedLayer, StyledLayers, useLiveLayer } from "@/components/map/StyledLayers";
 import ToolboxLayers from "@/components/map/ToolboxLayers";
@@ -663,9 +664,9 @@ const MapViewer: React.FC<MapProps> = ({
           title: hoverLayer.name ?? "",
           layerId: datasetOf(hoverLayer),
           projectLayerId: hoverLayer.id.toString(),
-          // The new MapFeaturePopover uses featureProperties for token
-          // substitution. `properties` is kept (same payload) so the
-          // legacy renderer still works if it ever picks up a hover.
+          // MapFeaturePopover uses featureProperties for token
+          // substitution; `properties` carries the same payload for the
+          // readers that still take it (the fixed popup slot's fallback).
           featureProperties: hoverFeature.properties as Record<string, unknown>,
           properties: hoverFeature.properties as Record<string, string>,
           triggeredBy: "hover",
@@ -1016,6 +1017,7 @@ const MapViewer: React.FC<MapProps> = ({
           <UserLocationLayer />
           <ToolboxLayers />
           <ExplorerMapLayers />
+          <FilterAreaLayer />
           <MeasureLabels />
           {popupInfo && activePopupConfig && (
             <>

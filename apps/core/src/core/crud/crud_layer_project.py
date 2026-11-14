@@ -13,6 +13,7 @@ from core.core.config import settings
 from core.db.models._link_model import LayerProjectGroup, LayerProjectLink
 from core.db.models.layer import Layer
 from core.db.models.project import Project
+from core.schemas.common import query_save_errors
 from core.schemas.project import (
     IFeatureStandardProjectRead,
     IFeatureStreetNetworkProjectRead,
@@ -762,6 +763,19 @@ class CRUDLayerProject(CRUDBase):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=str(e),
+            )
+
+        # A filter the save changes is checked as a new one, limits included;
+        # one it leaves as it was is not, so a filter saved over a limit
+        # still saves with the layer's other properties.
+        errors = query_save_errors(
+            layer_project_old.query,
+            layer_in.query if "query" in layer_in.model_fields_set else None,
+        )
+        if errors:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="; ".join(errors),
             )
 
         # Update layer project

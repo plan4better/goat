@@ -5,6 +5,8 @@ import { type ReactNode, memo } from "react";
 
 export const LABEL_WIDTH = 84;
 export const ROW_HEIGHT = 48;
+/** A row that holds a name rather than a field: an entry of a short list. */
+export const DENSE_ROW_HEIGHT = 36;
 
 export interface RowProps {
   label?: ReactNode;
@@ -13,9 +15,11 @@ export interface RowProps {
   note?: ReactNode;
   off?: boolean;
   active?: boolean;
+  /** Shorter, for an entry of a list of names. */
+  dense?: boolean;
 }
 
-export const Row = memo(function Row({ label, children, actions, note, off, active }: RowProps) {
+export const Row = memo(function Row({ label, children, actions, note, off, active, dense }: RowProps) {
   const hasActions = actions !== undefined && actions !== null && actions !== false;
   const columns = [label !== undefined && `${LABEL_WIDTH}px`, "minmax(0, 1fr)", hasActions && "auto"];
   return (
@@ -26,7 +30,7 @@ export const Row = memo(function Row({ label, children, actions, note, off, acti
         gridTemplateColumns: columns.filter(Boolean).join(" "),
         alignItems: "center",
         columnGap: 1.5,
-        minHeight: ROW_HEIGHT,
+        minHeight: dense ? DENSE_ROW_HEIGHT : ROW_HEIGHT,
         px: 3,
         opacity: off ? 0.55 : 1,
         // Edge to edge, as the layer list marks its selected row.

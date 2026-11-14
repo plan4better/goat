@@ -4,11 +4,13 @@ This module provides reusable components for building DuckDB SQL queries
 with spatial filters, CQL2 filters, and other common query patterns.
 """
 
+import json
 import logging
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from goatlib.filter.normalize import normalize
 from goatlib.storage.cql_evaluator import cql2_to_duckdb_sql, parse_cql2_filter
 
 logger = logging.getLogger(__name__)
@@ -139,6 +141,12 @@ def build_cql_filter(
         filter_str = cql_filter["filter"]
         if normalize_geometry_aliases and isinstance(filter_str, str):
             filter_str = _normalize_geometry_property(filter_str, geometry_column)
+
+        # Legacy and standard spellings the parser does not take (goatlib.filter.normalize)
+        if cql_filter.get("lang", "cql2-json") == "cql2-json":
+            filter_str = normalize(
+                json.loads(filter_str) if isinstance(filter_str, str) else filter_str
+            )
 
         ast = parse_cql2_filter(
             filter_str,

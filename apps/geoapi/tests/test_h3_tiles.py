@@ -55,6 +55,26 @@ def test_neighbouring_tiles_agree_on_the_cells_they_share(duck) -> None:
     assert {res for _, _, res in west.values()} == {8}
 
 
+def test_neighbouring_tiles_agree_on_a_wide_border_cell(duck) -> None:
+    """Near Madrid hexagons are wider than in Berlin. Cell 88390c04a3fffff
+    reaches from tile 11/1003/774 into 11/1003/775; a point just inside its
+    south corner lies more than two edges below the upper tile, which drew
+    the cell with 2 points while the lower tile drew it with 3."""
+    duck.execute(
+        "CREATE TABLE madrid AS SELECT ST_Point(lng, lat) AS geometry FROM (VALUES "
+        "(-3.668725, 40.03475355), (-3.667904392606279, 40.03964889270629), "
+        "(-3.667894392606279, 40.03964889270629)) v(lng, lat)"
+    )
+    drawn = []
+    for y in (774, 775):
+        sql, params = h3_tile_cells_sql(
+            "madrid", "geometry", 11, 1003, y, "auto", "count", None, "", []
+        )
+        drawn.append({c: n for c, _, n, _ in duck.execute(sql, params).fetchall()})
+
+    assert drawn[0]["88390c04a3fffff"] == drawn[1]["88390c04a3fffff"] == 3
+
+
 def test_only_cells_touching_the_tile_are_drawn(duck) -> None:
     z = 12
     x, y = _tile_of(z, 13.398125, 52.52)
@@ -186,6 +206,47 @@ def test_h3_tiles_count_only_the_requested_features(duck, monkeypatch) -> None:
     assert asyncio.run(tile(None)) != expected
 
 
+def test_the_h3_filter_is_built_off_the_event_loop(duck, monkeypatch) -> None:
+    """An area filter can take a while to prepare: the loop keeps serving."""
+    import asyncio
+    import importlib
+    import threading
+    from types import SimpleNamespace
+
+    service = importlib.import_module("geoapi.services.tile_service")
+    monkeypatch.setattr(
+        service.ducklake_pool,
+        "execute_with_retry",
+        lambda sql, params=None, **_: duck.execute(sql, params or []).fetchone(),
+    )
+    built_on: list[int] = []
+    build = service.build_filters
+
+    def spy(**kwargs):
+        built_on.append(threading.get_ident())
+        return build(**kwargs)
+
+    monkeypatch.setattr(service, "build_filters", spy)
+    z = 12
+    x, y = _tile_of(z, 13.398125, 52.52)
+
+    async def tile() -> int:
+        await service.TileService().get_h3_tile(
+            layer_info=SimpleNamespace(full_table_name="pts"),
+            z=z,
+            x=x,
+            y=y,
+            resolution="8",
+            op="count",
+            field=None,
+            column_names=["geometry", "pop"],
+        )
+        return threading.get_ident()
+
+    loop_thread = asyncio.run(tile())
+    assert built_on and loop_thread not in built_on
+
+
 def test_feature_ids_are_for_h3_tiles() -> None:
     from fastapi import HTTPException
 
@@ -196,3 +257,60 @@ def test_feature_ids_are_for_h3_tiles() -> None:
     with pytest.raises(HTTPException) as err:
         tile_feature_ids("4", None)
     assert err.value.status_code == 400
+
+
+def test_a_filtered_h3_request_draws_hexagons(test_client) -> None:
+    """With a filter the stored tiles could answer, `h3` still gets hexagons:
+    the stored tiles hold the features, not the cells."""
+    import json
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from geoapi.dependencies import LayerInfo
+    from geoapi.services.layer_service import LayerMetadata
+    from geoapi.services.tile_service import FilteredTile
+
+    layer = "abc123de-f456-7890-1234-5678901234ab"
+    info = LayerInfo(
+        layer_id=layer.replace("-", ""), schema_name="user_x", table_name="t_pts"
+    )
+    metadata = LayerMetadata(
+        layer_id=layer,
+        name="Points",
+        geometry_type="Point",
+        bounds=[13.3, 52.4, 13.5, 52.6],
+        columns=[
+            {"name": "pop", "type": "DOUBLE", "json_type": "number"},
+            {"name": "geometry", "type": "GEOMETRY", "json_type": "geometry"},
+        ],
+        geometry_column="geometry",
+    )
+    service = MagicMock()
+    service.can_serve_from_pmtiles_by_layer_id.return_value = False
+    service.can_serve_from_pmtiles.return_value = False
+    service.get_filtered_tile_from_pmtiles = AsyncMock(
+        return_value=FilteredTile(
+            'W/"stored"', (b"features", False, "pmtiles-filtered")
+        )
+    )
+    service.get_h3_tile = AsyncMock(return_value=b"hexagons")
+    cql = json.dumps({"op": ">", "args": [{"property": "pop"}, 3]})
+    with (
+        patch("geoapi.routers.tiles.tile_service", service),
+        patch("geoapi.routers.tiles.layer_service") as layer_service,
+        patch("geoapi.dependencies.get_layer_info", AsyncMock(return_value=info)),
+    ):
+        layer_service.get_layer_metadata = AsyncMock(return_value=metadata)
+        layer_service.cached_metadata = MagicMock(return_value=metadata)
+        response = test_client.get(
+            f"/collections/{layer}/tiles/WebMercatorQuad/12/2200/1343",
+            params={"h3": "auto", "filter": cql},
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.headers["X-Tile-Source"] == "h3"
+    assert response.content == b"hexagons"
+    service.get_filtered_tile_from_pmtiles.assert_not_called()
+    assert service.get_h3_tile.await_args.kwargs["cql_filter"] == {
+        "filter": cql,
+        "lang": "cql2-json",
+    }

@@ -28,36 +28,13 @@ from typing import Any
 from pygeofilter import ast, values
 from pygeofilter.backends.evaluator import Evaluator, handle
 
-# Function calls in a CQL2 filter reach DuckDB by name. Only vetted, pure,
-# side-effect-free scalar functions are allowed; the name emitted into SQL is
-# the canonical entry from this set, never the caller-supplied token — so a
-# crafted "quoted identifier" name cannot smuggle SQL. Everything else
-# (crucially the file/network readers: read_text, read_csv, read_parquet, and
-# any I/O or subquery-bearing construct) is rejected. Add a function here only
-# after confirming it is a pure scalar with no filesystem/network reach.
-_ALLOWED_CQL_FUNCTIONS: frozenset[str] = frozenset(
-    {
-        "abs",
-        "ceil",
-        "ceiling",
-        "floor",
-        "round",
-        "sign",
-        "sqrt",
-        "power",
-        "mod",
-        "length",
-        "lower",
-        "upper",
-        "trim",
-        "ltrim",
-        "rtrim",
-        "substr",
-        "substring",
-        "concat",
-        "coalesce",
-    }
-)
+from goatlib.filter.cql import FUNCTIONS
+from goatlib.filter.normalize import normalize
+
+# Function calls in a CQL2 filter reach DuckDB by name; the allowlist and why it
+# is safe live with the filter's other tables (`goatlib.filter.cql.FUNCTIONS`),
+# so the checker accepts exactly what this evaluator runs.
+_ALLOWED_CQL_FUNCTIONS: frozenset[str] = frozenset(FUNCTIONS)
 
 
 class DuckDBCQLEvaluator(Evaluator):
@@ -287,12 +264,18 @@ class DuckDBCQLEvaluator(Evaluator):
 
         pygeofilter's Geometry object has a .geometry attribute containing
         a GeoJSON dict. We use ST_GeomFromGeoJSON for proper parsing.
+
+        An area is bound as its union (`normalize_area`): against a constant
+        MultiPolygon whose polygons overlap, DuckDB reads a point in two of
+        them as outside.
         """
         import json
 
+        from goatlib.filter.area import normalize_area
+
         # node.geometry is a GeoJSON dict
         if hasattr(node, "geometry") and isinstance(node.geometry, dict):
-            geojson_str = json.dumps(node.geometry)
+            geojson_str = json.dumps(normalize_area(node.geometry))
             return f"ST_GeomFromGeoJSON({self._add_param(geojson_str)})"
 
         # Fallback: try WKT if available
@@ -407,13 +390,13 @@ def cql2_to_duckdb_sql(
 
 
 def parse_cql2_filter(
-    filter_str: str,
+    filter_str: str | dict,
     filter_lang: str = "cql2-json",
 ) -> Any:
     """Parse CQL2 filter string to AST.
 
     Args:
-        filter_str: CQL2 filter string
+        filter_str: CQL2 filter string (a cql2-json filter may also be a dict)
         filter_lang: Either 'cql2-json' or 'cql2-text'
 
     Returns:
@@ -494,8 +477,8 @@ def cql_to_where_clause(
     if isinstance(cql_filter, str):
         cql_filter = json.loads(cql_filter)
 
-    # Parse the CQL2 filter
-    filter_json = json.dumps(cql_filter)
+    # Parse the CQL2 filter, in the spellings the parser takes
+    filter_json = json.dumps(normalize(cql_filter))
     ast = parse_cql2_filter(filter_json, "cql2-json")
 
     # Convert to SQL

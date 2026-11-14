@@ -5,9 +5,9 @@ import { fetcher } from "@/lib/api/fetcher";
 import { COLLECTIONS_API_BASE_URL } from "@/lib/api/layers";
 import type { LayerQueryables } from "@/lib/validations/layer";
 
-import type { SearchLayersById } from "@/components/map/controls/search/SearchResultsList";
 import type { MapLayer } from "@/hooks/map/useMapLayers";
 
+import type { SearchLayersById } from "@/components/map/controls/search/SearchResultsList";
 import { layerSwatchIcon } from "@/components/map/legend/StyleLegend";
 
 const NAME_HINTS = ["name", "title", "label", "bezeichnung", "street", "strasse"];
@@ -37,7 +37,8 @@ export function pickSearchColumns(fields: { name: string; type: string }[]): str
   return [...hinted, ...rest].slice(0, MAX_COLUMNS);
 }
 
-function stringColumnsFromQueryables(queryables: LayerQueryables): string[] {
+/** A dataset's name-like text columns, the likeliest label first; also what names a feature picked from a list. */
+export function stringColumnsFromQueryables(queryables: LayerQueryables | undefined): string[] {
   const properties = queryables?.properties ?? {};
   const fields = Object.entries(properties)
     .filter(([name]) => !HIDDEN_FIELDS.includes(name))
