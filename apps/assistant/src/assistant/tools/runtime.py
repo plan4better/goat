@@ -143,6 +143,10 @@ class ToolEnv:
     #: (``assistant.tools.workflows.catalog_picked``): a later check of the
     #: same dataset does not look its bundles up again.
     picked_datasets: set[str] = field(default_factory=set)
+    #: The parts of docs pages this answer read (``assistant.tools.docs``):
+    #: page id and section, at most ``MAX_PAGES_PER_ANSWER`` pages and
+    #: ``MAX_PARTS_PER_ANSWER`` parts.
+    docs_read: list[tuple[str, str]] = field(default_factory=list)
     #: Whether the service is shutting down, so a cancelled tool knows it was
     #: not the user's Stop (a workflow run then goes on).
     stopping: Callable[[], bool] = field(default=_not_stopping, repr=False)

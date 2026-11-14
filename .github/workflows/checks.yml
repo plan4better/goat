@@ -124,9 +124,12 @@ jobs:
             # the catalog pack against the catalog app.
             # test_image_contract.py reads the compose file and the Helm values;
             # test_encoding compares against the web's golden stream fixtures.
+            # The image bundles the user docs and the tests clean every page.
             assistant:
                 - 'apps/assistant/**'
                 - 'apps/web/lib/assistant/__tests__/fixtures/**'
+                - 'apps/docs/docs/**'
+                - 'apps/docs/i18n/de/docusaurus-plugin-content-docs/current/**'
                 - 'apps/core/**'
                 - 'apps/catalog/**'
                 - 'deploy/compose/compose.yaml'

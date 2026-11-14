@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from assistant.surfaces import Locale
 
-EVAL_SET_VERSION = 19
+EVAL_SET_VERSION = 20
 
 HERE = Path(__file__).resolve().parent
 Suite = Literal["catalog", "project", "workflow"]
@@ -133,6 +133,15 @@ class ToolsCheck(_Check):
     at_most: dict[str, int] = Field(default_factory=dict)
 
 
+class DocsCheck(_Check):
+    """The run read one of these pages of GOAT's user docs with docs_read (a
+    call that succeeded), by page id: an answer about GOAT's interface comes
+    from the page that describes it."""
+
+    kind: Literal["docs"]
+    any_of: list[str] = Field(min_length=1)
+
+
 class ViewCheck(_Check):
     """The last map.view proposal frames this layer, or contains this point."""
 
@@ -229,6 +238,7 @@ Check = Annotated[
     | TextCheck
     | AnswerCheck
     | ToolsCheck
+    | DocsCheck
     | ViewCheck
     | NotSentCheck
     | WithheldCheck

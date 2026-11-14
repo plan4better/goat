@@ -1,5 +1,5 @@
 ---
-description: "Ask GOAT AI, the AI assistant, about your projects and data: it finds datasets in your workspace and the catalog, reads layers and statistics, suggests map views and filters, and builds, changes and runs workflows. Answers of GOAT AI use AI credits."
+description: "Ask GOAT AI, the AI assistant, about your projects and data: it finds datasets in your workspace and the catalog, reads layers and statistics, suggests map views and filters, builds, changes and runs workflows, and explains GOAT itself from this documentation. Answers of GOAT AI use AI credits."
 sidebar_position: 2.5
 ---
 
@@ -81,6 +81,10 @@ When you ask for data about a topic or a place, the assistant looks in your orga
 Ask what data exists, for example <code>Which datasets are there about population?</code> or <code>Which of these datasets may be used commercially?</code> The assistant searches the [GOAT data catalog](./workspace/catalog.md), narrows a place down to its region, and reads a dataset's full record: description, license, publisher, years, extent and, for a bundle, its layers and fields. The datasets it recommends appear as cards marked <code>From the GOAT catalog</code>, with <code>Add</code> and a preview.
 
 To see the results on the Catalog page itself, ask for it: the assistant suggests the search and filters in a card (see [Suggestions you apply](#suggestions)).
+
+### Explain how GOAT works {#how-to}
+
+Ask how to do something in GOAT, where to find it or whether GOAT can do it, for example <code>Where do I change the colors of a layer?</code> The assistant reads the matching page of this documentation, in the language of your interface, and answers with the names of buttons and menus as GOAT shows them. When the documentation does not cover a question, it says so instead of guessing.
 
 ### Answer questions about a project's data
 

@@ -450,6 +450,7 @@ const STEP_KINDS: Record<string, string> = {
   project_get_layouts: "layouts",
   ask_user: "ask",
   skills_load: "instructions",
+  docs_read: "docs",
   workflow_tools: "tools",
   workflow_describe_tool: "tools",
   workflow_find_templates: "templates",
@@ -525,6 +526,7 @@ const COUNTED_BY: Record<
     return `${step.toolName}:${layer}:${canonical(Object.fromEntries(shape))}`;
   },
   instructions: (step) => text(fields(step.input).name),
+  docs: (step) => text(fields(step.input).page),
   workflow_last_run: (step) => text(fields(step.input).workflow_id),
   workflow_read: (step) => text(fields(step.input).workflow_id),
 };

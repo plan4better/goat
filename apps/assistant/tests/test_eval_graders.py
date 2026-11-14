@@ -42,12 +42,12 @@ def backends(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Backends]:
     backends.close()
 
 
-def test_the_set_has_36_catalog_24_project_and_12_workflow_tasks_with_valid_contexts() -> (
+def test_the_set_has_36_catalog_30_project_and_13_workflow_tasks_with_valid_contexts() -> (
     None
 ):
     tasks = load_tasks()
     assert sum(t.suite == "catalog" for t in tasks) == 36
-    assert sum(t.suite == "project" for t in tasks) == 25
+    assert sum(t.suite == "project" for t in tasks) == 30
     assert sum(t.suite == "workflow" for t in tasks) == 13
     for task in tasks:
         parse_context(task.context)  # raises on a context the dock could not send
@@ -225,6 +225,43 @@ async def test_shown_items_check_grades_the_users_own_cards_by_name(
     assert [g.passed for g in await grade(task, right, backends)] == [True]
     assert [g.passed for g in await grade(task, both, backends)] == [False]
     assert [g.passed for g in await grade(task, none, backends)] == [False]
+
+
+async def test_docs_check_grades_the_pages_read(backends: Backends) -> None:
+    task = _task('{"kind": "docs", "any_of": ["map/filter", "map/layers"]}')
+
+    def read(page: str, failed: bool = False) -> ToolCall:
+        return ToolCall("docs_read", {"page": page}, {"page": page}, failed)
+
+    assert [
+        g.passed
+        for g in await grade(
+            task, _transcript(tool_calls=[read("map/layers")]), backends
+        )
+    ] == [True]
+    # The id as the model may write it.
+    assert [
+        g.passed
+        for g in await grade(
+            task, _transcript(tool_calls=[read("/map/filter.md")]), backends
+        )
+    ] == [True]
+    other = _transcript(tool_calls=[read("sharing/public"), read("map/filter", True)])
+    assert [g.passed for g in await grade(task, other, backends)] == [False]
+    assert [g.passed for g in await grade(task, _transcript(), backends)] == [False]
+
+
+def test_docs_tasks_name_pages_that_exist() -> None:
+    from assistant.user_docs import USER_DOCS
+
+    pages = [
+        page
+        for task in load_tasks()
+        for check in task.checks
+        if check.kind == "docs"
+        for page in check.any_of
+    ]
+    assert pages and all(page in USER_DOCS["en"] for page in pages)
 
 
 #: A real answer that showed the three layers as cards and only summed them
