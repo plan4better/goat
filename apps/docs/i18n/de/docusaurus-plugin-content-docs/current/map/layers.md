@@ -165,7 +165,7 @@ GOAT hält eine Kopie von [OpenStreetMap](https://www.openstreetmap.org) und [Ov
 
 <div class="step">
   <div class="step-number">5</div>
-  <div class="content">Legen Sie das <code>Gebiet</code> fest: den <code>Kartenausschnitt</code>, bei dem Sie die Karte verschieben und zoomen, bis der gestrichelte Rahmen das Gebiet zeigt, oder eine <code>Region</code>, einen <code>Puffer</code> oder ein <code>Polygon</code>, jeweils über <code>Wählen</code>. Hinzugefügt wird jedes Feature, das das Gebiet berührt, auch eines, das über seine Grenze hinausreicht.</div>
+  <div class="content"><p>Legen Sie das <code>Gebiet</code> fest. Es beginnt als <code>Kartenausschnitt</code>: Verschieben und zoomen Sie die Karte, bis der gestrichelte Rahmen das Gebiet zeigt. Unter <code>Zum Gebiet hinzufügen</code> wählen Sie stattdessen <code>Regionen</code> aus einer durchsuchbaren Liste, <code>Polygon zeichnen</code> auf der Karte (Eckpunkte anklicken, mit Doppelklick abschließen) oder setzen <code>Punkt und Umkreis</code> (Mittelpunkt anklicken, dann den Umkreis in km darunter einstellen). Regionen, Polygone und Kreise lassen sich zu einem Gebiet kombinieren; der Kartenausschnitt ersetzt sie, und sie ersetzen den Kartenausschnitt. Einen Teil entfernen Sie mit dem Kreuz in seiner Zeile; <code>Abbrechen</code> oder die Esc-Taste beendet das Zeichnen.</p>Hinzugefügt wird jedes Feature, das das Gebiet berührt, auch eines, das über seine Grenze hinausreicht.</div>
 </div>
 
 <div class="step">

@@ -5,6 +5,8 @@ agree. `LIKE '%amenity%'` would match `amenity:parking`, and a value typed by a
 user reaches a string literal.
 """
 
+import json
+
 import pytest
 from goatlib.io.fetch import area
 from goatlib.io.fetch.mirror import osm, overture, query, reader, values
@@ -316,6 +318,95 @@ def test_only_indexed_files_touching_the_area(tmp_path) -> None:
     )
     assert rows[0][4:] == ("w1494403985@1; m7", "2026-03-30T18:37:29Z")
     assert rows[1][1:] == (None, None, None, None, None)
+
+
+def _square(x: float, y: float, size: float = 0.1) -> list[list[float]]:
+    return [[x, y], [x + size, y], [x + size, y + size], [x, y + size], [x, y]]
+
+
+def test_overlapping_parts_of_an_area_are_read_as_their_union() -> None:
+    """A region and a circle over it come as one MultiPolygon side by side:
+    read merged, the overlap is neither invalid nor read twice."""
+    duckdb = pytest.importorskip("duckdb")
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    overlapping = {
+        "type": "MultiPolygon",
+        "coordinates": [[_square(11.5, 48.1)], [_square(11.55, 48.1)]],
+    }
+    table = area.area_table(con, overlapping)
+    valid, parts, size = con.execute(
+        f"SELECT ST_IsValid(geom), ST_NumGeometries(geom), ST_Area(geom) FROM {table}"
+    ).fetchone()
+    assert valid
+    assert parts == 1
+    assert size == pytest.approx(0.15 * 0.1)
+    assert len(area.area_boxes(con, table)) == 1
+
+
+def test_an_area_without_overlaps_is_read_as_it_was_sent() -> None:
+    """Only parts that overlap cost a merge: the others come through as they
+    are, vertex for vertex."""
+    duckdb = pytest.importorskip("duckdb")
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    apart = {
+        "type": "MultiPolygon",
+        "coordinates": [[_square(11.5, 48.1)], [_square(13.0, 52.5)]],
+    }
+    table = area.area_table(con, apart)
+    read, sent = con.execute(
+        f"SELECT ST_AsText(geom), ST_AsText(ST_GeomFromGeoJSON(?)) FROM {table}",
+        [json.dumps(apart)],
+    ).fetchone()
+    assert read == sent
+
+
+class _Recording:
+    """A DuckDB connection that keeps the SQL it is given."""
+
+    def __init__(self, con: object) -> None:
+        self.con = con
+        self.sql: list[str] = []
+
+    def execute(self, sql: str, *args: object) -> object:
+        self.sql.append(sql)
+        return self.con.execute(sql, *args)
+
+
+def test_a_merged_area_is_merged_once() -> None:
+    """The size check and the value lists after it send the same area: only
+    the first one pays for the merge."""
+    duckdb = pytest.importorskip("duckdb")
+    overlapping = {
+        "type": "MultiPolygon",
+        "coordinates": [[_square(21.5, 48.1)], [_square(21.55, 48.1)]],
+    }
+    reads = []
+    for _ in range(2):
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        recording = _Recording(con)
+        table = area.area_table(recording, overlapping)
+        reads.append(
+            (
+                any("ST_Union_Agg" in sql for sql in recording.sql),
+                con.execute(f"SELECT ST_AsText(geom) FROM {table}").fetchone()[0],
+            )
+        )
+    assert [merged for merged, _ in reads] == [True, False]
+    assert reads[0][1] == reads[1][1]
+
+
+def test_parts_far_apart_stay_separate_parts() -> None:
+    duckdb = pytest.importorskip("duckdb")
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    apart = {
+        "type": "MultiPolygon",
+        "coordinates": [[_square(11.5, 48.1)], [_square(13.0, 52.5)]],
+    }
+    assert len(area.area_boxes(con, area.area_table(con, apart))) == 2
 
 
 def test_the_area_and_the_sql_are_checked(tmp_path) -> None:

@@ -1,4 +1,3 @@
-import bboxPolygon from "@turf/bbox-polygon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
@@ -8,17 +7,31 @@ import { getWritableDestinations, useFolders } from "@/lib/api/folders";
 import { executeProcessAsync, getMirrorColumns, getMirrorSize, useJobs } from "@/lib/api/processes";
 import { useProject } from "@/lib/api/projects";
 import { useUserProfile } from "@/lib/api/users";
-import { type CatalogSpatialFilter, formatBuffer, spatialGeometry } from "@/lib/catalog/spatial";
+import {
+  type AreaPiece,
+  type FilterArea,
+  type PolygonCoords,
+  geometryPolygons,
+  viewPolygon,
+} from "@/lib/filter/area";
 import { addRunningJobIds } from "@/lib/store/jobs/slice";
 import type { GetContentQueryParams } from "@/lib/validations/common";
 import type { Space } from "@/lib/validations/content";
 import type { Folder } from "@/lib/validations/folder";
-import type { DatasetConnection } from "@/lib/workflows/datasetConnection";
+import { type DatasetConnection, choicePieces } from "@/lib/workflows/datasetConnection";
 
 import type { FlowController, WorkflowUse } from "@/hooks/addLayer/flow";
 import { useShareNotice } from "@/hooks/addLayer/useShareNotice";
-import { useCatalogNutsGeometries } from "@/hooks/catalog/useCatalogNutsGeometries";
 import { useAppDispatch } from "@/hooks/store/ContextHooks";
+
+import {
+  type AreaChoice,
+  choicesOf,
+  pieceOf,
+  useChoicePieces,
+  viewApart,
+} from "@/components/map/panels/filter/area/choices";
+import type { AreaHost, AreaMap, AreaWay } from "@/components/map/panels/filter/area/host";
 
 export type FetchSource = "osm" | "overture" | "street_network" | "pt_network";
 
@@ -29,7 +42,6 @@ export const NETWORK_TOOLS: Partial<Record<FetchSource, string>> = {
 };
 
 export const isNetworkSource = (source: FetchSource) => source in NETWORK_TOOLS;
-export type AreaMode = "view" | "region" | "point" | "polygon";
 export type FilterMode = "builder" | "sql";
 export type MatchMode = "all" | "any";
 export type Bbox = [number, number, number, number];
@@ -121,14 +133,31 @@ export const roundBox = ([w, s, e, n]: Bbox): Bbox => [
   Math.ceil(n * 100) / 100,
 ];
 
-/** Several region outlines become one multipolygon: the tool reads one area. */
-const mergePolygons = (geometries: (GeoJSON.Geometry | undefined)[]): GeoJSON.MultiPolygon | undefined => {
-  const coordinates: GeoJSON.Position[][][] = [];
-  for (const geometry of geometries) {
-    if (geometry?.type === "Polygon") coordinates.push(geometry.coordinates);
-    if (geometry?.type === "MultiPolygon") coordinates.push(...geometry.coordinates);
-  }
-  return coordinates.length ? { type: "MultiPolygon", coordinates } : undefined;
+/** The ways the dialog picks its area in: the map view, a drawn polygon, a point with a radius and regions. */
+const FETCH_WAYS: readonly AreaWay[] = ["view", "polygon", "point", "regions"];
+
+/** The dialog's own map, which the area is drawn on. */
+export const FETCH_MAP_ID = "fetch-features-preview";
+const FETCH_MAP: AreaMap = { id: FETCH_MAP_ID, main: false };
+
+const piecesArea = (pieces: AreaPiece[]): FilterArea => ({ pieces, op: "inside", enabled: true });
+
+/** The area the dialog starts with: the map view. */
+const viewArea = (box: Bbox): FilterArea => piecesArea([{ kind: "view", polygons: [viewPolygon(box)] }]);
+
+/** A geometry nothing says how it was chosen: one shape, sent as it is. */
+const keptArea = (geometry: unknown): FilterArea | undefined => {
+  const polygons = geometryPolygons(geometry);
+  return polygons ? piecesArea([{ kind: "shape", polygons }]) : undefined;
+};
+
+/** The pieces' polygons as the one area the tool reads. Pieces that overlap stay apart in it: the server merges them
+ * when it reads the area (goatlib `io/fetch/area.py`), so its size check and fetch read an overlap once. */
+const fetchGeometry = (polygons: PolygonCoords[]): FetchParams["area"] | undefined => {
+  if (!polygons.length) return undefined;
+  return polygons.length === 1
+    ? { type: "Polygon", coordinates: polygons[0] }
+    : { type: "MultiPolygon", coordinates: polygons };
 };
 
 type FetchParams = {
@@ -142,47 +171,29 @@ type FetchParams = {
 };
 
 /**
- * A saved connection's choices, to reopen on. The area comes back as it was chosen; a
- * connection saved without that keeps its geometry as it is.
+ * A saved connection's choices, to reopen on. The area comes back in the pieces it was chosen
+ * in; a connection saved without them keeps its geometry as it is.
  */
 const seedFrom = (initial: DatasetConnection | undefined) => {
   if (initial?.processId !== "fetch_data") return undefined;
   const params = initial.params as Partial<FetchParams>;
   if (!params.source || !params.area) return undefined;
   const filters = (params.tag_filters ?? []).map((filter, index) => ({ id: index + 1, ...filter }));
-  const choice = initial.areaChoice;
-  if (choice) {
-    // No map behind a workflow: a saved map view stays the box it was.
-    const spatial: CatalogSpatialFilter =
-      choice.kind === "view"
-        ? {
-            kind: "polygon",
-            ring: [
-              [choice.bbox[0], choice.bbox[1]],
-              [choice.bbox[2], choice.bbox[1]],
-              [choice.bbox[2], choice.bbox[3]],
-              [choice.bbox[0], choice.bbox[3]],
-            ],
-          }
-        : choice;
-    // Saved again unchanged, it is recorded as the map view it was.
-    return { params, filters, spatial, view: choice.kind === "view" ? choice : undefined };
-  }
-  return { params, filters, kept: { area: params.area } };
+  const choices: AreaChoice[] | undefined = initial.areaChoice && choicePieces(initial.areaChoice);
+  // A map view saved alone opens as the box it was, and is saved as that box until the map is moved.
+  const view = choices?.length === 1 && choices[0].kind === "view" ? choices[0].bbox : undefined;
+  return { params, filters, choices, view };
 };
 
 export type FetchFlowState = {
-  areaMode: AreaMode;
-  setAreaMode: (mode: AreaMode) => void;
+  /** The area in its pieces, as the area picker works on it. */
+  areaHost: AreaHost;
+  /** The box the map view piece is: the preview's, inset and widened. */
   viewBox?: Bbox;
   /** `moved`: a person moved the map, which is what makes the view an area they chose. */
   setViewBox: (bbox: Bbox, moved?: boolean) => void;
-  spatial: CatalogSpatialFilter | null;
-  setSpatial: (filter: CatalogSpatialFilter | null) => void;
-  regionNames: Record<string, string>;
+  /** The area as the tool reads it; absent until one is chosen. */
   area?: GeoJSON.Polygon | GeoJSON.MultiPolygon;
-  /** What the chosen area is called, e.g. the regions' names; absent until one is chosen. */
-  areaLabel?: string;
   source: FetchSource;
   setSource: (source: FetchSource) => void;
   /** The area holds far more than a fetch takes, and no filter with values narrows it. */
@@ -273,13 +284,60 @@ export const useFetchFlow = ({
   const folders = getWritableDestinations(allFolders, spaces);
 
   const [seed] = useState(() => seedFrom(workflow?.initial));
-  /** A saved area with no record of how it was chosen: used as it is until another is chosen. */
-  const [kept, setKept] = useState(seed?.kept);
-  const [areaMode, setAreaMode] = useState<AreaMode>(seed?.spatial?.kind ?? (kept ? "polygon" : "view"));
-  const [viewBox, setViewBox] = useState<Bbox | undefined>(roundBox(viewport ?? DEFAULT_VIEW_BOX));
+  const [viewBox, setViewBoxState] = useState<Bbox | undefined>(
+    seed?.view ?? roundBox(viewport ?? DEFAULT_VIEW_BOX)
+  );
   // Without a project map the view is only a starting point until someone moves it.
   const [viewChosen, setViewChosen] = useState(!!viewport || !!seed);
-  const [spatial, setSpatial] = useState<CatalogSpatialFilter | null>(seed?.spatial ?? null);
+  // A reopened map view stays the box it was saved as until a person moves the map.
+  const viewHeld = useRef(!!seed?.view);
+  // The area in its pieces: the map view to start with, a saved one in the pieces it was saved in. Read through the
+  // ref by what changes it, so two changes in a row build on each other.
+  const [picked, setPicked] = useState<FilterArea | undefined>(() => {
+    if (!seed) return viewArea(roundBox(viewport ?? DEFAULT_VIEW_BOX));
+    if (!seed.choices) return keptArea(seed.params.area);
+    // Regions wait for their outlines; anything else is there at once, so the map opens on it.
+    const pieces = seed.choices.map((choice) => pieceOf(choice, {}));
+    return pieces.every((piece) => piece !== null) ? piecesArea(pieces as AreaPiece[]) : undefined;
+  });
+  const pickedRef = useRef(picked);
+  const putPicked = useCallback((next: FilterArea | undefined) => {
+    pickedRef.current = next;
+    setPicked(next);
+  }, []);
+  const [seeding, setSeeding] = useState(!!seed?.choices && !picked);
+  const seeded = useChoicePieces(seeding ? seed?.choices : undefined);
+  useEffect(() => {
+    if (!seeding || (!seeded.pieces && !seeded.failed)) return;
+    setSeeding(false);
+    // A region whose outline did not load would be left out unseen: the saved geometry is kept as it is instead.
+    putPicked(seeded.pieces ? piecesArea(seeded.pieces) : keptArea(seed?.params.area));
+  }, [seeding, seeded, seed, putPicked]);
+  const setArea = useCallback(
+    (next: FilterArea | undefined) => {
+      const before = pickedRef.current;
+      const after = viewApart(next, before);
+      const hadView = !!before?.pieces.some((piece) => piece.kind === "view");
+      const hasView = !!after?.pieces.some((piece) => piece.kind === "view");
+      // A map view someone adds is one they chose; one they take away lets go of the box it was saved as.
+      if (hasView && !hadView) setViewChosen(true);
+      if (hadView && !hasView) viewHeld.current = false;
+      putPicked(after);
+    },
+    [putPicked]
+  );
+  const readArea = useCallback(() => pickedRef.current, []);
+  const areaHost = useMemo<AreaHost>(
+    () => ({
+      area: picked,
+      read: readArea,
+      setArea,
+      ops: false,
+      ways: FETCH_WAYS,
+      map: FETCH_MAP,
+    }),
+    [picked, readArea, setArea]
+  );
   const [source, setSource] = useState<FetchSource>(initialSource);
   const [osmType, setOsmType] = useState(seed?.params.feature_type ?? "points");
   const [overtureType, setOvertureType] = useState(seed?.params.overture_type ?? "places");
@@ -312,43 +370,17 @@ export const useFetchFlow = ({
     }
   }, [folders, project?.folder_id, defaultFolderId]);
 
-  const nutsIds = spatial?.kind === "region" ? spatial.nutsIds : [];
-  const { geometries, names } = useCatalogNutsGeometries(nutsIds);
-  const regionNames = useMemo(
-    () => ({ ...names, ...(spatial?.kind === "region" ? spatial.names : {}) }),
-    [names, spatial]
+  // The map view piece is the box the preview shows; any other piece is where it was put.
+  const area = useMemo(
+    () =>
+      picked &&
+      fetchGeometry(
+        picked.pieces.flatMap((piece) =>
+          piece.kind !== "view" ? piece.polygons : viewBox && viewChosen ? [viewPolygon(viewBox)] : []
+        )
+      ),
+    [picked, viewBox, viewChosen]
   );
-
-  // The last complete area, which stays in force while a new polygon is still being drawn.
-  const heldArea = useRef<GeoJSON.Polygon | GeoJSON.MultiPolygon | undefined>(undefined);
-  const area = useMemo(() => {
-    const keep = (next: GeoJSON.Polygon | GeoJSON.MultiPolygon | undefined) => {
-      if (next) heldArea.current = next;
-      return next;
-    };
-    if (kept) return keep(kept.area);
-    if (areaMode === "view") return keep(viewBox && viewChosen ? bboxPolygon(viewBox).geometry : undefined);
-    if (!spatial || spatial.kind !== areaMode) return undefined;
-    if (spatial.kind === "region") {
-      // Every picked region or none: one still loading, or failed, would be left out unseen.
-      const outlines = spatial.nutsIds.map((id) => geometries[id]);
-      return keep(outlines.every(Boolean) ? mergePolygons(outlines) : undefined);
-    }
-    if (spatial.kind === "polygon" && spatial.ring.length < 3) return heldArea.current;
-    return keep(spatialGeometry(spatial));
-  }, [areaMode, viewBox, viewChosen, spatial, geometries, kept]);
-
-  const areaLabel = kept
-    ? t("catalog_mode_polygon")
-    : areaMode === "view"
-      ? t("fetch_features_area_view")
-      : spatial?.kind !== areaMode
-        ? undefined
-        : spatial.kind === "region"
-          ? spatial.nutsIds.map((id) => regionNames[id] ?? id).join(", ")
-          : spatial.kind === "point"
-            ? `${spatial.label ?? t("catalog_spatial_point")} · ${formatBuffer(spatial.km)}`
-            : t("catalog_spatial_area", { count: spatial.ring.length });
 
   // A network is cut whole: no layer type, no filters.
   const isNetwork = isNetworkSource(source);
@@ -425,19 +457,19 @@ export const useFetchFlow = ({
   const name = customName ?? suggestedName;
 
   const reset = useCallback(() => {
-    setAreaMode("view");
-    setViewBox(roundBox(viewport ?? DEFAULT_VIEW_BOX));
+    const box = roundBox(viewport ?? DEFAULT_VIEW_BOX);
+    setViewBoxState(box);
     setViewChosen(!!viewport);
-    heldArea.current = undefined;
-    setSpatial(null);
-    setKept(undefined);
+    viewHeld.current = false;
+    setSeeding(false);
+    putPicked(viewArea(box));
     setFiltersBySource({ osm: [], overture: [], street_network: [], pt_network: [] });
     setSql("");
     setCustomName(null);
     setIsBusy(false);
     setSelectedFolder(undefined);
     folderInitialized.current = false;
-  }, [viewport]);
+  }, [viewport, putPicked]);
 
   const usedFilters = useMemo(() => filters.filter((f) => f.key.trim()), [filters]);
   const sqlMissing = !isNetwork && filterMode === "sql" && !sql.trim();
@@ -633,13 +665,13 @@ export const useFetchFlow = ({
     try {
       setIsBusy(true);
       const { columns, geometryType } = await getMirrorColumns(area, featureType, source);
-      const areaChoice = kept
+      // One piece is kept as its choice, as before an area had pieces; a piece no choice says keeps none.
+      const choices = picked && choicesOf(picked, viewBox);
+      const areaChoice = !choices?.length
         ? undefined
-        : areaMode === "view"
-          ? viewBox && { kind: "view" as const, bbox: viewBox }
-          : seed?.view && spatial === seed.spatial
-            ? seed.view
-            : (spatial ?? undefined);
+        : choices.length === 1
+          ? choices[0]
+          : { kind: "pieces" as const, pieces: choices };
       workflow.onUse({
         processId: "fetch_data",
         params: fetchParams(area),
@@ -666,11 +698,8 @@ export const useFetchFlow = ({
     source,
     t,
     suggestedName,
-    kept,
-    areaMode,
+    picked,
     viewBox,
-    spatial,
-    seed,
     fetchParams,
     reset,
     onDone,
@@ -713,29 +742,15 @@ export const useFetchFlow = ({
       run: workflow ? use : submit,
     },
     fetch: {
-      areaMode,
-      setAreaMode: (mode: AreaMode) => {
-        if (mode !== areaMode) {
-          // The map was framed on what was chosen, so the view is no longer just the start.
-          if (spatial || kept) setViewChosen(true);
-          setKept(undefined);
-        }
-        setAreaMode(mode);
-      },
+      areaHost,
       viewBox,
       setViewBox: (box: Bbox, moved?: boolean) => {
-        setViewBox(box);
+        if (viewHeld.current && !moved) return;
+        viewHeld.current = false;
+        setViewBoxState(box);
         if (moved) setViewChosen(true);
       },
-      spatial,
-      setSpatial: (filter: CatalogSpatialFilter | null) => {
-        // A polygon with fewer than three corners is not an area: what was in force stays.
-        if (!(filter?.kind === "polygon" && filter.ring.length < 3)) setKept(undefined);
-        setSpatial(filter);
-      },
-      regionNames,
       area,
-      areaLabel,
       source,
       setSource: (next: FetchSource) => {
         setSource(next);

@@ -43,11 +43,13 @@ Each section lists the values the catalog actually holds, commonest first, with 
 
 ### Filtering by location {#spatial-filter}
 
-`Set spatial filter` narrows the catalog to datasets covering an area you care about. There are three ways to describe it:
+`Set spatial filter` narrows the catalog to datasets covering an area you care about. Under `Add to area` there are three ways to describe it:
 
-- **Region**: search for a country, state or district by name. Several can be combined, and a dataset covering any of them matches.
-- **Buffer**: click the map to place a point, then set a radius around it
-- **Polygon**: click the map to draw the corners of an area
+- **Regions**: search for a country, state or district by name and tick it in the list. Several can be combined, and a dataset covering any of them matches.
+- **Point and radius**: click the map to place a point, then set the radius around it in km
+- **Draw polygon**: click the map to place the corners of an area, and double-click to finish
+
+The filter uses one of the three at a time: a point or a polygon replaces the regions, and the other way round. Remove it with the cross on its row, then `Apply`.
 
 Results are ranked by how much of each dataset falls inside your area, so the datasets that cover it best come first.
 
