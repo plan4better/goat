@@ -495,9 +495,7 @@ class RunManager:
         setup = RunSetup(
             page=page,
             locale=locale,
-            note=render_note(
-                page, previous, locale, text, data_policy=resolution.data_policy
-            ),
+            note=render_note(page, previous, locale, text),
             login=login or StaticLogin(None),
             answer=answer_text,
             asks=asks,
@@ -634,7 +632,6 @@ class RunManager:
                 message_id=str(message_id),
                 emit=emit,
                 part_ids=part_ids,
-                data_policy=resolution.data_policy,
                 prompt_note=setup.note,
                 prompt_answer=setup.answer,
                 budget=self._budget(),
@@ -648,7 +645,6 @@ class RunManager:
                     services=self.tool_services,
                     login=setup.login,
                     user_id=user_id,
-                    data_policy=resolution.data_policy,
                     page=setup.page,
                     locale=setup.locale,
                     run_id=run_id,

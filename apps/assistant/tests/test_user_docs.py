@@ -503,11 +503,10 @@ async def test_an_answer_reads_at_most_two_pages() -> None:
         await _read("sharing/public", env=env)
 
 
-async def test_docs_read_runs_through_execute_without_the_data_policy() -> None:
-    env = tool_env(fake_clients(), data_policy="restricted")
+async def test_docs_read_runs_through_execute_and_not_over_mcp() -> None:
+    env = tool_env(fake_clients())
     result = await execute(DOCS_READ, env, {"page": "map/filter"})
-    assert result["page"] == "map/filter" and "withheld" not in result
-    assert DOCS_READ.returns_data is False
+    assert result["page"] == "map/filter"
     assert DOCS_READ not in MCP_TOOLS
 
 

@@ -42,7 +42,6 @@ async def _own_connection(
             ORG,
             enabled=True,
             active_connection_id=connection_id,
-            data_policy="restricted",
             allow_default_fallback=fallback,
             updated_by=ADMIN,
         )
@@ -60,8 +59,6 @@ async def test_defaults_resolve_to_goat_ai(
 ) -> None:
     resolution = await ModelResolver(org_repo, settings).resolve(USER)
     assert resolution.organization_id == ORG
-    # An organization that never saved AI settings reads data under Standard.
-    assert resolution.data_policy == "standard"
     assert (
         resolution.main.provider,
         resolution.main.model,
@@ -82,7 +79,6 @@ async def test_unavailable_reasons(
         ORG,
         enabled=False,
         active_connection_id=None,
-        data_policy="standard",
         allow_default_fallback=False,
         updated_by=ADMIN,
     )
@@ -99,7 +95,6 @@ async def test_the_active_own_connection(
     assert (main.provider, main.model) == ("openai_compatible", "own-model")
     assert main.base_url == "https://llm.example.org/v1"
     assert dict(main.credentials) == {"api_key": "sk-own-abcd1234"}
-    assert resolution.data_policy == "restricted"
     assert resolution.fallback is None
     assert "sk-own" not in repr(resolution)
 
@@ -158,16 +153,14 @@ async def test_status_of_a_member(
         ORG,
         enabled=False,
         active_connection_id=None,
-        data_policy="restricted",
         allow_default_fallback=False,
         updated_by=ADMIN,
     )
     off = await resolver.status_of(member)
-    assert (off.available, off.reason, off.provider, off.data_policy, off.goat_ai) == (
+    assert (off.available, off.reason, off.provider, off.goat_ai) == (
         False,
         "disabled",
         None,
-        "restricted",
         False,
     )
 

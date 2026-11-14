@@ -136,7 +136,7 @@ def test_mcp_publishes_the_five_read_only_catalog_tools() -> None:
         "catalog_suggest_terms",
         "catalog_find_region",
     }
-    assert all(spec.risk == "read" and not spec.returns_data for spec in MCP_TOOLS)
+    assert all(spec.risk == "read" for spec in MCP_TOOLS)
 
 
 #: The write tools (spec 2026-10-17 §3): they create, run a workflow or change
@@ -184,12 +184,6 @@ def test_what_a_write_makes_stale_are_tools_whose_results_repeat() -> None:
     for name in named:
         spec = BY_WIRE_NAME[name]
         assert spec.risk == "read" or spec.repeatable is not None, name
-
-
-def test_every_data_tool_has_a_restricted_form() -> None:
-    for spec in ALL_TOOLS:
-        if spec.returns_data:
-            assert hasattr(spec.output_model, "restricted"), spec.wire_name
 
 
 #: The largest count a pattern in a tool's schema may repeat up to. A provider

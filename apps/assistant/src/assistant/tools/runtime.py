@@ -1,11 +1,11 @@
 """One tool definition, two adapters (spec §3, §7).
 
 A tool is a ``ToolSpec``: a typed async function with Pydantic input and output
-models, and its metadata (surfaces, risk class, whether it returns data values,
-whether MCP publishes it, the login scope an external client will need).
+models, and its metadata (surfaces, risk class, whether MCP publishes it, the
+login scope an external client will need).
 
 ``execute`` is the single path every call takes, in-app and over MCP: validate
-the arguments, run, apply the data policy, cap the size, write the audit row.
+the arguments, run, cap the size, write the audit row.
 The adapters (``assistant.tools.toolset`` for Pydantic AI,
 ``assistant.mcp_server`` for MCP) only translate its two errors:
 ``InputInvalid`` (the model should fix the call) and ``ToolFailed`` (the call
@@ -37,12 +37,10 @@ from assistant.clock import AnswerClock
 from assistant.config import AssistantSettings
 from assistant.context import PageContext
 from assistant.llm import failures
-from assistant.llm.types import DataPolicy
 from assistant.login import Login, LoginFailed
 from assistant.repo import Repository
 from assistant.surfaces import Locale, Surface
 from assistant.tools.http import Service, ServiceClients, call_service
-from assistant.tools.policy import Withheld, apply_policy
 from assistant.workflows.runs import ConversationRuns
 
 logger = logging.getLogger(__name__)
@@ -109,7 +107,6 @@ class ToolEnv:
     services: ServiceClients
     login: Login = field(repr=False)
     user_id: UUID
-    data_policy: DataPolicy
     page: PageContext
     locale: Locale = "en"
     run_id: UUID | None = None
@@ -200,9 +197,6 @@ class ToolSpec(Generic[In, Out]):
     run: Callable[[ToolEnv, In], Awaitable[BaseModel]]
     #: Where it is loaded (spec §6.3).
     surfaces: frozenset[Surface]
-    #: The data policy applies (spec §4.7). Required: every tool says whether
-    #: it returns data values, so none is exempt by omission.
-    returns_data: bool
     #: Spec §8.1: read, propose (a card the user applies) or write (creates
     #: something new; a workflow run replaces a workflow's previous results,
     #: and a workflow edit changes a workflow; nothing else changes or
@@ -296,17 +290,6 @@ class InputInvalid(Exception):  # noqa: N818
         self.message = message
 
 
-class PolicyWithheld(Exception):  # noqa: N818
-    """The organization's data policy keeps what was asked for from the AI: the
-    call is answered as withheld, with the message saying what the policy
-    allows instead. Not invalid input, so the user sees no failed step and the
-    model does not take it for a mistake to retry."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-        self.message = message
-
-
 def _shorten(value: Any, depth: int) -> Any:
     if isinstance(value, str):
         return (
@@ -386,8 +369,6 @@ async def execute(
                 # The change is saved either way and the model must see it:
                 # only its undo is lost.
                 logger.exception("Reading the undo of %s failed", spec.wire_name)
-        if spec.returns_data:
-            result = apply_policy(env.data_policy, result)
         # exclude_none leaves out the typed models' fields that are None; null
         # values inside dict-shaped data (a STAC record, a feature's
         # properties) are kept, because there null is a value.
@@ -401,12 +382,8 @@ async def execute(
             raise ResultOverCap(size)
         if check_result is not None and (reason := check_result(size)) is not None:
             raise ToolFailed(reason)
-        status, error = ("withheld" if isinstance(result, Withheld) else "ok"), None
+        status, error = "ok", None
         return payload
-    except PolicyWithheld as exc:
-        withheld = Withheld(reason=f"Withheld: {exc.message}")
-        status, error = "withheld", None
-        return withheld.model_dump(mode="json", by_alias=True, exclude_none=True)
     except InputInvalid as exc:
         # Reaches the model (as a retry prompt) and MCP clients, and can quote a
         # service's answer: masked here, so no tool has to remember it.

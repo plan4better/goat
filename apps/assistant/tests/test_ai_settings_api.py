@@ -110,7 +110,6 @@ def _settings_body(**changes: Any) -> dict[str, Any]:
     return {
         "enabled": True,
         "active_connection_id": None,
-        "data_policy": "standard",
         "allow_default_fallback": False,
         **changes,
     }
@@ -135,7 +134,6 @@ async def test_member_status(db: Database, authed: AssistantSettings) -> None:
         "is_admin": False,
         "provider": "test",
         "model": "test",
-        "data_policy": "standard",
         "disabled_surfaces": [],
         "goat_ai": True,
     }
@@ -179,32 +177,31 @@ async def test_user_without_an_organization(
     )
 
 
-async def test_settings_saved_without_a_data_policy_get_the_default(
+async def test_a_save_that_names_a_data_policy_is_accepted_and_ignored(
     db: Database, authed: AssistantSettings
 ) -> None:
+    """There is one data policy now. A web bundle of an earlier release may
+    still send ``data_policy`` during a rolling deploy: the save goes through,
+    the field is ignored, and the stored column is left as it was."""
+    await db.pool.execute(
+        f"INSERT INTO {db.t('organization_settings')} (organization_id, data_policy) "
+        "VALUES ($1, 'restricted')",
+        UUID(int=100),
+    )
     async with _client(db, authed, ADMIN) as client:
-        response = await client.put(
-            "/settings", json={"enabled": True, "active_connection_id": None}
+        saved = await client.put(
+            "/settings", json=_settings_body(enabled=False, data_policy="restricted")
         )
-        saved = (await client.get("/settings")).json()
-    assert response.status_code == 200, response.text
-    assert saved["data_policy"] == "standard"
-
-
-async def test_a_save_without_a_data_policy_keeps_the_stored_one(
-    db: Database, authed: AssistantSettings
-) -> None:
-    async with _client(db, authed, ADMIN) as client:
-        chosen = await client.put(
-            "/settings", json=_settings_body(data_policy="restricted")
-        )
-        partial = await client.put(
-            "/settings", json={"enabled": False, "active_connection_id": None}
-        )
-        saved = (await client.get("/settings")).json()
-    assert chosen.status_code == 200, chosen.text
-    assert partial.status_code == 200, partial.text
-    assert (saved["enabled"], saved["data_policy"]) == (False, "restricted")
+        status = (await client.get("/status")).json()
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["enabled"] is False
+    assert "data_policy" not in saved.json() and "data_policy" not in status
+    stored = await db.pool.fetchval(
+        f"SELECT data_policy FROM {db.t('organization_settings')} "
+        "WHERE organization_id = $1",
+        UUID(int=100),
+    )
+    assert stored == "restricted"
 
 
 async def test_admin_reads_the_defaults(
@@ -215,7 +212,6 @@ async def test_admin_reads_the_defaults(
     assert body == {
         "enabled": True,
         "active_connection_id": None,
-        "data_policy": "standard",
         "allow_default_fallback": False,
         "status": "ok",
         "instance": {
@@ -480,7 +476,7 @@ async def test_settings_change_while_the_active_connection_is_failing(
     db: Database, authed: AssistantSettings, probe: FakeProbe
 ) -> None:
     """Keeping a failing active connection must not block switching AI off or
-    changing the data policy; only a new activation needs a passed test."""
+    changing the fallback; only a new activation needs a passed test."""
     async with _client(db, authed, ADMIN) as client:
         connection = await _create(client)
         await _activate(client, connection["id"])
@@ -493,16 +489,16 @@ async def test_settings_change_while_the_active_connection_is_failing(
             "/settings",
             json=_settings_body(enabled=False, active_connection_id=connection["id"]),
         )
-        restricted = await client.put(
+        fallback = await client.put(
             "/settings",
             json=_settings_body(
-                active_connection_id=connection["id"], data_policy="restricted"
+                active_connection_id=connection["id"], allow_default_fallback=True
             ),
         )
     assert off.status_code == 200, off.text
     assert off.json()["enabled"] is False
-    assert restricted.status_code == 200, restricted.text
-    assert restricted.json()["data_policy"] == "restricted"
+    assert fallback.status_code == 200, fallback.text
+    assert fallback.json()["allow_default_fallback"] is True
 
 
 async def test_active_connection_cannot_be_deleted(
@@ -776,7 +772,6 @@ async def test_an_edit_that_races_an_activation_is_refused(
             UUID(int=100),
             enabled=True,
             active_connection_id=target.connection_id,
-            data_policy="standard",
             allow_default_fallback=False,
             updated_by=ADMIN,
             require_tested=True,

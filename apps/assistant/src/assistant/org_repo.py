@@ -7,14 +7,13 @@ tables directly, like geoapi reads core's tables (spec §5).
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 import asyncpg
 
 from assistant.db import Database
 from assistant.llm.providers import ConnectionFields
-from assistant.llm.types import DEFAULT_DATA_POLICY, DataPolicy
 
 #: Columns an update may set; everything else is fixed or bookkeeping.
 _UPDATABLE = frozenset(
@@ -60,8 +59,6 @@ class OrgSettings:
     organization_id: UUID
     enabled: bool = True
     active_connection_id: UUID | None = None
-    #: Standard until an admin chooses Restricted (`DEFAULT_DATA_POLICY`).
-    data_policy: DataPolicy = DEFAULT_DATA_POLICY
     allow_default_fallback: bool = False
 
 
@@ -70,7 +67,6 @@ def _settings(record: asyncpg.Record) -> OrgSettings:
         organization_id=record["organization_id"],
         enabled=record["enabled"],
         active_connection_id=record["active_connection_id"],
-        data_policy=cast(DataPolicy, record["data_policy"]),
         allow_default_fallback=record["allow_default_fallback"],
     )
 
@@ -125,7 +121,6 @@ class OrgSettingsRepository:
         *,
         enabled: bool,
         active_connection_id: UUID | None,
-        data_policy: DataPolicy,
         allow_default_fallback: bool,
         updated_by: UUID | None,
         require_tested: bool = False,
@@ -133,27 +128,26 @@ class OrgSettingsRepository:
         """Upsert the settings. With ``require_tested``, the active connection
         must have a passed test, checked in the same statement, so an edit that
         resets the test concurrently cannot slip in between (raises
-        ``ConnectionNotTested``)."""
+        ``ConnectionNotTested``). The table's ``data_policy`` column is no
+        longer read or written: core drops it in a later migration."""
         try:
             record = await self.db.pool.fetchrow(
                 f"INSERT INTO {self.db.t('organization_settings')} "
-                "(organization_id, enabled, active_connection_id, data_policy, "
+                "(organization_id, enabled, active_connection_id, "
                 "allow_default_fallback, updated_by) "
-                "SELECT $1::uuid, $2::boolean, $3::uuid, $4::text, $5::boolean, $6::uuid "
+                "SELECT $1::uuid, $2::boolean, $3::uuid, $4::boolean, $5::uuid "
                 f"WHERE $3::uuid IS NULL OR EXISTS (SELECT 1 FROM {self.db.t('connection')} c "
                 "WHERE c.id = $3::uuid AND c.organization_id = $1::uuid "
-                "AND (NOT $7::boolean OR c.last_test_ok)) "
+                "AND (NOT $6::boolean OR c.last_test_ok)) "
                 "ON CONFLICT (organization_id) DO UPDATE SET "
                 "enabled = EXCLUDED.enabled, "
                 "active_connection_id = EXCLUDED.active_connection_id, "
-                "data_policy = EXCLUDED.data_policy, "
                 "allow_default_fallback = EXCLUDED.allow_default_fallback, "
                 "updated_by = EXCLUDED.updated_by, updated_at = now() "
                 "RETURNING *",
                 organization_id,
                 enabled,
                 active_connection_id,
-                data_policy,
                 allow_default_fallback,
                 updated_by,
                 require_tested,

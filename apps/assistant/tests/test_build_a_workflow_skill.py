@@ -783,8 +783,7 @@ def test_a_dataset_of_the_users_own_is_read_before_it_is_recommended() -> None:
     )
     for phrase in (
         "For one of the user's own datasets, read its extent and a sample of "
-        "its features (its fields and counts when the data policy withholds the "
-        "sample)",
+        "its features:",
         "core_find_layers finds a project that holds it",
         "held by no project, it cannot be checked",
         "An option you have not checked, or that does not answer the question, "

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from assistant.surfaces import Locale
 
-EVAL_SET_VERSION = 20
+EVAL_SET_VERSION = 21
 
 HERE = Path(__file__).resolve().parent
 Suite = Literal["catalog", "project", "workflow"]
@@ -88,7 +88,8 @@ class NumberCheck(_Check):
 
 
 class NotStatedCheck(_Check):
-    """The answer does not state this number: a value the data policy withholds."""
+    """The answer does not state this number: a value the model may not have
+    read, such as one of a locked layer."""
 
     kind: Literal["not_stated"]
     value: float | Oracle
@@ -155,13 +156,6 @@ class NotSentCheck(_Check):
 
     kind: Literal["not_sent"]
     layer_id: str
-
-
-class WithheldCheck(_Check):
-    """Under Restricted, every result of this tool withholds values (or it was not called)."""
-
-    kind: Literal["withheld"]
-    tool: str
 
 
 class LanguageCheck(_Check):
@@ -241,7 +235,6 @@ Check = Annotated[
     | DocsCheck
     | ViewCheck
     | NotSentCheck
-    | WithheldCheck
     | LanguageCheck
     | AskedCheck
     | WorkflowCreatedCheck
@@ -269,7 +262,6 @@ class EvalTask(BaseModel):
     #: surface decides which tools the agent gets.
     context: dict[str, Any]
     locale: Locale = "en"
-    data_policy: Literal["standard", "restricted"] = "standard"
     #: Earlier turns, on the same page, before ``prompt``: a follow-up's answer
     #: can drift into the language or the claims of the conversation so far.
     history: list[Turn] = Field(default_factory=list)

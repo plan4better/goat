@@ -435,8 +435,8 @@ def _one_tool(process_id: str, config: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_sql_text_says_nothing_but_a_potential_expression_does() -> None:
-    """SQL literals can hold data values, also under the Restricted policy;
-    a heatmap's potential expression is its method."""
+    """SQL literals can hold data values; a heatmap's potential expression
+    is its method."""
     config = _one_tool(
         "custom_sql",
         {

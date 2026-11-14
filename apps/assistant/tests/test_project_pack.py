@@ -27,7 +27,6 @@ from assistant.tools.project import (
     FIELD_STATISTICS,
     GET_FIELDS,
     GET_LAYERS,
-    GROUP_STATISTICS,
     PROJECT_SURFACES,
     PROJECT_TOOLS,
     PROPOSE_VIEW,
@@ -160,8 +159,7 @@ def _processes(
                     if "filter" in inputs and filtered_total is not None
                     else unique_total
                 )
-                # The first names are the categories the tests filter by, each
-                # held by enough features for Restricted to allow the filter.
+                # The first names are the categories the tests filter by.
                 names = ["Radweg", "Max", "X", "Park"]
                 values = [
                     {"value": names[i] if i < len(names) else f"v{i}", "count": 100 - i}
@@ -713,19 +711,7 @@ async def test_home_needs_an_explicit_project() -> None:
     assert result["count"] == 42
 
 
-async def test_restricted_class_breaks_use_quantiles() -> None:
-    """Decision T20: mean-based breaks would reveal what Restricted withholds."""
-    processes = _processes()
-    env = _env(_core(), _geoapi(), processes, data_policy="restricted")
-    await execute(
-        FIELD_STATISTICS,
-        env,
-        {"layer_project_id": 11, "field": "laenge", "method": "standard_deviation"},
-    )
-    assert _calls(processes, "class-breaks")[0]["method"] == "quantile"
-
-
-async def test_numeric_statistics_and_their_restricted_form() -> None:
+async def test_numeric_statistics() -> None:
     processes = _processes()
     standard = await execute(
         FIELD_STATISTICS,
@@ -749,42 +735,16 @@ async def test_numeric_statistics_and_their_restricted_form() -> None:
         "method": "quantile",
         "breaks": 5,
     }
-    # 42 features with a value allow 7 points (8 classes of 5); 5 were asked.
-    processes = _processes()
-    restricted = await execute(
-        FIELD_STATISTICS,
-        _env(_core(), _geoapi(), processes, data_policy="restricted"),
-        {"layer_project_id": 11, "field": "laenge"},
-    )
-    assert "mean" not in restricted and "std_dev" not in restricted
-    assert _calls(processes, "class-breaks")[0]["breaks"] == 5
-    assert restricted["min"] == 0.1
-    assert restricted["breaks"] == [1.0, 2.0, 3.0, 4.0, 5.0]
 
 
-async def test_restricted_hides_values_of_high_cardinality_fields() -> None:
-    """Review Focus 4."""
+async def test_categorical_statistics_list_the_most_frequent_values() -> None:
     many = await execute(
-        FIELD_STATISTICS,
-        _env(
-            _core(), _geoapi(), _processes(unique_total=120), data_policy="restricted"
-        ),
-        {"layer_project_id": 11, "field": "art"},
-    )
-    assert many["kind"] == "categorical" and many["distinct_count"] == 120
-    assert "values" not in many and "more than 50" in many["note"]
-    few = await execute(
-        FIELD_STATISTICS,
-        _env(_core(), _geoapi(), _processes(unique_total=7), data_policy="restricted"),
-        {"layer_project_id": 11, "field": "art"},
-    )
-    assert len(few["values"]) == 7
-    standard = await execute(
         FIELD_STATISTICS,
         _env(_core(), _geoapi(), _processes(unique_total=120)),
         {"layer_project_id": 11, "field": "art"},
     )
-    assert len(standard["values"]) == 50
+    assert many["kind"] == "categorical" and many["distinct_count"] == 120
+    assert len(many["values"]) == 50
 
 
 async def test_area_statistics_for_polygons_only() -> None:
@@ -807,13 +767,6 @@ async def test_area_statistics_for_polygons_only() -> None:
         "min",
         "sum",
     ]
-    restricted = await execute(
-        AREA_STATISTICS,
-        _env(_core(), _geoapi(), _processes(), data_policy="restricted"),
-        {"layer_project_id": 12},
-    )
-    assert "total_area" not in restricted and "mean_area" not in restricted
-    assert restricted["min_area"] == 10.0
     with pytest.raises(ToolFailed, match="polygon"):
         await execute(
             AREA_STATISTICS,
@@ -935,18 +888,6 @@ async def test_area_per_group_needs_a_field_of_the_layer() -> None:
     assert processes.requests == []
 
 
-async def test_area_per_group_is_withheld_under_restricted() -> None:
-    geoapi, processes = _areas_by_district()
-    out = await execute(
-        AREA_STATISTICS,
-        _env(_core(), geoapi, processes, data_policy="restricted"),
-        {"layer_project_id": 12, "group_by": "district"},
-    )
-    assert out.get("groups") is None
-    assert "groups_total" not in out and "total_area" not in out
-    assert "per group" in out["note"]
-
-
 async def test_sample_features_are_bounded_and_carry_no_geometry() -> None:
     geoapi = _geoapi()
     result = await execute(
@@ -993,18 +934,6 @@ async def test_a_sample_names_the_row_id_apart_from_an_id_field() -> None:
         "properties": {"id": 251821, "feature_id": "x7", "art": "Bahnhof"},
     }
     assert "feature_id" in SAMPLE_FEATURES.description
-
-
-async def test_restricted_sample_is_withheld_without_reading_rows() -> None:
-    """Review Focus 4: under Restricted, rows are not even fetched."""
-    geoapi = _geoapi()
-    result = await execute(
-        SAMPLE_FEATURES,
-        _env(_core(), geoapi, _processes(), data_policy="restricted"),
-        {"layer_project_id": 11},
-    )
-    assert result["withheld"] is True
-    assert all(not r.url.path.endswith("/items") for r in geoapi.requests)
 
 
 async def test_propose_view_fits_a_layer_and_names_the_target() -> None:
@@ -1059,52 +988,6 @@ async def test_propose_view_takes_exactly_one_kind_of_view() -> None:
     ]:
         with pytest.raises(InputInvalid):
             await execute(PROPOSE_VIEW, env, args)
-
-
-async def test_restricted_counts_still_reach_the_model() -> None:
-    """Counts are allowed under Restricted: the reduction must not be mistaken
-    for "nothing was reduced" and withheld."""
-    env = _env(_core(), _geoapi(), _processes(), data_policy="restricted")
-    result = await execute(COUNT_FEATURES, env, {"layer_project_id": 11})
-    assert result["count"] == 42 and "withheld" not in result
-
-
-async def test_restricted_never_carries_rows_means_or_long_value_lists() -> None:
-    """Spec 4.7 for every data tool, with a field that has more than 50 values."""
-    env = _env(
-        _core(), _geoapi(), _processes(unique_total=120), data_policy="restricted"
-    )
-    numeric = await execute(
-        FIELD_STATISTICS, env, {"layer_project_id": 11, "field": "laenge"}
-    )
-    categorical = await execute(
-        FIELD_STATISTICS, env, {"layer_project_id": 11, "field": "art"}
-    )
-    area = await execute(AREA_STATISTICS, env, {"layer_project_id": 12})
-    sample = await execute(SAMPLE_FEATURES, env, {"layer_project_id": 11})
-    grouped = await execute(
-        GROUP_STATISTICS,
-        env,
-        {"layer_project_id": 11, "operation": "count", "group_by": "art"},
-    )
-    for result in (numeric, categorical, area, sample, grouped):
-        assert not {
-            "mean",
-            "std_dev",
-            "total_area",
-            "mean_area",
-            "features",
-            "values",
-            "rows",
-        } & set(result)
-    assert {spec.wire_name for spec in PROJECT_TOOLS if spec.returns_data} == {
-        "project_get_layers",
-        "project_count_features",
-        "project_field_statistics",
-        "project_group_statistics",
-        "project_area_statistics",
-        "project_sample_features",
-    }
 
 
 async def test_unique_values_come_back_as_text() -> None:
@@ -1175,61 +1058,14 @@ def _where(field: str, op: str, value: Any) -> dict[str, Any]:
     return {"conditions": [{"field": field, "op": op, "value": value}]}
 
 
-async def test_restricted_layers_keep_that_a_filter_exists_not_its_text() -> None:
-    standard = await execute(GET_LAYERS, _env(_core(), _geoapi(), _processes()), {})
-    assert standard["layers"][0]["filter"]["args"][1] == "Radweg"
-    assert "has_filter" not in standard["layers"][0]
-    restricted = await execute(
-        GET_LAYERS,
-        _env(_core(), _geoapi(), _processes(), data_policy="restricted"),
-        {},
-    )
-    first, second = restricted["layers"][:2]
-    assert "filter" not in first and first["has_filter"] is True
-    assert "filter" not in second and "has_filter" not in second
-    assert '"Radweg"' not in json.dumps(restricted)
-    assert restricted["layers"][0]["name"] == "Radwege"
+async def test_layers_carry_their_filter() -> None:
+    result = await execute(GET_LAYERS, _env(_core(), _geoapi(), _processes()), {})
+    first, second = result["layers"][:2]
+    assert first["filter"]["args"][1] == "Radweg"
+    assert "filter" not in second
 
 
-async def test_restricted_cardinality_is_judged_on_the_whole_field() -> None:
-    """A filter that isolates one row leaves one distinct value; that must not
-    unlock a field with many. Under Restricted such a filter is refused before
-    anything is computed: its own field has as many values."""
-    processes = _processes(unique_total=120, filtered_total=1)
-    env = _env(_core(), _geoapi(), processes, data_policy="restricted")
-    refused = await execute(
-        FIELD_STATISTICS,
-        env,
-        {
-            "layer_project_id": 11,
-            "field": "art",
-            "filter": _where("separation", "=", "Max"),
-        },
-    )
-    assert refused["withheld"] is True
-    assert "'separation' has more than 50 distinct" in refused["reason"]
-    # Only the whole-layer distinct count of the filter's field was asked for.
-    [guard] = [body["inputs"] for body in processes.bodies()]
-    assert guard["attribute"] == "separation" and "filter" not in guard
-    # A field with few values over the whole layer keeps its (filtered) values.
-    few = await execute(
-        FIELD_STATISTICS,
-        _env(
-            _core(),
-            _geoapi(),
-            _processes(unique_total=7, filtered_total=1),
-            data_policy="restricted",
-        ),
-        {
-            "layer_project_id": 11,
-            "field": "art",
-            "filter": _where("separation", "=", "Max"),
-        },
-    )
-    assert len(few["values"]) == 1
-
-
-async def test_standard_policy_makes_no_extra_calls() -> None:
+async def test_filtered_statistics_make_one_call() -> None:
     processes = _processes()
     await execute(
         FIELD_STATISTICS,
@@ -1243,181 +1079,18 @@ async def test_standard_policy_makes_no_extra_calls() -> None:
     assert len(processes.requests) == 1
 
 
-async def test_restricted_small_filtered_groups_hide_extremes_and_breaks() -> None:
-    """A filter that isolates a feature would make min, max and the breaks its
-    own values."""
-    args = {
-        "layer_project_id": 11,
-        "field": "laenge",
-        "filter": _where("art", "=", "Radweg"),
-    }
-    processes = _processes(count=4)
-    small = await execute(
+@pytest.mark.parametrize("valued", [1, 4])
+async def test_extremes_of_a_small_layer_are_sent(valued: int) -> None:
+    """However few features a layer has, its minimum and maximum are read in
+    one call and sent."""
+    processes = _processes(count=valued)
+    result = await execute(
         FIELD_STATISTICS,
-        _env(_core(), _geoapi(), processes, data_policy="restricted"),
-        args,
-    )
-    assert _calls(processes, "class-breaks")[0]["breaks"] == 2
-    assert small["feature_count"] == 4
-    assert "fewer than 5 features with a value" in small["note"]
-    assert not {"min", "max", "breaks", "mean", "std_dev"} & set(small)
-    # Large enough for the extremes; the breaks follow ruling 23a (two points,
-    # three classes of five, need fifteen features).
-    processes = _processes(count=15)
-    enough = await execute(
-        FIELD_STATISTICS,
-        _env(_core(), _geoapi(), processes, data_policy="restricted"),
-        args,
-    )
-    assert _calls(processes, "class-breaks")[0]["breaks"] == 2
-    assert enough["min"] == 0.1 and enough["breaks"] == [1.0, 2.0]
-    assert "mean" not in enough
-    # Without a filter the whole layer is the group: a layer with fewer than
-    # five values isolates its features just the same.
-    processes = _processes(count=1)
-    whole = await execute(
-        FIELD_STATISTICS,
-        _env(_core(), _geoapi(), processes, data_policy="restricted"),
+        _env(_core(), _geoapi(), processes),
         {"layer_project_id": 11, "field": "laenge"},
     )
-    assert not {"min", "max", "breaks", "mean", "std_dev"} & set(whole)
-    assert "The layer has fewer than 5 features with a value" in whole["note"]
-    assert "feature_count" not in whole
-    assert _calls(processes, "class-breaks")[0]["breaks"] == 2
-
-
-async def test_restricted_small_filtered_area_groups_hide_extremes() -> None:
-    def areas(count: int) -> Recorder:
-        def respond(request: httpx.Request) -> httpx.Response:
-            operation = json.loads(request.content)["inputs"]["operation"]
-            return httpx.Response(
-                200,
-                json={
-                    "result": {"sum": 50.0, "min": 10.0, "max": 40.0}[operation],
-                    "total_area": 50.0,
-                    "feature_count": count,
-                    "unit": "m²",
-                },
-            )
-
-        # "art" is a category field: a few distinct values over the layer.
-        categories = httpx.Response(
-            200,
-            json={
-                "attribute": "art",
-                "total": 3,
-                "values": [{"value": "Park", "count": 9}],
-            },
-        )
-        return Recorder(
-            {
-                ("POST", "/processes/area-statistics/execution"): respond,
-                ("POST", "/processes/unique-values/execution"): categories,
-            }
-        )
-
-    args = {"layer_project_id": 12, "filter": _where("art", "=", "Park")}
-    small = await execute(
-        AREA_STATISTICS,
-        _env(_core(), _geoapi(), areas(2), data_policy="restricted"),
-        args,
-    )
-    assert small["feature_count"] == 2 and "fewer than 5" in small["note"]
-    assert not {"total_area", "mean_area", "min_area", "max_area"} & set(small)
-    # Not small: the extremes stay. Not filtered: any size stays.
-    big = await execute(
-        AREA_STATISTICS,
-        _env(_core(), _geoapi(), areas(5), data_policy="restricted"),
-        args,
-    )
-    assert big["min_area"] == 10.0 and "total_area" not in big
-    # Without a filter the whole layer is the group: two features are as few.
-    unfiltered = await execute(
-        AREA_STATISTICS,
-        _env(_core(), _geoapi(), areas(2), data_policy="restricted"),
-        {"layer_project_id": 12},
-    )
-    assert not {"total_area", "mean_area", "min_area", "max_area"} & set(unfiltered)
-    assert "The layer has fewer than 5 features" in unfiltered["note"]
-    whole = await execute(
-        AREA_STATISTICS,
-        _env(_core(), _geoapi(), areas(5), data_policy="restricted"),
-        {"layer_project_id": 12},
-    )
-    assert whole["max_area"] == 40.0
-
-
-async def test_restricted_numeric_breaks_of_other_methods_are_dropped() -> None:
-    from assistant.tools.project import FieldStatistics
-
-    stats = FieldStatistics(
-        layer="x",
-        field="f",
-        kind="numeric",
-        filter="none (all features)",
-        method="standard_deviation",
-        breaks=[1.0, 2.0],
-        min=0.0,
-        max=3.0,
-        valued=10,
-    )
-    reduced = stats.restricted()
-    assert reduced.breaks is None and reduced.min == 0.0
-
-
-def test_restricted_numeric_extremes_fail_closed_without_a_count() -> None:
-    """Without the number of features with a value, nothing says the minimum
-    and maximum are not one feature's own value."""
-    from assistant.tools.project import FieldStatistics
-
-    stats = FieldStatistics(
-        layer="x",
-        field="f",
-        kind="numeric",
-        filter="none (all features)",
-        method="quantile",
-        min=0.0,
-        max=3.0,
-    )
-    reduced = stats.restricted()
-    assert reduced.min is None and reduced.max is None
-
-
-@pytest.mark.parametrize("valued", [1, 4])
-async def test_restricted_extremes_of_a_small_layer_are_withheld(
-    valued: int,
-) -> None:
-    """A layer with a single feature (a result of one row) would send that
-    feature's value as both minimum and maximum: the sum or mean Restricted
-    withholds. Standard sends them as before."""
-    args = {"layer_project_id": 11, "field": "laenge"}
-    processes = _processes(count=valued)
-    small = await execute(
-        FIELD_STATISTICS,
-        _env(_core(), _geoapi(), processes, data_policy="restricted"),
-        args,
-    )
-    assert not {"min", "max", "breaks", "mean", "std_dev"} & set(small)
-    assert "minimum, maximum and class breaks are withheld" in small["note"]
-    processes = _processes(count=valued)
-    standard = await execute(
-        FIELD_STATISTICS, _env(_core(), _geoapi(), processes), args
-    )
-    assert (standard["min"], standard["max"]) == (0.1, 9.9)
+    assert (result["min"], result["max"]) == (0.1, 9.9)
     assert len(processes.requests) == 1
-
-
-async def test_restricted_group_extremes_are_withheld() -> None:
-    """min and max per group are values of the features: Restricted sends
-    counts only."""
-    env = _env(_core(), _geoapi(), _processes(), data_policy="restricted")
-    for operation in ("min", "max"):
-        result = await execute(
-            GROUP_STATISTICS,
-            env,
-            {"layer_project_id": 11, "operation": operation, "field": "laenge"},
-        )
-        assert result.get("withheld") is True
 
 
 async def test_propose_view_only_targets_the_open_project() -> None:
@@ -1532,67 +1205,13 @@ async def test_propose_view_arguments_that_do_not_fit_the_view_are_refused() -> 
             await execute(PROPOSE_VIEW, env, args)
 
 
-async def test_restricted_group_size_counts_only_rows_with_a_value() -> None:
-    """Breaks, minimum and maximum skip rows where the field is null. A filter
-    padded with "or the field is null" must not look like a large group."""
-    processes = _processes(count=3)
-    env = _env(_core(), _geoapi(), processes, data_policy="restricted")
-    padded = {
-        "match": "any",
-        "conditions": [
-            {"field": "art", "op": "=", "value": "X"},
-            {"field": "laenge", "op": "is_null"},
-        ],
-    }
-    result = await execute(
-        FIELD_STATISTICS,
-        env,
-        {"layer_project_id": 11, "field": "laenge", "filter": padded},
-    )
-    count_call = next(
-        body["inputs"]
-        for body, request in zip(processes.bodies(), processes.requests, strict=True)
-        if request.url.path.endswith("/feature-count/execution")
-    )
-    assert json.loads(count_call["filter"]) == {
-        "op": "and",
-        "args": [
-            {
-                "op": "or",
-                "args": [
-                    {"op": "=", "args": [{"property": "art"}, "X"]},
-                    {"op": "isNull", "args": [{"property": "laenge"}]},
-                ],
-            },
-            {"op": "not", "args": [{"op": "isNull", "args": [{"property": "laenge"}]}]},
-        ],
-    }
-    assert result["feature_count"] == 3
-    assert not {"min", "max", "breaks"} & set(result)
-
-
-async def test_a_missing_distinct_total_does_not_release_values() -> None:
+async def test_a_missing_distinct_total_is_an_error() -> None:
     def no_total(request: httpx.Request) -> httpx.Response:
-        inputs = json.loads(request.content)["inputs"]
-        values = [{"value": "a", "count": 1}][: inputs["limit"]]
-        body: dict[str, Any] = {"attribute": "art", "values": values}
-        if "filter" in inputs:
-            body["total"] = 1
-        return httpx.Response(200, json=body)
+        values = [{"value": "a", "count": 1}]
+        return httpx.Response(200, json={"attribute": "art", "values": values})
 
     processes = Recorder({("POST", "/processes/unique-values/execution"): no_total})
-    env = _env(_core(), _geoapi(), processes, data_policy="restricted")
-    with pytest.raises(ToolFailed, match="distinct count"):
-        await execute(
-            FIELD_STATISTICS,
-            env,
-            {
-                "layer_project_id": 11,
-                "field": "art",
-                "filter": _where("separation", "=", "Max"),
-            },
-        )
-    # Unfiltered: the only answer is the one without a total.
+    env = _env(_core(), _geoapi(), processes)
     with pytest.raises(ToolFailed, match="distinct count"):
         await execute(FIELD_STATISTICS, env, {"layer_project_id": 11, "field": "art"})
 
@@ -1604,7 +1223,7 @@ def test_the_fit_layer_belongs_to_the_open_project() -> None:
     assert "of the open project" in description
 
 
-# -- ruling 23: every Restricted class holds at least MIN_RESTRICTED_GROUP --------
+# -- what the statistics tools ask processes for ---------------------------------
 
 
 def _calls(processes: Recorder, process: str) -> list[dict[str, Any]]:
@@ -1615,81 +1234,7 @@ def _calls(processes: Recorder, process: str) -> list[dict[str, Any]]:
     ]
 
 
-_NOT_NULL_LAENGE = {
-    "op": "not",
-    "args": [{"op": "isNull", "args": [{"property": "laenge"}]}],
-}
-
-
-async def test_restricted_breaks_of_a_small_layer_are_withheld() -> None:
-    """10 features with a value and 10 points asked: one point (two classes
-    of 5) at most, below the two the call needs, so no breaks at all. The
-    whole layer is the group: min and max stay."""
-    processes = _processes(count=10)
-    env = _env(_core(), _geoapi(), processes, data_policy="restricted")
-    result = await execute(
-        FIELD_STATISTICS,
-        env,
-        {"layer_project_id": 11, "field": "laenge", "breaks": 10},
-    )
-    [count] = _calls(processes, "feature-count")
-    assert json.loads(count["filter"]) == _NOT_NULL_LAENGE
-    assert _calls(processes, "class-breaks")[0]["breaks"] == 2
-    assert "breaks" not in result and "mean" not in result
-    assert result["min"] == 0.1 and result["max"] == 9.9
-    assert "at least 5 features" in result["note"]
-    assert "feature_count" not in result
-
-
-@pytest.mark.parametrize(("valued", "points"), [(15, 2), (25, 4), (54, 9)])
-async def test_restricted_breaks_are_capped_to_classes_of_five(
-    valued: int, points: int
-) -> None:
-    """k break points make k + 1 classes: each of them must hold 5 features
-    with a value."""
-    processes = _processes(count=valued)
-    env = _env(_core(), _geoapi(), processes, data_policy="restricted")
-    result = await execute(
-        FIELD_STATISTICS,
-        env,
-        {"layer_project_id": 11, "field": "laenge", "breaks": 10},
-    )
-    [breaks] = _calls(processes, "class-breaks")
-    assert breaks["breaks"] == points
-    assert result["breaks"] == [float(i + 1) for i in range(points)]
-    assert (points + 1) * 5 <= valued
-    # Fewer points asked than the cap: the request is kept.
-    processes = _processes(count=25)
-    await execute(
-        FIELD_STATISTICS,
-        _env(_core(), _geoapi(), processes, data_policy="restricted"),
-        {"layer_project_id": 11, "field": "laenge", "breaks": 3},
-    )
-    assert _calls(processes, "class-breaks")[0]["breaks"] == 3
-
-
-@pytest.mark.parametrize("valued", [5, 10, 14])
-async def test_restricted_small_filtered_groups_get_no_breaks(valued: int) -> None:
-    processes = _processes(count=valued)
-    env = _env(_core(), _geoapi(), processes, data_policy="restricted")
-    result = await execute(
-        FIELD_STATISTICS,
-        env,
-        {
-            "layer_project_id": 11,
-            "field": "laenge",
-            "filter": _where("art", "=", "Radweg"),
-        },
-    )
-    assert result["feature_count"] == valued
-    assert _calls(processes, "class-breaks")[0]["breaks"] == 2
-    assert "breaks" not in result and result["min"] == 0.1
-    assert "at least 5 features" in result["note"]
-
-
-async def test_standard_numeric_statistics_make_one_call_with_the_asked_breaks() -> (
-    None
-):
+async def test_numeric_statistics_make_one_call_with_the_asked_breaks() -> None:
     processes = _processes(count=8)
     result = await execute(
         FIELD_STATISTICS,
@@ -1700,27 +1245,6 @@ async def test_standard_numeric_statistics_make_one_call_with_the_asked_breaks()
     assert _calls(processes, "class-breaks")[0]["breaks"] == 10
     assert result["breaks"] == [float(i + 1) for i in range(10)]
     assert "note" not in result
-
-
-@pytest.mark.parametrize(
-    "answer",
-    [
-        httpx.Response(200, json={}),
-        httpx.Response(200, json={"count": "many"}),
-        httpx.Response(500, json={"detail": "down"}),
-    ],
-)
-async def test_restricted_breaks_fail_closed_without_a_count(
-    answer: httpx.Response,
-) -> None:
-    processes = _processes()
-    processes.routes[("POST", "/processes/feature-count/execution")] = answer
-    env = _env(_core(), _geoapi(), processes, data_policy="restricted")
-    with pytest.raises(ToolFailed):
-        await execute(
-            FIELD_STATISTICS, env, {"layer_project_id": 11, "field": "laenge"}
-        )
-    assert not _calls(processes, "class-breaks")
 
 
 async def test_every_map_card_row_key_is_a_known_one() -> None:
@@ -1825,12 +1349,6 @@ async def test_get_layers_marks_the_layer_selected_on_the_map() -> None:
         }
     )
     env = _env(_core(), _geoapi(), _processes(), page=selected_page)
-    layers = (await execute(GET_LAYERS, env, {}))["layers"]
-    assert [layer.get("selected") for layer in layers] == [None, True, None]
-    # Kept under Restricted: it names a layer, not data.
-    env = _env(
-        _core(), _geoapi(), _processes(), page=selected_page, data_policy="restricted"
-    )
     layers = (await execute(GET_LAYERS, env, {}))["layers"]
     assert [layer.get("selected") for layer in layers] == [None, True, None]
 
@@ -1951,20 +1469,6 @@ async def test_a_locked_layer_shows_neither_size_nor_extent() -> None:
     assert "feature_count" not in layer and "extent" not in layer
 
 
-async def test_size_and_extent_stay_under_restricted() -> None:
-    """A count and a whole layer's bounding box are the aggregates Restricted
-    sends (counts, minimum and maximum), not features or their geometries."""
-    env = _env(
-        _core_with([_catalog_copy(21)]),
-        _geoapi(),
-        _processes(),
-        data_policy="restricted",
-    )
-    [layer] = (await execute(GET_LAYERS, env, {}))["layers"]
-    assert layer["feature_count"] == 934847
-    assert layer["extent"] == [-31.26, 32.63, 34.38, 71.1]
-
-
 async def test_size_and_extent_keep_a_long_layer_list_small() -> None:
     """Both cost a few bytes per layer, so a project with many layers still
     fits a tool result."""
@@ -1982,68 +1486,7 @@ async def test_size_and_extent_keep_a_long_layer_list_small() -> None:
     assert (sized - plain) / many <= 64
 
 
-# -- Restricted: filters pick categories, small filtered counts are withheld -----
-
-
-@pytest.mark.parametrize(
-    ("condition", "refused"),
-    [
-        # "How many with laenge >= X?", asked again and again, spells out values.
-        (("laenge", ">=", 1.4), "'>='"),
-        (("laenge", "<", 2), "'<'"),
-        (("art", "like", "Rad%"), "'like'"),
-        (("art", "contains", "Rad"), "'contains'"),
-    ],
-)
-async def test_restricted_filters_cannot_compare_values(
-    condition: tuple[str, str, Any], refused: str
-) -> None:
-    processes = _processes()
-    env = _env(_core(), _geoapi(), processes, data_policy="restricted")
-    # Withheld, not invalid: the policy, not a mistake, keeps it back.
-    result = await execute(
-        COUNT_FEATURES, env, {"layer_project_id": 11, "filter": _where(*condition)}
-    )
-    assert result["withheld"] is True and refused in result["reason"]
-    # Refused before anything was counted.
-    assert processes.bodies() == []
-
-
-async def test_restricted_category_counts_below_the_group_size_are_withheld() -> None:
-    args = {"layer_project_id": 11, "filter": _where("art", "=", "Radweg")}
-    small = await execute(
-        COUNT_FEATURES,
-        _env(
-            _core(),
-            _geoapi(),
-            _processes(unique_total=7, count=3),
-            data_policy="restricted",
-        ),
-        args,
-    )
-    # The number is left out entirely; the note says why.
-    assert "count" not in small and "fewer than 5" in small["note"]
-    big = await execute(
-        COUNT_FEATURES,
-        _env(
-            _core(),
-            _geoapi(),
-            _processes(unique_total=7, count=5),
-            data_policy="restricted",
-        ),
-        args,
-    )
-    assert big["count"] == 5 and "note" not in big
-    # A whole layer's count is not a group of individuals: it stays.
-    unfiltered = await execute(
-        COUNT_FEATURES,
-        _env(_core(), _geoapi(), _processes(count=3), data_policy="restricted"),
-        {"layer_project_id": 11},
-    )
-    assert unfiltered["count"] == 3
-
-
-async def test_standard_policy_filters_and_counts_as_before() -> None:
+async def test_a_filtered_count_is_one_call() -> None:
     processes = _processes(count=1)
     result = await execute(
         COUNT_FEATURES,
@@ -2051,5 +1494,4 @@ async def test_standard_policy_filters_and_counts_as_before() -> None:
         {"layer_project_id": 11, "filter": _where("laenge", ">=", 1.4)},
     )
     assert result["count"] == 1
-    # No category check: only the count itself was asked for.
     assert [body["inputs"].get("attribute") for body in processes.bodies()] == [None]

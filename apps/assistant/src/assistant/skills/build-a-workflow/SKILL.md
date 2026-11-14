@@ -113,9 +113,9 @@ you use them.
    project_sample_features, and the `extent` and `feature_count` from
    project_get_layers for a project layer; catalog_get_record for a catalog
    dataset). For one of the user's own datasets, read its extent and a sample of
-   its features (its fields and counts when the data policy withholds the
-   sample): core_find_layers finds a project that holds it, and those project
-   tools read it with that project_id; held by no project, it cannot be checked.
+   its features: core_find_layers finds a project that holds it, and those
+   project tools read it with that project_id; held by no project, it cannot be
+   checked.
    An option you have not checked, or that does not answer the question, is
    never the recommended option. Never say that a dataset lacks a field (an
    income, a car count, a capacity) before you have read its field list:

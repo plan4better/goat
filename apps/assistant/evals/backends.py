@@ -511,8 +511,6 @@ def _build_layers() -> tuple[FixtureLayer, ...]:
         for b in racks_by_district
     )
     planung = tuple({"status": "Entwurf", "_at": _at(rng)} for _ in range(5))
-    # Fewer than five stations with a count: under Restricted their smallest
-    # and largest count are those stations' own values, so both are withheld.
     # Fixed, not drawn: the other layers keep the values the seed gives them.
     zaehlstellen = tuple(
         {"standort": standort, "radfahrten_jahr": count, "_at": at}

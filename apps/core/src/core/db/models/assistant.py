@@ -323,7 +323,7 @@ class AssistantConnection(SQLModel, table=True):
 
 class AssistantOrganizationSettings(SQLModel, table=True):
     """Per-organization AI settings (spec §4.1). No row means the defaults:
-    enabled, GOAT AI, Restricted data policy, no fallback."""
+    enabled, GOAT AI, no fallback."""
 
     __tablename__ = "organization_settings"
     __table_args__ = (
@@ -348,9 +348,12 @@ class AssistantOrganizationSettings(SQLModel, table=True):
             nullable=True,
         ),
     )
-    # The column's default is not what an organization without a row gets:
-    # the assistant applies its own (DEFAULT_DATA_POLICY in assistant/llm/types.py)
-    # and writes the value with every save.
+    # Unused: the assistant has one data policy and no longer reads or writes
+    # this column (apps/assistant/README.md, "One data policy"). It stays, with
+    # its check, so assistant pods of the earlier release keep working during a
+    # rolling deploy; a later migration drops it. Its server default stays
+    # 'restricted': a row first saved by the new release reads as Restricted to
+    # such a pod (during the rollout, or after a rollback).
     data_policy: str = Field(
         default="restricted",
         sa_column=Column(Text, nullable=False, server_default=text("'restricted'")),

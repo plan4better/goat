@@ -152,9 +152,6 @@ def build_mcp(
             services=services.tools,
             login=StaticLogin(principal.token),
             user_id=principal.user_id,
-            # MCP tools return no data values (a registry test checks it);
-            # Restricted is the safe default should one ever be flagged.
-            data_policy="restricted",
             page=NO_PAGE,
             repo=services.repo,
             extra_secrets=client_secrets(settings),

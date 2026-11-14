@@ -1,6 +1,5 @@
 """project_group_statistics (spec 2026-10-23 §3.4): a statistic per group
-through processes' aggregation-stats, shares computed by the server, and the
-Restricted form."""
+through processes' aggregation-stats, and shares computed by the server."""
 
 import json
 from typing import Any
@@ -103,14 +102,10 @@ def _services(
     return core, geoapi, processes
 
 
-def _env(
-    services: tuple[Recorder, Recorder, Recorder], policy: str = "standard"
-) -> Any:
+def _env(services: tuple[Recorder, Recorder, Recorder]) -> Any:
     core, geoapi, processes = services
     return tool_env(
-        fake_clients(core=core, geoapi=geoapi, processes=processes),
-        page=PAGE,
-        data_policy=policy,  # type: ignore[arg-type]
+        fake_clients(core=core, geoapi=geoapi, processes=processes), page=PAGE
     )
 
 
@@ -194,31 +189,6 @@ async def test_a_sum_needs_a_numeric_field() -> None:
         )
 
 
-async def test_restricted_sends_counts_only_and_leaves_out_small_groups() -> None:
-    sums = await execute(
-        GROUP_STATISTICS,
-        _env(_services(), "restricted"),
-        {
-            "layer_project_id": 90,
-            "operation": "sum",
-            "field": "einwohner",
-            "group_by": "name",
-        },
-    )
-    assert sums.get("withheld") is True
-    counts = await execute(
-        GROUP_STATISTICS,
-        _env(_services(), "restricted"),
-        {"layer_project_id": 90, "operation": "count", "group_by": "name"},
-    )
-    # Ost has fewer than 5 features: its key could be one feature's value.
-    assert [(r["group"], r.get("value")) for r in counts["rows"]] == [
-        ("Mitte", 1200.0),
-        ("Nord", 300.0),
-    ]
-    assert "fewer than 5" in counts["note"]
-
-
 def _filtered_services(
     name_values: int, features: int = 42
 ) -> tuple[Recorder, Recorder, Recorder]:
@@ -237,50 +207,6 @@ def _filtered_services(
     return core, geoapi, processes
 
 
-@pytest.mark.parametrize(("group_by", "then_by"), [("name", None), ("band", "name")])
-async def test_restricted_with_a_filter_judges_the_groups_on_the_whole_layer(
-    group_by: str, then_by: str | None
-) -> None:
-    """A filter can leave few groups of a field with many values (one name per
-    feature): the group names would leave, although Restricted never sends the
-    values of such a field."""
-    request = {
-        "layer_project_id": 90,
-        "operation": "count",
-        "group_by": group_by,
-        "then_by": then_by,
-        "filter": {"conditions": [{"field": "band", "op": "=", "value": 5}]},
-    }
-    many = await execute(
-        GROUP_STATISTICS, _env(_filtered_services(120), "restricted"), request
-    )
-    assert many.get("withheld") is True
-    few = await execute(
-        GROUP_STATISTICS, _env(_filtered_services(3), "restricted"), request
-    )
-    # Ost, under 5 features, is left out.
-    assert [r["group"] for r in few["rows"]] == ["Mitte", "Nord"]
-
-
-async def test_restricted_withholds_a_filter_that_matches_few_features() -> None:
-    """The number of features a filter matches is what project_count_features
-    withholds below 5; the total and the groups would say it here."""
-    request = {
-        "layer_project_id": 90,
-        "operation": "count",
-        "group_by": "name",
-        "filter": {"conditions": [{"field": "band", "op": "=", "value": 5}]},
-    }
-    few = await execute(
-        GROUP_STATISTICS, _env(_filtered_services(3, features=4), "restricted"), request
-    )
-    assert few.get("withheld") is True
-    enough = await execute(
-        GROUP_STATISTICS, _env(_filtered_services(3, features=5), "restricted"), request
-    )
-    assert enough["features"] == 5
-
-
 def _keys(value: Any) -> set[str]:
     """Every key anywhere in a JSON value."""
     if isinstance(value, dict):
@@ -296,46 +222,6 @@ SHARE_OF = {
     "field": "einwohner",
     "group_by": "name",
 }
-
-
-@pytest.mark.parametrize(
-    ("args", "groups"),
-    [
-        pytest.param({"operation": "sum", "field": "einwohner"}, 3, id="sum"),
-        pytest.param({"operation": "mean", "field": "einwohner"}, 3, id="mean"),
-        pytest.param({"operation": "min", "field": "einwohner"}, 3, id="min"),
-        pytest.param({"operation": "max", "field": "einwohner"}, 3, id="max"),
-        pytest.param({"operation": "count"}, 51, id="count of more than 50 groups"),
-        pytest.param(
-            {"operation": "count", "share_of": SHARE_OF}, 3, id="count share_of"
-        ),
-        pytest.param(
-            {"operation": "sum", "field": "einwohner", "share_of": SHARE_OF},
-            3,
-            id="sum share_of",
-        ),
-    ],
-)
-async def test_restricted_withholds_all_but_counts_of_few_groups(
-    args: dict[str, Any], groups: int
-) -> None:
-    out = await execute(
-        GROUP_STATISTICS,
-        _env(_services(groups={BANDS: groups}), "restricted"),
-        {"layer_project_id": 90, "group_by": "name", "then_by": "band", **args},
-    )
-    assert set(out) == {"withheld", "reason"}
-
-
-async def test_restricted_counts_of_50_groups_carry_no_shares() -> None:
-    out = await execute(
-        GROUP_STATISTICS,
-        _env(_services(groups={BANDS: 50}), "restricted"),
-        {"layer_project_id": 90, "operation": "count", "group_by": "name"},
-    )
-    # Ost, under 5 features, is left out.
-    assert len(out["rows"]) == 2
-    assert not {"denominator", "share", "unmatched", "withheld"} & _keys(out)
 
 
 def _band(district: str | None, band: str | None, value: float) -> dict[str, Any]:
@@ -508,7 +394,7 @@ async def test_a_null_group_never_gets_a_share() -> None:
     )
 
 
-async def test_null_values_are_named_in_the_note_under_both_policies() -> None:
+async def test_null_values_are_named_in_the_note() -> None:
     rows = {
         BANDS: [
             _band("Mitte", "5", 1200),
@@ -522,24 +408,10 @@ async def test_null_values_are_named_in_the_note_under_both_policies() -> None:
         "group_by": "name",
         "then_by": "band",
     }
-    standard = await execute(GROUP_STATISTICS, _env(_services(rows=rows)), request)
-    assert standard["note"] == (
+    out = await execute(GROUP_STATISTICS, _env(_services(rows=rows)), request)
+    assert out["note"] == (
         "A row without group holds the features with no value in 'name'. "
         "A row without then holds the features with no value in 'band'."
-    )
-    restricted = await execute(
-        GROUP_STATISTICS, _env(_services(rows=rows), "restricted"), request
-    )
-    # The small group is left out, its key with it: a key held by fewer than
-    # 5 features can be one feature's own value.
-    assert [(row.get("group"), row.get("then")) for row in restricted["rows"]] == [
-        ("Mitte", "5"),
-        ("Mitte", None),
-    ]
-    assert restricted["note"] == (
-        "A row without then holds the features with no value in 'band'. "
-        "1 group(s) have fewer than 5 features; the data policy (Restricted) "
-        "withholds them, their values and counts."
     )
 
 
@@ -548,8 +420,7 @@ def _whole_services(
 ) -> tuple[Recorder, Recorder, Recorder]:
     """aggregation-stats answers one ungrouped row per call: the total of the
     layer for that request's filter, keyed by (layer, filter text or None), and
-    ``features`` matching features. unique-values counts "band" as a field of
-    3 values held by 40 features each, for filters under Restricted."""
+    ``features`` matching features."""
     core, geoapi, _ = _services()
     seen: list[dict[str, Any]] = []
 
@@ -573,16 +444,8 @@ def _whole_services(
             },
         )
 
-    def unique(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200, json={"values": [{"value": 5, "count": 40}], "total": 3}
-        )
-
     processes = Recorder(
-        {
-            ("POST", "/processes/aggregation-stats/execution"): aggregate,
-            ("POST", "/processes/unique-values/execution"): unique,
-        }
+        {("POST", "/processes/aggregation-stats/execution"): aggregate}
     )
     processes.seen = seen  # type: ignore[attr-defined]
     return core, geoapi, processes
@@ -748,43 +611,6 @@ async def test_shares_keep_six_decimals() -> None:
     assert shares["Nord"] == round(300 / 7000, 6)
 
 
-async def test_restricted_counts_the_whole_filtered_layer_from_five() -> None:
-    """Without group_by there is no grouping field to judge, so the count of
-    the filtered layer is sent from 5 matching features and withheld below,
-    as project_count_features does."""
-    request = {
-        "layer_project_id": 90,
-        "operation": "count",
-        "filter": {"conditions": [{"field": "band", "op": "=", "value": 5}]},
-    }
-    few = await execute(
-        GROUP_STATISTICS,
-        _env(_whole_services({BANDS: 4}, features=4), policy="restricted"),
-        request,
-    )
-    assert few.get("withheld") is True
-    enough = await execute(
-        GROUP_STATISTICS,
-        _env(_whole_services({BANDS: 5}, features=5), policy="restricted"),
-        request,
-    )
-    assert [(r.get("group"), r["value"]) for r in enough["rows"]] == [(None, 5)]
-    assert enough["features"] == 5
-
-
-async def test_restricted_withholds_a_share_without_groups() -> None:
-    out = await execute(
-        GROUP_STATISTICS,
-        _env(_whole_services({BANDS: 50}), policy="restricted"),
-        {
-            "layer_project_id": 90,
-            "operation": "count",
-            "share_of": {"layer_project_id": 90, "operation": "count"},
-        },
-    )
-    assert set(out) == {"withheld", "reason"}
-
-
 SHARE_OF_TOTAL = {"layer_project_id": 91, "operation": "sum", "field": "einwohner"}
 
 
@@ -868,15 +694,6 @@ async def test_a_share_above_100_percent_says_to_rebuild_it() -> None:
     assert ABOVE_WHOLE in out["note"]
     for named in ("Mitte", "Nord", "Ost", "1.01", "1212", "1200", "303", "101"):
         assert named not in out["note"], named
-
-
-async def test_restricted_withholds_a_share_above_100_percent_too() -> None:
-    out = await execute(
-        GROUP_STATISTICS,
-        _env(_services(rows=ABOVE_WHOLE_ROWS), "restricted"),
-        ABOVE_WHOLE_REQUEST,
-    )
-    assert set(out) == {"withheld", "reason"}
 
 
 async def test_a_whole_share_and_a_ratio_of_means_carry_no_such_note() -> None:
@@ -1226,44 +1043,3 @@ async def test_order_by_share_needs_share_of() -> None:
                 "order_by": "share",
             },
         )
-
-
-async def test_restricted_withholds_a_ranking_by_share_and_limits_counts() -> None:
-    """Restricted sends counts only: a ranking by share has a share_of and
-    is withheld; a limit on counts still leaves out small groups."""
-    ranked = await execute(
-        GROUP_STATISTICS,
-        _env(_services(rows=RANKED, groups={BANDS: 3}), "restricted"),
-        {**RANK_BY_SHARE, "operation": "count", "field": None, "limit": 3},
-    )
-    assert set(ranked) == {"withheld", "reason"}
-    counts = await execute(
-        GROUP_STATISTICS,
-        _env(_services(), "restricted"),
-        {
-            "layer_project_id": 90,
-            "operation": "count",
-            "group_by": "name",
-            "limit": 2,
-        },
-    )
-    assert [(r["group"], r.get("value")) for r in counts["rows"]] == [
-        ("Mitte", 1200.0),
-        ("Nord", 300.0),
-    ]
-    assert not {"denominator", "share", "note"} & _keys(counts)
-    # The fake ignores the order: the rows as processes lists them, the
-    # group under 5 left out as without a limit.
-    lowest = await execute(
-        GROUP_STATISTICS,
-        _env(_services(), "restricted"),
-        {
-            "layer_project_id": 90,
-            "operation": "count",
-            "group_by": "name",
-            "lowest_first": True,
-            "limit": 3,
-        },
-    )
-    assert [r.get("value") for r in lowest["rows"]] == [1200.0, 300.0]
-    assert "fewer than 5" in lowest["note"]

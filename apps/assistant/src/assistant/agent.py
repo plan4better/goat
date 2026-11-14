@@ -42,7 +42,6 @@ from pydantic_graph import End
 from assistant.budget import RunBudget, StepGuard
 from assistant.events import DataPart, RunEvent
 from assistant.history import shorten_earlier_results
-from assistant.llm.types import DataPolicy
 from assistant.prompt import (
     ADD_WHAT_WAS_PICKED,
     ANSWER_IN_TEXT,
@@ -104,9 +103,6 @@ class RunDeps:
     message_id: str
     emit: Callable[[RunEvent], Awaitable[None]]
     part_ids: PartIds | None = None
-    #: The organization's data policy (spec §4.7); the tool layer (plan 3)
-    #: filters what data-returning tools send to the model by it.
-    data_policy: DataPolicy = "restricted"
     #: The run's tool environment (assistant.tools.runtime); None runs without
     #: GOAT's tools (the run machinery's own tests).
     env: ToolEnv | None = None

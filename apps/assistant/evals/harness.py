@@ -380,7 +380,6 @@ async def run_task(
             services=services,
             login=StaticLogin("eval-token"),
             user_id=EVAL_USER,
-            data_policy=task.data_policy,
             page=page,
             locale=task.locale,
             run_id=last_run,
@@ -393,7 +392,6 @@ async def run_task(
         deps = RunDeps(
             message_id=str(uuid4()),
             emit=emit,
-            data_policy=task.data_policy,
             env=env,
             prompt_note=render_note(page, previous, task.locale, prompt),
             prompt_answer=answer,
