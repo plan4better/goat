@@ -469,12 +469,12 @@ assistant could build and run an analysis but not name its result, the residents
 tool a second, reduced form of its result and extra calls to processes to judge group sizes, and every new data tool
 had to get one. An organization that does not want its data to reach GOAT AI's model switches GOAT AI off or connects
 a model of its own choice (an own connection, without the fallback to GOAT AI). The dock's notice and the privacy policy say that the data the assistant reads
-goes to the model. The column `organization_settings.data_policy` is no longer read or written: core keeps it until a
-later migration drops it, so assistant pods of the earlier release keep working during a rolling deploy, and
-`PUT /settings` ignores the `data_policy` field a web bundle of that release still sends. The column's server default
-is still `restricted`, so a row first saved by this release reads as Restricted to such a pod, during the rollout or
-after a rollback. An organization that had
-chosen Restricted behaves like every other one; its AI stays on.
+goes to the model. The column `organization_settings.data_policy` is no longer read: core keeps it until a later
+migration drops it, so assistant pods of the earlier release keep working during a rolling deploy, and every save
+writes `standard` to it (not the column's default, `restricted`), so such a pod, during the rollout or after a
+rollback, reads every organization saved by this release as Standard. `PUT /settings` ignores the `data_policy` field
+a web bundle of that release still sends. An organization that had chosen Restricted behaves like every other one;
+its AI stays on.
 
 **AI credits.** Answers of GOAT AI draw on the organization's pool of AI credits, which core owns with the
 allowance, the trial amount and the price tiers (`apps/core/README.md`); the assistant holds none of these numbers and

@@ -181,8 +181,9 @@ async def test_a_save_that_names_a_data_policy_is_accepted_and_ignored(
     db: Database, authed: AssistantSettings
 ) -> None:
     """There is one data policy now. A web bundle of an earlier release may
-    still send ``data_policy`` during a rolling deploy: the save goes through,
-    the field is ignored, and the stored column is left as it was."""
+    still send ``data_policy`` during a rolling deploy: the save goes through
+    and the field is ignored. The stored column becomes ``standard``, so a pod
+    of the earlier release reads the organization as Standard too."""
     await db.pool.execute(
         f"INSERT INTO {db.t('organization_settings')} (organization_id, data_policy) "
         "VALUES ($1, 'restricted')",
@@ -201,7 +202,7 @@ async def test_a_save_that_names_a_data_policy_is_accepted_and_ignored(
         "WHERE organization_id = $1",
         UUID(int=100),
     )
-    assert stored == "restricted"
+    assert stored == "standard"
 
 
 async def test_admin_reads_the_defaults(

@@ -129,19 +129,22 @@ class OrgSettingsRepository:
         must have a passed test, checked in the same statement, so an edit that
         resets the test concurrently cannot slip in between (raises
         ``ConnectionNotTested``). The table's ``data_policy`` column is no
-        longer read or written: core drops it in a later migration."""
+        longer read: every save writes ``standard`` to it, so a pod of the
+        earlier release (during a rollout, or after a rollback) reads every
+        saved organization as Standard. Core drops it in a later migration."""
         try:
             record = await self.db.pool.fetchrow(
                 f"INSERT INTO {self.db.t('organization_settings')} "
-                "(organization_id, enabled, active_connection_id, "
+                "(organization_id, enabled, active_connection_id, data_policy, "
                 "allow_default_fallback, updated_by) "
-                "SELECT $1::uuid, $2::boolean, $3::uuid, $4::boolean, $5::uuid "
+                "SELECT $1::uuid, $2::boolean, $3::uuid, 'standard', $4::boolean, $5::uuid "
                 f"WHERE $3::uuid IS NULL OR EXISTS (SELECT 1 FROM {self.db.t('connection')} c "
                 "WHERE c.id = $3::uuid AND c.organization_id = $1::uuid "
                 "AND (NOT $6::boolean OR c.last_test_ok)) "
                 "ON CONFLICT (organization_id) DO UPDATE SET "
                 "enabled = EXCLUDED.enabled, "
                 "active_connection_id = EXCLUDED.active_connection_id, "
+                "data_policy = 'standard', "
                 "allow_default_fallback = EXCLUDED.allow_default_fallback, "
                 "updated_by = EXCLUDED.updated_by, updated_at = now() "
                 "RETURNING *",

@@ -264,7 +264,7 @@ It prints `ok` or lists every missing privilege.
 SELECT organization_id FROM assistant.organization_settings WHERE data_policy = 'restricted';
 ```
 
-Tell their admins, so they can switch AI off or choose an own connection if they do not want that. Run the query before the upgrade: the column's default is `restricted`, so a row first saved after the upgrade shows up too.
+Tell their admins, so they can switch AI off or choose an own connection if they do not want that. Run the query before the upgrade: once an organization saves its AI settings on the new release, its row says `standard`.
 
 ## Optional integrations {#integrations}
 

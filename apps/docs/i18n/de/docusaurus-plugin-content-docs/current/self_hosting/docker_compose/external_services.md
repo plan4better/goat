@@ -264,7 +264,7 @@ Der Befehl gibt `ok` aus oder listet jedes fehlende Recht auf.
 SELECT organization_id FROM assistant.organization_settings WHERE data_policy = 'restricted';
 ```
 
-Informieren Sie deren Admins, damit sie KI ausschalten oder eine eigene Verbindung wählen können, wenn sie das nicht möchten. Führen Sie die Abfrage vor dem Upgrade aus: Der Standardwert der Spalte ist `restricted`, eine erst nach dem Upgrade gespeicherte Zeile erscheint also ebenfalls.
+Informieren Sie deren Admins, damit sie KI ausschalten oder eine eigene Verbindung wählen können, wenn sie das nicht möchten. Führen Sie die Abfrage vor dem Upgrade aus: Sobald eine Organisation ihre KI-Einstellungen im neuen Release speichert, steht in ihrer Zeile `standard`.
 
 ## Optionale Integrationen {#integrations}
 

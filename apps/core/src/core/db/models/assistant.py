@@ -348,12 +348,11 @@ class AssistantOrganizationSettings(SQLModel, table=True):
             nullable=True,
         ),
     )
-    # Unused: the assistant has one data policy and no longer reads or writes
-    # this column (apps/assistant/README.md, "One data policy"). It stays, with
-    # its check, so assistant pods of the earlier release keep working during a
-    # rolling deploy; a later migration drops it. Its server default stays
-    # 'restricted': a row first saved by the new release reads as Restricted to
-    # such a pod (during the rollout, or after a rollback).
+    # Unused: the assistant has one data policy and no longer reads this column
+    # (apps/assistant/README.md, "One data policy"). Every save writes
+    # 'standard', so assistant pods of the earlier release keep working during a
+    # rolling deploy, and after a rollback, and read every saved organization as
+    # Standard. A later migration drops it.
     data_policy: str = Field(
         default="restricted",
         sa_column=Column(Text, nullable=False, server_default=text("'restricted'")),
