@@ -76,3 +76,20 @@ def test_wheel_leaves_out_the_fixture_generator() -> None:
     config = tomllib.loads(PYPROJECT.read_text())
     wheel = config["tool"]["hatch"]["build"]["targets"]["wheel"]
     assert "src/assistant/encoding/fixtures.py" in wheel["exclude"]
+
+
+def test_image_bundles_the_user_docs_before_the_package_is_built() -> None:
+    """The image has no apps/docs: the Dockerfile copies both trees to where
+    the package reads them (``user_docs.BUNDLED``) before the last sync builds
+    the wheel, and the release's smoke check confirms the package reads them."""
+    from assistant.user_docs import BUNDLED, SOURCES
+
+    text = DOCKERFILE.read_text()
+    bundled = Path("/app") / BUNDLED.relative_to(ROOT)
+    last_sync = text.rindex("RUN uv sync")
+    for language, source in SOURCES.items():
+        line = f"COPY apps/{source.as_posix()} {(bundled / language).as_posix()}"
+        assert line in text, line
+        assert text.index(line) < last_sync, f"{line} comes after the wheel build"
+    release = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    assert "assert docs_roots() == bundled_roots()" in release

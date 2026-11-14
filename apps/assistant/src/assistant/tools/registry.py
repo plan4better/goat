@@ -11,6 +11,7 @@ from assistant.surfaces import Surface
 from assistant.tools.ask import ASK_USER
 from assistant.tools.catalog import CATALOG_TOOLS
 from assistant.tools.core import CORE_TOOLS
+from assistant.tools.docs import DOCS_READ
 from assistant.tools.project import PROJECT_TOOLS
 from assistant.tools.runtime import ToolSpec
 from assistant.tools.skills import SKILLS_LOAD
@@ -25,6 +26,7 @@ ALL_TOOLS: tuple[ToolSpec[Any, Any], ...] = tuple(
             *CORE_TOOLS,
             ASK_USER,
             SKILLS_LOAD,
+            DOCS_READ,
             *CATALOG_TOOLS,
             *PROJECT_TOOLS,
             *TOOL_CATALOG_TOOLS,

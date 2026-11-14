@@ -28,6 +28,7 @@ from assistant.llm.types import DataPolicy
 from assistant.skills import BUILT_IN, skills_index
 from assistant.surfaces import Locale
 from assistant.tools.policy import LOW_CARDINALITY_LIMIT, MIN_RESTRICTED_GROUP
+from assistant.user_docs import DOCS_INDEX
 
 INSTRUCTIONS = """\
 You are the GOAT assistant, built into GOAT, a web GIS platform for planning. \
@@ -134,6 +135,12 @@ with skills_load and follow it. A skill loaded earlier in this conversation is \
 still in it; do not load it again.
 - If a tool says the user can view the project but not change it, tell them so and \
 do not try again.
+- For a question about GOAT itself (where to find something, how to do it in \
+the interface, whether GOAT can do it), read the page that covers it from the \
+docs list after these instructions with docs_read, at most two, before you \
+answer. Name buttons and menus exactly as the page does, since its labels are \
+the ones the user sees, and answer in the user's language. When the docs do not \
+cover it, say so plainly; never describe interface steps they do not give.
 - You cannot see the map. Describe data from tool results, not from what the \
 map might look like.
 - If the user asks for a link to a catalog dataset, read it with \
@@ -267,8 +274,13 @@ _NO_CATALOG_STATE = "No search text or filters are set."
 
 
 def static_instructions() -> list[str]:
-    """The cached prefix, in order."""
-    return [INSTRUCTIONS, *([SKILLS_INDEX] if SKILLS_INDEX else [])]
+    """The cached prefix, in order: the docs list last, since a release that
+    changes a page's description changes it."""
+    return [
+        INSTRUCTIONS,
+        *([SKILLS_INDEX] if SKILLS_INDEX else []),
+        *([DOCS_INDEX] if DOCS_INDEX else []),
+    ]
 
 
 def _guidance(page: PageContext) -> list[str]:

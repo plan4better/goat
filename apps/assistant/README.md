@@ -337,6 +337,32 @@ sent again with every later call, so a conversation loads only the one it uses. 
 exactly one file, and that its example drafts use only tools, inputs, settings and choices found in process
 descriptions captured from processes (`tests/fixtures/process_descriptions.json`).
 
+**User docs.** Questions about GOAT itself (where a button is, how a feature works, whether GOAT can do something)
+are answered from GOAT's user documentation, the docs site's own pages (`apps/docs`, English and German): asked such
+questions, the assistant said it could not see the interface, after half a minute of unrelated tool calls. The pages
+are read and cleaned to plain text at import (`assistant/user_docs`: numbered steps, tables, code and the interface
+labels stay; screenshots, videos and layout markup go, which takes an interface page to about half its length), so they
+are those of the running version and need no network. A source checkout reads them in `apps/docs`, so a dev stack and
+the tests need no step of their own; the image has no `apps/docs`, so its Dockerfile copies both trees into the package
+(`user_docs/pages`) before the wheel is built, the release's smoke check confirms the package reads them there, and a
+service that finds neither does not start. The instructions list every English page in one line, grouped by folder
+(`DOCS_INDEX`, in the cached prefix after the skills, about 2,900 tokens), so the model goes from the question to
+`docs_read` in one step: a tool that returned the list would add a model call to every such question. `docs_read`
+serves only what was read (a page id is looked up, never opened as a path), in the interface language when the page has
+a German version, since its labels are the ones the user sees, and in English otherwise. Each page read is sent
+again with every later call of the answer, so a page longer than `MAX_PAGE_CHARS` comes in parts: a part ends where a
+section starts, names the headings it leaves out (`left_out`), and `section` reads the page from one of them on, so
+no part of a page is out of reach. A section that is not on the page gets the page's headings back. An answer reads
+at most `MAX_PAGES_PER_ANSWER` pages and `MAX_PARTS_PER_ANSWER` reads in all; another part of a page it has read is no
+new page, so two long pages can each be read in two parts. An earlier answer's page goes to the model as its id and
+title only. There is no search service
+(embeddings, a vector store): some 80 pages with a one-line description each fit the instructions, and a list plus
+page loading needs no moving part. The pages hold no organization data, so the tool returns no data values in the
+sense of the data policy and Restricted changes nothing for it; it is not on `/mcp`, whose clients can read the docs
+site and its `llms.txt` directly. Pages in a category the docs sidebar hides (`"className": "hidden"`) are left out,
+as the site's `llms.txt` leaves them out; every other page needs a `description` in its front matter, which the list
+shows and `tests/test_user_docs.py` checks. The assistant's tests run on every docs change (`.github/workflows/checks.yml`).
+
 Prompt caching: every model call of an answer resends the instructions, tool definitions and the conversation so
 far. OpenAI, Azure OpenAI, DeepSeek and Mistral cache that prefix by themselves; Claude (direct, Bedrock, Vertex) and
 models behind OpenRouter that need it get explicit cache markers (`llm/providers.py`). The page note (language,

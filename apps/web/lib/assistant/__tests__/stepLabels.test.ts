@@ -478,6 +478,11 @@ describe("step group summaries", () => {
     expect(summary([skill("build-a-workflow"), skill("build-a-workflow")])).toBe(
       "Read the instructions for a task"
     );
+    const page = (id: string) => call("docs_read", { page: id }, {});
+    expect(summary([page("map/filter"), page("map/filter")])).toBe("Read a page of the documentation");
+    expect(summary([page("map/filter"), page("map/layers")], deTranslate)).toBe(
+      "2 Seiten der Dokumentation gelesen"
+    );
     // A call that names nothing counts on its own.
     const unnamed = () => call("catalog_get_record", {}, {});
     expect(summary([unnamed(), unnamed()])).toBe("Read 2 catalog records");

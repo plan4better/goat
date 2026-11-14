@@ -13,6 +13,7 @@ from evals.tasks import (
     AnswerCheck,
     AskedCheck,
     Check,
+    DocsCheck,
     EvalTask,
     FiltersCheck,
     JudgeCheck,
@@ -329,6 +330,13 @@ async def _grade_one(
             + (f", never tried {untried}" if untried else "")
             + (f", too often {over}" if over else ""),
         )
+    if isinstance(check, DocsCheck):
+        read = {
+            str(c.args.get("page", "")).strip().strip("/").removesuffix(".md")
+            for c in transcript.tool_calls
+            if c.name == "docs_read" and not c.failed
+        }
+        return bool(read & set(check.any_of)), f"read {sorted(read)}"
     if isinstance(check, AskedCheck):
         return _asked(check, transcript)
     if isinstance(check, WorkflowUpdatedCheck):

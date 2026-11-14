@@ -21,6 +21,7 @@ from assistant.tools.project import ProjectInput, SampleInput
 from assistant.tools.registry import BY_WIRE_NAME
 from assistant.tools.skills import SkillsLoadInput
 from assistant.tools.workflows import CHECK_DRAFT
+from assistant.user_docs import DOCS_INDEX
 from assistant.workflows import issues, tool_info
 from assistant.workflows.draft import DatasetStep, Draft, ExportStep, ToolStep
 from assistant.workflows.tool_info import SettingInfo
@@ -63,7 +64,7 @@ def _drafts() -> list[tuple[str, dict[str, Any]]]:
 def test_the_skill_loads_and_is_in_the_instructions() -> None:
     assert set(SKILL.files) == set(RECIPE_SECTIONS)
     assert f"- `build-a-workflow`: {SKILL.description}" in SKILLS_INDEX
-    assert static_instructions() == [INSTRUCTIONS, SKILLS_INDEX]
+    assert static_instructions() == [INSTRUCTIONS, SKILLS_INDEX, DOCS_INDEX]
 
 
 def test_each_recipe_sits_in_exactly_one_file() -> None:

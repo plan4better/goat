@@ -1,5 +1,5 @@
 ---
-description: "Fragen Sie GOAT AI, den KI-Assistenten, zu Ihren Projekten und Daten: Er findet Datensätze in Ihrem Workspace und im Katalog, liest Layer und Statistiken, schlägt Kartenansichten und Filter vor und erstellt, ändert und startet Workflows. Antworten von GOAT AI verbrauchen KI-Credits."
+description: "Fragen Sie GOAT AI, den KI-Assistenten, zu Ihren Projekten und Daten: Er findet Datensätze in Ihrem Workspace und im Katalog, liest Layer und Statistiken, schlägt Kartenansichten und Filter vor, erstellt, ändert und startet Workflows und erklärt GOAT selbst anhand dieser Dokumentation. Antworten von GOAT AI verbrauchen KI-Credits."
 sidebar_position: 2.5
 ---
 
@@ -81,6 +81,10 @@ Fragen Sie nach Daten zu einem Thema oder Ort, sucht der Assistent gleichzeitig 
 Fragen Sie, welche Daten es gibt, zum Beispiel <code>Welche Datensätze gibt es zur Bevölkerung?</code> oder <code>Welche dieser Datensätze dürfen kommerziell genutzt werden?</code> Der Assistent durchsucht den [GOAT-Daten-Katalog](./workspace/catalog.md), grenzt einen Ort auf seine Region ein und liest den vollständigen Eintrag eines Datensatzes: Beschreibung, Lizenz, Herausgeber, Jahre, Ausdehnung und bei einem Bundle dessen Layer und Felder. Die Datensätze, die er empfiehlt, erscheinen als Karten mit der Markierung <code>Aus dem GOAT-Katalog</code>, mit <code>Hinzufügen</code> und einer Vorschau.
 
 Möchten Sie die Ergebnisse auf der Seite Katalog selbst sehen, bitten Sie darum: Der Assistent schlägt Suche und Filter in einer Karte vor (siehe [Vorschläge anwenden](#suggestions)).
+
+### Erklären, wie GOAT funktioniert {#how-to}
+
+Fragen Sie, wie etwas in GOAT geht, wo Sie es finden oder ob GOAT es kann, zum Beispiel <code>Wo ändere ich die Farben eines Layers?</code> Der Assistent liest die passende Seite dieser Dokumentation in der Sprache Ihrer Oberfläche und antwortet mit den Namen der Schaltflächen und Menüs, wie GOAT sie anzeigt. Wenn die Dokumentation eine Frage nicht abdeckt, sagt er das, statt zu raten.
 
 ### Fragen zu den Daten eines Projekts beantworten
 
