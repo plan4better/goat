@@ -140,12 +140,7 @@ function rowExpression(row: FilterRow, fields: Fields): FilterExpression | null 
     value,
   });
   if (!takesValue(row.op)) return expression("");
-  if (RANGES.has(row.op)) {
-    const [low, high] = [row.value, row.value2] as [string | number, string | number];
-    // The runner reads a range as `low-high` text only.
-    const text = row.op === "is_between" && [low, high].every((v) => typeof v === "number" && v >= 0);
-    return expression(text ? `${low}-${high}` : [low, high]);
-  }
+  if (RANGES.has(row.op)) return expression([row.value, row.value2] as [string | number, string | number]);
   return expression(row.value as FilterExpression["value"]);
 }
 

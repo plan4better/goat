@@ -409,9 +409,18 @@ async def test_an_if_condition_must_be_complete() -> None:
     no_field = {**COUNT_ROW, "method": "mean"}
     logical = {"id": "l", "attribute": "kind", "expression": "is", "value": ""}
     blank = {"id": "b", "attribute": "kind", "expression": "is_blank"}
+    true = {"id": "t", "attribute": "open", "expression": "is_true", "value": ""}
 
     def condition(row: dict[str, Any]) -> dict[str, Any]:
         return {"op": "and", "expressions": [row]}
+
+    def between(value: Any) -> dict[str, Any]:
+        return {
+            "id": "r",
+            "attribute": "built",
+            "expression": "is_between",
+            "value": value,
+        }
 
     for data in (
         {},
@@ -419,6 +428,11 @@ async def test_an_if_condition_must_be_complete() -> None:
         {"condition": condition(no_value)},
         {"condition": condition(no_field)},
         {"condition": condition(logical)},
+        # A range takes two values (`workflow_runner.range_bounds`).
+        {"condition": condition(between(["2024-05-01"]))},
+        {"condition": condition(between(["2024-05-01", ""]))},
+        {"condition": condition(between([1, 2, 3]))},
+        {"condition": condition(between("2024-05-01"))},
         {"mode": "custom", "customExpression": "  "},
     ):
         issues = await check([*nodes, if_step(**data)], edges)
@@ -427,6 +441,11 @@ async def test_an_if_condition_must_be_complete() -> None:
     for data in (
         {"condition": condition(COUNT_ROW)},
         {"condition": condition(blank)},
+        {"condition": condition(true)},
+        {"condition": condition({**true, "expression": "is_false"})},
+        {"condition": condition(between(["2024-05-01", "2024-05-31"]))},
+        # A number range as older steps store it
+        {"condition": condition(between("10-20"))},
         {"mode": "custom", "customExpression": "COUNT(*) > 10"},
     ):
         assert await check([*nodes, if_step(**data)], edges) == [], data

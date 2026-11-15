@@ -31,7 +31,7 @@ Der **Bedingung**-Knoten leitet eine Eingabeebene basierend auf einer definierte
   <div class="content">
   Klicken Sie auf den Bedingung-Knoten, um die Konfiguration zu öffnen. Klicken Sie auf <strong>Ausdruck hinzufügen</strong> und wählen Sie einen Ausdruckstyp:
     <ul>
-      <li><strong>Logischer Ausdruck</strong>: Wählen Sie ein Feld aus der vorgelagerten Ebene, einen Operator (z. B. größer als, enthält) und geben Sie einen Wert ein.</li>
+      <li><strong>Logischer Ausdruck</strong>: Wählen Sie ein Feld aus der vorgelagerten Ebene, einen Operator (z. B. größer als, enthält) und geben Sie einen Wert ein. <strong>Ist wahr</strong> und <strong>Ist falsch</strong> brauchen keinen Wert; <strong>Liegt zwischen</strong> und <strong>Liegt nicht dazwischen</strong> brauchen zwei, <strong>Von</strong> und <strong>Bis</strong>.</li>
       <li><strong>Statistischer Ausdruck</strong>: Wählen Sie eine Aggregationsmethode (<code>count</code>, <code>sum</code>, <code>mean</code>, <code>median</code>, <code>min</code>, <code>max</code>), sowie optional ein numerisches Feld, einen Vergleichsoperator und einen Schwellenwert.</li>
     </ul>
   </div>

@@ -17,9 +17,12 @@ upstream DuckLake layer; the scalar result determines the active handle.
 """
 
 import logging
+from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
 from goatlib.config.postgres import TOOLS_APPLICATION_NAME
+from goatlib.utils.column_types import column_types, type_class
 from goatlib.utils.layer import (
     catalog_layer_parquet,
     get_schema_for_layer,
@@ -96,6 +99,8 @@ def _logical_rows_to_sql_term(
     logical_rows: list[dict[str, Any]],
     top_op: str,
     column_names: list[str],
+    field_types: Mapping[str, str] | None = None,
+    now: datetime | None = None,
 ) -> str | None:
     """Convert one or more logical filter rows to a single boolean SQL term
     evaluated *over the whole layer* (``MAX(CASE WHEN <where> THEN 1 ELSE 0
@@ -103,6 +108,8 @@ def _logical_rows_to_sql_term(
 
     All logical rows are combined under ``top_op`` (``and`` / ``or``); the
     statistic rows (if any) are combined with this term at a higher level.
+    The rows are written as a dataset step's filter rows are, with the layer's
+    ``field_types`` and ``now`` (`workflow_runner.convert_filter_to_cql`).
     """
     if not logical_rows:
         return None
@@ -110,7 +117,9 @@ def _logical_rows_to_sql_term(
     # Lazy import to avoid a circular dependency with workflow_runner.
     from goatlib.tools.workflow_runner import convert_filter_to_cql
 
-    cql_filter = convert_filter_to_cql({"op": top_op, "expressions": logical_rows})
+    cql_filter = convert_filter_to_cql(
+        {"op": top_op, "expressions": logical_rows}, field_types, now
+    )
     if not cql_filter:
         return None
 
@@ -130,9 +139,12 @@ def _logical_rows_to_sql_term(
 def _build_simple_condition_sql(
     condition: dict[str, Any] | None,
     column_names: list[str],
+    field_types: Mapping[str, str] | None = None,
+    now: datetime | None = None,
 ) -> str | None:
     """Build a single boolean SQL expression for the Conditional node's
     Simple-mode condition. Returns ``None`` if the condition is empty.
+    ``field_types`` and ``now`` are those of `_logical_rows_to_sql_term`.
 
     The result is meant to be embedded as ``SELECT (<expr>) FROM <input>`` —
     statistic and logical terms aggregate over ``<input>`` directly.
@@ -161,7 +173,9 @@ def _build_simple_condition_sql(
         else:
             logical_rows.append(row)
 
-    logical_term = _logical_rows_to_sql_term(logical_rows, top_op, column_names)
+    logical_term = _logical_rows_to_sql_term(
+        logical_rows, top_op, column_names, field_types, now
+    )
 
     parts: list[str] = []
     if logical_term:
@@ -237,12 +251,16 @@ def _resolve_layer_sql_ref(
     return layer_table_path(layer_id)
 
 
-def _fetch_layer_columns(layer_id: str, user_id: str) -> list[str]:
-    """Return the column names of the upstream layer for CQL field validation.
+def layer_field_types(layer_id: str, user_id: str) -> dict[str, str]:
+    """The layer's fields, in order, by the kind of value each holds
+    (`goatlib.utils.column_types.type_class`, as the layer's queryables give
+    them to the web's filter); empty when the layer cannot be read.
 
     The CQL → DuckDB SQL evaluator rejects any field reference that isn't in
     the provided column list (see `cql_evaluator.DuckDBCQLEvaluator`), so we
-    must pre-populate this list before building the boolean SQL.
+    must pre-populate this list before building the boolean SQL; and a row
+    such as "is empty" is written by its field's type
+    (`workflow_runner.convert_filter_to_cql`).
     """
     try:
         from goatlib.storage import BaseDuckLakeManager
@@ -260,8 +278,10 @@ def _fetch_layer_columns(layer_id: str, user_id: str) -> list[str]:
         ref = _resolve_layer_sql_ref(layer_id, user_id, manager)
         try:
             with manager.connection() as con:
-                rows = con.execute(f"DESCRIBE SELECT * FROM {ref} LIMIT 0").fetchall()
-                return [r[0] for r in rows]
+                return {
+                    name: type_class(duckdb_type)
+                    for name, duckdb_type in column_types(con, ref).items()
+                }
         finally:
             try:
                 manager.close()
@@ -269,7 +289,7 @@ def _fetch_layer_columns(layer_id: str, user_id: str) -> list[str]:
                 pass
     except Exception as exc:
         logger.warning("Failed to fetch columns for layer %s: %s", layer_id, exc)
-        return []
+        return {}
 
 
 def _evaluate_boolean_sql_against_layer(
@@ -359,10 +379,12 @@ def execute_if_node(
     # Fetch column names so the CQL evaluator can validate logical-row field
     # references (it rejects unknown fields with ValueError, which would
     # otherwise silently turn the whole rule into False) and so the upstream
-    # filter can be compiled to a WHERE clause.
-    column_names = (
-        _fetch_layer_columns(upstream_layer_id, user_id) if upstream_layer_id else []
+    # filter can be compiled to a WHERE clause; their types for the rows
+    # written by type.
+    field_types = (
+        layer_field_types(upstream_layer_id, user_id) if upstream_layer_id else {}
     )
+    column_names = list(field_types)
 
     # Build the boolean SQL expression for whichever mode is active.
     boolean_sql: str | None = None
@@ -386,6 +408,7 @@ def execute_if_node(
         boolean_sql = _build_simple_condition_sql(
             condition,
             column_names=column_names,
+            field_types=field_types,
         )
     else:
         custom_expr = data.get("customExpression") or ""

@@ -262,6 +262,20 @@ deleting it never changes which features pass.
   the issues the checker reports and the rows the web's panel reads; the web's
   tests read the same file, and `test_saved_shapes.py` runs every error-free
   case through the evaluator and DuckDB.
+- **A workflow's filter rows are a second writer of the same CQL2.** A dataset
+  step and an If step store their conditions as the panel's rows
+  (`{attribute, expression, value}`), which the assistant reads and writes too;
+  `tools/workflow_runner.py` (`convert_filter_to_cql`) writes each row as the
+  panel writes it for a layer (`apps/web/lib/filter/rows.ts`), so a step keeps
+  the rows the layer filter keeps. An operator added to the panel needs both
+  writers; `tests/unit/tools/test_workflow_filter_rows.py` compares the rows
+  both keep, per operator and on every stable shared case. Where the run does
+  not know a field's type, it writes a form that keeps the same rows on any
+  type (a day as its start in UTC, which a date column reads as the day).
+  Only "is empty" and "is not empty" cannot do without it, since on text they
+  also take the empty text: for those a dataset step reads its layer's field
+  types. "In the last N days" counts back from the run, as a step stores the
+  days, not a date.
 
 ## Raster files (`raster/`)
 

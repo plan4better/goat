@@ -425,20 +425,37 @@ def inline_params(sql: str, params: list[Any]) -> str:
     Returns:
         SQL string with parameters inlined
     """
-    result = sql
-    for param in params:
-        if isinstance(param, str):
-            # Escape single quotes and wrap in quotes
-            escaped = param.replace("'", "''")
-            result = result.replace("?", f"'{escaped}'", 1)
-        elif param is None:
-            result = result.replace("?", "NULL", 1)
-        elif isinstance(param, bool):
-            result = result.replace("?", "TRUE" if param else "FALSE", 1)
-        else:
-            # Numbers, etc.
-            result = result.replace("?", str(param), 1)
-    return result
+    # One pass over the SQL: a value written in is never read again, so a
+    # question mark inside it is no placeholder, nor is one inside a quoted
+    # name.
+    values = iter(params)
+    out: list[str] = []
+    quote: str | None = None
+    for char in sql:
+        if quote:
+            if char == quote:
+                quote = None
+        elif char in ("'", '"'):
+            quote = char
+        elif char == "?":
+            out.append(_sql_literal(next(values)))
+            continue
+        out.append(char)
+    return "".join(out)
+
+
+def _sql_literal(param: Any) -> str:
+    """A parameter as a SQL literal."""
+    if isinstance(param, str):
+        # Escape single quotes and wrap in quotes
+        escaped = param.replace("'", "''")
+        return f"'{escaped}'"
+    if param is None:
+        return "NULL"
+    if isinstance(param, bool):
+        return "TRUE" if param else "FALSE"
+    # Numbers, etc.
+    return str(param)
 
 
 def cql_to_where_clause(

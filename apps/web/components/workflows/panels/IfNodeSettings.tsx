@@ -170,10 +170,34 @@ const VALUE_LESS_OPERATORS = new Set([
   "is_not_blank",
   "is_empty_string",
   "is_not_empty_string",
+  "is_true",
+  "is_false",
 ]);
 
 // Operators that take a list of values; user enters them comma-separated.
 const MULTI_VALUE_OPERATORS = new Set(["includes", "excludes"]);
+
+// Operators that take a range: its two bounds, stored as a pair (goatlib's `workflow_runner.range_bounds`).
+const RANGE_OPERATORS = new Set(["is_between", "is_not_between"]);
+
+/** A number range stored before as `low-high` text. */
+const RANGE_TEXT = /^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$/;
+
+/** A range's two bounds as text, a bound not given yet empty. */
+const rangeOf = (value: ExpressionType["value"]): [string, string] => {
+  if (Array.isArray(value)) return [String(value[0] ?? ""), String(value[1] ?? "")];
+  const text = typeof value === "string" ? RANGE_TEXT.exec(value) : null;
+  return text ? [text[1], text[2]] : ["", ""];
+};
+
+/** Whether a logical row can be evaluated: a field, an operator and its value, a range both bounds (the workflow
+ * check's `_row_complete`). */
+export function logicalRowComplete(e: ExpressionType): boolean {
+  if (!e.attribute || !e.expression) return false;
+  if (VALUE_LESS_OPERATORS.has(e.expression)) return true;
+  if (RANGE_OPERATORS.has(e.expression)) return rangeOf(e.value).every((bound) => bound.trim() !== "");
+  return !!e.value?.toString();
+}
 
 // Operators hidden because they read misleadingly under "any feature matches".
 const LOGICAL_OPERATORS_REMOVED = new Set([
@@ -324,7 +348,7 @@ interface LogicalConditionRowProps {
   onDelete: (id: string) => void;
 }
 
-function LogicalConditionRow({
+export function LogicalConditionRow({
   expression,
   fields,
   variables,
@@ -397,7 +421,27 @@ function LogicalConditionRow({
           />
         )}
 
-        {showValue && (
+        {showValue && RANGE_OPERATORS.has(expression.expression) && (
+          <Stack direction="column" spacing={2}>
+            {(["from", "to"] as const).map((bound, at) => (
+              <Box key={bound}>
+                <FormLabelHelper label={t(bound)} color="inherit" />
+                <VariableTextField
+                  value={rangeOf(expression.value)[at]}
+                  onChange={(next) => {
+                    const range = rangeOf(expression.value);
+                    range[at] = next;
+                    onUpdate({ ...expression, value: range });
+                  }}
+                  variables={variables}
+                  placeholder={t(bound)}
+                />
+              </Box>
+            ))}
+          </Stack>
+        )}
+
+        {showValue && !RANGE_OPERATORS.has(expression.expression) && (
           <Box>
             <FormLabelHelper
               label={t("select_value")}
@@ -852,9 +896,7 @@ export default function IfNodeSettings({
           const v = String(e.value ?? "").trim();
           return !!e.method && !!e.operator && v !== "" && (!needsField || !!e.field);
         }
-        const noValueOps = ["is_empty_string", "is_not_empty_string", "is_blank", "is_not_blank"];
-        const hasValue = noValueOps.includes(e.expression || "") || !!e.value?.toString();
-        return e.attribute && e.expression && hasValue;
+        return logicalRowComplete(e);
       }),
     [condition.expressions]
   );

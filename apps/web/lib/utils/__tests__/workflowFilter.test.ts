@@ -140,8 +140,8 @@ describe("nodeFilterFrom", () => {
       type: "logical",
       attribute: "lanes",
       expression: "is_between",
-      // As goatlib's workflow runner reads a range.
-      value: "3-4",
+      // A range as its two bounds, as goatlib's workflow runner reads it.
+      value: [3, 4],
     });
     expect(written?.expressions.filter((_, i) => i !== 2)).toEqual(
       STORED.expressions.filter((_, i) => i !== 2)
@@ -188,14 +188,14 @@ describe("nodeFilterFrom", () => {
     ]);
   });
 
-  it("writes a range as low-high text for the runner, a range it would misread as a pair", () => {
+  it("writes a range as its two bounds", () => {
     const range = (value: unknown, value2: unknown, op: FilterRow["op"] = "is_between") =>
       storedFrom(
         { match: "all", rows: [{ id: "n1", field: "lanes", op, value, value2, enabled: true }] },
         undefined,
         FIELDS
       )?.expressions[0].value;
-    expect(range(2, 4.5)).toBe("2-4.5");
+    expect(range(2, 4.5)).toEqual([2, 4.5]);
     expect(range(-2, 4)).toEqual([-2, 4]);
     expect(range(2, 4, "is_not_between")).toEqual([2, 4]);
   });
@@ -267,7 +267,7 @@ describe("inheritedNodeFilter", () => {
       op: "or",
       expressions: [
         { id: "r0", type: "logical", attribute: "name", expression: "includes", value: ["a", "b"] },
-        { id: "r1", type: "logical", attribute: "lanes", expression: "is_between", value: "2-4" },
+        { id: "r1", type: "logical", attribute: "lanes", expression: "is_between", value: [2, 4] },
         { id: "r2", type: "logical", attribute: "name", expression: "is_not", value: "x" },
         {
           id: "r3",

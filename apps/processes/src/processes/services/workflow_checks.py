@@ -40,6 +40,7 @@ from goatlib.tools.workflow_runner import (
     VARIABLE_PATTERN,
     convert_filter_to_cql,
     mark_skipped_descendants,
+    range_bounds,
     resolve_variables,
     variable_map,
 )
@@ -81,8 +82,17 @@ DEFAULT_TARGET_HANDLE = "input_layer_id"
 CONNECTED = "__connected__"
 # Logical If rows that compare with nothing (`_convert_expression_to_cql`).
 VALUELESS_EXPRESSIONS = frozenset(
-    {"is_blank", "is_not_blank", "is_empty_string", "is_not_empty_string"}
+    {
+        "is_blank",
+        "is_not_blank",
+        "is_empty_string",
+        "is_not_empty_string",
+        "is_true",
+        "is_false",
+    }
 )
+# Logical If rows that compare with a range, two values (`range_bounds`).
+RANGE_EXPRESSIONS = frozenset({"is_between", "is_not_between"})
 # Pydantic puts the kind of a validator's error before its text.
 VALIDATOR_PREFIXES = ("Value error, ", "Assertion failed, ")
 FIELD_WIDGET = "field-selector"
@@ -251,7 +261,8 @@ def _row_complete(row: Any) -> bool:
     row without method, operator, value or (except for a count) field. A
     logical row needs its operator and field (`_convert_expression_to_cql`)
     and, unless the operator compares with nothing, a value: without one the
-    row compares with NULL and the If silently takes its false branch.
+    row compares with NULL and the If silently takes its false branch. A
+    range takes two values; the run fails on another number of them.
     """
     if not isinstance(row, dict):
         return False
@@ -261,6 +272,12 @@ def _row_complete(row: Any) -> bool:
         )
     if not row.get("expression") or not row.get("attribute"):
         return False
+    if row.get("expression") in RANGE_EXPRESSIONS:
+        try:
+            bounds = range_bounds(str(row["attribute"]), row.get("value"))
+        except ValueError:
+            return False
+        return not any(map(_is_empty, bounds))
     return row.get("expression") in VALUELESS_EXPRESSIONS or not _is_empty(
         row.get("value")
     )
