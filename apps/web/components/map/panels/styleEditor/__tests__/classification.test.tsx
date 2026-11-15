@@ -201,6 +201,35 @@ describe("classification editor", () => {
     expect(store.get("classify.0.palette")).toBe("colorbrewer:OrRd");
   });
 
+  it("a palette picked for computed classes takes every class, also a color picked by hand", async () => {
+    const { store, saves } = shell(doc([QUANTILE]));
+    await userEvent.click(screen.getByText("OrRd"));
+    await userEvent.click(screen.getByRole("button", { name: "Blues" }));
+    expect(store.get("classify.0.palette")).toBe("colorbrewer:Blues");
+    expect(store.get("classify.0.classes.0.fill")).toBeUndefined();
+    expect(saves).toHaveLength(1);
+  });
+
+  it("widths typed into the classes read as your own values; a picked range takes every class again", async () => {
+    const widths = {
+      ...QUANTILE,
+      target: "outline.width",
+      classes: QUANTILE.classes.map((k, i) => ({ ...k, outline: { width: i + 1 } })),
+    };
+    const { store, saves } = shell(doc([widths]));
+    const select = within(rowOf("style_editor.range")).getByRole("combobox");
+    expect(select.textContent).toBe("style_editor.range_own");
+    await userEvent.click(select);
+    const preset = within(screen.getByRole("listbox")).getAllByRole("option")[1];
+    const label = preset.textContent;
+    await userEvent.click(preset);
+    expect(store.get("classify.0.range")).toHaveLength(2);
+    expect(within(rowOf("style_editor.range")).getByRole("combobox").textContent).toBe(label);
+    expect(store.get("classify.0.classes.0.outline")).toBeUndefined();
+    expect(store.get("classify.0.classes.0.fill.color")).toBe("#fef0d9");
+    expect(saves).toHaveLength(1);
+  });
+
   it("a manual bound sets the previous class's to", () => {
     const { store } = shell(
       doc([

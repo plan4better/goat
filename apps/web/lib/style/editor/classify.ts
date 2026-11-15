@@ -258,6 +258,63 @@ export function recolorClasses(doc: LayerStyle, ci: number, target: string, colo
   return setIn(doc, `classify.${ci}.classes`, classes);
 }
 
+/** Whether the server fills the classes with the palette's or the range's values: not manual classes, nor categories
+ * picked by hand, whose values the panel writes. */
+export const serverFillsClasses = (c: JsonObject): boolean =>
+  c.method !== "manual" && !(c.method === "categories" && typeof c.count !== "number");
+
+/** The classes of `classify[ci]` without their value at `target`: a palette or range picked for classes the server
+ * fills takes every class, also one picked by hand (the server only replaces the values it wrote). */
+export function clearClassValues(doc: LayerStyle, ci: number, target: string): LayerStyle {
+  const c = classifyOf(doc)[ci];
+  if (!c) return doc;
+  return setIn(
+    doc,
+    `classify.${ci}.classes`,
+    list(c.classes).map((k) => dropKey(k, "", target))
+  );
+}
+
+/** `n` values from `r0` to `r1` by position, as the server writes them into classes: rounded to 0.1, to 0.01 for
+ * opacities; one class gets `r0`. */
+export function rangeValues(r0: number, r1: number, n: number, opacity = false): number[] {
+  const scale = opacity ? 100 : 10;
+  if (n <= 0) return [];
+  const values = n === 1 ? [r0] : Array.from({ length: n }, (_, i) => r0 + (i * (r1 - r0)) / (n - 1));
+  return values.map((v) => Math.round(v * scale) / scale);
+}
+
+/** `classify[ci]` with the range `range` for the number at `target`: every class takes its value from it. The server
+ * writes the values of the classes it fills; the panel writes the others'. */
+export function pickClassRange(
+  doc: LayerStyle,
+  ci: number,
+  target: string,
+  range: [number, number]
+): LayerStyle {
+  const c = classifyOf(doc)[ci];
+  if (!c) return doc;
+  const next = setIn(doc, `classify.${ci}.range`, range);
+  if (serverFillsClasses(c)) return clearClassValues(next, ci, target);
+  const values = rangeValues(range[0], range[1], list(c.classes).length, target.endsWith("opacity"));
+  return setIn(
+    next,
+    `classify.${ci}.classes`,
+    list(c.classes).map((k, i) => setIn(k as unknown as LayerStyle, target, values[i]))
+  );
+}
+
+/** Whether a class holds a number at `target` the range does not give: one typed by hand. The server hands category
+ * values out in any order, so any of the range's values counts as the range's. */
+export function classValuesByHand(c: JsonObject, target: string, range: [number, number]): boolean {
+  const classes = list(c.classes);
+  const given = new Set(rangeValues(range[0], range[1], classes.length, target.endsWith("opacity")));
+  return classes.some((k) => {
+    const value = getIn(k, target);
+    return typeof value === "number" && !given.has(value);
+  });
+}
+
 const NUMERIC_METHODS = new Set([
   "quantile",
   "equal_interval",

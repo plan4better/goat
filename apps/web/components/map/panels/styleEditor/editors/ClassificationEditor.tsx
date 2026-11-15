@@ -12,11 +12,15 @@ import { useUniqueValues } from "@/lib/api/processes";
 import { useProjectLayerHistogramStats } from "@/lib/api/projects";
 import {
   MAX_CLASS_COUNT,
+  classValuesByHand,
   classesPending,
   classifyTargets,
+  clearClassValues,
+  pickClassRange,
   recolorClasses,
   removeClassification,
   retarget,
+  serverFillsClasses,
   setClassificationField,
   setMethod,
 } from "@/lib/style/editor/classify";
@@ -64,6 +68,9 @@ const DEFAULT_PALETTE = { categories: "colorbrewer:Set2", numeric: "goat:green" 
 
 export const propLabelKey = (key: string) => `style_editor.prop_${key.replace(/\./g, "_")}`;
 
+/** The range row's value while the classes hold values typed by hand. */
+const OWN_VALUES = "own";
+
 /** Range presets for a number target: the default range, a narrower and a wider one. */
 function rangePresets(key: string): Array<[number, number]> {
   const [a, b] = defaultRange(key);
@@ -92,13 +99,14 @@ function ClassPalettePicker({
   const path = `classify.${ci}`;
   const palette = useStyleValue<string | string[] | undefined>(`${path}.palette`);
   const reverse = useStyleValue<boolean | undefined>(`${path}.reverse`);
-  // Classes picked by hand are not computed: the panel colors them with the new palette itself.
-  const byHand = () => categories && typeof store.get(`${path}.count`) !== "number";
+  // A new palette takes every class: the server colors again the classes it fills, also a color picked by hand;
+  // the panel colors manual classes and categories picked by hand itself.
   const write = (next: string | string[], reversed: boolean) =>
     store.update((doc) => {
       let out = setIn(doc, `${path}.palette`, next);
       out = setIn(out, `${path}.reverse`, reversed || undefined);
-      if (!byHand()) return out;
+      const c = store.get(path);
+      if (isObject(c) && serverFillsClasses(c)) return clearClassValues(out, ci, target);
       const colors = paletteColors(next, steps);
       return recolorClasses(out, ci, target, reversed ? [...colors].reverse() : colors);
     });
@@ -208,6 +216,8 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
       : `${a} ${t("style_editor.to")} ${b}${unit ? ` ${unit}` : ""}`;
   const presets = rangePresets(target);
   if (!presets.some(([a, b]) => a === range[0] && b === range[1])) presets.push(range);
+  // Values typed into the classes follow no range: the row says so, and a picked range takes every class again.
+  const ownValues = kind === "number" && classValuesByHand(c, target, range);
 
   const classColorAt = (v: number) => {
     const i = breaks.filter((b) => v >= b).length;
@@ -363,9 +373,16 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
         {kind === "number" && (
           <ChoiceRow<string>
             label={t("style_editor.range")}
-            value={range.join(":")}
-            options={presets.map((p) => ({ value: p.join(":"), label: rangeLabel(p) }))}
-            onChange={(v) => store.set(`${path}.range`, v.split(":").map(Number))}
+            value={ownValues ? OWN_VALUES : range.join(":")}
+            options={[
+              ...(ownValues ? [{ value: OWN_VALUES, label: t("style_editor.range_own") }] : []),
+              ...presets.map((p) => ({ value: p.join(":"), label: rangeLabel(p) })),
+            ]}
+            onChange={(v) => {
+              if (v === OWN_VALUES) return;
+              const picked = v.split(":").map(Number) as [number, number];
+              store.update((doc) => pickClassRange(doc, ci, target, picked));
+            }}
           />
         )}
         {histogramStats && histogramStats.bins.length > 0 && (

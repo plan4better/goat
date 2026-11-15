@@ -8,11 +8,15 @@ import {
   addCategoryClass,
   addClassification,
   categoryValue,
+  classValuesByHand,
   classesPending,
   classifyTargets,
+  clearClassValues,
   isIntentEdit,
   moveCategoryValue,
   moveClassification,
+  pickClassRange,
+  rangeValues,
   recolorClasses,
   removeClass,
   removeClassification,
@@ -279,12 +283,88 @@ describe("categories picked by hand", () => {
     ]);
   });
 
+  it("a palette picked for computed classes takes every class, also a color picked by hand", () => {
+    const d = top();
+    const out = classify(clearClassValues(d, 0, "fill.color"))[0];
+    expect(out.classes).toEqual([
+      { id: "c1", values: ["home"] },
+      { id: "c2", values: ["shop"] },
+      { id: "c3", values: ["park"] },
+    ]);
+  });
+
   it("reads a value as the field's type", () => {
     expect(categoryValue("42", "integer")).toBe(42);
     expect(categoryValue("2.5", "number")).toBe(2.5);
     expect(categoryValue("true", "boolean")).toBe(true);
     expect(categoryValue("0042", "string")).toBe("0042");
     expect(categoryValue("x", "integer")).toBe("x");
+  });
+});
+
+describe("a range picked for a number", () => {
+  const classify = (d: LayerStyle) => (d as unknown as { classify: Record<string, unknown>[] }).classify;
+  const sizes = (d: LayerStyle) =>
+    (classify(d)[0].classes as Array<{ marker?: { size?: number } }>).map((k) => k.marker?.size);
+  const breaks = (method: string, typed: number[]) =>
+    doc({
+      classify: [
+        {
+          id: "c",
+          field: "n",
+          target: "marker.size",
+          method,
+          count: typed.length,
+          classes: typed.map((size, i) => ({ id: `c${i + 1}`, marker: { size, color: "#111111" } })),
+        },
+      ],
+    });
+
+  it("spreads values like the server: by position, to 0.1, to 0.01 for opacities", () => {
+    expect(rangeValues(4, 14, 5)).toEqual([4, 6.5, 9, 11.5, 14]);
+    expect(rangeValues(4, 24, 4)).toEqual([4, 10.7, 17.3, 24]);
+    expect(rangeValues(0.2, 1, 4, true)).toEqual([0.2, 0.47, 0.73, 1]);
+    expect(rangeValues(4, 24, 1)).toEqual([4]);
+  });
+
+  it("computed classes give up the sizes typed by hand: the server writes them all from the range", () => {
+    const out = pickClassRange(breaks("heads_and_tails", [1, 2, 3, 4, 5]), 0, "marker.size", [4, 14]);
+    expect(classify(out)[0].range).toEqual([4, 14]);
+    expect(sizes(out)).toEqual([undefined, undefined, undefined, undefined, undefined]);
+    // Only the size goes: the classes keep their colors.
+    expect((classify(out)[0].classes as Array<{ marker: { color: string } }>)[0].marker.color).toBe(
+      "#111111"
+    );
+  });
+
+  it("manual classes and categories picked by hand, which the server does not fill, get the range's values", () => {
+    expect(sizes(pickClassRange(breaks("manual", [1, 2, 3, 4, 5]), 0, "marker.size", [4, 14]))).toEqual([
+      4, 6.5, 9, 11.5, 14,
+    ]);
+    const byHand = doc({
+      classify: [
+        {
+          field: "use",
+          target: "marker.size",
+          method: "categories",
+          classes: [{ values: ["a"] }, { values: ["b"], marker: { size: 30 } }],
+        },
+      ],
+    });
+    expect(sizes(pickClassRange(byHand, 0, "marker.size", [4, 24]))).toEqual([4, 24]);
+  });
+
+  it("tells sizes typed by hand from the range's", () => {
+    const c = (d: LayerStyle) => classify(d)[0];
+    expect(classValuesByHand(c(breaks("quantile", [1, 2, 3, 4, 5])), "marker.size", [4, 24])).toBe(true);
+    expect(classValuesByHand(c(breaks("quantile", [4, 9, 14, 19, 24])), "marker.size", [4, 24])).toBe(false);
+    // The server hands category values out in any order: a value of the range is never by hand.
+    expect(classValuesByHand(c(breaks("categories", [24, 4, 14, 9, 19])), "marker.size", [4, 24])).toBe(
+      false
+    );
+    expect(
+      classValuesByHand(c(doc({ classify: [{ field: "n", method: "quantile" }] })), "marker.size", [4, 24])
+    ).toBe(false);
   });
 });
 

@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { equalClasses } from "@/lib/style/editor/raster";
+import { equalClasses, setRasterPalette } from "@/lib/style/editor/raster";
 import { getIn, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
@@ -379,8 +379,10 @@ function RasterPalettePicker({ steps }: { steps?: number }) {
       reverse={reverse === true}
       steps={steps}
       kinds={["sequential", "diverging"]}
-      onChange={(next) => store.set("render.palette", next)}
-      onReverse={(next) => store.set("render.reverse", next || undefined)}
+      onChange={(next) => store.update((doc) => setRasterPalette(doc, "palette", next), "render.palette")}
+      onReverse={(next) =>
+        store.update((doc) => setRasterPalette(doc, "reverse", next || undefined), "render.reverse")
+      }
     />
   );
 }

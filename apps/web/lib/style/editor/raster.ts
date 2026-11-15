@@ -1,5 +1,7 @@
 // Raster render choices of the panel (spec 9): which renders fit a file, how each starts, equal classes over a range.
-import { type JsonObject } from "@/lib/style/json";
+import { getIn, setIn } from "@/lib/style/editor/paths";
+import type { LayerStyle } from "@/lib/style/generated/types";
+import { type JsonObject, isObject } from "@/lib/style/json";
 import { paletteSteps } from "@/lib/style/palettes";
 import { type RasterInfo, type ValueSample, seedDomain } from "@/lib/style/raster/metadata";
 
@@ -63,4 +65,21 @@ export function noDataApplies(render: JsonObject, info: RasterInfo | undefined):
   if (type === "categorical") return Array.isArray(render.classes) && render.classes.length > 0;
   if (type === "hillshade") return render.palette !== undefined;
   return true;
+}
+
+/** The color range's `palette` or `reverse` set to `value`: a palette picked for classes takes every class, so the
+ * classes' own palette and the colors picked by hand go. */
+export function setRasterPalette(doc: LayerStyle, key: "palette" | "reverse", value: unknown): LayerStyle {
+  const next = setIn(doc, `render.${key}`, value);
+  const classify = getIn(next, "render.classify");
+  if (!isObject(classify)) return next;
+  const { palette: _palette, reverse: _reverse, ...rest } = classify;
+  const classes = Array.isArray(rest.classes)
+    ? rest.classes.map((c) => {
+        if (!isObject(c)) return c;
+        const { color: _color, ...kept } = c;
+        return kept;
+      })
+    : rest.classes;
+  return setIn(next, "render.classify", { ...rest, ...(classes !== undefined ? { classes } : {}) });
 }

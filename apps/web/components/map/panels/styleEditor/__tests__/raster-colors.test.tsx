@@ -59,6 +59,26 @@ describe("raster colors", () => {
     expect(store.get("render.classify.classes.1.visible")).toBe(false);
   });
 
+  it("a palette picked for classes takes every class, also a color picked by hand", async () => {
+    const { store } = setup({
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [0, 100],
+      classify: {
+        method: "manual",
+        palette: "colorbrewer:Greys",
+        classes: [{ to: 50, color: "#ff0000" }, { from: 50 }],
+      },
+    });
+    await openColors();
+    await userEvent.click(screen.getByText("goat:elevation"));
+    await userEvent.click(screen.getByRole("button", { name: "Blues" }));
+    expect(store.get("render.palette")).toBe("colorbrewer:Blues");
+    expect(store.get("render.classify")).toEqual({ method: "manual", classes: [{ to: 50 }, { from: 50 }] });
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.reverse" }));
+    expect(store.get("render.reverse")).toBe(true);
+  });
+
   it("From the data writes the band's 2nd to 98th percentile; a band without values says so", async () => {
     const { store, unmount } = setup({ type: "continuous", palette: "goat:elevation", domain: [0, 1] });
     await openColors();
