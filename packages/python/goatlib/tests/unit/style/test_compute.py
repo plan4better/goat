@@ -90,6 +90,8 @@ def test_intent_becomes_the_stored_classes_of_spec_5_2() -> None:
         "at": "2026-10-24T10:00:00Z",
         "data": "ducklake:7",
         "scope": "dataset",
+        # These statistics hold nothing on features without a value: looked, no answer.
+        "no_data": None,
         "domain": [1000, 9000],
         "generated": {
             "target": "fill.color",
@@ -310,7 +312,7 @@ def test_top_categories_domains_and_manual() -> None:
             }
         ],
     }
-    assert needed_stats(manual) == [("range", "density")]
+    assert needed_stats(manual) == [("range", "density"), ("presence", "density")]
     out, _ = compute(manual, {("range", "density"): (0.73, 100.0)})
     # Manual classes stay the author's; the data's ends label the open classes.
     assert out["classify"][0]["classes"] == manual["classify"][0]["classes"]
@@ -319,6 +321,7 @@ def test_top_categories_domains_and_manual() -> None:
         "data": "f",
         "scope": "dataset",
         "domain": [0.73, 100.0],
+        "no_data": None,
     }
     again, notes = compute(out, {}, fingerprint="g")
     assert again["classify"][0]["computed"]["domain"] == [0.73, 100.0]
@@ -414,10 +417,13 @@ def test_a_color_on_a_log_scale_reads_its_range_above_zero() -> None:
 
 
 def test_needed_stats_stamps_and_empty_data() -> None:
-    assert needed_stats(QUANTILE) == [KEY]
+    assert needed_stats(QUANTILE) == [KEY, ("presence", "density")]
     no_count = copy.deepcopy(QUANTILE)
     del no_count["classify"][0]["count"]
-    assert needed_stats(no_count) == [("breaks", "density", "quantile", "5")]
+    assert needed_stats(no_count) == [
+        ("breaks", "density", "quantile", "5"),
+        ("presence", "density"),
+    ]
     a, _ = compute(QUANTILE, STATS, fingerprint="f1", at="t1")
     b, _ = compute(QUANTILE, STATS, fingerprint="f2", at="t2")
     assert a != b and same_ignoring_stamps(a, b)
@@ -431,6 +437,7 @@ def test_needed_stats_stamps_and_empty_data() -> None:
         "at": "t",
         "data": "f",
         "scope": "dataset",
+        "no_data": None,
     }
 
 
@@ -489,7 +496,8 @@ def test_categories_with_classes_but_no_count_are_the_authors() -> None:
             }
         ],
     }
-    assert needed_stats(cats) == []
+    # No class is computed: only what the data holds beside the listed values.
+    assert needed_stats(cats) == [("presence", "type", "in", "a")]
 
 
 def test_every_number_target_has_a_default_range() -> None:
@@ -580,7 +588,11 @@ def test_parts_no_longer_computed_lose_their_stamp() -> None:
     }
     out, _ = compute(doc, {})
     assert "computed" not in out["symbol"]["fill"]["color"]
-    assert all("computed" not in c for c in out["classify"])
+    # An author's categories keep a stamp (so they are held against the data once
+    # per data version), freshly written and with nothing the server made up.
+    for c in out["classify"]:
+        assert set(c["computed"]) == {"at", "data", "scope", "no_data"}
+        assert c["computed"]["data"] != "f0"
 
 
 def _colors(doc: dict[str, Any], part: str = "fill", key: str = "color") -> list[Any]:

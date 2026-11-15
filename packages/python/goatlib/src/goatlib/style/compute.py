@@ -61,8 +61,19 @@ class Breaks:
     merged: bool
 
 
+@dataclass(frozen=True)
+class Presence:
+    """What the data holds beside a classification's classes: features without a
+    value in its field, and, for categories, values no class lists (None where
+    that is not asked)."""
+
+    no_data: bool
+    other: bool | None = None
+
+
 StatResults = Mapping[
-    StatKey, Breaks | list[tuple[Any, int]] | tuple[float | None, float | None]
+    StatKey,
+    Breaks | Presence | list[tuple[Any, int]] | tuple[float | None, float | None],
 ]
 
 
@@ -121,6 +132,45 @@ def _manual_range_key(c: dict[str, Any]) -> StatKey | None:
     if c.get("method") == "manual" and isinstance(c.get("field"), str):
         return ("range", c["field"])
     return None
+
+
+def _presence_key(c: dict[str, Any]) -> StatKey | None:
+    """What the data holds beside the classes (`Presence`): `("presence", field)`
+    for numeric classes; for categories with the values to hold against the data,
+    `("presence", field, "top", count)` where the server picks the most frequent
+    and `("presence", field, "in", *values)` for an author's list."""
+    field = c.get("field")
+    if not isinstance(field, str):
+        return None
+    if c.get("method") != "categories":
+        return ("presence", field)
+    count = _count(c)
+    if count:
+        return ("presence", field, "top", str(count))
+    listed = {
+        as_text(v)
+        for k in as_list(c.get("classes"))
+        if isinstance(k, dict)
+        for v in as_list(k.get("values"))
+    }
+    return ("presence", field, "in", *sorted(listed))
+
+
+def _facts(stats: StatResults, c: dict[str, Any]) -> dict[str, bool | None]:
+    """`computed.no_data` and `computed.other` of a classification. Where the data
+    could not be asked (a field it no longer has), `no_data` is written without
+    an answer: it says the server looked, so the style is not computed again on
+    every read."""
+    key = _presence_key(c)
+    if key is None:
+        return {}
+    found = stats.get(key)
+    if not isinstance(found, Presence):
+        return {"no_data": None}
+    return {
+        "no_data": found.no_data,
+        **({"other": found.other} if found.other is not None else {}),
+    }
 
 
 def _class_key(c: dict[str, Any]) -> StatKey | None:
@@ -270,6 +320,49 @@ def _h3_keys(render: dict[str, Any]) -> dict[str, StatKey]:
     }
 
 
+def settled_class_keys(doc: dict[str, Any], fingerprint: str) -> set[StatKey]:
+    """The class statistics of classifications that keep their classes: computed
+    from this data already and only lacking what the data holds beside the
+    classes (a style from before that was recorded, or one converted from the
+    old format). Asking for them again would move classes the style was stamped
+    with; left out, the classes stay and only `no_data` and `other` are written."""
+    settled: set[StatKey] = set()
+    needed: set[StatKey] = set()
+    for _, c in _classifications(doc):
+        key = _class_key(c)
+        if key is None:
+            continue
+        computed = c.get("computed")
+        if (
+            isinstance(computed, dict)
+            and computed.get("data") == fingerprint
+            and "no_data" not in computed
+        ):
+            settled.add(key)
+        else:
+            needed.add(key)
+    return settled - needed
+
+
+def facts_missing(doc: dict[str, Any]) -> bool:
+    """Whether a classification lacks what the data holds beside its classes
+    (`computed.no_data`): a style from before that was recorded, one converted
+    from the old format, or an author's categories never held against the data.
+    Not a reason to compute a style when it is read (`computed_missing`, so a
+    project load computes nothing for it): the facts are written with every
+    computation, and asked for where the style is checked anyway (its panel
+    opening)."""
+    if not isinstance(doc, dict) or doc.get("kind") == "raster":
+        return False
+    for _, c in _classifications(doc):
+        computed = c.get("computed")
+        if _presence_key(c) is not None and (
+            not isinstance(computed, dict) or "no_data" not in computed
+        ):
+            return True
+    return False
+
+
 def computed_missing(doc: dict[str, Any]) -> bool:
     """Whether the style needs computed values it does not have: a classification
     the server computes without `computed`, numeric classes it computed without
@@ -324,9 +417,9 @@ def needed_stats(doc: dict[str, Any]) -> list[StatKey]:
         return [k for k in keys if k is not None]
     keys: list[StatKey] = []
     for _, c in _classifications(doc):
-        key = _class_key(c)
-        if key is not None:
-            keys.append(key)
+        for key in (_class_key(c), _presence_key(c)):
+            if key is not None:
+                keys.append(key)
     keys.extend(_range_key(v) for v in _value_forms(doc))
     render = _h3_render(doc)
     if render is not None:
@@ -589,12 +682,19 @@ def apply_computed(
     for ci, c in _classifications(out):
         if (range_key := _manual_range_key(c)) is not None:
             # Manual classes stay as they are: only the field's minimum and maximum.
-            c["computed"] = _manual_computed(c, stats.get(range_key), stamp, notes, ci)
+            c["computed"] = {
+                **_manual_computed(c, stats.get(range_key), stamp, notes, ci),
+                **_facts(stats, c),
+            }
             continue
         if _breaks_key(c) is None and _top_key(c) is None:
-            # Lost its count: nothing is computed any more, and only the server
-            # removes what it wrote.
-            c.pop("computed", None)
+            # An author's categories (or a classification that lost its count):
+            # no class is computed, and only the server removes what it wrote.
+            # What the data holds beside the classes is still recorded.
+            if _presence_key(c) is None:
+                c.pop("computed", None)
+            else:
+                c["computed"] = {**stamp, **_facts(stats, c)}
             continue
         breaks_key, top_key = _breaks_key(c), _top_key(c)
         breaks = stats.get(breaks_key) if breaks_key else None
@@ -632,6 +732,7 @@ def apply_computed(
             **stamp,
             **({"domain": domain} if domain else {}),
             **({"generated": generated} if generated else {}),
+            **_facts(stats, c),
         }
     for vpath, v in _attribute_forms(out):
         if v.get("domain") is not None:

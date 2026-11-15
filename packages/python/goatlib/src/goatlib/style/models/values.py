@@ -139,6 +139,11 @@ class Computed(StyleModel):
     scope: Literal["dataset"] = "dataset"
     domain: Annotated[tuple[float, float], LAX] | None = None
     generated: Generated | None = None
+    #: Whether the data has features without a value in the field, and, for
+    #: categories, values no class lists: what the legend's "No data" and "Other"
+    #: entries stand for. Absent where the server could not tell.
+    no_data: bool | None = None
+    other: bool | None = None
 
 
 Scale = Literal["linear", "sqrt", "log"]

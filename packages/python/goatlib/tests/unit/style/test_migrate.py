@@ -6,7 +6,14 @@ from typing import Any
 
 import pytest
 from goatlib.style import migrate as migrate_module
-from goatlib.style.compute import Breaks, apply_computed
+from goatlib.style.compute import (
+    Breaks,
+    Presence,
+    apply_computed,
+    facts_missing,
+    needed_stats,
+    settled_class_keys,
+)
 from goatlib.style.context import DataContext
 from goatlib.style.defaults import default_style
 from goatlib.style.fingerprint import is_stale
@@ -42,13 +49,31 @@ def test_a_converted_classified_style_is_not_stale_for_its_fingerprint() -> None
     m = migrate_style(
         QUANTILE_V0, DISTRICTS, fingerprint="ducklake:7", at="2026-10-25T00:00:00Z"
     )
-    assert not is_stale(m.document, "ducklake:7")
     assert is_stale(m.document, "ducklake:8")
     assert m.document["classify"][0]["computed"] == {
         "at": "2026-10-25T00:00:00Z",
         "data": "ducklake:7",
         "scope": "dataset",
     }
+    # Not stale for its own data, so loading the project computes nothing. The
+    # converter cannot know what the data holds beside the classes: that is asked
+    # when the style's panel opens, and asks for nothing else, so the classes stay
+    # as converted.
+    assert not is_stale(m.document, "ducklake:7")
+    assert facts_missing(m.document)
+    [class_key] = settled_class_keys(m.document, "ducklake:7")
+    assert class_key[0] == "breaks"
+    presence = [k for k in needed_stats(m.document) if k[0] == "presence"]
+    computed, _ = apply_computed(
+        m.document,
+        {presence[0]: Presence(no_data=False)},
+        geometry="polygon",
+        fingerprint="ducklake:7",
+        at="2026-10-26T00:00:00Z",
+    )
+    assert computed["classify"][0]["classes"] == m.document["classify"][0]["classes"]
+    assert computed["classify"][0]["computed"]["no_data"] is False
+    assert not is_stale(computed, "ducklake:7") and not facts_missing(computed)
     assert errors(m.document, DISTRICTS) == []
     assert not m.fell_back
 

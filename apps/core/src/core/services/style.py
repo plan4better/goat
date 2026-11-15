@@ -20,7 +20,7 @@ from core.services.processes import (
     StyleCheckUnavailable,
     style_check,
 )
-from goatlib.style.compute import needed_stats, same_ignoring_stamps
+from goatlib.style.compute import facts_missing, needed_stats, same_ignoring_stamps
 from goatlib.style.context import DataContext
 from goatlib.style.data_check import referenced_fields
 from goatlib.style.defaults import default_style
@@ -221,11 +221,17 @@ async def read_style(
     """A style as a reader gets it (spec 12, 13.2): a style whose data changed is
     recomputed by processes and stored once, and the answer carries its issues;
     with `check` (the panel opening), a current style is checked too, its issues
-    (`damaged` ones included) answered and nothing stored. When processes cannot
+    (`damaged` ones included) answered and nothing stored, unless it lacks what
+    its data holds beside the classes, which is computed and stored then. When processes cannot
     answer, or could not compute it, the style comes back marked `stale`."""
     document = upgrade(stored.document, stored.context(stored.document)).document
     stale = is_stale(document, stored.fingerprint)
-    if not stale and not check:
+    # The panel opening asks processes anyway: a style that does not yet say what
+    # its data holds beside the classes (`computed.no_data`, `computed.other`; one
+    # from before these were recorded, or converted from the old format) gets that
+    # then, and it is stored. Reading a style for a map never computes for it.
+    refresh = stale or (check and facts_missing(document))
+    if not refresh and not check:
         return stored.read(document)
     try:
         result = await style_check(
@@ -234,13 +240,13 @@ async def read_style(
             geometry=stored.geometry,
             fingerprint=stored.fingerprint,
             access_token=access_token,
-            compute=stale,
+            compute=refresh,
             stored=True,
         )
     except StyleCheckUnavailable:
         return stored.read(document, stale=stale)
     issues = [Issue.model_validate(i) for i in result.get("issues", [])]
-    if not stale:
+    if not refresh:
         return stored.read(document, issues)
     recomputed = result["document"]
     still_stale = is_stale(recomputed, stored.fingerprint)

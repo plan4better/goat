@@ -23,11 +23,13 @@ from goatlib.analysis.statistics import (
 from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.style.compute import (
     Breaks,
+    Presence,
     StatKey,
     StatResults,
     apply_computed,
     breaks_for_classes,
     needed_stats,
+    settled_class_keys,
     stable,
 )
 from goatlib.style.context import DataContext, FieldInfo, FieldType
@@ -200,7 +202,11 @@ def compute_stats(
     types = _field_types(con, relation)
     out: dict[StatKey, Any] = {}
     h3: dict[tuple[str, ...], list[StatKey]] = {}
+    # How many different values a field has, where the most frequent were asked.
+    distinct: dict[str, int] = {}
     for key in dict.fromkeys(keys):
+        if key[0] == "presence":
+            continue
         if key[0] == "h3":
             # A sum or mean over a field the data lacks or holds as text is left
             # to the checks.
@@ -224,6 +230,7 @@ def compute_stats(
                 con, relation, field, order=SortOrder.descendent, limit=int(key[2])
             )
             out[key] = [(_category_value(v.value, ftype), v.count) for v in uv.values]
+            distinct[field] = uv.total
         elif kind == "range" and numeric:
             where = "TRUE"
             if len(key) > 2 and key[2] in _SCALE_WHERE:
@@ -231,7 +238,56 @@ def compute_stats(
             out[key] = _min_max(con, relation, field, where)
     for group in h3.values():
         out.update(_h3_stats(con, relation, group))
+    for key in dict.fromkeys(keys):
+        ftype = types.get(key[1]) if key[0] == "presence" else None
+        if ftype is not None:
+            out[key] = _presence(con, relation, key, ftype, distinct)
     return out
+
+
+def _presence(
+    con: duckdb.DuckDBPyConnection,
+    relation: str,
+    key: StatKey,
+    ftype: str,
+    distinct: dict[str, int],
+) -> Presence:
+    """Whether the field has rows without a value, and for categories whether it
+    has values beside the listed ones (`("presence", field, "in", *values)`) or
+    more values than the most frequent asked for (`"top", count`): one count
+    over the field, the number of its values taken from the top values' query."""
+    field, rest = key[1], key[2:]
+    column = quote_identifier(field)
+    gaps = f"count(*) - count({column})"
+    if rest[:1] == ("in",):
+        numeric = ftype in ("integer", "number")
+        listed: list[Any] = []
+        for text in rest[1:]:
+            if not numeric:
+                listed.append(text)
+                continue
+            try:
+                listed.append(float(text))
+            except ValueError:
+                pass
+        value = f"CAST({column} AS DOUBLE)" if numeric else f"CAST({column} AS VARCHAR)"
+        marks = ", ".join("?" for _ in listed)
+        beside = (
+            f"count(*) FILTER (WHERE {column} IS NOT NULL AND {value} NOT IN ({marks}))"
+            if listed
+            else f"count({column})"
+        )
+        row = con.execute(f"SELECT {gaps}, {beside} FROM {relation}", listed).fetchone()
+        return Presence(no_data=row[0] > 0, other=row[1] > 0)
+    row = con.execute(f"SELECT {gaps} FROM {relation}").fetchone()
+    if rest[:1] == ("top",):
+        values = distinct.get(field)
+        if values is None:
+            values = con.execute(
+                f"SELECT count(DISTINCT {column}) FROM {relation}"
+            ).fetchone()[0]
+        return Presence(no_data=row[0] > 0, other=values > int(rest[1]))
+    return Presence(no_data=row[0] > 0)
 
 
 def compute_into(
@@ -246,7 +302,8 @@ def compute_into(
     domains) written in from the relation's data and stamped with `fingerprint`,
     and the notes (12). The relation is read only when the style needs values;
     what the server wrote into parts that need none any more is removed."""
-    keys = needed_stats(document)
+    settled = settled_class_keys(document, fingerprint)
+    keys = [key for key in needed_stats(document) if key not in settled]
     return apply_computed(
         document,
         compute_stats(con, relation, keys) if keys else {},

@@ -1,3 +1,4 @@
+import copy
 from pathlib import Path
 
 import duckdb
@@ -18,7 +19,11 @@ CLASSIFIED = {
             "field": "density",
             "method": "quantile",
             "count": 5,
-            "computed": {"at": "2026-10-25T10:00:00Z", "data": "ducklake:5"},
+            "computed": {
+                "at": "2026-10-25T10:00:00Z",
+                "data": "ducklake:5",
+                "no_data": False,
+            },
             "classes": [{"id": "c1", "to": 3}, {"id": "c2", "from": 3}],
         }
     ],
@@ -76,6 +81,11 @@ def test_stale_when_computed_data_differs_or_computed_values_are_missing() -> No
     }
     del without["classify"][0]["computed"]
     assert is_stale(without, "ducklake:5")
+    # Computed before the server recorded what the data holds beside the classes:
+    # not stale for that, so reading it computes nothing.
+    before = copy.deepcopy(CLASSIFIED)
+    del before["classify"][0]["computed"]["no_data"]
+    assert not is_stale(before, "ducklake:5")
     plain = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#ff0000"}}}
     assert not is_stale(plain, "ducklake:5")
     assert not is_stale(CLASSIFIED, None)

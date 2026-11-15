@@ -1,6 +1,7 @@
 """Reading one style recomputes it when its data changed (spec 12, 13.2)."""
 
 import copy
+import json
 from typing import Any
 from uuid import UUID
 
@@ -17,7 +18,9 @@ from tests.styles.conftest import StyleWorld
 S = settings.SCHEMA
 
 
-def classified(data: str, breaks: tuple[int, ...] = (5,)) -> dict[str, Any]:
+def classified(
+    data: str, breaks: tuple[int, ...] = (5,), facts: bool = True
+) -> dict[str, Any]:
     classes: list[dict[str, Any]] = []
     bounds = [None, *breaks, None]
     for i in range(len(bounds) - 1):
@@ -38,7 +41,12 @@ def classified(data: str, breaks: tuple[int, ...] = (5,)) -> dict[str, Any]:
                 "method": "quantile",
                 "count": len(classes),
                 "classes": classes,
-                "computed": {"at": "2026-10-25T10:00:00Z", "data": data},
+                "computed": {
+                    "at": "2026-10-25T10:00:00Z",
+                    "data": data,
+                    # What the data holds beside the classes (spec 12).
+                    **({"no_data": False} if facts else {}),
+                },
             }
         ],
     }
@@ -70,7 +78,11 @@ class Recompute:
         c = document["classify"][0]
         if self.breaks is not None:
             c["classes"] = classified("x", self.breaks)["classify"][0]["classes"]
-        c["computed"] = {"at": "2026-10-26T10:00:00Z", "data": kwargs["fingerprint"]}
+        c["computed"] = {
+            "at": "2026-10-26T10:00:00Z",
+            "data": kwargs["fingerprint"],
+            "no_data": False,
+        }
         return {"document": document, "issues": []}
 
 
@@ -201,6 +213,57 @@ async def test_a_recompute_that_stays_stale_says_so(
     monkeypatch.setattr(style_service, "style_check", unchanged)
     result = await read(db_session, style_id)
     assert result.stale is True
+
+
+async def style_without_facts(db: AsyncSession, world: StyleWorld) -> UUID:
+    """A style computed from the layer's data as it is now, before the server
+    recorded what the data holds beside the classes."""
+    style_id = await stale_style(db, world)
+    fingerprint = (await read_stored(db, style_id)).fingerprint
+    assert fingerprint is not None
+    document = classified(fingerprint, facts=False)
+    await db.execute(
+        text(
+            f"UPDATE {S}.layer_style SET document = CAST(:doc AS jsonb) WHERE id = :id"
+        ),
+        {"id": style_id, "doc": json.dumps(document)},
+    )
+    await db.commit()
+    return style_id
+
+
+@pytest.mark.asyncio
+async def test_a_map_reading_a_style_without_the_facts_computes_nothing(
+    db_session: AsyncSession, style_world: StyleWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Loading a project asks processes for nothing: the style is not stale."""
+    style_id = await style_without_facts(db_session, style_world)
+    check = Recompute()
+    monkeypatch.setattr(style_service, "style_check", check)
+    result = await read(db_session, style_id)
+    assert check.calls == []
+    assert result.stale is False
+    assert "no_data" not in result.document["classify"][0]["computed"]
+
+
+@pytest.mark.asyncio
+async def test_opening_the_panel_on_a_style_without_the_facts_computes_and_stores_them(
+    db_session: AsyncSession, style_world: StyleWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The panel opening asks processes anyway: the facts are computed then, once."""
+    style_id = await style_without_facts(db_session, style_world)
+    check = Recompute()
+    monkeypatch.setattr(style_service, "style_check", check)
+    result = await read(db_session, style_id, check=True)
+    assert check.calls[0]["compute"] is True
+    assert result.stale is False
+    assert result.document["classify"][0]["computed"]["no_data"] is False
+    stored = await read_stored(db_session, style_id)
+    assert stored.document["classify"][0]["computed"]["no_data"] is False
+    # The next opening only checks.
+    again = await read(db_session, style_id, check=True)
+    assert check.calls[1]["compute"] is False
+    assert again.revision == result.revision
 
 
 @pytest.mark.asyncio

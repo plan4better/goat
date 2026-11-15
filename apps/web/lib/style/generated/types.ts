@@ -111,6 +111,8 @@ export interface Computed {
   scope?: "dataset";
   domain?: [unknown, unknown] | null;
   generated?: Generated | null;
+  no_data?: boolean | null;
+  other?: boolean | null;
 }
 /**
  * What the server wrote into a classification's classes: the target and the

@@ -1829,6 +1829,30 @@
       }
      ],
      "default": null
+    },
+    "no_data": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "No Data"
+    },
+    "other": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Other"
     }
    },
    "required": [

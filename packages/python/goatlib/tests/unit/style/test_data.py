@@ -150,17 +150,15 @@ def test_compute_into_writes_the_classes_and_stamps_them(duck) -> None:
 
 
 def test_compute_into_reads_nothing_for_a_style_without_computed_values() -> None:
-    by_hand = {
-        "field": "kind",
-        "method": "categories",
-        "classes": [{"values": ["a"]}],
-        "computed": {"at": "2026-01-01T00:00:00Z", "data": "ducklake:1"},
+    doc = {
+        "version": 1,
+        "kind": "vector",
+        "symbol": {"marker": {"color": "#ff0000", "size": 8}},
     }
-    doc = {"version": 1, "kind": "vector", "classify": [by_hand]}
     out, notes = compute_into(
         None, "no_such_relation", doc, geometry="point", fingerprint="f"
     )
-    assert "computed" not in out["classify"][0] and notes == []
+    assert out == doc and notes == []
 
 
 def test_a_million_rows_compute_in_seconds() -> None:
