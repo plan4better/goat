@@ -8,6 +8,7 @@
 #include "../kernel/mode_selector.h"
 #include "../kernel/snap.h"
 #include "../pt/stop_finder.h"
+#include "../pt/timetable_io.h"
 #include "../types.h"
 
 #include <nigiri/timetable.h>
@@ -125,7 +126,7 @@ std::string build_access_egress_table(AccessEgressConfig const &cfg)
     double const buffer_m = (cfg.max_min / 60.0) * speed_kmh * 1000.0 * 1.3;
 
     auto t0 = std::chrono::steady_clock::now();
-    auto tt = nigiri::timetable::read(std::filesystem::path{cfg.timetable_path});
+    pt::MappedTimetable const tt{cfg.timetable_path};
     auto coords = pt::get_stop_coords_3857(*tt);  // indexed by location_idx
     std::fprintf(stderr, "[Preprocessing] Loaded timetable: %u locations, %.0f ms\n",
                  tt->n_locations(), now_ms(t0));

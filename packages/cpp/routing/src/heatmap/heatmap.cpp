@@ -8,6 +8,7 @@
 #include "../output/hex_resolution.h"
 #include "../output/sql_export.h"
 #include "../pt/nigiri_routing.h"
+#include "../pt/timetable_io.h"
 
 #include <nigiri/routing/query.h>
 #include <nigiri/timetable.h>
@@ -694,9 +695,8 @@ void run_pt(HeatmapConfig const &cfg, duckdb::Connection &con,
                  output_resolution);
 
     // 1. Load the timetable.
-    auto owned_tt =
-        nigiri::timetable::read(std::filesystem::path{cfg.timetable_path});
-    nigiri::timetable const *tt = &*owned_tt;
+    pt::MappedTimetable const owned_tt{cfg.timetable_path};
+    nigiri::timetable const *tt = owned_tt.get();
     std::fprintf(stderr, "[Pipeline] Load timetable (%u locations): %.0f ms\n",
                  tt->n_locations(), timer.elapsed_ms());
 
