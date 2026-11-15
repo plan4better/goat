@@ -71,4 +71,4 @@ Changes show in the legend at once; there is nothing to apply. For a ramp [by at
 - **Use clear, descriptive titles and captions** that explain what the layer represents.
 - **Name the classes** when their values or ranges say little to the reader.
 - **Hide the legend** of layers that don't need explanation, such as reference layers.
-- **Leave rules out of the legend** when they only hide features or change their zooms.
+- **Leave rules out of the legend** when they only change the zooms of features. A rule that hides features has no legend entry.

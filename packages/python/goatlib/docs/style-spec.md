@@ -1460,23 +1460,23 @@ For labels, label `priority` decides placement and order together.
 | Construct | Legend entry |
 |---|---|
 | layer without classifications | one swatch with the layer name |
-| classification | a section titled `title` (default: the field's display name), one entry per class in list order, then `other`, then `no_data` |
-| class | its `name` (default: the values joined with ", " or the range text), a swatch of the class's parts |
-| rule | its `name`, a swatch of what it changes; rules that only hide features or set zooms need `legend: false` (or show a plain entry) |
+| classification | a section titled `title` (default: the field's display name; classifications of one field with the same classes, categories or numeric bounds, are one section whose entries show all they set), one entry per class in list order, then `other`, then `no_data` (these two when the data holds such features, `computed.other` and `computed.no_data`, with the look the style gives them or the base look; while not computed, when the style has a record; never when hidden or left out); none while it has no classes (not computed yet, or the field has no values) |
+| class | its `name` (default: the values joined with ", ", numbers with the unit and the values of a yes/no field as "Yes" and "No", or the range text; a name cut off shows in full on hover), a swatch of the class's parts in a fixed box; classes that set a size are drawn at sizes in the ratio they have to each other (the largest at most 28 px for markers, 12 px for lines, 6 px for outlines); a class of the height alone a bar and its height in metres; classes of the outline's color alone a ring |
+| rule | its `name`, a swatch of what it changes; a rule that hides its features has no entry; rules that only set zooms need `legend: false` (or show a plain entry); in a layer without classes the features no rule matches follow as "Other features" |
 | value form with `palette` | a color ramp with the domain's ends, formatted |
-| value form with `range` (sizes, widths) | three samples at the start, middle and end of the domain |
-| heatmap | a ramp "Low" to "High" |
-| cluster | "Clusters" with a sample, then the base and classes for single points |
-| H3 | the cell value (`count`, or the field with `sum` or `mean`) as classes or a ramp |
+| value form with `range` (sizes, widths) | three samples at the start, middle and end of the domain, under the field's name |
+| heatmap | a ramp "Low" to "High"; nothing of the points (classes, rules) while they are not drawn, and only the points from `points_from_zoom` on |
+| cluster | "Clusters" with a sample while the map clusters (below `cluster_until_zoom`), then the base and classes for single points |
+| H3 | the cell value (`count`, or the field with `sum` or `mean`) as classes or a ramp; one hexagon swatch while the values are not computed; the points as for a heatmap |
 | `extrude` (3.6, 8.3) | one line after the color entries: "Height" with the fixed height, the top of a by-zoom height, the field (with its range, or "levels x 3 m" for storeys), the number of classes, or for H3 the cell value |
 | raster `image` | none, or the file's color table |
 | raster `continuous` | a ramp or classes with the domain and `unit`; `min_label` and `max_label` replace the end values |
 | raster `categorical` | one entry per class |
-| raster `hillshade` | "Shaded relief", plus the ramp when it has a palette |
+| raster `hillshade` | none, or the ramp when it has a palette |
 | map service | the service's legend image for the chosen `service_style`, when it has one |
 
 - **Range text** uses the classification's `format` and `unit`: "under 2,800", "2,800 to 3,600", "6,300 and more".
-- **Zoom:** swatches of zoom-dependent values use the current map zoom on screen and the print zoom in print.
+- **Zoom:** swatches of zoom-dependent values use the current map zoom on screen and the print zoom in print; a size or width by zoom is read at the middle of its stops, so symbols do not grow and shrink while the map zooms.
 
 > "No legend for this layer."
 
@@ -2497,7 +2497,7 @@ to the intent, with the data it came from.
 | H3 `classify` or continuous H3 colors | breaks or domain per resolution | `render.computed`, keyed by resolution |
 | raster `continuous` or `hillshade` palette without `domain`; raster classes with a method | the minimum and maximum, and class breaks, of the band or band formula, from a sample of its values (the file's overviews) | `render.computed`; `render.classify.classes` + `computed` |
 
-- **`computed`** holds `at`, `data` (the data fingerprint) and `scope`, and on a classification `generated`: the
+- **`computed`** holds `at`, `data` (the data fingerprint) and `scope`, on every classification of a field `no_data` and `other` (whether the data has features without a value in the field and, for categories, values no class lists: the legend lists "No data" and "Other" when it has, 7.2; a classification whose classes are the author's is held against the data for these alone; a style that lacks them, one computed before they were recorded or converted from the old format, is not stale for that and gets them with its next computation or when its panel opens, its classes untouched; `no_data: null` says the server looked and could not tell), and on a classification `generated`: the
   target and the value the server wrote per class id.
 - **Fingerprint:** an opaque string the server writes, telling which data the values were computed from:
   - a DuckLake layer: the snapshot of the layer's last data change (`ducklake:455812`). core tracks it per layer from
@@ -3069,7 +3069,7 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 | `legend` | `false` | no | shown |
 | `classes` | list of class records (18.5) | no | computed |
 | `other`, `no_data` | class record | no | none |
-| `computed` | `{ at, data, scope, generated }` | server | |
+| `computed` | `{ at, data, scope, no_data, other, generated }` | server | |
 
 ### 18.5 Class record
 

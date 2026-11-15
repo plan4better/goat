@@ -2,7 +2,7 @@
 // size samples for ranges. Swatches hold fixed values at a zoom; the legend components draw them.
 import { perLayer } from "@/lib/style/compile/cascade";
 import { extrudes } from "@/lib/style/compile/polygons";
-import { h3Resolution, h3Scale } from "@/lib/style/compile/render";
+import { DEFAULT_CLUSTER_SYMBOL, h3Resolution, h3Scale } from "@/lib/style/compile/render";
 import type { Geometry } from "@/lib/style/compile/types";
 import { fromForm, valueAt } from "@/lib/style/compile/values";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
@@ -28,8 +28,11 @@ export interface LegendEntry {
   name?: string;
   values?: Array<string | number | boolean>;
   range?: { from?: number; to?: number };
-  /** The classification's Other or No data record. */
-  extra?: "other" | "no_data";
+  /** The classification's Other or No data record, the layer's clusters, its H3 cells in one color, or the
+   * features no rule matches (`rest`). */
+  extra?: "other" | "no_data" | "cluster" | "h3" | "rest";
+  /** The height in metres a class of the height gives its features. */
+  height?: number;
   swatch: Swatch;
 }
 
@@ -49,11 +52,24 @@ export type LegendSection =
        * list writes them. */
       unit?: string;
       format?: RangeFormat;
+      /** H3: how the cell value is computed. */
+      op?: "count" | "sum" | "mean";
+      /** The classification sets a size (a marker's size, a line's or an outline's width): its entries are drawn
+       * at sizes in the ratio the classes have. Every other block keeps its swatches in one fixed box. */
+      sized?: boolean;
+      /** The classification sets the outline alone: its swatches are rings, so the outline reads. */
+      hollow?: boolean;
+      /** The classification sets the height alone: its entries draw a bar of their height, a swatch shows none. */
+      bars?: boolean;
     }
   | {
       kind: "ramp";
       id: string;
       title?: string;
+      /** The field a value form reads. */
+      field?: string;
+      /** A density without numbers (a heatmap): the ends read low and high. */
+      ends?: "low_high";
       colors: string[];
       domain: [number, number];
       /** The value at the middle of the ramp, where the scale is not linear. */
@@ -78,7 +94,14 @@ export type LegendSection =
       op?: "count" | "sum" | "mean";
     }
   | { kind: "image"; id: string; title?: string; url: string }
-  | { kind: "sizes"; id: string; title?: string; samples: Array<{ value: number; swatch: Swatch }> };
+  | {
+      kind: "sizes";
+      id: string;
+      title?: string;
+      /** The field the sizes follow. */
+      field?: string;
+      samples: Array<{ value: number; swatch: Swatch }>;
+    };
 
 export interface Legend {
   title?: string;
@@ -99,6 +122,9 @@ const KEYS: Record<string, string[]> = {
   casing: ["color", "width", "opacity"],
   marker: ["shape", "color", "size", "opacity", "icon_color"],
 };
+
+/** The properties whose classes are sizes. */
+const SIZES = new Set(["marker.size", "line.width", "outline.width"]);
 
 const MAIN: Record<Geometry, string> = { point: "marker", line: "line", polygon: "fill" };
 
@@ -126,12 +152,23 @@ export const classificationProperty = (c: JsonObject, geometry: Geometry): strin
 
 const list = (value: unknown): JsonObject[] => (Array.isArray(value) ? value.filter(isObject) : []);
 
+/** Sizes and widths: read at one zoom whatever the map's. A legend whose symbols grow and shrink with the zoom
+ * jumps; colors and every other value follow the map's zoom, so a swatch shows the color on screen. */
+const STEADY = new Set(["marker.size", "line.width", "outline.width", "casing.width"]);
+
+/** The zoom a size by zoom is read at: the middle of its stops. */
+function steadyZoom(form: unknown, zoom: number): number {
+  const stops = isObject(form) && Array.isArray(form.zoom) ? (form.zoom as unknown[][]) : [];
+  const [first, last] = [stops[0]?.[0], stops[stops.length - 1]?.[0]];
+  return typeof first === "number" && typeof last === "number" ? (first + last) / 2 : zoom;
+}
+
 /** A part key's value at `zoom`: fixed, or taken from its zoom stops; a value by attribute shows the reference. */
 function resolve(form: unknown, path: string, zoom: number): unknown {
   const kind = (PROPERTY_KINDS[path] as "color" | "number" | "choice" | undefined) ?? "choice";
   const at = valueAt(
     fromForm(form, kind, DEFAULTS[path], (v) => v),
-    zoom
+    STEADY.has(path) ? steadyZoom(form, zoom) : zoom
   );
   return Array.isArray(at) || isObject(at) ? DEFAULTS[path] : at;
 }
@@ -154,6 +191,9 @@ function swatch(
     const used = part === MAIN[geometry] || isObject(base) || isObject(over);
     if (!used || over === false || (base === false && !isObject(over))) continue;
     const merged: JsonObject = { ...(isObject(base) ? base : {}), ...(isObject(over) ? over : {}) };
+    // A main color by attribute has no one color to show (its ramp stands beside the entries): neutral grey.
+    if (part === MAIN[geometry] && isObject(merged.color) && typeof merged.color.field === "string")
+      merged.color = LEGEND_NEUTRAL;
     if (neutral && part === MAIN[geometry]) {
       const own = isObject(over) ? over : {};
       if (own.color === undefined) merged.color = LEGEND_NEUTRAL;
@@ -241,6 +281,7 @@ function valueFormSections(style: JsonObject, geometry: Geometry, zoom: number):
           kind: "ramp",
           id,
           title,
+          field: form.field,
           colors,
           domain,
           // Three significant digits: a guide to where the middle sits, not a value to read exactly.
@@ -254,7 +295,7 @@ function valueFormSections(style: JsonObject, geometry: Geometry, zoom: number):
             swatch: swatch(style, geometry, zoom, { [part]: { [key]: scaled(form, domain, value) } }),
           };
         });
-        sections.push({ kind: "sizes", id, title, samples });
+        sections.push({ kind: "sizes", id, title, field: form.field, samples });
       }
     }
   }
@@ -338,10 +379,12 @@ function mergeRecords(a: unknown, b: unknown): JsonObject | undefined {
   return out;
 }
 
-const classValues = (c: JsonObject) => JSON.stringify(list(c.classes).map((k) => k.values));
+/** What a classification's classes hold: their values (categories) or their bounds (numeric classes). */
+const classValues = (c: JsonObject) => JSON.stringify(list(c.classes).map((k) => [k.values, k.from, k.to]));
 
-/** The shown classifications, those of one field with the same categories as one: a class shows everything the
- * classifications set for it (a color and an icon by the same field are one list). */
+/** The shown classifications, those of one field with the same classes as one (the same categories, or the same
+ * numeric bounds): a class shows everything the classifications set for it (a size and a color by the same field
+ * are one list). */
 function legendClassifications(
   style: JsonObject,
   geometry: Geometry
@@ -351,8 +394,7 @@ function legendClassifications(
     if (c.legend === false) continue;
     const same = out.find(
       ({ c: o }) =>
-        o.method === "categories" &&
-        c.method === "categories" &&
+        (o.method === "categories") === (c.method === "categories") &&
         o.field === c.field &&
         classValues(o) === classValues(c)
     );
@@ -389,7 +431,7 @@ function heightSection(style: JsonObject, geometry: Geometry): LegendSection | n
   }
   if (geometry !== "polygon") return null;
   const classified = list(style.classify).find(
-    (c) => c.target === "extrude.height" && typeof c.field === "string"
+    (c) => c.target === "extrude.height" && typeof c.field === "string" && list(c.classes).length > 0
   );
   if (classified)
     return {
@@ -438,22 +480,30 @@ export function buildLegend(
   const geometry = ctx.geometry ?? (style.geometry as Geometry | undefined) ?? "point";
   const sections: LegendSection[] = [];
   const blocks: Array<{ section: Extract<LegendSection, { kind: "entries" }>; targets: string[] }> = [];
-  for (const { c, targets } of legendClassifications(style, geometry)) {
+  // A heatmap or H3 layer draws its points from a zoom on (`points_from_zoom`), or never: below that zoom the map
+  // shows the density alone, from it the points alone. The legend lists what is on the map.
+  const render = isObject(style.render) ? style.render : null;
+  const density = render?.type === "heatmap" || render?.type === "h3";
+  const points =
+    !density || (typeof render?.points_from_zoom === "number" && ctx.zoom >= render.points_from_zoom);
+  for (const { c, targets } of points ? legendClassifications(style, geometry) : []) {
     const entries: LegendEntry[] = [];
-    let hidden = 0;
     const numeric = c.method !== "categories";
     const neutral = !targets.some((target) => CAPABILITIES[target]?.kind === "color");
     list(c.classes).forEach((k, i) => {
       // A class hidden with the eye draws nothing on the map, so the legend leaves it out too.
-      if (k.visible === false) hidden++;
       if (k.legend === false || k.visible === false) return;
       // A class picked by hand before its values are: it draws nothing yet.
       if (!numeric && Array.isArray(k.values) && !k.values.length) return;
+      // Its features are hidden with the eye in another classification of the field: nothing of it is on the map.
+      if (hiddenElsewhere(style, c, k)) return;
       const entry: LegendEntry = {
         id: typeof k.id === "string" ? k.id : String(i),
         swatch: swatch(style, geometry, ctx.zoom, k, neutral),
       };
       if (typeof k.name === "string") entry.name = k.name;
+      const raised = heightOf(k);
+      if (raised !== undefined) entry.height = raised;
       if (numeric)
         entry.range = {
           ...(typeof k.from === "number" ? { from: k.from } : {}),
@@ -462,19 +512,51 @@ export function buildLegend(
       else if (Array.isArray(k.values)) entry.values = k.values as LegendEntry["values"];
       entries.push(entry);
     });
+    // The height of features a class of the height does not raise itself: the layer's own, where it is one value.
+    const raisedTo = (record: JsonObject): number | undefined =>
+      heightOf(record) ?? (targets.includes("extrude.height") ? baseHeight(style) : undefined);
     for (const extra of ["other", "no_data"] as const) {
-      const record = c[extra];
-      if (isObject(record) && record.visible === false) hidden++;
-      if (!isObject(record) || record.legend === false || record.visible === false) continue;
+      const own = c[extra];
+      // The author hid these features with the eye, or left them out of the legend.
+      if (isObject(own) && (own.legend === false || own.visible === false)) continue;
+      // The data decides (spec 12): the server writes into `computed` whether the field has features without a
+      // value, and values no class lists. They are listed when it has, with the look the style gives them or the
+      // base look they keep, and not listed when it has none.
+      const fact = isObject(c.computed) ? c.computed[extra] : undefined;
+      // While the server has not looked: listed where the style sets something for them, and features without a
+      // value also where another classification of the field lists them (they are the same features).
+      const recorded =
+        isObject(own) ||
+        (extra === "no_data" &&
+          list(style.classify).some(
+            (o) =>
+              o.field === c.field &&
+              o.legend !== false &&
+              isObject(o.no_data) &&
+              o.no_data.legend !== false &&
+              o.no_data.visible !== false
+          ));
+      if (!(typeof fact === "boolean" ? fact : recorded)) continue;
+      const record: JsonObject = isObject(own) ? own : {};
+      // Features without a value hidden with the eye in another classification of the field are not on the map.
+      if (
+        extra === "no_data" &&
+        list(style.classify).some(
+          (o) => o.field === c.field && isObject(o.no_data) && o.no_data.visible === false
+        )
+      )
+        continue;
       entries.push({
         id: extra,
         extra,
         ...(typeof record.name === "string" ? { name: record.name } : {}),
+        ...(raisedTo(record) !== undefined ? { height: raisedTo(record) } : {}),
         swatch: swatch(style, geometry, ctx.zoom, record, neutral),
       });
     }
-    // A classification whose entries are all hidden with the eye leaves no block, nor a heading.
-    if (!entries.length && hidden) continue;
+    // A classification without entries leaves no block, nor a heading: its classes are all hidden with the eye,
+    // or it has none (not computed yet, or its field has no values).
+    if (!entries.length) continue;
     const domain = classDomain(c);
     blocks.push({
       targets,
@@ -487,6 +569,12 @@ export function buildLegend(
         ...(domain ? { domain } : {}),
         ...(typeof c.unit === "string" && c.unit ? { unit: c.unit } : {}),
         ...(isObject(c.format) ? { format: c.format as RangeFormat } : {}),
+        ...(targets.every((target) => target === "extrude.height") ? { bars: true } : {}),
+        ...(targets.some((target) => SIZES.has(target)) ? { sized: true } : {}),
+        ...(geometry !== "line" &&
+        targets.every((target) => target.startsWith("outline.") && !SIZES.has(target))
+          ? { hollow: true }
+          : {}),
       },
     });
   }
@@ -496,28 +584,32 @@ export function buildLegend(
         ? { ...section, properties: targets.map((target) => propertyKey(target, geometry)) }
         : section
     );
-  const rules = list(style.rules).filter((r) => typeof r.name === "string" && r.legend !== false);
+  // A rule that hides its features draws nothing, so it has no entry either.
+  const rules = (points ? list(style.rules) : []).filter(
+    (r) => typeof r.name === "string" && r.legend !== false && r.visible !== false
+  );
+  const forms = points ? valueFormSections(style, geometry, ctx.zoom) : [];
   if (rules.length) {
-    sections.push({
-      kind: "entries",
-      id: "rules",
-      entries: rules.map((r, i) => ({
-        id: typeof r.id === "string" ? r.id : String(i),
-        name: r.name as string,
-        swatch: swatch(style, geometry, ctx.zoom, r),
-      })),
-    });
+    const entries: LegendEntry[] = rules.map((r, i) => ({
+      id: typeof r.id === "string" ? r.id : String(i),
+      name: r.name as string,
+      swatch: swatch(style, geometry, ctx.zoom, r),
+    }));
+    // Without classes or a value by attribute nothing else says what the features no rule matches look like.
+    if (!blocks.length && !forms.length)
+      entries.push({ id: "rest", extra: "rest", swatch: swatch(style, geometry, ctx.zoom) });
+    sections.push({ kind: "entries", id: "rules", entries });
   }
-  sections.push(...valueFormSections(style, geometry, ctx.zoom));
-  if (isObject(style.render) && style.render.type === "heatmap") {
+  sections.push(...forms);
+  if (isObject(style.render) && style.render.type === "heatmap" && !points) {
     const palette = style.render.palette ?? DEFAULTS["heatmap.palette"];
     const colors = Array.isArray(palette)
       ? [...(palette as string[])]
       : [...(PALETTES[palette as string]?.colors ?? [])];
     if (style.render.reverse === true) colors.reverse();
-    sections.push({ kind: "ramp", id: "heatmap", colors, domain: [0, 1] });
+    sections.push({ kind: "ramp", id: "heatmap", colors, domain: [0, 1], ends: "low_high" });
   }
-  if (isObject(style.render) && style.render.type === "h3")
+  if (isObject(style.render) && style.render.type === "h3" && !points)
     sections.push(...h3Sections(style.render, ctx.zoom));
   if (!sections.length) {
     sections.push({
@@ -526,13 +618,70 @@ export function buildLegend(
       entries: [{ id: "base", swatch: swatch(style, geometry, ctx.zoom) }],
     });
   }
-  const height = heightSection(style, geometry);
+  // H3 columns stand only while the hexagons are drawn.
+  const height = density && points ? null : heightSection(style, geometry);
   if (height) sections.push(height);
+  // Clusters first, then the single points (spec 7.2).
+  // (Only below `cluster_until_zoom`: from it on the map draws single points alone.)
+  if (
+    isObject(style.render) &&
+    style.render.type === "cluster" &&
+    ctx.zoom <
+      (typeof style.render.cluster_until_zoom === "number"
+        ? style.render.cluster_until_zoom
+        : (DEFAULTS["cluster.cluster_until_zoom"] as number))
+  )
+    sections.unshift(clusterSection(style.render, ctx.zoom));
   return {
     ...(isObject(legend) && typeof legend.title === "string" ? { title: legend.title } : {}),
     ...(isObject(legend) && typeof legend.caption === "string" ? { caption: legend.caption } : {}),
     sections,
   };
+}
+
+/** Whether every feature of class `k` falls in a class another classification of the same field hides with the eye:
+ * a category whose values are all hidden there, a numeric class inside a hidden range. */
+function hiddenElsewhere(style: JsonObject, c: JsonObject, k: JsonObject): boolean {
+  const hidden = list(style.classify)
+    .filter((o) => o.field === c.field)
+    .flatMap((o) => list(o.classes).filter((h) => h.visible === false));
+  if (!hidden.length) return false;
+  if (Array.isArray(k.values)) {
+    const gone = new Set(hidden.flatMap((h) => (Array.isArray(h.values) ? h.values.map(String) : [])));
+    return k.values.length > 0 && k.values.every((v) => gone.has(String(v)));
+  }
+  const low = (r: JsonObject) => (typeof r.from === "number" ? r.from : -Infinity);
+  const high = (r: JsonObject) => (typeof r.to === "number" ? r.to : Infinity);
+  return hidden.some((h) => !Array.isArray(h.values) && low(h) <= low(k) && high(h) >= high(k));
+}
+
+/** The layer's own height in metres, where it is one value (not by zoom or by attribute). */
+function baseHeight(style: JsonObject): number | undefined {
+  const symbol = isObject(style.symbol) ? style.symbol : {};
+  const own = isObject(symbol.extrude) ? symbol.extrude.height : undefined;
+  const height = own ?? DEFAULTS["extrude.height"];
+  return typeof height === "number" ? height : undefined;
+}
+
+/** The height a class record gives its features, where it sets one. */
+const heightOf = (record: unknown): number | undefined =>
+  isObject(record) && isObject(record.extrude) && typeof record.extrude.height === "number"
+    ? record.extrude.height
+    : undefined;
+
+/** "Clusters" with a sample (spec 7.2): the cluster symbol, at the middle of its sizes where they follow the count. */
+function clusterSection(render: JsonObject, zoom: number): LegendSection {
+  const symbol = isObject(render.symbol) ? render.symbol : (DEFAULT_CLUSTER_SYMBOL as unknown as JsonObject);
+  const marker = isObject(symbol.marker) ? symbol.marker : {};
+  const range =
+    isObject(marker.size) && Array.isArray(marker.size.range) ? (marker.size.range as number[]) : null;
+  const sample = swatch(
+    { symbol },
+    "point",
+    zoom,
+    range ? { marker: { size: (range[0] + range[1]) / 2 } } : undefined
+  );
+  return { kind: "entries", id: "cluster", entries: [{ id: "cluster", extra: "cluster", swatch: sample }] };
 }
 
 /** H3 hexagons (spec 7.2): the cell value at the resolution the zoom draws, as classes or a ramp; nothing while the
@@ -549,6 +698,19 @@ function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
         ...(field.field ? { title: field.field } : {}),
         colors: scale.colors,
         domain: [scale.min, scale.max],
+      },
+    ];
+  // Not computed yet, or one value in every cell: the map draws every hexagon in one color.
+  if (scale.kind === "color")
+    return [
+      {
+        kind: "entries",
+        id: "h3",
+        ...field,
+        op: value.op === "sum" || value.op === "mean" ? value.op : "count",
+        entries: [
+          { id: "0", extra: "h3", swatch: { geometry: "polygon" as const, fill: { color: scale.color } } },
+        ],
       },
     ];
   if (scale.kind !== "classes") return [];
@@ -694,14 +856,26 @@ export function rangeText(range: { from?: number; to?: number }, opts: RangeOpti
   return opts.unit ? `${text} ${opts.unit}` : text;
 }
 
-/** A category's values as legend text: "100, 50 pixels", with the classification's unit after them as after a
- * range. Numbers read with the number format where the classification sets one, else as they are (a year or a code
- * stays ungrouped). */
+/** A category's values as legend text: "100, 50 pixels", numbers with the classification's unit after them as
+ * after a range, and with the number format where the classification sets one, else as they are (a year or a code
+ * stays ungrouped). Names take no unit; yes and no read as the words in `flags` where given. */
 export function valuesText(
   values: ReadonlyArray<string | number | boolean>,
-  opts: { locale: string; unit?: string; format?: RangeFormat }
+  opts: { locale: string; unit?: string; format?: RangeFormat; flags?: { yes: string; no: string } }
 ): string {
   const n = opts.format ? rangeNumber(opts) : String;
-  const text = values.map((v) => (typeof v === "number" ? n(v) : String(v))).join(", ");
-  return opts.unit && text ? `${text} ${opts.unit}` : text;
+  // The values of a yes/no field read as words (the server writes them as the texts "true" and "false").
+  const words = opts.flags;
+  const flags =
+    !!words &&
+    values.length > 0 &&
+    values.every((v) => typeof v === "boolean" || v === "true" || v === "false");
+  const text = values
+    .map((v) =>
+      flags ? (v === true || v === "true" ? words.yes : words.no) : typeof v === "number" ? n(v) : String(v)
+    )
+    .join(", ");
+  // A unit suits numbers, not names.
+  const numbers = values.length > 0 && values.every((v) => typeof v === "number");
+  return opts.unit && numbers ? `${text} ${opts.unit}` : text;
 }

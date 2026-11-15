@@ -415,17 +415,30 @@ describe("legend blocks by property", () => {
   });
 
   it("a property off the main part names its part", () => {
-    const [, width] = points([COLOR, { ...SIZE, id: "w", target: "outline.width", classes: [] }]);
+    const [, width] = points([
+      COLOR,
+      {
+        ...SIZE,
+        id: "w",
+        target: "outline.width",
+        classes: [{ id: "w1", values: [100], outline: { width: 2 } }],
+      },
+    ]);
     expect(width.properties).toEqual(["style_editor.prop_outline_width"]);
   });
 
   it("a block that sets no color draws its symbols in neutral grey, a class's own color stays", () => {
     for (const sections of [points([SIZE]), points([SIZE, COLOR])]) {
-      expect(sections[0].entries.map((e) => [e.swatch.marker?.color, e.swatch.marker?.size])).toEqual([
+      const classes = sections[0].entries.filter((e) => !e.extra);
+      expect(classes.map((e) => [e.swatch.marker?.color, e.swatch.marker?.size])).toEqual([
         [LEGEND_NEUTRAL, 12],
         [LEGEND_NEUTRAL, 6],
       ]);
     }
+    // The color block of the same field lists No data, so the size block does too: grey, at the base size.
+    const noData = points([SIZE, COLOR])[0].entries.find((e) => e.extra === "no_data");
+    expect([noData?.swatch.marker?.color, noData?.swatch.marker?.size]).toEqual([LEGEND_NEUTRAL, 8]);
+    expect(points([SIZE])[0].entries.some((e) => e.extra)).toBe(false);
     const own = { ...SIZE, classes: [{ ...SIZE.classes[0], marker: { size: 12, color: "#123456" } }] };
     expect(points([own])[0].entries[0].swatch.marker?.color).toBe("#123456");
     const [, color] = points([SIZE, COLOR]);
@@ -611,7 +624,8 @@ describe("valuesText", () => {
     expect(valuesText([100], { locale: "en-US", unit: "pixels" })).toBe("100 pixels");
     expect(valuesText([16.67, 2020], { locale: "en-US" })).toBe("16.67, 2020");
     expect(valuesText([1.25, 2500], { locale: "de-DE", format: { decimals: 1 } })).toBe("1,3, 2.500,0");
-    expect(valuesText(["residential", true], { locale: "en-US", unit: "ha" })).toBe("residential, true ha");
+    // The unit follows numbers, not names.
+    expect(valuesText(["residential", true], { locale: "en-US", unit: "ha" })).toBe("residential, true");
   });
 });
 

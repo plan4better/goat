@@ -106,7 +106,7 @@ describe("StyleLegend", () => {
     expect(screen.getByText("9.52 to 100")).toBeInTheDocument();
   });
 
-  it("categories read with the number format where one is set, and text categories with the unit", () => {
+  it("categories read with the number format where one is set; the unit follows numbers, not names", () => {
     const doc = {
       version: 1,
       kind: "vector",
@@ -128,7 +128,7 @@ describe("StyleLegend", () => {
     };
     render(<StyleLegend legend={legendOf(doc, "point")} variant="tree" />);
     expect(screen.getByText("12.5, 20.0 %")).toBeInTheDocument();
-    expect(screen.getByText("none %")).toBeInTheDocument();
+    expect(screen.getByText("none")).toBeInTheDocument();
     // A name typed by hand and the Other record read as they are.
     expect(screen.getByText("Five")).toBeInTheDocument();
     expect(screen.getByText("Other")).toBeInTheDocument();

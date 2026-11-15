@@ -71,4 +71,4 @@ Jede Klasse erscheint mit ihren Werten oder ihrem Bereich, zum Beispiel <code>2.
 - **Verwenden Sie klare, beschreibende Titel und Bildunterschriften**, die erklären, was der Layer darstellt.
 - **Benennen Sie die Klassen**, wenn ihre Werte oder Bereiche dem Leser wenig sagen.
 - **Blenden Sie die Legende** von Layern aus, die keine Erklärung brauchen, etwa Referenz-Layer.
-- **Lassen Sie Regeln in der Legende weg**, wenn sie nur Objekte ausblenden oder ihre Zoomstufen ändern.
+- **Lassen Sie Regeln in der Legende weg**, wenn sie nur die Zoomstufen von Objekten ändern. Eine Regel, die Objekte ausblendet, hat keinen Legendeneintrag.
