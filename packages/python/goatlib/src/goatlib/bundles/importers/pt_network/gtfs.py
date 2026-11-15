@@ -34,6 +34,13 @@ logger = logging.getLogger(__name__)
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+#: Rows per row group of the shape lines. The writer holds a row group in
+#: memory, and a network's lines are few but long: a cut through Munich keeps
+#: the whole Germany-wide shapes of its trains, ~5,000 lines and ~200 MB, which
+#: at the default row group size is one group that outgrows the import's
+#: DuckDB memory bound (bound_duckdb), and the lines were skipped.
+SHAPE_LINES_ROW_GROUP_SIZE = 1000
+
 
 def _clean(value: Optional[str]) -> Optional[str]:
     stripped = (value or "").strip()
@@ -627,7 +634,9 @@ class GtfsImporter(BundleImporter):
                 f"FROM read_parquet('{p.replace(chr(39), chr(39) * 2)}')"
                 for p in parts
             )
-            write_optimized_parquet(con, union, out_path)
+            write_optimized_parquet(
+                con, union, out_path, row_group_size=SHAPE_LINES_ROW_GROUP_SIZE
+            )
         finally:
             con.close()
             for p in parts:
@@ -726,6 +735,7 @@ class GtfsImporter(BundleImporter):
                 f"SELECT shape_id, ST_GeomFromWKB(wkb) AS geometry "
                 f"FROM read_parquet('{lines_path.replace(chr(39), chr(39) * 2)}')",
                 out_path,
+                row_group_size=SHAPE_LINES_ROW_GROUP_SIZE,
             )
         finally:
             con.close()
