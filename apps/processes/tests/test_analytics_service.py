@@ -1,6 +1,10 @@
 """Tests for analytics service."""
 
+import json
 from unittest.mock import MagicMock, patch
+
+import duckdb
+import pytest
 
 from processes.services.analytics_service import (
     AnalyticsService,
@@ -459,3 +463,139 @@ def test_validate_sql_loads_spatial_through_goatlib(monkeypatch) -> None:
 
     assert result["valid"], result
     assert loaded == [("spatial",)]
+
+
+class TestLayerJustSaved:
+    """Analytics read a pinned DuckLake snapshot that the poll moves forward
+    off the request path, which takes several seconds. A layer a workflow run
+    has just saved is in the catalog (its schema resolves from Postgres) but
+    not yet in the pin, and its table "does not exist" for that long: the
+    statistics asked right after the run answered 500.
+    """
+
+    LAYER_ID = "5f0c2a8e-1b7d-4c3e-9a6f-2d8e4b1c7a90"
+    TABLE = "t_5f0c2a8e1b7d4c3e9a6f2d8e4b1c7a90"
+
+    class _Pinned:
+        """A manager whose connections see the table only once the pin has
+        moved: `force_pin_refresh` moves it, or the poll after `swap_after`
+        connections (a swap landing in the middle of a request)."""
+
+        def __init__(
+            self,
+            table: str,
+            *,
+            refreshes: bool = True,
+            swap_after: int | None = None,
+            error: str | None = None,
+        ) -> None:
+            import duckdb as _duckdb
+
+            self.db = _duckdb.connect()
+            self.db.execute("ATTACH ':memory:' AS lake")
+            self.table = table
+            self.visible = False
+            self.refreshes = refreshes
+            self.swap_after = swap_after
+            self.error = error
+            self.connections = 0
+            self.refresh_calls = 0
+
+        def _show(self) -> None:
+            if not self.visible:
+                self.db.execute(
+                    f"CREATE TABLE lake.main.{self.table} AS SELECT * FROM "
+                    "(VALUES ('road', 10), ('road', 20), ('rail', 30)) "
+                    "AS t(source, level)"
+                )
+                self.visible = True
+
+        def connection(self):
+            import contextlib
+
+            @contextlib.contextmanager
+            def connect():
+                if self.swap_after is not None and self.connections >= self.swap_after:
+                    self._show()
+                self.connections += 1
+                if self.error is not None:
+                    raise RuntimeError(self.error)
+                yield self.db.cursor()
+
+            return connect()
+
+        def force_pin_refresh(self) -> bool:
+            self.refresh_calls += 1
+            if self.refreshes:
+                self._show()
+            return self.refreshes
+
+    def _service(self, monkeypatch, manager) -> AnalyticsService:
+        monkeypatch.setattr(
+            "processes.services.analytics_service.get_schema_for_layer",
+            lambda layer_id: "main",
+        )
+        monkeypatch.setattr(
+            "processes.services.analytics_service.ducklake_manager", manager
+        )
+        return AnalyticsService()
+
+    def test_a_layer_the_pin_does_not_hold_yet_is_read_after_a_refresh(
+        self, monkeypatch
+    ):
+        manager = self._Pinned(self.TABLE)
+        service = self._service(monkeypatch, manager)
+
+        assert service.feature_count(self.LAYER_ID)["count"] == 3
+        assert service.class_breaks(self.LAYER_ID, "level", "quantile", 2)["max"] == 30
+        assert manager.refresh_calls == 1
+
+    def test_every_layer_statistic_refreshes_a_pin_that_misses(self, monkeypatch):
+        reads = {
+            "unique_values": lambda s: s.unique_values(self.LAYER_ID, "source"),
+            "aggregation_stats": lambda s: s.aggregation_stats(self.LAYER_ID),
+            "histogram": lambda s: s.histogram(self.LAYER_ID, "level"),
+        }
+        for name, read in reads.items():
+            manager = self._Pinned(self.TABLE)
+            read(self._service(monkeypatch, manager))
+            assert manager.refresh_calls == 1, name
+
+    def test_a_filter_is_not_dropped_when_the_pin_moves_mid_request(self, monkeypatch):
+        """The filter's columns are read on a connection of their own: one
+        that missed must not leave the statistic unfiltered once the next
+        connection sees the table."""
+        manager = self._Pinned(self.TABLE, swap_after=1)
+        service = self._service(monkeypatch, manager)
+        road = json.dumps({"op": "=", "args": [{"property": "source"}, "road"]})
+
+        result = service.aggregation_stats(self.LAYER_ID, filter_expr=road)
+
+        assert result["total_count"] == 2
+
+    def test_a_table_missing_after_the_refresh_is_still_an_error(self, monkeypatch):
+        manager = self._Pinned(self.TABLE)
+        manager.force_pin_refresh = lambda: True  # the pin is current: no table
+        service = self._service(monkeypatch, manager)
+
+        with pytest.raises(duckdb.CatalogException, match="does not exist"):
+            service.feature_count(self.LAYER_ID)
+
+    def test_a_failed_refresh_is_not_retried(self, monkeypatch):
+        manager = self._Pinned(self.TABLE, refreshes=False)
+        service = self._service(monkeypatch, manager)
+
+        with pytest.raises(duckdb.CatalogException, match="does not exist"):
+            service.feature_count(self.LAYER_ID)
+        assert manager.refresh_calls == 1
+
+    def test_other_errors_do_not_refresh_the_pin(self, monkeypatch):
+        manager = self._Pinned(
+            self.TABLE,
+            error='Binder Error: Referenced column "x" not found in FROM clause!',
+        )
+        service = self._service(monkeypatch, manager)
+
+        with pytest.raises(RuntimeError, match="Binder Error"):
+            service.feature_count(self.LAYER_ID)
+        assert manager.refresh_calls == 0

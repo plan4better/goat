@@ -1,5 +1,6 @@
 import useSWR, { type SWRConfiguration } from "swr";
 
+import { apiErrorOf } from "@/lib/api/apiError";
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import { useAuthedSWR } from "@/lib/api/useAuthedSWR";
 import { API_BASE_URL } from "@/lib/constants";
@@ -86,7 +87,7 @@ export const updateUserProfile = async (user: UserUpdate) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(user),
   });
-  if (!response.ok) throw await response.json();
+  if (!response.ok) throw await apiErrorOf(response);
   return response;
 };
 
@@ -108,6 +109,6 @@ export const declineInvitation = async (invitationId: string) => {
 
 export const deleteAccount = async () => {
   const response = await apiRequestAuth(`${USERS_API_BASE_URL}`, { method: "DELETE" });
-  if (!response.ok) throw await response.json();
+  if (!response.ok) throw await apiErrorOf(response);
   return response;
 };

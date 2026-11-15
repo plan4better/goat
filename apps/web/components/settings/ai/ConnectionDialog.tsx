@@ -1,12 +1,11 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Alert, Checkbox, FormControlLabel, MenuItem, Stack, TextField } from "@mui/material";
+import { Alert, Checkbox, FormControlLabel, MenuItem, Stack } from "@mui/material";
 import type { TFunction } from "i18next";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { toast } from "react-toastify";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
@@ -25,48 +24,16 @@ import {
 } from "@/lib/validations/assistant";
 
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
+import LabeledField from "@/components/common/LabeledField";
+import { assistantErrorText } from "@/components/settings/ai/aiSettingsErrors";
 
-/** The `<form>` the dialog footer's Save button submits through `primaryForm`. */
+export { assistantErrorText };
+
+/** The `<form>` the dialog footer's primary button submits through `primaryForm`. */
 const FORM_ID = "assistant-connection-form";
 
 export function providerLabel(provider: AssistantProvider, t: TFunction): string {
   return PROVIDER_NAMES[provider] ?? t("ai_settings_provider_openai_compatible");
-}
-
-/**
- * Error codes of the assistant's settings API, as translated messages. The `detail` strings the service adds
- * (invalid_connection, endpoint_not_allowed, invalid_request, test_failed, the last test error) are shown to
- * organization admins as they are, in English: they name the field or the provider's own answer.
- */
-const ERROR_MESSAGES: Record<string, string> = {
-  name_taken: "ai_settings_error_name_taken",
-  endpoint_not_allowed: "ai_settings_error_endpoint_not_allowed",
-  provider_not_allowed: "ai_settings_error_provider_not_allowed",
-  org_connections_unavailable: "ai_settings_org_connections_off",
-  connection_not_tested: "ai_settings_error_connection_not_tested",
-  connection_not_allowed: "ai_settings_error_connection_not_allowed",
-  connection_not_found: "ai_settings_error_connection_not_found",
-  connection_changed: "ai_settings_error_connection_changed",
-  connection_active: "ai_settings_delete_active_blocked",
-  credentials_unreadable: "ai_settings_credentials_unreadable",
-  credentials_required: "ai_settings_error_credentials_required",
-  goat_ai_unavailable: "ai_settings_goat_ai_unavailable",
-  test_in_progress: "ai_settings_error_test_in_progress",
-  invalid_request: "ai_settings_error_invalid_request",
-  not_found: "ai_settings_error_not_found",
-  no_organization: "ai_settings_error_no_organization",
-  not_admin: "ai_settings_admin_only",
-};
-
-export function assistantErrorText(error: unknown, t: TFunction): string {
-  if (error instanceof AssistantApiError) {
-    if (error.code === "test_failed")
-      return t("ai_settings_error_test_failed", { message: error.detail ?? "" });
-    const key = ERROR_MESSAGES[error.code];
-    if (key) return error.detail ? `${t(key)} ${error.detail}` : t(key);
-    if (error.code === "invalid_connection" && error.detail) return error.detail;
-  }
-  return t("ai_settings_error_generic");
 }
 
 const FORM_FIELDS = Object.keys(emptyConnectionForm("openai")) as (keyof ConnectionFormValues)[];
@@ -86,7 +53,8 @@ interface ConnectionDialogProps {
   allowedProviders: AssistantProvider[];
   allowHttp: boolean;
   onClose: () => void;
-  onSaved: () => Promise<unknown> | void;
+  /** The connection as the service stored it; the page tests it next ("Speichern und testen"). */
+  onSaved: (connection: AssistantConnection) => Promise<unknown> | void;
 }
 
 export default function ConnectionDialog({
@@ -115,13 +83,16 @@ export default function ConnectionDialog({
     handleSubmit,
     reset,
     watch,
-    formState: { errors, isValid },
+    trigger,
+    formState: { errors, isValid, touchedFields },
   } = useForm<ConnectionFormValues>({
     mode: "onChange",
     resolver: zodResolver(schema),
     defaultValues: connection ? toConnectionFormValues(connection) : emptyConnectionForm(firstProvider),
   });
   const [busy, setBusy] = useState(false);
+  // A save was tried (the button or Enter): every field's error shows, not only the ones left.
+  const [tried, setTried] = useState(false);
   // The last failed save, shown inside the dialog: a toast is outside the modal, hidden from assistive
   // technology and easy to miss while the dialog stays open.
   const [failure, setFailure] = useState<{ message: string; field?: keyof ConnectionFormValues } | null>(
@@ -135,6 +106,7 @@ export default function ConnectionDialog({
     if (open) {
       reset(initialValues());
       setFailure(null);
+      setTried(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, connection, firstProvider, reset]);
@@ -151,16 +123,22 @@ export default function ConnectionDialog({
   const openRouter = fields.baseUrl && isOpenRouterUrl(watch("base_url"));
   const keepSecret = mode === "edit" && provider === connection?.provider;
   const keepHelp = keepSecret ? t("ai_settings_field_keep_secret") : undefined;
+  // A field's own error once it was left or a save was tried, not on the first keystroke; the service's
+  // answer for a field at once (it comes from a save).
   const fieldError = (name: keyof ConnectionFormValues) => {
     const message = errors[name]?.message;
-    if (message) return t(message);
+    if (message && (touchedFields[name] || tried)) return t(message);
     return failure?.field === name ? failure.message : undefined;
   };
+  // Locked while saving, read only and not disabled: react-hook-form reads a disabled field as empty, and
+  // a blur meanwhile would store that.
+  const lock = { readOnly: busy, "aria-readonly": busy || undefined };
   // Typed secrets must not outlive the dialog: they would render for a frame on the next open.
   const close = () => {
     if (busy) return;
     reset(initialValues());
     setFailure(null);
+    setTried(false);
     onClose();
   };
 
@@ -169,11 +147,12 @@ export default function ConnectionDialog({
     setFailure(null);
     try {
       const payload = toConnectionPayload(values, mode);
-      if (connection) await updateAssistantConnection(connection.id, payload);
-      else await createAssistantConnection(payload);
-      toast.success(t("ai_settings_connection_saved"));
-      await onSaved();
+      const saved = connection
+        ? await updateAssistantConnection(connection.id, payload)
+        : await createAssistantConnection(payload);
+      await onSaved(saved);
       reset(initialValues());
+      setTried(false);
       onClose();
     } catch (error) {
       setFailure({ message: assistantErrorText(error, t), field: assistantErrorField(error) });
@@ -181,13 +160,17 @@ export default function ConnectionDialog({
       setBusy(false);
     }
   };
-
+  const attempt = () => {
+    setTried(true);
+    void handleSubmit(onSubmit)();
+  };
   return (
     <AppDialog
       open={open}
       onClose={close}
       icon={ICON_NAME.SPARKLES}
-      title={connection ? t("ai_settings_edit_connection") : t("ai_settings_add_connection")}
+      title={t(connection ? "ai_settings_edit_connection" : "settings_ai_dialog_add_title")}
+      subtitle={connection ? undefined : t("settings_ai_dialog_add_subtitle")}
       maxWidth={600}
       closeDisabled={busy}
       notice={failure ? <Alert severity="error">{failure.message}</Alert> : undefined}
@@ -195,91 +178,110 @@ export default function ConnectionDialog({
         <AppDialogFooter
           onCancel={close}
           cancelDisabled={busy}
-          primaryLabel={t("save")}
-          onPrimary={handleSubmit(onSubmit)}
+          primaryLabel={t("settings_ai_save_and_test")}
+          onPrimary={attempt}
           primaryType="submit"
           primaryForm={FORM_ID}
           primaryDisabled={!isValid}
           primaryLoading={busy}
         />
       }>
-      <Stack component="form" id={FORM_ID} onSubmit={handleSubmit(onSubmit)} spacing={4} sx={{ pt: 1 }}>
-        <TextField
+      <Stack
+        component="form"
+        id={FORM_ID}
+        noValidate
+        spacing={5}
+        sx={{ pt: 1 }}
+        onKeyDown={(event) => {
+          // Enter in a field is a try, also while the primary is disabled and the browser therefore submits
+          // nothing: then it names what is missing.
+          if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement) || isValid) return;
+          setTried(true);
+          void trigger();
+        }}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy) attempt();
+        }}>
+        <LabeledField
+          id="connection-name"
           required
           label={t("name")}
-          disabled={busy}
-          error={Boolean(fieldError("name"))}
-          helperText={fieldError("name")}
+          inputProps={lock}
           {...register("name")}
+          error={fieldError("name")}
         />
         <Controller
           name="provider"
           control={control}
           render={({ field }) => (
-            <TextField select required label={t("ai_settings_field_provider")} disabled={busy} {...field}>
+            <LabeledField
+              id="connection-provider"
+              select
+              required
+              label={t("ai_settings_field_provider")}
+              {...field}
+              // Read only while saving: the select does not open.
+              inputProps={{ readOnly: busy }}
+              SelectProps={{ SelectDisplayProps: { "aria-readonly": busy || undefined } }}>
               {providers.map((option) => (
                 <MenuItem key={option} value={option}>
                   {providerLabel(option, t)}
                 </MenuItem>
               ))}
-            </TextField>
+            </LabeledField>
           )}
         />
         {fields.baseUrl && (
-          <TextField
+          <LabeledField
+            id="connection-base-url"
             required
             label={t("ai_settings_field_base_url")}
             placeholder="https://"
-            disabled={busy}
-            error={Boolean(fieldError("base_url"))}
-            helperText={
-              fieldError("base_url") ??
-              t(
-                provider === "azure_openai"
-                  ? "ai_settings_field_base_url_help_azure"
-                  : "ai_settings_field_base_url_help_compatible"
-              )
-            }
+            inputProps={{ ...lock, autoCapitalize: "off", spellCheck: false }}
             {...register("base_url")}
+            error={fieldError("base_url")}
+            help={t(
+              provider === "azure_openai"
+                ? "ai_settings_field_base_url_help_azure"
+                : "ai_settings_field_base_url_help_compatible"
+            )}
           />
         )}
         {fields.region && (
-          <TextField
+          <LabeledField
+            id="connection-region"
             required
             label={t("ai_settings_field_region")}
-            disabled={busy}
-            error={Boolean(fieldError("region"))}
-            helperText={
-              fieldError("region") ??
-              t(
-                provider === "bedrock"
-                  ? "ai_settings_field_region_help_bedrock"
-                  : "ai_settings_field_region_help_vertex"
-              )
-            }
+            inputProps={lock}
             {...register("region")}
+            error={fieldError("region")}
+            help={t(
+              provider === "bedrock"
+                ? "ai_settings_field_region_help_bedrock"
+                : "ai_settings_field_region_help_vertex"
+            )}
           />
         )}
-        <TextField
+        <LabeledField
+          id="connection-model"
           required
           label={t("ai_settings_field_model")}
-          disabled={busy}
-          error={Boolean(fieldError("model"))}
-          helperText={
-            fieldError("model") ??
-            t(fields.claudeOnly ? "ai_settings_claude_only_help" : "ai_settings_field_model_help")
-          }
+          inputProps={{ ...lock, autoCapitalize: "off", spellCheck: false }}
           {...register("model")}
+          error={fieldError("model")}
+          help={t(fields.claudeOnly ? "ai_settings_claude_only_help" : "ai_settings_field_model_help")}
         />
         {openRouter && (
           <>
-            <TextField
+            <LabeledField
+              id="connection-provider-order"
               label={t("ai_settings_field_provider_order")}
               placeholder="DeepInfra"
-              disabled={busy}
-              error={Boolean(fieldError("provider_order"))}
-              helperText={fieldError("provider_order") ?? t("ai_settings_field_provider_order_help")}
+              inputProps={lock}
               {...register("provider_order")}
+              error={fieldError("provider_order")}
+              help={t("ai_settings_field_provider_order_help")}
             />
             <Controller
               name="allow_fallbacks"
@@ -301,57 +303,60 @@ export default function ConnectionDialog({
           </>
         )}
         {fields.secrets.includes("api_key") && (
-          <TextField
+          <LabeledField
+            id="connection-api-key"
             type="password"
             autoComplete="new-password"
             required={!fields.optionalSecrets.includes("api_key") && !keepSecret}
             label={t("ai_settings_field_api_key")}
-            disabled={busy}
-            error={Boolean(fieldError("api_key"))}
-            helperText={
-              fieldError("api_key") ??
+            inputProps={lock}
+            {...register("api_key")}
+            error={fieldError("api_key")}
+            help={
               keepHelp ??
               (fields.optionalSecrets.includes("api_key")
                 ? t("ai_settings_field_api_key_optional_help")
                 : undefined)
             }
-            {...register("api_key")}
           />
         )}
         {fields.secrets.includes("access_key_id") && (
-          <TextField
+          <LabeledField
+            id="connection-access-key-id"
             autoComplete="off"
             required={!keepSecret}
             label={t("ai_settings_field_access_key_id")}
-            disabled={busy}
-            error={Boolean(fieldError("access_key_id"))}
-            helperText={fieldError("access_key_id") ?? keepHelp}
+            inputProps={lock}
             {...register("access_key_id")}
+            error={fieldError("access_key_id")}
+            help={keepHelp}
           />
         )}
         {fields.secrets.includes("secret_access_key") && (
-          <TextField
+          <LabeledField
+            id="connection-secret-access-key"
             type="password"
             autoComplete="new-password"
             required={!keepSecret}
             label={t("ai_settings_field_secret_access_key")}
-            disabled={busy}
-            error={Boolean(fieldError("secret_access_key"))}
-            helperText={fieldError("secret_access_key") ?? keepHelp}
+            inputProps={lock}
             {...register("secret_access_key")}
+            error={fieldError("secret_access_key")}
+            help={keepHelp}
           />
         )}
         {fields.secrets.includes("service_account_json") && (
-          <TextField
+          <LabeledField
+            id="connection-service-account-json"
             multiline
             minRows={4}
             autoComplete="off"
             required={!keepSecret}
             label={t("ai_settings_field_service_account_json")}
-            disabled={busy}
-            error={Boolean(fieldError("service_account_json"))}
-            helperText={fieldError("service_account_json") ?? keepHelp}
+            inputProps={lock}
             {...register("service_account_json")}
+            error={fieldError("service_account_json")}
+            help={keepHelp}
           />
         )}
       </Stack>

@@ -11,7 +11,12 @@ The service automatically routes requests to the appropriate source:
 Variable-depth tile pyramid support:
 PMTiles generated with --generate-variable-depth-tile-pyramid may not have
 tiles at all zoom levels. When a tile is missing, we find the nearest parent
-tile and use tippecanoe-overzoom to generate the requested tile on-the-fly.
+tile and use manby overzoom to generate the requested tile on-the-fly.
+
+Filtered tiles from stored tiles:
+A filtered request on a layer whose PMTiles manby built is answered by
+filtering the stored tile (or its parent) with manby overzoom, the filter
+translated by tile_filter. Everything else filtered goes to DuckDB.
 
 Caching:
 - Redis cache for distributed deployments (shared across pods)
@@ -20,20 +25,27 @@ Caching:
 
 import asyncio
 import gzip
+import hashlib
+import json
 import logging
 import math
+import os
+import shutil
+import subprocess
 import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from io import BufferedReader
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, NamedTuple, Optional
 
+import manby
 from cachetools import LRUCache, TTLCache
 from goatlib.storage import build_filters
 from pmtiles.reader import MmapSource
 from pmtiles.tile import (
+    Compression,
     deserialize_directory,
     deserialize_header,
     find_tile,
@@ -43,6 +55,13 @@ from pmtiles.tile import (
 from geoapi.config import settings
 from geoapi.dependencies import LayerInfo
 from geoapi.ducklake_pool import ducklake_pool
+from geoapi.services.tile_filter import (
+    OVERZOOM_BUFFER,
+    PreparedFilter,
+    get_prepared_filter,
+    request_digest,
+    translate,
+)
 from geoapi.tile_cache import cache_tile, get_cached_tile
 
 logger = logging.getLogger(__name__)
@@ -64,6 +83,51 @@ _pmtiles_executor = ThreadPoolExecutor(max_workers=16, thread_name_prefix="pmtil
 # Thread pool for dynamic tile generation (DuckDB queries are blocking)
 _dynamic_tile_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="dyntile")
 
+# A container's CPU quota: cgroup v2 `cpu.max` holds "<quota> <period>" ("max"
+# for none), v1 the two numbers in separate files.
+CGROUP_CPU_MAX_FILE = Path("/sys/fs/cgroup/cpu.max")
+CGROUP_CPU_V1_QUOTA_FILE = Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
+CGROUP_CPU_V1_PERIOD_FILE = Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
+
+# Time limit of one `manby overzoom` run (a tile is cut in milliseconds).
+_OVERZOOM_TIMEOUT_S = 10.0
+
+
+def _cgroup_cpu_limit() -> int | None:
+    """The CPUs the container's quota allows (rounded up), None without one."""
+    try:
+        try:
+            quota, period = CGROUP_CPU_MAX_FILE.read_text().split()
+        except FileNotFoundError:
+            quota = CGROUP_CPU_V1_QUOTA_FILE.read_text().strip()
+            period = CGROUP_CPU_V1_PERIOD_FILE.read_text().strip()
+        return None if quota in ("max", "-1") else math.ceil(int(quota) / int(period))
+    except (OSError, ValueError, ZeroDivisionError):
+        return None
+
+
+def _manby_concurrency() -> int:
+    """How many manby processes may run at once: the container's CPUs, at least 2.
+
+    The scheduler affinity alone is the node's CPU count under a Kubernetes
+    CPU limit (a quota, not a cpuset), so the quota caps it.
+    """
+    cpus = (
+        len(os.sched_getaffinity(0))
+        if hasattr(os, "sched_getaffinity")
+        else os.cpu_count() or 1
+    )
+    quota = _cgroup_cpu_limit()
+    return max(2, min(cpus, quota) if quota else cpus)
+
+
+# Bounds the manby processes of a replica, so a screen of tiles cannot starve
+# the event loop and the DuckDB queries of CPU. An asyncio semaphore takes no
+# loop when made (Python 3.10+) and binds to the running one when it first has
+# to wait. Requests wait in the loop, not in a worker thread, which keeps them
+# off the default executor's few threads that other `to_thread` calls share.
+_manby_slots = asyncio.Semaphore(_manby_concurrency())
+
 # Maximum leaf directory entries to cache per PMTiles file (~64KB per file)
 _LEAF_CACHE_MAX_SIZE = 1000
 
@@ -73,6 +137,9 @@ _PATH_CACHE_MAX_SIZE = 2000  # ~400KB max
 _EXISTS_CACHE_MAX_SIZE = 5000  # ~250KB max
 # How long "no workflow temp tiles for this layer id" is believed.
 _TEMP_MISS_TTL_S = 30
+# Filters prepared for stored tiles, by layer, tiles version and request
+# filter. Small: each holds its area twice as a geometry (PreparedFilter).
+_STORED_FILTERS_MAX_SIZE = 64
 
 
 def _tiles_version(pmtiles_path: Path, label: bool) -> str | None:
@@ -90,6 +157,15 @@ def _tiles_version(pmtiles_path: Path, label: bool) -> str | None:
         except FileNotFoundError:
             version += ".none"
     return version
+
+
+class StoredTileset(NamedTuple):
+    """What a PMTiles file's metadata says about its tiles."""
+
+    # Built by manby: goatlib's MANBY_MARKER is in the description JSON
+    manby: bool
+    # Attribute names of the `default` layer
+    fields: frozenset[str]
 
 
 class CachedPMTilesReader:
@@ -110,9 +186,29 @@ class CachedPMTilesReader:
         self._root_directory = deserialize_directory(root_bytes)
         # Cache for leaf directories with size limit (FIFO eviction)
         self._leaf_cache: dict[tuple[int, int], list] = {}
+        self._tileset: StoredTileset | None = None
 
     def header(self):
         return self._header
+
+    def tileset(self) -> StoredTileset:
+        """The tileset as its metadata describes it, read on first use.
+
+        Raises:
+            OSError: the metadata is unreadable (read again on the next call)
+        """
+        if self._tileset is None:
+            header = self._header
+            try:
+                metadata = self.get_bytes(
+                    header["metadata_offset"], header["metadata_length"]
+                )
+                if header["internal_compression"] == Compression.GZIP:
+                    metadata = gzip.decompress(metadata)
+                self._tileset = _stored_tileset(json.loads(metadata))
+            except (OSError, ValueError) as e:
+                raise OSError(f"unreadable PMTiles metadata: {e}") from e
+        return self._tileset
 
     def get(self, z: int, x: int, y: int) -> Optional[bytes]:
         """Get tile data with cached directory lookups."""
@@ -151,6 +247,29 @@ class CachedPMTilesReader:
             else:
                 return None
         return None
+
+
+def _stored_tileset(metadata: dict[str, Any]) -> StoredTileset:
+    """The marker and the `default` layer's fields of PMTiles metadata."""
+    description = metadata.get("description", "")
+    marker: Any = {}
+    if isinstance(description, str) and description.startswith("{"):
+        try:
+            marker = json.loads(description)
+        except ValueError:
+            pass
+    fields: dict[str, Any] = next(
+        (
+            layer.get("fields", {})
+            for layer in metadata.get("vector_layers", [])
+            if layer.get("id") == "default"
+        ),
+        {},
+    )
+    return StoredTileset(
+        manby=isinstance(marker, dict) and marker.get("tiler") == "manby",
+        fields=frozenset(fields),
+    )
 
 
 # PMTiles reader cache to avoid re-parsing the index for every tile request
@@ -347,6 +466,210 @@ def tile_to_bbox_3857(z: int, x: int, y: int) -> tuple[float, float, float, floa
     return (x_min, y_min, x_max, y_max)
 
 
+def _stored_tile(
+    reader: CachedPMTilesReader, header: dict[str, Any], z: int, x: int, y: int
+) -> tuple[bytes, tuple[int, int, int]] | None:
+    """The stored tile z/x/y, or the nearest stored parent to cut it from.
+
+    Variable-depth pyramids stop where a tile holds all its detail, so a
+    deeper tile is cut from the parent that is stored.
+
+    Returns:
+        The tile and its z/x/y; None when nothing can be in the tile: below
+        the archive's min zoom, no stored parent, or a tile to cut outside
+        the archive's bounds.
+    """
+    min_zoom = header.get("min_zoom", 0)
+    if z < min_zoom:
+        return None
+    parent_z, parent_x, parent_y = z, x, y
+    while parent_z >= min_zoom:
+        tile = reader.get(parent_z, parent_x, parent_y)
+        if tile is not None:
+            break
+        parent_z -= 1
+        parent_x >>= 1
+        parent_y >>= 1
+    else:
+        return None
+    if parent_z < z:
+        # A tile outside the data needs no cut
+        min_lon, min_lat, max_lon, max_lat = get_bounds_from_pmtiles_header(header)
+        if not tile_intersects_bounds(z, x, y, min_lon, min_lat, max_lon, max_lat):
+            logger.debug(
+                "Tile %d/%d/%d outside bounds [%.4f,%.4f,%.4f,%.4f] - skipping overzoom",
+                z,
+                x,
+                y,
+                min_lon,
+                min_lat,
+                max_lon,
+                max_lat,
+            )
+            return None
+    return tile, (parent_z, parent_x, parent_y)
+
+
+def _anchor_path(pmtiles_path: Path) -> Path:
+    """The file of a polygon layer's label points, next to its tiles."""
+    return pmtiles_path.with_name(pmtiles_path.stem + "_anchor.pmtiles")
+
+
+class _Cut(NamedTuple):
+    """What a filtered tile is cut from."""
+
+    # The tile's filter file; None when nothing is left to filter
+    filter_path: Path | None
+    # The stored tiles (main, then label points) or their parents: the tile,
+    # its z/x/y and whether it is gzip compressed
+    sources: list[tuple[bytes, tuple[int, int, int], bool]]
+
+
+def _filtered_cut(
+    pmtiles_path: Path,
+    label: bool,
+    version: str,
+    prepared: PreparedFilter,
+    target: tuple[int, int, int],
+    folder: Path,
+) -> _Cut | Literal[False] | str:
+    """What a filtered tile is cut from, read in a worker thread.
+
+    Reads the stored tile or its parent from the tiles and, with `label`, from
+    the label points, and writes the tile's filter file into `folder`.
+
+    Returns:
+        The cut; False when no feature can be in the tile; why DuckDB answers
+        when the files read were not built by manby or are not the `version`
+        the filter was prepared for (replaced since the request took it).
+
+    Raises:
+        OSError: a file is unreadable
+    """
+    z, x, y = target
+    paths = [pmtiles_path]
+    anchor_path = _anchor_path(pmtiles_path)
+    if label and anchor_path.exists():
+        paths.append(anchor_path)
+    sources = []
+    for path in paths:
+        reader, header, is_gzip = _get_cached_pmtiles_reader(path)
+        if not reader.tileset().manby:
+            return f"{path.name} was not built by manby"
+        found = _stored_tile(reader, header, z, x, y)
+        if found is not None:
+            tile, parent = found
+            sources.append((tile, parent, is_gzip or tile[:2] == b"\x1f\x8b"))
+        elif path == pmtiles_path:
+            break  # nothing in the tiles: no label points either
+    # The version before and after the reads: unchanged, the tiles read are
+    # the ones the filter was prepared for
+    if _tiles_version(pmtiles_path, label) != version:
+        return "its tiles were replaced while it was cut"
+    if not sources:
+        return False
+    filter_path = prepared.for_tile(z, x, y, folder)
+    if filter_path is False:
+        return False
+    return _Cut(filter_path, sources)
+
+
+def _concatenated(
+    tile: bytes, is_gzip: bool, other: bytes, other_is_gzip: bool
+) -> bytes:
+    """Two tiles as one, their layers side by side (not gzip compressed).
+
+    MVT concatenation requires raw protobuf bytes.
+    """
+    tile_bytes = gzip.decompress(tile) if is_gzip else tile
+    other_bytes = gzip.decompress(other) if other_is_gzip else other
+    return tile_bytes + other_bytes
+
+
+def _overzoom(
+    tile: bytes,
+    parent: tuple[int, int, int],
+    target: tuple[int, int, int],
+    is_gzip: bool,
+    filter_path: Path | None,
+) -> bytes | None:
+    """`TileService._run_overzoom`'s run, in its worker thread."""
+    pz, px, py = parent
+    z, x, y = target
+    try:
+        # A filtered run's files go into its request's folder, next to the
+        # filter file
+        work_root = filter_path.parent if filter_path is not None else None
+        with tempfile.TemporaryDirectory(
+            prefix="overzoom-", dir=work_root, ignore_cleanup_errors=True
+        ) as work:
+            in_path = Path(work) / "in.mvt"
+            out_path = Path(work) / "out.mvt.gz"
+            # The plain MVT, as manby reads it from the file
+            in_path.write_bytes(gzip.decompress(tile) if is_gzip else tile)
+
+            # Format: manby overzoom -o out.mvt.gz in.mvt parent_z/x/y target_z/x/y
+            # (the output is gzip compressed whatever its name)
+            argv = [
+                manby.binary(),
+                "overzoom",
+                "-o",
+                str(out_path),
+                "-b",
+                str(OVERZOOM_BUFFER),
+                "-d",
+                "16",  # detail
+            ]
+            if filter_path is not None:
+                argv += ["--feature-filter-file", str(filter_path)]
+            argv += [str(in_path), f"{pz}/{px}/{py}", f"{z}/{x}/{y}"]
+
+            try:
+                process = subprocess.run(
+                    argv, capture_output=True, timeout=_OVERZOOM_TIMEOUT_S
+                )
+            except subprocess.TimeoutExpired:
+                logger.warning("manby overzoom timeout for %d/%d/%d", z, x, y)
+                return None
+
+            if process.returncode != 0:
+                logger.warning(
+                    "manby overzoom %d/%d/%d -> %d/%d/%d: %s",
+                    pz,
+                    px,
+                    py,
+                    z,
+                    x,
+                    y,
+                    process.stderr.decode(errors="replace").strip()
+                    or "exit status %d" % process.returncode,
+                )
+                return None
+
+            # manby writes an empty file for a tile without features
+            return out_path.read_bytes() if out_path.exists() else b""
+
+    except Exception as e:
+        logger.warning("Overzoom error: %s", e)
+        return None
+
+
+class FilteredTile(NamedTuple):
+    """A filtered tile cut from a layer's stored tiles."""
+
+    # From the stored tiles' version, the request's filter and z/x/y
+    etag: str
+    # (tile_data, is_gzip, source), tile_data empty when no feature matches;
+    # None when the request's If-None-Match names `etag`
+    tile: tuple[bytes, bool, str] | None
+
+
+def _filtered_tile_etag(version: str, digest: str, z: int, x: int, y: int) -> str:
+    """The ETag of a filtered tile cut from stored tiles of the version."""
+    seed = f"{version}:f{digest}:{z}/{x}/{y}"
+    return f'W/"{hashlib.md5(seed.encode()).hexdigest()[:16]}"'
+
+
 class TileService:
     """Service for generating vector tiles with hybrid PMTiles/dynamic support."""
 
@@ -385,6 +708,17 @@ class TileService:
         # One temp tree search at a time per process: concurrent tile
         # requests wait for the first verdict instead of each walking the tree.
         self._temp_search_lock = asyncio.Lock()
+        # Request filters prepared for a layer's stored tiles, by layer id,
+        # tiles version and request digest; None where DuckDB answers (tiles
+        # manby did not build, a filter manby cannot express). Parsing and
+        # preparing a large area takes a while, so concurrent requests for a
+        # filter share the one preparation that runs.
+        self._stored_filters: LRUCache[tuple[str, str, str], PreparedFilter | None] = (
+            LRUCache(maxsize=_STORED_FILTERS_MAX_SIZE)
+        )
+        self._stored_filters_running: dict[
+            tuple[str, str, str], asyncio.Future[PreparedFilter | None]
+        ] = {}
 
     def _find_pmtiles_by_layer_id(self, layer_id: str) -> Path | None:
         """Find PMTiles file for a layer by its id alone (no schema lookup needed).
@@ -802,68 +1136,21 @@ class TileService:
                 # Get cached reader (fast path - no file open/index parse)
                 reader, header, is_gzip = _get_cached_pmtiles_reader(pmtiles_path)
 
-                min_zoom = header.get("min_zoom", 0)
-
-                # Check if tile is below min zoom
-                if z < min_zoom:
+                found = _stored_tile(reader, header, z, x, y)
+                if found is None:
                     return (b"", False)  # Empty tile
+                tile_data, (parent_z, parent_x, parent_y) = found
 
-                # Try to get the tile directly
-                tile_data = reader.get(z, x, y)
-
-                if tile_data:
+                if parent_z == z:
                     # Check if tile is gzip compressed (fallback check)
                     if not is_gzip:
                         is_gzip = len(tile_data) >= 2 and tile_data[0:2] == b"\x1f\x8b"
                     return (tile_data, is_gzip)
 
-                # Tile not found - find parent tile for variable-depth pyramids
-                parent_z, parent_x, parent_y = z, x, y
-                parent_tile = None
-
-                while parent_z >= min_zoom:
-                    parent_tile = reader.get(parent_z, parent_x, parent_y)
-                    if parent_tile is not None:
-                        break
-                    # Move to parent tile
-                    parent_z -= 1
-                    parent_x >>= 1
-                    parent_y >>= 1
-
-                if parent_tile is None:
-                    # No parent found - return empty tile
-                    return (b"", False)
-
-                # If parent is at same zoom, just return it
-                if parent_z == z:
-                    return (parent_tile, is_gzip)
-
-                # Check if target tile intersects the data bounds
-                # This avoids expensive overzoom for tiles outside the data extent
-                min_lon, min_lat, max_lon, max_lat = get_bounds_from_pmtiles_header(
-                    header
-                )
-
-                if not tile_intersects_bounds(
-                    z, x, y, min_lon, min_lat, max_lon, max_lat
-                ):
-                    # Target tile is outside data bounds - return empty without overzoom
-                    logger.debug(
-                        "Tile %d/%d/%d outside bounds [%.4f,%.4f,%.4f,%.4f] - skipping overzoom",
-                        z,
-                        x,
-                        y,
-                        min_lon,
-                        min_lat,
-                        max_lon,
-                        max_lat,
-                    )
-                    return (b"", False)
-
                 # Signal that overzoom is needed
                 return (
                     "overzoom",
-                    parent_tile,
+                    tile_data,
                     parent_z,
                     parent_x,
                     parent_y,
@@ -911,7 +1198,7 @@ class TileService:
                     len(overzoomed),
                     overzoom_ms,
                 )
-                # tippecanoe-overzoom outputs gzip-compressed tiles
+                # manby overzoom outputs gzip-compressed tiles
                 return (overzoomed, True)
 
             # Overzoom returned empty - this is normal when target tile has no features
@@ -935,7 +1222,7 @@ class TileService:
         """Get tile data from PMTiles file using pmtiles library.
 
         Supports variable-depth tile pyramids: if the requested tile doesn't
-        exist, finds the nearest parent tile and uses tippecanoe-overzoom to
+        exist, finds the nearest parent tile and uses manby overzoom to
         generate the requested tile on-the-fly.
 
         Runs in a thread pool since file I/O is blocking.
@@ -1064,7 +1351,7 @@ class TileService:
             )
 
             if overzoomed:
-                # tippecanoe-overzoom outputs gzip-compressed tiles
+                # manby overzoom outputs gzip-compressed tiles
                 result = overzoomed, True
             else:
                 result = b"", False
@@ -1114,12 +1401,275 @@ class TileService:
             return tile_data, is_gzip
 
         anchor_data, anchor_is_gzip = anchor_result
+        return _concatenated(tile_data, is_gzip, anchor_data, anchor_is_gzip), False
 
-        # MVT concatenation requires raw protobuf bytes
-        main_bytes = gzip.decompress(tile_data) if is_gzip else tile_data
-        anchor_bytes = gzip.decompress(anchor_data) if anchor_is_gzip else anchor_data
+    async def get_filtered_tile_from_pmtiles(
+        self,
+        layer_info: LayerInfo,
+        z: int,
+        x: int,
+        y: int,
+        cql_filter: dict[str, Any] | None,
+        bbox: list[float] | None,
+        columns: list[dict[str, Any]],
+        label: bool,
+        *,
+        geometry_column: str = "geometry",
+        if_none_match: str | None = None,
+    ) -> Optional[FilteredTile]:
+        """A filtered tile cut from the layer's stored tiles by manby.
 
-        return main_bytes + anchor_bytes, False
+        For a layer whose PMTiles manby built (goatlib's MANBY_MARKER): the
+        stored tile, or the parent it is cut from, filtered with the request's
+        filter and bbox as tile_filter translates them; with `label` the
+        label points of the anchor file too. Cached in Redis under the
+        stored tiles' version and the filter's digest.
+
+        Args:
+            layer_info: Layer information
+            z, x, y: Tile coordinates
+            cql_filter: CQL2 filter dict with 'filter' and 'lang' keys
+            bbox: Additional bbox filter
+            columns: The layer's columns, with 'name' and DuckDB 'type'
+            label: Merge the layer's label points into the tile
+            geometry_column: Name of the geometry column
+            if_none_match: The request's If-None-Match header
+
+        Returns:
+            The tile and its ETag; no tile when `if_none_match` names the
+            ETag. None when DuckDB has to answer: no PMTiles, tiles manby did
+            not build, a filter manby cannot express, or manby failed (logged).
+        """
+        if not self._pmtiles_exists(layer_info):
+            return None
+        pmtiles_path = self._get_pmtiles_path(layer_info)
+        version = _tiles_version(pmtiles_path, label)
+        if version is None:
+            return None
+        layer_id = layer_info.layer_id
+        digest = request_digest(layer_id, cql_filter, bbox)
+        etag = _filtered_tile_etag(version, digest, z, x, y)
+        if if_none_match and if_none_match.strip() == etag:
+            return FilteredTile(etag, None)
+
+        key = (layer_id, version, digest)
+        # False: not prepared yet; None: DuckDB answers
+        prepared = self._stored_filters.get(key, False)
+        if prepared is None:
+            return None
+        # Anchor tiles are cached under a separate key to avoid collision
+        cache_layer_id = layer_id + "_anchor" if label else layer_id
+        cached = get_cached_tile(
+            cache_layer_id, z, x, y, version=version, filter_digest=digest
+        )
+        if cached is not None:
+            tile_data, is_gzip = cached
+            return FilteredTile(etag, (tile_data, is_gzip, "pmtiles-filtered-cached"))
+
+        if prepared is False:
+            prepared = await self._prepare_stored_filter(
+                key,
+                pmtiles_path,
+                label,
+                cql_filter,
+                bbox,
+                columns,
+                geometry_column,
+            )
+            if prepared is None:
+                return None
+        result = await self._filter_stored_tile(
+            layer_id, pmtiles_path, label, version, prepared, z, x, y
+        )
+        if result is None:
+            return None
+        tile_data, is_gzip = result
+        if tile_data:
+            cache_tile(
+                cache_layer_id,
+                z,
+                x,
+                y,
+                tile_data,
+                is_gzip,
+                version=version,
+                filter_digest=digest,
+            )
+        return FilteredTile(etag, (tile_data, is_gzip, "pmtiles-filtered"))
+
+    async def _prepare_stored_filter(
+        self,
+        key: tuple[str, str, str],
+        pmtiles_path: Path,
+        label: bool,
+        cql_filter: dict[str, Any] | None,
+        bbox: list[float] | None,
+        columns: list[dict[str, Any]],
+        geometry_column: str,
+    ) -> PreparedFilter | None:
+        """The request's filter prepared for the stored tiles, once per `key`.
+
+        Requests for the same key that arrive while it is prepared wait for
+        that preparation instead of parsing the filter again.
+
+        Returns:
+            The filter, or None when DuckDB answers (logged)
+        """
+        running = self._stored_filters_running.get(key)
+        if running is None:
+            running = asyncio.ensure_future(
+                self._prepare_stored_filter_once(
+                    key,
+                    pmtiles_path,
+                    label,
+                    cql_filter,
+                    bbox,
+                    columns,
+                    geometry_column,
+                )
+            )
+            self._stored_filters_running[key] = running
+            running.add_done_callback(
+                lambda _: self._stored_filters_running.pop(key, None)
+            )
+        # A request that is cancelled leaves the preparation to the others
+        return await asyncio.shield(running)
+
+    async def _prepare_stored_filter_once(
+        self,
+        key: tuple[str, str, str],
+        pmtiles_path: Path,
+        label: bool,
+        cql_filter: dict[str, Any] | None,
+        bbox: list[float] | None,
+        columns: list[dict[str, Any]],
+        geometry_column: str,
+    ) -> PreparedFilter | None:
+        layer_id, version, digest = key
+
+        def prepare() -> PreparedFilter | str:
+            """The prepared filter, or why DuckDB answers."""
+            reader, _, _ = _get_cached_pmtiles_reader(pmtiles_path)
+            tileset = reader.tileset()
+            if not tileset.manby:
+                return "its tiles were not built by manby"
+            anchor_path = _anchor_path(pmtiles_path)
+            if label and anchor_path.exists():
+                anchor, _, _ = _get_cached_pmtiles_reader(anchor_path)
+                if not anchor.tileset().manby:
+                    return "its label points were not built by manby"
+            # Unchanged since the request took the version: the marker and
+            # fields read are that version's
+            if _tiles_version(pmtiles_path, label) != version:
+                return "its tiles were replaced while the filter was prepared"
+            translated = translate(
+                cql_filter, bbox, columns, set(tileset.fields), geometry_column
+            )
+            if translated is None:
+                return "manby cannot express the filter"
+            return get_prepared_filter(version, translated, key=digest)
+
+        try:
+            prepared = await asyncio.to_thread(prepare)
+        except Exception as e:
+            # Not remembered: the next request tries again
+            logger.warning("Filtered tiles of layer %s go to DuckDB: %s", layer_id, e)
+            return None
+        if isinstance(prepared, str):
+            logger.info(
+                "Filtered tiles of layer %s go to DuckDB: %s", layer_id, prepared
+            )
+            self._stored_filters[key] = None
+            return None
+        self._stored_filters[key] = prepared
+        return prepared
+
+    async def _filter_stored_tile(
+        self,
+        layer_id: str,
+        pmtiles_path: Path,
+        label: bool,
+        version: str,
+        prepared: PreparedFilter,
+        z: int,
+        x: int,
+        y: int,
+    ) -> tuple[bytes, bool] | None:
+        """The tile z/x/y of the stored tiles filtered, and with `label` its
+        label points; empty when no feature matches.
+
+        Returns:
+            (tile_data, is_gzip), or None when DuckDB has to answer (logged)
+        """
+        # This request's own folder, for the filter file and manby's files
+        folder = Path(tempfile.mkdtemp(prefix="tile-filter-"))
+        try:
+            try:
+                loop = asyncio.get_running_loop()
+                cut = await loop.run_in_executor(
+                    _pmtiles_executor,
+                    _filtered_cut,
+                    pmtiles_path,
+                    label,
+                    version,
+                    prepared,
+                    (z, x, y),
+                    folder,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Filtered tile %d/%d/%d of layer %s goes to DuckDB: %s",
+                    z,
+                    x,
+                    y,
+                    layer_id,
+                    e,
+                )
+                return None
+            if isinstance(cut, str):
+                logger.info(
+                    "Filtered tile %d/%d/%d of layer %s goes to DuckDB: %s",
+                    z,
+                    x,
+                    y,
+                    layer_id,
+                    cut,
+                )
+                return None
+            if cut is False:
+                return b"", False
+
+            filter_path, sources = cut
+            tiles: list[tuple[bytes, bool]] = []
+            for tile, parent, is_gzip in sources:
+                if filter_path is None and parent == (z, x, y):
+                    # Nothing to filter: the stored tile as it is
+                    tiles.append((tile, is_gzip))
+                else:
+                    out = await self._run_overzoom(
+                        tile, parent, (z, x, y), is_gzip, filter_path
+                    )
+                    if out is None:
+                        logger.warning(
+                            "manby could not filter tile %d/%d/%d of layer %s, "
+                            "it goes to DuckDB",
+                            z,
+                            x,
+                            y,
+                            layer_id,
+                        )
+                        return None
+                    tiles.append((out, True))
+                if not tiles[0][0]:
+                    # No features: no label points either (_merge_anchor_tile)
+                    return b"", False
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+        if len(tiles) == 1 or not tiles[1][0]:
+            return tiles[0]
+        (tile, is_gzip), (anchor, anchor_is_gzip) = tiles
+        return _concatenated(tile, is_gzip, anchor, anchor_is_gzip), False
 
     async def _overzoom_tile(
         self,
@@ -1132,7 +1682,7 @@ class TileService:
         target_y: int,
         is_gzip: bool,
     ) -> Optional[bytes]:
-        """Use tippecanoe-overzoom to generate a tile from its parent.
+        """Use manby overzoom to generate a tile from its parent.
 
         This is an async method that doesn't block the event loop.
 
@@ -1143,84 +1693,49 @@ class TileService:
             is_gzip: Whether parent tile is gzip compressed
 
         Returns:
-            Overzoomed tile data (gzip compressed) or None on error
+            Overzoomed tile data (gzip compressed), empty when the tile has
+            no features, or None on error
         """
-        try:
-            # tippecanoe-overzoom expects uncompressed input
-            if is_gzip:
-                input_data = gzip.decompress(parent_tile)
-            else:
-                input_data = parent_tile
+        return await self._run_overzoom(
+            parent_tile,
+            (parent_z, parent_x, parent_y),
+            (target_z, target_x, target_y),
+            is_gzip,
+        )
 
-            with (
-                tempfile.NamedTemporaryFile(suffix=".mvt", delete=True) as in_file,
-                tempfile.NamedTemporaryFile(suffix=".mvt.gz", delete=True) as out_file,
-            ):
-                # Write input file
-                in_file.write(input_data)
-                in_file.flush()
+    async def _run_overzoom(
+        self,
+        tile: bytes,
+        parent: tuple[int, int, int],
+        target: tuple[int, int, int],
+        is_gzip: bool,
+        filter_path: Path | None = None,
+    ) -> Optional[bytes]:
+        """Cut the tile `target` (z, x, y) from `tile`, the tile `parent` (z, x, y).
 
-                # Run tippecanoe-overzoom asynchronously (non-blocking)
-                # Format: tippecanoe-overzoom -o out.mvt.gz in.mvt parent_z/x/y target_z/x/y
-                process = await asyncio.create_subprocess_exec(
-                    "tippecanoe-overzoom",
-                    "-o",
-                    out_file.name,
-                    "-b",
-                    "5",  # buffer size
-                    "-d",
-                    "12",  # detail
-                    in_file.name,
-                    f"{parent_z}/{parent_x}/{parent_y}",
-                    f"{target_z}/{target_x}/{target_y}",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
+        Runs `manby overzoom` at detail 16, with the features of
+        `filter_path` (a manby feature filter file) when given. This is an
+        async method that doesn't block the event loop.
 
-                try:
-                    _, stderr = await asyncio.wait_for(
-                        process.communicate(), timeout=10.0
-                    )
-                except asyncio.TimeoutError:
-                    process.kill()
-                    await process.wait()
-                    logger.warning(
-                        "tippecanoe-overzoom timeout for %d/%d/%d",
-                        target_z,
-                        target_x,
-                        target_y,
-                    )
-                    return None
-
-                if process.returncode != 0:
-                    error_msg = stderr.decode().strip() if stderr else "unknown error"
-                    # Don't warn for expected "no features" case - this is normal
-                    if "no features" not in error_msg.lower():
-                        logger.debug(
-                            "tippecanoe-overzoom %d/%d/%d -> %d/%d/%d: %s",
-                            parent_z,
-                            parent_x,
-                            parent_y,
-                            target_z,
-                            target_x,
-                            target_y,
-                            error_msg or "empty output",
-                        )
-                    return None
-
-                # Read the output tile
-                out_file.seek(0)
-                result = out_file.read()
-
-                # tippecanoe-overzoom may produce empty output for tiles with no features
-                if len(result) == 0:
-                    return None
-
-                return result
-
-        except Exception as e:
-            logger.warning("Overzoom error: %s", e)
-            return None
+        Returns:
+            The tile, gzip compressed; empty bytes when it has no features
+            (not an error); None on error or timeout.
+        """
+        # Spawned by the subprocess module in a worker thread, not by the
+        # event loop: uvloop's spawn runs the at-fork hooks (the OpenTelemetry
+        # processors restart their threads) in the child before exec, so a
+        # lock another thread held at fork time hangs the child, and the
+        # loop, waiting on it, stops serving for good. The subprocess module
+        # runs no hooks in the child. One thread does all of a run (the
+        # decompressed tile, the files, manby, its output) and frees what it
+        # holds when the run ends. A request cancelled while its run is going
+        # gives the slot back at once, but its thread goes on until manby
+        # ends (at most the timeout), so after cancellations more runs than
+        # slots can be going for a while.
+        async with _manby_slots:
+            return await asyncio.to_thread(
+                _overzoom, tile, parent, target, is_gzip, filter_path
+            )
 
     async def get_tile(
         self,

@@ -15,7 +15,8 @@ import {
  * Inviting someone into the organization, end to end: the owner invites from
  * the members page, the invitee is taken to the invitation on first login,
  * nobody else can use it, and accepting makes them a member with the role
- * they were invited with.
+ * they were invited with. A fresh invitation cannot be resent until 10 minutes
+ * after its send.
  *
  * The invitee is provisioned in Keycloak without an organization. Accepting
  * is one-way, so a retry would find them already a member: retries are off.
@@ -26,18 +27,36 @@ test.describe.configure({ mode: "serial", retries: 0 });
 let invitationPath: string;
 
 test("the owner invites a user as a viewer from the members page", async ({ page }) => {
-  await page.goto("/settings/organization/members");
-  await page.getByRole("button", { name: "New Member" }).click();
+  await page.goto("/settings/members");
+  await page.getByRole("button", { name: "Invite members" }).click();
 
-  const dialog = page.getByRole("dialog").filter({ hasText: "Invite Member" });
-  await dialog.getByLabel("Email").fill(userOf("invitee").email);
-  await dialog.getByRole("combobox", { name: /Role/ }).click();
-  await page.getByRole("option", { name: "Viewer", exact: true }).click();
-  await dialog.getByRole("button", { name: "Send Invite" }).click();
+  // The field makes a chip of each address, trimmed and lowercased as core
+  // stores it, so the row names it lowercased.
+  const email = userOf("invitee").email.toLowerCase();
+  const dialog = page.getByRole("dialog").filter({ hasText: "Invite members" });
+  const addresses = dialog.getByLabel("Email addresses");
+  await addresses.fill(userOf("invitee").email);
+  await addresses.press("Enter");
+  await dialog.getByRole("radio", { name: /^Viewer/ }).click();
+  await dialog.getByRole("button", { name: "Send invitation" }).click();
 
-  await expect(page.getByText("Member invited")).toBeVisible();
-  const row = page.getByRole("row").filter({ hasText: userOf("invitee").email });
-  await expect(row).toContainText("Invitation Pending");
+  // No toast: the dialog closes and the invitation is in the list.
+  const row = page.getByRole("row").filter({ hasText: email });
+  await expect(row).toContainText("Invitation pending");
+});
+
+// A successful resend is covered by core's tests (tests/api/test_invitation_resend.py),
+// not here: it would mail the invitee again.
+test("the new invitation cannot be resent yet, and says from when", async ({ page }) => {
+  const email = userOf("invitee").email.toLowerCase();
+  await page.goto("/settings/members");
+  const row = page.getByRole("row").filter({ hasText: email });
+  await row.getByRole("button", { name: `More actions for ${email}` }).click();
+  // Disabled for 10 minutes after the last send, with the time under its label.
+  const resend = page.getByRole("menuitem", { name: /^Resend invitation/ });
+  await expect(resend).toHaveAttribute("aria-disabled", "true");
+  await expect(resend).toContainText(/Resending possible from \d{2}:\d{2}\./);
+  await page.keyboard.press("Escape");
 });
 
 test.describe("the invitee", () => {

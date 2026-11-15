@@ -27,13 +27,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai.exceptions import ToolFailed
 
 from assistant.asks import RUN_PREFIX, AskHistory, recent_picked_ids
-from assistant.context import RECORD_ID_PATTERN, project_of
+from assistant.context import (
+    RECORD_ID_MAX_LENGTH,
+    RECORD_ID_PATTERN,
+    is_record_id,
+    project_of,
+)
 from assistant.surfaces import Locale
 from assistant.tools.ask import in_catalog, users_dataset
 from assistant.tools.core import ShownItem, ShownItemGroup
 from assistant.tools.filters import FeatureFilter, field_kind, to_cql2
 from assistant.tools.http import SIGN_IN_EXPIRED, ServiceError, sign_in_expired
-from assistant.tools.policy import MIN_RESTRICTED_GROUP
 from assistant.tools.project import layer_extent
 from assistant.tools.runtime import InputInvalid, ToolEnv, ToolSpec
 from assistant.tools.workflow_tools import (
@@ -507,18 +511,6 @@ async def _count(
     return count if isinstance(count, int) and not isinstance(count, bool) else None
 
 
-def _withheld(env: ToolEnv, step: DatasetStep, count: int) -> bool:
-    """Whether the data policy keeps the step's count from the model, as
-    ``project_count_features`` does: under Restricted, a filtered count below
-    ``MIN_RESTRICTED_GROUP``, since "none" against "one" says whether a
-    feature exists."""
-    return (
-        env.data_policy == "restricted"
-        and step.filter is not None
-        and count < MIN_RESTRICTED_GROUP
-    )
-
-
 async def _dataset_counts(
     env: ToolEnv, prepared: Prepared, fields: Fields
 ) -> dict[str, int]:
@@ -527,9 +519,8 @@ async def _dataset_counts(
     directly or through merge and centroid steps), counted through processes
     with the step's filter, once per dataset step and concurrently. A count
     that cannot be read is left out, and with it every sum it is part of
-    (the run's own limit still holds); so is a count the data policy
-    withholds (``_withheld``), which the issues' messages would name. Rows
-    of any other step's result exist only once the run gets there."""
+    (the run's own limit still holds). Rows of any other step's result
+    exist only once the run gets there."""
     by_id = {step.id: step for step in prepared.draft.steps}
     datasets = [
         step
@@ -544,7 +535,7 @@ async def _dataset_counts(
     return {
         step.id: count
         for step, count in zip(datasets, found, strict=True)
-        if count is not None and not _withheld(env, step, count)
+        if count is not None
     }
 
 
@@ -813,7 +804,6 @@ CHECK_DRAFT: ToolSpec[DraftInput, DraftCheck] = ToolSpec(
     output_model=DraftCheck,
     run=_check_draft,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
 )
 
 
@@ -960,7 +950,6 @@ CREATE: ToolSpec[DraftInput, WorkflowCreated] = ToolSpec(
     output_model=WorkflowCreated,
     run=_create,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
     risk="write",
     scope="goat:write",
 )
@@ -1182,7 +1171,6 @@ FIND_TEMPLATES: ToolSpec[FindTemplatesInput, FoundTemplates] = ToolSpec(
     output_model=FoundTemplates,
     run=_find_templates,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
     # A rephrased query searches the same names and descriptions, and each
     # call takes one of the answer's look-ups: the first call's result (its
     # hits, or the usable templates when it found none) answers the later ones.
@@ -1596,7 +1584,6 @@ CREATE_FROM_TEMPLATE: ToolSpec[FromTemplateInput, WorkflowCreated] = ToolSpec(
     output_model=WorkflowCreated,
     run=_from_template,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
     risk="write",
     scope="goat:write",
 )
@@ -1606,7 +1593,6 @@ CREATE_FROM_TEMPLATE: ToolSpec[FromTemplateInput, WorkflowCreated] = ToolSpec(
 #: How many picked ids are looked up as bundles at most, the newest picks
 #: first.
 MAX_BUNDLE_LOOKUPS = 10
-_RECORD_ID = re.compile(RECORD_ID_PATTERN)
 
 
 def _may_be_bundle(item: str) -> bool:
@@ -1614,7 +1600,7 @@ def _may_be_bundle(item: str) -> bool:
     so only a record id that is no dot segment goes into a lookup's path, and
     a workflow run's value never names a dataset."""
     return (
-        _RECORD_ID.fullmatch(item) is not None
+        is_record_id(item)
         and item not in (".", "..")
         and not item.startswith(RUN_PREFIX)
     )
@@ -1678,6 +1664,7 @@ class AddCatalogLayerInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     catalog_id: str = Field(
+        max_length=RECORD_ID_MAX_LENGTH,
         pattern=RECORD_ID_PATTERN,
         description=(
             "The catalog dataset the user picked in your card, an id from "
@@ -1792,7 +1779,6 @@ ADD_CATALOG_LAYER: ToolSpec[AddCatalogLayerInput, AddedLayers] = ToolSpec(
     output_model=AddedLayers,
     run=_add_catalog_layer,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
     risk="write",
     scope="goat:write",
 )
@@ -1912,7 +1898,6 @@ ADD_DATASET: ToolSpec[AddDatasetInput, AddedLayers] = ToolSpec(
     output_model=AddedLayers,
     run=_add_dataset,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
     risk="write",
     scope="goat:write",
 )

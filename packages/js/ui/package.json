@@ -44,7 +44,6 @@
     "react-swipeable-views": "^0.14.0",
     "react-swipeable-views-utils": "^0.14.0",
     "run-exclusive": "^2.2.18",
-    "storybook-dark-mode": "^3.0.0",
     "tsafe": "^1.6.0",
     "tss-react": "^4.8.3",
     "uuid": "^9.0.0"
@@ -52,9 +51,6 @@
   "devDependencies": {
     "@p4b/tsconfig": "workspace:*",
     "@p4b/types": "workspace:*",
-    "@storybook/addons": "^7.4.0",
-    "@storybook/react": "^7.4.0",
-    "@storybook/types": "^7.4.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/uuid": "^9.0.2",

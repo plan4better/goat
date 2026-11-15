@@ -1,10 +1,9 @@
 "use client";
 
-import { Paper, useTheme } from "@mui/material";
 import type { PaperProps } from "@mui/material";
 import type { PopperPlacementType } from "@mui/material/Popper";
 
-import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
+import PopoverPaper from "@/components/common/PopoverPaper";
 import { HEADER_POPOVER_WIDTH } from "@/components/header/HeaderPopover";
 
 /** Every header popover hangs from the right edge of its trigger, arrow-less. */
@@ -16,30 +15,14 @@ type Props = Omit<PaperProps, "elevation" | "variant"> & {
 };
 
 /**
- * The one chrome the header's popovers share (jobs, What's new, the
- * onboarding tray, the account menu): 12px radius, a hairline border, the
- * dashboard's lifted surface shadow and a small gap below the trigger.
+ * The card of the header's popovers (jobs, What's new, the onboarding tray,
+ * the account menu): the app's popover card at their shared width. The gap
+ * below the trigger is `ArrowPopper`'s.
  */
-const HeaderPopoverPaper = ({ width = HEADER_POPOVER_WIDTH, sx, children, ...rest }: Props) => {
-  const theme = useTheme();
-  return (
-    <Paper
-      elevation={0}
-      sx={[
-        {
-          width,
-          mt: "6px",
-          borderRadius: "12px",
-          border: `1px solid ${theme.palette.divider}`,
-          boxShadow: surfaceShadows(theme).hover,
-          overflow: "hidden",
-        },
-        ...(Array.isArray(sx) ? sx : [sx]),
-      ]}
-      {...rest}>
-      {children}
-    </Paper>
-  );
-};
+const HeaderPopoverPaper = ({ width = HEADER_POPOVER_WIDTH, sx, children, ...rest }: Props) => (
+  <PopoverPaper sx={[{ width }, ...(Array.isArray(sx) ? sx : [sx])]} {...rest}>
+    {children}
+  </PopoverPaper>
+);
 
 export default HeaderPopoverPaper;

@@ -75,7 +75,6 @@ CREATE_THING: ToolSpec[CreateIn, Created] = ToolSpec(
     output_model=Created,
     run=_create,
     surfaces=frozenset(SURFACES),
-    returns_data=False,
     risk="write",
     scope="goat:write",
 )

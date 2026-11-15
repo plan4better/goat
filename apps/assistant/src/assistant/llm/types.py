@@ -1,4 +1,4 @@
-"""Names shared by the settings and the model layer (spec §4.2, §4.7)."""
+"""Names shared by the settings and the model layer (spec §4.2)."""
 
 from typing import Literal
 
@@ -35,5 +35,3 @@ DefaultProvider = Literal[
     "mistral",
     "openai_compatible",
 ]
-
-DataPolicy = Literal["standard", "restricted"]

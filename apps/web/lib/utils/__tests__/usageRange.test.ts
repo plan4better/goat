@@ -3,7 +3,14 @@ import { describe, expect, it } from "vitest";
 
 import { commonT } from "@/i18n/__tests__/commonI18n";
 
-import { customRange, presetsFor, rangeLabel, rangeSpan, rangeWindow } from "@/lib/utils/usageRange";
+import {
+  customRange,
+  presetsFor,
+  rangeLabel,
+  rangeSpan,
+  rangeWindow,
+  requestWindow,
+} from "@/lib/utils/usageRange";
 
 const balance = {
   period_start: "2026-10-31T00:00:00",
@@ -151,6 +158,25 @@ describe("rangeWindow", () => {
     expect(rangeWindow({ preset: "m12" }, balance, new Date("2026-01-15T12:00:00Z")).since).toBe(
       "2025-02-01T00:00:00.000Z"
     );
+  });
+});
+
+describe("requestWindow", () => {
+  it("sends no bounds for this period: core counts from the period start the balance reports", () => {
+    expect(requestWindow({ preset: "period" }, balance, now)).toEqual({});
+    expect(requestWindow({ preset: "period" }, undefined, now)).toEqual({});
+  });
+
+  it("needs the balance for the last period only", () => {
+    expect(requestWindow({ preset: "last" }, undefined, now)).toBeNull();
+    expect(requestWindow({ preset: "last" }, balance, now)).toEqual({
+      since: "2026-09-30T00:00:00.000Z",
+      until: "2026-10-31T00:00:00.000Z",
+    });
+    expect(requestWindow({ preset: "d7" }, undefined, now)).toEqual({
+      since: "2026-11-15T00:00:00.000Z",
+      until: "2026-11-22T00:00:00.000Z",
+    });
   });
 });
 

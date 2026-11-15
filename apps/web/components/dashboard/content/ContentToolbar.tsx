@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Checkbox, FormControlLabel, Paper, Typography, debounce, useTheme } from "@mui/material";
+import { Box, Checkbox, FormControlLabel, Typography, debounce, useTheme } from "@mui/material";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -16,6 +16,7 @@ import type {
 } from "@/hooks/dashboard/content/useContentPageState";
 
 import { ArrowPopper } from "@/components/ArrowPoper";
+import PopoverPaper from "@/components/common/PopoverPaper";
 import LayoutToggle from "@/components/dashboard/common/LayoutToggle";
 import SearchInput from "@/components/dashboard/common/SearchInput";
 import SortMenu from "@/components/dashboard/common/SortMenu";
@@ -150,7 +151,7 @@ const ContentToolbar = ({
         onClose={() => setFilterOpen(false)}
         arrow={false}
         content={
-          <Paper elevation={8} sx={{ minWidth: 230, py: 1 }}>
+          <PopoverPaper sx={{ minWidth: 230, py: 1 }}>
             <Typography component="div" sx={groupLabelSx}>
               {t("type")}
             </Typography>
@@ -164,7 +165,7 @@ const ContentToolbar = ({
                 label={<Typography variant="body2">{t(labelKey)}</Typography>}
               />
             ))}
-          </Paper>
+          </PopoverPaper>
         }>
         <ToolPill
           icon={ICON_NAME.FILTER}

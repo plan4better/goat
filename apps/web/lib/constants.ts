@@ -77,6 +77,13 @@ export const privacyPolicyUrl = (lng: string): string | undefined =>
     ? `${configuredWebsiteUrl}/${lng === "de" ? "de/about-us/datenschutz" : "en/about-us/privacy"}`
     : undefined;
 
+/** GOAT's own terms of use on the website for a UI language (the website has terms of its
+ * own, which do not cover GOAT); undefined without `NEXT_PUBLIC_WEBSITE_URL`. */
+export const termsOfUseUrl = (lng: string): string | undefined =>
+  configuredWebsiteUrl
+    ? `${configuredWebsiteUrl}/${lng === "de" ? "de/about-us/nutzungsbedingungen-goat" : "en/about-us/terms-of-use-goat"}`
+    : undefined;
+
 /** The catchment-area walkthrough the help strip links to, one cut per UI language. */
 export const HELP_VIDEO_URL: Record<"en" | "de", string> = {
   en: "https://www.youtube.com/watch?v=_clsR386b9w",

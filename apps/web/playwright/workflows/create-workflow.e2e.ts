@@ -27,7 +27,7 @@ test.describe("Workflow Management", () => {
     // The dialog asks for a name and nothing else — the destination is the
     // folder being browsed.
     projectName = `E2E Workflow Test ${Date.now()}`;
-    await page.getByLabel("New project").fill(projectName);
+    await page.getByRole("textbox", { name: "New project" }).fill(projectName);
     await page.getByRole("button", { name: "Create project" }).click();
 
     await expect(page).toHaveURL(/\/map\//, { timeout: 30000 });

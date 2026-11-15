@@ -24,8 +24,10 @@ from assistant.context import (
     dump_context,
     project_of,
 )
+from assistant.language import LANGUAGE_FALLBACK_WORDS, shows_no_language
 from assistant.skills import BUILT_IN, skills_index
 from assistant.surfaces import Locale
+from assistant.user_docs import DOCS_INDEX
 
 INSTRUCTIONS = """\
 You are the GOAT assistant, built into GOAT, a web GIS platform for planning. \
@@ -106,10 +108,6 @@ offers. The user can open them from the cards. Your text then does not list them
 or their descriptions again: it says what the selection is for, and the caveats \
 and gaps. When you ask the user to narrow down what you found, show the best \
 candidates as cards too, so they can pick from them.
-- When a tool's result is withheld by the organization's data policy, say so \
-plainly: which data the policy keeps from you, and what you can still do (for \
-example counts, or the values the policy allows). Do not show a card in place of \
-the data the user asked for.
 - For "which of my projects use (or contain) X", use core_find_layers: it finds \
 layers by name inside every project the user can open.
 - A project's workflows and print layouts are read with project_get_workflows and \
@@ -132,6 +130,12 @@ with skills_load and follow it. A skill loaded earlier in this conversation is \
 still in it; do not load it again.
 - If a tool says the user can view the project but not change it, tell them so and \
 do not try again.
+- For a question about GOAT itself (where to find something, how to do it in \
+the interface, whether GOAT can do it), read the page that covers it from the \
+docs list after these instructions with docs_read, at most two, before you \
+answer. Name buttons and menus exactly as the page does, since its labels are \
+the ones the user sees, and answer in the user's language. When the docs do not \
+cover it, say so plainly; never describe interface steps they do not give.
 - You cannot see the map. Describe data from tool results, not from what the \
 map might look like.
 - If the user asks for a link to a catalog dataset, read it with \
@@ -225,6 +229,28 @@ NO_ANSWER_TEXT = (
     "that, one sentence on what the cards are for."
 )
 
+LANGUAGE_NAMES: dict[Locale, str] = {"en": "English", "de": "German"}
+
+
+def answer_in_language(asked: Locale, answered: Locale, interface: bool = False) -> str:
+    """Sent back once when a final response is clearly in another language
+    than the user's message, or, with ``interface``, than the interface
+    language the note names for a message that shows none
+    (assistant.agent.ends_with_text): the instructions and the notes say so
+    already, and still some answers came in the language of the data."""
+    reason = (
+        "The user's message shows no language, so the answer is in the interface "
+        f"language, {LANGUAGE_NAMES[asked]}"
+        if interface
+        else f"The user's message is in {LANGUAGE_NAMES[asked]}"
+    )
+    return (
+        f"{reason}, but this response is in {LANGUAGE_NAMES[answered]}. Write it "
+        f"again in {LANGUAGE_NAMES[asked]}, without a word about the language; "
+        "names of layers, fields, projects and places stay as they are."
+    )
+
+
 #: The built-in skills, one line each (assistant.skills); empty without skills.
 SKILLS_INDEX = skills_index(BUILT_IN)
 
@@ -265,8 +291,13 @@ _NO_CATALOG_STATE = "No search text or filters are set."
 
 
 def static_instructions() -> list[str]:
-    """The cached prefix, in order."""
-    return [INSTRUCTIONS, *([SKILLS_INDEX] if SKILLS_INDEX else [])]
+    """The cached prefix, in order: the docs list last, since a release that
+    changes a page's description changes it."""
+    return [
+        INSTRUCTIONS,
+        *([SKILLS_INDEX] if SKILLS_INDEX else []),
+        *([DOCS_INDEX] if DOCS_INDEX else []),
+    ]
 
 
 def _guidance(page: PageContext) -> list[str]:
@@ -386,8 +417,6 @@ TOOLS_MAY_HAVE_CHANGED = (
     "messages. Before saying you cannot do something, check them, even if an earlier "
     "answer said so."
 )
-#: A message with fewer words may not show its language (a name, a number).
-LANGUAGE_FALLBACK_WORDS = 3
 
 
 def render_note(
@@ -396,14 +425,15 @@ def render_note(
     locale: Locale,
     message: str | None = None,
 ) -> str:
-    """The run's note: the interface language when the message may not show one,
-    then where the user is and the page state.
+    """The run's note: the interface language when the message may not show one
+    (``shows_no_language``: a name, a number, nouns only), and where the user
+    is and the page state.
 
-    A full sentence leaves the interface language out: next to an English
-    question, "German" in the note made models answer in German."""
+    A message with a grammar word leaves the interface language out: next to
+    an English question, "German" in the note made models answer in German."""
     lines: list[str] = []
     # A longer message gets its language note after the text (with_note).
-    if message is None or len(message.split()) < LANGUAGE_FALLBACK_WORDS:
+    if message is None or shows_no_language(message):
         lines.append(LANGUAGE_LINES[locale])
     if previous is not None:
         lines.append(TOOLS_MAY_HAVE_CHANGED)

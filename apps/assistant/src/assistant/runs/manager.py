@@ -240,7 +240,9 @@ class _Emitter:
 def _assistant_text(events: list[RunEvent]) -> str:
     """The answer text recorded so far, folded from the run's events."""
     return "".join(
-        str(part["text"]) for part in fold_parts(events) if part.get("type") == "text"
+        str(part["text"])
+        for part in fold_parts(events)
+        if part.get("type") == "text" and not part.get("replaced")
     )
 
 
@@ -632,9 +634,10 @@ class RunManager:
                 message_id=str(message_id),
                 emit=emit,
                 part_ids=part_ids,
-                data_policy=resolution.data_policy,
                 prompt_note=setup.note,
                 prompt_answer=setup.answer,
+                prompt_text=text,
+                prompt_locale=setup.locale,
                 budget=self._budget(),
             )
             # A write repeated in this answer returns its first result, as in
@@ -646,7 +649,6 @@ class RunManager:
                     services=self.tool_services,
                     login=setup.login,
                     user_id=user_id,
-                    data_policy=resolution.data_policy,
                     page=setup.page,
                     locale=setup.locale,
                     run_id=run_id,
@@ -880,7 +882,7 @@ class RunManager:
         attempt that is cancelled or fails are still counted."""
         async with self._models(target) as models:
             agent = self.agent_factory(models.main)
-            translator = EventTranslator(part_ids)
+            translator = EventTranslator(part_ids, deps.response_texts)
             limits = self._budget().usage_limits()
 
             async def on_event(event: AgentStreamEvent) -> None:

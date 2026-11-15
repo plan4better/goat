@@ -27,7 +27,7 @@ from pydantic import (
     model_validator,
 )
 
-from assistant.context import RECORD_ID_PATTERN
+from assistant.context import is_record_id
 
 #: The tool's wire name.
 ASK_TOOL = "ask_user"
@@ -49,7 +49,6 @@ MAX_ADDS = 25
 #: The prefix of a value that stands for a workflow run
 #: (``assistant.workflows.runs.RUN_VALUE``); never one of ``adds``.
 RUN_PREFIX = "run:"
-_RECORD_ID = re.compile(RECORD_ID_PATTERN)
 #: Labels of the free-text option the card adds by itself.
 _OTHER_LABELS = frozenset(
     {
@@ -141,7 +140,7 @@ class AskOption(BaseModel):
         for item in adds:
             # A dot segment fits the pattern, but in a lookup's path it would
             # name another route.
-            if not _RECORD_ID.fullmatch(item) or item in (".", ".."):
+            if not is_record_id(item) or item in (".", ".."):
                 raise ValueError(f"{item!r} is not a dataset id")
             if item.startswith(RUN_PREFIX):
                 raise ValueError("adds names datasets, never a workflow run")

@@ -41,7 +41,7 @@ Mit Vorlagen beginnen Sie mit einem bereits eingerichteten Projekt, Workflow ode
 
 ## Aktuelle Datensätze
 
-Die Datensätze, mit denen Sie zuletzt gearbeitet haben, jeweils mit Besitzer und Bereich. Über `Alle Datensätze` gelangen Sie zur Seite [Inhalt](../workspace/content.md).
+Die Datensätze, mit denen Sie zuletzt gearbeitet haben, jeweils mit Eigentümer und Bereich. Über `Alle Datensätze` gelangen Sie zur Seite [Inhalt](../workspace/content.md).
 
 ## Ihre Teams
 

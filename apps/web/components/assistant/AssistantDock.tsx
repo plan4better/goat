@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+import { popoverSurface } from "@p4b/ui/theme/popoverSurface";
 
 import { refreshWorkflowList } from "@/lib/api/workflows";
 import { addItemToProject } from "@/lib/assistant/addToProject";
@@ -59,7 +60,6 @@ import DockPanel from "@/components/assistant/DockPanel";
 import { DialogLoadFailed, DockErrorBoundary, orLoadFailed } from "@/components/assistant/LoadFailed";
 import NewConversation from "@/components/assistant/NewConversation";
 import {
-  CARD_RADIUS,
   accentSoft,
   accentText,
   dockBackdropSx,
@@ -69,7 +69,6 @@ import {
   focusRing,
   headerIconButtonSx,
 } from "@/components/assistant/styles";
-import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
 import { TOOLBAR_HEIGHT } from "@/components/header/Toolbar";
 
 // What a dropped file, a card's "All details" or a bundle opens: each carries the
@@ -451,10 +450,7 @@ export default function AssistantDock({
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          borderRadius: CARD_RADIUS,
-          border: 1,
-          borderColor: "divider",
-          boxShadow: surfaceShadows(theme).hover,
+          ...popoverSurface(theme),
         }}>
         <ConversationHistory onPicked={() => setHistoryOpen(false)} />
       </Paper>

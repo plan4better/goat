@@ -8,7 +8,7 @@ Standards and best practices for GOAT documentation.
 - **Focus on user benefits**, not tool names in the intro
 - Use simple, direct language and shorter sentences
 - `code` for buttons/fields, **Bold** for UI elements.
-- Use the glossary.md to write the right terms from GOAT UI and to make the german translations.
+- Take UI labels in English and German from the app's own texts (`apps/web/i18n/locales/en/common.json` and `de/common.json`), so the docs show what the app shows.
 
 ### Images
 - Center images with consistent styling.
@@ -43,7 +43,7 @@ Concise explanation of what the tool does and how it works.
 - Write simple use cases with action verbs
 
 ## 3. How to use the tool
-Step-by-step instructions using the standard step format (use the glossary.md for terms).
+Step-by-step instructions using the standard step format, with the labels the app shows.
 
 ### Results
 What users get as output (within the "How to use the tool" section).

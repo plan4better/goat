@@ -14,7 +14,7 @@ Benutzerkonten liegen in Keycloak; Organisationen, Teams und Rollen liegen in GO
 
 Die Keycloak-Admin-Konsole finden Sie unter `<GOAT-URL>/keycloak/admin`. Melden Sie sich mit dem Benutzer `admin` und dem Passwort `KEYCLOAK_ADMIN_PASSWORD` aus `.env` an. GOATs Benutzer liegen im Realm `goat` (`REALM_NAME`).
 
-Um einen Benutzer hinzuzufügen, laden Sie ihn in GOAT ein: Öffnen Sie <code>Einstellungen</code> → <code>Organisation</code> → <code>Mitglieder</code>, klicken Sie auf <code>Neues Mitglied</code>, geben Sie die E-Mail-Adresse ein, wählen Sie die Rolle und klicken Sie auf <code>Einladung senden</code>.
+Um einen Benutzer hinzuzufügen, laden Sie ihn in GOAT ein: Öffnen Sie <code>Einstellungen</code> → <code>Organisation</code> → <code>Mitglieder</code>, klicken Sie auf <code>Mitglieder einladen</code>, geben Sie eine oder mehrere E-Mail-Adressen ein, wählen Sie die Rolle und klicken Sie auf <code>Einladung senden</code>.
 
 Die Selbstregistrierung ist im mitgelieferten Realm ausgeschaltet, deshalb legt GOAT das Anmeldekonto für eine Adresse an, die noch keines hat:
 

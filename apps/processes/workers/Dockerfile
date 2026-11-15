@@ -22,7 +22,6 @@ ARG UV_VERSION=0.11.24
 # build on Debian 13 and the windmill binary needs its glibc (2.39), which the
 # Debian 12 worker base below doesn't have.
 ARG WINDMILL_EXTRA_PYTHON_VERSIONS="3.12"
-ARG TIPPECANOE_VERSION=2.79.0
 # Pinned because worker-print installs the browser before goatlib and the
 # package after it (see there); both steps must name the same release.
 ARG PLAYWRIGHT_VERSION=1.63.0
@@ -106,25 +105,6 @@ RUN mkdir -p /opt/nigiri-sdk \
 COPY packages/cpp/routing /src/routing
 RUN uv build --wheel /src/routing --out-dir /wheels \
     --config-setting=cmake.define.FETCHCONTENT_SOURCE_DIR_NIGIRI_SDK=/opt/nigiri-sdk
-
-# =============================================================================
-# Stage: Tippecanoe Build - PMTiles generation for worker-tools
-# =============================================================================
-FROM linux-base AS tippecanoe-build
-
-RUN apt-get update && apt-get install --no-install-recommends -y \
-    build-essential \
-    libsqlite3-dev \
-    zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-ARG TIPPECANOE_VERSION
-RUN curl -fsSL https://github.com/felt/tippecanoe/archive/refs/tags/${TIPPECANOE_VERSION}.tar.gz -o /tmp/tippecanoe.tar.gz \
-    && tar -xzf /tmp/tippecanoe.tar.gz -C /tmp \
-    && cd /tmp/tippecanoe-${TIPPECANOE_VERSION} \
-    && make -j$(nproc) \
-    && make install PREFIX=/opt/tippecanoe \
-    && rm -rf /tmp/tippecanoe*
 
 # =============================================================================
 # Stage: Playwright Build - a standalone Playwright CLI for worker-print
@@ -255,14 +235,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     libgeos-dev \
     libproj-dev \
-    # Build toolchain, and the libraries tippecanoe links against
-    build-essential \
-    libsqlite3-dev \
-    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
-
-# tippecanoe for PMTiles generation
-COPY --from=tippecanoe-build /opt/tippecanoe/ /usr/local/
 
 # Python, venv and extensions last (see worker-base)
 COPY --from=python-build $UV_PYTHON_INSTALL_DIR $UV_PYTHON_INSTALL_DIR

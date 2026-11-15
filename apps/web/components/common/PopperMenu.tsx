@@ -6,7 +6,6 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Paper,
   Tooltip,
   alpha,
   useTheme,
@@ -17,6 +16,8 @@ import type { ICON_NAME } from "@p4b/ui/components/Icon";
 import { Icon } from "@p4b/ui/components/Icon";
 
 import { ArrowPopper } from "@/components/ArrowPoper";
+import PopoverPaper from "@/components/common/PopoverPaper";
+import { POPOVER_LIST_PADDING, POPOVER_ROW_ICON_SIZE, POPOVER_ROW_SX } from "@/components/common/popoverRow";
 
 export interface PopperMenuItem {
   id: string;
@@ -77,16 +78,15 @@ export default function PopperMenu(props: PopperMenuProps) {
       arrow={false}
       popperStyle={{ zIndex: 10000, pointerEvents: "all" }} // Ensure the popper menu is above any other element and clickable
       content={
-        <Paper
-          elevation={8}
+        <PopoverPaper
           sx={{
             minWidth: 220,
             maxWidth: 340,
             overflow: "auto",
-            py: theme.spacing(2),
+            p: POPOVER_LIST_PADDING,
             pointerEvents: "all",
           }}>
-          <List dense={true} disablePadding>
+          <List disablePadding>
             {Object.keys(groupedMenuItems).map((group, groupIndex) => (
               <div key={groupIndex}>
                 {groupedMenuItems[group].map((item) => (
@@ -101,12 +101,11 @@ export default function PopperMenu(props: PopperMenuProps) {
                       event.stopPropagation();
                     }}
                     sx={{
-                      ...(item.color && {
-                        color: item.color,
-                      }),
-                      // Tinted, edge to edge as the menu's other rows.
+                      ...POPOVER_ROW_SX,
+                      color: item.color || "text.primary",
+                      // Tinted, a row among the menu's other rows.
                       ...(item.featured && {
-                        mb: 0.5,
+                        mb: "2px",
                         bgcolor: alpha(theme.palette.primary.main, 0.08),
                         "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.14) },
                       }),
@@ -114,7 +113,7 @@ export default function PopperMenu(props: PopperMenuProps) {
                     {/* The tile is centred on the plain icons' column and its label
                         starts where theirs do. */}
                     {item.featured && item.icon && (
-                      <ListItemIcon sx={{ minWidth: 0, ml: "-3.5px", pr: "12.5px" }}>
+                      <ListItemIcon sx={{ minWidth: 0, mx: "-3.5px" }}>
                         <Box
                           sx={{
                             width: 22,
@@ -131,28 +130,20 @@ export default function PopperMenu(props: PopperMenuProps) {
                       </ListItemIcon>
                     )}
                     {!item.featured && item.icon && (
-                      <ListItemIcon
-                        sx={{
-                          color: item.color || "inherit",
-                          pr: 4,
-                          minWidth: 0,
-                        }}>
+                      <ListItemIcon sx={{ minWidth: 0, color: item.color || "text.secondary" }}>
                         <Icon
-                          style={{ fontSize: 15 }}
+                          style={{ fontSize: POPOVER_ROW_ICON_SIZE }}
                           iconName={item.icon}
-                          htmlColor={item.color || "inherit"}
+                          htmlColor="inherit"
                         />
                       </ListItemIcon>
                     )}
                     <ListItemText
                       primary={item.label}
-                      sx={{
-                        "& .MuiTypography-root": {
-                          ...(item.color && {
-                            color: item.color,
-                          }),
-                        },
+                      primaryTypographyProps={{
+                        sx: { fontSize: "inherit", fontWeight: "inherit", color: "inherit" },
                       }}
+                      sx={{ my: 0 }}
                     />
                     {item.tag && (
                       <Tooltip title={item.tagTooltip || ""} placement="right" arrow>
@@ -160,7 +151,6 @@ export default function PopperMenu(props: PopperMenuProps) {
                           label={item.tag}
                           size="small"
                           sx={{
-                            ml: 1,
                             height: 18,
                             fontSize: "0.65rem",
                             fontWeight: 600,
@@ -170,11 +160,11 @@ export default function PopperMenu(props: PopperMenuProps) {
                     )}
                   </ListItemButton>
                 ))}
-                {groupIndex < Object.keys(groupedMenuItems).length - 1 && <Divider sx={{ mx: 2 }} />}
+                {groupIndex < Object.keys(groupedMenuItems).length - 1 && <Divider sx={{ my: "4px" }} />}
               </div>
             ))}
           </List>
-        </Paper>
+        </PopoverPaper>
       }>
       <div
         style={{ pointerEvents: "all" }}

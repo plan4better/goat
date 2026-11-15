@@ -133,6 +133,18 @@ describe("Usage page", () => {
     expect(screen.getByRole("tablist", { name: "Quotas" })).toBeInTheDocument();
   });
 
+  it("opens the tile's detail before the balance answers, so its breakdowns start at once", () => {
+    state.balance = undefined;
+    renderPage();
+    expect(state.balanceEnabled.at(-1)).toBe(true);
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("credits detail");
+  });
+
+  it("names its nav group above the title", () => {
+    renderPage();
+    expect(screen.getByText("Organization")).toBeInTheDocument();
+  });
+
   it("opens on the credits when nothing needs attention, without writing the address", () => {
     renderPage();
     expect(screen.getByRole("tab", { name: /^Credits/ }).getAttribute("aria-selected")).toBe("true");
@@ -232,7 +244,7 @@ describe("Usage page", () => {
   it("keeps sending members who are not admins away", () => {
     state.admin = { isOrgAdmin: false, isLoading: false, isUserProfileError: undefined };
     const { container } = renderPage();
-    expect(state.replace).toHaveBeenCalledWith("/settings/account");
+    expect(state.replace).toHaveBeenCalledWith("/settings/profile");
     expect(container).toBeEmptyDOMElement();
     // Nor does it ask for the balance on their behalf.
     expect(state.balanceEnabled.every((enabled) => !enabled)).toBe(true);
@@ -245,10 +257,10 @@ describe("Usage page", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("leaves for the account settings when billing is off", () => {
+  it("leaves for the profile page when billing is off", () => {
     state.features = { billing: false };
     renderPage();
-    expect(state.replace).toHaveBeenCalledWith("/settings/account");
+    expect(state.replace).toHaveBeenCalledWith("/settings/profile");
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
 });

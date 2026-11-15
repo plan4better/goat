@@ -9,9 +9,10 @@ Temporary Storage Structure:
     └── user_{uuid}/
         └── w_{workflow_uuid}/
             └── n_{node_uuid}/
-                ├── t_{temp_uuid}.parquet  # GeoParquet result
-                ├── tiles.pmtiles          # Pre-generated tiles for visualization
-                └── metadata.json          # Layer info (name, geometry type, bbox, etc.)
+                ├── t_{temp_uuid}.parquet         # GeoParquet result
+                ├── t_{temp_uuid}.pmtiles         # Pre-generated tiles for visualization
+                ├── t_{temp_uuid}_anchor.pmtiles  # Label anchors (polygon results)
+                └── metadata.json                 # Layer info (name, geometry type, bbox, etc.)
 
 The temporary files are served via GeoAPI using query parameters:
     GET /collections/{layer_id}/items?temp=true&workflow_id=xxx&node_id=yyy
@@ -24,8 +25,6 @@ and creates the permanent layer record.
 import json
 import logging
 import shutil
-import subprocess
-import tempfile
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -354,7 +353,13 @@ class TempLayerWriter:
     ) -> Path | None:
         """Generate PMTiles from the parquet file.
 
-        Uses tippecanoe for tile generation with variable-depth pyramid.
+        Built by the builder of every layer's tiles (PMTilesGenerator), with
+        the recipe of the result's geometry type, into this step's folder:
+        the generator's path for the temp file id is `pmtiles_path`, and a
+        polygon result gets its label anchors beside it. The parquet is read
+        through a view naming file_row_number `rowid`, as for catalog layers,
+        so feature ids are file_row_number + 1, the ids geoapi gives the
+        preview's features. A failed build leaves the preview without tiles.
 
         Args:
             duckdb_con: Optional DuckDB connection
@@ -362,118 +367,65 @@ class TempLayerWriter:
         Returns:
             Path to PMTiles file, or None if generation failed
         """
-        # Check if tippecanoe is available
-        if not shutil.which("tippecanoe"):
-            logger.warning("tippecanoe not found, skipping PMTiles generation")
-            return None
-
-        build_dir: Path | None = None
+        con = duckdb_con
+        view = f"preview_t_{self.temp_file_id}"
         try:
+            from goatlib.io.pmtiles import PMTilesConfig, PMTilesGenerator
+
             # Create a DuckDB connection if not provided
-            con = duckdb_con
             if con is None:
                 con = duckdb.connect()
                 set_memory_share(con, JOB_WORK_MEMORY_SHARE)
                 con.execute("INSTALL spatial; LOAD spatial;")
 
-            # Export to GeoJSON (required by tippecanoe)
-            with tempfile.NamedTemporaryFile(
-                suffix=".geojson", delete=False, mode="w"
-            ) as f:
-                geojson_path = f.name
-
             parquet_path_str = str(self.parquet_path)
-
-            # Get columns and filter out unsupported types for GeoJSON export
             cols = con.execute(
                 "DESCRIBE SELECT * FROM read_parquet(?)", [parquet_path_str]
             ).fetchall()
-
-            geom_col = None
-            exportable_cols = []
-            # Types that GDAL/OGR can't export to GeoJSON
-            unsupported_prefixes = ("STRUCT", "MAP", "UNION")
-
-            for col_name, col_type, *_ in cols:
-                col_type_upper = col_type.upper()
-                if "GEOMETRY" in col_type_upper:
-                    geom_col = col_name
-                    exportable_cols.append(col_name)
-                elif not any(
-                    col_type_upper.startswith(p) for p in unsupported_prefixes
-                ):
-                    exportable_cols.append(col_name)
-                else:
-                    logger.debug(
-                        f"Excluding column '{col_name}' ({col_type}) from GeoJSON export"
-                    )
-
+            geom_col = next(
+                (name for name, col_type, *_ in cols if "GEOMETRY" in col_type.upper()),
+                None,
+            )
             if not geom_col:
                 logger.warning("No geometry column found, skipping PMTiles generation")
                 return None
 
-            # Build column list for export (excluding unsupported types)
-            col_list = ", ".join(map(sql_identifier, exportable_cols))
-
-            # Export to GeoJSON using DuckDB
+            # A temporary view: the caller's connection may have DuckLake attached
             con.execute(f"""
-                COPY (
-                    SELECT {col_list} FROM read_parquet({sql_literal(parquet_path_str)})
-                ) TO {sql_literal(geojson_path)}
-                WITH (FORMAT GDAL, DRIVER 'GeoJSON')
+                CREATE OR REPLACE TEMP VIEW {sql_identifier(view)} AS
+                SELECT file_row_number AS rowid, * EXCLUDE (file_row_number)
+                FROM read_parquet({sql_literal(parquet_path_str)}, file_row_number = true)
             """)
-
-            # Run tippecanoe on local disk; only the finished file is published
-            # (see publish_tiles). The built file keeps the .pmtiles name,
-            # since tippecanoe picks the output format by extension.
-            build_dir = Path(tempfile.mkdtemp(prefix="pmtiles_"))
-            built_path = build_dir / self.pmtiles_path.name
-            cmd = [
-                "tippecanoe",
-                "-o",
-                str(built_path),
-                "--force",
-                "--generate-variable-depth-tile-pyramid",
-                f"--maximum-zoom={self.pmtiles_max_zoom}",
-                "--drop-densest-as-needed",
-                "--extend-zooms-if-still-dropping",
-                "-l",
-                "default",
-                geojson_path,
-            ]
-
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600,  # 10 minute timeout
+            generator = PMTilesGenerator(
+                tiles_data_dir=self.base_path,
+                config=PMTilesConfig(max_zoom=self.pmtiles_max_zoom),
             )
-
-            # Cleanup temp geojson
-            Path(geojson_path).unlink(missing_ok=True)
-
-            if result.returncode != 0:
-                logger.warning(f"tippecanoe failed: {result.stderr}")
+            pmtiles_path = generator.generate_from_table(
+                duckdb_con=con,
+                table_name=sql_identifier(view),
+                layer_id=self.temp_file_id,
+                geometry_column=geom_col,
+                exclude_columns=["rowid"],
+            )
+            if pmtiles_path is None:
+                logger.warning("PMTiles generation failed, the preview has no tiles")
                 return None
+            logger.info(f"Generated PMTiles: {pmtiles_path}")
+            return pmtiles_path
 
-            from goatlib.io.pmtiles import publish_tiles
-
-            publish_tiles(built_path, self.pmtiles_path)
-            logger.info(f"Generated PMTiles: {self.pmtiles_path}")
-            return self.pmtiles_path
-
-        except subprocess.TimeoutExpired:
-            logger.warning("tippecanoe timed out")
-            return None
         except Exception as e:
             logger.warning(f"PMTiles generation failed: {e}")
             return None
         finally:
-            if build_dir is not None:
-                shutil.rmtree(build_dir, ignore_errors=True)
-            # Close connection if we created it
-            if duckdb_con is None and con:
-                con.close()
+            if duckdb_con is None:
+                # Close connection if we created it
+                if con is not None:
+                    con.close()
+            else:
+                try:
+                    con.execute(f'DROP VIEW IF EXISTS "{view}"')
+                except Exception as e:
+                    logger.debug(f"Could not drop the preview view: {e}")
 
     @classmethod
     def cleanup_workflow(

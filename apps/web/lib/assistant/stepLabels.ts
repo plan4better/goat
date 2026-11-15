@@ -307,6 +307,8 @@ const shownCount = (output: Fields): number =>
 export function stepResult(step: DynamicToolUIPart, t: Translate): string | undefined {
   if (step.state !== "output-available") return undefined;
   const output = outputOf(step);
+  // An answer stored while a data policy could keep results back may hold one: nothing to count.
+  if (output.withheld === true) return undefined;
   const count = (key: string, value: number | undefined) =>
     value === undefined ? undefined : value === 0 ? t("assistant_result_none") : t(key, { count: value });
   switch (step.toolName) {
@@ -350,10 +352,7 @@ export function stepResult(step: DynamicToolUIPart, t: Translate): string | unde
     case "project_get_layouts":
       return count("assistant_result_layouts", list(output.layouts).length);
     case "project_count_features":
-      // Withheld under the Restricted policy (a filtered count below the minimum).
-      return output.count === null
-        ? t("assistant_result_withheld")
-        : count("assistant_result_features", num(output.count));
+      return count("assistant_result_features", num(output.count));
     case "project_area_statistics":
       return count("assistant_result_features", num(output.feature_count));
     case "project_field_statistics":
@@ -448,6 +447,7 @@ const STEP_KINDS: Record<string, string> = {
   project_get_layouts: "layouts",
   ask_user: "ask",
   skills_load: "instructions",
+  docs_read: "docs",
   workflow_tools: "tools",
   workflow_describe_tool: "tools",
   workflow_find_templates: "templates",
@@ -523,6 +523,7 @@ const COUNTED_BY: Record<
     return `${step.toolName}:${layer}:${canonical(Object.fromEntries(shape))}`;
   },
   instructions: (step) => text(fields(step.input).name),
+  docs: (step) => text(fields(step.input).page),
   workflow_last_run: (step) => text(fields(step.input).workflow_id),
   workflow_read: (step) => text(fields(step.input).workflow_id),
 };

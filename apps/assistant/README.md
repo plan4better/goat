@@ -154,7 +154,10 @@ again after `HEARTBEAT_SECONDS` without a change, `tools/workflow_runs.py`). A r
 results, so it starts without asking only for a workflow this conversation created, with no export set to overwrite and
 whose latest run, if any, this conversation started (`run_permission` in `workflows/runs.py`, read from the
 conversation's stored parts); any other run needs the user's pick of Run in a card, one pick per run, and the refusal
-names the condition that failed, so the card says what a run does. A workflow with a dataset step without a layer is
+names the condition that failed, so the card says what a run does. Asked to run such a workflow, the assistant shows
+the Run card first, also when the workflow shows issues that stop a run, and never offers a correction in its place,
+changes it or replaces it unless the user asks in their own words (build-a-workflow skill, `workflow_get`'s note): an
+edit there saves over the user's workflow, and a refused run's issues are what the answer reports. A workflow with a dataset step without a layer is
 not started: processes refuses such a run anyway, and the refusal names the steps whose layer the user chooses first.
 A run processes refuses and a wait on a run already going use up the pick as well. A run already going is waited for, never started twice. The answer keeps one clock:
 `ASSISTANT_RUN_MAX_SECONDS`, which a waiting run moves to `ASSISTANT_RUN_WAIT_MAX_SECONDS` from the answer's start
@@ -198,12 +201,10 @@ to `DENOMINATOR_GROUPS` groups too: processes sorts by value, so a small group w
 residents in reach) comes last in its order, where a model reading a long list misses it. A filtered numerator has no
 row for a group with no features in it (no resident in reach), so a ranked count or sum gets a row of 0 for each group
 the denominator lists: the lowest shares would miss them otherwise. A denominator from another layer gets a note: if the
-layers come from different sources, check that both count the same population (source and year). Under Restricted it
-sends counts only, for few groups (judged over the whole layer, also with a filter), no count of a group under
-`MIN_RESTRICTED_GROUP` features, nothing for a filter that matches fewer features than that, and nothing at all with
-`share_of`. A join names the fields it adds `join_<name>`, and models often leave the prefix out, so the statistics
-tools and the count's filter read `join_x` for a field `x` the layer lacks and say so in the result's note. The name is
-resolved before anything else, so the Restricted checks judge `join_x` exactly as when the model names it.
+layers come from different sources, check that both count the same population (source and year). A join names the
+fields it adds `join_<name>`, and models often leave the prefix out, so the statistics tools and the count's filter read
+`join_x` for a field `x` the layer lacks and say so in the result's note. The name is resolved before anything else, so
+`join_x` is checked exactly as when the model names it.
 
 **Building a workflow.** The model is shown only the tools of the user's toolbox (`offered` in
 `tools/workflow_tools.py`: `GET /processes` for the user, without the tools hidden from the toolbox, such as custom
@@ -230,8 +231,6 @@ for a travel cost matrix with more origin and destination pairs than one run tak
 against the limits in goatlib's `tools/limits.py`), which the run would otherwise fail on only once it reaches that
 step. The count follows merge and centroid steps, whose rows are their inputs' together, and stops at any other
 step, whose rows only its run knows; a sum with a count that could not be read is left out rather than reported low.
-Under Restricted, a filtered count below `MIN_RESTRICTED_GROUP` counts as one that could not be read: the issues'
-messages name the counts, and `project_count_features` withholds such a count too.
 The check's issues come back in the draft's ids, the message of a one-step issue starting with the step's name
 (`draft_issues`). It needs the user's toolbox and the tools' process descriptions, for the steps'
 titles, the layer inputs and the field settings: without them a draft is unchecked and `workflow_create` refuses.
@@ -280,9 +279,8 @@ keeps the config before the edit and both revisions, outside what the model read
 under the user's own sign-in, so core decides whether they may still change the workflow. It saves once per workflow,
 the oldest content on the newest revision, since saving edit by edit would conflict with itself, and it asks before it
 writes over a save made between or after the answer's edits. Its mark (under way, undone) lives in those audit rows
-rather than a column of its own. Filters and If conditions hold literals picked from the data, so `workflow_get`
-withholds them under Restricted, as `project_get_layers` does a layer's filter. An edit makes the answer's earlier reads
-of workflows stale, so a later read runs again (`ToolSpec.invalidates`).
+rather than a column of its own. An edit makes the answer's earlier reads of workflows stale, so a later read runs
+again (`ToolSpec.invalidates`).
 
 **Templates.** `workflow_find_templates` searches the whole query and also its longer words (`MAX_SEARCH_WORDS` and
 `MIN_SEARCH_WORD_CHARS` in `tools/workflows.py`), because core matches the whole query as one piece of a template's
@@ -331,6 +329,31 @@ sent again with every later call, so a conversation loads only the one it uses. 
 (`tests/test_build_a_workflow_skill.py`) check that every assistant tool it names exists, that each recipe sits in
 exactly one file, and that its example drafts use only tools, inputs, settings and choices found in process
 descriptions captured from processes (`tests/fixtures/process_descriptions.json`).
+
+**User docs.** Questions about GOAT itself (where a button is, how a feature works, whether GOAT can do something)
+are answered from GOAT's user documentation, the docs site's own pages (`apps/docs`, English and German): asked such
+questions, the assistant said it could not see the interface, after half a minute of unrelated tool calls. The pages
+are read and cleaned to plain text at import (`assistant/user_docs`: numbered steps, tables, code and the interface
+labels stay; screenshots, videos and layout markup go, which takes an interface page to about half its length), so they
+are those of the running version and need no network. A source checkout reads them in `apps/docs`, so a dev stack and
+the tests need no step of their own; the image has no `apps/docs`, so its Dockerfile copies both trees into the package
+(`user_docs/pages`) before the wheel is built, the release's smoke check confirms the package reads them there, and a
+service that finds neither does not start. The instructions list every English page in one line, grouped by folder
+(`DOCS_INDEX`, in the cached prefix after the skills, about 2,900 tokens), so the model goes from the question to
+`docs_read` in one step: a tool that returned the list would add a model call to every such question. `docs_read`
+serves only what was read (a page id is looked up, never opened as a path), in the interface language when the page has
+a German version, since its labels are the ones the user sees, and in English otherwise. Each page read is sent
+again with every later call of the answer, so a page longer than `MAX_PAGE_CHARS` comes in parts: a part ends where a
+section starts, names the headings it leaves out (`left_out`), and `section` reads the page from one of them on, so
+no part of a page is out of reach. A section that is not on the page gets the page's headings back. An answer reads
+at most `MAX_PAGES_PER_ANSWER` pages and `MAX_PARTS_PER_ANSWER` reads in all; another part of a page it has read is no
+new page, so two long pages can each be read in two parts. An earlier answer's page goes to the model as its id and
+title only. There is no search service
+(embeddings, a vector store): some 80 pages with a one-line description each fit the instructions, and a list plus
+page loading needs no moving part. The tool is not on `/mcp`, whose clients can read the docs site and its
+`llms.txt` directly. Pages in a category the docs sidebar hides (`"className": "hidden"`) are left out,
+as the site's `llms.txt` leaves them out; every other page needs a `description` in its front matter, which the list
+shows and `tests/test_user_docs.py` checks. The assistant's tests run on every docs change (`.github/workflows/checks.yml`).
 
 Prompt caching: every model call of an answer resends the instructions, tool definitions and the conversation so
 far. OpenAI, Azure OpenAI, DeepSeek and Mistral cache that prefix by themselves; Claude (direct, Bedrock, Vertex) and
@@ -431,7 +454,21 @@ reasoning, or nothing), with the same tools, and a model that gave one often gav
 on its output retries ("Exceeded maximum output retries"). It also takes any text that is not empty as the answer, so
 an answer could end after its cards with a single space. Such an answer is asked for its text
 (`agent.ends_with_text`); only the last retry's answer is taken as it is, since failing the run then would lose what
-the user has already seen. And the second response of a run without a tool call or text beyond whitespace ends its
+the user has already seen. The same check asks once per run for an answer in the other language than the user's
+message, English or German (`agent.wrong_language`): the instructions and the note after a longer message say it
+already, and still some answers came in the language of the data or of the interface. More wording did not help.
+It reads both languages from grammar words and the verbs a request starts with (`assistant/language.py`, shared with
+the evals' language check), only prose (no code, bold names, quotes, table rows or titles in a list), and acts only
+when both are clear. A message of three words or more with no grammar word of either language (nouns, names, numbers)
+shows none: the note names the interface language for it, as for a shorter one, and the check holds the answer to
+that language, unless a German answer follows nouns with German letters. A message under three words, a card's answer,
+a message that names a language or asks to translate, one with a few grammar words but no clear language, and an
+answer of names or titles are never asked again, nor is an answer when another answer step does not fit in the run's
+tokens. The answer already streamed is replaced, not added to: the check names its text parts
+(`events.TextReplaced`, a `data-replaced-text` part naming them by the id each text-start carries in its provider
+metadata), the dock leaves them out, live and after a reload (the stored parts keep them, marked), and the next
+answer's history holds only the answer that replaced them (`runs/turn.py`, `without_replaced`). The retry counts with
+the others, and its answer goes out whatever its language. And the second response of a run without a tool call or text beyond whitespace ends its
 look-ups (`SILENT_RESPONSES` in `assistant/tools/toolset.py`): the next call is the answer step, told why
 (`prompt.ANSWER_IN_TEXT`). A model can still give no text until Pydantic AI gives up. After a `workflow_run` that
 succeeded and saved layers, with nothing written since, that would end the answer as a failure while the run card and
@@ -439,6 +476,22 @@ the layers are there: such an answer ends with a fixed text instead (`runs/turn.
 dock shows in the user's language by its kind, the run completes, and a warning is logged. The next answer finds the
 text in the history after everything the run found, so the user can ask for the numbers. Otherwise the answer still
 fails: after a failed run or one without layers there are no numbers, and `workflow_last_run` shows no run card.
+
+**One data policy.** The data tools send the model what the user can see, as far as a result fits the size cap
+(`MAX_RESULT_BYTES` in `tools/runtime.py`): the same for every organization, in a run and over MCP. There was a second
+mode, Restricted, which an admin could choose: it kept back rows, features, geometries, sums and means, sent nothing
+that fewer than five features made up, and refused filters that compared values. It was removed. Two modes confused
+admins and users; no organization in production used it; and it kept back what most analyses ask for, so the
+assistant could build and run an analysis but not name its result, the residents reached. It also cost every data
+tool a second, reduced form of its result and extra calls to processes to judge group sizes, and every new data tool
+had to get one. An organization that does not want its data to reach GOAT AI's model switches GOAT AI off or connects
+a model of its own choice (an own connection, without the fallback to GOAT AI). The dock's notice and the privacy policy say that the data the assistant reads
+goes to the model. The column `organization_settings.data_policy` is no longer read: core keeps it until a later
+migration drops it, so assistant pods of the earlier release keep working during a rolling deploy, and every save
+writes `standard` to it (not the column's default, `restricted`), so such a pod, during the rollout or after a
+rollback, reads every organization saved by this release as Standard. `PUT /settings` ignores the `data_policy` field
+a web bundle of that release still sends. An organization that had chosen Restricted behaves like every other one;
+its AI stays on.
 
 **AI credits.** Answers of GOAT AI draw on the organization's pool of AI credits, which core owns with the
 allowance, the trial amount and the price tiers (`apps/core/README.md`); the assistant holds none of these numbers and

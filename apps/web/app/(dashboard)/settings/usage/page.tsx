@@ -10,19 +10,21 @@ import { useTranslation } from "react-i18next";
 
 import { type CreditBalance, useCreditBalance } from "@/lib/api/usage";
 import { useFeatures } from "@/lib/api/users";
+import { SETTINGS_ROUTES } from "@/lib/settingsRoutes";
 import { formatCreditsDay, parseApiDate } from "@/lib/utils/credits";
 import { daySpanLabel } from "@/lib/utils/usageRange";
 
 import { useAuthZ } from "@/hooks/auth/AuthZ";
 
 import { accentText } from "@/components/assistant/styles";
+import PageHeader from "@/components/dashboard/common/PageHeader";
+import SettingsPage from "@/components/settings/common/SettingsPage";
 import { AiCreditsDetail } from "@/components/settings/usage/AiCreditsDetail";
 import { CreditsDetail } from "@/components/settings/usage/CreditsDetail";
 import { EditorsDetail } from "@/components/settings/usage/EditorsDetail";
 import { ProjectsDetail } from "@/components/settings/usage/ProjectsDetail";
 import { QUOTA_KEYS, type QuotaKey, QuotaTiles, quotaTabId } from "@/components/settings/usage/QuotaTiles";
 import { StorageDetail } from "@/components/settings/usage/StorageDetail";
-import { DetailHeaderSkeleton } from "@/components/settings/usage/UsageDetailParts";
 import { useReportProblemHref } from "@/components/support/SupportMenu";
 
 /** The day an instant falls on for the reader, as the UTC midnight that
@@ -77,13 +79,17 @@ export default function UsagePage() {
     { history: "replace" }
   );
   useEffect(() => {
-    if (billingOff || notAdmin) router.replace("/settings/account");
+    if (billingOff || notAdmin) router.replace(SETTINGS_ROUTES.profile);
   }, [billingOff, notAdmin, router]);
 
   // Without the feature flags or the profile we cannot tell who may see the
   // page: say so instead of leaving it blank or sending them away.
   if ((!features && featuresError) || (profileFailed && !billingOff)) {
-    return <Alert severity="error">{t("usage_load_error")}</Alert>;
+    return (
+      <SettingsPage>
+        <Alert severity="error">{t("usage_load_error")}</Alert>
+      </SettingsPage>
+    );
   }
   if (!allowed) return null;
 
@@ -97,84 +103,86 @@ export default function UsagePage() {
     : null;
 
   return (
-    // On the page background (the settings layout leaves this page bare): the
-    // header's top lines up with the menu card's.
-    <Stack spacing={5} sx={{ pb: 5 }}>
-      <Stack spacing={1}>
-        <Typography
-          component="h2"
-          sx={{ fontSize: 24, fontWeight: 600, letterSpacing: "-0.3px", lineHeight: 1.2 }}>
-          {t("usage_and_quotas")}
-        </Typography>
-        <Typography sx={{ fontSize: 14, lineHeight: 1.5, color: "text.secondary", maxWidth: 640 }}>
-          {subtitleOf(balance, t, language)}
-        </Typography>
-      </Stack>
-
-      {balance?.on_trial && (
-        <Stack
-          role="status"
-          direction="row"
-          alignItems="center"
-          useFlexGap
-          flexWrap="wrap"
-          gap={3}
-          sx={{
-            px: 4,
-            py: 3,
-            borderRadius: "12px",
-            backgroundColor: alpha(theme.palette.primary.main, theme.palette.mode === "light" ? 0.12 : 0.16),
-          }}>
-          <Typography sx={{ flex: "1 1 300px", fontSize: 14, lineHeight: 1.5 }}>
-            {trialEnd && <strong>{t("usage_trial_until", { date: trialEnd })}</strong>}{" "}
-            {t("usage_trial_banner")}
-          </Typography>
-          {supportHref && (
-            <Link
-              {...(supportHref.startsWith("/") ? { component: NextLink } : {})}
-              href={supportHref}
-              underline="hover"
-              sx={{ fontSize: 13, fontWeight: 700, color: accentText(theme) }}>
-              {t("usage_talk_plan")}
-            </Link>
-          )}
-        </Stack>
-      )}
-
-      {!balance && balanceError ? (
-        <Alert severity="error">{t("usage_load_error")}</Alert>
-      ) : (
-        <>
-          <QuotaTiles
-            balance={balance}
-            isLoading={balanceLoading}
-            value={open}
-            onChange={choose}
-            panelId={panelId}
-          />
-          {/* One panel, labelled by the open tile; only its detail is there, so
-              only its data is read. */}
-          <Box role="tabpanel" id={panelId} aria-labelledby={quotaTabId(panelId, open)} sx={{ pt: 1 }}>
-            {!balance ? (
-              <DetailHeaderSkeleton />
-            ) : open === "credits" ? (
-              <CreditsDetail balance={balance} />
-            ) : open === "ai" ? (
-              <AiCreditsDetail balance={balance} />
-            ) : open === "storage" ? (
-              <StorageDetail balance={balance} />
-            ) : open === "projects" ? (
-              <ProjectsDetail balance={balance} />
-            ) : (
-              <EditorsDetail
-                balance={balance}
-                // Credits or AI credits, narrowed to the member Editors names.
-                onOpenUsage={(quota, member) => void setParams({ quota, member })}
-              />
+    // The settings page frame: the page, heading included, scrolls as one.
+    <SettingsPage
+      header={
+        <PageHeader
+          level={2}
+          responsive
+          eyebrow={t("settings_nav_group_organization")}
+          title={t("usage_and_quotas")}
+          subtitle={subtitleOf(balance, t, language)}
+        />
+      }>
+      {/* Its parts 16px apart, as the cards of every settings page. */}
+      <Stack spacing={4}>
+        {balance?.on_trial && (
+          <Stack
+            role="status"
+            direction="row"
+            alignItems="center"
+            useFlexGap
+            flexWrap="wrap"
+            gap={3}
+            sx={{
+              px: 4,
+              py: 3,
+              borderRadius: "12px",
+              backgroundColor: alpha(
+                theme.palette.primary.main,
+                theme.palette.mode === "light" ? 0.12 : 0.16
+              ),
+            }}>
+            <Typography sx={{ flex: "1 1 300px", fontSize: 14, lineHeight: 1.5 }}>
+              {trialEnd && <strong>{t("usage_trial_until", { date: trialEnd })}</strong>}{" "}
+              {t("usage_trial_banner")}
+            </Typography>
+            {supportHref && (
+              <Link
+                {...(supportHref.startsWith("/") ? { component: NextLink } : {})}
+                href={supportHref}
+                underline="hover"
+                sx={{ fontSize: 13, fontWeight: 700, color: accentText(theme) }}>
+                {t("usage_talk_plan")}
+              </Link>
             )}
-          </Box>
-        </>
-      )}
-    </Stack>
+          </Stack>
+        )}
+
+        {!balance && balanceError ? (
+          <Alert severity="error">{t("usage_load_error")}</Alert>
+        ) : (
+          <>
+            <QuotaTiles
+              balance={balance}
+              isLoading={balanceLoading}
+              value={open}
+              onChange={choose}
+              panelId={panelId}
+            />
+            {/* One panel, labelled by the open tile. Only the open tile's detail
+              is there, so only its data is read; it starts with the balance,
+              not after it. */}
+            <Box role="tabpanel" id={panelId} aria-labelledby={quotaTabId(panelId, open)} sx={{ pt: 1 }}>
+              {open === "credits" ? (
+                <CreditsDetail balance={balance} />
+              ) : open === "ai" ? (
+                <AiCreditsDetail balance={balance} />
+              ) : open === "storage" ? (
+                <StorageDetail balance={balance} />
+              ) : open === "projects" ? (
+                <ProjectsDetail balance={balance} />
+              ) : (
+                <EditorsDetail
+                  balance={balance}
+                  // Credits or AI credits, narrowed to the member Editors names.
+                  onOpenUsage={(quota, member) => void setParams({ quota, member })}
+                />
+              )}
+            </Box>
+          </>
+        )}
+      </Stack>
+    </SettingsPage>
   );
 }

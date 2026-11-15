@@ -2,19 +2,12 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import LoadingButton from "@mui/lab/LoadingButton";
-import {
-  Alert,
-  Box,
-  Button,
-  Stack,
-  TextField,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { Alert, Box, Link, MenuItem, Stack, Typography, useTheme } from "@mui/material";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
+import { Trans, useTranslation } from "react-i18next";
 import type * as z from "zod";
 
 import AuthContainer from "@p4b/ui/components/AuthContainer";
@@ -22,22 +15,21 @@ import AuthLayout from "@p4b/ui/components/AuthLayout";
 
 import { createOrganization } from "@/lib/api/organizations";
 import { useFeatures, useOrganizationCreation } from "@/lib/api/users";
-import { ORG_DEFAULT_AVATAR } from "@/lib/constants";
+import { ORG_DEFAULT_AVATAR, privacyPolicyUrl, termsOfUseUrl } from "@/lib/constants";
 import { postOrganizationSchema } from "@/lib/validations/organization";
-
-import type { ResponseResult } from "@/types/common";
 
 import { useOrganizationSetup } from "@/hooks/onboarding/OrganizationCreate";
 
-import { RhfSelectField } from "@/components/common/form-inputs/SelectField";
+import LabeledField from "@/components/common/LabeledField";
 
 type FormData = z.infer<typeof postOrganizationSchema>;
 
 export default function OrganizationOnBoarding() {
   const theme = useTheme();
-  const { status, update } = useSession();
+  const { status, data: session, update } = useSession();
   const router = useRouter();
-  const { t, orgTypesOptions } = useOrganizationSetup();
+  const { t, i18n } = useTranslation("common");
+  const { orgTypesOptions } = useOrganizationSetup();
   // Where only administrators create organizations, everyone else waits for
   // an invitation. Without an answer the form is shown; core refuses the
   // creation itself.
@@ -53,10 +45,7 @@ export default function OrganizationOnBoarding() {
   }, [organizationCreation?.allowed, router]);
 
   const [isBusy, setIsBusy] = useState<boolean>(false);
-  const [responseResult, setResponseResult] = useState<ResponseResult>({
-    message: "",
-    status: undefined,
-  });
+  const [failed, setFailed] = useState(false);
 
   const {
     handleSubmit,
@@ -81,84 +70,133 @@ export default function OrganizationOnBoarding() {
   }, [errors.name, errors.type, watchFormValues]);
 
   async function onSubmit(data: FormData) {
-    setResponseResult({ message: "", status: undefined });
+    setFailed(false);
     setIsBusy(true);
     try {
       await createOrganization(data);
     } catch (_error) {
-      setResponseResult({
-        message: t("common:organization_creation_error"),
-        status: "error",
-      });
-    } finally {
+      // Stay here: the form keeps what was typed and says what happened.
+      setFailed(true);
       setIsBusy(false);
+      return;
     }
     update();
     router.push("/");
   }
+
+  const language = i18n.language?.startsWith("de") ? "de" : "en";
+  // A link where the website is configured, the bare words where it is not.
+  const legalLink = (url: string | undefined) =>
+    url ? (
+      <Link href={url} target="_blank" rel="noopener noreferrer" color="inherit" underline="always" />
+    ) : (
+      <span />
+    );
+  const email = session?.user?.email;
 
   return (
     <AuthLayout>
       {status == "authenticated" && mayCreate && (
         <AuthContainer
           headerTitle={
-            <Stack sx={{ mb: 8 }} spacing={2}>
-              <Typography variant="h5">{t("common:new_organization_title")}</Typography>
-              <Typography variant="body2">{t("common:new_organization_subtitle")}</Typography>
+            <Stack spacing={2}>
+              <Typography variant="h5" component="h1">
+                {t("new_organization_title")}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t("new_organization_subtitle")}
+              </Typography>
             </Stack>
           }
-          headerAlert={
-            responseResult.status && <Alert severity={responseResult.status}>{responseResult.message}</Alert>
-          }
+          headerAlert={failed && <Alert severity="error">{t("organization_creation_error")}</Alert>}
           body={
-            <Box component="form" onSubmit={handleSubmit(onSubmit)}>
-              <Stack spacing={theme.spacing(4)}>
-                <TextField
-                  fullWidth
+            <Box component="form" noValidate onSubmit={handleSubmit(onSubmit)}>
+              <Stack spacing={5}>
+                <LabeledField
+                  id="organization-name"
+                  label={t("organization_name_label")}
                   required
-                  helperText={errors.name ? errors.name?.message : t("common:organization_name_desc")}
-                  label={t("common:organization_name_label")}
-                  id="name"
+                  autoComplete="organization"
                   {...register("name")}
-                  error={errors.name ? true : false}
+                  error={errors.name?.message}
+                  help={t("organization_name_desc")}
                 />
-
-                <RhfSelectField
-                  options={orgTypesOptions}
-                  control={control}
+                <Controller
                   name="type"
-                  required
-                  label={t("common:organization_type_label")}
-                />
-
-                <Stack spacing={3}>
-                  {features?.billing && (
-                    <Typography variant="body1">{t("common:organization_onboarding_trial_note")}</Typography>
+                  control={control}
+                  render={({ field }) => (
+                    <LabeledField
+                      id="organization-type"
+                      label={t("organization_type_label")}
+                      required
+                      select
+                      name={field.name}
+                      ref={field.ref}
+                      value={field.value ?? ""}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      onBlur={field.onBlur}
+                      error={errors.type?.message}
+                      SelectProps={{ MenuProps: { sx: { maxHeight: "350px" } } }}>
+                      {orgTypesOptions
+                        .filter((option) => option.value)
+                        .map((option) => (
+                          <MenuItem key={option.value} value={option.value}>
+                            {option.label}
+                          </MenuItem>
+                        ))}
+                    </LabeledField>
                   )}
-                  <Typography variant="body2">{t("common:organization_accept_terms")}</Typography>
-                </Stack>
-              </Stack>
-              <LoadingButton
-                loading={isBusy}
-                variant="contained"
-                sx={{ mt: theme.spacing(4) }}
-                fullWidth
-                name="organization-submit"
-                type="submit"
-                disabled={!allowSubmit}>
-                {t("common:lets_get_started")}
-              </LoadingButton>
-              <Stack>
-                <Button
-                  sx={{
-                    mt: theme.spacing(4),
-                  }}
+                />
+                {features?.billing && (
+                  <Typography variant="body2" color="text.secondary">
+                    {t("organization_onboarding_trial_note")}
+                  </Typography>
+                )}
+                <LoadingButton
+                  loading={isBusy}
+                  variant="contained"
                   fullWidth
-                  onClick={() => signOut({ callbackUrl: "/" })}
-                  variant="text"
-                  color="error">
-                  {t("common:logout")}
-                </Button>
+                  name="organization-submit"
+                  type="submit"
+                  disabled={!allowSubmit}>
+                  {t("organization_create_submit")}
+                </LoadingButton>
+              </Stack>
+              <Typography
+                variant="caption"
+                component="p"
+                color="text.secondary"
+                sx={{ mt: 3, textAlign: "center" }}>
+                <Trans
+                  t={t}
+                  i18nKey="organization_accept_terms"
+                  components={{
+                    terms: legalLink(termsOfUseUrl(language)),
+                    privacy: legalLink(privacyPolicyUrl(language)),
+                  }}
+                />
+              </Typography>
+              {/* Which account this is, so a sign-up with the wrong address is noticed here. */}
+              <Stack
+                direction="row"
+                flexWrap="wrap"
+                justifyContent="center"
+                alignItems="baseline"
+                columnGap={2}
+                sx={{ mt: 5, pt: 4, borderTop: `1px solid ${theme.palette.divider}` }}>
+                {email && (
+                  <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+                    {t("onboarding_signed_in_as", { email })}
+                  </Typography>
+                )}
+                <Link
+                  component="button"
+                  type="button"
+                  variant="caption"
+                  underline="hover"
+                  onClick={() => signOut({ callbackUrl: "/" })}>
+                  {t("logout")}
+                </Link>
               </Stack>
             </Box>
           }

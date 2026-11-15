@@ -243,7 +243,6 @@ async def test_execute_stops_when_the_run_was_swept_before_it_started(
     assert goat_ai is not None
     resolution = Resolution(
         organization_id=UUID(int=100),
-        data_policy="standard",
         main=goat_ai,
         fallback=None,
     )

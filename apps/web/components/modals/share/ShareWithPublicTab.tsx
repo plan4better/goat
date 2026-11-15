@@ -22,6 +22,7 @@ import { Loading } from "@p4b/ui/components/Loading";
 
 import { useDateFnsLocale } from "@/i18n/utils";
 
+import { detailOf } from "@/lib/api/apiError";
 import {
   assignDomainToProject,
   unassignDomainFromProject,
@@ -62,9 +63,9 @@ const SectionLabel = ({ children, first }: { children: string; first?: boolean }
   );
 };
 
-/** Copies one value and says so for a moment. A pill rather than the
- * `CopyField` field+button pair, because both rows here already show what
- * they copy (the link inline, the embed code by description). */
+/** Copies one value and says so for a moment. A pill rather than a field
+ * with a button, because both rows here already show what they copy (the
+ * link inline, the embed code by description). */
 const CopyPill = ({ value, label }: { value: string; label: string }) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -81,9 +82,7 @@ const CopyPill = ({ value, label }: { value: string; label: string }) => {
     <Button
       variant="outlined"
       onClick={() => void copy()}
-      startIcon={
-        <Icon iconName={copied ? ICON_NAME.CIRCLECHECK : ICON_NAME.COPY} style={{ fontSize: 12 }} />
-      }
+      startIcon={<Icon iconName={copied ? ICON_NAME.CIRCLECHECK : ICON_NAME.COPY} style={{ fontSize: 12 }} />}
       sx={{
         flexShrink: 0,
         borderRadius: "999px",
@@ -153,12 +152,8 @@ const ShareWithPublicTab: React.FC<ShareWithPublicTabProps> = ({ project }) => {
   const theme = useTheme();
   const { sharedProject, isLoading, mutate } = usePublicProject(project.id);
   const { organization } = useOrganization();
-  const { domains: orgDomains, mutate: mutateOrgDomains } = useOrganizationDomains(
-    organization?.id
-  );
-  const { analyticsList, mutate: mutateOrgAnalytics } = useOrganizationAnalytics(
-    organization?.id
-  );
+  const { domains: orgDomains, mutate: mutateOrgDomains } = useOrganizationDomains(organization?.id);
+  const { analyticsList, mutate: mutateOrgAnalytics } = useOrganizationAnalytics(organization?.id);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isUnpublishing, setIsUnpublishing] = useState(false);
   const [isCustomUrlBusy, setIsCustomUrlBusy] = useState(false);
@@ -184,8 +179,7 @@ const ShareWithPublicTab: React.FC<ShareWithPublicTabProps> = ({ project }) => {
     return all.filter((d) => {
       if (d.id === assignedDomainId) return true;
       if (d.cert_status !== "active") return false;
-      const takenByOther =
-        d.assigned_project_id != null && d.assigned_project_id !== project.id;
+      const takenByOther = d.assigned_project_id != null && d.assigned_project_id !== project.id;
       return !takenByOther;
     });
   }, [orgDomains, assignedDomainId, project.id]);
@@ -203,16 +197,13 @@ const ShareWithPublicTab: React.FC<ShareWithPublicTabProps> = ({ project }) => {
       } else {
         await assignDomainToProject(project.id, value);
         const picked = selectableDomains.find((d) => d.id === value);
-        toast.success(
-          t("share_custom_url_assign_success", { domain: picked?.base_domain ?? "" })
-        );
+        toast.success(t("share_custom_url_assign_success", { domain: picked?.base_domain ?? "" }));
       }
       await mutate();
       await mutateOrgDomains();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : t("error_updating_share_access");
-      toast.error(message);
+      // Core's reason when it gave one, else the translated line (never "HTTP 502").
+      toast.error(detailOf(error) ?? t("error_updating_share_access"));
     } finally {
       setIsCustomUrlBusy(false);
     }
@@ -224,9 +215,7 @@ const ShareWithPublicTab: React.FC<ShareWithPublicTabProps> = ({ project }) => {
     setIsTrackingBusy(true);
     try {
       await setProjectAnalytics(project.id, next);
-      toast.success(
-        next ? t("share_tracking_enabled_success") : t("share_tracking_disabled_success")
-      );
+      toast.success(next ? t("share_tracking_enabled_success") : t("share_tracking_disabled_success"));
       await mutate();
       await mutateOrgAnalytics();
     } catch {
@@ -322,8 +311,8 @@ const ShareWithPublicTab: React.FC<ShareWithPublicTabProps> = ({ project }) => {
           <Trans i18nKey="common:publish_to_web_explanation" components={{ b: <b /> }} />
         </Typography>
         {/* `color="warning"` rather than an `sx` background: publishing to the
-          * web is the one act that leaves the organization, and the palette
-          * colour carries its own hover and contrast text. */}
+         * web is the one act that leaves the organization, and the palette
+         * colour carries its own hover and contrast text. */}
         <LoadingButton
           variant="contained"
           color="warning"
@@ -479,16 +468,14 @@ const ShareWithPublicTab: React.FC<ShareWithPublicTabProps> = ({ project }) => {
                 <Typography variant="body2">{t("share_analytics_none")}</Typography>
               </MenuItem>
               {analyticsList.map((instance) => {
-                const otherCount =
-                  instance.usage_count - (instance.id === assignedAnalyticsId ? 1 : 0);
+                const otherCount = instance.usage_count - (instance.id === assignedAnalyticsId ? 1 : 0);
                 return (
                   <MenuItem key={instance.id} value={instance.id}>
                     <Stack>
                       <Typography variant="body2">{instance.name}</Typography>
                       <Typography variant="caption" color="text.secondary">
                         {(instance.config as { url?: string }).url}
-                        {otherCount > 0 &&
-                          ` — ${t("share_analytics_used_by_hint", { count: otherCount })}`}
+                        {otherCount > 0 && ` — ${t("share_analytics_used_by_hint", { count: otherCount })}`}
                       </Typography>
                     </Stack>
                   </MenuItem>

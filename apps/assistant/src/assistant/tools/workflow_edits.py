@@ -12,9 +12,6 @@ on the revision it was read at (``base_revision``), so a change made
 elsewhere in between is a conflict, never overwritten. The call's audit row
 keeps the config before the edit and both revisions
 (``WorkflowUpdated.undo``), which the dock's Undo writes back.
-
-A workflow's filters and If conditions hold literals picked from the data,
-so ``workflow_get`` is subject to the data policy (``StoredWorkflow.restricted``).
 ``workflow_update`` answers with ids, names and the check's issues only.
 """
 
@@ -125,10 +122,14 @@ REPEATED_EDIT = (
     "was changed again."
 )
 GET_NOTE = (
+    "When the user asks to change it, change it with workflow_update, naming "
+    "steps and notes by these ids. A workflow to run or explain stays as it is, "
+    "also when its issues stop a run: to run it, call workflow_run, which says "
+    "when it needs your Run card, and never show a card that offers a "
+    "correction instead; a refused run's answer explains the issues. "
     "A tool step's settings are shortened (shortened names the ones not shown "
     "whole) and leave out ids, filters and the names results are saved under; "
-    "set_settings replaces a setting whole. Change the workflow with "
-    "workflow_update, naming steps and notes by these ids."
+    "set_settings replaces a setting whole."
 )
 
 
@@ -169,21 +170,6 @@ class StoredWorkflow(BaseModel):
     #: Why the stored configuration cannot be read as a workflow.
     damaged: str | None = None
     note: str
-
-    def restricted(self) -> "StoredWorkflow":
-        """Without the literals of filters and If conditions, nor the text
-        defaults of variables, which can be such literals: values picked
-        from the data (``ProjectLayers.restricted``)."""
-        return self.model_copy(
-            update={
-                "steps": [step.restricted() for step in self.steps],
-                "variables": (
-                    [variable.restricted() for variable in self.variables]
-                    if self.variables is not None
-                    else None
-                ),
-            }
-        )
 
 
 class WorkflowUpdated(BaseModel):
@@ -359,7 +345,6 @@ GET: ToolSpec[GetInput, StoredWorkflow] = ToolSpec(
     output_model=StoredWorkflow,
     run=_get,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=True,
 )
 
 
@@ -644,7 +629,6 @@ UPDATE: ToolSpec[UpdateInput, WorkflowUpdated] = ToolSpec(
     output_model=WorkflowUpdated,
     run=_update,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
     risk="write",
     scope="goat:write",
     repeatable=REPEATED_EDIT,

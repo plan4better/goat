@@ -1,12 +1,7 @@
 import type { DragEndEvent } from "@dnd-kit/core";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import {
-  SortableContext,
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import {
@@ -83,9 +78,7 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
   };
 
   const updateAttribute = (name: string, partial: Partial<AttributeEntry>) => {
-    setAttributes(
-      attributes.map((a) => (a.name === name ? ({ ...a, ...partial } as AttributeEntry) : a)),
-    );
+    setAttributes(attributes.map((a) => (a.name === name ? ({ ...a, ...partial } as AttributeEntry) : a)));
   };
 
   const removeAttribute = (name: string) => {
@@ -110,7 +103,7 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
   const { feature } = useSampleFeature(layerId, true);
   const sampleProperties = useMemo<Record<string, unknown>>(
     () => (feature?.properties ?? {}) as Record<string, unknown>,
-    [feature?.properties],
+    [feature?.properties]
   );
 
   const { byColumn } = useMemo(
@@ -120,35 +113,25 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
         layerFields: fields,
         lang: i18n.language,
       }),
-    [sampleProperties, fields, i18n.language],
+    [sampleProperties, fields, i18n.language]
   );
 
   const unAddedFields = useMemo(
     () => fields.filter((f) => !attributes.some((a) => a.name === f.name)),
-    [fields, attributes],
+    [fields, attributes]
   );
 
   const addField = (f: { name: string; type: string }) => {
-    setAttributes([
-      ...attributes,
-      { name: f.name, type: coerceAttributeType(f.type) },
-    ]);
+    setAttributes([...attributes, { name: f.name, type: coerceAttributeType(f.type) }]);
   };
 
   const resetToAllFields = () => {
-    setAttributes(
-      fields.map((f) => ({ name: f.name, type: coerceAttributeType(f.type) })),
-    );
+    setAttributes(fields.map((f) => ({ name: f.name, type: coerceAttributeType(f.type) })));
   };
 
-  const fieldByName = useMemo(
-    () => new Map(fields.map((f) => [f.name, f])),
-    [fields],
-  );
+  const fieldByName = useMemo(() => new Map(fields.map((f) => [f.name, f])), [fields]);
 
-  const formatTargetAttr = formatTarget
-    ? attributes.find((a) => a.name === formatTarget.name)
-    : null;
+  const formatTargetAttr = formatTarget ? attributes.find((a) => a.name === formatTarget.name) : null;
 
   return (
     <Stack spacing={2} sx={{ px: 2, pb: 2 }}>
@@ -167,11 +150,7 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
 
       {/* Attributes header + framed list */}
       <Box>
-        <Stack
-          direction="row"
-          alignItems="baseline"
-          justifyContent="space-between"
-          sx={{ pb: 0.75 }}>
+        <Stack direction="row" alignItems="baseline" justifyContent="space-between" sx={{ pb: 0.75 }}>
           <MiniLabel>{t("attributes")}</MiniLabel>
           <Stack direction="row" spacing={1.25} alignItems="center">
             <Typography variant="caption" color="text.secondary">
@@ -202,9 +181,7 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
             collisionDetection={closestCenter}
             modifiers={[restrictToVerticalAxis]}
             onDragEnd={handleDragEnd}>
-            <SortableContext
-              items={attributes.map((a) => a.name)}
-              strategy={verticalListSortingStrategy}>
+            <SortableContext items={attributes.map((a) => a.name)} strategy={verticalListSortingStrategy}>
               {attributes.map((attr, i) => (
                 <AttributeRow
                   key={attr.name}
@@ -213,13 +190,9 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
                   field={fieldByName.get(attr.name)}
                   sample={byColumn[attr.name] ?? ""}
                   rawSample={sampleProperties[attr.name]}
-                  onLabelChange={(label) =>
-                    updateAttribute(attr.name, { label: label || undefined })
-                  }
+                  onLabelChange={(label) => updateAttribute(attr.name, { label: label || undefined })}
                   onRemove={() => removeAttribute(attr.name)}
-                  onOpenFormat={(anchor) =>
-                    setFormatTarget({ name: attr.name, anchorEl: anchor })
-                  }
+                  onOpenFormat={(anchor) => setFormatTarget({ name: attr.name, anchorEl: anchor })}
                   formatOpen={formatTarget?.name === attr.name}
                 />
               ))}
@@ -263,8 +236,7 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
             transformOrigin={{ vertical: "bottom", horizontal: "center" }}
             MenuListProps={{
               sx: { width: addMenuAnchor ? addMenuAnchor.offsetWidth - 10 : undefined, p: 0 },
-            }}
-            sx={{ "& .MuiPaper-root": { boxShadow: "0 0 10px rgba(58,53,65,0.1)" } }}>
+            }}>
             <Box sx={{ maxHeight: 300, overflowY: "auto" }}>
               <ClickAwayListener onClickAway={() => setAddMenuAnchor(null)}>
                 <MenuList>
@@ -336,11 +308,7 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
             ? (sampleProperties[formatTarget.name] as number)
             : null
         }
-        onChange={(patch: {
-          format_config?: AttributeFormatConfig;
-          prefix?: string;
-          suffix?: string;
-        }) => {
+        onChange={(patch: { format_config?: AttributeFormatConfig; prefix?: string; suffix?: string }) => {
           if (!formatTarget) return;
           const cur = attributes.find((a) => a.name === formatTarget.name);
           if (!cur) return;
@@ -381,8 +349,9 @@ function AttributeRow({
 }: AttributeRowProps) {
   const { t } = useTranslation("common");
   const theme = useTheme();
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: attribute.name });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: attribute.name,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -390,8 +359,7 @@ function AttributeRow({
   };
 
   const isNumber = attribute.type === "number" || field?.type === "number";
-  const hasFormatConfig =
-    !!attribute.format_config && Object.keys(attribute.format_config).length > 0;
+  const hasFormatConfig = !!attribute.format_config && Object.keys(attribute.format_config).length > 0;
   const hasPrefixOrSuffix = !!(attribute.prefix || attribute.suffix);
   const hasAnyFormatting = hasFormatConfig || hasPrefixOrSuffix;
 
@@ -482,9 +450,7 @@ function AttributeRow({
                     ? theme.palette.primary.main
                     : alpha(theme.palette.text.primary, 0.2),
                 borderRadius: 0.75,
-                bgcolor: formatOpen
-                  ? alpha(theme.palette.primary.main, 0.08)
-                  : "transparent",
+                bgcolor: formatOpen ? alpha(theme.palette.primary.main, 0.08) : "transparent",
                 color: hasAnyFormatting
                   ? theme.palette.primary.main
                   : alpha(theme.palette.text.primary, 0.55),

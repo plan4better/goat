@@ -503,7 +503,6 @@ RUN: ToolSpec[RunInput, RunSummary] = ToolSpec(
     output_model=RunSummary,
     run=_run,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
     risk="write",
     scope="goat:write",
     repeatable=REPEATED_RUN,
@@ -521,7 +520,6 @@ LAST_RUN: ToolSpec[RunInput, RunSummary] = ToolSpec(
     output_model=RunSummary,
     run=_last_run,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
     report_first=_finished,
 )
 

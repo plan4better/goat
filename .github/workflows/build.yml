@@ -9,9 +9,6 @@ on:
       web:
         type: boolean
         default: false
-      storybook:
-        type: boolean
-        default: false
       keycloak-theme:
         type: boolean
         default: false
@@ -35,25 +32,10 @@ jobs:
       - name: 📥 Monorepo install
         uses: ./.github/actions/pnpm-install
 
-      # web only: the root build script builds every app (docs, storybook and
-      # the keycloak theme too), which have build jobs of their own.
+      # web only: the root build script builds every app (docs and the
+      # keycloak theme too), which have build jobs of their own.
       - name: 🏗️ GOAT build
         run: pnpm exec turbo run build --filter=@p4b/web
-
-  storybook:
-    name: storybook
-    if: ${{ inputs.storybook }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v7
-
-      - name: 📥 Monorepo install
-        uses: ./.github/actions/pnpm-install
-
-      - name: 🏗️ Storybook build
-        run: pnpm --filter @p4b/storybook build
 
   # Fast compile check for the theme jar. The deployable artifact is the
   # docker image built by release.yml (release-docker-keycloak).

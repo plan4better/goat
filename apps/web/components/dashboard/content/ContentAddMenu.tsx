@@ -1,16 +1,6 @@
 "use client";
 
-import {
-  Box,
-  Button,
-  Divider,
-  IconButton,
-  ListItemIcon,
-  Menu,
-  MenuItem,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Button, Divider, IconButton, Menu, Tooltip } from "@mui/material";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
@@ -24,6 +14,7 @@ import type { Space } from "@/lib/validations/content";
 
 import AddLayerDialog from "@/components/addLayer/AddLayerDialog";
 import { addLayerSource } from "@/components/addLayer/sources";
+import { MenuRow } from "@/components/common/MenuRow";
 import NameDialog from "@/components/dashboard/common/NameDialog";
 import type { NewProjectIntent } from "@/components/dashboard/common/NewProjectMenu";
 import {
@@ -198,27 +189,19 @@ const ContentAddMenu = ({
           // between would take those away — which is why the dividers are
           // siblings rather than a nested group. A disabled entry explains
           // itself with a caption under its label instead of a tooltip.
-          ...(item.dividerBefore ? [<Divider key={`${item.key}-before`} />] : []),
-          <MenuItem
+          ...(item.dividerBefore ? [<Divider key={`${item.key}-before`} sx={{ my: "4px" }} />] : []),
+          <MenuRow
             key={item.key}
+            icon={item.icon}
+            label={item.label}
+            secondary={item.disabled ? t("space_not_ready") : undefined}
             disabled={item.disabled}
             onClick={() => {
               setMenuOpen(false);
               item.onSelect();
-            }}>
-            <ListItemIcon sx={{ minWidth: 30 }}>
-              <Icon iconName={item.icon} style={{ fontSize: 15 }} />
-            </ListItemIcon>
-            <Box>
-              <Typography variant="body2">{item.label}</Typography>
-              {item.disabled && (
-                <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                  {t("space_not_ready")}
-                </Typography>
-              )}
-            </Box>
-          </MenuItem>,
-          ...(item.dividerAfter ? [<Divider key={`${item.key}-after`} />] : []),
+            }}
+          />,
+          ...(item.dividerAfter ? [<Divider key={`${item.key}-after`} sx={{ my: "4px" }} />] : []),
         ])}
       </Menu>
 

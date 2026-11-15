@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -10,9 +11,17 @@ import { useFolders } from "@/lib/api/folders";
 import { USERS_API_BASE_URL } from "@/lib/api/users";
 import { homeFolderOf } from "@/lib/utils/content";
 
-import AddLayerDialog from "@/components/addLayer/AddLayerDialog";
+import { DialogLoadFailed, orLoadFailed } from "@/components/assistant/LoadFailed";
 import type { NewProjectIntent } from "@/components/dashboard/common/NewProjectMenu";
 import { NewProjectFlows } from "@/components/dashboard/common/NewProjectMenu";
+
+// Opened from Home and the header's onboarding tray; loaded on first open so
+// every dashboard page does not carry the catalog and maplibre (L6). Code that
+// does not load (gone after a deploy) shows a notice with a reload instead.
+const AddLayerDialog = dynamic(
+  () => orLoadFailed(import("@/components/addLayer/AddLayerDialog"), DialogLoadFailed),
+  { ssr: false }
+);
 
 /** Same SWR key `useOnboardingFacts` (lib/api/onboarding.ts) reads, revalidated
  * here so the checklist/tray reflect a dataset just added without waiting for

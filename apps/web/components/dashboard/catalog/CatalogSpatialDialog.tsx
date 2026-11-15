@@ -1,18 +1,21 @@
 "use client";
 
-import { Box, Button, Typography } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import type { CatalogSpatialFilter } from "@/lib/catalog/spatial";
 
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
 import CatalogSpatialPicker, { type Mode, modeOf } from "@/components/dashboard/catalog/CatalogSpatialPicker";
-import SpatialModeSwitch from "@/components/dashboard/catalog/SpatialModeSwitch";
 
-/** The spatial filter tool in a dialog: the picker's edits are a draft until applied. */
+/**
+ * The spatial filter tool in a dialog: the picker's edits are a draft until applied.
+ *
+ * Framed as Connect data's open data is (a settings column beside a map that reaches the
+ * frame), so choosing an area looks the same wherever GOAT asks for one.
+ */
 
 const CatalogSpatialDialog = ({
   open,
@@ -58,8 +61,12 @@ const CatalogSpatialDialog = ({
       onClose={onClose}
       icon={ICON_NAME.GLOBE}
       title={t("catalog_set_spatial_filter")}
-      subtitle={t("catalog_spatial_dialog_subtitle")}
-      maxWidth={900}
+      // Wide enough for the fields in one strip and a map that shows a country.
+      maxWidth="min(1100px, 94vw)"
+      // See AddLayerFrame: a flex item paper must be allowed to shrink below its content.
+      paperSx={{ minWidth: 0 }}
+      // The picker pads itself: its fields and its framed map share one inset.
+      bleed
       footer={
         <AppDialogFooter
           onCancel={onClose}
@@ -68,39 +75,16 @@ const CatalogSpatialDialog = ({
           // Enabled when there is a shape to apply, or an existing filter that
           // clearing the draft would remove.
           primaryDisabled={!canApply && !initial}
-          extra={
-            <Button
-              onClick={() => setDraft(null)}
-              disabled={!draft}
-              startIcon={<Icon iconName={ICON_NAME.TRASH} style={{ fontSize: 13 }} />}>
-              {t("clear_all")}
-            </Button>
-          }
         />
       }>
       <CatalogSpatialPicker
         mode={mode}
+        onModeChange={switchMode}
         value={draft}
         onChange={setDraft}
         onRegionAdded={() => setMode("region")}
         // Distinct from the project map's, which the Add Layer modal opens over.
         mapId="catalog-spatial-dialog"
-        modeSwitch={
-          <Box>
-            <Typography variant="caption" fontWeight={600} color="text.secondary">
-              {t("catalog_selection_type")}
-            </Typography>
-            <SpatialModeSwitch
-              value={mode}
-              onChange={switchMode}
-              modes={[
-                { id: "region", label: t("catalog_mode_region"), icon: ICON_NAME.GLOBE },
-                { id: "point", label: t("catalog_mode_point"), icon: ICON_NAME.LOCATION },
-                { id: "polygon", label: t("catalog_mode_polygon"), icon: ICON_NAME.POLYGON_FEATURE },
-              ]}
-            />
-          </Box>
-        }
       />
     </AppDialog>
   );

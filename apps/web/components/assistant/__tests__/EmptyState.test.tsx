@@ -343,6 +343,16 @@ describe("EmptyState starters", () => {
 });
 
 describe("EmptyState recent conversations", () => {
+  // "1 hour ago" turns into "Yesterday" when the hour before now is on the day
+  // before, so the clock stands at midday.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T12:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("lists the project's latest three in the docked dock, with how long ago", () => {
     onProject();
     conversations.value = [1, 2, 3, 4].map((n) =>

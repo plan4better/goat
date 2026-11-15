@@ -67,9 +67,10 @@ const rowType = (row: StorageLayer, t: TFunction): string => {
  * over it), the storage split into layers in a project, in none and in the
  * trash, and its live layers, largest first, filtered and paged on the
  * server. The filters are this tile's own: the address keeps only the member
- * of the credit tiles.
+ * of the credit tiles. `balance` is undefined until `/credits/balance`
+ * answers: the layers are there before it, the amount fills in with it.
  */
-export const StorageDetail = ({ balance }: { balance: CreditBalance }) => {
+export const StorageDetail = ({ balance }: { balance?: CreditBalance }) => {
   const { t, i18n } = useTranslation("common");
   const language = i18n.language;
   const theme = useTheme();
@@ -112,8 +113,8 @@ export const StorageDetail = ({ balance }: { balance: CreditBalance }) => {
   const size = (mb: number) => formatMegabytes(mb, language);
   const people = [...directory.people.entries()].map(([id, person]) => ({ id, name: person.name }));
 
-  const used = balance.used_storage;
-  const limit = balance.total_storage;
+  const used = balance?.used_storage ?? 0;
+  const limit = balance?.total_storage ?? null;
   const over = limit !== null && used > limit;
   const trash = summary?.trash;
   const columns: UsageColumn<StorageLayer>[] = [
@@ -220,10 +221,11 @@ export const StorageDetail = ({ balance }: { balance: CreditBalance }) => {
 
   return (
     <DetailFrame
-      // Over the limit, the callout names what the trash holds: it waits for
-      // the layers' first answer (or says less when that fails).
+      // The amount is the balance's: the header waits for it. Over the limit,
+      // the callout names what the trash holds: it waits for the layers' first
+      // answer too (or says less when that fails).
       header={
-        over && !trash && !layers.isError
+        !balance || (over && !trash && !layers.isError)
           ? undefined
           : {
               title: t("usage_tile_storage"),

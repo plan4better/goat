@@ -22,6 +22,9 @@ export default function AuthContainer({
         maxWidth: 490,
         height: "fit-content",
         marginBottom: theme.spacing(4),
+        // The app's card: rounded, a hairline border over the soft shadow.
+        borderRadius: "12px",
+        border: `1px solid ${theme.palette.divider}`,
       }}
     >
       <CardContent>

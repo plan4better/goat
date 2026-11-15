@@ -20,7 +20,7 @@ from core.crud.crud_role import role as crud_role
 from core.crud.crud_user import user as crud_user
 from core.db.models._link_model import UserRoleLink
 from core.db.models.invitation import Invitation, InvitationStatusEnum, InvitationType
-from core.db.models.organization import Organization
+from core.db.models.organization import Organization, OrganizationRolesEnum
 from core.db.models.user import User
 from core.deps.auth import (
     auth,
@@ -36,6 +36,7 @@ from core.schemas.onboarding import OnboardingFacts
 from core.schemas.organization import FeaturesRead, OrganizationCreationRead
 from core.schemas.user import UserProfileUpdate, UserRead, UserUpdate, request_examples
 from core.services.s3 import s3_service
+from core.utils.i18n import trans as _
 from core.utils.other import decode_base64_file, get_image_extension_from_base64
 
 logger = logging.getLogger(__name__)
@@ -398,6 +399,23 @@ async def delete_account(
 ) -> None:
     # Always the caller: these routes act on one's own account only.
     user_id = user_token["sub"]
+    # Without its owner the organization could be neither deleted nor handed
+    # over (spec R1), so the owner keeps the account while it exists.
+    db_user = await crud_user.get_user_with_roles(db_session=db, user_id=user_id)
+    if (
+        db_user is not None
+        and db_user.organization_id is not None
+        and any(
+            link.role.name == OrganizationRolesEnum.owner for link in db_user.role_links
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_(
+                "The organization owner cannot delete their account while the "
+                "organization exists."
+            ),
+        )
     admin = await keycloak_admin()
     if admin:
         admin.delete_user(user_id)

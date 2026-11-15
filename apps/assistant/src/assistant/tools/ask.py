@@ -329,6 +329,5 @@ ASK_USER: ToolSpec[AskUserInput, AskShown] = ToolSpec(
     output_model=AskShown,
     run=_ask,
     surfaces=frozenset(SURFACES),
-    returns_data=False,
     once_per_answer=ONE_CARD,
 )

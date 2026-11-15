@@ -96,7 +96,8 @@ export default function GlossaryTerm({ term, href, children }: GlossaryTermProps
       >
         {children}
       </a>
-      <span className={styles.preview} style={previewStyle}>
+      {/* glossary-preview: left out of the search index (docusaurus.config.js). */}
+      <span className={`${styles.preview} glossary-preview`} style={previewStyle}>
         <span className={styles.label}>
           <Translate id="glossary.preview.label" description="Small label above a glossary term preview">
             Glossary

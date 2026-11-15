@@ -605,6 +605,8 @@ def test_cors_preflight_from_the_goat_ui_origin(client: TestClient) -> None:
     )
     assert r.status_code == 200
     assert r.headers["access-control-allow-origin"] == "http://localhost:3000"
+    # Chromium's cap: the browser keeps this answer for two hours.
+    assert r.headers["access-control-max-age"] == "7200"
 
 
 def test_cors_preflight_from_a_foreign_origin_is_not_allowed(

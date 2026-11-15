@@ -5,8 +5,7 @@ the catalog with it).
 
 The first four were the catalog service's MCP tools; they now call the catalog
 over its HTTP API with the user's token (spec §9.1.1) and keep that module's
-result shaping, caps and descriptions. Catalog metadata is not a data value in
-the sense of the data policy, so none of these is flagged ``returns_data``.
+result shaping, caps and descriptions.
 """
 
 import asyncio
@@ -21,6 +20,7 @@ from pydantic_ai.exceptions import ToolFailed
 
 from assistant.context import (
     NUTS_ID_PATTERN,
+    RECORD_ID_MAX_LENGTH,
     RECORD_ID_PATTERN,
     SORTBY_PATTERN,
     FacetKey,
@@ -458,7 +458,6 @@ SEARCH: ToolSpec[SearchInput, SearchResult] = ToolSpec(
     output_model=SearchResult,
     run=_search,
     surfaces=CATALOG_SURFACES,
-    returns_data=False,
     mcp=True,
     found_nothing=_no_datasets,
 )
@@ -546,7 +545,6 @@ DESCRIBE: ToolSpec[DescribeInput, DescribeResult] = ToolSpec(
     output_model=DescribeResult,
     run=_describe,
     surfaces=CATALOG_SURFACES,
-    returns_data=False,
     mcp=True,
 )
 
@@ -601,7 +599,6 @@ SUGGEST_TERMS: ToolSpec[SuggestInput, SuggestResult] = ToolSpec(
     output_model=SuggestResult,
     run=_suggest,
     surfaces=CATALOG_SURFACES,
-    returns_data=False,
     mcp=True,
     found_nothing=_no_words,
 )
@@ -615,7 +612,9 @@ class GetRecordInput(BaseModel):
 
     #: Catalog ids are slugs; the pattern keeps an id a single path segment.
     item_id: str = Field(
-        pattern=RECORD_ID_PATTERN, description="An id from catalog_search results."
+        max_length=RECORD_ID_MAX_LENGTH,
+        pattern=RECORD_ID_PATTERN,
+        description="An id from catalog_search results.",
     )
 
     @field_validator("item_id")
@@ -729,7 +728,6 @@ GET_RECORD: ToolSpec[GetRecordInput, CatalogRecord] = ToolSpec(
     output_model=CatalogRecord,
     run=_get_record,
     surfaces=CATALOG_SURFACES,
-    returns_data=False,
     mcp=True,
 )
 
@@ -934,7 +932,6 @@ PROPOSE_FILTERS: ToolSpec[ProposeFiltersInput, ProposalShown] = ToolSpec(
     output_model=ProposalShown,
     run=_propose_filters,
     surfaces=CATALOG_SURFACES,
-    returns_data=False,
     risk="propose",
 )
 
@@ -1139,7 +1136,6 @@ FIND_REGION: ToolSpec[FindRegionInput, FindRegionResult] = ToolSpec(
     output_model=FindRegionResult,
     run=_find_region,
     surfaces=CATALOG_SURFACES,
-    returns_data=False,
     mcp=True,
 )
 
@@ -1154,6 +1150,7 @@ class ShownEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(
+        max_length=RECORD_ID_MAX_LENGTH,
         pattern=RECORD_ID_PATTERN,
         description="An id from catalog_search or catalog_get_record results.",
     )
@@ -1314,7 +1311,6 @@ SHOW_RECORDS: ToolSpec[ShowRecordsInput, ShowRecordsResult] = ToolSpec(
     output_model=ShowRecordsResult,
     run=_show_records,
     surfaces=CATALOG_SURFACES,
-    returns_data=False,
 )
 
 CATALOG_TOOLS: tuple[ToolSpec[Any, Any], ...] = (

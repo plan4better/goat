@@ -10,18 +10,17 @@ import {
   Skeleton,
   Stack,
   Typography,
-  alpha,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+import { visuallyHidden } from "@mui/utils";
 import NextLink from "next/link";
 import { type ReactNode, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import { PAGE_SIZE, type SortDir } from "@/lib/api/usage";
-import { toneColorOf } from "@/lib/catalog/kind";
 
 import { accentText, focusRing } from "@/components/assistant/styles";
 import EmptyState from "@/components/dashboard/common/EmptyState";
@@ -37,6 +36,8 @@ export interface UsageColumn<T> {
   sortable?: boolean;
   /** The figure a phone keeps beside the first column. */
   main?: boolean;
+  /** The label is read out but not shown (a column of row menus). */
+  hideLabel?: boolean;
   render: (row: T) => ReactNode;
 }
 
@@ -172,6 +173,8 @@ export function UsageList<T>({
           <ButtonBase
             onClick={onClearAll}
             sx={{
+              // The app's font: a bare button would fall back to the browser's.
+              fontFamily: "inherit",
               px: 1,
               borderRadius: "4px",
               typography: "caption",
@@ -179,7 +182,7 @@ export function UsageList<T>({
               color: accentText(theme),
               ...focusRing(theme),
             }}>
-            {t("clear_all")}
+            {t("remove_all")}
           </ButtonBase>
         )}
       </Stack>
@@ -243,6 +246,7 @@ export function UsageList<T>({
                       <ButtonBase
                         onClick={() => onSort(column.key)}
                         sx={{
+                          fontFamily: "inherit",
                           gap: "4px",
                           borderRadius: "4px",
                           whiteSpace: "nowrap",
@@ -259,7 +263,11 @@ export function UsageList<T>({
                     ) : (
                       <Box
                         component="span"
-                        sx={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        sx={
+                          column.hideLabel
+                            ? visuallyHidden
+                            : { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }
+                        }>
                         {column.label}
                       </Box>
                     )}
@@ -359,6 +367,7 @@ export const UsageTitleCell = ({
             title={hint}
             sx={{
               ...name,
+              fontFamily: "inherit",
               display: "block",
               borderRadius: "4px",
               "&:hover": { textDecoration: "underline" },
@@ -405,6 +414,7 @@ export const UsagePersonCell = ({
           title={hint}
           sx={{
             ...text,
+            fontFamily: "inherit",
             display: "block",
             borderRadius: "4px",
             "&:hover": { textDecoration: "underline" },
@@ -436,28 +446,5 @@ export const UsageNumberCell = ({ value, main }: { value: string; main?: boolean
   </Box>
 );
 
-/** The tones of {@link UsageMark}: `neutral` is the grey `MarkBlock` gives tables. */
-const MARK_TONE = { primary: "primary", info: "info", neutral: "secondary" } as const;
-
-/** The 32px tinted square for rows MarkBlock has no kind for (workflow, tool, period, public pages):
- * same size, corner and tint as MarkBlock (tone at alpha 0.12, glyph in the tone). */
-export const UsageMark = ({ icon, tone }: { icon: ICON_NAME; tone: "primary" | "info" | "neutral" }) => {
-  const theme = useTheme();
-  const color = toneColorOf(theme, MARK_TONE[tone]);
-  return (
-    <Box
-      aria-hidden
-      sx={{
-        width: 32,
-        height: 32,
-        flexShrink: 0,
-        borderRadius: "8px",
-        backgroundColor: alpha(color, 0.12),
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}>
-      <Icon iconName={icon} style={{ fontSize: 16 }} htmlColor={color} />
-    </Box>
-  );
-};
+/** In its own module, so pages that need only the mark do not load this list. */
+export { UsageMark } from "@/components/settings/usage/UsageMark";

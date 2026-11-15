@@ -1,0 +1,3 @@
+# Files allowed over the limits in scripts/check-file-sizes.sh, one glob per line.
+# The PT Network Explorer overview video: 77 s of map playback stays readable only at about 18 MB.
+apps/docs/static/img/toolbox/pt_network_explorer/explorer.mp4

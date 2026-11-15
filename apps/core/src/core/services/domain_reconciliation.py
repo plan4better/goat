@@ -6,6 +6,7 @@ provisioner). They are pure async functions so they can be unit-tested
 without a database, provisioner backend, or HTTP server.
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 
 import dns.asyncresolver
@@ -82,9 +83,11 @@ async def check_dns(
       ``canonical_target`` itself resolves to. CNAMEs are not allowed at a
       zone apex (RFC 1034), so apex customers must use A/AAAA directly.
 
-    Returns ``(VERIFIED, None)`` on match. Returns ``(PENDING, message)``
-    otherwise -- message describes what was found, suitable for showing to
-    the admin in the UI.
+    Returns ``(VERIFIED, None)`` on match, ``(FAILED, message)`` when a CNAME
+    or A record exists but points elsewhere, and ``(PENDING, message)`` when
+    there is no record yet or the lookup itself failed (a resolver error, or
+    ``canonical_target`` does not resolve). The message describes what was
+    found, suitable for showing to the admin in the UI.
     """
     # 1) CNAME path (covers all subdomain cases). Cheapest check, do first.
     try:
@@ -122,14 +125,15 @@ async def check_dns(
         return DnsStatus.VERIFIED, None
 
     # Nothing matched — explain what we saw, prioritizing the most useful hint.
+    # A record that points elsewhere is wrong (failed), not missing (pending).
     if cnames:
         return (
-            DnsStatus.PENDING,
+            DnsStatus.FAILED,
             f"CNAME points to {cnames[0]} (expected {canonical_target})",
         )
     if customer_ips:
         return (
-            DnsStatus.PENDING,
+            DnsStatus.FAILED,
             (
                 f"A points to {sorted(customer_ips)[0]} "
                 f"(expected {sorted(expected_ips)[0]})"
@@ -139,6 +143,27 @@ async def check_dns(
         DnsStatus.PENDING,
         f"No CNAME or A record found for {base_domain}",
     )
+
+
+async def refresh_dns(
+    domain: OrganizationDomain,
+    *,
+    canonical_target: str,
+) -> DnsStatus:
+    """Check the domain's DNS and write what was found on the row: the
+    status, its message and when it was checked. Returns the status.
+
+    ``dns_last_checked_at`` is ``timestamptz`` like the row's ``created_at``
+    and ``updated_at``, so it gets an aware UTC time: asyncpg reads a naive
+    one in the server's local zone.
+    """
+    status, message = await check_dns(
+        domain.base_domain, canonical_target=canonical_target
+    )
+    domain.dns_status = status
+    domain.dns_status_message = message
+    domain.dns_last_checked_at = datetime.now(timezone.utc)
+    return status
 
 
 async def provision_domain(

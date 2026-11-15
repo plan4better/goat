@@ -16,8 +16,6 @@
     "generate": "turbo run generate",
     "prepare": "husky install ./.husky",
     "web": "dotenv -- turbo run dev --filter=@p4b/web",
-    "storybook": "turbo run dev --filter=@p4b/storybook",
-    "build-storybook": "turbo run build --filter=@p4b/storybook",
     "docs": "turbo run dev --filter=@p4b/docs",
     "build-docs": "turbo run build --filter=@p4b/docs",
     "processes": "turbo run dev --filter=@goat/processes",

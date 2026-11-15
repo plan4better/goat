@@ -11,7 +11,6 @@ export const ASSISTANT_PROVIDERS = [
   "openai_compatible",
 ] as const;
 export type AssistantProvider = (typeof ASSISTANT_PROVIDERS)[number];
-export type DataPolicy = "standard" | "restricted";
 export type AssistantUnavailableReason =
   | "no_organization"
   | "disabled"
@@ -26,7 +25,6 @@ export interface AssistantStatus {
   is_admin: boolean;
   provider: string | null;
   model: string | null;
-  data_policy: DataPolicy;
   /** Surfaces where the assistant is switched off (spec §6.3); the dock hides there. */
   disabled_surfaces: string[];
   /**
@@ -40,7 +38,6 @@ export interface AssistantStatus {
 export interface AssistantSettings {
   enabled: boolean;
   active_connection_id: string | null;
-  data_policy: DataPolicy;
   allow_default_fallback: boolean;
   status: "ok" | AssistantUnavailableReason;
   instance: {
@@ -60,7 +57,7 @@ export interface AssistantSettings {
 }
 export type AssistantSettingsUpdate = Pick<
   AssistantSettings,
-  "enabled" | "active_connection_id" | "data_policy" | "allow_default_fallback"
+  "enabled" | "active_connection_id" | "allow_default_fallback"
 >;
 
 /** One item of GET /connections. The key itself never leaves the server. */

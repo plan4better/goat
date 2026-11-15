@@ -28,7 +28,7 @@ const PLAIN_KEYS = [
   "unknown",
   "member",
   "usage_none",
-  "clear_all",
+  "remove_all",
   "usage_remove_filter",
   "usage_period",
   "usage_range_period",
@@ -137,10 +137,6 @@ const PLAIN_KEYS = [
   "search_projects",
   "table",
   "raster",
-  "usage_role_owner",
-  "usage_role_admin",
-  "usage_role_editor",
-  "usage_role_viewer",
   "usage_show_ai_credits_of",
   "usage_amount_of",
   "usage_amount_over",
@@ -276,21 +272,19 @@ describe("usage page texts", () => {
     expect([EN.public_traffic, DE.public_traffic]).toEqual(["Public pages", "Öffentliche Seiten"]);
   });
 
-  it("charge each answer, call admins Administratoren and label in sentence case", () => {
+  it("charge each answer, call admins Admins and label in sentence case", () => {
     expect(EN.usage_ai_explain_rule).toMatch(/^Each answer of GOAT AI uses\b/);
     expect(DE.usage_ai_explain_rule).toMatch(/^Jede Antwort von GOAT AI verbraucht\b/);
     expect([EN.usage_role_admins, DE.usage_role_admins]).toEqual([
       "Owners and admins",
-      "Eigentümer und Administratoren",
+      "Eigentümer und Admins",
     ]);
-    // A member's role reads as the tiles name the seats.
-    expect([DE.usage_role_owner, DE.usage_role_admin, DE.usage_role_editor, DE.usage_role_viewer]).toEqual([
-      "Eigentümer",
-      "Administrator",
-      "Bearbeiter",
-      "Betrachter",
-    ]);
-    for (const key of PLAIN_KEYS) expect(DE[key], key).not.toMatch(/\bAdmins\b/);
+    // A member's role reads as the tiles name the seats (roleWords, as every settings page).
+    expect(
+      ["organization-owner", "organization-admin", "organization-editor", "organization-viewer"].map(
+        (key) => DE[key]
+      )
+    ).toEqual(["Eigentümer", "Admin", "Bearbeiter", "Betrachter"]);
     expect(EN.group_by).toBe("Group by");
     // The layers' column carries credits, and says so.
     expect([EN.usage_traffic_credits, DE.usage_traffic_credits]).toEqual([
@@ -302,7 +296,7 @@ describe("usage page texts", () => {
   it("call the page Usage and say who sees it", () => {
     expect([EN.usage_and_quotas, DE.usage_and_quotas]).toEqual(["Usage", "Nutzung"]);
     expect(EN.usage_admins_only).toBe("Only owners and admins see this page.");
-    expect(DE.usage_admins_only).toMatch(/\bAdministratoren\b/);
+    expect(DE.usage_admins_only).toBe("Nur Eigentümer und Admins sehen diese Seite.");
   });
 
   it("count rows in German in the dative and name none in the nominative", () => {

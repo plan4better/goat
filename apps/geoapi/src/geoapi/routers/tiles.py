@@ -37,7 +37,7 @@ from geoapi.models import (
     TileSet,
 )
 from geoapi.services.layer_service import layer_service
-from geoapi.services.tile_service import tile_service
+from geoapi.services.tile_service import FilteredTile, tile_service
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,8 @@ logger = logging.getLogger(__name__)
 # latest tile.
 #
 # PMTiles are immutable files and keep using max-age=3600 without ETags.
+# Filtered tiles cut from them carry an ETag from the file's version instead
+# (see TileService.get_filtered_tile_from_pmtiles).
 # ---------------------------------------------------------------------------
 _layer_versions: dict[str, int] = {}
 _version_counter = int(time.time())
@@ -161,6 +163,33 @@ def _pmtiles_tile_response(
         "X-Request-ID": request_id,
         "X-Response-Time": f"{elapsed_ms:.1f}ms",
     }
+    if is_gzip:
+        headers["Content-Encoding"] = "gzip"
+    return Response(
+        content=tile_data,
+        media_type="application/vnd.mapbox-vector-tile",
+        headers=headers,
+    )
+
+
+def _filtered_tile_response(
+    filtered: FilteredTile, request_id: str, start_time: float
+) -> Response:
+    """The response for a filtered tile cut from PMTiles: revalidated like a
+    dynamic tile (304 when the client's copy is current, 204 when empty)."""
+    elapsed_ms = (time.monotonic() - start_time) * 1000
+    headers = {
+        "ETag": filtered.etag,
+        "Cache-Control": "no-cache",
+        "X-Request-ID": request_id,
+        "X-Response-Time": f"{elapsed_ms:.1f}ms",
+    }
+    if filtered.tile is None:
+        return Response(status_code=304, headers=headers)
+    tile_data, is_gzip, source = filtered.tile
+    if not tile_data:
+        return Response(status_code=204, headers=headers)
+    headers["X-Tile-Source"] = source
     if is_gzip:
         headers["Content-Encoding"] = "gzip"
     return Response(
@@ -325,6 +354,36 @@ async def get_tile(
         properties=properties,
         geometry_column=metadata.geometry_column or "geometry",
     )
+
+    # A filter on a layer whose PMTiles manby built: the stored tiles are
+    # filtered. They hold every property and the features the tiler kept, so
+    # a request for some `properties` or a `limit` stays with DuckDB. None
+    # (or a failure) leaves the request to DuckDB, as below.
+    if (
+        (cql_filter or bbox)
+        and not dynamic
+        and decoration is None
+        and not properties
+        and limit is None
+    ):
+        try:
+            filtered = await tile_service.get_filtered_tile_from_pmtiles(
+                layer_info=layer_info,
+                z=z,
+                x=x,
+                y=y,
+                cql_filter=cql_filter,
+                bbox=bbox,
+                columns=metadata.columns,
+                label=label,
+                geometry_column=metadata.geometry_column or "geometry",
+                if_none_match=if_none_match,
+            )
+        except Exception as e:
+            logger.warning("Filtered PMTiles path failed for %s: %s", layer_id, e)
+            filtered = None
+        if filtered is not None:
+            return _filtered_tile_response(filtered, request_id, start_time)
 
     # --- ETag check: skip tile generation if client already has current version ---
     from geoapi.ducklake_pool import ducklake_pool

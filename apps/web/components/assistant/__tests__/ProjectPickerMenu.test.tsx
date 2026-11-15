@@ -38,4 +38,14 @@ describe("ProjectPickerMenu", () => {
     fireEvent.click(screen.getByText("Parken"));
     expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: "p3" }));
   });
+
+  it("draws a project as the app's menus draw a row, its space on a muted second line", () => {
+    render(<ProjectPickerMenu anchor={document.body} onClose={vi.fn()} onPick={vi.fn()} />);
+    expect(screen.getByText("Parken").closest("button")).toHaveStyle({
+      fontSize: "13.5px",
+      fontWeight: "600",
+      borderRadius: "8px",
+    });
+    expect(screen.getAllByText("Radverkehr team")[0]).toHaveStyle({ fontSize: "11.5px", fontWeight: "400" });
+  });
 });

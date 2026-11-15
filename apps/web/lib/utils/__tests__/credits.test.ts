@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { commonT } from "@/i18n/__tests__/commonI18n";
 
@@ -84,6 +84,18 @@ describe("parseApiDate", () => {
     expect(parseApiDate("2026-07-01T10:00:00Z").toISOString()).toBe("2026-07-01T10:00:00.000Z");
     expect(parseApiDate("2026-07-01T12:00:00+02:00").toISOString()).toBe("2026-07-01T10:00:00.000Z");
     expect(parseApiDate("2026-07-01T05:00:00-05:00").toISOString()).toBe("2026-07-01T10:00:00.000Z");
+  });
+
+  it("reads a member's dates as core sends them (naive UTC with microseconds) on a clock east of UTC", () => {
+    vi.stubEnv("TZ", "Europe/Berlin");
+    try {
+      // The zone took effect: read as local time, the send would be an hour early.
+      expect(new Date("2026-11-02T14:25:00").toISOString()).toBe("2026-11-02T13:25:00.000Z");
+      expect(parseApiDate("2026-11-02T14:25:00.123456").toISOString()).toBe("2026-11-02T14:25:00.123Z");
+      expect(parseApiDate("2026-11-02T14:25:00").toISOString()).toBe("2026-11-02T14:25:00.000Z");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

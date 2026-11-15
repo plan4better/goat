@@ -23,26 +23,10 @@ RUN apt-get update && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y tzdata ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# ==== STAGE 2: Build tippecanoe ====
-FROM linux-base AS tippecanoe-builder
-
-ARG TIPPECANOE_VERSION=2.79.0
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    libsqlite3-dev \
-    zlib1g-dev \
-    && curl -fsSL https://github.com/felt/tippecanoe/archive/refs/tags/${TIPPECANOE_VERSION}.tar.gz -o /tmp/tippecanoe.tar.gz \
-    && tar -xzf /tmp/tippecanoe.tar.gz -C /tmp \
-    && cd /tmp/tippecanoe-${TIPPECANOE_VERSION} \
-    && make -j$(nproc) \
-    && make install \
-    && rm -rf /tmp/tippecanoe*
-
-# ===== STAGE 3: Python environment ====
+# ===== STAGE 2: Python environment ====
 # geoapi only uses goatlib's light "serving" surface (storage/query/models), so
-# no GDAL, routing or build toolchain is needed — all deps ship manylinux wheels.
+# no GDAL, routing or build toolchain is needed — all deps ship manylinux wheels,
+# manby (the `manby` program that cuts tiles from stored ones) among them.
 FROM linux-base AS python-base
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv
@@ -69,14 +53,8 @@ RUN uv sync --frozen --no-dev --no-editable --package=geoapi
 RUN python -c "import duckdb; from goatlib.storage.ducklake import REQUIRED_DUCKDB_EXTENSIONS as X, COMMUNITY_DUCKDB_EXTENSIONS as C; con=duckdb.connect(config={'extension_directory':'/opt/duckdb-extensions'}); [con.execute(f'INSTALL {e}') for e in X]; [con.execute(f'INSTALL {e} FROM community') for e in C]" \
     && chmod -R a+rX /opt/duckdb-extensions
 
-# ==== STAGE 4: Webapp environment ====
+# ==== STAGE 3: Webapp environment ====
 FROM linux-base AS webapp
-
-# Install zlib runtime needed by tippecanoe
-RUN apt-get update && apt-get install --no-install-recommends -y zlib1g && rm -rf /var/lib/apt/lists/*
-
-# Copy tippecanoe binaries (tippecanoe-overzoom for variable-depth tile pyramids)
-COPY --from=tippecanoe-builder /usr/local/bin/tippecanoe-overzoom /usr/local/bin/
 
 RUN useradd -m appuser
 

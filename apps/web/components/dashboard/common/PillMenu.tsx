@@ -1,12 +1,11 @@
 "use client";
 
-import CheckIcon from "@mui/icons-material/Check";
-import { Menu, MenuItem, Stack, Typography, useTheme } from "@mui/material";
+import { Menu } from "@mui/material";
 import { useRef, useState } from "react";
 
-import { Icon } from "@p4b/ui/components/Icon";
 import type { ICON_NAME } from "@p4b/ui/components/Icon";
 
+import { MenuRow } from "@/components/common/MenuRow";
 import ToolPill from "@/components/dashboard/common/ToolPill";
 
 export type PillMenuOption<V extends string = string> = { value: V; label: string; icon?: ICON_NAME };
@@ -43,7 +42,6 @@ const PillMenu = <V extends string>({
   compact,
   label,
 }: PillMenuProps<V>) => {
-  const theme = useTheme();
   const anchor = useRef<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
   const current = options.find((option) => option.value === value) ?? options[0];
@@ -70,30 +68,16 @@ const PillMenu = <V extends string>({
         {options.map((option) => {
           const selected = option.value === value;
           return (
-            <MenuItem
+            <MenuRow
               key={option.value}
+              icon={option.icon}
+              label={option.label}
               selected={selected}
               onClick={() => {
                 onChange(option.value);
                 setOpen(false);
-              }}>
-              <Stack direction="row" alignItems="center" spacing={2.5} sx={{ width: "100%" }}>
-                {option.icon && (
-                  <Icon
-                    iconName={option.icon}
-                    style={{ fontSize: 13 }}
-                    htmlColor={selected ? theme.palette.primary.main : theme.palette.text.secondary}
-                  />
-                )}
-                <Typography
-                  variant="body2"
-                  sx={{ flex: 1, fontWeight: selected ? 600 : 500 }}
-                  color={selected ? "primary" : "text.primary"}>
-                  {option.label}
-                </Typography>
-                {selected && <CheckIcon sx={{ fontSize: 14 }} color="primary" />}
-              </Stack>
-            </MenuItem>
+              }}
+            />
           );
         })}
       </Menu>

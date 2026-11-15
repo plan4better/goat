@@ -1,4 +1,11 @@
-import { type Theme, darken, getContrastRatio, lighten } from "@mui/material/styles";
+import {
+  type Theme,
+  darken,
+  decomposeColor,
+  getContrastRatio,
+  lighten,
+  recomposeColor,
+} from "@mui/material/styles";
 
 import type { AiCreditTier } from "@/lib/api/usage";
 
@@ -60,11 +67,27 @@ const LEVEL_COLOR = { unlimited: "primary", ok: "primary", low: "warning", empty
 /** Normal text needs 4.5:1 against its background (WCAG AA). */
 const TEXT_CONTRAST = 4.5;
 
-/** `color` as text on the theme's paper: darkened on a light surface or
- * lightened on a dark one in 5 % steps until it reads (bright palette colours
- * such as `primary.main` or `warning.main` fail as text). */
-export const readableText = (theme: Theme, color: string): string => {
-  const background = theme.palette.background.paper;
+/** `color` laid over a solid `background` at the colour's own alpha, as the
+ * eye sees it: a contrast is only defined between two solid colours. */
+export const solidOn = (color: string, background: string): string => {
+  const top = decomposeColor(color);
+  const bottom = decomposeColor(background);
+  const opacity = top.values[3] ?? 1;
+  const mix = [0, 1, 2].map((index) =>
+    Math.round(top.values[index] * opacity + bottom.values[index] * (1 - opacity))
+  ) as [number, number, number];
+  return recomposeColor({ type: "rgb", values: mix });
+};
+
+/** `color` as text on the theme's paper (or on `background`, a solid colour):
+ * darkened on a light surface or lightened on a dark one in 5 % steps until it
+ * reads (bright palette colours such as `primary.main` or `warning.main` fail
+ * as text). */
+export const readableText = (
+  theme: Theme,
+  color: string,
+  background: string = theme.palette.background.paper
+): string => {
   for (let step = 0; step <= 20; step += 1) {
     const shade = theme.palette.mode === "light" ? darken(color, step / 20) : lighten(color, step / 20);
     if (getContrastRatio(shade, background) >= TEXT_CONTRAST) return step === 0 ? color : shade;

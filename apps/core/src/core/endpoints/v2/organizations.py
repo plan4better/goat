@@ -1,4 +1,6 @@
 import logging
+import math
+from datetime import datetime, timedelta, timezone
 from typing import Any, List
 from uuid import UUID
 
@@ -10,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.core.config import settings
 from core.crud.crud_invitation import invitation as crud_invitation
+from core.crud.crud_invitation import last_sent_at
 from core.crud.crud_organization import OrganizationNotDeletableError
 from core.crud.crud_organization import organization as crud_organization
 from core.crud.crud_user import user as crud_user
@@ -27,6 +30,7 @@ from core.deps.auth import (
 )
 from core.endpoints.deps import get_db
 from core.schemas.email import EmailTemplateContent
+from core.schemas.entitlement import naive_utc
 from core.schemas.invitations import (
     InvitationOrgCreate,
     InvitationOrgCreateRead,
@@ -332,6 +336,61 @@ async def update_user_role_in_organization(
 
 #### ORGANIZATION INVITATIONS ###
 
+# An invitation's mail goes out at most once in this time (B6). Kept in the
+# invitation's payload, not in a per-process limiter: core runs several pods.
+RESEND_AFTER = timedelta(minutes=10)
+
+
+def resend_wait(sent_at: datetime | None, now: datetime) -> int | None:
+    """Whole seconds (at least 1) until an invitation last sent at `sent_at`
+    may be sent again, or None when it may go now. Both naive UTC."""
+    if sent_at is None or now - sent_at >= RESEND_AFTER:
+        return None
+    return max(1, math.ceil((sent_at + RESEND_AFTER - now).total_seconds()))
+
+
+def _sent_too_recently(wait: int) -> HTTPException:
+    minutes = int(RESEND_AFTER.total_seconds() // 60)
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail=f"The invitation was sent less than {minutes} minutes ago",
+        headers={"Retry-After": str(wait)},
+    )
+
+
+def invitation_url(invitation: Invitation) -> str:
+    """Where the invitation mail and the account setup mail lead."""
+    return f"{settings.CLIENT_URL}/onboarding/organization/invite/{invitation.id}"
+
+
+async def send_invitation_email(
+    db: AsyncSession,
+    organization: Organization,
+    invitation: Invitation,
+    inviter_id: str,
+) -> None:
+    """GOAT's invitation mail, in the invitee's language when they have a GOAT
+    account, else in the inviter's. `send_email` and `user_language` are read
+    from this module, so tests patch them here."""
+    lang = await user_language(db, invitation.send_to or inviter_id)
+    with language(lang):
+        names = {"organization": organization.name}
+        email_content = EmailTemplateContent(
+            artwork_url=f"{settings.email_artwork_url}/img/email/organization_invited.png",
+            title=_("You have been invited to %(organization)s") % names,
+            message=_(
+                "You have been invited to work together in %(organization)s on GOAT. Accept the invitation with the button below."
+            )
+            % names,
+            action_url=invitation_url(invitation),
+            action_label=_("Accept invitation"),
+        )
+        send_email(
+            email_to=invitation.payload["user_email"],
+            subject=_("GOAT - Invitation to %(organization)s") % names,
+            environment=email_content.model_dump(),
+        )
+
 
 @router.post(
     "/{organization_id}/invitations",
@@ -423,44 +482,109 @@ async def invite_user_to_organization(
             "name": organization.name,
             "avatar": organization.avatar,
             "region": organization.region,
+            "last_sent_at": datetime.now(timezone.utc).isoformat(),
         },
     )
 
     invitation = await crud_invitation.create(db=db, obj_in=new_invitation)
-    invitation_url = (
-        f"{settings.CLIENT_URL}/onboarding/organization/invite/{invitation.id}"
-    )
-    # The invitee's language when they have an account, else the inviter's.
-    lang = await user_language(db, invited_user[0].id if invited_user else user_id)
-    with language(lang):
-        names = {"organization": organization.name}
-        email_content = EmailTemplateContent(
-            artwork_url=f"{settings.email_artwork_url}/img/email/organization_invited.png",
-            title=_("You have been invited to %(organization)s") % names,
-            message=_(
-                "You have been invited to work together in %(organization)s on GOAT. Accept the invitation with the button below."
-            )
-            % names,
-            action_url=invitation_url,
-            action_label=_("Accept invitation"),
-        )
-        send_email(
-            email_to=payload.user_email,
-            subject=_("GOAT - Invitation to %(organization)s") % names,
-            environment=email_content.model_dump(),
-        )
+    await send_invitation_email(db, organization, invitation, user_id)
 
     account_setup = None
     if created_keycloak_user_id:
         # The invitee lands on the invitation after setting a password.
         sent = await keycloak_deps.send_account_setup_email(
-            created_keycloak_user_id, redirect_uri=invitation_url
+            created_keycloak_user_id, redirect_uri=invitation_url(invitation)
         )
         account_setup = "email_sent" if sent else "manual"
 
     return InvitationOrgCreateRead(
         **invitation.model_dump(), account_setup=account_setup
     )
+
+
+@router.post(
+    "/{organization_id}/invitations/{invitation_id}/resend",
+    summary="Send an organization invitation again",
+    response_model=InvitationOrgCreateRead,
+    dependencies=[Depends(auth_z)],
+)
+async def resend_organization_invitation(
+    *,
+    db: AsyncSession = Depends(get_db),
+    organization_id: str,
+    invitation_id: str,
+    user_token: dict = Depends(user_token),
+) -> Any:
+    """
+    Send a pending invitation's mail again: Keycloak's account setup mail while
+    the invitee's account still waits for its first password, else GOAT's
+    invitation mail. One mail per resend, at most one every 10 minutes per
+    invitation (429 with Retry-After).
+    """
+    not_found = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invitation not found",
+    )
+    invitation = await crud_invitation.get(db=db, id=invitation_id)
+    if (
+        not invitation
+        or invitation.type != InvitationType.organization
+        or invitation.status != InvitationStatusEnum.pending
+        or invitation.payload["organization_id"] != organization_id
+    ):
+        raise not_found
+    sent_at = datetime.now(timezone.utc)
+    now = sent_at.replace(tzinfo=None)
+    if invitation.expires is not None and naive_utc(invitation.expires) < now:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The invitation has expired",
+        )
+    organization = await crud_organization.get(db=db, id=organization_id)
+    if not organization:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=_("Organization not found"),
+        )
+    email = invitation.payload["user_email"]
+    invitee = await crud_user.get_by_key(db=db, key="email", value=email)
+    if invitee and invitee[0].organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_("Invited user already has an organization"),
+        )
+    wait = resend_wait(last_sent_at(invitation), now)
+    if wait:
+        raise _sent_too_recently(wait)
+
+    # Claim the slot before the mail, in one statement that checks the stamp
+    # read above: of two resends at once (two admins, two pods) only one
+    # sends, and only `last_sent_at` is merged into the payload, so a role
+    # changed meanwhile stays. A mail that then fails still counts: neither
+    # send_email nor Keycloak raises on a failed delivery.
+    if not await crud_invitation.claim_send(db, invitation=invitation, sent_at=sent_at):
+        db.expire(invitation)
+        current = await crud_invitation.get(db=db, id=invitation_id)
+        if not current or current.status != InvitationStatusEnum.pending:
+            raise not_found
+        raise _sent_too_recently(resend_wait(last_sent_at(current), now) or 1)
+
+    account_setup = None
+    keycloak_user_id = await keycloak_deps.pending_setup_user_id(email)
+    if keycloak_user_id:
+        sent = await keycloak_deps.send_account_setup_email(
+            keycloak_user_id, redirect_uri=invitation_url(invitation)
+        )
+        account_setup = "email_sent" if sent else "manual"
+    else:
+        await send_invitation_email(db, organization, invitation, user_token["sub"])
+
+    # Answer the row as stored now: the stamp, and whatever changed meanwhile.
+    db.expire(invitation)
+    current = await crud_invitation.get(db=db, id=invitation_id)
+    if not current:  # withdrawn while the mail went out
+        raise not_found
+    return InvitationOrgCreateRead(**current.model_dump(), account_setup=account_setup)
 
 
 @router.patch(

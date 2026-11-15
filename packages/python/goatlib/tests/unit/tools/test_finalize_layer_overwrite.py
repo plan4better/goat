@@ -233,7 +233,7 @@ class TestProcess:
         self, tmp_path: Path
     ) -> None:
         """Reads in the lock's transaction would hold their table locks for the
-        whole export (DuckLake write + tippecanoe), so a migration's ALTER on
+        whole export (DuckLake write + tile build), so a migration's ALTER on
         customer.layer would queue behind it and every query behind that."""
         self._run(tmp_path, _params(), None)
         assert self.resolved_on and self.resolved_on[0] is not self.lock_conn

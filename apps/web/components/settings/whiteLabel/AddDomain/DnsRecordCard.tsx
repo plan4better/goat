@@ -1,132 +1,74 @@
 "use client";
 
-import {
-  Box,
-  IconButton,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Tooltip,
-  Typography,
-} from "@mui/material";
-import { useState } from "react";
+import { Box, Skeleton, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
-
-import { useCustomDomainConfig } from "@/lib/api/customDomainConfig";
+import { type CustomDomainConfig, useCustomDomainConfig } from "@/lib/api/customDomainConfig";
 import { isApexDomain } from "@/lib/validations/customDomain";
 
-interface DnsRecordCardProps {
-  /** The hostname the user is configuring (e.g. "dashboards.example.com"). */
-  domain: string;
-}
+import CopyButton from "@/components/settings/whiteLabel/CopyButton";
 
-interface CopyableCellProps {
-  value: string;
-}
+/** The one record a domain needs: an A record on `@` for a main domain, a
+ * CNAME on the leftmost label for a subdomain. Core accepts either. */
+export const dnsRecordOf = (
+  domain: string,
+  config?: CustomDomainConfig
+): { type: "A" | "CNAME"; host: string; target: string } =>
+  isApexDomain(domain)
+    ? { type: "A", host: "@", target: config?.apex_ipv4 ?? "" }
+    : { type: "CNAME", host: domain.split(".")[0] || domain, target: config?.cname_target ?? "" };
 
-function CopyableCell({ value }: CopyableCellProps) {
-  const { t } = useTranslation("common");
-  const [copied, setCopied] = useState(false);
+const mono = { fontFamily: "monospace", fontSize: 13 } as const;
+const COLUMNS = [
+  "settings_domains_col_type",
+  "settings_domains_col_host",
+  "settings_domains_col_target",
+  "settings_domains_col_ttl",
+];
 
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // navigator.clipboard can fail in non-secure contexts; we just no-op.
-    }
-  };
-
-  return (
-    <Stack direction="row" alignItems="center" spacing={1}>
-      <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-        {value}
-      </Typography>
-      <Tooltip
-        title={
-          copied
-            ? t("white_label_dns_copied", "Copied")
-            : t("white_label_dns_copy", "Copy")
-        }>
-        <IconButton size="small" onClick={handleCopy} aria-label={t("copy")}>
-          <Icon iconName={ICON_NAME.COPY} fontSize="small" />
-        </IconButton>
-      </Tooltip>
-    </Stack>
-  );
-}
-
-export function DnsRecordCard({ domain }: DnsRecordCardProps) {
+/** The record as a table (Typ, Host, Ziel, TTL) with copy buttons. */
+export function DnsRecordCard({ domain }: { domain: string }) {
   const { t } = useTranslation("common");
   const config = useCustomDomainConfig();
-  const apex = isApexDomain(domain);
-  // For subdomains, DNS providers want the relative name (just the leftmost
-  // label). For apex domains, the host is "@" — a convention shared by
-  // every major registrar including Namecheap.
-  const host = apex ? "@" : domain.split(".")[0] || domain;
-
-  // Apex → single A record (skip AAAA: every browser falls back to v4 fine,
-  // and one record is one less thing for the customer to maintain).
-  // Subdomain → single CNAME pointing at the canonical target.
-  // Both forms are accepted by the reconciliation check on the backend.
-  const cnameTarget = config?.cname_target ?? "";
-  const apexIpv4 = config?.apex_ipv4 ?? "";
-  const rows = apex
-    ? [{ type: "A", host, target: apexIpv4 }]
-    : [{ type: "CNAME", host, target: cnameTarget }];
-
+  const record = dnsRecordOf(domain, config);
   return (
-    <Box
-      sx={{
-        border: 1,
-        borderColor: "divider",
-        borderRadius: 1,
-        overflow: "hidden",
-      }}>
+    <Box sx={{ border: 1, borderColor: "divider", borderRadius: "8px", overflowX: "auto" }}>
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell sx={{ fontWeight: 600 }}>
-              {t("white_label_dns_type", "Type")}
-            </TableCell>
-            <TableCell sx={{ fontWeight: 600 }}>
-              {t("white_label_dns_host", "Host")}
-            </TableCell>
-            <TableCell sx={{ fontWeight: 600 }}>
-              {t("white_label_dns_target", "Target")}
-            </TableCell>
-            <TableCell sx={{ fontWeight: 600 }}>
-              {t("white_label_dns_ttl", "TTL")}
-            </TableCell>
+            {COLUMNS.map((key) => (
+              <TableCell key={key} sx={{ fontWeight: 700 }}>
+                {t(key)}
+              </TableCell>
+            ))}
           </TableRow>
         </TableHead>
         <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.type}>
-              <TableCell>
-                <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                  {row.type}
-                </Typography>
-              </TableCell>
-              <TableCell>
-                <CopyableCell value={row.host} />
-              </TableCell>
-              <TableCell>
-                <CopyableCell value={row.target} />
-              </TableCell>
-              <TableCell>
-                <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                  3600
-                </Typography>
-              </TableCell>
-            </TableRow>
-          ))}
+          <TableRow>
+            <TableCell>
+              <Typography sx={mono}>{record.type}</Typography>
+            </TableCell>
+            <TableCell>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Typography sx={mono}>{record.host}</Typography>
+                <CopyButton value={record.host} />
+              </Box>
+            </TableCell>
+            <TableCell>
+              {config ? (
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Typography sx={{ ...mono, wordBreak: "break-all" }}>{record.target}</Typography>
+                  {record.target && <CopyButton value={record.target} />}
+                </Box>
+              ) : (
+                // The target comes from core's config: its place until it answers.
+                <Skeleton variant="text" width={160} />
+              )}
+            </TableCell>
+            <TableCell>
+              <Typography sx={mono}>3600</Typography>
+            </TableCell>
+          </TableRow>
         </TableBody>
       </Table>
     </Box>

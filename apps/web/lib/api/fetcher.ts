@@ -126,9 +126,14 @@ export const fetcher = async (params) => {
   if (!res.ok) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const error: any = new Error("An error occurred while fetching the data.");
-    // Attach extra info to the error object.
-    error.info = await res.json();
+    // The status first: a body that is not JSON (a proxy's 502 page) leaves
+    // `info` undefined instead of throwing a parse error without a status.
     error.status = res.status;
+    try {
+      error.info = await res.json();
+    } catch {
+      error.info = undefined;
+    }
     throw error;
   }
 

@@ -130,6 +130,8 @@ describe("MoveDialog", () => {
         onMoved={noop}
       />
     );
+    // Named by its title, as every AppDialog is.
+    expect(screen.getByRole("dialog", { name: /^move_title/ })).toBeInTheDocument();
 
     expect(screen.getByText("A")).toBeInTheDocument();
     fireEvent.click(screen.getByText("A"));
