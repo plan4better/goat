@@ -4633,6 +4633,8 @@
   "fetch_features_area_mode_polygon": "Drawn polygon",
   "fetch_features_section_features": "Features",
   "fetch_features_section_result": "Result",
+  "fetch_features_section_modes": "Modes",
+  "fetch_features_pt_modes_needed": "Choose at least one mode",
   "fetch_features_theme": "Theme",
   "fetch_features_quick_picks": "Quick picks",
   "fetch_features_pick_schools": "Schools",
