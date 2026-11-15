@@ -16,16 +16,25 @@ export function everyZoom(value: Value): Value {
   };
 }
 
-const hasInterpolate = (expr: Expr): boolean =>
-  Array.isArray(expr) && expr[0] !== "literal" && (expr[0] === "interpolate" || expr.some(hasInterpolate));
+const INTERPOLATIONS = new Set(["interpolate", "interpolate-lab", "interpolate-hcl"]);
 
-/** Color strings inside an interpolate parsed as colors: outside a paint property nothing says they are colors. */
+const hasInterpolate = (expr: Expr): boolean =>
+  Array.isArray(expr) &&
+  expr[0] !== "literal" &&
+  (INTERPOLATIONS.has(expr[0] as string) || expr.some(hasInterpolate));
+
+/** Color strings among the outputs of an interpolation, and of the choices around one, parsed as colors: outside a
+ * paint property nothing says they are colors, and a choice between a text and an interpolated color does not type. */
 function colorOutputs(expr: Expr): Expr {
   if (!Array.isArray(expr) || expr[0] === "literal") return expr;
-  if (expr[0] === "interpolate")
-    return expr.map((e, i) =>
-      i >= 4 && i % 2 === 0 ? (typeof e === "string" ? ["to-color", e] : colorOutputs(e)) : e
-    );
+  const color = (e: Expr): Expr => (typeof e === "string" && e ? ["to-color", e] : colorOutputs(e));
+  const last = expr.length - 1;
+  const op = expr[0];
+  if (INTERPOLATIONS.has(op as string)) return expr.map((e, i) => (i >= 4 && i % 2 === 0 ? color(e) : e));
+  if (op === "case") return expr.map((e, i) => (i >= 2 && (i % 2 === 0 || i === last) ? color(e) : e));
+  if (op === "match") return expr.map((e, i) => (i >= 3 && (i % 2 === 1 || i === last) ? color(e) : e));
+  if (op === "step") return expr.map((e, i) => (i >= 2 && i % 2 === 0 ? color(e) : e));
+  if (op === "coalesce") return expr.map((e, i) => (i >= 1 ? color(e) : e));
   return expr.map(colorOutputs);
 }
 

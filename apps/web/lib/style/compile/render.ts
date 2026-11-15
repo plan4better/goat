@@ -197,7 +197,10 @@ function scaleExpr(scale: H3Scale): Expr {
   const value: Expr = ["to-number", ["get", "value"], 0];
   if (scale.kind === "color") return scale.color;
   if (scale.kind === "classes")
-    return ["step", value, scale.colors[0], ...scale.breaks.flatMap((b, i) => [b, scale.colors[i + 1]])];
+    // One class (every cell holds the same value) has no breaks to step through.
+    return scale.breaks.length
+      ? ["step", value, scale.colors[0], ...scale.breaks.flatMap((b, i) => [b, scale.colors[i + 1]])]
+      : scale.colors[0];
   const { colors, min, max } = scale;
   return [
     "interpolate",

@@ -157,7 +157,8 @@ export function cascade(style: JsonObject, path: string, ctx: CascadeContext = {
           return [
             "case",
             ["has", field],
-            ["step", ["to-number", ["get", field], 0], ...steps],
+            // One class without bounds (a field with a single value) has no stops to step through.
+            steps.length === 1 ? steps[0] : ["step", ["to-number", ["get", field], 0], ...steps],
             rest[classes.length],
           ];
         },
