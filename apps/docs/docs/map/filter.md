@@ -71,7 +71,7 @@ A condition compares one field of the layer with a value, for example **Name is 
 | is on, is not on | Choose a date in <code>Value</code>. |
 | is before, is after | Choose a date in <code>Value</code>. For a field with date and time, also set the time. |
 | is between, is not between (dates) | Choose the two dates in <code>Value</code> and <code>Up to</code>. For a field with date and time, also set the times. |
-| in the last, not in the last | Type a whole number into <code>Number of days</code>. |
+| in the last, not in the last | Type a whole number into <code>Days</code>. |
 | is empty, is not empty, is true, is false | No value is needed. |
 
 <div class="step">
@@ -82,12 +82,13 @@ A condition compares one field of the layer with a value, for example **Name is 
 :::tip Hint
 - Comparisons that exclude a value ("is not", "is none of", "does not contain", "is not between", "is not on", "not in the last") keep the features that have no value in the field. Add the condition "is not empty" on the same field to leave those out as well.
 - The characters `%` and `_` cannot be searched for with "contains", "does not contain", "starts with" and "ends with".
-- "in the last" and "not in the last" count the days back from the moment the filter is saved. The date does not move on by itself from day to day. It is set again whenever the filter is changed.
+- "in the last" and "not in the last" count the days back from today, wherever the filter is used: on the map, in the data table, in exports, in tools and in workflows, and in shared projects. "in the last 7 days" keeps today and the 7 days before it, counted in whole days of Coordinated Universal Time (UTC). A filter saved with an older version of GOAT keeps the date it was saved with until it is changed and saved again.
+- A time you set for a field with date and time is the time in your browser's time zone. The condition shows it in your time zone too, so someone in another time zone sees the same moment in theirs.
 :::
 
 ### Combine conditions
 
-Repeat steps 2 to 5 for every further condition. A filter takes up to 20 conditions.
+Repeat steps 2 to 5 for every further condition. A filter applies up to 20 conditions. Conditions that are switched off do not count.
 
 As soon as there are two or more conditions, a menu appears next to <code>Conditions</code>. It decides how the conditions work together:
 
@@ -97,7 +98,7 @@ As soon as there are two or more conditions, a menu appears next to <code>Condit
 ### Change, switch off or remove a condition
 
 - **Change**: Click the row to open its editor again. To filter by another field, click the field name at the top of the editor.
-- **Switch off**: Use the switch at the end of the row. The condition stays in the list but is not applied, and its row is dimmed. Switch it on again to apply it.
+- **Switch off**: Use the switch at the end of the row. The condition stays in the list but is not applied, and its row is dimmed. Switch it on again to apply it. While 20 conditions are applied, a switched-off condition cannot be switched on.
 - **Remove**: Point at the row and click the bin icon, or select the row and press the Delete key.
 - **Remove everything**: <code>Clear</code> next to the result line removes all conditions and the area.
 
@@ -123,13 +124,15 @@ An area keeps the features that lie inside it or touch it, or the ones outside i
 | ------ | ------------ |
 | <code>Current map view</code> | The part of the map that is visible right now. |
 | <code>Draw polygon</code> | A polygon you draw on the map. |
-| <code>Draw circle</code> | A circle you draw on the map. |
+| <code>Draw circle</code> | A circle you draw on the map: click its centre, then a point of its edge. |
 | <code>Regions</code> | Administrative regions. Type at least two characters into <code>Search regions</code> and tick the regions you need. |
-| <code>Features of a layer</code> | Features of another polygon layer of the project, for example districts. Choose the layer, then tick the features. The list shows the first 50 features, use <code>Search features</code> to find the others. |
+| <code>Features of a layer</code> | Features of another polygon layer of the project, for example districts. Choose the layer, then tick the features. The list offers the features the layer shows on the map: when that layer has a filter of its own, only the features it keeps. It shows 50 at a time; scroll down for more, or use <code>Search features</code>. |
 
 While you draw, the panel shows <code>Draw the shape on the map</code>. The finished shape joins the area. <code>Cancel</code> or the Escape key stops drawing without adding a shape.
 
-To change a drawn polygon later, click its pen icon (<code>Edit the shape on the map</code>) in the area. Drag the corners, or click between two corners to add one; select a corner and press Delete to remove it. <code>Done</code> or Enter keeps the change, <code>Cancel</code> or Escape keeps the old shape. A drawn circle cannot be changed this way: remove it and draw it again.
+To change a drawn polygon later, click its pen icon (<code>Edit the shape on the map</code>) in the area. Drag the corners, or click between two corners to add one; select a corner and press Delete to remove it. <code>Done</code> or Enter keeps the change, <code>Cancel</code> or Escape keeps the old shape.
+
+A drawn circle keeps its centre and radius. To move or resize it on the map, click its pen icon (<code>Move or resize the circle on the map</code>): drag the centre to move the circle, or the point on its edge to change the radius, then click <code>Done</code> or press Enter. The circle's <code>Radius</code> can also be set under its row in the area picker, with the slider or by typing it; it is shown in m below 1 km and in km from 1 km. A circle saved by an older version of GOAT keeps its shape but cannot be moved or resized: remove it and draw it again to change it.
 
 <div class="step">
   <div class="step-number">3</div>

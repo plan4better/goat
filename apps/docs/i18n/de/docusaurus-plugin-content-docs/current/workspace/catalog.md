@@ -46,7 +46,7 @@ Jeder Abschnitt zeigt die Werte, die der Katalog tatsächlich enthält, die häu
 `Räumlichen Filter setzen` schränkt den Katalog auf Datensätze ein, die ein bestimmtes Gebiet abdecken. Unter `Zum Gebiet hinzufügen` gibt es dafür drei Wege:
 
 - **Regionen**: nach Land, Bundesland oder Bezirk suchen und in der Liste ankreuzen. Mehrere lassen sich kombinieren; ein Datensatz passt, sobald er eine davon abdeckt.
-- **Punkt und Umkreis**: auf die Karte klicken, um einen Punkt zu setzen, dann den Umkreis in km festlegen
+- **Punkt und Umkreis**: auf die Karte klicken, um einen Punkt zu setzen, dann den Umkreis unter seiner Zeile festlegen (unter 1 km in m, ab 1 km in km). Über sein Stiftsymbol lässt sich der Mittelpunkt ziehen, um den Kreis zu verschieben, oder der Punkt am Rand, um den Umkreis zu ändern.
 - **Polygon zeichnen**: auf die Karte klicken, um die Eckpunkte eines Gebiets zu setzen, und mit Doppelklick abschließen
 
 Der Filter nutzt jeweils einen der drei Wege: Ein Punkt oder ein Polygon ersetzt die Regionen und umgekehrt. Entfernen Sie ihn mit dem Kreuz in seiner Zeile, dann `Anwenden`.

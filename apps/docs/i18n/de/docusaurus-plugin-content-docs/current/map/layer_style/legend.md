@@ -58,6 +58,16 @@ Bei einem Raster mit Farbverlauf hat <code>Inhalt</code> außerdem <code>Einheit
 
 Solange die Einstellungen der Legende vom Stil des Datensatzes abweichen, zeigt der Kopf des Editors <code>Auf den Stil des Datensatzes zurücksetzen</code> (ein kreisförmiger Pfeil); damit setzen Sie sie so zurück, wie sie der Stil des Datensatzes hat.
 
+## Welche Klassen die Legende aufführt
+
+Bei einem Layer mit Klassen hat <code>Inhalt</code> die Einstellung <code>Angezeigte Klassen</code>. Sie bestimmt, welche Klassen die Legende aufführt, überall, wo sie erscheint: im <code>Layer</code>-Panel, in der Legende oben in <code>Inhalt</code>, in Drucklayouts, in Dashboards und auf öffentlichen Karten.
+
+- <code>Alle</code>: jede Klasse.
+- <code>Vom Filter behaltene</code> (Standard): nur die Klassen, die unter dem [Filter](../filter.md) des Layers noch Objekte haben. Ein Layer ohne Filter führt jede Klasse auf. GOAT zählt die Klassen bei jeder Änderung des Filters neu.
+- <code>Im Kartenausschnitt</code>: nur die Klassen, die im aktuellen Kartenausschnitt gezeichnet sind. Die Legende aktualisiert sich, sobald die Karte stillsteht, nicht während Sie verschieben oder zoomen. In einem Drucklayout zählt die Legende die Klassen im Ausschnitt der Karte, mit der sie verbunden ist; eine Legende ohne verbundene Karte führt jede Klasse auf.
+
+<code>Andere</code> und <code>Keine Daten</code> folgen derselben Regel, und eine Klassifizierung ohne verbleibende Klassen hat keinen Abschnitt. Bleibt gar keine Klasse übrig, zeigt die Legende <code>Keine im Kartenausschnitt</code> oder <code>Keine vom Filter behalten</code>. Farbverläufe, Größenbeispiele und Höhen ändern sich nicht. Solange die Klassen gezählt werden, zeigt die Legende an ihrer Stelle graue Platzhalterzeilen, und ein Druck wartet auf die Zählung; schlägt die Zählung fehl, führt die Legende jede Klasse auf.
+
 ## Eigene Bezeichnungen für Klassen
 
 Jede Klasse erscheint mit ihren Werten oder ihrem Bereich, zum Beispiel <code>2.800 bis 3.600</code>. Um stattdessen eine Bezeichnung wie <code>Niedrig</code>, <code>Mittel</code> oder <code>Hoch</code> zu zeigen, benennen Sie die Klasse:

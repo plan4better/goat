@@ -58,6 +58,16 @@ For a raster with a color range, <code>Contents</code> also has <code>Unit</code
 
 While the legend settings differ from the dataset's style, the header of the editor shows <code>Reset to the dataset's style</code> (a circular arrow), which puts them back as the dataset's style has them.
 
+## Which classes the legend lists
+
+In a layer with classes, <code>Contents</code> has <code>Classes shown</code>. It decides which classes the legend lists, everywhere it shows: in the <code>Layers</code> panel, in the legend at the top of <code>Contents</code>, in print layouts, in dashboards and on public maps.
+
+- <code>All</code>: every class.
+- <code>Kept by the filter</code> (the default): only the classes that still have features under the layer's [filter](../filter.md). A layer without a filter lists every class. GOAT counts the classes again each time the filter changes.
+- <code>In view</code>: only the classes drawn in the current map view. The legend updates once the map stops moving, not while you pan or zoom. In a print layout, the legend counts the classes in the extent of the map it is connected to; a legend without a connected map lists every class.
+
+<code>Other</code> and <code>No data</code> follow the same rule, and a classification left without classes has no section. When no class is left at all, the legend says <code>None in view</code> or <code>None kept by the filter</code>. Color ramps, size samples and heights do not change. While the classes are being counted, the legend shows grey placeholder rows in their place, and a print waits for the count; if the count fails, the legend lists every class.
+
 ## Custom labels for classes
 
 Each class is listed with its values or range, for example <code>2,800 to 3,600</code>. To show a label such as <code>Low</code>, <code>Medium</code> or <code>High</code> instead, name the class:

@@ -46,7 +46,7 @@ Each section lists the values the catalog actually holds, commonest first, with 
 `Set spatial filter` narrows the catalog to datasets covering an area you care about. Under `Add to area` there are three ways to describe it:
 
 - **Regions**: search for a country, state or district by name and tick it in the list. Several can be combined, and a dataset covering any of them matches.
-- **Point and radius**: click the map to place a point, then set the radius around it in km
+- **Point and radius**: click the map to place a point, then set the radius around it under its row (in m below 1 km, in km from 1 km). Its pen icon lets you drag the centre to move the circle, or the point on its edge to change the radius.
 - **Draw polygon**: click the map to place the corners of an area, and double-click to finish
 
 The filter uses one of the three at a time: a point or a polygon replaces the regions, and the other way round. Remove it with the cross on its row, then `Apply`.

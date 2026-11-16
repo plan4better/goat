@@ -71,7 +71,7 @@ Eine Bedingung vergleicht ein Feld des Layers mit einem Wert, zum Beispiel **Nam
 | ist am, ist nicht am | Wählen Sie unter <code>Wert</code> ein Datum. |
 | ist vor, ist nach | Wählen Sie unter <code>Wert</code> ein Datum. Bei einem Feld mit Datum und Uhrzeit legen Sie auch die Uhrzeit fest. |
 | liegt zwischen, liegt nicht zwischen (Datum) | Wählen Sie die beiden Datumswerte unter <code>Wert</code> und <code>Bis</code>. Bei einem Feld mit Datum und Uhrzeit legen Sie auch die Uhrzeiten fest. |
-| in den letzten, nicht in den letzten | Tippen Sie eine ganze Zahl in <code>Anzahl der Tage</code> ein. |
+| in den letzten, nicht in den letzten | Tippen Sie eine ganze Zahl in <code>Tage</code> ein. |
 | ist leer, ist nicht leer, ist wahr, ist falsch | Es ist kein Wert nötig. |
 
 <div class="step">
@@ -82,12 +82,13 @@ Eine Bedingung vergleicht ein Feld des Layers mit einem Wert, zum Beispiel **Nam
 :::tip Hinweis
 - Vergleiche, die einen Wert ausschließen („ist nicht“, „ist keiner von“, „enthält nicht“, „liegt nicht zwischen“, „ist nicht am“, „nicht in den letzten“), behalten die Features, die in dem Feld keinen Wert haben. Fügen Sie für dasselbe Feld die Bedingung „ist nicht leer“ hinzu, um auch diese auszuschließen.
 - Nach den Zeichen `%` und `_` kann mit „enthält“, „enthält nicht“, „beginnt mit“ und „endet mit“ nicht gesucht werden.
-- „in den letzten“ und „nicht in den letzten“ zählen die Tage von dem Moment zurück, in dem der Filter gespeichert wird. Das Datum wandert nicht von selbst von Tag zu Tag weiter. Es wird neu gesetzt, sobald der Filter geändert wird.
+- „in den letzten“ und „nicht in den letzten“ zählen die Tage von heute zurück, überall dort, wo der Filter verwendet wird: auf der Karte, in der Datentabelle, beim Export, in Werkzeugen und Workflows und in geteilten Projekten. „in den letzten 7 Tagen“ behält heute und die 7 Tage davor, gezählt in ganzen Tagen der koordinierten Weltzeit (UTC). Ein Filter, der mit einer älteren Version von GOAT gespeichert wurde, behält sein gespeichertes Datum, bis er geändert und erneut gespeichert wird.
+- Eine Uhrzeit, die Sie für ein Feld mit Datum und Uhrzeit festlegen, ist die Uhrzeit in der Zeitzone Ihres Browsers. Die Bedingung zeigt sie auch in Ihrer Zeitzone an, sodass jemand in einer anderen Zeitzone denselben Zeitpunkt in seiner Zeitzone sieht.
 :::
 
 ### Bedingungen kombinieren
 
-Wiederholen Sie die Schritte 2 bis 5 für jede weitere Bedingung. Ein Filter umfasst bis zu 20 Bedingungen.
+Wiederholen Sie die Schritte 2 bis 5 für jede weitere Bedingung. Ein Filter wendet bis zu 20 Bedingungen an. Ausgeschaltete Bedingungen zählen nicht mit.
 
 Sobald es zwei oder mehr Bedingungen gibt, erscheint neben <code>Bedingungen</code> ein Menü. Es legt fest, wie die Bedingungen zusammenwirken:
 
@@ -97,7 +98,7 @@ Sobald es zwei oder mehr Bedingungen gibt, erscheint neben <code>Bedingungen</co
 ### Bedingung ändern, ausschalten oder entfernen
 
 - **Ändern**: Klicken Sie auf die Zeile, um ihren Editor wieder zu öffnen. Um nach einem anderen Feld zu filtern, klicken Sie oben im Editor auf den Feldnamen.
-- **Ausschalten**: Verwenden Sie den Schalter am Ende der Zeile. Die Bedingung bleibt in der Liste, wird aber nicht angewendet, und ihre Zeile ist abgeblendet. Schalten Sie sie wieder ein, um sie anzuwenden.
+- **Ausschalten**: Verwenden Sie den Schalter am Ende der Zeile. Die Bedingung bleibt in der Liste, wird aber nicht angewendet, und ihre Zeile ist abgeblendet. Schalten Sie sie wieder ein, um sie anzuwenden. Solange 20 Bedingungen angewendet werden, lässt sich eine ausgeschaltete Bedingung nicht einschalten.
 - **Entfernen**: Zeigen Sie auf die Zeile und klicken Sie auf das Papierkorb-Symbol, oder wählen Sie die Zeile aus und drücken Sie die Entf-Taste.
 - **Alles entfernen**: <code>Leeren</code> neben der Ergebniszeile entfernt alle Bedingungen und das Gebiet.
 
@@ -123,13 +124,15 @@ Ein Gebiet behält die Features, die darin liegen oder es berühren, oder die au
 | ------ | -------------------- |
 | <code>Aktueller Kartenausschnitt</code> | Der Teil der Karte, der gerade sichtbar ist. |
 | <code>Polygon zeichnen</code> | Ein Polygon, das Sie auf der Karte zeichnen. |
-| <code>Kreis zeichnen</code> | Ein Kreis, den Sie auf der Karte zeichnen. |
+| <code>Kreis zeichnen</code> | Ein Kreis, den Sie auf der Karte zeichnen: Klicken Sie auf seinen Mittelpunkt, dann auf einen Punkt seines Rands. |
 | <code>Regionen</code> | Verwaltungsregionen. Tippen Sie mindestens zwei Zeichen in <code>Regionen suchen</code> ein und haken Sie die benötigten Regionen an. |
-| <code>Objekte eines Layers</code> | Features eines anderen Polygon-Layers des Projekts, zum Beispiel Stadtbezirke. Wählen Sie den Layer und haken Sie dann die Features an. Die Liste zeigt die ersten 50 Features, die übrigen finden Sie mit <code>Objekte suchen</code>. |
+| <code>Objekte eines Layers</code> | Features eines anderen Polygon-Layers des Projekts, zum Beispiel Stadtbezirke. Wählen Sie den Layer und haken Sie dann die Features an. Die Liste bietet die Features an, die der Layer auf der Karte zeigt: Hat dieser Layer einen eigenen Filter, nur die Features, die er behält. Sie zeigt jeweils 50; weitere erscheinen, wenn Sie nach unten scrollen, oder Sie finden sie mit <code>Objekte suchen</code>. |
 
 Während Sie zeichnen, zeigt das Panel <code>Form auf der Karte zeichnen</code>. Die fertige Form wird Teil des Gebiets. <code>Abbrechen</code> oder die Esc-Taste beendet das Zeichnen, ohne eine Form hinzuzufügen.
 
-Um ein gezeichnetes Polygon später zu ändern, klicken Sie im Gebiet auf sein Stiftsymbol (<code>Form auf der Karte bearbeiten</code>). Ziehen Sie die Ecken, oder klicken Sie zwischen zwei Ecken, um eine hinzuzufügen; wählen Sie eine Ecke aus und drücken Sie Entf, um sie zu entfernen. <code>Fertig</code> oder die Eingabetaste übernimmt die Änderung, <code>Abbrechen</code> oder die Esc-Taste behält die alte Form. Ein gezeichneter Kreis lässt sich so nicht ändern: Entfernen Sie ihn und zeichnen Sie ihn neu.
+Um ein gezeichnetes Polygon später zu ändern, klicken Sie im Gebiet auf sein Stiftsymbol (<code>Form auf der Karte bearbeiten</code>). Ziehen Sie die Ecken, oder klicken Sie zwischen zwei Ecken, um eine hinzuzufügen; wählen Sie eine Ecke aus und drücken Sie Entf, um sie zu entfernen. <code>Fertig</code> oder die Eingabetaste übernimmt die Änderung, <code>Abbrechen</code> oder die Esc-Taste behält die alte Form.
+
+Ein gezeichneter Kreis behält seinen Mittelpunkt und seinen Umkreis. Um ihn auf der Karte zu verschieben oder seine Größe zu ändern, klicken Sie auf sein Stiftsymbol (<code>Kreis auf der Karte verschieben oder in der Größe ändern</code>): Ziehen Sie den Mittelpunkt, um den Kreis zu verschieben, oder den Punkt an seinem Rand, um den Umkreis zu ändern, und klicken Sie dann auf <code>Fertig</code> oder drücken Sie die Eingabetaste. Den <code>Umkreis</code> können Sie auch unter der Zeile des Kreises in der Gebietsauswahl einstellen, mit dem Schieberegler oder als Zahl; er wird unter 1 km in m und ab 1 km in km angezeigt. Ein Kreis, den eine ältere GOAT-Version gespeichert hat, behält seine Form, lässt sich aber nicht verschieben oder in der Größe ändern: Entfernen Sie ihn und zeichnen Sie ihn neu, um ihn zu ändern.
 
 <div class="step">
   <div class="step-number">3</div>
