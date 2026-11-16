@@ -21,6 +21,7 @@ import asyncpg
 import wmill
 from pydantic import BaseModel, Field
 
+from goatlib.filter.normalize import days_ago
 from goatlib.tools.if_node import IF_FALSE_HANDLE, execute_if_node, layer_field_types
 from goatlib.tools.workflow_dataset_nodes import (
     current_layer_ids,
@@ -488,19 +489,21 @@ def range_bounds(attribute: str, value: Any) -> tuple[Any, Any]:
 
 
 def _since(attribute: str, value: Any, field_type: str | None, now: datetime) -> dict:
-    """The start of "the last N days". The layer filter saves the date it
-    counted back to when it was saved; a step saves the number of days, so a
-    workflow counts back from its run."""
+    """The start of "the last N days": the start (UTC) of the day N days
+    before the day of `now`, as the layer filter's relative day reads
+    (`goatlib.filter.normalize.days_ago`). A step saves the number of days and
+    a run writes them once (`dataset_filters_as_cql`), so every step counts
+    back from the same day."""
     try:
         days = int(str(value).strip())
     except ValueError:
         days = 0
-    if days < 1:
+    since = days_ago(days, now)
+    if since is None:
         raise ValueError(f"{attribute} needs a number of days, not {value!r}.")
-    since = now.astimezone(UTC) - timedelta(days=days)
     if field_type == "date":
-        return {"date": since.date().isoformat()}
-    return {"timestamp": since.strftime("%Y-%m-%dT%H:%M:%SZ")}
+        return {"date": since["timestamp"][:10]}
+    return since
 
 
 def _convert_expression_to_cql(

@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 import duckdb
 import pytest
+from goatlib.filter.normalize import normalize
 from goatlib.storage import cql_to_where_clause
 from goatlib.storage.query_builder import build_cql_filter
 from goatlib.tools import workflow_runner
@@ -243,14 +244,31 @@ def test_range_without_two_bounds_is_an_error(value: Any) -> None:
 
 
 def test_in_the_last_counts_from_the_run() -> None:
-    """A step stores the number of days; a run counts them back from its start."""
+    """A step stores the number of days; a run counts them back from the day
+    it started, to the start of that day, as the layer filter's relative day
+    counts them (`goatlib.filter.normalize.days_ago`)."""
     cql = workflow_runner.convert_filter_to_cql(
-        stored([("seen", "in_the_last", 7)]), now=NOW
+        stored([("seen", "in_the_last", 7), ("built", "in_the_last", 7)]),
+        field_types={"seen": "datetime", "built": "date"},
+        now=NOW,
     )
     assert cql == {
-        "op": ">=",
-        "args": [{"property": "seen"}, {"timestamp": "2024-05-13T12:00:00Z"}],
+        "op": "and",
+        "args": [
+            {
+                "op": ">=",
+                "args": [{"property": "seen"}, {"timestamp": "2024-05-13T00:00:00Z"}],
+            },
+            {"op": ">=", "args": [{"property": "built"}, {"date": "2024-05-13"}]},
+        ],
     }
+    relative = {
+        "op": ">=",
+        "args": [{"property": "seen"}, {"op": "daysAgo", "args": [7]}],
+    }
+    assert workflow_runner.convert_filter_to_cql(
+        stored([("seen", "in_the_last", 7)]), now=NOW
+    ) == normalize(relative, NOW)
 
 
 def test_text_is_empty_reads_the_layers_field_types_only_when_needed() -> None:
@@ -318,4 +336,6 @@ def test_shared_case_keeps_the_layer_filters_rows(
         "or" if rows["match"] == "any" else "and",
     )
     con = table(moment)
-    assert kept(con, step_filter(condition, moment)) == kept(con, case["cql"])
+    # A relative day of the layer filter read on the day of the run.
+    layer_filter = normalize(case["cql"], NOW)
+    assert kept(con, step_filter(condition, moment)) == kept(con, layer_filter)

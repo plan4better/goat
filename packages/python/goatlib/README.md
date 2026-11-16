@@ -220,15 +220,38 @@ READMEs means section N of that file.
 
 A project layer's filter is saved in `layer_project.query.cql` as standard OGC
 CQL2-JSON, and that stays its saved form: other applications that speak OGC API
-Features can read and write it, and nothing GOAT-specific goes into it. What only
-the web's filter panel needs (switched-off rows) is kept apart in `query.ui`;
-deleting it never changes which features pass.
+Features can read and write it. The one GOAT-specific piece is a function in
+CQL2's own call syntax, `daysAgo(n)` (`{"op": "daysAgo", "args": [n]}`), so a
+CQL2 parser still reads the filter. What only the web's filter panel needs
+(switched-off rows) is kept apart in `query.ui`; deleting it never changes which
+features pass.
 
 - **`normalize` sits in front of the parser.** pygeofilter follows an older CQL2
   draft in places, and older clients saved legacy spellings; `normalize.py`
   rewrites both to the one form the evaluator takes, and every place that parses
-  a filter (geoapi, the catalog, the storage query builder, the tools) calls it
-  first. Its module docstring lists the rewrites.
+  a filter (geoapi, the catalog, the storage query builder, the tools, core's
+  save check) calls it first. Its module docstring lists the rewrites.
+- **"In the last N days" is resolved when the filter is read** (`days_ago` in
+  `normalize.py`). The panel saves `daysAgo(n)`, not a date, so the filter
+  keeps counting back from today on the map, in counts, the table, exports,
+  tools and published projects alike; the date a save counted back to would
+  stay where it was. Since every reader goes through `normalize`, resolving
+  there reaches them all, the published map document included, which carries
+  the CQL without the panel's notes. It resolves to the start of the day in
+  UTC, not to the moment: geoapi keys its tile caches and ETags on the filter
+  it passes on (resolved at its entry, `cql_filter_query`), which so stays one
+  filter all day. A filter saved before kept a date and a note in `query.ui`;
+  the panel reads it as the row and writes `daysAgo` on the next save.
+- **A tool or an export applies a filter in full or not at all**
+  (`checked_cql_filter` in `storage/query_builder.py`). `build_cql_filter`
+  drops a filter it cannot read, which on the map shows every feature; a tool
+  or an export would run on the whole layer and hand back a result that looks
+  right. Every place a tool, the If step, the layer export and the sync
+  statistics of processes read a layer with its filter goes through
+  `checked_cql_filter`, which refuses (`UnreadableFilterError`, a `ValueError`)
+  a filter over a request ceiling, one the checker finds broken as a saved
+  filter (errors and damaged fields; limits are warnings, as on the map) and
+  one the evaluator does not translate, naming why.
 - **An area is evaluated as its union** (`area.py`). Clients put an area's
   pieces side by side in one MultiPolygon, so its polygons may overlap or fill
   one another's holes, and DuckDB and a prepared shapely geometry read a point
@@ -274,8 +297,9 @@ deleting it never changes which features pass.
   type (a day as its start in UTC, which a date column reads as the day).
   Only "is empty" and "is not empty" cannot do without it, since on text they
   also take the empty text: for those a dataset step reads its layer's field
-  types. "In the last N days" counts back from the run, as a step stores the
-  days, not a date.
+  types. "In the last N days" counts back from the day the run started, to
+  the start of that day as the layer filter's `daysAgo` does, written once per
+  run so every step reads the same day.
 
 ## Raster files (`raster/`)
 

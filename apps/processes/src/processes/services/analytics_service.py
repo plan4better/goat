@@ -38,7 +38,8 @@ from goatlib.io.remote_source.url_guard import UnsafeUrlError
 from goatlib.raster.source import RasterSource, RasterUnavailableError
 from goatlib.raster.stats import compute_raster_into, raster_context
 from goatlib.storage import (
-    build_cql_filter,
+    UnreadableFilterError,
+    checked_cql_filter,
     is_pin_miss_error,
     load_extensions,
     parse_cql2_filter,
@@ -271,51 +272,44 @@ class AnalyticsService:
 
         Raises:
             HTTPException: 400 for a filter that does not parse or is over a
-                request ceiling (`_checked_filter`)
+                request ceiling (`_checked_filter`), and for one the layer
+                cannot take (`checked_cql_filter`: a field it lacks, a value
+                its field cannot hold); the statistic would otherwise cover
+                every feature
         """
         filter_dict = _checked_filter(filter_expr)
         if filter_dict is None:
             return "TRUE", []
 
+        # Get column types and detect geometry column from the table. A read
+        # that fails is the request's error, never a dropped filter: on a pin
+        # miss `_reads_the_latest_layer` reads again with the filter.
+        with self._connection(table_name) as con:
+            result = con.execute(f"DESCRIBE {table_name}").fetchall()
+            column_types = {row[0]: row[1] for row in result}
+
+        # Detect geometry column name (could be 'geom', 'geometry', etc.)
+        geometry_column = "geometry"  # default
+        for col_name, col_type in column_types.items():
+            if "geometry" in col_type.lower() or col_name.lower() in (
+                "geom",
+                "geometry",
+            ):
+                geometry_column = col_name
+                break
+
         try:
-            # Get column names and detect geometry column from the table
-            with self._connection(table_name) as con:
-                result = con.execute(f"DESCRIBE {table_name}").fetchall()
-                column_names = [row[0] for row in result]
-                column_types = {row[0]: row[1] for row in result}
-
-            # Detect geometry column name (could be 'geom', 'geometry', etc.)
-            geometry_column = "geometry"  # default
-            for col_name, col_type in column_types.items():
-                if "geometry" in col_type.lower() or col_name.lower() in (
-                    "geom",
-                    "geometry",
-                ):
-                    geometry_column = col_name
-                    break
-
-            # Build CQL filter with proper structure
-            cql_filter = {"filter": filter_dict, "lang": "cql2-json"}
-            query_filters = build_cql_filter(
-                cql_filter,
-                column_names,
-                geometry_column=geometry_column,
+            query_filters = checked_cql_filter(
+                filter_dict, column_types, geometry_column
             )
+        except UnreadableFilterError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from None
 
-            where_clause = query_filters.to_full_where(default="TRUE")
-            params = query_filters.params
+        where_clause = query_filters.to_full_where(default="TRUE")
+        params = query_filters.params
 
-            logger.debug("CQL filter built: %s with params %s", where_clause, params)
-            return where_clause, params
-
-        except Exception as e:
-            if is_pin_miss_error(e):
-                # The table is not in the pinned snapshot yet: dropping the
-                # filter would let the statistic count everything once the
-                # next connection sees it (`_reads_the_latest_layer`).
-                raise
-            logger.warning("Failed to build filter '%s': %s", filter_expr, e)
-            return "TRUE", []
+        logger.debug("CQL filter built: %s with params %s", where_clause, params)
+        return where_clause, params
 
     @_reads_the_latest_layer
     def feature_count(
@@ -1027,36 +1021,27 @@ class AnalyticsService:
         view_name: str,
         filter_expr: str | None,
     ) -> tuple[str, list[Any]]:
-        """Build a SQL WHERE clause from a CQL2 filter using an existing DuckDB connection."""
+        """Build a SQL WHERE clause from a CQL2 filter using an existing DuckDB
+        connection. Raises `UnreadableFilterError` for a filter the view cannot
+        take (`checked_cql_filter`), which the preview reports instead of
+        reading the layer unfiltered."""
         if not filter_expr:
             return "TRUE", []
 
-        try:
-            filter_dict = (
-                json.loads(filter_expr) if isinstance(filter_expr, str) else filter_expr
-            )
+        result = con.execute(f'DESCRIBE "{view_name}"').fetchall()
+        column_types = {row[0]: row[1] for row in result}
 
-            result = con.execute(f'DESCRIBE "{view_name}"').fetchall()
-            column_names = [row[0] for row in result]
-            column_types = {row[0]: row[1] for row in result}
+        geometry_column = "geometry"
+        for col_name, col_type in column_types.items():
+            if "GEOMETRY" in col_type.upper() or col_name.lower() in (
+                "geom",
+                "geometry",
+            ):
+                geometry_column = col_name
+                break
 
-            geometry_column = "geometry"
-            for col_name, col_type in column_types.items():
-                if "GEOMETRY" in col_type.upper() or col_name.lower() in (
-                    "geom",
-                    "geometry",
-                ):
-                    geometry_column = col_name
-                    break
-
-            cql_filter_obj = {"filter": filter_dict, "lang": "cql2-json"}
-            query_filters = build_cql_filter(
-                cql_filter_obj, column_names, geometry_column=geometry_column
-            )
-            return query_filters.to_full_where(default="TRUE"), query_filters.params
-        except Exception as e:
-            logger.warning("Failed to build WHERE clause for '%s': %s", view_name, e)
-            return "TRUE", []
+        query_filters = checked_cql_filter(filter_expr, column_types, geometry_column)
+        return query_filters.to_full_where(default="TRUE"), query_filters.params
 
     def _create_alias_view(
         self,
@@ -1070,6 +1055,10 @@ class AnalyticsService:
         TEMP, so the view belongs to this cursor alone: pooled cursors share
         one database, and a plain `input_1` view could be replaced by another
         request's between this request creating it and reading it.
+
+        A filter the layer cannot take raises `UnreadableFilterError`; the
+        preview reports it rather than show the unfiltered layer as if it
+        were filtered.
         """
         if not filter_expr:
             con.execute(f'CREATE OR REPLACE TEMP VIEW "{alias}" AS {source_sql}')
@@ -1097,12 +1086,11 @@ class AnalyticsService:
                     f'CREATE OR REPLACE TEMP VIEW "{alias}" AS SELECT * FROM "{filt_table}"'
                 )
             except Exception as e:
-                logger.warning(
-                    "Failed to apply filter to alias '%s', using unfiltered: %s",
-                    alias,
-                    e,
-                )
-                con.execute(f'CREATE OR REPLACE TEMP VIEW "{alias}" AS {source_sql}')
+                logger.warning("Failed to apply filter to alias '%s': %s", alias, e)
+                raise UnreadableFilterError(
+                    "The layer's filter cannot be applied to its data. "
+                    "Change or remove the filter and try again."
+                ) from e
 
     def preview_sql(
         self,

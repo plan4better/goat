@@ -2,6 +2,7 @@
 
 import json
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import duckdb
@@ -9,6 +10,7 @@ import pytest
 from fastapi import HTTPException
 from goatlib.filter.area import CROSSES_ITSELF
 from goatlib.filter.limits import REQUEST_MAX_DEPTH, REQUEST_MAX_VALUES
+from goatlib.storage import UnreadableFilterError
 
 from processes.routers import processes as analytics_router
 from processes.services.analytics_service import (
@@ -150,6 +152,52 @@ class TestAnalyticsServiceBuildWhereClause:
 
         assert refused.value.status_code == 400
         assert refused.value.detail == message
+
+    @pytest.mark.parametrize(
+        ("cql", "reason"),
+        [
+            ({"op": "=", "args": [{"property": "gone"}, "park"]}, 'no field "gone"'),
+            ({"op": "=", "args": [{"property": "lanes"}, "many"]}, "does not fit"),
+        ],
+        ids=["field-the-layer-lost", "value-the-field-cannot-hold"],
+    )
+    def test_a_filter_that_parses_but_cannot_be_applied_is_refused(self, cql, reason):
+        """It parses, so `_checked_filter` takes it; the builder then dropped
+        it and the statistic covered every feature."""
+        service = AnalyticsService()
+        layer = _describes(("kind", "VARCHAR"), ("lanes", "INTEGER"))
+
+        with patch.object(service, "_connection", layer):
+            with pytest.raises(HTTPException) as refused:
+                service._build_where_clause(json.dumps(cql), "lake.schema.table")
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail.startswith("The layer's filter cannot be applied")
+        assert reason in refused.value.detail
+
+    def test_a_relative_day_is_built_for_today(self):
+        service = AnalyticsService()
+
+        with patch.object(service, "_connection", _describes(("seen", "DATE"))):
+            where, params = service._build_where_clause(
+                {"op": ">=", "args": [{"property": "seen"}, {"op": "daysAgo", "args": [7]}]},
+                "lake.schema.table",
+            )
+
+        since = (datetime.now(UTC).date() - timedelta(days=7)).isoformat()
+        assert "seen" in where
+        assert any(since in str(p) for p in params)
+
+    def test_a_sql_preview_refuses_a_filter_its_layer_cannot_take(self):
+        """The alias view fell back to the unfiltered layer."""
+        con = duckdb.connect()
+        with pytest.raises(UnreadableFilterError, match='no field "gone"'):
+            AnalyticsService()._create_alias_view(
+                con,
+                "input_1",
+                "SELECT 'park' AS kind",
+                '{"op": "=", "args": [{"property": "gone"}, "park"]}',
+            )
 
     def test_a_filter_over_a_request_ceiling_is_refused(self):
         """Held against the request ceilings before it is parsed."""

@@ -732,24 +732,23 @@ class SimpleToolRunner:
         catalog_path: "Path",
         cql_filter: dict[str, Any],
     ) -> str:
-        """One filtered COPY of a catalog layer's file to a temp parquet."""
-        import json
+        """One filtered COPY of a catalog layer's file to a temp parquet; a
+        filter it cannot apply is refused (`checked_cql_filter`)."""
         import tempfile
 
-        from goatlib.storage.query_builder import build_cql_filter
+        from goatlib.storage.query_builder import checked_cql_filter
 
         con = self.duckdb_con
         described = con.execute(
             f"DESCRIBE SELECT * FROM read_parquet('{catalog_path}')"
         ).fetchall()
-        cols = [r[0] for r in described]
         # The file's geometry column is whatever the publisher named it.
         geom_col = next(
             (r[0] for r in described if "GEOMETRY" in str(r[1]).upper()),
             "geometry",
         )
-        filters = build_cql_filter(
-            {"filter": json.dumps(cql_filter), "lang": "cql2-json"}, cols, geom_col
+        filters = checked_cql_filter(
+            cql_filter, {str(r[0]): str(r[1]) for r in described}, geom_col
         )
         where = f"WHERE {' AND '.join(filters.clauses)}" if filters.clauses else ""
         tmp = tempfile.NamedTemporaryFile(suffix=".parquet", delete=False)
@@ -1300,15 +1299,15 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         Args:
             temp_layer_id: Temp layer ID in format "workflow_id:node_id" or "workflow_id:node_id:uuid"
             user_id: User UUID for the temp directory path
-            cql_filter: Optional CQL filter (applied via DuckDB query)
+            cql_filter: Optional CQL filter (applied via DuckDB query); one it
+                cannot apply is refused (`checked_cql_filter`)
 
         Returns:
             Path to the parquet file (copy or original if no filter)
         """
-        import json
         import tempfile
 
-        from goatlib.storage.query_builder import build_cql_filter
+        from goatlib.storage.query_builder import checked_cql_filter
         from goatlib.tools.temp_writer import temp_step_folder
 
         # Parse temp_layer_id - can be "workflow_id:node_id" or "workflow_id:node_id:uuid"
@@ -1356,10 +1355,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         columns_result = self.duckdb_con.execute(
             f"DESCRIBE SELECT * FROM read_parquet('{temp_parquet_path}')"
         )
-        column_names = [row[0] for row in columns_result.fetchall()]
-
-        filter_dict = {"filter": json.dumps(cql_filter), "lang": "cql2-json"}
-        cql_filters = build_cql_filter(filter_dict, column_names, "geometry")
+        columns = {str(row[0]): str(row[1]) for row in columns_result.fetchall()}
+        cql_filters = checked_cql_filter(cql_filter, columns, "geometry")
 
         where_clause = ""
         if cql_filters.clauses:
@@ -1475,15 +1472,16 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         Args:
             layer_id: Layer UUID string or temp layer ID (workflow_id:node_id)
             user_id: User UUID string (used for fallback if layer info unavailable)
-            cql_filter: Optional CQL2-JSON filter dict to apply
+            cql_filter: Optional CQL2-JSON filter dict to apply. One it cannot
+                apply raises `UnreadableFilterError` (`checked_cql_filter`):
+                the tool must not run on the whole layer instead.
 
         Returns:
             Path to the temporary parquet file
         """
-        import json
         import tempfile
 
-        from goatlib.storage.query_builder import build_cql_filter
+        from goatlib.storage.query_builder import checked_cql_filter
 
         self._read_layer_ids.append(layer_id)
 
@@ -1538,21 +1536,15 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             )
             raise
 
-        temp_file = tempfile.NamedTemporaryFile(
-            suffix=".parquet", delete=False, prefix="layer_"
-        )
-        temp_path = temp_file.name
-        temp_file.close()
-
-        # Detect geometry column name and get column names from table schema
+        # Detect geometry column name and get column types from table schema
         cols_result = self._execute_with_retry(
             "describe table",
             f"DESCRIBE {table_name}",
         )
         geom_col = "geometry"  # default
-        column_names: list[str] = []
+        columns: dict[str, str] = {}
         for col_name, col_type, *_ in cols_result.fetchall():
-            column_names.append(col_name)
+            columns[col_name] = col_type
             if "GEOMETRY" in col_type.upper():
                 geom_col = col_name
 
@@ -1561,11 +1553,16 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         params: list[Any] = []
 
         if cql_filter:
-            filter_dict = {"filter": json.dumps(cql_filter), "lang": "cql2-json"}
-            cql_filters = build_cql_filter(filter_dict, column_names, geom_col)
+            cql_filters = checked_cql_filter(cql_filter, columns, geom_col)
             if cql_filters.clauses:
                 where_clause = "WHERE " + " AND ".join(cql_filters.clauses)
                 params = cql_filters.params
+
+        temp_file = tempfile.NamedTemporaryFile(
+            suffix=".parquet", delete=False, prefix="layer_"
+        )
+        temp_path = temp_file.name
+        temp_file.close()
 
         if where_clause:
             # Use parameterized query

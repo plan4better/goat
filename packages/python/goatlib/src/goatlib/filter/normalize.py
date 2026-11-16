@@ -7,6 +7,8 @@ clients use legacy spellings. `normalize` rewrites both to one form:
 - `isNull` with `args: prop` to `args: [prop]`;
 - the standard `between` (`[prop, low, high]`) to the parser's `[prop, [low, high]]`;
 - `{"date": d}` to `{"timestamp": d + "T00:00:00Z"}`;
+- the relative day `daysAgo(n)` (`{"op": "daysAgo", "args": [n]}`) to the
+  start (UTC) of the day n days before today, as a timestamp (`days_ago`);
 - `{"bbox": [w, s, e, n]}` (or its six-number form with heights) to the polygon;
 - `casei(x)` to `x`: `like` is case-insensitive already and equality stays exact.
 
@@ -15,9 +17,22 @@ conditions (`/args/0`, `/args/1`, ...) do not change. Anything else, including
 input that is not a filter, comes back unchanged. The walk never recurses and
 never mutates its input. Standard library only: the services import this on
 every request path.
+
+The relative day is how the filter panel saves "in the last n days": a
+function call in CQL2's own syntax (its Functions class), so the saved filter
+stays CQL2 that any parser reads, and the number of days stays in it. Every
+service reads a filter through here, so each counts the days back from the
+day it reads the filter. A day, not the moment: the tile caches key on the
+filter as read, which then stays the same all day. A `daysAgo` that does not
+take one whole number of days from 1 stays as it is, for the checker to name
+and the parser to refuse.
 """
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
+
+#: The function of a relative day, `{"op": "daysAgo", "args": [n]}`.
+DAYS_AGO = "daysAgo"
 
 
 def _polygon(bbox: list[Any]) -> dict[str, Any] | None:
@@ -34,7 +49,21 @@ def _polygon(bbox: list[Any]) -> dict[str, Any] | None:
     }
 
 
-def _rewrite_once(node: dict[str, Any]) -> Any:
+def days_ago(days: Any, now: datetime | None = None) -> dict[str, str] | None:
+    """The start (UTC) of the day `days` days before the day of `now` (now when
+    left out), as a timestamp literal; None for a `days` that is no whole
+    number from 1, or one that reaches before the calendar's first day."""
+    if isinstance(days, bool) or not isinstance(days, int) or days < 1:
+        return None
+    today = (now or datetime.now(UTC)).astimezone(UTC).date()
+    try:
+        day = today - timedelta(days=days)
+    except OverflowError:
+        return None
+    return {"timestamp": f"{day.isoformat()}T00:00:00Z"}
+
+
+def _rewrite_once(node: dict[str, Any], now: datetime) -> Any:
     """One rewrite of the node itself, or the node when none applies."""
     if len(node) == 1:
         if isinstance(node.get("date"), str):
@@ -43,6 +72,10 @@ def _rewrite_once(node: dict[str, Any]) -> Any:
         if isinstance(node.get("bbox"), list):
             return _polygon(node["bbox"]) or node
     op, args = node.get("op"), node.get("args")
+    if op == DAYS_AGO and set(node) == {"op", "args"}:
+        if isinstance(args, list) and len(args) == 1:
+            return days_ago(args[0], now) or node
+        return node
     if op == "!=":
         return {**node, "op": "<>"}
     if op == "isNull" and "args" in node and not isinstance(args, list):
@@ -57,22 +90,24 @@ def _rewrite_once(node: dict[str, Any]) -> Any:
     return node
 
 
-def _rewrite(node: Any) -> Any:
+def _rewrite(node: Any, now: datetime) -> Any:
     while isinstance(node, dict):
-        new = _rewrite_once(node)
+        new = _rewrite_once(node, now)
         if new is node:
             break
         node = new
     return node
 
 
-def normalize(cql: Any) -> Any:
-    """A new tree in the evaluator's form; see the module docstring."""
+def normalize(cql: Any, now: datetime | None = None) -> Any:
+    """A new tree in the evaluator's form; see the module docstring. A relative
+    day counts back from the day of `now` (now when left out)."""
+    when = now or datetime.now(UTC)
     holder: list[Any] = [None]
     stack: list[tuple[Any, Any, Any]] = [(cql, holder, 0)]
     while stack:
         node, parent, key = stack.pop()
-        node = _rewrite(node)
+        node = _rewrite(node, when)
         if isinstance(node, dict):
             copy: dict[str, Any] = dict(node)
             parent[key] = copy

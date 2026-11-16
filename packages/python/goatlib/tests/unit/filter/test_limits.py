@@ -95,6 +95,24 @@ def test_a_negation_with_its_empty_alternative_is_one_condition() -> None:
     assert measure({"op": "and", "args": [not_in]}).max_values == 2
 
 
+def test_empty_and_not_empty_text_are_one_condition_each() -> None:
+    """The panel writes "is empty" on text as `isNull(x) or x = ''` and "is not
+    empty" as `not isNull(x) and x <> ''`: one row each."""
+    empty = {"op": "or", "args": [{"op": "isNull", "args": [P]}, eq("")]}
+    not_empty = {
+        "op": "and",
+        "args": [
+            {"op": "not", "args": [{"op": "isNull", "args": [P]}]},
+            {"op": "<>", "args": [P, ""]},
+        ],
+    }
+    other = eq(1, {"property": "b"})
+    assert (measure(empty).conditions, measure(empty).max_values) == (1, 1)
+    assert (measure(not_empty).conditions, measure(not_empty).max_values) == (1, 1)
+    both = measure({"op": "and", "args": [empty, not_empty, other]})
+    assert both.conditions == 3
+
+
 def test_a_range_on_one_field_is_one_condition() -> None:
     between = {
         "op": "and",

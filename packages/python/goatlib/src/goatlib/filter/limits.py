@@ -53,10 +53,12 @@ class Measure:
     `conditions` counts the conditions a person sees as rows: comparisons on one
     field joined by one `and` or `or` (a value list written as alternatives, a
     range) count once, and the empty alternative of a negation (`x <> v or x is
-    null`) is not counted. Areas are not conditions. `max_values` is the most
-    values one condition holds, `depth` the logical nesting (`cql.depth`),
-    `shapes` the geometries, `max_points` the most positions one geometry has,
-    and `bytes` the size of the filter as compact UTF-8 JSON.
+    null`) is not counted, nor is the test for a value beside a comparison
+    (`x is not null and x <> ''`, text that is not empty). Areas are not
+    conditions. `max_values` is the most values one condition holds, `depth`
+    the logical nesting (`cql.depth`), `shapes` the geometries, `max_points` the
+    most positions one geometry has, and `bytes` the size of the filter as
+    compact UTF-8 JSON.
     """
 
     conditions: int
@@ -99,15 +101,24 @@ def _null_field(node: Any) -> str | None:
     return None
 
 
-def _without_empty_alternative(
-    args: list[tuple[int, Any]],
-) -> list[tuple[int, Any]]:
-    """An `or`'s (index, arg) pairs without `isNull(x)` where another arg reads `x`."""
+def _not_null_field(node: Any) -> str | None:
+    if not isinstance(node, dict) or node.get("op") != "not":
+        return None
+    args = node.get("args")
+    return _null_field(args[0]) if isinstance(args, list) and len(args) == 1 else None
+
+
+def _without_empty_test(op: str, args: list[tuple[int, Any]]) -> list[tuple[int, Any]]:
+    """The (index, arg) pairs of an `or` without `isNull(x)`, of an `and` without
+    `not isNull(x)`, where another arg reads `x`: the empty alternative of a
+    negation, and the test for a value beside a comparison that already leaves
+    the empty values out."""
+    test = _null_field if op == "or" else _not_null_field
     read: set[str] = set()
     for _, a in args:
-        if _null_field(a) is None:
+        if test(a) is None:
             read |= cql.fields_of(a)
-    return [(i, a) for i, a in args if _null_field(a) not in read]
+    return [(i, a) for i, a in args if test(a) not in read]
 
 
 def _values(node: dict[str, Any]) -> int:
@@ -191,8 +202,7 @@ def parts(cql_filter: Any) -> tuple[list[tuple[str, int]], list[tuple[str, int]]
             continue
         op, args = node.get("op"), node.get("args")
         if op in ("and", "or") and isinstance(args, list):
-            indexed = list(enumerate(args))
-            group = _without_empty_alternative(indexed) if op == "or" else indexed
+            group = _without_empty_test(op, list(enumerate(args)))
             fields = {_compared_field(a) for _, a in group}
             if len(group) > 1 and len(fields) == 1 and None not in fields:
                 conditions.append((path, len(group)))

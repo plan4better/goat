@@ -432,18 +432,16 @@ def execute_if_node(
                 validate_sql_expression(boolean_sql)
 
     # Compile the upstream layer's filter to a WHERE clause so the condition is
-    # evaluated only over matching rows (same CQL→WHERE helper used above for
-    # the logical rows, and that export_layer_to_parquet uses for the tools).
+    # evaluated only over matching rows (the check export_layer_to_parquet
+    # uses for the tools). A filter it cannot apply is refused: the condition
+    # judged over the whole layer would pick a branch the rows do not support.
     filter_where: str | None = None
     if upstream_filter and upstream_layer_id:
-        from goatlib.storage import cql_to_where_clause
+        from goatlib.storage import checked_cql_filter, inline_params
 
-        try:
-            filter_where = cql_to_where_clause(
-                upstream_filter, column_names, "geometry", inline=True
-            )
-        except Exception as exc:
-            logger.warning("If-node upstream filter compile failed: %s", exc)
+        filters = checked_cql_filter(upstream_filter, field_types, "geometry")
+        if filters.clauses:
+            filter_where = inline_params(filters.to_full_where(), filters.params)
 
     # Decide active handle.
     if not boolean_sql or not upstream_layer_id:

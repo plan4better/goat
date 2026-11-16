@@ -138,6 +138,8 @@ def _sample(name: str) -> Any:
     [
         {"op": "and", "args": []},
         {"op": "=", "args": [{"property": "a"}]},
+        # A relative day that is no whole number of days from 1.
+        {"op": ">=", "args": [{"property": "a"}, {"op": "daysAgo", "args": [0]}]},
     ],
 )
 def test_a_malformed_filter_is_refused(cql: dict[str, Any]) -> None:

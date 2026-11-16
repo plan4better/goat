@@ -606,9 +606,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                 WHERE "{geom_col}" IS NOT NULL
             """).fetchall()
         else:
-            import json
-
-            from goatlib.storage.query_builder import build_cql_filter
+            from goatlib.storage.query_builder import checked_cql_filter
 
             # Look up the layer's actual owner to correctly access shared/catalog layers
             layer_owner_id = self.get_layer_owner_id_sync(layer_id)
@@ -643,8 +641,9 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             params: list[Any] = []
 
             if cql_filter:
-                filter_dict = {"filter": json.dumps(cql_filter), "lang": "cql2-json"}
-                cql_filters = build_cql_filter(filter_dict, column_names, geom_col)
+                # One it cannot apply is refused: the starting points of the
+                # whole layer are not what was asked for.
+                cql_filters = checked_cql_filter(cql_filter, column_types, geom_col)
                 if cql_filters.clauses:
                     where_clause += " AND " + " AND ".join(cql_filters.clauses)
                     params = cql_filters.params

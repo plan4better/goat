@@ -12,7 +12,7 @@ from pathlib import Path as FSPath
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import Depends, HTTPException, Path, Query
-from goatlib.filter.normalize import normalize
+from goatlib.filter.normalize import DAYS_AGO, normalize
 from goatlib.filter.validate import over_request_limits, over_request_limits_text
 from goatlib.storage.cql_evaluator import parse_cql2_filter
 from goatlib.utils.layer import (
@@ -435,9 +435,13 @@ async def cql_filter_query(
     (`goatlib.filter.limits.REQUEST_MAX_*`) or one that does not parse is
     answered 400 here (`_filter_problem`) and never reaches the query builder.
     The ceilings lie well above the save limits: a filter saved over one still
-    filters. The text is passed on as it was sent (the tile cache keys on it).
-    An empty filter is no filter, and so is an empty JSON object: what a client
-    sends for a layer without conditions.
+    filters. The text is passed on as it was sent (the tile cache keys on it),
+    except for a filter with a relative day ("in the last n days",
+    `goatlib.filter.normalize.days_ago`): that one is passed on normalized,
+    with the day it means today, so the tile caches, the stored tiles' prepared
+    filters and the ETags key on that day and a filter sent the same way
+    tomorrow is another filter. An empty filter is no filter, and so is an
+    empty JSON object: what a client sends for a layer without conditions.
     """
     if filter is None or not filter.strip():
         return None
@@ -458,6 +462,8 @@ async def cql_filter_query(
             _filter_problems.popitem(last=False)
     if problem:
         raise HTTPException(status_code=400, detail=problem)
+    if lang == "cql2-json" and DAYS_AGO in filter:
+        filter = json.dumps(normalize(json.loads(filter)), ensure_ascii=False)
 
     return {"filter": filter, "lang": lang}
 

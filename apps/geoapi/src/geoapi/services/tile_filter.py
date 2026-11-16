@@ -640,7 +640,8 @@ def filter_digest(translated: TranslatedFilter) -> str:
 def request_digest(
     layer_id: str, cql_filter: dict[str, Any] | None, bbox: list[float] | None
 ) -> str:
-    """SHA-1 of a tile request's filter as sent, with the layer it filters.
+    """SHA-1 of a tile request's filter as `cql_filter_query` passes it on
+    (as sent, a relative day resolved to today's), with the layer it filters.
 
     With the version of the layer's stored tiles it identifies the translated
     filter without parsing it again: `translate` reads the filter, the bbox
