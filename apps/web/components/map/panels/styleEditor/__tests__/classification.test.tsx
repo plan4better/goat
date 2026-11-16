@@ -61,6 +61,12 @@ const QUANTILE = {
     { id: "c3", from: 3600, to: 6300, fill: { color: "#fc8d59" } },
     { id: "c4", from: 6300, fill: { color: "#b30000" } },
   ],
+  computed: {
+    generated: {
+      target: "fill.color",
+      values: { c1: "#fef0d9", c2: "#fdcc8a", c3: "#fc8d59", c4: "#b30000" },
+    },
+  },
 };
 
 /** The editor inside the full shell, over a transport whose replies the test gives. */
@@ -199,6 +205,14 @@ describe("classification editor", () => {
     await userEvent.click(screen.getByRole("button", { name: "#11a5c9" }));
     expect(store.get("classify.0.classes.0.fill.color")).toBe("#11a5c9");
     expect(store.get("classify.0.palette")).toBe("colorbrewer:OrRd");
+  });
+
+  it("a class color picked by hand makes the palette row read Your own colors", async () => {
+    const { store } = shell(doc([QUANTILE]));
+    expect(screen.getByText("OrRd")).toBeDefined();
+    act(() => store.set("classify.0.classes.1.fill.color", "#11a5c9"));
+    expect(screen.queryByText("OrRd")).toBeNull();
+    expect(screen.getByText("style_editor.palette_custom")).toBeDefined();
   });
 
   it("a palette picked for computed classes takes every class, also a color picked by hand", async () => {

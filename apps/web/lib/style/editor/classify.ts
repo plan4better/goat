@@ -315,6 +315,22 @@ export function classValuesByHand(c: JsonObject, target: string, range: [number,
   });
 }
 
+/** Whether a class holds a color at `target` that was picked by hand. Classes the server fills: a color other than the
+ * one it recorded writing (`computed.generated`), which it keeps on a new palette. Classes the panel colors: a color
+ * the palette (`colors`) does not have. */
+export function classColorsByHand(c: JsonObject, target: string, colors: string[]): boolean {
+  const generated = isObject(c.computed) && isObject(c.computed.generated) ? c.computed.generated : undefined;
+  const written = generated?.target === target && isObject(generated.values) ? generated.values : {};
+  const palette = new Set(colors.map((color) => color.toLowerCase()));
+  const server = serverFillsClasses(c);
+  return list(c.classes).some((k) => {
+    const color = getIn(k, target);
+    if (typeof color !== "string") return false;
+    if (server) return typeof k.id !== "string" || written[k.id] !== color;
+    return !palette.has(color.toLowerCase());
+  });
+}
+
 const NUMERIC_METHODS = new Set([
   "quantile",
   "equal_interval",

@@ -102,6 +102,8 @@ Jede Klasse hat eine Zeile mit:
 
 Am Ende der Liste steht <code>Andere</code> für Werte in keiner Klasse und <code>Keine Daten</code> für Objekte ohne Wert im Feld. Eine Zeile für Objekte, die es in den Daten nicht gibt, ist abgeblendet und zählt 0: Ihre Einstellungen warten auf Daten, die solche Objekte enthalten, und die Legende lässt sie weg.
 
+Einen Wert, den Sie in einer Klassenzeile ändern, behält die Klasse, auch wenn der Server die Klassen neu berechnet. Solange die Klassen eingegebene Größen oder Breiten haben, zeigt <code>Bereich</code> <code>Eigene Werte</code>; solange sie selbst gewählte Farben haben, zeigt <code>Palette</code> <code>Eigene Farben</code>. Wählen Sie einen Bereich oder eine Palette, erhalten alle Klassen ihre Werte wieder daraus.
+
 **Selbst gewählte Kategorien.** Bei der Methode <code>Kategorien</code> klicken Sie auf den Namen einer Klasse, um ihre Werte zu öffnen: Haken Sie die Werte an, die in diese Klasse gehören, durchsuchen Sie sie oder entfernen Sie die Klasse. <code>Klasse hinzufügen</code> beginnt eine neue Klasse (<code>Werte auswählen</code>). Sobald Sie die Klassen von Hand ändern, zeigt <code>Klassen</code> den Eintrag <code>Von Hand gewählt</code>: Neue Daten behalten diese Klassen, und Werte in keiner Klasse erscheinen als <code>Andere</code>.
 
 ### Datenklassifizierungsmethoden {#datenklassifizierungsmethoden}

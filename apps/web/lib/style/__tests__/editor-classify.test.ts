@@ -8,6 +8,7 @@ import {
   addCategoryClass,
   addClassification,
   categoryValue,
+  classColorsByHand,
   classValuesByHand,
   classesPending,
   classifyTargets,
@@ -365,6 +366,32 @@ describe("a range picked for a number", () => {
     expect(
       classValuesByHand(c(doc({ classify: [{ field: "n", method: "quantile" }] })), "marker.size", [4, 24])
     ).toBe(false);
+  });
+});
+
+describe("colors picked by hand", () => {
+  const PALETTE = ["#111111", "#222222", "#333333"];
+  const computed = (colors: string[], generated?: Record<string, string>) => ({
+    field: "n",
+    method: "quantile",
+    count: colors.length,
+    classes: colors.map((color, i) => ({ id: `c${i + 1}`, fill: { color } })),
+    computed: generated ? { generated: { target: "fill.color", values: generated } } : {},
+  });
+
+  it("classes the server fills: a color other than the one it wrote is picked by hand", () => {
+    const written = { c1: "#aaaaaa", c2: "#bbbbbb" };
+    expect(classColorsByHand(computed(["#aaaaaa", "#bbbbbb"], written), "fill.color", PALETTE)).toBe(false);
+    expect(classColorsByHand(computed(["#aaaaaa", "#ff0000"], written), "fill.color", PALETTE)).toBe(true);
+    // Colors the server has no record of writing are not its own: it keeps them on a new palette.
+    expect(classColorsByHand(computed(["#aaaaaa", "#bbbbbb"]), "fill.color", PALETTE)).toBe(true);
+    expect(classColorsByHand(computed([]), "fill.color", PALETTE)).toBe(false);
+  });
+
+  it("manual classes, colored by the panel: a color the palette does not have is picked by hand", () => {
+    const manual = (colors: string[]) => ({ ...computed(colors), method: "manual" });
+    expect(classColorsByHand(manual(["#111111", "#333333"]), "fill.color", PALETTE)).toBe(false);
+    expect(classColorsByHand(manual(["#111111", "#FF0000"]), "fill.color", PALETTE)).toBe(true);
   });
 });
 

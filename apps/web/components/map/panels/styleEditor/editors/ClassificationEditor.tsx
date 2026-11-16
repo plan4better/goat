@@ -12,6 +12,7 @@ import { useUniqueValues } from "@/lib/api/processes";
 import { useProjectLayerHistogramStats } from "@/lib/api/projects";
 import {
   MAX_CLASS_COUNT,
+  classColorsByHand,
   classValuesByHand,
   classesPending,
   classifyTargets,
@@ -218,6 +219,13 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
   if (!presets.some(([a, b]) => a === range[0] && b === range[1])) presets.push(range);
   // Values typed into the classes follow no range: the row says so, and a picked range takes every class again.
   const ownValues = kind === "number" && classValuesByHand(c, target, range);
+  // Colors picked by hand follow no palette: the palette row says so, as the range row does.
+  const ownColors =
+    kind === "color" &&
+    classColorsByHand(c, target, [
+      ...paletteColors(palette),
+      ...paletteColors(palette, classes.length || undefined),
+    ]);
 
   const classColorAt = (v: number) => {
     const i = breaks.filter((b) => v >= b).length;
@@ -352,7 +360,7 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
           <NavRow
             label={t("style_editor.palette")}
             value={
-              Array.isArray(palette)
+              Array.isArray(palette) || ownColors
                 ? t("style_editor.palette_custom")
                 : `${PALETTES[palette]?.name ?? palette}${c.reverse === true ? `, ${t("style_editor.reversed")}` : ""}`
             }
