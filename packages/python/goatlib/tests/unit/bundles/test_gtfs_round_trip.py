@@ -41,10 +41,14 @@ FEED = {
 
 
 def _rows(text: str) -> list[dict[str, str]]:
-    return [
+    """A file's rows in a fixed order: GTFS orders rows by its sequence fields,
+    not by their place in the file, and the import stores the rows of a layer
+    with geometry in spatial order."""
+    rows = [
         {k: (v or "") for k, v in row.items()}
         for row in csv.DictReader(text.splitlines())
     ]
+    return sorted(rows, key=lambda row: sorted(row.items()))
 
 
 def test_every_file_survives_import_and_write_back(tmp_path: Path) -> None:
