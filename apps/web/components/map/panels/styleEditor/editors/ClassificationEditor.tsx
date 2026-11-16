@@ -244,6 +244,11 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
     otherShown && uniqueValues && uniqueValues.values.length >= valueTotal
       ? uniqueValues.values.reduce((sum, v) => (classed.has(String(v.value)) ? sum : sum + v.count), 0)
       : undefined;
+  // Whether the data holds such features at all: the panel's own numbers where it has them, else what the server
+  // recorded with the classes (`computed.no_data`, `computed.other`, which the legend follows too).
+  const facts = isObject(c.computed) ? c.computed : {};
+  const noDataAbsent = noDataCount !== undefined ? noDataCount === 0 : facts.no_data === false;
+  const otherAbsent = categories && (uniqueValues ? !otherShown : facts.other === false);
   // A field whose values are nearly all different (an id) makes classes of one feature each.
   const idField =
     categories &&
@@ -403,8 +408,13 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
           c={c}
           target={target}
           choices={kind === "choice" ? choiceValues(target) : undefined}
-          counts={{ classes: classCounts, other: otherCount, noData: noDataCount }}
+          counts={{
+            classes: classCounts,
+            other: otherAbsent ? 0 : otherCount,
+            noData: noDataAbsent ? 0 : noDataCount,
+          }}
           showOther={otherShown}
+          absent={{ other: otherAbsent, noData: noDataAbsent }}
           palette={palette}
           valueLabel={t(propLabelKey(target))}
         />

@@ -3740,6 +3740,7 @@
     "range_and_more": "and more",
     "other": "Other",
     "no_data": "No data",
+    "none_in_data": "No such features in the data",
     "note_no_data": "Features without a value in the field",
     "legend_heading": "Legend title",
     "class_color": "Class color",

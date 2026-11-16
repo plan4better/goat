@@ -36,13 +36,21 @@ sidebar_position: 5
 
 ## What the legend contains
 
-A layer without classes shows one swatch. Each classification (see [By classes](./style/attribute_based_styling.md#by-classes)) adds a section with one entry per class, then <code>Other</code> and <code>No data</code> when they occur. A color or size [by attribute](./style/attribute_based_styling.md#by-attribute) shows as a ramp or as samples with the ends of its range. Rules show their name and a swatch of what they change.
+A layer without classes shows one swatch. Each classification (see [By classes](./style/attribute_based_styling.md#by-classes)) adds a section with one entry per class. <code>Other</code> and <code>No data</code> follow when the data has such features: values that no class lists, or features without a value in the field. Two classifications of the same field with the same classes, for example a size and a color, share one section whose entries show both. A color or size [by attribute](./style/attribute_based_styling.md#by-attribute) shows as a ramp or as samples with the ends of its range, under the field's name. Rules show their name and a swatch of what they change; in a layer without classes, <code>Other features</code> follows them for everything no rule matches. The values of a yes/no field read <code>Yes</code> and <code>No</code>.
+
+The legend lists what the map draws:
+
+- A class hidden with the eye and a rule that hides features have no entry.
+- A layer drawn as <code>Heatmap</code> shows a ramp from <code>Low</code> to <code>High</code>, and one drawn as <code>H3 hexagons</code> the classes or the ramp of the hexagons. With <code>Points</code> set to <code>From zoom</code> and a zoom level, the legend changes to the classes of the points from that zoom on.
+- A layer drawn as <code>Clusters</code> lists <code>Clusters</code> first, as long as the map still clusters at the current zoom.
+- Colors that change with the zoom follow the map. Symbol sizes do not: every symbol keeps one size in the legend, so the legend does not move while you zoom. Only classes by size are drawn at different sizes, in proportion to each other.
+- A name too long for its row is cut. Hover it to read it in full.
 
 In <code>Contents</code>, each classification has these settings:
 
 - <code>In legend</code>: off leaves the classification out of the legend.
 - <code>Heading</code>: the title of its section. It defaults to the field's name.
-- <code>Unit</code>: a unit after the values, such as km².
+- <code>Unit</code>: a unit after number values, such as km². Names take no unit.
 - <code>Numbers</code> (number fields): how the class bounds read, with <code>Decimals</code>, <code>Thousands</code>, <code>Abbreviate</code>, <code>Sign</code>, <code>Prefix</code> and <code>Suffix</code>. <code>As in the dataset</code> keeps the dataset's own format.
 - <code>Order</code> (with several classifications): the place of the classification. It is also the order in which they apply: where two set the same property, the later one wins.
 

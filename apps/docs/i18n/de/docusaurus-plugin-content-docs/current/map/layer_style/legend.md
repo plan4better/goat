@@ -36,13 +36,21 @@ sidebar_position: 5
 
 ## Was die Legende enthält
 
-Ein Layer ohne Klassen zeigt ein Farbfeld. Jede Klassifizierung (siehe [Nach Klassen](./style/attribute_based_styling.md#by-classes)) fügt einen Abschnitt mit einem Eintrag je Klasse hinzu, dann <code>Andere</code> und <code>Keine Daten</code>, wenn sie vorkommen. Eine Farbe oder Größe [nach Attribut](./style/attribute_based_styling.md#by-attribute) erscheint als Verlauf oder als Beispiele mit den Enden ihres Bereichs. Regeln zeigen ihren Namen und ein Farbfeld dessen, was sie ändern.
+Ein Layer ohne Klassen zeigt ein Farbfeld. Jede Klassifizierung (siehe [Nach Klassen](./style/attribute_based_styling.md#by-classes)) fügt einen Abschnitt mit einem Eintrag je Klasse hinzu. <code>Andere</code> und <code>Keine Daten</code> folgen, wenn die Daten solche Objekte enthalten: Werte, die in keiner Klasse stehen, oder Objekte ohne Wert im Feld. Zwei Klassifizierungen desselben Felds mit denselben Klassen, zum Beispiel eine Größe und eine Farbe, teilen sich einen Abschnitt, dessen Einträge beides zeigen. Eine Farbe oder Größe [nach Attribut](./style/attribute_based_styling.md#by-attribute) erscheint als Verlauf oder als Beispiele mit den Enden ihres Bereichs, unter dem Namen des Felds. Regeln zeigen ihren Namen und ein Farbfeld dessen, was sie ändern; in einem Layer ohne Klassen folgt <code>Übrige Objekte</code> für alles, worauf keine Regel zutrifft. Die Werte eines Ja/Nein-Felds erscheinen als <code>Ja</code> und <code>Nein</code>.
+
+Die Legende führt auf, was die Karte zeichnet:
+
+- Eine mit dem Auge ausgeblendete Klasse und eine Regel, die Objekte ausblendet, haben keinen Eintrag.
+- Ein als <code>Heatmap</code> dargestellter Layer zeigt einen Verlauf von <code>Niedrig</code> bis <code>Hoch</code>, ein als <code>H3-Sechsecke</code> dargestellter die Klassen oder den Verlauf der Sechsecke. Steht <code>Punkte</code> auf <code>Ab Zoom</code> mit einer Zoomstufe, wechselt die Legende ab dieser Zoomstufe zu den Klassen der Punkte.
+- Ein als <code>Cluster</code> dargestellter Layer führt zuerst <code>Cluster</code> auf, solange die Karte bei der aktuellen Zoomstufe noch gruppiert.
+- Farben, die sich mit dem Zoom ändern, folgen der Karte. Symbolgrößen nicht: Jedes Symbol behält in der Legende eine Größe, damit sich die Legende beim Zoomen nicht verschiebt. Nur Klassen nach Größe werden in verschiedenen Größen gezeichnet, im Verhältnis zueinander.
+- Ein Name, der zu lang für seine Zeile ist, wird gekürzt. Halten Sie den Mauszeiger darüber, um ihn ganz zu lesen.
 
 Unter <code>Inhalt</code> hat jede Klassifizierung diese Einstellungen:
 
 - <code>In der Legende</code>: Aus lässt die Klassifizierung in der Legende weg.
 - <code>Überschrift</code>: der Titel ihres Abschnitts. Ohne Eingabe gilt der Name des Feldes.
-- <code>Einheit</code>: eine Einheit hinter den Werten, etwa km².
+- <code>Einheit</code>: eine Einheit hinter Zahlenwerten, etwa km². Namen erhalten keine Einheit.
 - <code>Zahlen</code> (bei Zahlenfeldern): wie die Klassengrenzen erscheinen, mit <code>Dezimalstellen</code>, <code>Tausender</code>, <code>Abkürzen</code>, <code>Vorzeichen</code>, <code>Präfix</code> und <code>Suffix</code>. <code>Wie im Datensatz</code> behält das Format des Datensatzes.
 - <code>Reihenfolge</code> (bei mehreren Klassifizierungen): der Platz der Klassifizierung. Er ist auch die Reihenfolge, in der sie gelten: Wo zwei dieselbe Eigenschaft setzen, gewinnt die spätere.
 

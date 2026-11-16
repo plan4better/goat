@@ -80,6 +80,8 @@ interface ClassRowProps {
   choices?: readonly string[];
   /** A category class: its label opens its values; the id of its classification finds it again. */
   values?: { classificationId?: string };
+  /** Other or No data the data holds no feature for: the row stands back; its look waits for data that has some. */
+  absent?: boolean;
 }
 
 /** Opens the values of class `k` of `classify[ci]` beside the control `anchor`, with "Remove class". */
@@ -277,6 +279,7 @@ function ClassRow({
   reserve,
   choices,
   values,
+  absent,
 }: ClassRowProps) {
   const { t, i18n } = useTranslation("common");
   const store = useEditor();
@@ -292,13 +295,16 @@ function ClassRow({
   return (
     // A row of the list's grid: every cell sits in its column, an empty one where the row has nothing there.
     <Box
+      data-class-row
+      data-absent={absent || undefined}
+      title={absent ? t("style_editor.none_in_data") : undefined}
       sx={{
         display: "grid",
         gridTemplateColumns: "subgrid",
         gridColumn: "1 / -1",
         alignItems: "center",
         minHeight: 32,
-        opacity: hidden ? 0.55 : 1,
+        opacity: hidden || absent ? 0.55 : 1,
       }}>
       <TargetValue
         path={path}
@@ -444,6 +450,8 @@ export interface ClassListProps {
   counts?: { classes?: Array<number | undefined>; other?: number; noData?: number };
   /** Other shows without a record of its own: some values are in no class. */
   showOther?: boolean;
+  /** Other and No data the data holds no feature for (the legend leaves those out): their rows stand back. */
+  absent?: { other?: boolean; noData?: boolean };
   /** The palette new classes take their colors from. */
   palette?: string | string[];
   /** The name of the property the classes set, over their values when the panel has no shorter row label for it. */
@@ -494,6 +502,7 @@ export function ClassList({
   choices,
   counts,
   showOther,
+  absent,
   palette,
   valueLabel,
 }: ClassListProps) {
@@ -577,6 +586,7 @@ export function ClassList({
             target={target}
             label={t("style_editor.other")}
             count={counts?.other}
+            absent={absent?.other}
             bounds={bounds}
             reserve={reserve}
             choices={choices}
@@ -589,6 +599,7 @@ export function ClassList({
             target={target}
             label={t("style_editor.no_data")}
             count={counts?.noData}
+            absent={absent?.noData}
             bounds={bounds}
             reserve={reserve}
             choices={choices}

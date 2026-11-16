@@ -484,6 +484,38 @@ describe("categories picked by hand", () => {
     expect(screen.getByText("style_editor.method").closest("[data-popover-scroll]")).toBeNull();
   });
 
+  it("Other and No data the data has none of stand back, with a count of 0", () => {
+    // Every value of the field is in a class, and the server found no feature without a value.
+    unique.values = unique.values.slice(0, 2);
+    unique.total = 2;
+    const stored = {
+      ...LAND_USE,
+      other: { fill: { color: "#aaaaaa" } },
+      no_data: { fill: { color: "#cccccc" } },
+      computed: { ...LAND_USE.computed, no_data: false, other: false },
+    };
+    shell(doc([stored]), { ci: 0 }, withValues);
+    for (const key of ["style_editor.other", "style_editor.no_data"]) {
+      const row = screen.getByPlaceholderText(key).closest("[data-class-row]") as HTMLElement;
+      expect(row.getAttribute("data-absent"), key).toBe("true");
+      expect(within(row).getByText("0")).toBeDefined();
+    }
+  });
+
+  it("they stay as they are while the data has such features", () => {
+    const stored = {
+      ...LAND_USE,
+      other: { fill: { color: "#aaaaaa" } },
+      no_data: { fill: { color: "#cccccc" } },
+      computed: { ...LAND_USE.computed, no_data: true, other: true },
+    };
+    shell(doc([stored]), { ci: 0 }, withValues);
+    for (const key of ["style_editor.other", "style_editor.no_data"]) {
+      const row = screen.getByPlaceholderText(key).closest("[data-class-row]") as HTMLElement;
+      expect(row.getAttribute("data-absent"), key).toBeNull();
+    }
+  });
+
   it("Other counts the features of values in no class", () => {
     shell(doc([LAND_USE]), { ci: 0 }, withValues);
     const other = screen.getByPlaceholderText("style_editor.other").closest("div")

@@ -100,7 +100,7 @@ Each class has a row with:
 - an eye button to hide or show the class (<code>Hide this class</code>, <code>Show this class</code>).
 - a pencil button, <code>Style this class</code>, which opens the class in the panel: see [Style one class](#style-one-class).
 
-At the end of the list, <code>Other</code> covers values in no class and <code>No data</code> covers features without a value in the field.
+At the end of the list, <code>Other</code> covers values in no class and <code>No data</code> covers features without a value in the field. A row for features the data does not have is dimmed and counts 0: its settings wait for data that has some, and the legend leaves it out.
 
 **Categories you pick yourself.** With the method <code>Categories</code>, click a class's name to open its values: tick the values that belong in this class, search them, or remove the class. <code>Add class</code> starts a new class (<code>Pick values</code>). As soon as you change the classes by hand, <code>Classes</code> says <code>Picked by hand</code>: new data keeps these classes, and values in no class are drawn as <code>Other</code>.
 

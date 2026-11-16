@@ -7,7 +7,7 @@ import {
   latest,
 } from "@maplibre/maplibre-gl-style-spec";
 
-import { ICON_HEIGHT } from "@/lib/style/compile/constants";
+import { DASHES, ICON_HEIGHT } from "@/lib/style/compile/constants";
 import { parseMarkerImage } from "@/lib/style/compile/markerImage";
 import { parsePatternImage } from "@/lib/style/compile/patternImage";
 import type { CompiledLayer, Geometry } from "@/lib/style/compile/types";
@@ -100,7 +100,15 @@ export function mapLook(
     } else if (layer.type === "line" && (part === "outline" || part === "line" || part === "casing")) {
       out[`${part}.color`] = read("paint", "line-color");
       out[`${part}.opacity`] = read("paint", "line-opacity");
-      if (part !== "casing") out[`${part}.width`] = read("paint", "line-width");
+      if (part !== "casing") {
+        out[`${part}.width`] = read("paint", "line-width");
+        // The dash by its name: the compiler writes each as its pattern in line widths.
+        const pattern =
+          layer.paint?.["line-dasharray"] === undefined ? DASHES.solid : read("paint", "line-dasharray");
+        out[`${part}.dash`] =
+          Object.keys(DASHES).find((name) => JSON.stringify(DASHES[name]) === JSON.stringify(pattern)) ??
+          JSON.stringify(pattern);
+      }
     }
   }
   return out;

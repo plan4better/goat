@@ -100,7 +100,7 @@ Jede Klasse hat eine Zeile mit:
 - einem Augen-Symbol, um die Klasse aus- oder einzublenden (<code>Diese Klasse ausblenden</code>, <code>Diese Klasse einblenden</code>).
 - einem Stift-Symbol, <code>Diese Klasse gestalten</code>, das die Klasse im Panel öffnet: siehe [Eine Klasse gestalten](#style-one-class).
 
-Am Ende der Liste steht <code>Andere</code> für Werte in keiner Klasse und <code>Keine Daten</code> für Objekte ohne Wert im Feld.
+Am Ende der Liste steht <code>Andere</code> für Werte in keiner Klasse und <code>Keine Daten</code> für Objekte ohne Wert im Feld. Eine Zeile für Objekte, die es in den Daten nicht gibt, ist abgeblendet und zählt 0: Ihre Einstellungen warten auf Daten, die solche Objekte enthalten, und die Legende lässt sie weg.
 
 **Selbst gewählte Kategorien.** Bei der Methode <code>Kategorien</code> klicken Sie auf den Namen einer Klasse, um ihre Werte zu öffnen: Haken Sie die Werte an, die in diese Klasse gehören, durchsuchen Sie sie oder entfernen Sie die Klasse. <code>Klasse hinzufügen</code> beginnt eine neue Klasse (<code>Werte auswählen</code>). Sobald Sie die Klassen von Hand ändern, zeigt <code>Klassen</code> den Eintrag <code>Von Hand gewählt</code>: Neue Daten behalten diese Klassen, und Werte in keiner Klasse erscheinen als <code>Andere</code>.
 

@@ -255,12 +255,11 @@ describe("the legend against the map", () => {
     }
   });
 
-  it("compares every property a block stands for, but these", () => {
+  it("compares every property a block stands for", () => {
     const notCompared = new Set<string>();
     for (const c of cases) differences(c, notCompared);
-    // Not compared, so a legend that got these wrong would pass: the dash is not read back from the layers here.
-    // Every other property a classification sets in the cases is compared.
-    expect([...notCompared].sort()).toEqual(["line.dash", "outline.dash"]);
+    // Every property a classification sets in the cases is held against the map.
+    expect([...notCompared].sort()).toEqual([]);
   });
 });
 

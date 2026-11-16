@@ -3740,6 +3740,7 @@
     "range_and_more": "und mehr",
     "other": "Andere",
     "no_data": "Keine Daten",
+    "none_in_data": "Keine solchen Objekte in den Daten",
     "note_no_data": "Objekte ohne Wert im Feld",
     "legend_heading": "Titel in der Legende",
     "class_color": "Klassenfarbe",
