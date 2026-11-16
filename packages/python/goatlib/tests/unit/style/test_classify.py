@@ -99,7 +99,9 @@ def test_five_thousand_classes_parse_quickly() -> None:
     }
     t = time.perf_counter()
     assert codes(Classification, c) == []
-    assert time.perf_counter() - t < 2
+    # A bound for a check that grows with the square of the input (minutes), not for the machine:
+    # CI runners are several times slower than a laptop and share their cores.
+    assert time.perf_counter() - t < 10
 
 
 def test_computed_methods_may_list_classes_by_position_without_bounds() -> None:

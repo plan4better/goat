@@ -135,7 +135,9 @@ def test_huge_documents_finish_quickly(contexts: dict) -> None:
     }
     t = time.perf_counter()
     validate(doc, contexts["districts"])
-    assert time.perf_counter() - t < 2
+    # A bound for a check that grows with the square of the input (minutes), not for the machine:
+    # CI runners are several times slower than a laptop and share their cores.
+    assert time.perf_counter() - t < 10
 
 
 def test_map_document_codes() -> None:
@@ -268,7 +270,9 @@ def test_many_classifications_finish_quickly(contexts: dict) -> None:
     }
     t = time.perf_counter()
     validate({**V, "classify": [dict(one) for _ in range(600)]}, contexts["districts"])
-    assert time.perf_counter() - t < 2
+    # A bound for a check that grows with the square of the input (minutes), not for the machine:
+    # CI runners are several times slower than a laptop and share their cores.
+    assert time.perf_counter() - t < 10
 
 
 def test_duplicate_ids_are_reported(contexts: dict) -> None:
