@@ -1,8 +1,9 @@
 "use client";
 
 // The lists features are picked from for the area: the administrative regions of the catalog, and the features of
-// another polygon layer of the project. Both are one searchable check list, the picked features first. A list
-// mounts only when it is opened, so a closed one asks the server for nothing.
+// another polygon layer of the project, as far as its saved filter shows them on the map. Both are one searchable
+// check list, the picked features first. A list mounts only when it is opened, so a closed one asks the server for
+// nothing.
 import { Box, Divider, MenuList, Typography } from "@mui/material";
 import { type KeyboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,6 +18,7 @@ import { useDebouncedValue } from "@/hooks/dashboard/home/useDebouncedValue";
 import { stringColumnsFromQueryables } from "@/components/map/controls/search/editorSearchLayers";
 import {
   ListSearch,
+  NEAR_END,
   SEARCH_PAUSE,
   VALUES_PAGE,
   ValueRow,
@@ -57,6 +59,7 @@ function CheckList({
   footer,
   onAdd,
   onDrop,
+  onEnd,
 }: {
   source: string;
   search: string;
@@ -75,6 +78,8 @@ function CheckList({
   onAdd: (feature: Listed) => void;
   /** A ticked feature that is not in the area yet is unticked. */
   onDrop?: (id: string) => void;
+  /** The list was scrolled to its end. */
+  onEnd?: () => void;
 }) {
   const { t } = useTranslation("common");
   const { area, read, setArea, limits, dismissFrom } = useAreaTools();
@@ -154,6 +159,10 @@ function CheckList({
         aria-label={searchLabel}
         aria-multiselectable
         disablePadding
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          if (el.scrollTop + el.clientHeight >= el.scrollHeight - NEAR_END) onEnd?.();
+        }}
         sx={{ maxHeight: 252, overflowY: "auto", overflowX: "hidden", overscrollBehavior: "contain" }}>
         {top.map(row)}
         {top.length > 0 && rest.length > 0 && <Divider component="li" sx={{ mx: 2, my: 1 }} />}
@@ -256,43 +265,80 @@ interface ItemFeature {
   geometry?: unknown;
 }
 
-/** The features of a polygon layer of the project, named by the layer's likeliest name column. The list holds the
- * first page, or the first page of what a search finds; a feature's outline comes with its row. */
+/** A page of the items request, as far as the list reads it. */
+interface ItemsPage {
+  features: ItemFeature[];
+  /** The features its filter finds in all. */
+  total: number;
+}
+
+/** The features of a polygon layer of the project, named by the layer's likeliest name column: the ones its saved
+ * filter keeps (what the map shows of it), a search narrowing them further. As the value list, the list holds a page
+ * of them and grows by a page when scrolled to its end; a new search starts at the first again. A feature's outline
+ * comes with its row, so a page is no bigger than the value list's. */
 export const LayerFeatures = memo(function LayerFeatures({ layerId }: { layerId: string }) {
   const { t } = useTranslation("common");
-  const { read, add: addOutline } = useAreaTools();
+  const { read, add: addOutline, layers } = useAreaTools();
+  const shown = useMemo(() => layers.find((layer) => layer.id === layerId)?.filter, [layers, layerId]);
   const [search, setSearch] = useState("");
   const needle = useDebouncedValue(search.trim(), SEARCH_PAUSE);
   const wildcard = WILDCARD.test(needle);
   const { queryables, isLoading: loadingFields } = useLayerQueryables(layerId);
   const column = useMemo(() => stringColumnsFromQueryables(queryables)[0], [queryables]);
+  const query = useMemo(() => {
+    const like = column && needle ? { op: "like", args: [{ property: column }, `%${needle}%`] } : undefined;
+    const scoped = like && shown ? { op: "and", args: [shown, like] } : (like ?? shown);
+    return scoped ? JSON.stringify(scoped) : "";
+  }, [column, needle, shown]);
+  // The page shown so far, for the search it belongs to: a new search starts at the first again.
+  const [paging, setPaging] = useState({ query, page: 1 });
+  const page = paging.query === query ? paging.page : 1;
   const params = useMemo(
     () => ({
       limit: VALUES_PAGE,
+      offset: (page - 1) * VALUES_PAGE,
       ...(column && { properties: column }),
-      ...(column &&
-        needle && { filter: JSON.stringify({ op: "like", args: [{ property: column }, `%${needle}%`] }) }),
+      ...(query && { filter: query }),
     }),
-    [column, needle]
+    [column, page, query]
   );
-  // Asked once the name column is known, so the list is not loaded twice.
-  const { data, isLoading } = useDatasetCollectionItems(loadingFields || wildcard ? "" : layerId, params, {
-    keepPreviousPage: true,
-  });
-  const features = (data as { features?: ItemFeature[] } | undefined)?.features;
-  const { listed, outlines } = useMemo(() => {
+  // Asked once the name column is known, so the list is not loaded twice. The answer is the one of these params.
+  const { data, isLoading } = useDatasetCollectionItems(loadingFields || wildcard ? "" : layerId, params);
+  // The pages loaded, by search and page; the list is the pages of the current search up to the one shown.
+  const [pages, setPages] = useState<Record<string, ItemsPage>>({});
+  useEffect(() => {
+    const answer = data as { features?: ItemFeature[]; numberMatched?: number } | undefined;
+    if (!answer?.features) return;
+    const key = `${query}|${page}`;
+    const features = answer.features;
+    setPages((loaded) =>
+      loaded[key]?.features === features
+        ? loaded
+        : { ...loaded, [key]: { features, total: answer.numberMatched ?? 0 } }
+    );
+  }, [data, query, page]);
+  const { listed, outlines, count } = useMemo(() => {
     const listed: Listed[] = [];
     const outlines = new Map<string, unknown>();
-    for (const feature of wildcard ? [] : (features ?? [])) {
-      if (feature.id === undefined || feature.id === null) continue;
-      const id = String(feature.id);
-      const name = column ? feature.properties?.[column] : undefined;
-      listed.push({ id, name: name === undefined || name === null || name === "" ? id : String(name) });
-      outlines.set(id, feature.geometry);
-    }
-    return { listed, outlines };
-  }, [features, column, wildcard]);
-  const total = (data as { numberMatched?: number } | undefined)?.numberMatched ?? 0;
+    let count = 0;
+    for (let i = 1; i <= (wildcard ? 0 : page); i += 1)
+      for (const feature of pages[`${query}|${i}`]?.features ?? []) {
+        count += 1;
+        if (feature.id === undefined || feature.id === null) continue;
+        const id = String(feature.id);
+        const name = column ? feature.properties?.[column] : undefined;
+        listed.push({ id, name: name === undefined || name === null || name === "" ? id : String(name) });
+        outlines.set(id, feature.geometry);
+      }
+    return { listed, outlines, count };
+  }, [pages, page, query, column, wildcard]);
+  const last = pages[`${query}|${page}`];
+  const total = last?.total ?? 0;
+  // More after the page shown: fewer listed than found, or a full page where the count was not to be had.
+  const hasMore = !wildcard && !!last && (total ? count < total : last.features.length >= VALUES_PAGE);
+  const more = useCallback(() => {
+    if (hasMore && !isLoading) setPaging({ query, page: page + 1 });
+  }, [hasMore, isLoading, query, page]);
 
   const add = useCallback(
     (feature: Listed) => {
@@ -318,11 +364,12 @@ export const LayerFeatures = memo(function LayerFeatures({ layerId }: { layerId:
       emptyText={t("filter_panel.area_no_features")}
       note={wildcard ? t("filter_panel.wildcard") : undefined}
       footer={
-        !wildcard && total > listed.length
+        hasMore && total > listed.length
           ? t("filter_panel.area_more", { shown: listed.length, total })
           : undefined
       }
       onAdd={add}
+      onEnd={more}
     />
   );
 });

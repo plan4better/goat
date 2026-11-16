@@ -10,7 +10,6 @@ import {
   viewStale,
   withFeature,
   withPiece,
-  withRadius,
   withReplaced,
   withoutFeature,
   withoutPiece,
@@ -136,10 +135,10 @@ describe("the area's pieces", () => {
 });
 
 describe("an edited piece", () => {
-  it("is a drawn polygon or a circle around a point, not a circle kept as its ring alone", () => {
+  it("is a drawn polygon or a circle with its centre and radius, not a circle kept as its ring alone", () => {
     expect(editable(POLYGON)).toBe(true);
     expect(editable(circlePiece([11, 48], 3))).toBe(true);
-    // The filter's circle: its corners would no longer make a circle, and it has no centre to move.
+    // A circle saved before circles kept their centre: its corners would no longer make a circle.
     expect(editable(CIRCLE)).toBe(false);
     expect(editable(VIEW)).toBe(false);
     expect(editable(regions("Bayern"))).toBe(false);
@@ -179,10 +178,7 @@ describe("a circle around a point", () => {
     expect(circlePiece([11, 48]).km).toBe(3);
   });
 
-  it("takes another radius around the same centre, the other pieces as they were", () => {
-    const next = withRadius(area([POLYGON, circlePiece([11, 48], 3, "School")]), 1, 10);
-    expect(next.pieces[0]).toBe(POLYGON);
-    expect(next.pieces[1]).toMatchObject({ shape: "circle", center: [11, 48], km: 10, label: "School" });
-    for (const at of next.pieces[1].polygons[0][0]) expect(kmFrom([11, 48], at)).toBeCloseTo(10, 2);
+  it("keeps its name", () => {
+    expect(circlePiece([11, 48], 10, "School")).toMatchObject({ center: [11, 48], km: 10, label: "School" });
   });
 });

@@ -20,10 +20,12 @@ export interface CustomRowProps {
   canEdit: boolean;
   /** Switches the row on or off; no switch without it. */
   onToggle?: (id: string) => void;
+  /** The filter takes no further condition: switched off, the row cannot be switched on. */
+  full?: boolean;
   onRemove: (id: string) => void;
 }
 
-export const CustomRow = memo(function CustomRow({ row, canEdit, onToggle, onRemove }: CustomRowProps) {
+export const CustomRow = memo(function CustomRow({ row, canEdit, onToggle, full, onRemove }: CustomRowProps) {
   const { t } = useTranslation("common");
   const cql = useMemo(() => {
     const text = JSON.stringify(row.cql, null, 2) ?? "";
@@ -36,6 +38,7 @@ export const CustomRow = memo(function CustomRow({ row, canEdit, onToggle, onRem
       off={!row.enabled}
       canEdit={canEdit}
       onToggle={onToggle && (() => onToggle(row.id))}
+      switchDisabled={full && !row.enabled}
       onRemove={() => onRemove(row.id)}>
       <Tooltip
         placement="left"

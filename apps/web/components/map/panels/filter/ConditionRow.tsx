@@ -14,6 +14,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { type FilterIssue, rowIssues } from "@/lib/filter/issues";
 import { type FilterCondition, type FilterRow, isCustomRow } from "@/lib/filter/model";
+import { momentText } from "@/lib/filter/moments";
 import { operatorsFor, rowToCql, takesValue } from "@/lib/filter/rows";
 import type { FieldType } from "@/lib/style/compile/types";
 
@@ -35,9 +36,10 @@ export { hasWildcard, issueText };
 /** How many values of a list the sentence names before it says how many more. */
 const LISTED = 3;
 
-/** The value part of a row's sentence: a list, a range, a number of days, or the value. */
+/** The value part of a row's sentence: a list, a range, a number of days, or the value. A date and time reads in the
+ * browser's zone, as its box shows it. */
 function valueText(row: FilterCondition, t: TFunction): string {
-  const shown = (v: unknown) => (v === undefined || v === null ? "" : String(v));
+  const shown = (v: unknown) => (v === undefined || v === null ? "" : momentText(v));
   if (Array.isArray(row.value)) {
     const head = row.value.slice(0, LISTED).map(shown).join(", ");
     const more = row.value.length - LISTED;
@@ -82,6 +84,8 @@ export interface ConditionRowProps {
   onOpen: (id: string, anchorTop: number) => void;
   /** Switches the row on or off; no switch without it. */
   onToggle?: (id: string) => void;
+  /** The filter takes no further condition: switched off, the row cannot be switched on. */
+  full?: boolean;
   /** Removes the row; no remove button without it. */
   onRemove?: (id: string) => void;
 }
@@ -94,6 +98,7 @@ export const ConditionRow = memo(function ConditionRow({
   canEdit,
   onOpen,
   onToggle,
+  full,
   onRemove,
 }: ConditionRowProps) {
   const { t } = useTranslation("common");
@@ -112,6 +117,7 @@ export const ConditionRow = memo(function ConditionRow({
       onOpen={(anchor) => onOpen(row.id, anchorTopOf(anchor))}
       // A row that saves nothing has nothing to switch.
       onToggle={!unfinished && onToggle ? () => onToggle(row.id) : undefined}
+      switchDisabled={full && !row.enabled}
       onRemove={onRemove && (() => onRemove(row.id))}>
       {/* The field stands out, the comparison steps back, the value reads plain. */}
       <Typography

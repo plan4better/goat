@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 
 import type { FilterIssue } from "@/lib/filter/issues";
 import type { FilterCondition, FilterOp } from "@/lib/filter/model";
+import { inputMoment, storedMoment } from "@/lib/filter/moments";
 import { operatorsFor, takesValue } from "@/lib/filter/rows";
 import type { FieldType } from "@/lib/style/compile/types";
 import type { JsonObject } from "@/lib/style/json";
@@ -52,9 +53,8 @@ function toText(value: unknown, kind: InputKind): string {
   if (value === undefined || value === null) return "";
   const text = String(value);
   if (kind !== "datetime") return text;
-  // A day reads as its start; a moment to the minute.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return `${text}T00:00`;
-  return text.slice(0, 16);
+  // A stored instant (a day: its start in UTC) in the browser's zone, as the box has no zone.
+  return inputMoment(text).slice(0, 19);
 }
 
 /** A box's text as the row's value: undefined while there is none (or no number in a number box). */
@@ -70,8 +70,8 @@ function fromText(text: string, kind: InputKind): unknown {
       return Number.isInteger(n) && n > 0 ? n : undefined;
     }
     case "datetime":
-      // The start of a day is that day; another moment is written in UTC.
-      return text.endsWith("T00:00") ? text.slice(0, 10) : `${text}:00Z`;
+      // The picked time is the browser's: stored as the instant it names, in UTC.
+      return storedMoment(text);
     default:
       return text;
   }
@@ -199,6 +199,8 @@ function ValueRows({
   const kind = inputKind(row.op, type);
   // A text search cannot take % or _ (the filter's wildcards): the box keeps such a text and says so. Live, the text
   // counts as typed and the issue lines under the fields say it.
+  // The value's label, short enough for the row's label column, and the box's name.
+  const label = DAYS.has(row.op) ? t("filter_panel.days") : valueLabel;
   const refuse =
     !live && TEXT_SEARCH.has(row.op)
       ? (text: string) => (/[%_]/.test(text) ? t("filter_panel.wildcard") : undefined)
@@ -217,11 +219,11 @@ function ValueRows({
           onChange={(value, value2) => onChange(RANGE.has(row.op) ? { value, value2 } : { value })}
         />
       )}
-      <Row label={DAYS.has(row.op) ? t("number_of_days") : valueLabel}>
+      <Row label={label}>
         <CommitInput
           value={row.value}
           kind={kind}
-          ariaLabel={valueLabel}
+          ariaLabel={label}
           refuse={refuse}
           live={live}
           onEnter={onEnter}

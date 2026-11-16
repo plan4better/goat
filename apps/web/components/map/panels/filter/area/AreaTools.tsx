@@ -22,17 +22,20 @@ import {
   shapeCount,
 } from "@/lib/filter/area";
 import { simplifyToFit } from "@/lib/filter/simplify";
+import type { JsonObject } from "@/lib/style/json";
 
 import type { AreaHost } from "@/components/map/panels/filter/area/host";
 import { circlePiece, editable, withPiece, withReplaced } from "@/components/map/panels/filter/area/pieces";
 import { type DrawShape, useAreaDraw } from "@/components/map/panels/filter/area/useAreaDraw";
 
-/** A polygon layer of the project whose features can be picked: its dataset's id, the layer's name and its legend
- * icon (`layerSwatchIcon`), when it has a style. */
+/** A polygon layer of the project whose features can be picked: its dataset's id, the layer's name, its legend icon
+ * (`layerSwatchIcon`) when it has a style, and the CQL the map draws its features with (its saved filter), so the
+ * list offers what the map shows; none when the map shows them all. */
 export interface AreaLayer {
   id: string;
   name: string;
   icon?: ReactNode;
+  filter?: JsonObject;
 }
 
 /** What became of the last outline: left out, as even simplified it does not fit into the filter, or waiting for the
@@ -57,9 +60,11 @@ export interface AreaTools extends AreaHost {
   outline: FilterArea | undefined;
   /** Starts a shape on the map; finished, it joins the area. */
   startDraw: (shape: DrawShape) => void;
-  /** Loads a drawn polygon into the map's draw tool, or waits for a click that places a circle's centre; finished, the
-   * new shape takes the piece's place, within the host's limits as a new shape is. */
+  /** Loads a drawn polygon into the map's draw tool, or a circle around a point as its centre and radius; finished,
+   * the new shape takes the piece's place, within the host's limits as a new shape is. */
   startEdit: (piece: AreaPiece) => void;
+  /** Gives the circle at `index` another radius around the same centre, within the host's limits as an edit is. */
+  resize: (index: number, km: number) => void;
   /** Finishes the piece being edited. */
   finishEdit: () => void;
   /** Gives up the shape being drawn or edited; an edited piece stays as it was. */
@@ -97,7 +102,16 @@ export function AreaToolsProvider({
   children: ReactNode;
 }) {
   const { area, read, setArea, limits } = host;
-  const { available, drawing, editing: editingNow, start, edit, finish, cancel } = useAreaDraw(host.map);
+  const {
+    available,
+    drawing,
+    editing: editingNow,
+    start,
+    edit,
+    editCircle,
+    finish,
+    cancel,
+  } = useAreaDraw(host.map);
   // The piece last loaded into the draw tool: the one being edited while the tool edits.
   const [edited, setEdited] = useState<AreaPiece | null>(null);
   const editing = editingNow ? edited : null;
@@ -167,49 +181,67 @@ export function AreaToolsProvider({
         // The area as it is when the shape is finished: it can have changed while drawing.
         const now = read();
         if (limits && now && shapeCount(now) >= limits.shapes) return;
-        // A point is the centre of a circle at the default radius, which its row then changes.
-        if (drawn.shape === "point") {
-          const piece = circlePiece(drawn.at);
+        // A circle keeps its centre and radius, which its row and the map then change; a point is the centre of a
+        // circle at the default radius.
+        if (drawn.shape !== "polygon") {
+          const piece = drawn.shape === "point" ? circlePiece(drawn.at) : circlePiece(drawn.center, drawn.km);
           add(piece.polygons, (polygons) => withPiece(read(), { ...piece, polygons }));
           return;
         }
-        add(drawn.polygons, (polygons) => withPiece(read(), { kind: "shape", shape: drawn.shape, polygons }));
+        add(drawn.polygons, (polygons) => withPiece(read(), { kind: "shape", shape: "polygon", polygons }));
       }),
     [start, read, limits, add]
+  );
+
+  /** Puts `next` where `piece` is, as long as it still is (the area can have changed meanwhile), within the limits.
+   * A circle simplified to fit keeps its centre and radius: its ring is still the circle's, with fewer points. */
+  const replace = useCallback(
+    (piece: AreaPiece, next: AreaPiece) => {
+      const now = read();
+      if (!now?.pieces.includes(piece)) return;
+      add(next.polygons, (polygons) => withReplaced(read() ?? now, piece, { ...next, polygons }));
+    },
+    [read, add]
   );
 
   const startEdit = useCallback(
     (piece: AreaPiece) => {
       if (piece.kind !== "shape" || !editable(piece)) return;
-      /** Puts `next` where the piece is, as long as it still is: the area can have changed meanwhile. */
-      const replace = (next: AreaPiece) => {
-        const now = read();
-        if (!now?.pieces.includes(piece)) return;
-        add(next.polygons, (polygons) => withReplaced(read() ?? now, piece, { ...next, polygons }));
-      };
-      // A circle around a point moves with a click on its new centre, its radius as it was.
-      if (piece.center) {
-        start("point", (drawn) => {
-          if (drawn.shape === "point") replace(circlePiece(drawn.at, piece.km, piece.label));
-        });
+      setEdited(piece);
+      // A circle around a point: its centre is dragged to move it, its ring to change its radius.
+      if (piece.center && piece.km !== undefined) {
+        editCircle({ center: piece.center, km: piece.km }, ({ center, km }) =>
+          replace(piece, circlePiece(center, km, piece.label))
+        );
         return;
       }
-      setEdited(piece);
-      edit(piece.polygons, (polygons) => replace({ ...piece, polygons }));
+      edit(piece.polygons, (polygons) => replace(piece, { ...piece, polygons }));
     },
-    [start, edit, read, add]
+    [edit, editCircle, replace]
+  );
+
+  const resize = useCallback(
+    (index: number, km: number) => {
+      const piece = read()?.pieces[index];
+      if (piece?.kind !== "shape" || !piece.center) return;
+      replace(piece, circlePiece(piece.center, km, piece.label));
+    },
+    [read, replace]
   );
   // A piece that left the area (removed, or the area replaced from outside) has nothing to take the place of.
   useEffect(() => {
     if (editing && !area?.pieces.includes(editing)) cancel();
   }, [editing, area, cancel]);
-  const outline = useMemo(
-    () =>
-      area && editing
-        ? { ...area, pieces: area.pieces.map((p) => (p === editing ? { ...p, polygons: [] } : p)) }
-        : area,
-    [area, editing]
-  );
+  const outline = useMemo(() => {
+    if (!area || !editing) return area;
+    // The draw tool shows the piece being edited: its old outline, and a circle's old centre, are left out.
+    const hidden = (p: AreaPiece): AreaPiece => {
+      if (p.kind !== "shape") return { ...p, polygons: [] };
+      const { center: _center, ...rest } = p;
+      return { ...rest, polygons: [] };
+    };
+    return { ...area, pieces: area.pieces.map((p) => (p === editing ? hidden(p) : p)) };
+  }, [area, editing]);
 
   const tools = useMemo<AreaTools>(
     () => ({
@@ -226,6 +258,7 @@ export function AreaToolsProvider({
       outline,
       startDraw,
       startEdit,
+      resize,
       finishEdit: finish,
       cancelDraw: cancel,
       layers,
@@ -250,6 +283,7 @@ export function AreaToolsProvider({
       outline,
       startDraw,
       startEdit,
+      resize,
       finish,
       cancel,
       layers,

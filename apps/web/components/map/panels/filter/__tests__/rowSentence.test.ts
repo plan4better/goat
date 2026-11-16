@@ -1,5 +1,5 @@
 import type { TFunction } from "i18next";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { rowSentence } from "@/components/map/panels/filter/ConditionRow";
 
@@ -21,6 +21,26 @@ describe("a row as a sentence", () => {
     expect(rowSentence({ field: "status", op: "includes", value: ["a", "b", "c", "d"] }, "Status", t)).toBe(
       'Status filter_panel.op.includes a, b, c filter_panel.more{"count":1}'
     );
+  });
+
+  it("reads a date and time in the browser's zone", () => {
+    vi.stubEnv("TZ", "Europe/Berlin");
+    try {
+      expect(rowSentence({ field: "seen", op: "is_after", value: "2026-11-16T09:00:00Z" }, "Seen", t)).toBe(
+        "Seen filter_panel.op.is_after 2026-11-16 10:00"
+      );
+      expect(
+        rowSentence(
+          { field: "seen", op: "is_between", value: "2026-07-01T08:00:00Z", value2: "2026-07-02T08:00:00Z" },
+          "Seen",
+          t
+        )
+      ).toBe(
+        'Seen filter_panel.op.is_between filter_panel.range{"from":"2026-07-01 10:00","to":"2026-07-02 10:00"}'
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("reads a range and a number of days", () => {

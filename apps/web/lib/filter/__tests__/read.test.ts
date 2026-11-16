@@ -342,7 +342,7 @@ describe("notes", () => {
     expect(readFilter(cql, { v: 2, off: [{ at: 0, cql: off }] }, FIELDS).rows).toHaveLength(1);
   });
 
-  it("read a row written as in the last N days as that again", () => {
+  it("read a row saved before as in the last N days (a date and a note) as that again", () => {
     const cql = {
       op: "and",
       args: [
@@ -373,5 +373,20 @@ describe("notes", () => {
     ]);
     // Without the notes the frozen date has no row: a custom row, still filtering the same.
     expect(readFilter(cql, undefined, FIELDS).rows.every((row) => "cql" in row)).toBe(true);
+  });
+
+  it("read a relative day as in the last N days without a note, also switched off", () => {
+    const notIn = {
+      op: "or",
+      args: [
+        { op: "<", args: [p("opened"), { op: "daysAgo", args: [30] }] },
+        { op: "isNull", args: [p("opened")] },
+      ],
+    };
+    const cql = { op: "and", args: [{ op: ">=", args: [p("seen"), { op: "daysAgo", args: [7] }] }] };
+    expect(readFilter(cql, { v: 1, off: [{ at: 1, cql: notIn }] }, FIELDS).rows).toEqual([
+      { id: "r0", field: "seen", op: "in_the_last", value: 7, enabled: true },
+      { id: "r1", field: "opened", op: "not_in_the_last", value: 30, enabled: false },
+    ]);
   });
 });

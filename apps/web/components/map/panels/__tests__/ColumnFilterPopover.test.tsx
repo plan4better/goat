@@ -223,7 +223,7 @@ describe("ColumnFilterPopover", () => {
     renderPopover(controllerWith(), "built");
     await chooseOp("in_the_last");
 
-    const days = screen.getByRole("textbox", { name: "style_editor.condition_value" });
+    const days = screen.getByRole("textbox", { name: "filter_panel.days" });
     await userEvent.type(days, "0");
     expect(button("done").disabled).toBe(true);
     await userEvent.clear(days);

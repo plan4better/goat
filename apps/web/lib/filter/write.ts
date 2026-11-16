@@ -1,7 +1,8 @@
 // The panel's rows and area as the saved filter: `query.cql` holds the active rows under one `and` or `or` (also a
-// single row), `query.ui` the notes (switched-off rows, relative dates, the area's pieces). Unfinished rows are left
-// out; custom rows go back as they were read, at their place. An active area comes first under `and`; rows that match
-// any stand beside it as one `or` group, also a single row, so the group always reads back as the rows.
+// single row), `query.ui` the notes (switched-off rows, the area's pieces). Unfinished rows are left out; custom rows
+// go back as they were read, at their place. An active area comes first under `and`; rows that match any stand beside
+// it as one `or` group, also a single row, so the group always reads back as the rows. "In the last N days" is the
+// number of days in the CQL itself (rows.ts), so it needs no note.
 import { areaCql, areaNotes, areaPolygons, pointCount } from "@/lib/filter/area";
 import { FILTER_LIMITS } from "@/lib/filter/generated/operators";
 import { shapePoints, urlLength } from "@/lib/filter/limits";
@@ -11,31 +12,23 @@ import { rowToCql } from "@/lib/filter/rows";
 import type { JsonObject } from "@/lib/style/json";
 
 /** The CQL a row saves, or undefined when it saves nothing (unfinished). */
-function rowCql(row: FilterModel["rows"][number], fields: Fields, now: Date | undefined): unknown {
+function rowCql(row: FilterModel["rows"][number], fields: Fields): unknown {
   if (isCustomRow(row)) return row.cql ?? undefined;
   const type = Object.prototype.hasOwnProperty.call(fields, row.field) ? fields[row.field] : row.type;
-  return rowToCql(row, type, { orEmpty: true, now }) ?? undefined;
+  return rowToCql(row, type, { orEmpty: true }) ?? undefined;
 }
 
-/** The filter to save: no `cql` without an active row or area, no `ui` with nothing to note. `now` is the moment relative
- * dates count back from (now when left out). */
-export function writeFilter(
-  model: FilterModel,
-  fields: Fields,
-  opts: { now?: Date } = {}
-): { cql?: JsonObject; ui?: FilterNotes } {
+/** The filter to save: no `cql` without an active row or area, no `ui` with nothing to note. */
+export function writeFilter(model: FilterModel, fields: Fields): { cql?: JsonObject; ui?: FilterNotes } {
   const active: unknown[] = [];
   const off: NonNullable<FilterNotes["off"]> = [];
-  const relative: NonNullable<FilterNotes["relative"]> = [];
   for (const row of model.rows) {
-    const cql = rowCql(row, fields, opts.now);
+    const cql = rowCql(row, fields);
     if (cql === undefined) continue;
     // Positions count the rows saved, so a row left out does not move the others.
     const at = active.length + off.length;
     if (row.enabled) active.push(cql);
     else off.push({ at, cql });
-    if (!isCustomRow(row) && (row.op === "in_the_last" || row.op === "not_in_the_last"))
-      relative.push({ at, days: Number(row.value) });
   }
   const area = model.area ? areaCql(model.area) : undefined;
   const on = model.area?.enabled ? area : undefined;
@@ -45,7 +38,6 @@ export function writeFilter(
   else if (active.length) cql = { op: any ? "or" : "and", args: active };
   const ui: FilterNotes = { v: 1 };
   if (off.length) ui.off = off;
-  if (relative.length) ui.relative = relative;
   // A switched-off area is in the notes only, as it would be written.
   if (model.area && area) ui.area = { ...areaNotes(model.area), ...(!model.area.enabled && { off: area }) };
   // The top level is no `or` beside an area or without an active row: the notes keep the match for the rows there are.
@@ -67,7 +59,7 @@ export type OverLimit = "conditions" | "values" | "shapes" | "points" | "length"
  * custom row holds; an area with too many points counts also while it is switched off (it is saved in the notes). The
  * length is that of the filter a map request carries. */
 export function overLimits(model: FilterModel, fields: Fields = {}): OverLimit[] {
-  const saved = model.rows.filter((row) => row.enabled && rowCql(row, fields, undefined) !== undefined);
+  const saved = model.rows.filter((row) => row.enabled && rowCql(row, fields) !== undefined);
   const over: OverLimit[] = [];
   if (saved.length > FILTER_LIMITS.conditions) over.push("conditions");
   const values = saved.map((row) => (isCustomRow(row) ? 0 : valueCount(row)));

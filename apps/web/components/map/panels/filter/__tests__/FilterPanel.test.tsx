@@ -9,6 +9,7 @@ import { readFilter } from "@/lib/filter/read";
 import { writeFilter } from "@/lib/filter/write";
 
 import { FilterPanel } from "@/components/map/panels/filter/FilterPanel";
+import { useAreaOutline } from "@/components/map/panels/filter/area/outline";
 
 import { renderWithProviders } from "../../styleEditor/__tests__/renderPanel";
 
@@ -402,6 +403,36 @@ describe("the filter panel", () => {
     expect(screen.getByText("filter_panel.limit_conditions")).toBeDefined();
   });
 
+  /** `on` conditions applied and `off` switched off after them, each on traffic. */
+  const withOff = (on: number, off: number) => {
+    const row = (i: number) => ({ op: ">", args: [p("traffic"), i] });
+    const ui = { v: 1, off: Array.from({ length: off }, (_, i) => ({ at: on + i, cql: row(on + i) })) };
+    return setup({ op: "and", args: Array.from({ length: on }, (_, i) => row(i)) }, { ui });
+  };
+  const addButton = () => screen.getByRole("button", { name: "style_editor.add_condition" });
+
+  it("counts only the conditions that are on against the limit", () => {
+    withOff(19, 2);
+    expect(conditionRows()).toHaveLength(21);
+    expect(addButton().hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByText("filter_panel.limit_conditions")).toBeNull();
+  });
+
+  it("at the limit a switched-off condition stays off, as no condition can be added", async () => {
+    const { onApply } = withOff(20, 1);
+    expect(addButton().hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("filter_panel.limit_conditions")).toBeDefined();
+    const off = within(rowEl("r20")).getByRole("checkbox");
+    expect(off.hasAttribute("disabled")).toBe(true);
+    // A condition that is on can still be switched off, which makes room for the other.
+    expect(within(rowEl("r0")).getByRole("checkbox").hasAttribute("disabled")).toBe(false);
+    await userEvent.click(within(rowEl("r0")).getByRole("checkbox"));
+    expect(off.hasAttribute("disabled")).toBe(false);
+    await userEvent.click(off);
+    expect(lastApplied(onApply).rows.filter((row) => row.enabled)).toHaveLength(20);
+    expect(within(rowEl("r0")).getByRole("checkbox").hasAttribute("disabled")).toBe(true);
+  });
+
   it("keeps its draft when its own save comes back, and takes a change from outside", async () => {
     const onApply = vi.fn(async (_model: FilterModel) => undefined);
     // The caller's saved model, changed from the test as a save or another panel changes it.
@@ -438,6 +469,38 @@ describe("the filter panel", () => {
     expect(document.querySelector("[data-filter-row='n1']")).toBeNull();
     expect(document.querySelector("[data-filter-row='r0']")).not.toBeNull();
     expect(onApply).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaving its tab closes the editor beside it and takes the area off the map", async () => {
+    const cql = { op: "and", args: [AREA, { op: ">", args: [p("traffic"), 10] }] };
+    const model = readFilter(cql, undefined, FIELDS);
+    const show: { current: (shown: boolean) => void } = { current: () => undefined };
+    // The tab's panel stays mounted, hidden, while another tab is open.
+    function Harness() {
+      const [shown, setShown] = useState(true);
+      show.current = setShown;
+      return (
+        <FilterPanel
+          model={model}
+          fields={FIELDS}
+          issues={filterIssues(model, FIELDS)}
+          canEdit
+          onApply={vi.fn()}
+          shown={shown}
+        />
+      );
+    }
+    renderWithProviders(<Harness />);
+    await openRow("r0");
+    expect(document.querySelector("[data-popover-frame]")).not.toBeNull();
+    expect(vi.mocked(useAreaOutline).mock.lastCall?.[0]).toBeDefined();
+    act(() => show.current(false));
+    expect(document.querySelector("[data-popover-frame]")).toBeNull();
+    expect(vi.mocked(useAreaOutline).mock.lastCall?.[0]).toBeUndefined();
+    // Back on the tab, the area shows again and the editor stays closed until a row opens it.
+    act(() => show.current(true));
+    expect(document.querySelector("[data-popover-frame]")).toBeNull();
+    expect(vi.mocked(useAreaOutline).mock.lastCall?.[0]).toBeDefined();
   });
 
   it("puts the caller's action on the result under its count, after Clear", () => {

@@ -211,11 +211,40 @@ describe("the area's notes", () => {
     });
   });
 
-  it("leave out a circle's centre and radius: they say which polygons are whose, not how a shape was made", () => {
+  it("keep a circle's centre and radius, so it can be moved and resized once it is read again", () => {
     const circle = area([
       { kind: "shape", shape: "circle", center: [11, 48], km: 3, label: "School", polygons: [square(1, 1)] },
     ]);
-    expect(areaNotes(circle).pieces).toEqual([{ kind: "shape", n: 1, shape: "circle", label: "School" }]);
+    expect(areaNotes(circle).pieces).toEqual([
+      { kind: "shape", n: 1, shape: "circle", label: "School", center: [11, 48], km: 3 },
+    ]);
+    expect(readArea(areaCql(circle), readAreaNotes(areaNotes(circle)), true)).toEqual(circle);
+  });
+
+  it("read a circle without its centre and radius as the polygon it is (older filters saved neither)", () => {
+    const old = { kind: "shape", n: 1, shape: "circle" };
+    const notes = { sum: areaSum([square(1, 1)]), pieces: [old] };
+    expect(readArea(intersects(polygon(square(1, 1))), readAreaNotes(notes), true)?.pieces).toEqual([
+      { kind: "shape", shape: "circle", polygons: [square(1, 1)] },
+    ]);
+  });
+
+  it.each([
+    ["a centre of one number", { center: [11], km: 3 }],
+    ["a centre off the world", { center: [11, 95], km: 3 }],
+    ["a centre as text", { center: ["11", "48"], km: 3 }],
+    ["no radius", { center: [11, 48] }],
+    ["a radius of nothing", { center: [11, 48], km: 0 }],
+    ["a radius as text", { center: [11, 48], km: "3" }],
+    ["no centre", { km: 3 }],
+  ])("read a circle with %s as a plain circle: neither its centre nor its radius is kept", (_, circle) => {
+    const raw = { sum: "0", pieces: [{ kind: "shape", n: 1, shape: "circle", ...circle }] };
+    expect(readAreaNotes(raw)?.pieces).toEqual([{ kind: "shape", n: 1, shape: "circle" }]);
+  });
+
+  it("keep a centre and a radius on a circle only", () => {
+    const raw = { sum: "0", pieces: [{ kind: "shape", n: 1, shape: "polygon", center: [11, 48], km: 3 }] };
+    expect(readAreaNotes(raw)?.pieces).toEqual([{ kind: "shape", n: 1, shape: "polygon" }]);
   });
 
   it("the sum follows the coordinates", () => {

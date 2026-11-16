@@ -38,7 +38,7 @@ export const SEARCH_PAUSE = 250;
 /** The characters `like` reads as wildcards: a search with one is not sent. */
 export const WILDCARD = /[%_]/;
 /** How far from its end a scrolled list asks for the next page. */
-const NEAR_END = 48;
+export const NEAR_END = 48;
 
 const numeric = (type: FieldType | undefined) => type === "number" || type === "integer";
 

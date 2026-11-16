@@ -12,10 +12,9 @@ const FIELDS: Fields = {
   seen: "datetime",
 };
 
-const NOW = new Date("2026-11-13T10:20:30.456Z");
 const p = (field: string) => ({ property: field });
 const empty = (field: string) => ({ op: "isNull", args: [p(field)] });
-const write = (row: FilterCondition) => rowToCql(row, FIELDS[row.field], { orEmpty: true, now: NOW });
+const write = (row: FilterCondition) => rowToCql(row, FIELDS[row.field], { orEmpty: true });
 
 describe("one row as the filter writes it", () => {
   const cases: Array<[FilterCondition, unknown]> = [
@@ -109,7 +108,7 @@ describe("one row as the filter writes it", () => {
     ],
     [
       { field: "opened", op: "not_in_the_last", value: 30 },
-      { op: "or", args: [{ op: "<", args: [p("opened"), { date: "2026-10-14" }] }, empty("opened")] },
+      { op: "or", args: [{ op: "<", args: [p("opened"), { op: "daysAgo", args: [30] }] }, empty("opened")] },
     ],
     [
       { field: "seen", op: "is_before", value: "2024-01-01T08:00:00Z" },
@@ -229,20 +228,18 @@ describe("one row as the filter writes it", () => {
         ],
       },
     ],
+    // The number of days, not a date: whoever reads the filter counts them back from its own today.
     [
       { field: "seen", op: "in_the_last", value: 7 },
-      { op: ">=", args: [p("seen"), { timestamp: "2026-11-06T10:20:30Z" }] },
+      { op: ">=", args: [p("seen"), { op: "daysAgo", args: [7] }] },
     ],
     [
       { field: "opened", op: "in_the_last", value: 7 },
-      { op: ">=", args: [p("opened"), { date: "2026-11-06" }] },
+      { op: ">=", args: [p("opened"), { op: "daysAgo", args: [7] }] },
     ],
     [
       { field: "seen", op: "not_in_the_last", value: 30 },
-      {
-        op: "or",
-        args: [{ op: "<", args: [p("seen"), { timestamp: "2026-10-14T10:20:30Z" }] }, empty("seen")],
-      },
+      { op: "or", args: [{ op: "<", args: [p("seen"), { op: "daysAgo", args: [30] }] }, empty("seen")] },
     ],
   ];
 
@@ -251,11 +248,35 @@ describe("one row as the filter writes it", () => {
   });
 
   it("reads every written row back as the same row", () => {
-    const relative = new Set(["in_the_last", "not_in_the_last"]);
     for (const [row] of cases) {
-      const days = relative.has(row.op) ? (row.value as number) : undefined;
-      expect(cqlToRow(write(row), FIELDS, { days }), JSON.stringify(row)).toEqual(row);
+      expect(cqlToRow(write(row), FIELDS), JSON.stringify(row)).toEqual(row);
     }
+  });
+
+  it("reads a relative day only where a row says it", () => {
+    const last = (field: string, days: unknown) => ({
+      op: ">=",
+      args: [p(field), { op: "daysAgo", args: [days] }],
+    });
+    // Without the empty value, "before the day" is no row: not in the last N days keeps the features without one.
+    expect(cqlToRow({ op: "<", args: [p("seen"), { op: "daysAgo", args: [7] }] }, FIELDS)).toBeNull();
+    expect(cqlToRow(last("name", 7), FIELDS)).toBeNull();
+    expect(cqlToRow(last("seen", 0), FIELDS)).toBeNull();
+    expect(cqlToRow(last("seen", "7"), FIELDS)).toBeNull();
+    for (const call of [
+      { op: "daysAgo", args: [7, 1] },
+      { op: "daysAgo", args: 7 },
+      { op: "daysAgo", args: [7], unit: "weeks" },
+    ])
+      expect(cqlToRow({ op: ">=", args: [p("seen"), call] }, FIELDS), JSON.stringify(call)).toBeNull();
+    expect(cqlToRow({ op: "<=", args: [p("seen"), { op: "daysAgo", args: [7] }] }, FIELDS)).toBeNull();
+    // A field the layer no longer has.
+    expect(cqlToRow(last("old", 7), FIELDS)).toEqual({
+      field: "old",
+      op: "in_the_last",
+      value: 7,
+      type: "date",
+    });
   });
 
   it("covers every operator the table offers for every field type", () => {
@@ -317,7 +338,7 @@ describe("one row as the filter writes it", () => {
   });
 
   it("writes a removed field's row with the value as it was read", () => {
-    const gone = (row: FilterCondition) => rowToCql(row, row.type, { orEmpty: true, now: NOW });
+    const gone = (row: FilterCondition) => rowToCql(row, row.type, { orEmpty: true });
     expect(gone({ field: "old", op: "is", value: 5 })).toEqual({ op: "=", args: [p("old"), 5] });
     expect(gone({ field: "old", op: "is_before", value: "2024-01-01", type: "date" })).toEqual({
       op: "<",

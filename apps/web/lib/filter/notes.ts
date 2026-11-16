@@ -1,7 +1,7 @@
 // The filter's notes (`query.ui`): what only the panel needs and the CQL cannot say. Switched-off rows with their
-// position, which rows were written as "in the last N days", the area's pieces (and the area itself while it is
-// switched off), and "match any" where the CQL's top level cannot be `or`. Deleting the notes never changes which
-// features pass; anything malformed in them is ignored.
+// position, the area's pieces (and the area itself while it is switched off), and "match any" where the CQL's top level
+// cannot be `or`. Filters saved before "in the last N days" was the number of days in the CQL also note which rows were
+// written as that. Deleting the notes never changes which features pass; anything malformed in them is ignored.
 import { type AreaNotes, readAreaNotes } from "@/lib/filter/area";
 import { isObject } from "@/lib/style/json";
 
@@ -9,7 +9,8 @@ export interface FilterNotes {
   v: 1;
   /** Switched-off rows: their CQL and their position among all rows. */
   off?: Array<{ at: number; cql: unknown }>;
-  /** Rows written as "in the last N days" (or not): the date was frozen when the filter was saved. */
+  /** Rows written as "in the last N days" (or not) by panels before the CQL held the number of days: the date was
+   * frozen when the filter was saved. Read, never written: the next save writes the number of days. */
   relative?: Array<{ at: number; days: number }>;
   /** The area's pieces, and a switched-off area's CQL. */
   area?: AreaNotes;

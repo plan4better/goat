@@ -74,9 +74,8 @@ export const typeOfRow = (row: FilterCondition, fields: Fields): FieldType | und
 export const isUnfinished = (row: FilterRow, fields: Fields) =>
   rowToCql(row, typeOfRow(row, fields), { orEmpty: true }) === null;
 
-/** What a model saves, as text to compare; `now` fixes the relative dates of both sides. */
-export const writtenText = (model: FilterModel, fields: Fields, now: Date) =>
-  JSON.stringify(writeFilter(model, fields, { now }));
+/** What a model saves, as text to compare. */
+export const writtenText = (model: FilterModel, fields: Fields) => JSON.stringify(writeFilter(model, fields));
 
 export class DraftStore {
   private model: FilterModel;

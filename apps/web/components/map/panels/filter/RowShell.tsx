@@ -36,6 +36,8 @@ export interface RowShellProps {
   onOpen?: (anchor: HTMLElement) => void;
   /** Switches the row on or off; no switch without it. */
   onToggle?: () => void;
+  /** The switch shows but cannot be used: a switched-off row the filter has no room for. */
+  switchDisabled?: boolean;
   /** Removes the row; no remove button without it. */
   onRemove?: () => void;
   /** The names of the remove button and the switch; a condition's without them. */
@@ -56,6 +58,7 @@ export function RowShell({
   canEdit,
   onOpen,
   onToggle,
+  switchDisabled,
   onRemove,
   removeLabel,
   switchLabel,
@@ -166,6 +169,7 @@ export function RowShell({
         <Switch
           size="small"
           checked={!off}
+          disabled={switchDisabled}
           onChange={onToggle}
           inputProps={{ "aria-label": switchLabel ?? t("filter_panel.switch") }}
           sx={{ mr: -1 }}

@@ -97,7 +97,8 @@ export interface FilterPanelProps {
   /** The caller's action on what the filter keeps, under the result's count and bar. It opens its popovers in the
    * panel's stack, so they take the place of a condition's editor rather than covering it. */
   resultAction?: ReactNode;
-  /** Whether the panel is on screen (its tab is the open one): its area is drawn on the map only then. */
+  /** Whether the panel is on screen (its tab is the open one): its area is drawn on the map only then, and its
+   * editors close when it leaves. */
   shown?: boolean;
 }
 
@@ -171,8 +172,7 @@ export function FilterPanel({
   useEffect(() => {
     const draft = store.get();
     if (draft === model) return;
-    const now = new Date();
-    if (writtenText(model, fields, now) === writtenText(draft, fields, now)) return;
+    if (writtenText(model, fields) === writtenText(draft, fields)) return;
     const kept = draft.rows.filter(
       (row) => !isCustomRow(row) && isUnfinished(row, fields) && !model.rows.some((r) => r.id === row.id)
     );
@@ -188,8 +188,7 @@ export function FilterPanel({
       if (next === prev) return;
       store.set(next);
       // Only what the filter saves calls up: an unfinished row changes nothing there.
-      const now = new Date();
-      if (writtenText(prev, known, now) === writtenText(next, known, now)) return;
+      if (writtenText(prev, known) === writtenText(next, known)) return;
       Promise.resolve()
         .then(() => apply(next))
         .then(
@@ -219,7 +218,7 @@ export function FilterPanel({
   const host = useFilterAreaHost(store, actions, fields);
 
   const body = (
-    <PopoverProvider scope={scope}>
+    <PopoverProvider scope={scope} shown={shown}>
       <FilterBody
         model={model}
         issues={issues}
@@ -333,7 +332,9 @@ function FilterBody({
     return id;
   };
   const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
-  const full = draft.rows.length >= FILTER_LIMITS.conditions;
+  // The limit is on the filter saved: a switched-off row is not in it and leaves room. An unfinished row is on and takes
+  // its place. With no room left, no row is added and none switched on.
+  const full = draft.rows.filter((row) => row.enabled).length >= FILTER_LIMITS.conditions;
   // A dataset with no fields (geometries alone) has nothing a condition could compare.
   const noFields = infos.length === 0;
   const limitText = t("filter_panel.limit_conditions", { limit: FILTER_LIMITS.conditions });
@@ -396,6 +397,7 @@ function FilterBody({
               row={row}
               canEdit={canEdit}
               onToggle={canSwitch ? actions.toggle : undefined}
+              full={full}
               onRemove={actions.remove}
             />
           ) : (
@@ -408,6 +410,7 @@ function FilterBody({
               canEdit={canEdit}
               onOpen={openEditor}
               onToggle={canSwitch ? actions.toggle : undefined}
+              full={full}
               onRemove={actions.remove}
             />
           )

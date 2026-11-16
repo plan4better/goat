@@ -26,7 +26,8 @@ export type ConditionOp =
   | "is_before"
   | "is_after";
 
-/** The filter's operators: the style's and the ones only a filter has (relative dates are counted back from the moment of saving). */
+/** The filter's operators: the style's and the ones only a filter has (relative dates are counted back from the day the
+ * filter is read on). */
 export type FilterOp =
   | ConditionOp
   | "is_not_between"

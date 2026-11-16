@@ -31,8 +31,6 @@ interface FilterCase {
   stable?: boolean;
 }
 
-const NOW = new Date("2026-11-13T00:00:00Z");
-
 const cases: FilterCase[] = existsSync(FIXTURE) ? JSON.parse(readFileSync(FIXTURE, "utf8")) : [];
 
 /** The rows as the fixture states them: no ids, switches or guessed types. */
@@ -54,7 +52,7 @@ describe.skipIf(!cases.length)("filter_cases.json", () => {
       expect(plain(model)).toEqual(c.rows.rows);
       expect(model.area?.op).toBe(c.rows.area);
     }
-    const written = writeFilter(model, c.fields, { now: NOW });
+    const written = writeFilter(model, c.fields);
     // Written once, the filter reads as the same rows (a number saved as text now a number) and writes the same CQL
     // again.
     const again = readFilter(written.cql, written.ui, c.fields);
@@ -62,7 +60,7 @@ describe.skipIf(!cases.length)("filter_cases.json", () => {
       plain(m).map((row) => (row === "custom" ? row : `${row.field} ${row.op}`));
     expect(shape(again)).toEqual(shape(model));
     expect(again.area).toEqual(model.area);
-    expect(writeFilter(again, c.fields, { now: NOW }).cql).toEqual(written.cql);
+    expect(writeFilter(again, c.fields).cql).toEqual(written.cql);
     if (c.stable) expect(written.cql).toEqual(c.cql);
   });
 
@@ -78,6 +76,12 @@ describe.skipIf(!cases.length)("filter_cases.json", () => {
     expect(counted).toEqual(expected);
     const panel = filterIssues(readFilter(c.cql, undefined, c.fields), c.fields).filter.map((i) => i.code);
     expect(panel.filter((code) => SHAPE_CODES.includes(code))).toEqual([...new Set(expected)]);
+  });
+
+  // The panel counts its rows, goatlib the conditions as rows say them: the same cases are over the same limit.
+  it.each(cases.map((c) => [c.name, c] as const))("%s: conditions limit", (_, c) => {
+    const panel = filterIssues(readFilter(c.cql, undefined, c.fields), c.fields).filter.map((i) => i.code);
+    expect(panel.includes("too_many_conditions")).toBe(c.issues.includes("too_many_conditions"));
   });
 });
 

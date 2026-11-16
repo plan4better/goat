@@ -17,8 +17,8 @@ export interface AreaFeature {
 }
 
 export type AreaPiece =
-  /** `center` and `km`: a circle around a point, kept so its radius can be changed (the fetch dialog, the catalog);
-   * the filter saves neither. */
+  /** `center` and `km`: a circle around a point, kept so it can be moved and its radius changed. The filter's notes
+   * keep both; its CQL holds the circle's ring alone. */
   | {
       kind: "shape";
       polygons: PolygonCoords[];
@@ -41,7 +41,14 @@ export interface FilterArea {
 
 /** A piece as the notes hold it: without its polygons, `n` saying how many of the geometry's are its own. */
 export type AreaPieceNote =
-  | { kind: "shape"; n: number; shape?: "polygon" | "circle"; label?: string }
+  | {
+      kind: "shape";
+      n: number;
+      shape?: "polygon" | "circle";
+      label?: string;
+      center?: Position;
+      km?: number;
+    }
   | { kind: "view"; n: number }
   | { kind: "features"; source: string; features: AreaFeature[] };
 
@@ -215,7 +222,8 @@ function piecesSum(area: FilterArea): string {
   return sum;
 }
 
-/** What the notes keep of a piece: its kind, which polygons are its own and what it is called. */
+/** What the notes keep of a piece: its kind, which polygons are its own and what it is called; of a circle around a
+ * point also its centre and radius. */
 function pieceNote(piece: AreaPiece): AreaPieceNote {
   const n = piece.polygons.length;
   if (piece.kind === "features") return { kind: "features", source: piece.source, features: piece.features };
@@ -225,6 +233,7 @@ function pieceNote(piece: AreaPiece): AreaPieceNote {
     n,
     ...(piece.shape && { shape: piece.shape }),
     ...(piece.label !== undefined && { label: piece.label }),
+    ...(piece.center && piece.km !== undefined && { center: piece.center, km: piece.km }),
   };
 }
 
@@ -241,6 +250,17 @@ function readFeature(raw: unknown): AreaFeature | null {
   return { id: raw.id, ...(typeof raw.name === "string" && { name: raw.name }), n: raw.n };
 }
 
+/** A point of the world: a longitude and a latitude in their ranges. */
+const isLonLat = (v: unknown): v is Position =>
+  isPosition(v) && Math.abs((v as Position)[0]) <= 180 && Math.abs((v as Position)[1]) <= 90;
+
+/** A circle's centre and radius as the notes hold them: both, or neither when one is not well formed. Its ring is the
+ * circle's polygon either way. */
+function readCircle(raw: Record<string, unknown>): { center: Position; km: number } | null {
+  if (raw.shape !== "circle" || !isLonLat(raw.center) || !isNumber(raw.km) || raw.km <= 0) return null;
+  return { center: [raw.center[0], raw.center[1]], km: raw.km };
+}
+
 function readPieceNote(raw: unknown): AreaPieceNote | null {
   if (!isObject(raw)) return null;
   if (raw.kind === "view") return isCount(raw.n) ? { kind: "view", n: raw.n } : null;
@@ -251,6 +271,7 @@ function readPieceNote(raw: unknown): AreaPieceNote | null {
       n: raw.n,
       ...((raw.shape === "polygon" || raw.shape === "circle") && { shape: raw.shape }),
       ...(typeof raw.label === "string" && { label: raw.label }),
+      ...readCircle(raw),
     };
   }
   if (raw.kind === "features") {
@@ -276,9 +297,15 @@ export function readAreaNotes(raw: unknown): AreaNotes | undefined {
 
 const round = (v: number) => Math.round(v * DECIMALS) / DECIMALS;
 
+/** A position as a piece keeps it: longitude and latitude to six decimals. */
+export const roundPosition = ([x, y]: number[]): Position => [round(x), round(y)];
+
 /** Coordinates as a piece keeps them: longitude and latitude to six decimals. */
 export const roundPolygons = (polygons: number[][][][]): PolygonCoords[] =>
-  polygons.map((polygon) => polygon.map((ring) => ring.map(([x, y]): Position => [round(x), round(y)])));
+  polygons.map((polygon) => polygon.map((ring) => ring.map(roundPosition)));
+
+/** A circle's radius as a piece keeps it: in kilometers, to the meter. */
+export const roundKm = (km: number): number => Math.round(km * 1000) / 1000;
 
 /** The map view (west, south, east, north) as a polygon, held to the world. */
 export function viewPolygon([west, south, east, north]: [number, number, number, number]): PolygonCoords {

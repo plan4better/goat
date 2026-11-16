@@ -213,7 +213,12 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
               <>
                 <Box role="tabpanel" hidden={activeTab !== 0} sx={{ height: "100%" }}>
                   {isTabLive(0) && (
-                    <ProjectStylePanel projectId={projectId} layer={activeLayer} top={namedStyles} />
+                    <ProjectStylePanel
+                      projectId={projectId}
+                      layer={activeLayer}
+                      top={namedStyles}
+                      visible={activeTab === 0}
+                    />
                   )}
                 </Box>
                 <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: "100%" }}>
@@ -225,7 +230,9 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
             {layerType === "table" && (
               <>
                 <Box role="tabpanel" hidden={activeTab !== 0} sx={{ height: "100%" }}>
-                  {isTabLive(0) && <Filter projectLayer={activeLayer} projectId={projectId} />}
+                  {isTabLive(0) && (
+                    <Filter projectLayer={activeLayer} projectId={projectId} visible={activeTab === 0} />
+                  )}
                 </Box>
                 <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: "100%" }}>
                   {isTabLive(1) && <PropertiesPanel activeLayer={activeLayer} />}
@@ -237,7 +244,12 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
               <>
                 <Box role="tabpanel" hidden={activeTab !== 0} sx={{ height: "100%" }}>
                   {isTabLive(0) && (
-                    <ProjectStylePanel projectId={projectId} layer={activeLayer} top={namedStyles} />
+                    <ProjectStylePanel
+                      projectId={projectId}
+                      layer={activeLayer}
+                      top={namedStyles}
+                      visible={activeTab === 0}
+                    />
                   )}
                 </Box>
                 <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: "100%" }}>

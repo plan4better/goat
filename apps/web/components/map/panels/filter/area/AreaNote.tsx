@@ -57,7 +57,9 @@ export function AreaDrawing() {
   const { drawing, editing, cancelDraw, finishEdit } = useAreaTools();
   if (!drawing && !editing) return null;
   const text = editing
-    ? "filter_panel.area_editing"
+    ? editing.kind === "shape" && editing.center
+      ? "filter_panel.area_editing_circle"
+      : "filter_panel.area_editing"
     : drawing === "point"
       ? "fetch_features_area_pick_on_map"
       : "filter_panel.area_drawing";

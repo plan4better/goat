@@ -280,6 +280,26 @@ describe("inheritedNodeFilter", () => {
     });
   });
 
+  it("copies in the last N days as the number of days, which the run counts back from its own day", () => {
+    const cql = {
+      op: "and",
+      args: [
+        { op: ">=", args: [p("built"), { op: "daysAgo", args: [7] }] },
+        {
+          op: "or",
+          args: [
+            { op: "<", args: [p("seen"), { op: "daysAgo", args: [30] }] },
+            { op: "isNull", args: [p("seen")] },
+          ],
+        },
+      ],
+    };
+    expect(inheritedNodeFilter(cql)?.expressions).toEqual([
+      { id: "r0", type: "logical", attribute: "built", expression: "in_the_last", value: 7 },
+      { id: "r1", type: "logical", attribute: "seen", expression: "not_in_the_last", value: 30 },
+    ]);
+  });
+
   describe("with the layer's area", () => {
     const shape = {
       type: "MultiPolygon",

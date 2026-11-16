@@ -5,7 +5,6 @@ import { readFilter } from "@/lib/filter/read";
 import { overLimits, writeFilter } from "@/lib/filter/write";
 
 const FIELDS: Fields = { name: "string", traffic: "number", opened: "date", seen: "datetime" };
-const NOW = new Date("2026-11-13T10:20:30Z");
 
 const p = (field: string) => ({ property: field });
 const row = (id: string, partial: Partial<FilterRow>): FilterRow => ({
@@ -44,7 +43,7 @@ describe("writeFilter", () => {
       { field: "seen", op: "not_in_the_last", value: 3 },
     ];
     for (const partial of negations) {
-      const { cql } = writeFilter(model([row("n1", partial)]), FIELDS, { now: NOW });
+      const { cql } = writeFilter(model([row("n1", partial)]), FIELDS);
       const written = (cql?.args as Array<{ op: string; args: unknown[] }>)[0];
       expect(written.op, partial.op).toBe("or");
       expect(written.args.at(-1), partial.op).toEqual({ op: "isNull", args: [p(partial.field ?? "name")] });
@@ -110,18 +109,41 @@ describe("writeFilter", () => {
     ]);
   });
 
-  it("notes a relative date and reads it back", () => {
-    const written = writeFilter(model([row("n1", { field: "seen", op: "in_the_last", value: 7 })]), FIELDS, {
-      now: NOW,
-    });
+  it("writes a relative date as its number of days, without a note, and reads it back", () => {
+    const written = writeFilter(
+      model([
+        row("n1", { field: "seen", op: "in_the_last", value: 7 }),
+        row("n2", { field: "opened", op: "not_in_the_last", value: 30, enabled: false }),
+      ]),
+      FIELDS
+    );
     expect(written.cql).toEqual({
       op: "and",
-      args: [{ op: ">=", args: [p("seen"), { timestamp: "2026-11-06T10:20:30Z" }] }],
+      args: [{ op: ">=", args: [p("seen"), { op: "daysAgo", args: [7] }] }],
     });
-    expect(written.ui).toEqual({ v: 1, relative: [{ at: 0, days: 7 }] });
-    expect(readFilter(written.cql, written.ui, FIELDS).rows).toEqual([
+    expect(written.ui?.relative).toBeUndefined();
+    expect(readFilter(written.cql, undefined, FIELDS).rows).toEqual([
       { id: "r0", field: "seen", op: "in_the_last", value: 7, enabled: true },
     ]);
+    expect(readFilter(written.cql, written.ui, FIELDS).rows[1]).toEqual({
+      id: "r1",
+      field: "opened",
+      op: "not_in_the_last",
+      value: 30,
+      enabled: false,
+    });
+  });
+
+  it("writes a relative date saved before as a date with a note as its number of days again", () => {
+    const saved = {
+      op: "and",
+      args: [{ op: ">=", args: [p("seen"), { timestamp: "2026-02-22T10:00:00Z" }] }],
+    };
+    const read = readFilter(saved, { v: 1, relative: [{ at: 0, days: 7 }] }, FIELDS);
+    expect(writeFilter(read, FIELDS)).toEqual({
+      cql: { op: "and", args: [{ op: ">=", args: [p("seen"), { op: "daysAgo", args: [7] }] }] },
+      ui: undefined,
+    });
   });
 
   it("keeps custom rows verbatim and in place next to an edited row", () => {

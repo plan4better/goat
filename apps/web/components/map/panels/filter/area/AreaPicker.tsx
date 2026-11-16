@@ -1,8 +1,9 @@
 "use client";
 
 // The area's picker: whether the features are kept inside or outside the area, the pieces it is made of, each
-// removable and a drawn polygon editable on the map, and "Add to area" (the map view, a shape drawn on the map, regions,
-// features of another layer, as far as the host offers them). Its content does not know where it is shown: in the filter panel it is a popover and the
+// removable, a drawn polygon editable on the map and a circle moved and resized there or given its radius under its
+// row, and "Add to area" (the map view, a shape drawn on the map, regions, features of another layer, as far as the
+// host offers them). Its content does not know where it is shown: in the filter panel it is a popover and the
 // lists of regions and features open beside it; a dialog shows it in place and opens the lists under it.
 import { Box, IconButton, Typography } from "@mui/material";
 import { memo, useCallback, useContext, useMemo, useState } from "react";
@@ -10,14 +11,13 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { BUFFER_STEP_KM, MAX_BUFFER_KM, MIN_BUFFER_KM } from "@/lib/catalog/spatial";
 import { type AreaPiece, type FilterArea, featureCount, shapeCount } from "@/lib/filter/area";
 
 import SegmentedControl from "@/components/map/panels/common/SegmentedControl";
-import SliderInput from "@/components/map/panels/common/SliderInput";
 import { LayerFeatures, RegionFeatures } from "@/components/map/panels/filter/area/AreaFeatures";
 import { AreaNoteText } from "@/components/map/panels/filter/area/AreaNote";
 import { type AreaLayer, useAreaTools } from "@/components/map/panels/filter/area/AreaTools";
+import { RadiusRow } from "@/components/map/panels/filter/area/RadiusRow";
 import {
   REGION_SOURCE,
   editable,
@@ -25,7 +25,6 @@ import {
   viewPiece,
   viewPieceOf,
   withPiece,
-  withRadius,
   withoutPiece,
 } from "@/components/map/panels/filter/area/pieces";
 import type { DrawShape } from "@/components/map/panels/filter/area/useAreaDraw";
@@ -75,8 +74,8 @@ const pieceIcon = (piece: AreaPiece): ICON_NAME => {
 
 const HINT_SX = { display: "block", px: 3, pb: 1 } as const;
 
-/** One piece of the area. Picked features open their list; a circle around a point has its radius under it and moves
- * with a click on the map; a drawn polygon can be edited on the map, its row saying Done meanwhile; a map view or
+/** One piece of the area. Picked features open their list; a circle around a point has its radius under it, and is
+ * moved and resized on the map as a drawn polygon is edited there, its row saying Done meanwhile; a map view or
  * another shape is what it is. */
 const PieceRow = memo(function PieceRow({
   piece,
@@ -123,7 +122,7 @@ const PieceRow = memo(function PieceRow({
         size="small"
         aria-label={t(
           piece.kind === "shape" && piece.center
-            ? "filter_panel.area_move_circle"
+            ? "filter_panel.area_edit_circle"
             : "filter_panel.area_edit_piece"
         )}
         disabled={!canEdit}
@@ -162,24 +161,11 @@ const PieceRow = memo(function PieceRow({
       </Typography>
     </Row>
   );
-  if (piece.kind !== "shape" || piece.km === undefined) return row;
+  if (piece.kind !== "shape" || !piece.center || piece.km === undefined) return row;
   return (
     <>
       {row}
-      <Box sx={{ px: 3, pb: 1 }}>
-        <Typography variant="caption" color="text.secondary">
-          {t("fetch_features_area_radius")}
-        </Typography>
-        <SliderInput
-          value={piece.km}
-          isRange={false}
-          min={MIN_BUFFER_KM}
-          max={MAX_BUFFER_KM}
-          step={BUFFER_STEP_KM}
-          onChange={(km) => onRadius(index, km as number)}
-          rootSx={{ pl: 1 }}
-        />
-      </Box>
+      <RadiusRow km={piece.km} disabled={editing} onChange={(km) => onRadius(index, km)} />
     </>
   );
 });
@@ -210,13 +196,6 @@ export function AreaPickerContent({ lists, emptyText, onDraw }: AreaPickerConten
       setArea(withoutPiece(now, index));
     },
     [read, setArea, lists]
-  );
-  const setRadius = useCallback(
-    (index: number, km: number) => {
-      const now = read();
-      if (now) setArea(withRadius(now, index, km));
-    },
-    [read, setArea]
   );
   const setOp = (op: FilterArea["op"]) => {
     const now = read();
@@ -322,7 +301,7 @@ export function AreaPickerContent({ lists, emptyText, onDraw }: AreaPickerConten
               editing={piece === tools.editing}
               canEdit={tools.canDraw}
               onOpen={lists.toggle}
-              onRadius={setRadius}
+              onRadius={tools.resize}
               onEdit={editPiece}
               onFinish={tools.finishEdit}
               onRemove={removePiece}

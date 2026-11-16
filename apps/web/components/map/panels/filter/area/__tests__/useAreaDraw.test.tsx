@@ -9,13 +9,14 @@
  */
 import { configureStore } from "@reduxjs/toolkit";
 import { act, renderHook } from "@testing-library/react";
+import distance from "@turf/distance";
 import React from "react";
 import { Provider } from "react-redux";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SHOWN_MIDPOINTS_ID } from "@p4b/draw";
 
-import type { PolygonCoords } from "@/lib/filter/area";
+import type { PolygonCoords, Position } from "@/lib/filter/area";
 import { featureEditorReducer, startEditing } from "@/lib/store/featureEditor/slice";
 import { mapReducer, setActiveMeasureTool } from "@/lib/store/map/slice";
 
@@ -142,8 +143,8 @@ vi.mock("@/components/map/controls/Draw", () => ({
   DrawModes: { CIRCLE: "draw_circle", POLYGON: "draw_polygon" },
 }));
 
-/** A shape that came back as polygons. */
-type DrawnPolygons = Extract<DrawnShape, { polygons: unknown }>;
+/** A circle that came back as its centre and radius. */
+type DrawnCircle = Extract<DrawnShape, { shape: "circle" }>;
 
 const makeStore = () => configureStore({ reducer: { featureEditor: featureEditorReducer, map: mapReducer } });
 
@@ -297,7 +298,7 @@ describe("useAreaDraw", () => {
     expect(store.getState().map.isMapGetInfoActive).toBe(false);
   });
 
-  it("draws a circle: the radius line comes back as a closed ring", () => {
+  it("draws a circle: the radius line comes back as the circle's centre and radius", () => {
     const onDone = vi.fn<(drawn: DrawnShape) => void>();
     const { result, store } = renderDraw();
     act(() => result.current.start("circle", onDone));
@@ -316,20 +317,33 @@ describe("useAreaDraw", () => {
       tool.finish();
     });
 
-    expect(onDone).toHaveBeenCalledTimes(1);
-    const { shape, polygons } = onDone.mock.calls[0][0] as DrawnPolygons;
-    expect(shape).toBe("circle");
-    expect(polygons).toHaveLength(1);
-    expect(polygons[0]).toHaveLength(1);
-    const ring = polygons[0][0];
-    expect(ring).toHaveLength(65);
-    expect(ring[64]).toEqual(ring[0]);
-    // 5 km to the north of the centre, at six decimals.
-    expect(ring[0][0]).toBe(11.5);
-    expect(ring[0][1]).toBeCloseTo(48.1 + 5 / 111.19, 3);
-    expect(ring.every(([x, y]) => x === Number(x.toFixed(6)) && y === Number(y.toFixed(6)))).toBe(true);
+    expect(onDone).toHaveBeenCalledExactlyOnceWith({ shape: "circle", center: [11.5, 48.1], km: 5 });
     expect(tool.features.size).toBe(0);
     expectHandedBack(store);
+  });
+
+  it("keeps a drawn circle's centre to six decimals and its radius to the meter", () => {
+    const onDone = vi.fn<(drawn: DrawnShape) => void>();
+    const { result } = renderDraw();
+    act(() => result.current.start("circle", onDone));
+    act(() => {
+      tool.sketch(
+        {
+          type: "LineString",
+          coordinates: [
+            [11.123456789, 48.987654321],
+            [11.2, 48.9],
+          ],
+        },
+        { radiusInKm: 1.23456789 }
+      );
+      tool.finish();
+    });
+    expect(onDone).toHaveBeenCalledExactlyOnceWith({
+      shape: "circle",
+      center: [11.123457, 48.987654],
+      km: 1.235,
+    });
   });
 
   it("measures the radius itself when the circle was finished without its second click", () => {
@@ -347,11 +361,10 @@ describe("useAreaDraw", () => {
       });
       tool.finish();
     });
-    const ring = (onDone.mock.calls[0][0] as DrawnPolygons).polygons[0][0];
-    expect(ring).toHaveLength(65);
+    const drawn = onDone.mock.calls[0][0] as DrawnCircle;
+    expect(drawn.center).toEqual([11.5, 48.1]);
     // The edge is about 11.1 km north of the centre.
-    const north = Math.max(...ring.map(([, y]) => y));
-    expect(north).toBeCloseTo(48.2, 3);
+    expect(drawn.km).toBeCloseTo(11.12, 2);
   });
 
   it("takes a circle without a radius for no shape", () => {
@@ -962,6 +975,138 @@ describe("useAreaDraw", () => {
       act(() => vi.runOnlyPendingTimers());
       expect(onDone).toHaveBeenCalledExactlyOnceWith(movedRounded);
       expect(store.getState().map).toBe(before);
+    });
+  });
+
+  describe("editing a circle", () => {
+    const circle = { center: [11, 48] as Position, km: 3 };
+    /** The radius line the tool edits. */
+    const line = () => tool.features.get(tool.state.selected as string)?.geometry as GeoJSON.LineString;
+    const kmOf = ({ coordinates: [center, edge] }: GeoJSON.LineString) =>
+      distance(center, edge, { units: "kilometers" });
+    /** The tool drew what was dragged. */
+    const drawn = () => act(() => fakeMap.fire("draw.render", {}));
+    const keydown = (key: string) =>
+      act(() => void document.body.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
+
+    it("loads it as the radius line the select mode draws a circle around, under an id that shows no midpoints", () => {
+      const { result, store } = renderDraw();
+      act(() => result.current.editCircle(circle, vi.fn()));
+
+      expect(tool.add).toHaveBeenCalledTimes(1);
+      const added = tool.add.mock.calls[0][0];
+      expect(added.id).toBeUndefined();
+      expect(added.properties).toEqual({ isCircle: true, isRadiusLine: true });
+      const loaded = added.geometry as GeoJSON.LineString;
+      expect(loaded.coordinates[0]).toEqual([11, 48]);
+      // To a tenth of a meter: the tool and turf take the earth a few meters apart in size.
+      expect(kmOf(loaded)).toBeCloseTo(3, 4);
+      expect(tool.changeMode).toHaveBeenCalledExactlyOnceWith("direct_select", { featureId: "added-1" });
+      expect(result.current).toMatchObject({ editing: true, drawing: null });
+      expect(store.getState().map.isMapGetInfoActive).toBe(false);
+    });
+
+    it("takes the edge dragged elsewhere for a new radius around the same centre", () => {
+      const onDone = vi.fn();
+      const { result, store } = renderDraw();
+      act(() => result.current.editCircle(circle, onDone));
+      act(() =>
+        tool.reshape({
+          type: "LineString",
+          coordinates: [
+            [11, 48],
+            [11, 48.05],
+          ],
+        })
+      );
+      drawn();
+      expect(line().coordinates[1]).toEqual([11, 48.05]);
+
+      act(() => result.current.finish());
+
+      // 0.05 degrees of latitude, to the meter.
+      expect(onDone).toHaveBeenCalledExactlyOnceWith({ center: [11, 48], km: 5.56 });
+      expect(tool.features.size).toBe(0);
+      expectHandedBack(store);
+    });
+
+    it("takes the ring along with the centre dragged: the radius stays as it was", () => {
+      const onDone = vi.fn();
+      const { result } = renderDraw();
+      act(() => result.current.editCircle(circle, onDone));
+      const [, edge] = line().coordinates;
+      act(() => tool.reshape({ type: "LineString", coordinates: [[11.2, 48.3], edge] }));
+      drawn();
+
+      expect(line().coordinates[0]).toEqual([11.2, 48.3]);
+      expect(kmOf(line())).toBeCloseTo(3, 4);
+      // Drawn again, it stays where it is.
+      drawn();
+      expect(line().coordinates[0]).toEqual([11.2, 48.3]);
+
+      act(() => result.current.finish());
+      expect(onDone).toHaveBeenCalledExactlyOnceWith({ center: [11.2, 48.3], km: 3 });
+    });
+
+    it("hands back a centre dragged just before the edit ended, before the tool drew it", () => {
+      const onDone = vi.fn();
+      const { result } = renderDraw();
+      act(() => result.current.editCircle(circle, onDone));
+      const [, edge] = line().coordinates;
+      act(() => tool.reshape({ type: "LineString", coordinates: [[11.1234567, 48.2], edge] }));
+
+      act(() => tool.clickOutside());
+
+      expect(onDone).toHaveBeenCalledExactlyOnceWith({ center: [11.123457, 48.2], km: 3 });
+    });
+
+    it("keeps the line's two ends when a point was added between them", () => {
+      const { result } = renderDraw();
+      act(() => result.current.editCircle(circle, vi.fn()));
+      const [center, edge] = line().coordinates;
+      act(() => tool.reshape({ type: "LineString", coordinates: [center, [11.01, 48.01], [11.05, 48]] }));
+      drawn();
+      expect(line().coordinates).toEqual([center, [11.05, 48]]);
+      expect(edge).not.toEqual([11.05, 48]);
+    });
+
+    it("leaves Delete and Backspace alone: the circle has no corner to remove", () => {
+      const { result } = renderDraw();
+      act(() => result.current.editCircle(circle, vi.fn()));
+      keydown("Delete");
+      keydown("Backspace");
+      expect(tool.trash).not.toHaveBeenCalled();
+      expect(result.current.editing).toBe(true);
+    });
+
+    it("Escape gives up: nothing comes back and the line is gone", () => {
+      const onDone = vi.fn();
+      const { result, store } = renderDraw();
+      act(() => result.current.editCircle(circle, onDone));
+      keydown("Escape");
+      expect(onDone).not.toHaveBeenCalled();
+      expect(result.current.editing).toBe(false);
+      expect(tool.features.size).toBe(0);
+      expectHandedBack(store);
+    });
+
+    it("keeps the old circle when the edge was dragged onto the centre", () => {
+      const onDone = vi.fn();
+      const { result } = renderDraw();
+      act(() => result.current.editCircle(circle, onDone));
+      act(() =>
+        tool.reshape({
+          type: "LineString",
+          coordinates: [
+            [11, 48],
+            [11, 48],
+          ],
+        })
+      );
+      act(() => result.current.finish());
+      expect(onDone).not.toHaveBeenCalled();
+      expect(result.current.editing).toBe(false);
+      expect(tool.features.size).toBe(0);
     });
   });
 });

@@ -1,4 +1,4 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,6 +46,7 @@ const draw = vi.hoisted(() => ({
   listeners: new Set<() => void>(),
   start: vi.fn(),
   edit: vi.fn(),
+  editCircle: vi.fn(),
   finish: vi.fn(),
   cancel: vi.fn(),
 }));
@@ -62,6 +63,7 @@ vi.mock("@/components/map/panels/filter/area/useAreaDraw", async () => {
       editing: useSyncExternalStore(subscribe, () => draw.editing),
       start: draw.start,
       edit: draw.edit,
+      editCircle: draw.editCircle,
       finish: draw.finish,
       cancel: draw.cancel,
     }),
@@ -155,6 +157,7 @@ describe("the filter's area", () => {
     draw.editing = false;
     draw.start.mockReset();
     draw.edit.mockReset();
+    draw.editCircle.mockReset();
     draw.finish.mockReset();
     draw.cancel.mockReset();
     outline.mockClear();
@@ -291,13 +294,75 @@ describe("the filter's area", () => {
     expect(draw.cancel).toHaveBeenCalled();
 
     const done = draw.start.mock.calls[0][1] as (drawn: unknown) => void;
-    await act(async () => done({ shape: "circle", polygons: [square(6)] }));
-    // After the other shape, before the map view.
-    expect(applied(onApply).area?.pieces).toEqual([
-      shape(0),
-      { kind: "shape", shape: "circle", polygons: [square(6)] },
-      VIEW,
-    ]);
+    await act(async () => done({ shape: "circle", center: [11, 48], km: 2 }));
+    // After the other shape, before the map view; it keeps its centre and radius.
+    const [first, circle, last] = applied(onApply).area?.pieces ?? [];
+    expect(first).toEqual(shape(0));
+    expect(circle).toMatchObject({ kind: "shape", shape: "circle", center: [11, 48], km: 2 });
+    expect(circle.polygons[0][0]).toHaveLength(65);
+    expect(last).toEqual(VIEW);
+  });
+
+  describe("a drawn circle", () => {
+    const circle = (center: Position, km: number, label?: string): AreaPiece => ({
+      kind: "shape",
+      shape: "circle",
+      center,
+      km,
+      ...(label && { label }),
+      polygons: [square(8)],
+    });
+    const radiusField = () =>
+      screen.getByRole("textbox", { name: "filter_panel.area_radius" }) as HTMLInputElement;
+    const setEditing = (editing: boolean) =>
+      act(() => {
+        draw.editing = editing;
+        draw.listeners.forEach((listener) => listener());
+      });
+
+    it("saved before circles kept their centre is the polygon it is: no edit and no radius", async () => {
+      setup(areaOf([{ kind: "shape", shape: "circle", polygons: [square(8)] }]));
+      await openPicker();
+      expect(screen.queryByRole("button", { name: "filter_panel.area_edit_circle" })).toBeNull();
+      expect(screen.queryByRole("textbox", { name: "filter_panel.area_radius" })).toBeNull();
+    });
+
+    it("is moved and resized on the map: the picker closes, the section says how, the new circle takes its place", async () => {
+      const { onApply } = setup(areaOf([shape(0), circle([11, 48], 2, "School"), VIEW]));
+      await openPicker();
+      await userEvent.click(screen.getByRole("button", { name: "filter_panel.area_edit_circle" }));
+
+      expect(draw.editCircle).toHaveBeenCalledExactlyOnceWith(
+        { center: [11, 48], km: 2 },
+        expect.any(Function)
+      );
+      expect(screen.queryByRole("button", { name: "filter_panel.area_add" })).toBeNull();
+      setEditing(true);
+      expect(screen.getByText("filter_panel.area_editing_circle")).toBeDefined();
+      // The draw tool shows the circle being edited; the outline leaves its ring and its centre out meanwhile.
+      const drawn = outline.mock.lastCall?.[0] as FilterArea;
+      expect(areaPolygons(drawn)).toEqual([square(0), VIEW.polygons[0]]);
+      expect(drawn.pieces[1]).not.toHaveProperty("center");
+
+      const finished = draw.editCircle.mock.calls[0][1] as (circle: { center: Position; km: number }) => void;
+      await act(async () => finished({ center: [11.5, 48.5], km: 0.8 }));
+      setEditing(false);
+
+      const [first, moved, last] = applied(onApply).area?.pieces ?? [];
+      expect(first).toEqual(shape(0));
+      expect(moved).toMatchObject({ shape: "circle", center: [11.5, 48.5], km: 0.8, label: "School" });
+      expect(moved.polygons[0][0]).toHaveLength(65);
+      expect(last).toEqual(VIEW);
+    });
+
+    it("takes a radius typed in its row, in meters below a kilometer", async () => {
+      const { onApply } = setup(areaOf([circle([11, 48], 0.5)]));
+      await openPicker();
+      expect(radiusField().value).toBe("500");
+      await userEvent.clear(radiusField());
+      await userEvent.type(radiusField(), "750");
+      expect(applied(onApply).area?.pieces[0]).toMatchObject({ center: [11, 48], km: 0.75 });
+    });
   });
 
   describe("editing a drawn polygon", () => {
@@ -600,35 +665,28 @@ describe("the filter's area", () => {
   });
 
   it("picks features of another polygon layer of the project", async () => {
-    items.mockImplementation((layerId: string) => ({
-      data: layerId
-        ? {
-            numberMatched: 2,
-            features: [
-              {
-                id: "1",
-                properties: { name: "Altstadt" },
-                geometry: { type: "Polygon", coordinates: square(0) },
-              },
-              {
-                id: "2",
-                properties: { name: "Neustadt" },
-                geometry: { type: "Polygon", coordinates: square(2) },
-              },
-            ],
-          }
-        : undefined,
-      isLoading: false,
-    }));
+    // The same answer every time, as SWR keeps it.
+    const answer = {
+      numberMatched: 2,
+      features: [
+        {
+          id: "1",
+          properties: { name: "Altstadt" },
+          geometry: { type: "Polygon", coordinates: square(0) },
+        },
+        {
+          id: "2",
+          properties: { name: "Neustadt" },
+          geometry: { type: "Polygon", coordinates: square(2) },
+        },
+      ],
+    };
+    items.mockImplementation((layerId: string) => ({ data: layerId ? answer : undefined, isLoading: false }));
     const { onApply } = setup(areaOf([VIEW]));
     await openAddMenu();
     await userEvent.click(menuItem("filter_panel.area_add_features"));
     await userEvent.click(await screen.findByRole("option", { name: /Districts/ }));
-    expect(items).toHaveBeenLastCalledWith(
-      "layer-1",
-      expect.objectContaining({ limit: 50, properties: "name" }),
-      expect.anything()
-    );
+    expect(items).toHaveBeenLastCalledWith("layer-1", { limit: 50, offset: 0, properties: "name" });
     await userEvent.click(await screen.findByRole("option", { name: /Neustadt/ }));
     expect(applied(onApply).area?.pieces).toEqual([
       VIEW,
@@ -639,6 +697,98 @@ describe("the filter's area", () => {
         polygons: [square(2)],
       },
     ]);
+  });
+
+  describe("the features of another layer", () => {
+    const DISTRICTS = { op: "=", args: [{ property: "kind" }, "district"] };
+    /** `total` features named "Area 1" and on, of which the items request answers the page it is asked for: the
+     * same answer for the same request, as SWR keeps it. */
+    const layerOf = (total: number) => {
+      const answers = new Map<string, unknown>();
+      items.mockImplementation((layerId: string, params?: { limit: number; offset: number }) => {
+        if (!layerId || !params) return { data: undefined, isLoading: false };
+        const key = JSON.stringify([layerId, params]);
+        if (!answers.has(key)) {
+          const count = Math.max(0, Math.min(params.limit, total - params.offset));
+          const features = Array.from({ length: count }, (_, i) => {
+            const n = params.offset + i + 1;
+            return {
+              id: String(n),
+              properties: { name: `Area ${n}` },
+              geometry: { type: "Polygon", coordinates: square(n) },
+            };
+          });
+          answers.set(key, { data: { numberMatched: total, features }, isLoading: false });
+        }
+        return answers.get(key);
+      });
+    };
+    const openList = async () => {
+      const view = setup(areaOf([VIEW]), {
+        areaLayers: [{ id: "layer-1", name: "Districts", filter: DISTRICTS }],
+      });
+      await openAddMenu();
+      await userEvent.click(menuItem("filter_panel.area_add_features"));
+      await userEvent.click(await screen.findByRole("option", { name: /Districts/ }));
+      return view;
+    };
+    const list = () => screen.getByRole("listbox", { name: "filter_panel.area_search_features" });
+    const listed = () => within(list()).getAllByRole("option");
+    const lastParams = () => items.mock.lastCall?.[1] as Record<string, unknown>;
+
+    it("lists only the features the layer's saved filter keeps, as the map shows them", async () => {
+      layerOf(3);
+      await openList();
+      expect(JSON.parse(lastParams().filter as string)).toEqual(DISTRICTS);
+      expect(listed()).toHaveLength(3);
+    });
+
+    it("searches within the features the saved filter keeps", async () => {
+      layerOf(3);
+      await openList();
+      await userEvent.type(screen.getByRole("textbox", { name: "filter_panel.area_search_features" }), "Alt");
+      await waitFor(() =>
+        expect(JSON.parse(lastParams().filter as string)).toEqual({
+          op: "and",
+          args: [DISTRICTS, { op: "like", args: [{ property: "name" }, "%Alt%"] }],
+        })
+      );
+      expect(lastParams().offset).toBe(0);
+    });
+
+    it("loads the next page once the list is scrolled to its end, and stops at the last", async () => {
+      layerOf(120);
+      await openList();
+      expect(listed()).toHaveLength(50);
+      expect(screen.getByText("filter_panel.area_more")).toBeDefined();
+
+      fireEvent.scroll(list());
+      expect(lastParams()).toMatchObject({ limit: 50, offset: 50 });
+      await waitFor(() => expect(listed()).toHaveLength(100));
+      fireEvent.scroll(list());
+      expect(lastParams()).toMatchObject({ limit: 50, offset: 100 });
+      await waitFor(() => expect(listed()).toHaveLength(120));
+      expect(screen.queryByText("filter_panel.area_more")).toBeNull();
+
+      const asked = items.mock.calls.length;
+      fireEvent.scroll(list());
+      expect(
+        items.mock.calls.slice(asked).every((call) => (call[1] as { offset: number }).offset === 100)
+      ).toBe(true);
+    });
+
+    it("picks a feature of a later page, with its outline", async () => {
+      layerOf(60);
+      const { onApply } = await openList();
+      fireEvent.scroll(list());
+      await userEvent.click(await within(list()).findByRole("option", { name: /Area 55/ }));
+      expect(applied(onApply).area?.pieces[1]).toEqual({
+        kind: "features",
+        source: "layer-1",
+        features: [{ id: "55", name: "Area 55", n: 1 }],
+        polygons: [square(55)],
+      });
+    });
   });
 
   it("a viewer reads the area and changes nothing", () => {

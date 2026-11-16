@@ -26,6 +26,8 @@ export interface NumberInputProps {
   reserve?: number;
   /** Shown while the box is empty: the value that applies then. */
   placeholder?: string;
+  /** The number is shown and cannot be typed. */
+  disabled?: boolean;
   onChange: (value: number) => void;
   /** The number is optional: an emptied box reports this. */
   onClear?: () => void;
@@ -58,6 +60,7 @@ export const NumberInput = memo(function NumberInput({
   plain,
   reserve = 2,
   placeholder,
+  disabled,
   onChange,
   onClear,
   onBlur,
@@ -114,7 +117,7 @@ export const NumberInput = memo(function NumberInput({
             border: 1,
             borderColor: "transparent",
             borderRadius: 1.5,
-            "&:hover": { borderColor: "divider" },
+            "&:hover": { borderColor: disabled ? "transparent" : "divider" },
             "&:focus-within": { borderColor: "primary.main" },
           }}>
           {/* As wide as its text: a hidden copy of the number sizes the field (a point is narrower than a digit). */}
@@ -131,6 +134,7 @@ export const NumberInput = memo(function NumberInput({
             <InputBase
               value={draft}
               placeholder={placeholder}
+              disabled={disabled}
               onChange={(event) => type(event.target.value)}
               onBlur={leave}
               inputProps={{
@@ -161,6 +165,7 @@ export const NumberInput = memo(function NumberInput({
         value={draft}
         unit={unitText}
         placeholder={placeholder}
+        disabled={disabled}
         clearable={false}
         inputProps={{
           inputMode: "decimal",

@@ -45,7 +45,8 @@ const filterDate = (value: string, fieldType?: FieldType): string => {
 };
 
 /** A picked moment as the filter's rows hold it (`2024-01-01T10:30:00Z`, a day's start as the day); other values as
- * they are. The old panel stored the picker's wall time without its zone mark. */
+ * they are. The old panel stored the picker's wall time without its zone mark: it stays read as UTC, as the runner
+ * reads it. The panel now stores the instant the browser's time names, with its zone (`lib/filter/moments.ts`). */
 const rowValue = (value: unknown, type: FieldType | undefined): unknown =>
   typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value)
     ? filterDate(value, type)

@@ -54,7 +54,7 @@ export function viewStale(polygons: PolygonCoords[], bounds: Bounds): boolean {
 /** The map view as a piece. */
 export const viewPieceOf = (bounds: Bounds): AreaPiece => ({ kind: "view", polygons: [viewPolygon(bounds)] });
 
-/** A circle around `center` with a radius of `km`, which it keeps so the radius can be changed. */
+/** A circle around `center` with a radius of `km`, which it keeps so it can be moved and its radius changed. */
 export function circlePiece(center: Position, km: number = DEFAULT_BUFFER_KM, label?: string): ShapePiece {
   const ring = circle(center, km, { steps: CIRCLE_STEPS, units: "kilometers" }).geometry.coordinates;
   return {
@@ -65,14 +65,6 @@ export function circlePiece(center: Position, km: number = DEFAULT_BUFFER_KM, la
     ...(label !== undefined && { label }),
     polygons: roundPolygons([ring]),
   };
-}
-
-/** The area with the circle at `index` at another radius around the same centre. */
-export function withRadius(area: FilterArea, index: number, km: number): FilterArea {
-  const piece = area.pieces[index];
-  if (piece?.kind !== "shape" || !piece.center) return area;
-  const next = circlePiece(piece.center, km, piece.label);
-  return { ...area, pieces: area.pieces.map((p, i) => (i === index ? next : p)) };
 }
 
 /** The area with one more piece: a new area starts inside and switched on, a map view replaces the one there is, a
@@ -90,11 +82,11 @@ export function withPiece(area: FilterArea | undefined, piece: AreaPiece): Filte
   return { ...area, pieces };
 }
 
-/** Whether a piece can be changed on the map: a drawn polygon's corners, a circle around a point's centre. A circle kept
- * as its ring alone (the filter's) would stop being one if its corners moved; a map view, picked features and a shape a
- * saved filter does not name have no corners someone drew. */
+/** Whether a piece can be changed on the map: a drawn polygon's corners, a circle's centre and radius. A circle kept as
+ * its ring alone (saved before circles kept their centre) would stop being one if its corners moved; a map view, picked
+ * features and a shape a saved filter does not name have no corners someone drew. */
 export const editable = (piece: AreaPiece): boolean =>
-  piece.kind === "shape" && (!!piece.center || piece.shape === "polygon");
+  piece.kind === "shape" && ((!!piece.center && piece.km !== undefined) || piece.shape === "polygon");
 
 /** The area with `next` where `piece` is, the other pieces as they were; the same area once `piece` is not in it. */
 export function withReplaced(area: FilterArea, piece: AreaPiece, next: AreaPiece): FilterArea {

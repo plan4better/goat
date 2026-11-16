@@ -6,9 +6,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LayerFilterPanel } from "@/components/map/panels/filter/LayerFilterPanel";
 
-const { execute, filter } = vi.hoisted(() => ({
+const { execute, filter, project, shown } = vi.hoisted(() => ({
   execute: vi.fn(),
   filter: { canEdit: true },
+  /** The project's layers the area can be picked from. */
+  project: { layers: [] as object[] },
+  /** What the panel was given. */
+  shown: { areaLayers: undefined as unknown },
 }));
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
@@ -24,7 +28,9 @@ vi.mock("@/hooks/map/useLayerFilter", () => ({
     apply: vi.fn(),
   }),
 }));
-vi.mock("@/hooks/map/LayerPanelHooks", () => ({ useFilteredProjectLayers: () => ({ layers: [] }) }));
+vi.mock("@/hooks/map/LayerPanelHooks", () => ({
+  useFilteredProjectLayers: () => ({ layers: project.layers }),
+}));
 vi.mock("@/hooks/map/useMapLayers", () => ({ useMapLayers: () => ({ layers: [] }) }));
 vi.mock("@/hooks/map/useOgcProcesses", () => ({ useProcessExecution: () => ({ execute }) }));
 vi.mock("@/hooks/store/ContextHooks", () => ({
@@ -39,16 +45,21 @@ vi.mock("@/components/map/panels/filter/FilterPanel", async () => {
     FilterPanel: ({
       resultAction,
       area,
-      shown,
+      shown: onScreen,
+      areaLayers,
     }: {
       resultAction?: ReactNode;
       area?: boolean;
       shown?: boolean;
-    }) => (
-      <div data-style-panel data-testid="panel" data-area={String(area)} data-shown={String(shown)}>
-        <PopoverProvider>{resultAction}</PopoverProvider>
-      </div>
-    ),
+      areaLayers?: unknown;
+    }) => {
+      shown.areaLayers = areaLayers;
+      return (
+        <div data-style-panel data-testid="panel" data-area={String(area)} data-shown={String(onScreen)}>
+          <PopoverProvider>{resultAction}</PopoverProvider>
+        </div>
+      );
+    },
   };
 });
 
@@ -68,6 +79,54 @@ describe("a layer's filter tab", () => {
     vi.mocked(toast.info).mockClear();
     vi.mocked(toast.error).mockClear();
     filter.canEdit = true;
+    project.layers = [];
+    shown.areaLayers = undefined;
+  });
+
+  describe("the layers its area can be picked from", () => {
+    const polygons = (id: number, layerId: string, name: string, query: object | null = null) => ({
+      id,
+      layer_id: layerId,
+      name,
+      type: "feature",
+      feature_layer_geometry_type: "polygon",
+      query,
+    });
+    const offered = () =>
+      (shown.areaLayers as Array<{ id: string; name: string; filter?: unknown }>).map(
+        ({ id, name, filter }) => ({ id, name, ...(filter !== undefined && { filter }) })
+      );
+    const PARKS = { op: "=", args: [{ property: "kind" }, "park"] };
+    const WOODS = { op: "=", args: [{ property: "kind" }, "wood"] };
+
+    it("are the project's other polygon layers, each with the filter the map draws it with", () => {
+      project.layers = [
+        polygons(1, "districts", "Districts", { cql: {} }),
+        polygons(2, "green", "Parks", { cql: PARKS, ui: { v: 1 } }),
+        { ...polygons(3, "roads", "Roads"), feature_layer_geometry_type: "line" },
+        // The filtered layer itself.
+        polygons(7, "layer-1", "Shops"),
+      ];
+      renderPanel();
+      expect(offered()).toEqual([
+        { id: "districts", name: "Districts" },
+        { id: "green", name: "Parks", filter: PARKS },
+      ]);
+    });
+
+    it("offer a dataset in the project twice once, with what either of its layers shows", () => {
+      project.layers = [
+        polygons(1, "green", "Parks", { cql: PARKS }),
+        polygons(2, "green", "Woods", { cql: WOODS }),
+      ];
+      renderPanel();
+      expect(offered()).toEqual([{ id: "green", name: "Parks", filter: { op: "or", args: [PARKS, WOODS] } }]);
+      cleanup();
+      // One of them shows every feature: so does the list.
+      project.layers = [polygons(1, "green", "Parks", { cql: PARKS }), polygons(2, "green", "All green")];
+      renderPanel();
+      expect(offered()).toEqual([{ id: "green", name: "Parks" }]);
+    });
   });
 
   it("asks for the new layer's name first, this layer's name marked as filtered", () => {

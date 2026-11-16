@@ -107,8 +107,19 @@ const not = (inner: JsonObject): JsonObject => ({ op: "not", args: [inner] });
 export interface WriteOptions {
   /** The filter's spelling (standard CQL2, negations keep the empty value); false for the style's. */
   orEmpty: boolean;
-  /** The moment "in the last N days" counts back from; now when left out. */
-  now?: Date;
+}
+
+/** The function of a relative day, `daysAgo(n)`: the start of the day n days before today. A call in CQL2's own syntax,
+ * so the filter stays CQL2; whoever reads it (goatlib's `normalize`, which every service reads it through) counts back
+ * from its own today. */
+const DAYS_AGO = "daysAgo";
+
+/** The days of a relative day, or null for a value that is none (also a call with more keys or args, or with no whole
+ * number from 1). */
+function daysAgoOf(value: unknown): number | null {
+  if (!isObject(value) || value.op !== DAYS_AGO || Object.keys(value).length !== 2) return null;
+  const days = Array.isArray(value.args) && value.args.length === 1 ? value.args[0] : undefined;
+  return typeof days === "number" && Number.isInteger(days) && days >= 1 ? days : null;
 }
 
 /** One row as CQL2, or null while it is unfinished (no field, no value, `%` or `_` in a text; in the style's spelling
@@ -147,11 +158,9 @@ export function rowToCql(
       ? null
       : { op: "like", args: [p, pattern(String(text))] };
   };
-  const days = (): string | null => {
+  const days = (): number | null => {
     const n = typeof row.value === "number" ? row.value : Number(row.value);
-    if (!Number.isInteger(n) || n < 1) return null;
-    const since = new Date((opts.now ?? new Date()).getTime() - n * DAY_MS).toISOString();
-    return type === "date" ? since.slice(0, 10) : since.replace(/\.\d+Z$/, "Z");
+    return Number.isInteger(n) && n >= 1 ? n : null;
   };
   const text = type === "string";
   switch (row.op) {
@@ -249,10 +258,10 @@ export function rowToCql(
     }
     case "in_the_last":
     case "not_in_the_last": {
-      // Counted back from the moment of writing: the saved date does not move with the day.
-      const since = days();
-      if (!since) return null;
-      const bound = type === "date" ? { date: since } : { timestamp: since };
+      // The number of days, not a date: the filter keeps counting back from the day it is read on.
+      const n = days();
+      if (n === null) return null;
+      const bound = { op: DAYS_AGO, args: [n] };
       return row.op === "in_the_last"
         ? { op: ">=", args: [p, bound] }
         : withEmpty({ op: "<", args: [p, bound] });
@@ -276,6 +285,7 @@ function nullField(node: unknown): string | null {
 
 /** The type of a field the layer no longer has, as the saved value shows it. */
 function guessType(raw: unknown): FieldType | undefined {
+  if (daysAgoOf(raw) !== null) return "date";
   if (isObject(raw))
     return typeof raw.date === "string" ? "date" : typeof raw.timestamp === "string" ? "datetime" : undefined;
   if (typeof raw === "number") return "number";
@@ -367,6 +377,9 @@ function comparisonRow(
   if ((op === "=" || op === "<>" || op === "!=") && raw === "")
     return guessed === "string" ? typed({ field, op: op === "=" ? "is_blank" : "is_not_blank" }) : null;
   if (op === "=" && typeof raw === "boolean") return { field, op: raw ? "is_true" : "is_false" };
+  // A relative day is "in the last N days" (from the day on); before it is a row only beside the empty value.
+  const days = daysAgoOf(raw);
+  if (days !== null) return op === ">=" ? typed({ field, op: "in_the_last", value: days }) : null;
   const value = filterValue(raw, guessed);
   if (value === undefined) return null;
   const date = temporal(guessed);
@@ -545,6 +558,13 @@ function filterOr(args: unknown[], r: Reader, depth: number): FilterCondition | 
     if (empties.some((f) => f !== null && f !== field)) return null;
     const rest = args.filter((_, i) => empties[i] === null);
     if (!rest.length) return { field, op: "is_blank" };
+    const before = rest.length === 1 && isObject(rest[0]) && rest[0].op === "<" ? rest[0] : null;
+    const days =
+      before && fieldOf(before) === field && Array.isArray(before.args) && before.args.length === 2
+        ? daysAgoOf(before.args[1])
+        : null;
+    if (days !== null)
+      return { field, op: "not_in_the_last", value: days, ...(!typeIn(r.fields, field) && { type: "date" }) };
     const inner = rest.length === 1 ? parse(rest[0], r, depth + 1) : filterOr(rest, r, depth + 1);
     if (!inner || inner.field !== field) return null;
     // Only a negation (or the empty text) takes the empty value as its alternative; `x = a or x is null` is no row.

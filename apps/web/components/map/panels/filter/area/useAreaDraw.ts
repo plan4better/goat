@@ -11,7 +11,14 @@ import { useStore } from "react-redux";
 
 import { SHOWN_MIDPOINTS_ID, generateCirclePolygon } from "@p4b/draw";
 
-import { type PolygonCoords, type Position, geometryPolygons, roundPolygons } from "@/lib/filter/area";
+import {
+  type PolygonCoords,
+  type Position,
+  geometryPolygons,
+  roundKm,
+  roundPolygons,
+  roundPosition,
+} from "@/lib/filter/area";
 import { useDraw } from "@/lib/providers/DrawProvider";
 import type { RootState } from "@/lib/store";
 import { setIsMapGetInfoActive, setMapCursor } from "@/lib/store/map/slice";
@@ -26,7 +33,16 @@ export type AreaShape = "polygon" | "circle";
 /** A shape, or a point: one click, a circle's centre. */
 export type DrawShape = AreaShape | "point";
 
-export type DrawnShape = { shape: AreaShape; polygons: PolygonCoords[] } | { shape: "point"; at: Position };
+/** A circle as a piece keeps it: its centre and its radius in kilometers. */
+export interface CircleShape {
+  center: Position;
+  km: number;
+}
+
+export type DrawnShape =
+  | { shape: "polygon"; polygons: PolygonCoords[] }
+  | ({ shape: "circle" } & CircleShape)
+  | { shape: "point"; at: Position };
 
 export interface AreaDraw {
   /** Whether a shape can be drawn now: there is a map with its draw tool and nothing else is using it. */
@@ -41,6 +57,10 @@ export interface AreaDraw {
    * once, as they are when the edit is finished (Enter, a click beside the shape, `finish`); Escape and `cancel` keep
    * the old shape, as does a shape left with fewer than three corners. */
   edit: (polygons: PolygonCoords[], onDone: (polygons: PolygonCoords[]) => void) => void;
+  /** Loads a circle into the tool as the line from its centre to its ring: the centre is dragged to move the circle,
+   * the other end to change its radius. `onDone` gets the circle once, as `edit` hands back polygons; a radius dragged
+   * down to nothing keeps the old circle. */
+  editCircle: (circle: CircleShape, onDone: (circle: CircleShape) => void) => void;
   /** Finishes the shape being edited. */
   finish: () => void;
   /** Gives up the shape being drawn or edited. */
@@ -67,38 +87,51 @@ const MODES: Record<DrawShape, string> = {
   point: DRAW_POINT,
 };
 
-/** The drawn feature as the shape it was started as, undefined when it is none. */
-function drawnShape(shape: DrawShape, feature: GeoJSON.Feature): DrawnShape | undefined {
-  if (shape !== "point") {
-    const polygons = drawnPolygons(shape, feature);
-    return polygons && { shape, polygons };
-  }
-  const { geometry } = feature;
-  if (geometry.type !== "Point" || geometry.coordinates.length < 2) return undefined;
-  // Rounded as a piece's coordinates are: the point as a ring of one position.
-  const [[[at]]] = roundPolygons([[[geometry.coordinates]]]);
-  return { shape, at };
+/** A centre and a radius as a piece keeps them, rounded; undefined for a radius of nothing. */
+function circleOf(center: number[], km: number): CircleShape | undefined {
+  const rounded = roundKm(km);
+  return rounded > 0 ? { center: roundPosition(center), km: rounded } : undefined;
 }
 
-/** The drawn feature as polygons, undefined when it is no shape. A circle comes as its radius: centre to edge. */
-function drawnPolygons(shape: AreaShape, feature: GeoJSON.Feature): PolygonCoords[] | undefined {
+/** The drawn feature as the shape it was started as, undefined when it is none. A circle comes as its radius line:
+ * centre to edge. */
+function drawnShape(shape: DrawShape, feature: GeoJSON.Feature): DrawnShape | undefined {
   const { geometry, properties } = feature;
   if (shape === "polygon") {
-    return geometry.type === "Polygon" ? roundPolygons([geometry.coordinates]) : undefined;
+    return geometry.type === "Polygon"
+      ? { shape, polygons: roundPolygons([geometry.coordinates]) }
+      : undefined;
   }
-  if (geometry.type !== "LineString" || geometry.coordinates.length < 2) return undefined;
-  const [center, edge] = geometry.coordinates;
-  // The second click writes radius and direction; a circle finished with Enter has only the line.
-  const radius =
-    typeof properties?.radiusInKm === "number"
-      ? properties.radiusInKm
-      : distance(center, edge, { units: "kilometers" });
-  if (!(radius > 0)) return undefined;
-  const start =
-    typeof properties?.azimuthDegrees === "number" ? properties.azimuthDegrees : bearing(center, edge);
-  const circle = generateCirclePolygon([center[0], center[1]], radius, start);
-  return roundPolygons([circle.geometry.coordinates]);
+  if (shape === "circle") {
+    if (geometry.type !== "LineString" || geometry.coordinates.length < 2) return undefined;
+    const [center, edge] = geometry.coordinates;
+    // The second click writes the radius; a circle finished with Enter has only the line.
+    const km =
+      typeof properties?.radiusInKm === "number"
+        ? properties.radiusInKm
+        : distance(center, edge, { units: "kilometers" });
+    const circle = circleOf(center, km);
+    return circle && { shape, ...circle };
+  }
+  if (geometry.type !== "Point" || geometry.coordinates.length < 2) return undefined;
+  return { shape, at: roundPosition(geometry.coordinates) };
 }
+
+/** What the select mode draws a circle around: a line from the centre to a point of the ring. */
+const RADIUS_LINE = { isCircle: true, isRadiusLine: true };
+/** Where the line meets the ring when a circle is loaded: east of the centre. */
+const EAST = 90;
+
+/** The point `km` from `center` towards `towards` (degrees from north): where a ring started there starts. */
+const pointAt = (center: Position, km: number, towards: number): Position =>
+  generateCirclePolygon(center, km, towards).geometry.coordinates[0][0] as Position;
+
+const radiusLine = (center: Position, edge: Position): GeoJSON.LineString => ({
+  type: "LineString",
+  coordinates: [center, edge],
+});
+
+const samePosition = (a: Position, b: Position) => a[0] === b[0] && a[1] === b[1];
 
 /** Whether a key goes to a field being typed in. */
 const typing = (target: EventTarget | null) =>
@@ -262,36 +295,33 @@ export function useAreaDraw(target: AreaMap = MAIN_MAP): AreaDraw {
     [map, drawControl, cancel, stop, taken, cutShort, begin]
   );
 
-  const edit = useCallback(
-    (polygons: PolygonCoords[], onDone: (polygons: PolygonCoords[]) => void) => {
-      if (!map || !drawControl || taken() || !polygons.length) return;
+  /** Loads `feature` into the tool's edit mode and ends the edit with what `read` makes of it then; nothing comes back
+   * when it makes nothing of it (the tool dropped the feature). `corners`: Delete and Backspace take the selected
+   * corners away. `onRender` hears every time the tool has drawn the feature, a drag included. */
+  const editFeature = useCallback(
+    <T>(
+      feature: GeoJSON.Feature,
+      read: (id: string) => T | null,
+      onDone: (edited: T) => void,
+      { corners, onRender }: { corners: boolean; onRender?: (id: string) => void }
+    ) => {
+      if (!map || !drawControl || taken()) return;
       cancel();
 
-      const geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon =
-        polygons.length === 1
-          ? { type: "Polygon", coordinates: polygons[0] }
-          : { type: "MultiPolygon", coordinates: polygons };
-      // Under the one id whose midpoints are shown: a click on one adds a corner.
-      const [featureId] = drawControl.add({
-        type: "Feature",
-        id: SHOWN_MIDPOINTS_ID,
-        properties: {},
-        geometry,
-      });
+      const [featureId] = drawControl.add(feature);
       drawControl.changeMode(DIRECT_SELECT, { featureId });
 
       /** Ends the edit with the shape as the tool has it now; with none once the tool dropped it. `afterClick` as for
        * `end`. */
       const done = (afterClick = false) => {
-        let edited: PolygonCoords[] | null = null;
+        let edited: T | null = null;
         try {
-          const feature = drawControl.get(String(featureId));
-          edited = feature ? geometryPolygons(feature.geometry) : null;
+          edited = read(String(featureId));
         } catch {
           /* the control went with its map */
         }
         stop(afterClick);
-        if (edited) onDone(roundPolygons(edited));
+        if (edited !== null) onDone(edited);
       };
       // The edit mode ends itself on a click beside the shape, and once a deleted corner left fewer than three, when
       // it has dropped the shape first.
@@ -310,9 +340,19 @@ export function useAreaDraw(target: AreaMap = MAIN_MAP): AreaDraw {
           event.preventDefault();
           event.stopPropagation();
           done();
-        } else if (event.key === "Delete" || event.key === "Backspace") {
+        } else if (corners && (event.key === "Delete" || event.key === "Backspace")) {
           event.preventDefault();
           drawControl.trash();
+        }
+      };
+      const checkCutShort = cutShort(drawControl, DIRECT_SELECT, featureId);
+      const onDrawn = () => {
+        checkCutShort();
+        // Cut short, the feature is gone and there is nothing to hear.
+        try {
+          if (drawControl.get(String(featureId))) onRender?.(String(featureId));
+        } catch {
+          /* the control went with its map */
         }
       };
 
@@ -320,7 +360,7 @@ export function useAreaDraw(target: AreaMap = MAIN_MAP): AreaDraw {
         map,
         {
           [MapboxDraw.constants.events.MODE_CHANGE]: onModeChange,
-          [MapboxDraw.constants.events.RENDER]: cutShort(drawControl, DIRECT_SELECT, featureId),
+          [MapboxDraw.constants.events.RENDER]: onDrawn,
         },
         onKeyDown
       );
@@ -331,6 +371,68 @@ export function useAreaDraw(target: AreaMap = MAIN_MAP): AreaDraw {
       );
     },
     [map, drawControl, cancel, stop, taken, cutShort, begin]
+  );
+
+  const edit = useCallback(
+    (polygons: PolygonCoords[], onDone: (polygons: PolygonCoords[]) => void) => {
+      if (!drawControl || !polygons.length) return;
+      const geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon =
+        polygons.length === 1
+          ? { type: "Polygon", coordinates: polygons[0] }
+          : { type: "MultiPolygon", coordinates: polygons };
+      editFeature(
+        // Under the one id whose midpoints are shown: a click on one adds a corner.
+        { type: "Feature", id: SHOWN_MIDPOINTS_ID, properties: {}, geometry },
+        (id) => {
+          const feature = drawControl.get(id);
+          const edited = feature ? geometryPolygons(feature.geometry) : null;
+          return edited && roundPolygons(edited);
+        },
+        onDone,
+        { corners: true }
+      );
+    },
+    [drawControl, editFeature]
+  );
+
+  const editCircle = useCallback(
+    (circle: CircleShape, onDone: (circle: CircleShape) => void) => {
+      if (!drawControl) return;
+      // The circle as the tool has it, as far as it was heard.
+      let { center, km } = circle;
+      let edge = pointAt(center, km, EAST);
+      /** Keeps up with the line as the tool has it now: a centre dragged on its own takes the ring along (the radius
+       * stays), the other end dragged is a new radius, and a point added between the two goes again. Null once the
+       * tool dropped the line. */
+      const follow = (id: string): CircleShape | null => {
+        const feature = drawControl.get(id);
+        if (feature?.geometry.type !== "LineString" || feature.geometry.coordinates.length < 2) return null;
+        const { coordinates } = feature.geometry;
+        const now = coordinates[0] as Position;
+        const end = coordinates[coordinates.length - 1] as Position;
+        const moved = !samePosition(now, center);
+        if (moved) edge = pointAt(now, km, bearing(center, edge));
+        else if (!samePosition(end, edge)) {
+          edge = end;
+          km = distance(center, edge, { units: "kilometers" });
+        }
+        center = now;
+        if (moved || coordinates.length !== 2)
+          drawControl.add({ ...feature, geometry: radiusLine(center, edge) });
+        return { center, km };
+      };
+      editFeature(
+        // Under an id of its own, whose midpoints stay hidden: a corner added would end the circle.
+        { type: "Feature", properties: RADIUS_LINE, geometry: radiusLine(center, edge) },
+        (id) => {
+          const edited = follow(id);
+          return (edited && circleOf(edited.center, edited.km)) ?? null;
+        },
+        onDone,
+        { corners: false, onRender: follow }
+      );
+    },
+    [drawControl, editFeature]
   );
 
   // Measuring or editing started, or the map went: the shape is given up.
@@ -345,6 +447,7 @@ export function useAreaDraw(target: AreaMap = MAIN_MAP): AreaDraw {
     editing: active === "edit",
     start,
     edit,
+    editCircle,
     finish,
     cancel,
   };

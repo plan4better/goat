@@ -1,5 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
 import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { SWRConfig } from "swr";
 import { describe, expect, it, vi } from "vitest";
@@ -27,7 +28,12 @@ vi.mock("@/lib/style/transports/core", () => ({
 vi.mock("@/lib/api/fetcher", () => ({ renewAccessToken: async () => true }));
 vi.mock("@/hooks/style/useStyleData", () => ({ useStyleData: () => EMPTY_DATA }));
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({}) }));
-vi.mock("@/components/map/panels/filter/LayerFilterPanel", () => ({ default: () => null }));
+// The filter tab shows whether it is told it is on screen: its popovers close and its area leaves the map when not.
+vi.mock("@/components/map/panels/filter/LayerFilterPanel", () => ({
+  default: ({ visible = true }: { visible?: boolean }) => (
+    <div data-testid="filter-tab" data-visible={String(visible)} />
+  ),
+}));
 vi.mock("@/components/map/panels/properties/Properties", () => ({ default: () => null }));
 vi.mock("@/lib/api/projects", async (original) => ({
   ...(await original<object>()),
@@ -103,5 +109,20 @@ describe("the layer settings panel", () => {
     renderPanel();
     const body = await screen.findByTestId("style-panel-body");
     expect(getComputedStyle(body).backgroundColor).toMatch(/^(rgba\(0, 0, 0, 0\)|transparent|)$/);
+  });
+
+  it("a layer's filter tab knows it is off screen once another tab is open", async () => {
+    renderPanel();
+    await userEvent.click(screen.getByRole("tab", { name: "filter" }));
+    expect(screen.getByTestId("filter-tab").dataset.visible).toBe("true");
+    await userEvent.click(screen.getByRole("tab", { name: "style" }));
+    expect(screen.getByTestId("filter-tab").dataset.visible).toBe("false");
+  });
+
+  it("a table's filter tab knows it is off screen once its metadata is open", async () => {
+    renderPanel({ ...layer, type: "table", feature_layer_geometry_type: null } as unknown as MapLayer);
+    expect((await screen.findByTestId("filter-tab")).dataset.visible).toBe("true");
+    await userEvent.click(screen.getByRole("tab", { name: "metadata.title" }));
+    expect(screen.getByTestId("filter-tab").dataset.visible).toBe("false");
   });
 });

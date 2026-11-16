@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { FilterIssue } from "@/lib/filter/issues";
 import type { FilterCondition } from "@/lib/filter/model";
@@ -80,6 +80,16 @@ describe("the condition's fields", () => {
     const issues: FilterIssue[] = [{ code: "field_type_mismatch", field: "traffic", type: "number" }];
     show({ field: "traffic", op: "is_at_least", value: "x" }, "number", { issues });
     expect(screen.getByText("filter_panel.issue_field_type_mismatch")).toBeInTheDocument();
+  });
+
+  it("name the number of days by the label shown beside it", async () => {
+    const { onChange } = show({ field: "built", op: "in_the_last" }, "date");
+    const days = screen.getByLabelText("filter_panel.days") as HTMLInputElement;
+    expect(screen.getByText("filter_panel.days")).toBeInTheDocument();
+    expect(screen.queryByLabelText("style_editor.condition_value")).toBeNull();
+    await userEvent.type(days, "7");
+    fireEvent.blur(days);
+    expect(onChange).toHaveBeenLastCalledWith({ value: 7 });
   });
 });
 
@@ -247,5 +257,41 @@ describe("a typed value's box", () => {
     onCommit.mockImplementation((value) => order.push(value));
     await userEvent.type(input, "7{Enter}");
     expect(order).toEqual([7, "enter"]);
+  });
+
+  describe("for a date and time", () => {
+    // Berlin is an hour ahead of UTC in winter and two in summer.
+    beforeAll(() => {
+      vi.stubEnv("TZ", "Europe/Berlin");
+    });
+    afterAll(() => {
+      vi.unstubAllEnvs();
+    });
+
+    function moment(value: unknown) {
+      const onCommit = vi.fn();
+      renderWithProviders(
+        <CommitInput value={value} kind="datetime" ariaLabel="moment" onCommit={onCommit} />
+      );
+      return { onCommit, input: screen.getByLabelText("moment") as HTMLInputElement };
+    }
+
+    it("shows the stored instant in the browser's zone", () => {
+      expect(moment("2026-11-16T09:00:00Z").input.value).toBe("2026-11-16T10:00");
+    });
+
+    it("stores the picked time as the instant it names in the browser's zone", () => {
+      const { onCommit, input } = moment("2026-11-16T09:00:00Z");
+      fireEvent.change(input, { target: { value: "2026-07-01T10:00" } });
+      fireEvent.blur(input);
+      expect(onCommit).toHaveBeenCalledWith("2026-07-01T08:00:00Z");
+    });
+
+    it("stores the browser's midnight as that instant", () => {
+      const { onCommit, input } = moment(undefined);
+      fireEvent.change(input, { target: { value: "2026-11-16T00:00" } });
+      fireEvent.blur(input);
+      expect(onCommit).toHaveBeenCalledWith("2026-11-15T23:00:00Z");
+    });
   });
 });
