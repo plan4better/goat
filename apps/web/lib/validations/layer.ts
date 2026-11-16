@@ -388,7 +388,8 @@ export const datasetDownloadRequestSchema = z.object({
   file_type: featureDataExchangeType.optional(),
   file_name: z.string().optional(),
   crs: z.string().optional(),
-  query: z.string().optional(),
+  // The layer's saved filter, a CQL2 object.
+  query: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const datasetCollectionItems = z.object({

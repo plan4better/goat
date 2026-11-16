@@ -469,11 +469,16 @@ export const downloadLayerDirect = async (
   layerId: string,
   format: string,
   fileName: string,
-  crs?: string
+  crs?: string,
+  /** The layer's saved filter (CQL2): the file holds the features the map shows. */
+  filter?: Record<string, unknown>
 ): Promise<void> => {
   const params = new URLSearchParams({ format });
   if (crs) {
     params.set("crs", crs);
+  }
+  if (filter && Object.keys(filter).length) {
+    params.set("filter", JSON.stringify(filter));
   }
 
   const url = `${COLLECTIONS_API_BASE_URL}/${layerId}/download?${params.toString()}`;
