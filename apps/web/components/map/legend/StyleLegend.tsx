@@ -2,7 +2,7 @@
 
 // A layer's legend (spec 7.2) from its data model (buildLegend): the layer list, the style panel's preview, popups'
 // header icons and print draw it with these components.
-import { Box, type SxProps, type Theme, Typography } from "@mui/material";
+import { Box, Skeleton, type SxProps, type Theme, Typography } from "@mui/material";
 import { Fragment, type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -519,6 +519,17 @@ export function StyleLegend({
                   {text(`${section.id}_${entry.id}`, entryText(section, entry), true)}
                 </Box>
               ))}
+            {section.kind === "entries" && !!section.pending && (
+              // Its classes are still being counted: placeholder rows, so the legend never lists every class first.
+              <Box data-legend-pending aria-busy="true">
+                {Array.from({ length: section.pending }, (_, i) => (
+                  <Box key={i} data-legend-placeholder sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <Skeleton variant="rounded" width={column} height={12} sx={{ flex: "none" }} />
+                    <Skeleton variant="text" width={`${60 - i * 12}%`} />
+                  </Box>
+                ))}
+              </Box>
+            )}
             {section.kind === "ramp" && (
               <Box>
                 <Box
@@ -549,6 +560,15 @@ export function StyleLegend({
                   ))}
                 </Box>
               </Box>
+            )}
+            {section.kind === "empty" && (
+              <Typography
+                data-legend-empty
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: "block" }}>
+                {t(`style_editor.legend_none_${section.classes}`)}
+              </Typography>
             )}
             {section.kind === "height" && text(section.id, heightText(section), true)}
             {section.kind === "image" && (

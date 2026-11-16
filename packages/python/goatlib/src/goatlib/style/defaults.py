@@ -107,6 +107,7 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
     "popup.anchor": "top_right",
     "popup.header": "standard",
     "popup.highlight_active_feature": True,
+    "legend.classes": "filter",
 }
 
 #: Today's look for new layers: a color from the Spectral palette, picked by the

@@ -16,6 +16,7 @@ import { createCoreTransport } from "@/lib/style/transports/core";
 import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useAppSelector } from "@/hooks/store/ContextHooks";
 import { useLayerStyle } from "@/hooks/style/useLayerStyle";
+import type { LegendLayer } from "@/hooks/style/useLegendPresence";
 import { useStyleData } from "@/hooks/style/useStyleData";
 
 import { type EditorLayer, StyleEditor } from "@/components/map/panels/styleEditor/StyleEditor";
@@ -51,11 +52,14 @@ export function ProjectStylePanel({
   projectId,
   layer,
   top,
+  visible = true,
 }: {
   projectId: string;
   layer: MapLayer;
   /** Above the sections: the layer's named styles. */
   top?: ReactNode;
+  /** Off while the Style tab is not the open one: the panel's popovers close. */
+  visible?: boolean;
 }) {
   const store = useLayerStyle(projectId, layer);
   useOpeningCheck(projectId, layer, store);
@@ -63,7 +67,15 @@ export function ProjectStylePanel({
   const geometry = geometryOf(layer.feature_layer_geometry_type);
   const kind: EditorLayer["kind"] =
     layer.type !== "raster" ? "vector" : source?.kind === "cog" ? "raster" : "service";
-  const data = useStyleData({ id: layer.layer_id, name: layer.name, geometry, source });
+  const dataset = useStyleData({ id: layer.layer_id, name: layer.name, geometry, source });
+  // The legend preview's counts follow the layer's filter and data, not every change of the layer object.
+  const { id, layer_id: datasetId, dataset_updated_at: version } = layer;
+  const cql = layer.query?.cql;
+  const legendLayer = useMemo<LegendLayer>(
+    () => ({ key: String(id), dataset: datasetId, cql, version }),
+    [id, datasetId, cql, version]
+  );
+  const data = useMemo(() => ({ ...dataset, legendLayer }), [dataset, legendLayer]);
   // The panel is outside the <Map>: the project map by its id (`map`), which `current` is only inside it.
   const { current, map: projectMap } = useMap();
   const map = ((current ?? projectMap)?.getMap() ?? null) as MaplibreMap | null;
@@ -83,7 +95,8 @@ export function ProjectStylePanel({
       map={map}
       mapZoom={zoom}
       top={top}
-      header={false}>
+      header={false}
+      shown={visible}>
       <MapStateProvider value={mapState}>
         <StyleSections kind={kind} />
       </MapStateProvider>

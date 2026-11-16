@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NO_DATA_COLOR, removeClassification } from "@/lib/style/editor/classify";
@@ -242,6 +243,37 @@ describe("classification editor", () => {
     expect(store.get("classify.0.classes.0.outline")).toBeUndefined();
     expect(store.get("classify.0.classes.0.fill.color")).toBe("#fef0d9");
     expect(saves).toHaveLength(1);
+  });
+
+  it("the panel's popovers close when its tab is left: they draw outside it", async () => {
+    const document = doc([QUANTILE]);
+    const transport: StyleTransport = {
+      save: () => new Promise(() => undefined),
+      load: async () => ({ document, revision: 1 }),
+    };
+    const store = new EditorStore({ saver: new StyleSaver({ transport, document, revision: 1 }) });
+    function StyleTab() {
+      const [shown, setShown] = useState(true);
+      return (
+        <>
+          <button onClick={() => setShown(false)}>other tab</button>
+          <StyleEditor
+            layer={{ id: "l1", name: "Districts", geometry: "polygon", kind: "vector" }}
+            store={store}
+            data={{ ...EMPTY_DATA, ...DATA }}
+            map={null}
+            mapZoom={12}
+            shown={shown}>
+            <ClassificationEditor ci={0} />
+          </StyleEditor>
+        </>
+      );
+    }
+    renderWithProviders(<StyleTab />);
+    await userEvent.click(screen.getByText("OrRd"));
+    expect(screen.getByRole("button", { name: "Blues" })).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "other tab" }));
+    expect(screen.queryByRole("button", { name: "Blues" })).toBeNull();
   });
 
   it("a manual bound sets the previous class's to", () => {

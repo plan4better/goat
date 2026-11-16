@@ -9,6 +9,7 @@ import { useMap } from "react-map-gl/maplibre";
 
 import type { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
+import type { JsonObject } from "@/lib/style/json";
 import {
   type Anchors,
   type MapLayersState,
@@ -20,6 +21,7 @@ import {
   syncMapLayers,
 } from "@/lib/style/render/mapLayers";
 import { PENDING_KEY } from "@/lib/style/render/viewLayers";
+import { type PresenceMap, watchViewPresence } from "@/lib/style/render/viewPresence";
 import { lowestOverlayId } from "@/lib/utils/map/overlayLayers";
 
 import { useBasemapStacking } from "@/hooks/map/useBasemapStacking";
@@ -42,6 +44,9 @@ interface StyledLayersProps {
   ground?: string;
   /** Every MapLibre layer id the renderer drew, after each change (interactive layers, snapping). */
   onLayersChange?: (ids: string[]) => void;
+  /** Counts the classes in view for legends that list those (spec 7.2 `legend.classes: view`), kept under this name
+   * (`MAP_SCOPE`, `printScope`); none where no legend reads this map. */
+  presenceScope?: string;
 }
 
 type StyleMap = RendererMap & {
@@ -102,6 +107,7 @@ export function StyledLayers({
   overlay,
   ground,
   onLayersChange,
+  presenceScope,
 }: StyledLayersProps) {
   const { current } = useMap();
   const map = current?.getMap() as StyleMap | undefined;
@@ -112,6 +118,7 @@ export function StyledLayers({
   const state = useRef<MapLayersState | null>(null);
   const anchors = useRef<Anchors | null>(null);
   const frame = useRef<number | null>(null);
+  const presence = useRef<ReturnType<typeof watchViewPresence> | null>(null);
   // The style JSON has loaded (getStyle() answers): sources and layers can be added. A new style (a basemap switch)
   // that is still loading makes a draw throw; it waits for the style again.
   const ready = useRef(false);
@@ -159,6 +166,8 @@ export function StyledLayers({
         drawnIds.current = ids.join("|");
         latest.current.onLayersChange?.(ids);
       }
+      // A class edited, another filter or time: the classes in view may have changed without a move.
+      presence.current?.refresh();
     });
   }, [map]);
 
@@ -192,6 +201,25 @@ export function StyledLayers({
       map.off("style.load", onStyleLoad);
     };
   }, [map, draw]);
+
+  // The classes in view, for the legends that list those: counted on the layers as drawn, edits included.
+  useEffect(() => {
+    if (!map || !presenceScope) return;
+    const watch = watchViewPresence(map as unknown as PresenceMap, presenceScope, () =>
+      latest.current.layers
+        .filter((layer) => !layer.key.startsWith(PENDING_KEY))
+        .map((layer) => ({
+          key: layer.key,
+          style: (edited.current.get(layer.key) ?? layer.style) as unknown as JsonObject,
+        }))
+    );
+    presence.current = watch;
+    watch.refresh();
+    return () => {
+      presence.current = null;
+      watch.dispose();
+    };
+  }, [map, presenceScope]);
 
   useEffect(
     () => () => {

@@ -2085,6 +2085,58 @@
   }
  },
  {
+  "line": 1509,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#9aa3ad",
+     "size": 8
+    }
+   },
+   "classify": [
+    {
+     "id": "type",
+     "field": "type",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "primary"
+       ],
+       "name": "Primary",
+       "marker": {
+        "color": "#4e79a7"
+       }
+      },
+      {
+       "values": [
+        "secondary"
+       ],
+       "name": "Secondary",
+       "marker": {
+        "color": "#f28e2b"
+       }
+      }
+     ],
+     "other": {
+      "name": "Other",
+      "marker": {
+       "color": "#bab0ac"
+      }
+     }
+    }
+   ],
+   "legend": {
+    "classes": "view"
+   }
+  }
+ },
+ {
   "line": 1537,
   "target": "facilities",
   "expect": [],

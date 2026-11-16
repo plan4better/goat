@@ -708,6 +708,7 @@ export interface Legend {
   show?: boolean | null;
   title?: string | null;
   caption?: string | null;
+  classes?: ("all" | "filter" | "view") | null;
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema

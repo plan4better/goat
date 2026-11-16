@@ -98,6 +98,7 @@ export const DEFAULTS: Readonly<Record<string, unknown>> = {
   "popup.anchor": "top_right",
   "popup.header": "standard",
   "popup.highlight_active_feature": true,
+  "legend.classes": "filter",
 };
 
 /** From which zoom each H3 resolution draws under "auto" (goatlib AUTO_FROM_ZOOM); geoapi picks it per tile. */

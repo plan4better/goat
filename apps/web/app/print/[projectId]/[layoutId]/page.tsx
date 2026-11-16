@@ -23,6 +23,7 @@ import { useBasemap } from "@/hooks/map/MapHooks";
 import { type MapLayer, useMapLayers } from "@/hooks/map/useMapLayers";
 import { useAtlasFeatures } from "@/hooks/reports/useAtlasFeatures";
 import { usePrintConfig } from "@/hooks/reports/usePrintConfig";
+import { useLegendsWaiting } from "@/hooks/style/useLegendPresence";
 
 import { ElementContentRenderer } from "@/components/reports/elements/renderers/ElementRenderers";
 
@@ -124,13 +125,24 @@ export default function PrintPage() {
   // Check if all maps are loaded
   const allMapsLoaded = mapElementCount === 0 || mapsLoadedCount >= mapElementCount;
 
+  // A legend that lists only the classes the filter keeps, or those in its map's view, waits for their count.
+  const legendsWaiting = useLegendsWaiting();
+
   // Check if atlas data is ready (if atlas is enabled)
   const atlasReady = !isAtlasEnabled || (!isAtlasLoading && (atlasResult !== null || atlasTotalPages === 0));
 
   // Signal to Playwright that the page is ready for printing
   // Wait for data to load AND all maps to be loaded AND atlas data (if enabled)
   useEffect(() => {
-    if (reportLayout && !isLoading && !isProjectLoading && !isLayersLoading && allMapsLoaded && atlasReady) {
+    if (
+      reportLayout &&
+      !isLoading &&
+      !isProjectLoading &&
+      !isLayersLoading &&
+      allMapsLoaded &&
+      atlasReady &&
+      !legendsWaiting
+    ) {
       // Give additional delay for map tiles to fully render
       // Keep this short since Playwright also waits for networkidle
       const timer = setTimeout(() => {
@@ -140,7 +152,7 @@ export default function PrintPage() {
       }, 1000); // 1 second delay to allow map tiles to render
       return () => clearTimeout(timer);
     }
-  }, [reportLayout, isLoading, isProjectLoading, isLayersLoading, allMapsLoaded, atlasReady]);
+  }, [reportLayout, isLoading, isProjectLoading, isLayersLoading, allMapsLoaded, atlasReady, legendsWaiting]);
 
   // Set document title based on layout name (used as PDF filename)
   useEffect(() => {

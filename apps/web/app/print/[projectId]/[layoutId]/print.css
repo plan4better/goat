@@ -16,8 +16,9 @@
   margin: 0 !important;
 }
 
-/* Remove all rounded borders for report elements */
-#print-paper * {
+/* Remove all rounded borders for report elements, except a marker's shape in a legend swatch:
+   a circle marker stays a circle */
+#print-paper *:not([data-marker-shape]) {
   border-radius: 0 !important;
 }
 

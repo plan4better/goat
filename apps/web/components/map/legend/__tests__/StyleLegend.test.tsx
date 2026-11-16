@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { buildLegend } from "@/lib/style/legend";
+import { PRESENCE_PENDING, buildLegend } from "@/lib/style/legend";
 
 import { StyleLegend, SwatchIcon, featureSwatchIcon } from "@/components/map/legend/StyleLegend";
 
@@ -21,6 +21,8 @@ vi.mock("react-i18next", () => ({
           "style_editor.legend_height_storeys": "Height · {{field}} × {{storey}} m",
           "style_editor.legend_height_h3": "Height · {{value_label}}",
           "style_editor.h3_value_sum": "Sum of {{field}}",
+          "style_editor.legend_none_view": "None in view",
+          "style_editor.legend_none_filter": "None kept by the filter",
         })[key] ?? "and more"
       ).replace(/{{(\w+)}}/g, (_, name: string) => String(options?.[name] ?? "")),
     i18n: { language: "en" },
@@ -50,6 +52,39 @@ describe("StyleLegend", () => {
     ],
     no_data: { marker: { color: "#cccccc" } },
   };
+
+  it("a classification still being counted draws placeholder rows under its heading, no classes", () => {
+    const doc = { version: 1, kind: "vector", symbol: { marker: { color: "#e01903" } }, classify: [COLOR] };
+    const legend = buildLegend(doc as never, { geometry: "point", zoom: 12, present: PRESENCE_PENDING })!;
+    const { container } = render(<StyleLegend legend={legend} variant="tree" />);
+    expect(screen.getByText("share")).toBeDefined();
+    const waiting = container.querySelector("[data-legend-pending]") as HTMLElement;
+    expect(waiting.getAttribute("aria-busy")).toBe("true");
+    expect(waiting.querySelectorAll("[data-legend-placeholder]")).toHaveLength(3);
+    expect(screen.queryByText("No data")).toBeNull();
+  });
+
+  it("a legend the counts emptied shows a note in place of a swatch", () => {
+    const doc = {
+      version: 1,
+      kind: "vector",
+      symbol: { marker: { color: "#e01903" } },
+      classify: [COLOR],
+      legend: { classes: "view" },
+    };
+    const none = { classes: new Set<string>(), other: false, no_data: false };
+    const legend = buildLegend(doc as never, { geometry: "point", zoom: 12, present: { color: none } })!;
+    const { container } = render(<StyleLegend legend={legend} variant="tree" />);
+    expect(screen.getByText("None in view")).toBeDefined();
+    expect(container.querySelector("[data-marker-shape]")).toBeNull();
+    const filtered = buildLegend({ ...doc, legend: { classes: "filter" } } as never, {
+      geometry: "point",
+      zoom: 12,
+      present: { color: none },
+    })!;
+    render(<StyleLegend legend={filtered} variant="tree" />);
+    expect(screen.getByText("None kept by the filter")).toBeDefined();
+  });
 
   it("two blocks name the property each sets with the field; one block names the field", () => {
     const { unmount } = render(<StyleLegend legend={twoBlocks([SIZE, COLOR])} variant="tree" />);

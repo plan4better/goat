@@ -61,10 +61,10 @@ function Editor({ name }: { name: string }) {
   );
 }
 
-function rows(scope?: unknown) {
+function rows(scope?: unknown, shown?: boolean) {
   return (
     <div data-style-panel>
-      <PopoverProvider scope={scope}>
+      <PopoverProvider scope={scope} shown={shown}>
         <OpenerRow name="fill" />
         <OpenerRow name="outline" />
         <KeyRow name="fill" />
@@ -142,5 +142,28 @@ describe("popover renders", () => {
     expect(screen.queryByText("fill content")).toBeNull();
     expect(button("fill").getAttribute("aria-expanded")).toBe("false");
     expect(screen.getByTestId("key:fill").dataset.open).toBe("false");
+  });
+
+  it("a hidden panel closes its popovers: they draw outside it and would stay on screen", async () => {
+    // The panel stays mounted, hidden, while another tab is open: only `shown` changes.
+    const show: { current: (shown: boolean) => void } = { current: () => undefined };
+    function Panel() {
+      const [shown, setShown] = useState(true);
+      show.current = setShown;
+      return rows("a", shown);
+    }
+    renderPanel(<Panel />);
+    await userEvent.click(button("fill"));
+    await userEvent.click(button("fill-picker"));
+    expect(screen.getByText("fill-picker content")).toBeDefined();
+    act(() => show.current(false));
+    expect(screen.queryByText("fill content")).toBeNull();
+    expect(screen.queryByText("fill-picker content")).toBeNull();
+    expect(button("fill").getAttribute("aria-expanded")).toBe("false");
+    // Shown again, nothing opens by itself; a row opens its editor as before.
+    act(() => show.current(true));
+    expect(screen.queryByText("fill content")).toBeNull();
+    await userEvent.click(button("fill"));
+    expect(screen.getByText("fill content")).toBeDefined();
   });
 });

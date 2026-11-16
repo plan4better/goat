@@ -19,11 +19,13 @@ import { SYSTEM_LAYERS_IDS } from "@/lib/constants";
 import { emitInteractionEvent } from "@/lib/store/interaction/slice";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { buildLegend, informative } from "@/lib/style/legend";
+import { informative } from "@/lib/style/legend";
+import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 import type { GroupSwitcherType } from "@/lib/validations/widget";
 
 import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
+import { legendLayerOf, useLayerLegend } from "@/hooks/style/useLegendPresence";
 
 import { selectableChipSx } from "@/components/builder/widgets/common/selectableChipSx";
 import { useWidgetLayerTree } from "@/components/builder/widgets/information/useWidgetLayerTree";
@@ -53,10 +55,15 @@ const ActiveLayerLegend = ({
 }) => {
   const zoom = useAppSelector((state) => Math.round(state.map.currentZoom ?? 12));
   const style = (layer.style?.document ?? null) as JsonObject | null;
-  if (!style || style.legend === false || (isObject(style.legend) && style.legend.show === false)) return null;
-  const legend = simple
-    ? null
-    : buildLegend(style, { geometry: geometryOf(layer.feature_layer_geometry_type), zoom });
+  const shown = !!style && style.legend !== false && !(isObject(style.legend) && style.legend.show === false);
+  // The classes its `legend.classes` lists: those the layer's filter keeps, or those in the map's view.
+  const legend = useLayerLegend(
+    shown && !simple ? style : null,
+    { geometry: geometryOf(layer.feature_layer_geometry_type), zoom },
+    legendLayerOf(layer),
+    MAP_SCOPE
+  );
+  if (!style || !shown) return null;
   const caption =
     isObject(style.legend) && typeof style.legend.caption === "string" ? style.legend.caption : null;
   return (

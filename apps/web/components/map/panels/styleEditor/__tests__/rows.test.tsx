@@ -313,6 +313,13 @@ describe("rows", () => {
     expect(within(row).getByRole("button", { name: "up" })).toBeDefined();
   });
 
+  it("a long label wraps in the label column, hyphenated, rather than being cut off", () => {
+    renderPanel(<SwitchRow label="Bildunterschrift" on onToggle={() => undefined} />);
+    const label = screen.getByText("Bildunterschrift");
+    expect(label.className).not.toContain("MuiTypography-noWrap");
+    expect(label).toHaveStyle({ hyphens: "auto", overflowWrap: "break-word" });
+  });
+
   it("a dense row is shorter: for a list of names rather than of fields", () => {
     renderPanel(
       <>

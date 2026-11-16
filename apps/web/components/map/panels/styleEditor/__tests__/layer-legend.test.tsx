@@ -1,15 +1,16 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { LayerStyle } from "@/lib/style/generated/types";
+import { MAP_SCOPE, watchViewPresence } from "@/lib/style/render/viewPresence";
 
 import type { StyleData } from "@/components/map/panels/styleEditor/context";
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
 import { LayerSection } from "@/components/map/panels/styleEditor/sections/LayerSection";
 import { LegendSection } from "@/components/map/panels/styleEditor/sections/LegendSection";
 
-import { choose, renderPanel } from "./renderPanel";
+import { choose, echoTransport, renderPanel } from "./renderPanel";
 
 const FIELDS = [
   { name: "year", type: "integer" as const, label: "year" },
@@ -129,6 +130,100 @@ describe("legend section", () => {
     expect(within(preview).getByText("Districts")).toBeDefined();
     act(() => store.set("classify.0.classes.0.name", "Sparse"));
     expect(within(preview).getByText("Sparse")).toBeDefined();
+  });
+
+  it("Classes shown: kept by the filter by default, all or in view written, the default written as nothing", async () => {
+    const { store } = setup({ classify: CLASSIFY });
+    await userEvent.click(within(rowOf("style_editor.contents")).getByRole("button"));
+    await choose("style_editor.classes_shown", "style_editor.classes_filter", "style_editor.classes_view");
+    expect(store.get("legend")).toEqual({ classes: "view" });
+    await choose("style_editor.classes_shown", "style_editor.classes_view", "style_editor.classes_all");
+    expect(store.get("legend.classes")).toBe("all");
+    await choose("style_editor.classes_shown", "style_editor.classes_all", "style_editor.classes_filter");
+    expect(store.get("legend")).toBeUndefined();
+  });
+
+  it("one change of Classes shown saves once", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const transport = echoTransport();
+    renderPanel(
+      <PopoverProvider>
+        <LayerSection />
+        <LegendSection />
+      </PopoverProvider>,
+      {
+        document: {
+          version: 1,
+          kind: "vector",
+          symbol: { fill: { color: "#cccccc" } },
+          classify: CLASSIFY,
+        } as LayerStyle,
+        data: { geometry: "polygon", fields: FIELDS, layerName: "Districts" },
+        transport,
+      }
+    );
+    await userEvent.click(within(rowOf("style_editor.contents")).getByRole("button"));
+    await choose("style_editor.classes_shown", "style_editor.classes_filter", "style_editor.classes_view");
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(transport.saves).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it("Classes shown offers the three choices, and only where the legend has classes", async () => {
+    setup({ classify: CLASSIFY });
+    await userEvent.click(within(rowOf("style_editor.contents")).getByRole("button"));
+    await userEvent.click(within(rowOf("style_editor.classes_shown")).getByRole("combobox"));
+    expect(
+      within(screen.getByRole("listbox"))
+        .getAllByRole("option")
+        .map((option) => option.textContent)
+    ).toEqual(["style_editor.classes_all", "style_editor.classes_filter", "style_editor.classes_view"]);
+  });
+
+  it("Classes shown is not offered without classifications", async () => {
+    setup();
+    await userEvent.click(within(rowOf("style_editor.contents")).getByRole("button"));
+    expect(screen.queryByText("style_editor.classes_shown")).toBeNull();
+  });
+
+  it("the preview lists the classes the map shows when the legend lists those in view", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const named = {
+      ...CLASSIFY[0],
+      classes: [
+        { to: 10, name: "Sparse", fill: { color: "#ff0000" } },
+        { from: 10, name: "Dense" },
+      ],
+    };
+    const doc = { classify: [named], legend: { classes: "view" } };
+    setup(doc, { legendLayer: { key: "7", dataset: "dataset-1" } });
+    await userEvent.click(within(rowOf("style_editor.contents")).getByRole("button"));
+    const preview = screen.getByTestId("legend-preview");
+    // Until the map has counted its view the preview waits, rather than list every class and then shrink.
+    expect(within(preview).queryByText("Sparse")).toBeNull();
+    expect(preview.querySelector("[data-legend-pending]")).not.toBeNull();
+    const map = {
+      on: () => undefined,
+      off: () => undefined,
+      once: () => undefined,
+      isMoving: () => false,
+      loaded: () => true,
+      getLayer: () => ({}),
+      queryRenderedFeatures: () => [{ properties: { density: 25 } }],
+    };
+    const style = { version: 1, kind: "vector", ...doc };
+    const watch = watchViewPresence(map, MAP_SCOPE, () => [{ key: "7", style }], {
+      layerIds: () => ["7-fill"],
+    });
+    act(() => {
+      watch.refresh();
+      vi.runOnlyPendingTimers();
+    });
+    expect(within(preview).queryByText("Sparse")).toBeNull();
+    expect(within(preview).getByText("Dense")).toBeDefined();
+    expect(preview.querySelector("[data-legend-pending]")).toBeNull();
+    act(() => watch.dispose());
+    vi.useRealTimers();
   });
 
   it("Show off hides the legend and an empty title removes it", async () => {

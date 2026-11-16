@@ -17,6 +17,7 @@ import { cameraFor, viewModeOf } from "@/lib/scene/view";
 import { extrudes } from "@/lib/style/compile/polygons";
 import type { Scene } from "@/lib/style/generated/types";
 import type { JsonObject } from "@/lib/style/json";
+import { printScope } from "@/lib/style/render/viewPresence";
 import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 import type { MapAtlasControl, ReportElement } from "@/lib/validations/reportLayout";
 
@@ -412,6 +413,7 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
                 layers={renderLayers}
                 locale={locale || i18n.language}
                 ground={buildingsAnchor(appliedScene)}
+                presenceScope={printScope(element.id)}
               />
             )}
           </Map>

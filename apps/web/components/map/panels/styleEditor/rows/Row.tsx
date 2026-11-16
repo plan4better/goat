@@ -37,7 +37,11 @@ export const Row = memo(function Row({ label, children, actions, note, off, acti
         bgcolor: (theme) => (active ? alpha(theme.palette.primary.main, 0.08) : "transparent"),
       }}>
       {label !== undefined && (
-        <Typography variant="caption" color={active ? "primary" : "text.secondary"} noWrap>
+        // A label longer than the column wraps, a long word hyphenated in the page's language.
+        <Typography
+          variant="caption"
+          color={active ? "primary" : "text.secondary"}
+          sx={{ hyphens: "auto", overflowWrap: "break-word" }}>
           {label}
         </Typography>
       )}

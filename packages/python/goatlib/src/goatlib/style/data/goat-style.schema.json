@@ -3996,6 +3996,23 @@
      ],
      "default": null,
      "title": "Caption"
+    },
+    "classes": {
+     "anyOf": [
+      {
+       "enum": [
+        "all",
+        "filter",
+        "view"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Classes"
     }
    },
    "title": "Legend",
@@ -12222,7 +12239,8 @@
   "popup.layout": "popup",
   "popup.anchor": "top_right",
   "popup.header": "standard",
-  "popup.highlight_active_feature": true
+  "popup.highlight_active_feature": true,
+  "legend.classes": "filter"
  },
  "x-per-layer": [
   "arrows.direction",

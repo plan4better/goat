@@ -10,8 +10,12 @@ import type { NumberFormatSpec } from "@/lib/style/compile/labels";
 import type { Geometry } from "@/lib/style/compile/types";
 import { moveClassification } from "@/lib/style/editor/classify";
 import { formatNumberText, isNumberType } from "@/lib/style/editor/labels";
+import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { buildLegend, classificationProperty } from "@/lib/style/legend";
+import { type LegendClasses, classificationProperty, legendClasses } from "@/lib/style/legend";
+import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
+
+import { useLayerLegend } from "@/hooks/style/useLegendPresence";
 
 import { StyleLegend } from "@/components/map/legend/StyleLegend";
 import {
@@ -32,21 +36,23 @@ import {
 import { ChoiceRow, NavRow, SwitchRow, TextRow } from "@/components/map/panels/styleEditor/rows";
 import { useServiceLegendUrl } from "@/components/map/panels/styleEditor/sections/ServiceSection";
 
-/** The legend as it will look; it follows every edit of what it draws, so it subscribes on its own. */
+/** The legend as it will look; it follows every edit of what it draws, so it subscribes on its own. Its classes are
+ * those its `legend.classes` lists: those the layer's filter keeps, or those in the map's view. */
 export function LiveLegend() {
   const store = useEditor();
-  const { geometry, layerName } = useStyleData();
+  const { geometry, layerName, legendLayer } = useStyleData();
   const serviceLegendUrl = useServiceLegendUrl();
   const mapZoom = useMapZoom();
   useStyleValue("symbol");
   useStyleValue("classify");
   useStyleValue("legend");
   useStyleValue("render");
-  const legend = buildLegend(store.document as unknown as JsonObject, {
-    geometry,
-    zoom: mapZoom,
-    serviceLegendUrl,
-  });
+  const legend = useLayerLegend(
+    store.document as unknown as JsonObject,
+    { geometry, zoom: mapZoom, serviceLegendUrl },
+    legendLayer,
+    MAP_SCOPE
+  );
   return legend ? <StyleLegend legend={legend} layerName={layerName} /> : null;
 }
 
@@ -82,6 +88,20 @@ export function LegendEditor() {
         placeholder={t("style_editor.caption_placeholder")}
         onChange={(value) => store.set("legend.caption", value || undefined)}
       />
+      {/* Which classes the legend lists, wherever it shows: every class, those the layer's filter keeps, those in view. */}
+      {kind !== "raster" && classify.length > 0 && (
+        <ChoiceRow<LegendClasses>
+          label={t("style_editor.classes_shown")}
+          value={legendClasses(store.document as unknown as JsonObject)}
+          options={(["all", "filter", "view"] as const).map((value) => ({
+            value,
+            label: t(`style_editor.classes_${value}`),
+          }))}
+          onChange={(value) =>
+            store.set("legend.classes", value === DEFAULTS["legend.classes"] ? undefined : value)
+          }
+        />
+      )}
       {kind === "raster" &&
         (["unit", "min_label", "max_label"] as const).map((key) => (
           <TextRow

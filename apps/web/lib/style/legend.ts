@@ -61,6 +61,9 @@ export type LegendSection =
       hollow?: boolean;
       /** The classification sets the height alone: its entries draw a bar of their height, a swatch shows none. */
       bars?: boolean;
+      /** Which of its classes the map draws is still being counted (`legend.classes`): this many placeholder rows
+       * stand in for the entries, so the legend never shows every class first and then shrinks. */
+      pending?: number;
     }
   | {
       kind: "ramp";
@@ -94,6 +97,9 @@ export type LegendSection =
       op?: "count" | "sum" | "mean";
     }
   | { kind: "image"; id: string; title?: string; url: string }
+  /** The counts left none of the layer's classes (spec 7.2 `legend.classes`): a note in place of a swatch, which would
+   * show a look no feature on the map has. */
+  | { kind: "empty"; id: string; title?: string; classes: "filter" | "view" }
   | {
       kind: "sizes";
       id: string;
@@ -108,6 +114,33 @@ export interface Legend {
   caption?: string;
   sections: LegendSection[];
 }
+
+/** What a count found of one classification's classes (spec 7.2 `legend.classes`): the classes that have features, by
+ * their id or else their position, and whether values in no class and features without a value were among them. */
+export interface ClassPresence {
+  classes: ReadonlySet<string>;
+  other: boolean;
+  no_data: boolean;
+}
+
+/** The counts of a layer's classifications, by the classification's id or else its position in `classify`. */
+export type Presence = Readonly<Record<string, ClassPresence>>;
+
+/** Which classes a legend lists (spec 7.2): every class, those the layer's filter keeps, those in the map's view. */
+export type LegendClasses = "all" | "filter" | "view";
+
+const LEGEND_CLASSES = new Set<unknown>(["all", "filter", "view"]);
+
+/** The layer's `legend.classes`, or the default; a raster's legend lists every class. */
+export function legendClasses(style: JsonObject): LegendClasses {
+  if (style.kind === "raster") return "all";
+  const value = isObject(style.legend) ? style.legend.classes : undefined;
+  return (LEGEND_CLASSES.has(value) ? value : DEFAULTS["legend.classes"]) as LegendClasses;
+}
+
+/** The key of a classification or a class in the counts and the legend's entries: its id, else its position. */
+export const itemKey = (item: JsonObject, index: number): string =>
+  typeof item.id === "string" ? item.id : String(index);
 
 const PARTS: Record<Geometry, Array<keyof Omit<Swatch, "geometry">>> = {
   point: ["marker", "outline"],
@@ -384,13 +417,13 @@ const classValues = (c: JsonObject) => JSON.stringify(list(c.classes).map((k) =>
 
 /** The shown classifications, those of one field with the same classes as one (the same categories, or the same
  * numeric bounds): a class shows everything the classifications set for it (a size and a color by the same field
- * are one list). */
+ * are one list). `key` is the first one's: its counts stand for the others, which hold the same features. */
 function legendClassifications(
   style: JsonObject,
   geometry: Geometry
-): Array<{ c: JsonObject; targets: string[] }> {
-  const out: Array<{ c: JsonObject; targets: string[] }> = [];
-  for (const c of list(style.classify)) {
+): Array<{ c: JsonObject; targets: string[]; key: string }> {
+  const out: Array<{ c: JsonObject; targets: string[]; key: string }> = [];
+  for (const [index, c] of list(style.classify).entries()) {
     if (c.legend === false) continue;
     const same = out.find(
       ({ c: o }) =>
@@ -399,7 +432,7 @@ function legendClassifications(
         classValues(o) === classValues(c)
     );
     if (!same) {
-      out.push({ c, targets: [targetOf(c, geometry)] });
+      out.push({ c, targets: [targetOf(c, geometry)], key: itemKey(c, index) });
       continue;
     }
     same.c = {
@@ -462,9 +495,57 @@ function heightSection(style: JsonObject, geometry: Geometry): LegendSection | n
 export const informative = (legend: Legend | null | undefined): boolean =>
   !!legend?.sections.some((section) => section.kind !== "entries" || section.id !== "base");
 
+/** Whether a class is listed (spec 7.2), whatever a count finds: not when it draws nothing on the map. */
+export function classListed(style: JsonObject, c: JsonObject, k: JsonObject): boolean {
+  // A class hidden with the eye draws nothing on the map, so the legend leaves it out too.
+  if (k.legend === false || k.visible === false) return false;
+  // A class picked by hand before its values are: it draws nothing yet.
+  if (c.method === "categories" && Array.isArray(k.values) && !k.values.length) return false;
+  // Its features are hidden with the eye in another classification of the field: nothing of it is on the map.
+  return !hiddenElsewhere(style, c, k);
+}
+
+/** Whether a classification's Other or No data is listed (spec 7.2), whatever a count finds: the data decides. The
+ * server writes into `computed` whether the field has features without a value, and values no class lists; while it
+ * has not looked, they are listed where the style sets something for them, and features without a value also where
+ * another classification of the field lists them (they are the same features). Never when hidden with the eye or left
+ * out, here or, for features without a value, in another classification of the field. */
+export function extraListed(style: JsonObject, c: JsonObject, extra: "other" | "no_data"): boolean {
+  const own = c[extra];
+  if (isObject(own) && (own.legend === false || own.visible === false)) return false;
+  const others = list(style.classify).filter((o) => o.field === c.field);
+  if (extra === "no_data" && others.some((o) => isObject(o.no_data) && o.no_data.visible === false))
+    return false;
+  const fact = isObject(c.computed) ? c.computed[extra] : undefined;
+  if (typeof fact === "boolean") return fact;
+  return (
+    isObject(own) ||
+    (extra === "no_data" &&
+      others.some(
+        (o) =>
+          o.legend !== false &&
+          isObject(o.no_data) &&
+          o.no_data.legend !== false &&
+          o.no_data.visible !== false
+      ))
+  );
+}
+
+/** `present` while the classes a layer's legend lists are still being counted. */
+export const PRESENCE_PENDING = "pending";
+/** The most placeholder rows a classification shows while its classes are counted. */
+const PENDING_ROWS = 3;
+
 export function buildLegend(
   style: JsonObject,
-  ctx: { geometry?: Geometry; zoom: number; serviceLegendUrl?: string }
+  ctx: {
+    geometry?: Geometry;
+    zoom: number;
+    serviceLegendUrl?: string;
+    /** The classes that have features (spec 7.2 `legend.classes`); without it, or with `all`, every class; while
+     * they are counted, placeholder rows. */
+    present?: Presence | typeof PRESENCE_PENDING;
+  }
 ): Legend | null {
   const legend = style.legend;
   if (legend === false || (isObject(legend) && legend.show === false)) return null;
@@ -486,19 +567,25 @@ export function buildLegend(
   const density = render?.type === "heatmap" || render?.type === "h3";
   const points =
     !density || (typeof render?.points_from_zoom === "number" && ctx.zoom >= render.points_from_zoom);
-  for (const { c, targets } of points ? legendClassifications(style, geometry) : []) {
+  const counts = legendClasses(style) === "all" ? undefined : ctx.present;
+  const pending = counts === PRESENCE_PENDING;
+  // A class or Other or No data the count left out: when nothing else is left, the legend says so.
+  let countedOut = false;
+  for (const { c, targets, key } of points ? legendClassifications(style, geometry) : []) {
     const entries: LegendEntry[] = [];
     const numeric = c.method !== "categories";
     const neutral = !targets.some((target) => CAPABILITIES[target]?.kind === "color");
+    // Its features under the layer's filter or in the map's view, once counted.
+    const counted = counts === PRESENCE_PENDING ? undefined : counts?.[key];
     list(c.classes).forEach((k, i) => {
-      // A class hidden with the eye draws nothing on the map, so the legend leaves it out too.
-      if (k.legend === false || k.visible === false) return;
-      // A class picked by hand before its values are: it draws nothing yet.
-      if (!numeric && Array.isArray(k.values) && !k.values.length) return;
-      // Its features are hidden with the eye in another classification of the field: nothing of it is on the map.
-      if (hiddenElsewhere(style, c, k)) return;
+      if (!classListed(style, c, k)) return;
+      // No feature of it is kept by the filter, or in the view: the map draws none, as for a class hidden with the eye.
+      if (counted && !counted.classes.has(itemKey(k, i))) {
+        countedOut = true;
+        return;
+      }
       const entry: LegendEntry = {
-        id: typeof k.id === "string" ? k.id : String(i),
+        id: itemKey(k, i),
         swatch: swatch(style, geometry, ctx.zoom, k, neutral),
       };
       if (typeof k.name === "string") entry.name = k.name;
@@ -516,36 +603,15 @@ export function buildLegend(
     const raisedTo = (record: JsonObject): number | undefined =>
       heightOf(record) ?? (targets.includes("extrude.height") ? baseHeight(style) : undefined);
     for (const extra of ["other", "no_data"] as const) {
-      const own = c[extra];
-      // The author hid these features with the eye, or left them out of the legend.
-      if (isObject(own) && (own.legend === false || own.visible === false)) continue;
-      // The data decides (spec 12): the server writes into `computed` whether the field has features without a
-      // value, and values no class lists. They are listed when it has, with the look the style gives them or the
-      // base look they keep, and not listed when it has none.
-      const fact = isObject(c.computed) ? c.computed[extra] : undefined;
-      // While the server has not looked: listed where the style sets something for them, and features without a
-      // value also where another classification of the field lists them (they are the same features).
-      const recorded =
-        isObject(own) ||
-        (extra === "no_data" &&
-          list(style.classify).some(
-            (o) =>
-              o.field === c.field &&
-              o.legend !== false &&
-              isObject(o.no_data) &&
-              o.no_data.legend !== false &&
-              o.no_data.visible !== false
-          ));
-      if (!(typeof fact === "boolean" ? fact : recorded)) continue;
-      const record: JsonObject = isObject(own) ? own : {};
-      // Features without a value hidden with the eye in another classification of the field are not on the map.
-      if (
-        extra === "no_data" &&
-        list(style.classify).some(
-          (o) => o.field === c.field && isObject(o.no_data) && o.no_data.visible === false
-        )
-      )
+      // Listed with the look the style gives them or the base look they keep, when the data holds such features and
+      // the count, where there is one, found some.
+      if (!extraListed(style, c, extra)) continue;
+      if (counted && !counted[extra]) {
+        countedOut = true;
         continue;
+      }
+      const own = c[extra];
+      const record: JsonObject = isObject(own) ? own : {};
       entries.push({
         id: extra,
         extra,
@@ -565,7 +631,7 @@ export function buildLegend(
         id: typeof c.id === "string" ? c.id : String(c.field),
         ...(typeof c.title === "string" ? { title: c.title } : {}),
         ...(typeof c.field === "string" ? { field: c.field } : {}),
-        entries,
+        ...(pending ? { entries: [], pending: Math.min(entries.length, PENDING_ROWS) } : { entries }),
         ...(domain ? { domain } : {}),
         ...(typeof c.unit === "string" && c.unit ? { unit: c.unit } : {}),
         ...(isObject(c.format) ? { format: c.format as RangeFormat } : {}),
@@ -611,7 +677,13 @@ export function buildLegend(
   }
   if (isObject(style.render) && style.render.type === "h3" && !points)
     sections.push(...h3Sections(style.render, ctx.zoom));
-  if (!sections.length) {
+  if (!sections.length && countedOut)
+    sections.push({
+      kind: "empty",
+      id: "empty",
+      classes: legendClasses(style) === "view" ? "view" : "filter",
+    });
+  else if (!sections.length) {
     sections.push({
       kind: "entries",
       id: "base",
@@ -738,23 +810,47 @@ export function baseSwatch(style: JsonObject, ctx: { geometry: Geometry; zoom: n
   return swatch(style, ctx.geometry, ctx.zoom);
 }
 
-const isEmpty = (value: unknown) => value === null || value === undefined || value === "";
+/** The class of a classification a feature's value falls in: its position in `classes`, `other` for a value no class
+ * lists or holds, `no_data` for a feature without a value (spec 5.1, 5.2). */
+export type ClassIndex = number | "other" | "no_data";
 
-/** The record of the first classification a feature falls in: its class, else `other`, `no_data` for no value. */
-function recordOf(c: JsonObject, value: unknown): JsonObject | undefined {
-  if (isEmpty(value)) return isObject(c.no_data) ? c.no_data : undefined;
+/**
+ * Which class a value is in, as the map draws it: categories compare values as text (the first class that lists it),
+ * a numeric class holds its `from` and the values below its `to` (a value at the last class's `to` keeps the base
+ * look on the map, so it is in no class). Built once per classification: categories look the value up in a table of
+ * their values, so reading many features costs one lookup each. The popup header and the legend's counts (spec 7.2
+ * `legend.classes`) read classes with it.
+ */
+export function classifier(c: JsonObject): (value: unknown) => ClassIndex {
   const classes = list(c.classes);
-  const found =
-    c.method === "categories"
-      ? classes.find((k) => Array.isArray(k.values) && k.values.some((v) => String(v) === String(value)))
-      : typeof value === "number"
-        ? classes.find(
-            (k, i) =>
-              (typeof k.from !== "number" || value >= k.from) &&
-              (typeof k.to !== "number" || value < k.to || i === classes.length - 1)
-          )
-        : undefined;
-  return found ?? (isObject(c.other) ? c.other : undefined);
+  if (c.method === "categories") {
+    const byText = new Map<string, number>();
+    classes.forEach((k, i) => {
+      for (const v of Array.isArray(k.values) ? k.values : [])
+        if (!byText.has(String(v))) byText.set(String(v), i);
+    });
+    return (value) =>
+      value === null || value === undefined ? "no_data" : (byText.get(String(value)) ?? "other");
+  }
+  return (value) => {
+    if (value === null || value === undefined) return "no_data";
+    if (typeof value !== "number") return "other";
+    for (let i = 0; i < classes.length; i++) {
+      const { from, to } = classes[i];
+      if ((typeof from !== "number" || value >= from) && (typeof to !== "number" || value < to)) return i;
+    }
+    return "other";
+  };
+}
+
+/** The class a feature's value falls in, for one value (`classifier` reads many). */
+export const classIndexOf = (c: JsonObject, value: unknown): ClassIndex => classifier(c)(value);
+
+/** The record of the class a feature falls in: its class, else `other`, `no_data` for no value. */
+function recordOf(c: JsonObject, value: unknown): JsonObject | undefined {
+  const index = classIndexOf(c, value);
+  const record = typeof index === "number" ? list(c.classes)[index] : c[index];
+  return isObject(record) ? record : undefined;
 }
 
 /** The swatch of the class a feature falls in (the popup header's icon): the first classification's

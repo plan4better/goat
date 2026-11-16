@@ -19,6 +19,9 @@ class Legend(StyleModel):
     show: bool | None = None
     title: str | None = None
     caption: str | None = None
+    #: The classes the legend lists (spec 7.2): every class, those with features
+    #: under the layer's saved filter, or those drawn in the map's view.
+    classes: Literal["all", "filter", "view"] | None = None
 
 
 class OrderByField(StyleModel):

@@ -1453,9 +1453,26 @@ For labels, label `priority` decides placement and order together.
 
 ### 7.2 Legend
 
-`legend` takes `show` (default true), `title` (default: the layer name), `caption`, and for rasters `unit`,
-`min_label`, `max_label`. `"legend": false` is short for `{ "show": false }`. Classifications, classes and rules take
-`legend: false` to leave themselves out.
+`legend` takes `show` (default true), `title` (default: the layer name), `caption`, for vector layers `classes`,
+and for rasters `unit`, `min_label`, `max_label`. `"legend": false` is short for `{ "show": false }`.
+Classifications, classes and rules take `legend: false` to leave themselves out.
+
+`classes` says which classes of the classifications the legend lists, wherever it shows (the layer list, the style
+panel, print layouts, dashboards and published maps):
+
+- `all`: every class.
+- `filter` (default): the classes that still have features under the layer's filter (the map document's `filter`,
+  section 10); a layer without a filter lists every class. The web asks the server to count them once per filter
+  change, never per tile, and nothing is stored in the document (`computed` stays unfiltered, section 12).
+- `view`: the classes drawn in the map's current view, counted in the browser from the features the map has drawn
+  after each move (not during it), with no server request. In print, the view is the print map's extent; a print
+  legend without a map lists every class.
+
+It applies to the entries of classifications alone: classes, `other` and `no_data`. A class with no features is left
+out the way a class hidden with the eye is, and a classification left with no entries leaves no section. `other` and
+`no_data` are listed as before (when the data holds such features) and left out too when the count finds none of
+them. Until the counts arrive, the legend lists every class. Ramps, size samples, heights, heatmaps, H3 hexagons,
+rasters and map services do not change.
 
 | Construct | Legend entry |
 |---|---|
@@ -1486,6 +1503,30 @@ For labels, label `priority` decides placement and order together.
 ```
 
 `"popup": false` is short for `{ "enabled": false }`.
+
+> "Schools by type; the legend lists only the types on screen."
+
+<!-- check: schools -->
+```json
+{
+  "version": 1,
+  "kind": "vector",
+  "symbol": { "marker": { "shape": "circle", "color": "#9aa3ad", "size": 8 } },
+  "classify": [
+    {
+      "id": "type",
+      "field": "type",
+      "method": "categories",
+      "classes": [
+        { "values": ["primary"], "name": "Primary", "marker": { "color": "#4e79a7" } },
+        { "values": ["secondary"], "name": "Secondary", "marker": { "color": "#f28e2b" } }
+      ],
+      "other": { "name": "Other", "marker": { "color": "#bab0ac" } }
+    }
+  ],
+  "legend": { "classes": "view" }
+}
+```
 
 ### 7.3 Time
 
@@ -2681,6 +2722,7 @@ included. Viewers load it with one request, and it never computes.
 | H3 hexagon tiles with count, sum, mean per cell | geoapi (new) | `render: h3` |
 | the layer's points (id, coordinates, the fields the style uses) | features API (exists as GeoJSON) | `render: cluster` in the browser |
 | classification and domain computation | goatlib (natural breaks and head/tail breaks are new) | section 12 |
+| counts of a classification's values under a filter: unique values, a histogram over the class bounds, features without a value | processes (exist) | `legend.classes: filter` (7.2) |
 | colored raster tiles, band formulas, band statistics, point values | geoapi's raster tile service | section 9 |
 | map service pictures, service styles, legend images | the service itself; the web reads its capabilities when the layer is added (exists) | 9.8 |
 | sprites: library icons as SDF, uploads as bitmaps | web, from GOAT's icon library | markers, arrows |
@@ -2978,7 +3020,7 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 | `classify` | list of classifications (18.4) | no | none |
 | `rules` | list of rules (18.6) | no | none |
 | `order` | `{ field, top }` or `{ by: "classes" }` | no | data order |
-| `legend` | object (7.2) or `false` | no | shown |
+| `legend` | object (7.2) or `false` | no | shown, `classes`: `filter` |
 | `time` | `{ field, step }` | no | none |
 | `popup` | object (7.4) or `false` | no | click, all fields |
 | `render` | object (18.7, 18.8) | no | `features` |

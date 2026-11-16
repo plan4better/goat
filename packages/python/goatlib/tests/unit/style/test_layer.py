@@ -137,3 +137,30 @@ def test_hillshade_direction_and_exaggeration_take_maplibres_maximums(
 ) -> None:
     doc = {"version": 1, "kind": "raster", "render": render}
     assert codes_of(parse_for_write(doc)) == ["invalid_value"]
+
+
+@pytest.mark.parametrize("classes", ["all", "filter", "view"])
+def test_legend_classes_shown_takes_all_filter_or_view(classes: str) -> None:
+    doc = {"version": 1, "kind": "vector", "legend": {"classes": classes}}
+    assert codes_of(parse_for_write(doc)) == []
+
+
+def _issues_at(doc: dict, path: str) -> list[str]:
+    return [i.code for i in parse_for_write(doc)[1] if i.path == path]
+
+
+@pytest.mark.parametrize("classes", ["visible", "", "View", True, ["filter"]])
+def test_legend_classes_shown_refuses_other_values(classes: object) -> None:
+    doc = {"version": 1, "kind": "vector", "legend": {"classes": classes}}
+    assert _issues_at(doc, "/legend/classes") == ["invalid_value"]
+
+
+def test_legend_classes_shown_is_for_vector_layers() -> None:
+    doc = {"version": 1, "kind": "raster", "legend": {"classes": "view"}}
+    assert _issues_at(doc, "/legend/classes") == ["unknown_key"]
+
+
+def test_legend_classes_shown_defaults_to_filter() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    assert REFERENCE_DEFAULTS["legend.classes"] == "filter"

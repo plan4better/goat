@@ -38,6 +38,7 @@ import { setActiveRightPanel, setDataPanelLayerId, setIsDataPanelOpen } from "@/
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { baseSwatch, buildLegend, informative } from "@/lib/style/legend";
+import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 import type { TimeStep } from "@/lib/style/time";
 import { isBundleMemberLayer, isEditableBundleMember } from "@/lib/utils/bundleEditable";
 import {
@@ -68,6 +69,7 @@ import type { MapLayer } from "@/hooks/map/useMapLayers";
 import useStartEditingGuard from "@/hooks/map/useStartEditingGuard";
 import { timeOf } from "@/hooks/map/useTimeSteps";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
+import { type LegendLayer, legendLayerOf, useLayerLegend } from "@/hooks/style/useLegendPresence";
 
 // Modals
 import AddLayerMenu from "@/components/addLayer/AddLayerMenu";
@@ -138,6 +140,30 @@ export const AddLayerButton = ({
       <AddLayerMenu anchorEl={anchorEl} onClose={() => setAnchorEl(null)} projectId={projectId} />
     </>
   );
+};
+
+/** A layer's legend under its row, with the classes its `legend.classes` lists (spec 7.2): those the layer's filter
+ * keeps, or those in the map's view. A note once none of its classes is left. */
+const TreeLayerLegend = ({
+  style,
+  geometry,
+  zoom,
+  serviceLegendUrl,
+  layer,
+  hideHeading,
+}: {
+  style: JsonObject;
+  geometry?: Geometry;
+  zoom: number;
+  serviceLegendUrl?: string;
+  layer: LegendLayer;
+  hideHeading?: boolean;
+}) => {
+  const legend = useLayerLegend(style, { geometry, zoom, serviceLegendUrl }, layer, MAP_SCOPE);
+  return legend && informative(legend) ? (
+    // The caption goes into the row's caption slot instead.
+    <StyleLegend legend={{ ...legend, caption: undefined }} variant="tree" hideHeading={hideHeading} />
+  ) : null;
 };
 
 /** How many rows a folded Tables row holds. */
@@ -1313,14 +1339,11 @@ export const ProjectLayerTree = ({
       const shouldShowLegend =
         viewMode !== "view" || (style?.legend !== false && legendOptions?.show !== false);
       const geometry = geometryOf(node.geometry_type);
+      const serviceLegendUrl = (node.other_properties as { legend_urls?: string[] } | null)?.legend_urls?.[0];
+      // Whether the row has a legend to show: every class counts here, the legend itself lists those kept.
       const legend =
         style && isVisible && shouldShowLegend && !simpleLegendLayerIds?.includes(node.id)
-          ? buildLegend(style, {
-              geometry,
-              zoom: legendZoom,
-              serviceLegendUrl: (node.other_properties as { legend_urls?: string[] } | null)
-                ?.legend_urls?.[0],
-            })
+          ? buildLegend(style, { geometry, zoom: legendZoom, serviceLegendUrl })
           : null;
       const icon =
         node.layer_type === "raster" ? (
@@ -1351,11 +1374,13 @@ export const ProjectLayerTree = ({
             />
           ) : undefined,
         legendContent:
-          legend && informative(legend) ? (
-            // The caption goes into the row's caption slot instead.
-            <StyleLegend
-              legend={{ ...legend, caption: undefined }}
-              variant="tree"
+          style && legend && informative(legend) ? (
+            <TreeLayerLegend
+              style={style}
+              geometry={geometry}
+              zoom={legendZoom}
+              serviceLegendUrl={serviceLegendUrl}
+              layer={legendLayerOf(node)}
               hideHeading={hideLegendHeading}
             />
           ) : undefined,

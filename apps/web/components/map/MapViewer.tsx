@@ -37,6 +37,7 @@ import {
   topFeature,
   zoomToCluster,
 } from "@/lib/style/render/viewLayers";
+import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 import { applyMapLanguage } from "@/hooks/map/MapHooks";
 import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 import type { Basemap } from "@/types/map/common";
@@ -1012,6 +1013,7 @@ const MapViewer: React.FC<MapProps> = ({
             locale={locale || i18n.language}
             ground={buildingsAnchor(appliedScene)}
             onLayersChange={setDrawnLayerIds}
+            presenceScope={MAP_SCOPE}
           />
           <GeocoderLayer />
           <UserLocationLayer />

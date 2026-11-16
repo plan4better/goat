@@ -44,7 +44,7 @@ def test_service_default_is_a_plain_image_slightly_see_through() -> None:
 def _value_validates(path: str, value: object) -> bool:
     """Whether `value` is valid where `path` points, in the smallest document holding it."""
     import pydantic
-    from goatlib.style.models.layer import VectorStyle
+    from goatlib.style.models.layer import Legend, VectorStyle
     from goatlib.style.models.parts import PARTS, Font, Halo
     from goatlib.style.models.popup import Popup
     from goatlib.style.models.raster import RasterStyle
@@ -90,6 +90,8 @@ def _value_validates(path: str, value: object) -> bool:
             model.model_validate({"type": head, rest: value})
         elif head == "popup":
             Popup.model_validate({rest: value})
+        elif head == "legend":
+            Legend.model_validate({rest: value})
         else:
             return False
     except pydantic.ValidationError:

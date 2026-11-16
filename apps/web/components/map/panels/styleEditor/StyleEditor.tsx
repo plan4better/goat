@@ -37,6 +37,8 @@ export interface StyleEditorProps {
   top?: ReactNode;
   /** Off where the host shows the header itself (the project page's layer panel). */
   header?: boolean;
+  /** Off while the panel is hidden (its tab left): its popovers close, as they draw outside it. */
+  shown?: boolean;
   children?: ReactNode;
 }
 
@@ -172,6 +174,7 @@ export function StyleEditor({
   mapZoom,
   top,
   header = true,
+  shown = true,
   children,
 }: StyleEditorProps) {
   const root = useRef<HTMLDivElement | null>(null);
@@ -192,7 +195,7 @@ export function StyleEditor({
             display: "flex",
             flexDirection: "column",
           }}>
-          <PopoverProvider scope={store}>
+          <PopoverProvider scope={store} shown={shown}>
             {header && (
               <Box sx={{ display: "flex", px: 3, pt: 4, pb: 2 }}>
                 <StyleHeader layer={layer} store={store} featureCount={data.featureCount} />

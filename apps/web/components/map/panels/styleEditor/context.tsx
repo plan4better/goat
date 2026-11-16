@@ -25,6 +25,8 @@ import { type RasterInfo, type ValueSample, sampleOf } from "@/lib/style/raster/
 import type { ServiceStyle } from "@/lib/utils/externalService";
 import type { UploadedAsset } from "@/lib/validations/assets";
 
+import type { LegendLayer } from "@/hooks/style/useLegendPresence";
+
 /** A field of the layer as the panel shows it; `label` is the dataset's display name. */
 export interface FieldInfo {
   name: string;
@@ -85,6 +87,8 @@ export interface StyleData {
   sample?: Record<string, unknown>;
   featureCount?: number;
   uploads: UploadedAsset[];
+  /** The project layer, for the legend's counts of the classes its filter keeps or the map shows (spec 7.2). */
+  legendLayer?: LegendLayer;
 }
 
 export const EMPTY_DATA: StyleData = {

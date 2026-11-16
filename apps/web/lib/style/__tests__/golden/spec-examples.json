@@ -5896,6 +5896,79 @@
   "position": "top",
   "unsupported": []
  },
+ "1509": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": [
+      "case",
+      [
+       "has",
+       "type"
+      ],
+      [
+       "match",
+       [
+        "get",
+        "type"
+       ],
+       "primary",
+       "#4e79a7",
+       "secondary",
+       "#f28e2b",
+       "#bab0ac"
+      ],
+      "#9aa3ad"
+     ],
+     "circle-radius": 4,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
  "1537": {
   "id": "1",
   "sources": {

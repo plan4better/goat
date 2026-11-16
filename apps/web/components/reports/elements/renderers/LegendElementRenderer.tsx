@@ -8,11 +8,13 @@ import { DEFAULT_FONT_FAMILY, LEGEND_TYPOGRAPHY_DEFAULTS } from "@/lib/constants
 import { mapElementLayers } from "@/lib/print/mapElements";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { type Legend, baseSwatch, buildLegend, informative } from "@/lib/style/legend";
+import { type Legend, baseSwatch, informative } from "@/lib/style/legend";
+import { printScope } from "@/lib/style/render/viewPresence";
 import { cleanEditedText } from "@/lib/utils/editableText";
 import type { ReportElement } from "@/lib/validations/reportLayout";
 
 import type { MapLayer } from "@/hooks/map/useMapLayers";
+import { legendLayerOf, useLayerLegend } from "@/hooks/style/useLegendPresence";
 
 import { StyleLegend, SwatchIcon } from "@/components/map/legend/StyleLegend";
 
@@ -256,6 +258,7 @@ const LegendElementRenderer: React.FC<LegendElementRendererProps> = ({
               key={layer.id}
               layer={layer}
               zoom={mapZoom}
+              scope={connectedMap ? printScope(connectedMap.id) : undefined}
               locale={locale}
               showLayerName={layoutConfig.showLayerNames !== false}
               typography={typography}
@@ -302,6 +305,8 @@ interface LayerLegendItemProps {
   layer: MapLayer;
   /** The connected map's zoom: legend values by zoom read it. */
   zoom: number;
+  /** The connected map's counts of the classes in its extent (`printScope`); none without a connected map. */
+  scope?: string;
   locale?: string;
   showLayerName?: boolean;
   typography?: LegendTypographyConfig;
@@ -313,6 +318,7 @@ interface LayerLegendItemProps {
 const LayerLegendItem: React.FC<LayerLegendItemProps> = ({
   layer,
   zoom,
+  scope,
   locale,
   showLayerName = true,
   typography,
@@ -323,13 +329,17 @@ const LayerLegendItem: React.FC<LayerLegendItemProps> = ({
   const style = (layer.style?.document ?? null) as JsonObject | null;
   const type = layer.feature_layer_geometry_type?.toLowerCase();
   const geometry = type && GEOMETRIES.has(type) ? (type as Geometry) : undefined;
-  const legend = style
-    ? buildLegend(style, {
-        geometry,
-        zoom,
-        serviceLegendUrl: (layer.other_properties as { legend_urls?: string[] } | null)?.legend_urls?.[0],
-      })
-    : null;
+  // The classes its `legend.classes` lists: those the layer's filter keeps, or those in the connected map's extent.
+  const legend = useLayerLegend(
+    style,
+    {
+      geometry,
+      zoom,
+      serviceLegendUrl: (layer.other_properties as { legend_urls?: string[] } | null)?.legend_urls?.[0],
+    },
+    legendLayerOf(layer),
+    scope
+  );
   const detailed = informative(legend);
   const legendOptions = style && isObject(style.legend) ? style.legend : undefined;
   const caption = typeof legendOptions?.caption === "string" ? legendOptions.caption : undefined;

@@ -4,8 +4,8 @@
 // of the one that opened it (never past the window's left edge: there it overlaps the level under it), the picker next
 // to its anchor. They are drawn in a portal, positioned from the panel's box, so the boxes that hold the panel on a
 // page (scrolling, clipping) cannot cut them off. Only open popovers render their content. Escape closes the picker,
-// then the last level, one by one. A new scope (another layer or style) closes them all, and a picker closes when its
-// control leaves the page.
+// then the last level, one by one. A new scope (another layer or style) closes them all, as does the panel being
+// hidden (its tab left), and a picker closes when its control leaves the page.
 import { Box, IconButton, Popper, type PopperProps, Typography } from "@mui/material";
 import {
   type ReactNode,
@@ -333,12 +333,21 @@ const LevelFrame = memo(function LevelFrame({
 });
 
 /** Provides usePopover to the panel and draws the open popovers; place it inside the panel's positioned box. A new
- * `scope` (the panel showing another layer or style) closes them all.
+ * `scope` (the panel showing another layer or style) closes them all, as does `shown` turning false (the panel hidden,
+ * its tab left: the popovers draw in a portal, so hiding the panel does not hide them).
  *
  * Its children do not render again when a popover opens or closes: the API never changes, and the rows read the open
  * popovers through a store (useIsOpener, useIsOpen) that renders only the rows whose answer changes. Each popover's
  * content is drawn once per entry, so opening a picker leaves the editors under it as they are. */
-export function PopoverProvider({ scope, children }: { scope?: unknown; children: ReactNode }) {
+export function PopoverProvider({
+  scope,
+  shown = true,
+  children,
+}: {
+  scope?: unknown;
+  shown?: boolean;
+  children: ReactNode;
+}) {
   const marker = useRef<HTMLSpanElement | null>(null);
   const [open, setOpen] = useState<OpenStack>(CLOSED);
   const [shownScope, setShownScope] = useState(scope);
@@ -346,6 +355,7 @@ export function PopoverProvider({ scope, children }: { scope?: unknown; children
     setShownScope(scope);
     setOpen(CLOSED);
   }
+  if (!shown && open !== CLOSED) setOpen(CLOSED);
   // The stack as last committed, for the store's readers and `current`; its listeners hear of each new one.
   const openRef = useRef(open);
   const listeners = useRef(new Set<() => void>());
