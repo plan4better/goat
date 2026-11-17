@@ -5,7 +5,8 @@ the file's pages are read as a search touches them, the pointers inside are
 fixed up in a private copy, and the integrity hash is skipped (a version's
 files are checked against their sha256 when installed). These tests build a
 small timetable from a GTFS feed and read it back through ``timetable_info``,
-which loads it the same way.
+which loads it the same way, and check the import options a feed can carry
+into a build (``TimetableSource``: a Lua user script, extend_calendar).
 """
 
 from __future__ import annotations
@@ -94,11 +95,18 @@ def test_reading_leaves_the_file_unchanged(timetable: Path) -> None:
     assert _sha256(timetable) == before
 
 
+def _mappings_of(path: Path) -> int:
+    maps = Path("/proc/self/maps").read_text().splitlines()
+    return sum(line.endswith(str(path)) for line in maps)
+
+
 def test_the_file_is_unmapped_once_read(timetable: Path) -> None:
+    # Counted before and after: writing the file (the fixture, in this
+    # process) may leave a mapping of its own, as cista's writer can.
+    before = _mappings_of(timetable)
     for _ in range(20):
         routing.timetable_info(str(timetable))
-    maps = Path("/proc/self/maps").read_text()
-    assert str(timetable) not in maps
+    assert _mappings_of(timetable) == before
 
 
 def test_a_missing_timetable_names_the_file(tmp_path: Path) -> None:
@@ -121,3 +129,39 @@ def test_a_file_that_is_not_a_timetable_is_refused(tmp_path: Path) -> None:
     other.write_bytes(b"\x00" * 4096)
     with pytest.raises(RuntimeError):
         routing.timetable_info(str(other))
+
+
+def _build(tmp_path: Path, files: dict, start_date: str, **options) -> dict:
+    """Build a one-feed timetable through build_timetable_multi, with the
+    feed's import options, and read back what it holds."""
+    feed = tmp_path / "feed"
+    feed.mkdir(exist_ok=True)
+    for name, content in files.items():
+        (feed / name).write_text(content)
+    out = tmp_path / "multi.bin"
+    source = routing.TimetableSource("feed", str(feed), **options)
+    routing.build_timetable_multi([source], str(out), start_date, 14)
+    return routing.timetable_info(str(out))
+
+
+def test_a_feeds_script_runs_as_its_trips_are_read(tmp_path: Path) -> None:
+    # A Lua user script: process_trip returning false drops the trip.
+    script = 'function process_trip(trip) return trip:get_id() ~= "T2" end'
+    assert _build(tmp_path, FEED, "2026-01-05")["n_trips"] == 2
+    assert _build(tmp_path, FEED, "2026-01-05", script=script)["n_trips"] == 1
+
+
+def test_extend_calendar_runs_an_ended_feed_on(tmp_path: Path) -> None:
+    # The service ends on the feed's end date, before the window starts:
+    # extended, its weekly pattern runs on through the window.
+    ended = {
+        **FEED,
+        "feed_info.txt": (
+            "feed_publisher_name,feed_publisher_url,feed_lang,feed_end_date\n"
+            "Test,https://example.org,de,20260131\n"
+        ),
+    }
+    as_is = _build(tmp_path, ended, "2026-02-02")
+    extended = _build(tmp_path, ended, "2026-02-02", extend_calendar=True)
+    assert as_is["n_transports"] == 0
+    assert extended["n_transports"] > 0

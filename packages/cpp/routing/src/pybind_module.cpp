@@ -2,9 +2,12 @@
 #include <pybind11/stl.h>
 
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 #include "date/date.h"
 #include "nigiri/common/interval.h"
@@ -18,6 +21,77 @@
 #include "types.h"
 
 namespace py = pybind11;
+
+namespace
+{
+// One GTFS feed of a timetable build, with the import options nigiri's loader
+// takes per feed (loader_config): `script` is a Lua user script's source
+// (not a path), run on the feed's agencies, stops, routes and trips as they
+// are read (process_agency, process_location, process_route, process_trip);
+// `default_timezone` is used where the feed names none; `extend_calendar`
+// extends a feed whose service ends before the build's window does.
+struct TimetableSource
+{
+    std::string tag;
+    std::string path;
+    std::string script;
+    std::string default_timezone;
+    bool extend_calendar{false};
+};
+
+// Build one nigiri timetable from GTFS sources and write it to out_path.
+// One source per feed: nigiri keys stops and trips by (source, id), links
+// stops of different sources and merges trips running in two of them.
+void build_timetable_from(std::vector<TimetableSource> const &sources,
+                          std::string const &out_path,
+                          std::string const &start_date, int length_days,
+                          unsigned link_stop_distance,
+                          std::uint16_t max_footpath_length)
+{
+    if (sources.empty())
+    {
+        throw std::invalid_argument("at least one GTFS source is needed");
+    }
+    // Parse the "YYYY-MM-DD" start date.
+    int y = 0, mo = 0, d = 0;
+    if (std::sscanf(start_date.c_str(), "%d-%d-%d", &y, &mo, &d) != 3)
+    {
+        throw std::invalid_argument("start_date must be formatted YYYY-MM-DD");
+    }
+    if (length_days <= 0)
+    {
+        throw std::invalid_argument("length_days must be positive");
+    }
+
+    auto const start = date::sys_days{date::year{y} /
+                                      date::month(static_cast<unsigned>(mo)) /
+                                      date::day(static_cast<unsigned>(d))};
+    auto const window = nigiri::interval<date::sys_days>{
+        start, start + date::days{length_days}};
+
+    std::vector<nigiri::loader::timetable_source> srcs;
+    srcs.reserve(sources.size());
+    for (auto const &src : sources)
+    {
+        nigiri::loader::loader_config cfg{};
+        cfg.link_stop_distance_ = link_stop_distance;
+        cfg.user_script_ = src.script;
+        cfg.default_tz_ = src.default_timezone;
+        cfg.extend_calendar_ = src.extend_calendar;
+        srcs.push_back(nigiri::loader::timetable_source{src.tag, src.path, cfg});
+    }
+
+    auto finalize = nigiri::loader::finalize_options{};
+    finalize.max_footpath_length_ = max_footpath_length;
+
+    // nigiri's loader reports progress via utl's thread-local tracker;
+    // activate a (silent) one so the loader doesn't abort.
+    utl::activate_progress_tracker("nigiri");
+
+    auto tt = nigiri::loader::load(srcs, finalize, window);
+    tt.write(std::filesystem::path{out_path});
+}
+}  // namespace
 
 PYBIND11_MODULE(_routing, m)
 {
@@ -296,36 +370,11 @@ PYBIND11_MODULE(_routing, m)
              std::string const &start_date, int length_days,
              unsigned link_stop_distance)
           {
-              // Parse the "YYYY-MM-DD" start date.
-              int y = 0, mo = 0, d = 0;
-              if (std::sscanf(start_date.c_str(), "%d-%d-%d", &y, &mo, &d) != 3)
-              {
-                  throw std::invalid_argument(
-                      "start_date must be formatted YYYY-MM-DD");
-              }
-              if (length_days <= 0)
-              {
-                  throw std::invalid_argument("length_days must be positive");
-              }
-
-              auto const start = date::sys_days{
-                  date::year{y} / date::month(static_cast<unsigned>(mo)) /
-                  date::day(static_cast<unsigned>(d))};
-              auto const window = nigiri::interval<date::sys_days>{
-                  start, start + date::days{length_days}};
-
-              nigiri::loader::loader_config cfg{};
-              cfg.link_stop_distance_ = link_stop_distance;
-
-              // nigiri's loader reports progress via utl's thread-local tracker;
-              // activate a (silent) one so the loader doesn't abort.
-              utl::activate_progress_tracker("nigiri");
-
-              auto tt = nigiri::loader::load(
-                  {nigiri::loader::timetable_source{"gtfs", gtfs_path, cfg}},
-                  nigiri::loader::finalize_options{},
-                  window);
-              tt.write(std::filesystem::path{out_path});
+              build_timetable_from({TimetableSource{"gtfs", gtfs_path}},
+                                   out_path, start_date, length_days,
+                                   link_stop_distance,
+                                   nigiri::loader::finalize_options{}
+                                       .max_footpath_length_);
           },
           py::arg("gtfs_path"),
           py::arg("out_path"),
@@ -336,6 +385,50 @@ PYBIND11_MODULE(_routing, m)
           "Build a nigiri .bin PT timetable from a GTFS feed (zip or directory) "
           "covering [start_date, start_date + length_days), generating transfer "
           "footpaths within link_stop_distance metres, and write it to out_path.");
+
+    py::class_<TimetableSource>(m, "TimetableSource",
+                                "One GTFS feed of a timetable build, with its "
+                                "import options (see build_timetable_multi).")
+        .def(py::init(
+                 [](std::string tag, std::string path, std::string script,
+                    std::string default_timezone, bool extend_calendar)
+                 {
+                     return TimetableSource{std::move(tag), std::move(path),
+                                            std::move(script),
+                                            std::move(default_timezone),
+                                            extend_calendar};
+                 }),
+             py::arg("tag"), py::arg("path"), py::arg("script") = "",
+             py::arg("default_timezone") = "",
+             py::arg("extend_calendar") = false)
+        .def_readwrite("tag", &TimetableSource::tag)
+        .def_readwrite("path", &TimetableSource::path)
+        .def_readwrite("script", &TimetableSource::script)
+        .def_readwrite("default_timezone", &TimetableSource::default_timezone)
+        .def_readwrite("extend_calendar", &TimetableSource::extend_calendar);
+
+    m.def("build_timetable_multi",
+          [](std::vector<TimetableSource> const &sources,
+             std::string const &out_path, std::string const &start_date,
+             int length_days, unsigned link_stop_distance,
+             std::uint16_t max_footpath_length)
+          {
+              build_timetable_from(sources, out_path, start_date, length_days,
+                                   link_stop_distance, max_footpath_length);
+          },
+          py::arg("sources"),
+          py::arg("out_path"),
+          py::arg("start_date"),
+          py::arg("length_days"),
+          py::arg("link_stop_distance") = 100U,
+          py::arg("max_footpath_length") =
+              nigiri::loader::finalize_options{}.max_footpath_length_,
+          py::call_guard<py::gil_scoped_release>(),
+          "Build one nigiri .bin PT timetable from several GTFS feeds "
+          "(TimetableSource), each its own nigiri source with its own import "
+          "options, so ids stay distinct per feed and nigiri links stops and "
+          "merges duplicate trips across feeds. max_footpath_length caps "
+          "transfer footpaths, in minutes. Otherwise as build_timetable.");
 
     m.def("timetable_info",
           [](std::string const &path)
