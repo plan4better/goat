@@ -1,5 +1,6 @@
 // The groups of the symbol section and the rows of each group's editor (prototype 2.5 and 4.1). A group edits one
 // part of the symbol; its rows name the part's keys. Ranges come from SLIDERS, values from DEFAULTS.
+import { keepsColors } from "@/lib/style/compile/images";
 import type { Geometry } from "@/lib/style/compile/types";
 import type { JsonObject } from "@/lib/style/json";
 import { drawsAsImage, isPin } from "@/lib/style/markerShapes";
@@ -8,7 +9,8 @@ interface RowBase {
   key: string;
   /** The row's label key. */
   label: string;
-  note?: string;
+  /** The note's key under the row's field; the part's value may decide it (none for undefined). */
+  note?: string | ((part: JsonObject) => string | undefined);
   /** The value shown while unset, when the reference default does not fit (label placement per geometry), or the
    * part's value decides it. */
   fallback?: unknown | ((part: JsonObject) => unknown);
@@ -201,6 +203,8 @@ const ARROWS: PartGroup = {
 const LABEL: PartGroup = { id: "label", part: "label", toggle: true, summary: "text", rows: [] };
 
 const hasIcon = (marker: JsonObject) => marker.icon !== undefined;
+/** An icon whose color can be set: library icons; uploads and emoji keep their own. */
+const tinted = (marker: JsonObject) => hasIcon(marker) && !keepsColors(marker.icon);
 
 const SIZE: PartGroup = {
   id: "size",
@@ -238,13 +242,19 @@ const ICON: PartGroup = {
   summary: "icon",
   resetKeys: ["icon", "icon_color", "shape", "rotation", "offset", "anchor", "allow_overlap"],
   rows: [
-    { type: "icon", key: "icon", label: "style_editor.icon" },
-    { type: "color", key: "color", label: "style_editor.color", when: (m) => hasIcon(m) && alone(m) },
+    {
+      type: "icon",
+      key: "icon",
+      label: "style_editor.icon",
+      // In place of the color rows, which an upload or an emoji does not have.
+      note: (m) => (keepsColors(m.icon) ? "style_editor.note_icon_own_colors" : undefined),
+    },
+    { type: "color", key: "color", label: "style_editor.color", when: (m) => tinted(m) && alone(m) },
     {
       type: "color",
       key: "icon_color",
       label: "style_editor.icon_color",
-      when: (m) => hasIcon(m) && !alone(m),
+      when: (m) => tinted(m) && !alone(m),
       // On a hollow marker the icon takes the marker color until it has its own (spec 3.3).
       fallback: (m: JsonObject) => (m.fill === false && typeof m.color === "string" ? m.color : undefined),
     },

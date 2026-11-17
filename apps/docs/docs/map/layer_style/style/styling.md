@@ -99,10 +99,10 @@ The <code>Points</code> section has the rows <code>Size</code>, <code>Fill</code
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Back in the <code>Icon</code> editor, set <code>Icon color</code> (<code>Color</code> for an icon alone), <code>Rotation</code>, <code>Offset x</code> and <code>Offset y</code>. For an icon alone or a pin, <code>Anchor</code> sets which point of the icon sits on the location: <code>Center</code>, <code>Bottom</code> (the tip, as for pins) or another side or corner. <code>Overlap</code> on draws the markers even where they overlap other symbols.</div>
+  <div class="content">Back in the <code>Icon</code> editor, set <code>Icon color</code> (<code>Color</code> for an icon alone), <code>Rotation</code>, <code>Offset x</code> and <code>Offset y</code>. For an icon alone or a pin, <code>Anchor</code> sets which point of the icon sits on the location: <code>Center</code>, <code>Bottom</code> (the tip, as for pins) or another side or corner. <code>Overlap</code> on draws the markers even where they overlap other symbols. Uploaded icons and emoji keep their own colors, so they have no color to set.</div>
 </div>
 
-To use your own icon, open the <code>Custom</code> tab, drop an image on the upload field or click it to choose one (square, with a transparent background, up to 4 MB), give it a <code>Name</code> and click <code>Upload</code>. Your icons are listed under <code>Your icons</code>; click <code>Manage</code> to rename or delete them.
+To use your own icon, open the <code>Custom</code> tab and drop an image on it or click the upload field to choose one (SVG, PNG, JPEG, WebP, BMP or ICO, square, with a transparent background, up to 4 MB). It uploads at once, named after the file, and becomes the layer's icon. Your icons are listed under <code>Your icons</code>, where <code>Upload</code> adds another; click <code>Manage</code> to rename or delete them. Layers that use a deleted icon show no icon, so GOAT asks before deleting.
 
 :::tip
 To give each category its own icon, set the icon <code>By classes</code> of a field. See [Attribute-based styling](./attribute_based_styling.md).

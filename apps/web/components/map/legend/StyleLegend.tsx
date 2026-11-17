@@ -30,7 +30,8 @@ import { MARKER_SHAPES, markerShapeOf } from "@/lib/style/markerShapes";
 const str = (value: unknown, fallback: string) => (typeof value === "string" ? value : fallback);
 const num = (value: unknown, fallback: number) => (typeof value === "number" ? value : fallback);
 
-/** An icon at `side` px: a library icon in `tint` (a mask over the color), emoji and uploads as they are. */
+/** An icon at `side` px: a library icon in `tint` (a mask over the color), emoji and uploads as they are, loaded as
+ * CORS requests like the map's icons. */
 function MarkerIcon({ icon, tint, side }: { icon: string; tint: string; side: number }) {
   const image = defaultResolveIcon(icon);
   if (!image) return null;
@@ -39,6 +40,7 @@ function MarkerIcon({ icon, tint, side }: { icon: string; tint: string; side: nu
       <img
         src={image.url}
         alt=""
+        crossOrigin="anonymous"
         width={side}
         height={side}
         style={{ objectFit: "contain", display: "block" }}

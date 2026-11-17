@@ -62,9 +62,11 @@ export const ManageIconsDialog = ({ open, onClose, markers, onDelete, onUpdate }
       sortable: false,
       filterable: false,
       renderCell: (params: GridRenderCellParams) => (
+        // A CORS request, as the map loads the icon to draw it, so both share what the browser caches for the URL.
         <img
           src={params.row.url}
           alt={params.row.name}
+          crossOrigin="anonymous"
           style={{ width: 24, height: 24, display: "block", margin: "auto" }}
         />
       ),

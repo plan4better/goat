@@ -8,6 +8,7 @@ import type { LayerSpecification } from "maplibre-gl";
 import { cascade, isSet, partUsed, perLayer, setValues } from "@/lib/style/compile/cascade";
 import { HIGHLIGHT, ICON_HEIGHT } from "@/lib/style/compile/constants";
 import { colorText, concat, everyZoom, numberText } from "@/lib/style/compile/imageNames";
+import { keepsColors } from "@/lib/style/compile/images";
 import { MARKER_IMAGE } from "@/lib/style/compile/markerImage";
 import {
   ACTIVE,
@@ -37,10 +38,6 @@ import {
   isPin,
   markerShapeOf,
 } from "@/lib/style/markerShapes";
-
-/** Uploads and emoji keep their own colors: no tint, no halo. */
-const keepsColors = (ref: unknown) =>
-  typeof ref === "string" && (ref.startsWith("asset:") || ref.startsWith("emoji:"));
 
 const anchor = (name: unknown) => (typeof name === "string" ? name.replace("_", "-") : name);
 

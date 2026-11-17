@@ -44,6 +44,8 @@ export function markerLayout(spec: MarkerImage): {
 
 const icons = new Map<string, Promise<HTMLImageElement | null>>();
 
+/** The icon at `url`, loaded once per page as a CORS request (it is drawn onto a canvas); a failed load is not kept,
+ * so the next draw loads it again. */
 function iconImage(url: string): Promise<HTMLImageElement | null> {
   let found = icons.get(url);
   if (!found) {
@@ -51,7 +53,10 @@ function iconImage(url: string): Promise<HTMLImageElement | null> {
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => resolve(img);
-      img.onerror = () => resolve(null);
+      img.onerror = () => {
+        icons.delete(url);
+        resolve(null);
+      };
       img.src = url;
     });
     icons.set(url, found);

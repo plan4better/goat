@@ -1,17 +1,53 @@
 "use client";
 
 // An icon reference drawn small: library symbols in the text color (from the symbols file once it is there, their SVG
-// as a mask before), emoji and uploads as their own images. Icons by zoom as their icons in order.
+// as a mask before), emoji and uploads as their own images, a placeholder where one does not load. Icons by zoom as
+// their icons in order.
 import { Box } from "@mui/material";
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode, useState } from "react";
+
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { defaultResolveIcon } from "@/lib/style/compile/images";
 
-import {
-  type LibrarySymbol,
-  iconBackground,
-  useSymbols,
-} from "@/components/map/panels/styleEditor/pickers/iconRefs";
+import { type LibrarySymbol, useSymbols } from "@/components/map/panels/styleEditor/pickers/iconRefs";
+
+/** An upload's or an emoji's image in a `size` px square; where it does not load, a neutral image glyph instead of the
+ * browser's broken image. Loaded as a CORS request, as the map loads icons to draw them onto a canvas, so both share
+ * what the browser caches for the URL. */
+export function IconImage({ src, size }: { src: string; size: number }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  if (failed === src)
+    return (
+      <Box
+        component="span"
+        data-icon-failed
+        aria-hidden="true"
+        sx={{
+          width: size,
+          height: size,
+          flex: "none",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+        <Icon
+          iconName={ICON_NAME.IMAGE}
+          sx={{ fontSize: Math.round(size * 0.75), color: "text.secondary" }}
+        />
+      </Box>
+    );
+  return (
+    <Box
+      component="img"
+      src={src}
+      alt=""
+      crossOrigin="anonymous"
+      onError={() => setFailed(src)}
+      sx={{ width: size, height: size, flex: "none", objectFit: "contain" }}
+    />
+  );
+}
 
 /** A library icon in the text color: drawn from the symbols file, or while that does not load, its SVG as a mask. */
 export function SymbolGlyph({
@@ -73,10 +109,8 @@ export function IconGlyph({ iconRef, size = 18, color }: { iconRef: string; size
         color={color}
       />
     );
-  const background = iconBackground(iconRef);
-  return background ? (
-    <Box aria-hidden="true" sx={{ width: size, height: size, flex: "none", background }} />
-  ) : null;
+  const url = defaultResolveIcon(iconRef)?.url;
+  return url ? <IconImage src={url} size={size} /> : null;
 }
 
 /** The icons of a value by zoom, in zoom order with arrows between ("⊗ → 📡"); their names on hover and for screen

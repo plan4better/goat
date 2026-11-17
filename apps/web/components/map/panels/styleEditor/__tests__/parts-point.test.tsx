@@ -140,6 +140,26 @@ describe("point parts", () => {
     expect(store.get("symbol.marker")).toEqual({ shape: "icon", icon: "goat:park", anchor: "bottom" });
   });
 
+  it("an upload or an emoji keeps its own colors: no icon color row, a note in its place", async () => {
+    const OWN = "style_editor.note_icon_own_colors";
+    const emoji = render({ symbol: { marker: { icon: "emoji:1f525", shape: "square" } } });
+    await openGroup("style_editor.part_icon");
+    expect(screen.queryByText("style_editor.icon_color")).toBeNull();
+    expect(screen.getByText(OWN)).toBeDefined();
+    emoji.unmount();
+
+    const upload = render({ symbol: { marker: { icon: "asset:abc", shape: "icon" } } });
+    await openGroup("style_editor.part_icon");
+    expect(screen.queryByText("style_editor.color")).toBeNull();
+    expect(screen.getByText(OWN)).toBeDefined();
+    upload.unmount();
+
+    render({ symbol: { marker: { icon: "goat:park", shape: "square" } } });
+    await openGroup("style_editor.part_icon");
+    expect(screen.getByText("style_editor.icon_color")).toBeDefined();
+    expect(screen.queryByText(OWN)).toBeNull();
+  });
+
   it("off turns a pin into a plain circle and on brings the pin back; a plain circle switched on gets an icon", async () => {
     const { store, unmount } = render({ symbol: { marker: { size: 12, shape: "pin" } } });
     await openGroup("style_editor.part_icon");
