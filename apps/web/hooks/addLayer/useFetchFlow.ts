@@ -13,6 +13,7 @@ import { addRunningJobIds } from "@/lib/store/jobs/slice";
 import type { GetContentQueryParams } from "@/lib/validations/common";
 import type { Space } from "@/lib/validations/content";
 import type { Folder } from "@/lib/validations/folder";
+import { PTRoutingModes } from "@/lib/validations/tools";
 import type { DatasetConnection } from "@/lib/workflows/datasetConnection";
 
 import type { FlowController, WorkflowUse } from "@/hooks/addLayer/flow";
@@ -29,6 +30,9 @@ export const NETWORK_TOOLS: Partial<Record<FetchSource, string>> = {
 };
 
 export const isNetworkSource = (source: FetchSource) => source in NETWORK_TOOLS;
+
+/** Every public transport mode, as the routing tools name them: a cut keeps every line. */
+export const ALL_PT_MODES: string[] = PTRoutingModes.options;
 export type AreaMode = "view" | "region" | "point" | "polygon";
 export type FilterMode = "builder" | "sql";
 export type MatchMode = "all" | "any";
@@ -239,6 +243,9 @@ export type FetchFlowState = {
   setSelectedFolder: (folder: Folder | null) => void;
   /** Saving to a workflow node: there is no layer to name or file. */
   inWorkflow: boolean;
+  /** The public transport network's modes whose lines are kept: all to begin with. */
+  ptModes: string[];
+  setPtModes: (modes: string[]) => void;
 };
 
 export type FetchFlow = FlowController & { fetch: FetchFlowState };
@@ -296,6 +303,7 @@ export const useFetchFlow = ({
   // What the condition was when it was written from the filters; null for one saved as SQL.
   const [writtenSql, setWrittenSql] = useState<string | null>(null);
   const [customName, setCustomName] = useState<string | null>(null);
+  const [ptModes, setPtModes] = useState<string[]>(ALL_PT_MODES);
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>();
   const [isBusy, setIsBusy] = useState(false);
   const nextId = useRef((seed?.filters.length ?? 0) + 1);
@@ -434,6 +442,7 @@ export const useFetchFlow = ({
     setFiltersBySource({ osm: [], overture: [], street_network: [], pt_network: [] });
     setSql("");
     setCustomName(null);
+    setPtModes(ALL_PT_MODES);
     setIsBusy(false);
     setSelectedFolder(undefined);
     folderInitialized.current = false;
@@ -587,6 +596,8 @@ export const useFetchFlow = ({
             folder_id: selectedFolder.id,
             result_bundle_name: name.trim(),
             area,
+            // Every mode is no filter: only a narrower choice is sent.
+            ...(source === "pt_network" && ptModes.length < ALL_PT_MODES.length ? { pt_modes: ptModes } : {}),
           })
         : await executeProcessAsync("fetch_data", {
             user_id: userProfile?.id,
@@ -617,6 +628,7 @@ export const useFetchFlow = ({
     tooBig,
     firstSizePending,
     isNetwork,
+    ptModes,
     userProfile?.id,
     projectId,
     fetchParams,
@@ -690,17 +702,19 @@ export const useFetchFlow = ({
           )
         : tooBig
           ? t("fetch_features_reduce_area")
-          : sqlMissing
-            ? t("fetch_features_sql_needed")
-            : workflow
-              ? isNetwork
-                ? t(`fetch_features_${source}_not_in_workflow`)
-                : undefined
-              : !name.trim()
-                ? t("connect_service_name_needed")
-                : !selectedFolder
-                  ? t("connect_service_folder_needed")
-                  : undefined;
+          : source === "pt_network" && !ptModes.length
+            ? t("fetch_features_pt_modes_needed")
+            : sqlMissing
+              ? t("fetch_features_sql_needed")
+              : workflow
+                ? isNetwork
+                  ? t(`fetch_features_${source}_not_in_workflow`)
+                  : undefined
+                : !name.trim()
+                  ? t("connect_service_name_needed")
+                  : !selectedFolder
+                    ? t("connect_service_folder_needed")
+                    : undefined;
 
   return {
     isBusy,
@@ -788,6 +802,8 @@ export const useFetchFlow = ({
       selectedFolder,
       setSelectedFolder,
       inWorkflow: !!workflow,
+      ptModes,
+      setPtModes,
     },
   };
 };

@@ -14,6 +14,7 @@
 
 #include "pipeline.h"
 #include "preprocessing/access_egress_table.h"
+#include "pt/timetable_io.h"
 #include "types.h"
 
 namespace py = pybind11;
@@ -335,4 +336,22 @@ PYBIND11_MODULE(_routing, m)
           "Build a nigiri .bin PT timetable from a GTFS feed (zip or directory) "
           "covering [start_date, start_date + length_days), generating transfer "
           "footpaths within link_stop_distance metres, and write it to out_path.");
+
+    m.def("timetable_info",
+          [](std::string const &path)
+          {
+              routing::pt::MappedTimetable const tt{path};
+              py::gil_scoped_acquire acquire;
+              py::dict out;
+              out["n_sources"] = tt->n_sources();
+              out["n_locations"] = tt->n_locations();
+              out["n_routes"] = tt->n_routes();
+              out["n_transports"] = tt->transport_route_.size();
+              out["n_trips"] = tt->trip_id_strings_.size();
+              return out;
+          },
+          py::arg("path"),
+          py::call_guard<py::gil_scoped_release>(),
+          "Read a nigiri .bin timetable (as a routing request does) and report "
+          "what it holds.");
 }

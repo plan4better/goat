@@ -4891,6 +4891,8 @@
   "fetch_features_area_mode_polygon": "Gezeichnetes Polygon",
   "fetch_features_section_features": "Objekte",
   "fetch_features_section_result": "Ergebnis",
+  "fetch_features_section_modes": "Verkehrsmittel",
+  "fetch_features_pt_modes_needed": "Mindestens ein Verkehrsmittel wählen",
   "fetch_features_theme": "Thema",
   "fetch_features_quick_picks": "Schnellauswahl",
   "fetch_features_pick_schools": "Schulen",
