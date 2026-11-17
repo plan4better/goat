@@ -16,7 +16,12 @@ import duckdb
 import goatlib.io.pmtiles as pmtiles
 import manby
 import pytest
-from goatlib.io.pmtiles import MANBY_MARKER, PMTilesConfig, PMTilesGenerator
+from goatlib.io.pmtiles import (
+    MANBY_MARKER,
+    MANBY_RECIPES,
+    PMTilesConfig,
+    PMTilesGenerator,
+)
 from pmtiles.reader import MmapSource, Reader
 
 
@@ -99,7 +104,7 @@ def test_flags_per_geometry_type(generator: PMTilesGenerator) -> None:
     assert not any("point_count" in flag for flag in points)
     assert _has(points, "-zg", "-rp")
     assert _has(points, "-M", "2000000")
-    assert _has(points, "-O", "200000")
+    assert _has(points, "-O", "25000")
 
     # -zg cannot guess a max zoom from a single location
     one_location = generator.manby_flags("POINT", 42, False, 1)
@@ -180,6 +185,22 @@ def test_flags_per_geometry_type(generator: PMTilesGenerator) -> None:
         assert description["snapshot_id"] == 42
     for flags in (points, one_location, lines, polygons):
         assert _has(flags, "-l", "default")
+
+
+def test_point_tiles_hold_at_most_25000_features(
+    generator: PMTilesGenerator,
+) -> None:
+    """MapLibre numbers the pictures of one symbol layer in a tile with a
+    16-bit counter: point tiles stay under it, the other recipes keep their
+    limit."""
+    for distinct_locations in (1000, 1, None):
+        points = generator.manby_flags("POINT", 42, False, distinct_locations)
+        assert _has(points, "-O", "25000")
+        assert "200000" not in points
+    for geometry in ("LINESTRING", "POLYGON"):
+        assert _has(generator.manby_flags(geometry, 42, False, None), "-O", "200000")
+    # Label points are dropped by the tile size limit alone
+    assert "-O" not in generator.manby_flags("POLYGON", 42, True, None)
 
 
 def test_the_marker_is_recorded_without_a_snapshot(
@@ -388,6 +409,7 @@ def test_build_points_lines_polygons(
     assert MANBY_MARKER.items() <= marker.items()
     assert marker["snapshot_id"] == 17
     assert generator.get_pmtiles_snapshot_id(path) == 17
+    assert generator.is_pmtiles_in_sync(path, 17)
     assert _layers(path) == {"default"}
 
     features = _features(path)
@@ -404,6 +426,7 @@ def test_build_points_lines_polygons(
     anchor_path = generator.get_anchor_pmtiles_path("layer1")
     if kind == "polygons":
         assert MANBY_MARKER.items() <= generator.read_marker(anchor_path).items()
+        assert generator.is_pmtiles_in_sync(anchor_path, 17)
         assert _layers(anchor_path) == {"default_anchor"}
         assert set(_features(anchor_path)) == {1, 4}
     else:
@@ -830,17 +853,57 @@ def test_failed_label_tiles_keep_the_main_tiles(
 # =====================================================================
 
 
-def _tileset(path: Path, description: dict | None) -> Path:
-    """A one-point tileset whose description is `description`, as JSON."""
+# The tiles of each kind and the layer they are in, as the builder makes them
+KINDS = {
+    "points": (GEOMETRIES["points"][0], "default", ()),
+    "lines": (GEOMETRIES["lines"][0], "default", ()),
+    "polygons": (GEOMETRIES["polygons"][0], "default", ()),
+    "label_anchors": (
+        GEOMETRIES["polygons"][0],
+        "default_anchor",
+        ("--convert-polygons-to-label-points",),
+    ),
+}
+
+
+def _marker(kind: str) -> dict:
+    """The marker of a build with today's recipe of `kind`."""
+    return {**MANBY_MARKER, "recipe": MANBY_RECIPES[kind]}
+
+
+def _tileset(path: Path, description: dict | None, kind: str = "points") -> Path:
+    """A one-feature tileset of `kind` whose description is `description`."""
+    geometry, layer, extra = KINDS[kind]
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
-    flags = ["-z5"]
+    flags = ["-z5", "-l", layer, *extra]
     if description is not None:
         flags.append(f"--description={json.dumps(description)}")
-    manby.tile(con.sql("SELECT ST_Point(7.6, 47.5) AS geometry"), path, *flags)
+    manby.tile(con.sql(f"SELECT {geometry} AS geometry"), path, *flags)
     return path
 
 
+@pytest.mark.parametrize("kind", KINDS)
+def test_each_recipe_records_its_own_version(
+    generator: PMTilesGenerator, kind: str
+) -> None:
+    geometry = {"points": "POINT", "lines": "LINESTRING"}.get(kind, "POLYGON")
+    flags = generator.manby_flags(geometry, 42, kind == "label_anchors", None)
+
+    assert _marker(kind).items() <= _description(flags).items()
+
+
+def test_only_the_point_recipe_moved_past_the_first_version() -> None:
+    """Capping point tiles rebuilds point layers only."""
+    assert MANBY_RECIPES == {
+        "points": 2,
+        "lines": 1,
+        "polygons": 1,
+        "label_anchors": 1,
+    }
+
+
+@pytest.mark.parametrize("kind", KINDS)
 @pytest.mark.parametrize(
     ("description", "snapshot_id", "in_sync"),
     [
@@ -851,26 +914,46 @@ def _tileset(path: Path, description: dict | None) -> Path:
         # Built by manby with an older recipe
         ({"snapshot_id": 7, "tiler": "manby", "recipe": 0}, 7, False),
         # The current marker, from the current snapshot or another one
-        ({"snapshot_id": 7, **MANBY_MARKER}, 7, True),
-        ({"snapshot_id": 6, **MANBY_MARKER}, 7, False),
+        ({"snapshot_id": 7, "current": True}, 7, True),
+        ({"snapshot_id": 6, "current": True}, 7, False),
         # No snapshot recorded, as for a catalog layer's tiles
-        (MANBY_MARKER, None, True),
-        (MANBY_MARKER, 7, False),
+        ({"current": True}, None, True),
+        ({"current": True}, 7, False),
     ],
 )
 def test_in_sync_needs_the_snapshot_and_the_current_marker(
     generator: PMTilesGenerator,
     tmp_path: Path,
+    kind: str,
     description: dict | None,
     snapshot_id: int | None,
     in_sync: bool,
 ) -> None:
     """Old tiles are stale whatever their snapshot, so a plain sync after a
     deploy rebuilds them, and a recipe bump rolls out the same way."""
-    path = _tileset(tmp_path / "t.pmtiles", description)
+    if description is not None and "current" in description:
+        description = {**description, **_marker(kind)}
+        del description["current"]
+    path = _tileset(tmp_path / "t.pmtiles", description, kind)
 
     assert generator.is_pmtiles_in_sync(path, snapshot_id) is in_sync
     assert (generator.stale_reason(path, snapshot_id) is None) is in_sync
+
+
+@pytest.mark.parametrize(
+    ("kind", "in_sync"),
+    [("points", False), ("lines", True), ("polygons", True), ("label_anchors", True)],
+)
+def test_tiles_of_the_first_recipes_are_stale_for_points_only(
+    generator: PMTilesGenerator, tmp_path: Path, kind: str, in_sync: bool
+) -> None:
+    """Every tileset built before the recipes had versions of their own
+    recorded recipe 1: only the kinds whose recipe moved on are rebuilt."""
+    first = {"snapshot_id": 7, "tiler": "manby", "recipe": 1}
+    path = _tileset(tmp_path / "t.pmtiles", first, kind)
+
+    assert generator.is_pmtiles_in_sync(path, 7) is in_sync
+    assert generator.is_pmtiles_in_sync(path, 6) is False
 
 
 def test_stale_reasons_name_what_differs(
@@ -878,16 +961,35 @@ def test_stale_reasons_name_what_differs(
 ) -> None:
     old = _tileset(tmp_path / "old.pmtiles", {"snapshot_id": 7})
     recipe = _tileset(
-        tmp_path / "recipe.pmtiles", {"snapshot_id": 7, "tiler": "manby", "recipe": 0}
+        tmp_path / "recipe.pmtiles", {"snapshot_id": 7, "tiler": "manby", "recipe": 1}
     )
     snapshot = _tileset(
-        tmp_path / "snapshot.pmtiles", {"snapshot_id": 6, **MANBY_MARKER}
+        tmp_path / "snapshot.pmtiles", {"snapshot_id": 6, **_marker("points")}
     )
 
-    current = MANBY_MARKER["recipe"]
+    current = MANBY_RECIPES["points"]
     assert generator.stale_reason(old, 7) == "tiler None, current manby"
-    assert generator.stale_reason(recipe, 7) == f"recipe 0, current {current}"
+    assert generator.stale_reason(recipe, 7) == f"points recipe 1, current {current}"
     assert generator.stale_reason(snapshot, 7) == "snapshot 6, current 7"
+
+
+def test_tiles_of_an_unknown_kind_are_stale(
+    generator: PMTilesGenerator, tmp_path: Path
+) -> None:
+    """Without tile statistics the recipe to compare with is unknown."""
+    path = tmp_path / "t.pmtiles"
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    description = {"snapshot_id": 7, **_marker("polygons")}
+    manby.tile(
+        con.sql(f"SELECT {GEOMETRIES['polygons'][0]} AS geometry"),
+        path,
+        "-z5",
+        "--no-tile-stats",
+        f"--description={json.dumps(description)}",
+    )
+
+    assert generator.stale_reason(path, 7) == "kind of tiles unknown"
 
 
 def test_a_sidecar_snapshot_does_not_make_old_tiles_in_sync(
