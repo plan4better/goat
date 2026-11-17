@@ -13,7 +13,11 @@ dependencies = [
   "pygeofilter>=0.2.0",
   # goatlib.filter.area unions a filter's area before DuckDB reads it.
   "shapely>=2.0.0",
-  "goatlib",
+  # Reads single tiles out of published .pmtiles (services/tiles.py).
+  "pmtiles>=3.5.0",
+  # goatlib's raster code (rio-tiler, rasterio with GDAL inside the wheel)
+  # draws raster previews, as geoapi draws project rasters.
+  "goatlib[raster]",
   "goatobs",
 ]
 

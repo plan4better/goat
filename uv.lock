@@ -357,8 +357,9 @@ source = { editable = "apps/catalog" }
 dependencies = [
     { name = "duckdb" },
     { name = "fastapi" },
-    { name = "goatlib" },
+    { name = "goatlib", extra = ["raster"] },
     { name = "goatobs" },
+    { name = "pmtiles" },
     { name = "pydantic-settings" },
     { name = "pygeofilter" },
     { name = "shapely" },
@@ -379,8 +380,9 @@ dev = [
 requires-dist = [
     { name = "duckdb", specifier = ">=1.5.4" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "goatlib", editable = "packages/python/goatlib" },
+    { name = "goatlib", extras = ["raster"], editable = "packages/python/goatlib" },
     { name = "goatobs", editable = "packages/python/goatobs" },
+    { name = "pmtiles", specifier = ">=3.5.0" },
     { name = "pydantic-settings", specifier = ">=2.4" },
     { name = "pygeofilter", specifier = ">=0.2.0" },
     { name = "shapely", specifier = ">=2.0.0" },

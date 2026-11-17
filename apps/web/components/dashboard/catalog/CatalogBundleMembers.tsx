@@ -3,28 +3,24 @@
 import { Box, Checkbox, Skeleton, Stack, Typography, useTheme } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+import { Icon } from "@p4b/ui/components/Icon";
 
 import { useCatalogCollectionItems } from "@/lib/api/catalog";
+import { catalogKindOf, markFor } from "@/lib/catalog/kind";
 import type { CatalogItem } from "@/lib/validations/catalog";
 
 import { useCatalogLabels } from "@/hooks/catalog/useCatalogLabels";
 
 /** The layers inside a dataset, listed under its card. */
 
-/** The glyph for a layer, from its own geometry. */
-const memberIcon = (item: CatalogItem): ICON_NAME => {
-  switch (item.properties["goat:geometryType"]) {
-    case "point":
-      return ICON_NAME.POINT_FEATURE;
-    case "line":
-      return ICON_NAME.LINE_FEATURE;
-    case "polygon":
-      return ICON_NAME.POLYGON_FEATURE;
-    default:
-      return typeof item.properties["table:row_count"] === "number"
-        ? ICON_NAME.TABLE
-        : ICON_NAME.LAYERS;
+/** A map service's server, which says more in a row than a geometry the service does not publish. */
+const serviceHost = (item: CatalogItem): string | undefined => {
+  const href = item.links?.find((link) => link.rel === "wms" || link.rel === "wmts")?.href;
+  if (!href) return undefined;
+  try {
+    return new URL(href).host;
+  } catch {
+    return undefined;
   }
 };
 
@@ -109,6 +105,8 @@ const CatalogBundleMembers = ({
       }>
       {items.map((member) => {
         const rows = member.properties["table:row_count"];
+        const kind = catalogKindOf(member, true);
+        const service = kind === "wms" || kind === "wmts";
         const picked = selection?.isSelected(member.id) ?? false;
         return (
           <Box
@@ -153,7 +151,7 @@ const CatalogBundleMembers = ({
               />
             )}
             <Icon
-              iconName={memberIcon(member)}
+              iconName={markFor({ kind, geometryType: member.properties["goat:geometryType"] })}
               style={{ fontSize: 13 }}
               htmlColor={theme.palette.text.secondary}
             />
@@ -162,11 +160,15 @@ const CatalogBundleMembers = ({
             </Typography>
             {!dense && (
               <Typography variant="caption" color="text.secondary" noWrap>
-                {labels.geometryLabel(member.properties["goat:geometryType"])}
+                {service ? labels.kindLabel(kind) : labels.geometryLabel(member.properties["goat:geometryType"])}
               </Typography>
             )}
             <Typography variant="caption" color="text.secondary" align="right" noWrap>
-              {typeof rows === "number" ? t("catalog_row_count_short", { count: rows }) : ""}
+              {service
+                ? serviceHost(member)
+                : typeof rows === "number"
+                  ? t("catalog_row_count_short", { count: rows })
+                  : ""}
             </Typography>
           </Box>
         );

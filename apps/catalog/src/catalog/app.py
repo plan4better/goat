@@ -18,6 +18,7 @@ from catalog.routers.nuts import router as nuts_router
 from catalog.routers.stac import router as stac_router
 from catalog.services.assets import AssetReader
 from catalog.services.preview import PreviewReader
+from catalog.services.tiles import RasterTileReader, TileReader
 from catalog.store import CatalogStore
 
 # Re-exported for backwards compatibility (Task 3 originally defined this
@@ -41,6 +42,14 @@ def create_app(settings: CatalogSettings | None = None) -> FastAPI:
         )
         app.state.asset_reader = (
             AssetReader(settings) if settings.assets_enabled else None
+        )
+        app.state.tile_reader = (
+            TileReader(settings) if settings.assets_enabled else None
+        )
+        app.state.raster_tile_reader = (
+            RasterTileReader(settings, app.state.tile_reader)
+            if app.state.tile_reader is not None
+            else None
         )
         yield
 

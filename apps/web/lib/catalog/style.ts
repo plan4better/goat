@@ -14,6 +14,40 @@ export const CATALOG_SAMPLE_KEY = "catalog-sample";
 
 const GEOMETRIES = new Set(["point", "line", "polygon"]);
 
+/** A raster layer drawn by the catalog's raster tiles, colored by its style as a project draws it. */
+export function catalogRasterLayer(
+  style: unknown,
+  source: { tiles: string; dem: string } | null
+): RenderLayer | undefined {
+  if (!source || !isObject(style) || style.version !== 1 || style.kind !== "raster") return undefined;
+  return {
+    key: CATALOG_SAMPLE_KEY,
+    style: style as unknown as LayerStyle,
+    entry: { visible: true },
+    source: { type: "raster", id: `src-${CATALOG_SAMPLE_KEY}-raster`, ...source },
+  };
+}
+
+/** The layer's published tiles as a render layer, drawn with its style like a project layer is. */
+export function catalogTilesLayer(
+  style: unknown,
+  geometryType: string | undefined,
+  tilesUrl: string | null,
+  highlight?: number
+): RenderLayer | undefined {
+  if (!tilesUrl || !isObject(style) || style.version !== 1 || !geometryType || !GEOMETRIES.has(geometryType)) {
+    return undefined;
+  }
+  return {
+    key: CATALOG_SAMPLE_KEY,
+    style: style as unknown as LayerStyle,
+    geometry: geometryType as Geometry,
+    entry: { visible: true },
+    source: { type: "tiles", id: `src-${CATALOG_SAMPLE_KEY}-tiles`, tiles: [tilesUrl] },
+    ...(highlight !== undefined ? { highlight } : {}),
+  };
+}
+
 /** The sample as a render layer; features are numbered from 1 so the active one can be highlighted by feature state. */
 export function catalogSampleLayer(
   style: unknown,

@@ -262,3 +262,32 @@ async def test_a_ready_raster_layer_with_its_copy_is_left_alone(
     assert response.status_code == 200, response.text
     enqueue.assert_not_awaited()
     assert (await _materialize_doc(db_session, layer_id))["status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_a_map_service_layer_is_never_materialized(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: Any,
+    fixture_get_home_folder: dict[str, Any],
+    catalog: tuple[Path, dict[str, UUID], AsyncMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A WMS/WMTS has no file by design: "ready without its file" is not a heal."""
+    _, promoted, enqueue = catalog
+    project_id, layer_id = await _project_with_ready_catalog_layer(
+        client, db_session, fixture_create_user, fixture_get_home_folder["id"]
+    )
+
+    async def promote(conn: Any, catalog_id: str, **_: Any) -> dict[str, Any]:
+        return {"layer_id": str(layer_id), "created": False, "materialize": False}
+
+    monkeypatch.setattr("goatlib.catalog.promote.promote", promote)
+
+    response = await client.post(
+        f"{settings.API_V2_STR}/project/{project_id}/layer-catalog",
+        params={"catalog_ids": ["item-1"]},
+    )
+
+    assert response.status_code == 200, response.text
+    enqueue.assert_not_awaited()

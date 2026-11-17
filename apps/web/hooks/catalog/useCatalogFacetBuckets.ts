@@ -96,9 +96,12 @@ export const useCatalogFacetBuckets = ({
       buckets[facet.name] = data?.[facet.name] ?? [];
       continue;
     }
-    buckets[facet.name] = universe.map(
-      (bucket) => current.get(bucket.key) ?? { ...bucket, frequency: 0 }
-    );
+    // Values the filters still allow first, each group in the universe's order:
+    // a long list (publishers) is unsearchable when the few that apply are
+    // scattered among hundreds at zero.
+    buckets[facet.name] = universe
+      .map((bucket) => current.get(bucket.key) ?? { ...bucket, frequency: 0 })
+      .sort((a, b) => Number(b.frequency > 0) - Number(a.frequency > 0));
   }
 
   return { buckets, isLoading, isError: error };

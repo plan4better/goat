@@ -1555,6 +1555,8 @@
       "pt_network_gtfs": "Public Transport Network",
       "feature": "Feature",
       "raster": "Raster",
+      "wms": "WMS",
+      "wmts": "WMTS",
       "table": "Table",
       "bundle": "Bundle"
     },

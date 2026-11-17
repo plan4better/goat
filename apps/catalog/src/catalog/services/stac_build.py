@@ -246,7 +246,16 @@ _PRIVATE_ASSET_ROLES = frozenset({"collection-mirror"})
 #: The GeoParquet is deliberately not here. It keeps being dropped, which is how
 #: "the harmonised data is not downloadable" stays true by construction rather
 #: than by a permission that could be relaxed.
-_SERVED_ASSETS = {"thumbnail": "thumbnail", "style": "style"}
+#: The shape of the documents this API builds from the mirror. Part of every
+#: ETag (see ``CatalogStore._content_digest``): raise it whenever a change here
+#: serves different documents from the same mirror files, or browsers keep the
+#: old answer through 304s.
+#: 2: items announce their `tiles` and a raster's `raster` tiles.
+DOCUMENT_VERSION = 2
+
+#: `tiles` is served one tile at a time (`/assets/{id}/tiles/{z}/{x}/{y}`); the
+#: href names the tile set and a client appends the tile address.
+_SERVED_ASSETS = {"thumbnail": "thumbnail", "style": "style", "tiles": "tiles"}
 
 
 def _public_assets(
@@ -266,6 +275,20 @@ def _public_assets(
         if not isinstance(asset, dict):
             continue
         if _PRIVATE_ASSET_ROLES.intersection(asset.get("roles") or ()):
+            continue
+        if (
+            key == "data"
+            and assets_base
+            and item_id
+            and str(asset.get("href") or "").lower().endswith((".tif", ".tiff"))
+        ):
+            # A raster's GeoTIFF stays private, like every data file; what is
+            # announced is its drawn tiles (`/assets/{id}/raster/{z}/{x}/{y}`).
+            served["raster"] = {
+                "href": f"{assets_base}/{quote(item_id, safe='')}/raster",
+                "type": "image/webp",
+                "roles": ["tiles"],
+            }
             continue
         kind = _SERVED_ASSETS.get(key)
         if kind and assets_base and item_id:
