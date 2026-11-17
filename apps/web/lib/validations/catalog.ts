@@ -22,7 +22,7 @@
  */
 
 /** GOAT layer vocabulary. `bundle` means the item stands in for several layers. */
-export type CatalogLayerType = "feature" | "table" | "raster" | "bundle";
+export type CatalogLayerType = "feature" | "table" | "raster" | "wms" | "wmts" | "bundle";
 
 export type CatalogGeometryType = "point" | "line" | "polygon";
 

@@ -1651,6 +1651,8 @@
       "pt_network_gtfs": "ÖPNV-Netz",
       "feature": "Feature",
       "raster": "Raster",
+      "wms": "WMS",
+      "wmts": "WMTS",
       "table": "Tabelle",
       "bundle": "Datenpaket"
     },

@@ -246,6 +246,13 @@ _PRIVATE_ASSET_ROLES = frozenset({"collection-mirror"})
 #: The GeoParquet is deliberately not here. It keeps being dropped, which is how
 #: "the harmonised data is not downloadable" stays true by construction rather
 #: than by a permission that could be relaxed.
+#: The shape of the documents this API builds from the mirror. Part of every
+#: ETag (see ``CatalogStore._content_digest``): raise it whenever a change here
+#: serves different documents from the same mirror files, or browsers keep the
+#: old answer through 304s.
+#: 2: items announce their `tiles` and a raster's `raster` tiles.
+DOCUMENT_VERSION = 2
+
 _SERVED_ASSETS = {"thumbnail": "thumbnail", "style": "style"}
 
 

@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { useCatalogPreview } from "@/lib/api/catalog";
-import { catalogKindOf } from "@/lib/catalog/kind";
+import { catalogKindOf, catalogRasterSource, catalogServiceTiles } from "@/lib/catalog/kind";
 import { datasetPeriod, itemPeriod } from "@/lib/catalog/period";
 import type { CatalogCollection, CatalogItem } from "@/lib/validations/catalog";
 
@@ -62,7 +62,7 @@ const CatalogLayerDetail = ({
   const columns = props["table:columns"] ?? [];
   // The same SWR key the map uses, so the two share one request: the tab shows
   // the sample as rows and the map draws it as geometry.
-  const { preview } = useCatalogPreview(item.id);
+  const { preview } = useCatalogPreview(item.id, !catalogServiceTiles(item) && !catalogRasterSource(item));
   const hasMap = !!item.geometry;
   const memberCount = (collection?.["goat:member_count"] as number | undefined) ?? 1;
   const inBundle = memberCount > 1;
