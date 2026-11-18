@@ -12,15 +12,18 @@ from goatlib.style.context import DataContext
 from goatlib.style.cql import as_text
 from goatlib.style.issues import Fix, Issue, make_issue
 from goatlib.style.models.classify import NUMERIC_METHODS
-from goatlib.style.models.parts import PARTS, PER_LAYER_KEYS
+from goatlib.style.models.parts import LABEL_PLACEMENTS, PARTS, PER_LAYER_KEYS
 from goatlib.style.pointer import item_key, to_pointer
 from goatlib.style.template import liquid_to_label, problems
 
+#: The parts of each geometry (spec 3); polygons and lines draw a marker at a point of each feature (3.3).
 GEOMETRY_PARTS = {
     "point": ("marker", "outline", "label"),
-    "line": ("line", "casing", "arrows", "label"),
-    "polygon": ("fill", "outline", "extrude", "label"),
+    "line": ("line", "casing", "arrows", "marker", "label"),
+    "polygon": ("fill", "outline", "extrude", "marker", "label"),
 }
+#: Every label placement of some geometry; other values are the parser's `invalid_value`.
+KNOWN_PLACEMENTS = frozenset(p for ps in LABEL_PLACEMENTS.values() for p in ps)
 MAIN_PART = {"point": "marker", "line": "line", "polygon": "fill"}
 MAIN_COLOR = {"point": "marker.color", "line": "line.color", "polygon": "fill.color"}
 FREE_COLOR = {
@@ -225,6 +228,30 @@ def check_document(
                         "dash_on_point_outline",
                         to_pointer(ppath + ["dash"]),
                         "Circle outlines cannot be dashed.",
+                    )
+                )
+            if part == "outline" and geometry == "point" and "position" in value:
+                issues.append(
+                    make_issue(
+                        "position_on_point_outline",
+                        to_pointer(ppath + ["position"]),
+                        "Only polygon outlines run inside or outside their edge.",
+                    )
+                )
+            placement = value.get("placement")
+            if (
+                part == "label"
+                and geometry in LABEL_PLACEMENTS
+                and isinstance(placement, str)
+                and placement in KNOWN_PLACEMENTS
+                and placement not in LABEL_PLACEMENTS[geometry]
+            ):
+                allowed = ", ".join(LABEL_PLACEMENTS[geometry])
+                issues.append(
+                    make_issue(
+                        "placement_not_for_geometry",
+                        to_pointer(ppath + ["placement"]),
+                        f'Label placement "{placement}" is not for {geometry}s; {geometry}s take {allowed}.',
                     )
                 )
             if part == "label" and isinstance(value.get("text"), str):

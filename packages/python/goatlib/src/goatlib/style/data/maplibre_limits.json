@@ -179,6 +179,25 @@
         "attribute": false
       }
     },
+    "outline.position": {
+      "models": [
+        "Outline.position"
+      ],
+      "maplibre": [
+        "paint_line.line-offset"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "zoom": "step",
+        "choice": true,
+        "attribute": false
+      }
+    },
     "line.color": {
       "models": [
         "Line.color"
@@ -419,6 +438,44 @@
         "max": null,
         "zoom": "blend",
         "feature": true
+      }
+    },
+    "arrows.icon": {
+      "models": [
+        "Arrows.icon"
+      ],
+      "maplibre": [
+        "layout_symbol.icon-image"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false,
+        "per_feature": false
+      }
+    },
+    "arrows.turn_with_line": {
+      "models": [
+        "Arrows.turn_with_line"
+      ],
+      "maplibre": [
+        "layout_symbol.icon-rotation-alignment"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "zoom": null,
+        "attribute": false,
+        "per_feature": false
       }
     },
     "marker.shape": {
@@ -754,6 +811,23 @@
         "attribute": false
       }
     },
+    "label.font.style": {
+      "models": [
+        "Font.style"
+      ],
+      "maplibre": [
+        "layout_symbol.text-font"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "attribute": false
+      }
+    },
     "label.placement": {
       "models": [
         "Label.placement"
@@ -803,6 +877,85 @@
         "max": null,
         "zoom": "blend",
         "feature": true
+      }
+    },
+    "label.transform": {
+      "models": [
+        "Label.transform"
+      ],
+      "maplibre": [
+        "layout_symbol.text-transform"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "step",
+        "feature": true
+      },
+      "goat": {
+        "attribute": false
+      }
+    },
+    "label.letter_spacing": {
+      "models": [
+        "Label.letter_spacing"
+      ],
+      "maplibre": [
+        "layout_symbol.text-letter-spacing"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": true
+      },
+      "goat": {
+        "attribute": false
+      }
+    },
+    "label.line_height": {
+      "models": [
+        "Label.line_height"
+      ],
+      "maplibre": [
+        "layout_symbol.text-line-height"
+      ],
+      "spec": {
+        "min": null,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      },
+      "goat": {
+        "min": 0
+      }
+    },
+    "label.spacing": {
+      "models": [
+        "Label.spacing"
+      ],
+      "maplibre": [
+        "layout_symbol.symbol-spacing"
+      ],
+      "spec": {
+        "min": 1,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
+      }
+    },
+    "label.padding": {
+      "models": [
+        "Label.padding"
+      ],
+      "maplibre": [
+        "layout_symbol.text-padding"
+      ],
+      "spec": {
+        "min": 0,
+        "max": null,
+        "zoom": "blend",
+        "feature": false
       }
     },
     "label.priority": {

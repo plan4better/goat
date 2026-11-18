@@ -1,0 +1,1712 @@
+[
+  {
+    "palette": "goat:elevation",
+    "count": 5,
+    "colors": ["#2f6b3a", "#84b25c", "#e8dc8f", "#ac875b", "#f2f2f2"]
+  },
+  {
+    "palette": "goat:elevation",
+    "count": 5,
+    "reverse": true,
+    "colors": ["#f2f2f2", "#ac875b", "#e8dc8f", "#84b25c", "#2f6b3a"]
+  },
+  {
+    "palette": "goat:green",
+    "count": 1,
+    "colors": ["#5fca9b"]
+  },
+  {
+    "palette": "goat:green",
+    "count": 3,
+    "colors": ["#e6f6ef", "#5fca9b", "#145c42"]
+  },
+  {
+    "palette": "goat:green",
+    "count": 4,
+    "colors": ["#e6f6ef", "#8fdab9", "#2bb381", "#145c42"]
+  },
+  {
+    "palette": "colorbrewer:OrRd",
+    "count": 5,
+    "colors": ["#fef0d9", "#fdcc8a", "#fc8d59", "#e34a33", "#b30000"]
+  },
+  {
+    "palette": "colorbrewer:OrRd",
+    "count": 5,
+    "reverse": true,
+    "colors": ["#b30000", "#e34a33", "#fc8d59", "#fdcc8a", "#fef0d9"]
+  },
+  {
+    "palette": "colorbrewer:OrRd",
+    "count": 12,
+    "colors": [
+      "#fff7ec",
+      "#feecd2",
+      "#fedfb5",
+      "#fdcf99",
+      "#fdbd86",
+      "#fd9e68",
+      "#f77f53",
+      "#ed6144",
+      "#dc3b27",
+      "#c31b0e",
+      "#a40001",
+      "#7f0000"
+    ]
+  },
+  {
+    "palette": "colorbrewer:RdYlBu",
+    "count": 2,
+    "colors": ["#a50026", "#313695"]
+  },
+  {
+    "palette": "colorbrewer:Set2",
+    "count": 3,
+    "colors": ["#66c2a5", "#fc8d62", "#8da0cb"]
+  },
+  {
+    "palette": "colorbrewer:Set2",
+    "count": 9,
+    "colors": [
+      "#66c2a5",
+      "#fc8d62",
+      "#8da0cb",
+      "#e78ac3",
+      "#a6d854",
+      "#ffd92f",
+      "#e5c494",
+      "#b3b3b3",
+      "#66c2a5"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Set2",
+    "count": 12,
+    "reverse": true,
+    "colors": [
+      "#b3b3b3",
+      "#e5c494",
+      "#ffd92f",
+      "#a6d854",
+      "#e78ac3",
+      "#8da0cb",
+      "#fc8d62",
+      "#66c2a5",
+      "#b3b3b3",
+      "#e5c494",
+      "#ffd92f",
+      "#a6d854"
+    ]
+  },
+  {
+    "palette": ["#000000", "#ffffff"],
+    "count": 1,
+    "colors": ["#777777"]
+  },
+  {
+    "palette": ["#000000", "#ffffff"],
+    "count": 3,
+    "colors": ["#000000", "#777777", "#ffffff"]
+  },
+  {
+    "palette": ["#000000", "#FFFFFF"],
+    "count": 4,
+    "reverse": true,
+    "colors": ["#ffffff", "#a2a2a2", "#4e4e4e", "#000000"]
+  },
+  {
+    "palette": ["#ff0000", "#00ff00", "#0000ff"],
+    "count": 5,
+    "colors": ["#ff0000", "#c9ab00", "#00ff00", "#7d93a6", "#0000ff"]
+  },
+  {
+    "palette": ["#111111", "#222222"],
+    "count": 3,
+    "kind": "qualitative",
+    "colors": ["#111111", "#222222", "#111111"]
+  },
+  {
+    "palette": "colorbrewer:BuGn",
+    "count": 10,
+    "colors": [
+      "#f7fcfd",
+      "#e7f6f9",
+      "#d2eeea",
+      "#aadfd3",
+      "#7dccb4",
+      "#57b98f",
+      "#38a265",
+      "#1d843f",
+      "#00682a",
+      "#00441b"
+    ]
+  },
+  {
+    "palette": "colorbrewer:BuPu",
+    "count": 10,
+    "colors": [
+      "#f7fcfd",
+      "#e3eef5",
+      "#c6d9e9",
+      "#a9c4de",
+      "#94a7cf",
+      "#8d83bd",
+      "#8b5eaa",
+      "#873896",
+      "#7b0d76",
+      "#4d004b"
+    ]
+  },
+  {
+    "palette": "colorbrewer:GnBu",
+    "count": 10,
+    "colors": [
+      "#f7fcf0",
+      "#e3f4dd",
+      "#d0edca",
+      "#b4e2ba",
+      "#90d4bd",
+      "#6ac1cb",
+      "#44a6cc",
+      "#2684ba",
+      "#0963a7",
+      "#084081"
+    ]
+  },
+  {
+    "palette": "colorbrewer:OrRd",
+    "count": 10,
+    "colors": [
+      "#fff7ec",
+      "#feeacc",
+      "#fdd8a7",
+      "#fdc38d",
+      "#fda26c",
+      "#f67c51",
+      "#e7553a",
+      "#cf2818",
+      "#ad0000",
+      "#7f0000"
+    ]
+  },
+  {
+    "palette": "colorbrewer:PuBu",
+    "count": 10,
+    "colors": [
+      "#fff7fb",
+      "#eee9f3",
+      "#d6d6e9",
+      "#b4c4df",
+      "#8bb2d4",
+      "#5c9ec8",
+      "#2b85bb",
+      "#056ba8",
+      "#045687",
+      "#023858"
+    ]
+  },
+  {
+    "palette": "colorbrewer:PuBuGn",
+    "count": 10,
+    "colors": [
+      "#fff7fb",
+      "#eee4f1",
+      "#d6d5e8",
+      "#b4c4df",
+      "#85b2d4",
+      "#539ec8",
+      "#2a8bae",
+      "#047c7f",
+      "#016855",
+      "#014636"
+    ]
+  },
+  {
+    "palette": "colorbrewer:PuRd",
+    "count": 10,
+    "colors": [
+      "#f7f4f9",
+      "#e9e3f0",
+      "#d8c2df",
+      "#cda0cd",
+      "#d67bba",
+      "#e34f9f",
+      "#df2278",
+      "#c20e52",
+      "#92003f",
+      "#67001f"
+    ]
+  },
+  {
+    "palette": "colorbrewer:RdPu",
+    "count": 10,
+    "colors": [
+      "#fff7f3",
+      "#fde3df",
+      "#fccbc6",
+      "#fbacb9",
+      "#f982aa",
+      "#ec539d",
+      "#cd278f",
+      "#a3017c",
+      "#750176",
+      "#49006a"
+    ]
+  },
+  {
+    "palette": "colorbrewer:YlGn",
+    "count": 10,
+    "colors": [
+      "#ffffe5",
+      "#f8fcbe",
+      "#e0f3a8",
+      "#bce395",
+      "#90d082",
+      "#61ba6c",
+      "#379e54",
+      "#1d7e40",
+      "#006435",
+      "#004529"
+    ]
+  },
+  {
+    "palette": "colorbrewer:YlGnBu",
+    "count": 10,
+    "colors": [
+      "#ffffd9",
+      "#eff9b5",
+      "#d0ecb3",
+      "#99d6b9",
+      "#61c0c0",
+      "#34a5c2",
+      "#2280b8",
+      "#2455a4",
+      "#22318d",
+      "#081d58"
+    ]
+  },
+  {
+    "palette": "colorbrewer:YlOrBr",
+    "count": 10,
+    "colors": [
+      "#ffffe5",
+      "#fff8c1",
+      "#fee79b",
+      "#ffce66",
+      "#ffac3a",
+      "#f68720",
+      "#e1640e",
+      "#c04703",
+      "#933205",
+      "#662506"
+    ]
+  },
+  {
+    "palette": "colorbrewer:YlOrRd",
+    "count": 10,
+    "colors": [
+      "#ffffcc",
+      "#ffefa5",
+      "#fedd7f",
+      "#ffbf5a",
+      "#fe9e43",
+      "#fd7434",
+      "#f44025",
+      "#da151f",
+      "#b60026",
+      "#800026"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Blues",
+    "count": 10,
+    "colors": [
+      "#f7fbff",
+      "#e1edf8",
+      "#cbdff1",
+      "#acd0e6",
+      "#83badb",
+      "#5aa1cf",
+      "#3987c0",
+      "#1d6aaf",
+      "#084d96",
+      "#08306b"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Greens",
+    "count": 10,
+    "colors": [
+      "#f7fcf5",
+      "#e7f6e2",
+      "#ceecc7",
+      "#aedea7",
+      "#88cd86",
+      "#5fb96b",
+      "#37a055",
+      "#1d843f",
+      "#00682a",
+      "#00441b"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Greys",
+    "count": 10,
+    "colors": [
+      "#ffffff",
+      "#f2f2f2",
+      "#dedede",
+      "#c6c6c6",
+      "#a7a7a7",
+      "#868686",
+      "#686868",
+      "#484848",
+      "#222222",
+      "#000000"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Oranges",
+    "count": 10,
+    "colors": [
+      "#fff5eb",
+      "#fee8d1",
+      "#fed5ac",
+      "#feb97d",
+      "#fe9c51",
+      "#f87d2b",
+      "#e95e0d",
+      "#cd4402",
+      "#a23403",
+      "#7f2704"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Purples",
+    "count": 10,
+    "colors": [
+      "#fcfbfd",
+      "#f0eff6",
+      "#dfdeed",
+      "#c6c7e1",
+      "#aba9d1",
+      "#918dc2",
+      "#796eb2",
+      "#65489f",
+      "#52248d",
+      "#3f007d"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Reds",
+    "count": 10,
+    "colors": [
+      "#fff5f0",
+      "#fee2d5",
+      "#fdc3ac",
+      "#fda081",
+      "#fc7c5c",
+      "#f6573d",
+      "#e33127",
+      "#c2161b",
+      "#9e0d14",
+      "#67000d"
+    ]
+  },
+  {
+    "palette": "colorbrewer:BrBG",
+    "count": 10,
+    "colors": [
+      "#543005",
+      "#8c510a",
+      "#bf812d",
+      "#dfc27d",
+      "#f6e8c3",
+      "#c7eae5",
+      "#80cdc1",
+      "#35978f",
+      "#01665e",
+      "#003c30"
+    ]
+  },
+  {
+    "palette": "colorbrewer:PiYG",
+    "count": 10,
+    "colors": [
+      "#8e0152",
+      "#c51b7d",
+      "#de77ae",
+      "#f1b6da",
+      "#fde0ef",
+      "#e6f5d0",
+      "#b8e186",
+      "#7fbc41",
+      "#4d9221",
+      "#276419"
+    ]
+  },
+  {
+    "palette": "colorbrewer:PRGn",
+    "count": 10,
+    "colors": [
+      "#40004b",
+      "#762a83",
+      "#9970ab",
+      "#c2a5cf",
+      "#e7d4e8",
+      "#d9f0d3",
+      "#a6dba0",
+      "#5aae61",
+      "#1b7837",
+      "#00441b"
+    ]
+  },
+  {
+    "palette": "colorbrewer:PuOr",
+    "count": 10,
+    "colors": [
+      "#7f3b08",
+      "#b35806",
+      "#e08214",
+      "#fdb863",
+      "#fee0b6",
+      "#d8daeb",
+      "#b2abd2",
+      "#8073ac",
+      "#542788",
+      "#2d004b"
+    ]
+  },
+  {
+    "palette": "colorbrewer:RdBu",
+    "count": 10,
+    "colors": [
+      "#67001f",
+      "#b2182b",
+      "#d6604d",
+      "#f4a582",
+      "#fddbc7",
+      "#d1e5f0",
+      "#92c5de",
+      "#4393c3",
+      "#2166ac",
+      "#053061"
+    ]
+  },
+  {
+    "palette": "colorbrewer:RdGy",
+    "count": 10,
+    "colors": [
+      "#67001f",
+      "#b2182b",
+      "#d6604d",
+      "#f4a582",
+      "#fddbc7",
+      "#e0e0e0",
+      "#bababa",
+      "#878787",
+      "#4d4d4d",
+      "#1a1a1a"
+    ]
+  },
+  {
+    "palette": "colorbrewer:RdYlBu",
+    "count": 10,
+    "colors": [
+      "#a50026",
+      "#d73027",
+      "#f46d43",
+      "#fdae61",
+      "#fee090",
+      "#e0f3f8",
+      "#abd9e9",
+      "#74add1",
+      "#4575b4",
+      "#313695"
+    ]
+  },
+  {
+    "palette": "colorbrewer:RdYlGn",
+    "count": 10,
+    "colors": [
+      "#a50026",
+      "#d73027",
+      "#f46d43",
+      "#fdae61",
+      "#fee08b",
+      "#d9ef8b",
+      "#a6d96a",
+      "#66bd63",
+      "#1a9850",
+      "#006837"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Spectral",
+    "count": 10,
+    "colors": [
+      "#9e0142",
+      "#d53e4f",
+      "#f46d43",
+      "#fdae61",
+      "#fee08b",
+      "#e6f598",
+      "#abdda4",
+      "#66c2a5",
+      "#3288bd",
+      "#5e4fa2"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Accent",
+    "count": 10,
+    "colors": [
+      "#7fc97f",
+      "#beaed4",
+      "#fdc086",
+      "#ffff99",
+      "#386cb0",
+      "#f0027f",
+      "#bf5b17",
+      "#666666",
+      "#7fc97f",
+      "#beaed4"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Dark2",
+    "count": 10,
+    "colors": [
+      "#1b9e77",
+      "#d95f02",
+      "#7570b3",
+      "#e7298a",
+      "#66a61e",
+      "#e6ab02",
+      "#a6761d",
+      "#666666",
+      "#1b9e77",
+      "#d95f02"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Paired",
+    "count": 10,
+    "colors": [
+      "#a6cee3",
+      "#1f78b4",
+      "#b2df8a",
+      "#33a02c",
+      "#fb9a99",
+      "#e31a1c",
+      "#fdbf6f",
+      "#ff7f00",
+      "#cab2d6",
+      "#6a3d9a"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Pastel1",
+    "count": 10,
+    "colors": [
+      "#fbb4ae",
+      "#b3cde3",
+      "#ccebc5",
+      "#decbe4",
+      "#fed9a6",
+      "#ffffcc",
+      "#e5d8bd",
+      "#fddaec",
+      "#f2f2f2",
+      "#fbb4ae"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Pastel2",
+    "count": 10,
+    "colors": [
+      "#b3e2cd",
+      "#fdcdac",
+      "#cbd5e8",
+      "#f4cae4",
+      "#e6f5c9",
+      "#fff2ae",
+      "#f1e2cc",
+      "#cccccc",
+      "#b3e2cd",
+      "#fdcdac"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Set1",
+    "count": 10,
+    "colors": [
+      "#e41a1c",
+      "#377eb8",
+      "#4daf4a",
+      "#984ea3",
+      "#ff7f00",
+      "#ffff33",
+      "#a65628",
+      "#f781bf",
+      "#999999",
+      "#e41a1c"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Set2",
+    "count": 10,
+    "colors": [
+      "#66c2a5",
+      "#fc8d62",
+      "#8da0cb",
+      "#e78ac3",
+      "#a6d854",
+      "#ffd92f",
+      "#e5c494",
+      "#b3b3b3",
+      "#66c2a5",
+      "#fc8d62"
+    ]
+  },
+  {
+    "palette": "colorbrewer:Set3",
+    "count": 10,
+    "colors": [
+      "#8dd3c7",
+      "#ffffb3",
+      "#bebada",
+      "#fb8072",
+      "#80b1d3",
+      "#fdb462",
+      "#b3de69",
+      "#fccde5",
+      "#d9d9d9",
+      "#bc80bd"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_sequential_1",
+    "count": 10,
+    "colors": [
+      "#e6fafa",
+      "#d2eeef",
+      "#bde3e4",
+      "#a9d7da",
+      "#94cccf",
+      "#7fc0c5",
+      "#69b5ba",
+      "#52a9b0",
+      "#369ea6",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_sequential_2",
+    "count": 10,
+    "colors": [
+      "#e6fafa",
+      "#d2eeef",
+      "#bee3e5",
+      "#aad7da",
+      "#95cbd0",
+      "#7fc0c5",
+      "#68b4bb",
+      "#51a9b1",
+      "#369ea6",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_sequential_3",
+    "count": 10,
+    "colors": [
+      "#e6fafa",
+      "#d2eeef",
+      "#bde3e4",
+      "#a9d7d9",
+      "#94cccf",
+      "#7ec0c5",
+      "#68b5bb",
+      "#50a9b0",
+      "#359ea6",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_sequential_4",
+    "count": 10,
+    "colors": [
+      "#e6fafa",
+      "#d1eeef",
+      "#bde3e4",
+      "#a9d7da",
+      "#94cbd0",
+      "#7ec0c5",
+      "#68b4bb",
+      "#50a9b1",
+      "#359ea7",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_sequential_5",
+    "count": 10,
+    "colors": [
+      "#e6fafa",
+      "#cdeced",
+      "#b5dee0",
+      "#9dd0d4",
+      "#83c2c7",
+      "#68b4bb",
+      "#4ba7af",
+      "#279aa2",
+      "#068d95",
+      "#108188"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_sequential_6",
+    "count": 10,
+    "colors": [
+      "#e6fafa",
+      "#c9eaea",
+      "#add9dc",
+      "#90c9ce",
+      "#71b9bf",
+      "#50a9b1",
+      "#279aa2",
+      "#088b93",
+      "#107d84",
+      "#0e7077"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_diverging_0",
+    "count": 10,
+    "colors": [
+      "#c22e00",
+      "#d75f38",
+      "#e88868",
+      "#f5b199",
+      "#fcdacd",
+      "#e8e4df",
+      "#bcd0ce",
+      "#8fbbbd",
+      "#5da7ac",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_diverging_0_5",
+    "count": 10,
+    "colors": [
+      "#c22e00",
+      "#d7643e",
+      "#e69175",
+      "#efbeae",
+      "#d9c6bc",
+      "#c0cdc9",
+      "#a2d4d7",
+      "#7bbec3",
+      "#50a8af",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_diverging_1",
+    "count": 10,
+    "colors": [
+      "#c22e00",
+      "#d75f36",
+      "#e88964",
+      "#f5b197",
+      "#fddacc",
+      "#e4e5e1",
+      "#b0d2d3",
+      "#7bbec3",
+      "#50a9af",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_diverging_1_5",
+    "count": 10,
+    "colors": [
+      "#c22e00",
+      "#d25933",
+      "#e17f5e",
+      "#f0a88d",
+      "#edc8b6",
+      "#cbdad5",
+      "#9dd4d6",
+      "#69bec3",
+      "#40a8af",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_diverging_2",
+    "count": 10,
+    "colors": [
+      "#c22e00",
+      "#d75f33",
+      "#e98863",
+      "#f5b097",
+      "#fdd9cc",
+      "#e1e5e2",
+      "#a2d4d7",
+      "#7abec4",
+      "#4fa8b0",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_diverging_2_5",
+    "count": 10,
+    "colors": [
+      "#c22e00",
+      "#d0552e",
+      "#df7a58",
+      "#ed9f84",
+      "#f3c4b0",
+      "#c3dedc",
+      "#92d0d3",
+      "#63bbc0",
+      "#35a7ae",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_diverging_3",
+    "count": 10,
+    "colors": [
+      "#c22e00",
+      "#d85f31",
+      "#e98963",
+      "#f5b196",
+      "#fcd9cc",
+      "#dde6e4",
+      "#99ced3",
+      "#5fb0b7",
+      "#44a4ac",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_diverging_3_5",
+    "count": 10,
+    "colors": [
+      "#c22e00",
+      "#d0532b",
+      "#dd7755",
+      "#eb9c80",
+      "#f8c0aa",
+      "#bae1e2",
+      "#8cced1",
+      "#5dbabf",
+      "#2fa7ae",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uber_viz_diverging_4",
+    "count": 10,
+    "colors": [
+      "#c22e00",
+      "#d75e30",
+      "#e98863",
+      "#f4ae93",
+      "#fcd4c5",
+      "#d9e7e5",
+      "#a3d4d7",
+      "#7abec3",
+      "#4ea8b0",
+      "#00939c"
+    ]
+  },
+  {
+    "palette": "uber:uberpool",
+    "count": 10,
+    "colors": [
+      "#223f9a",
+      "#2c51be",
+      "#482bbd",
+      "#7a0da6",
+      "#ae0e7f",
+      "#cf1750",
+      "#e31a1a",
+      "#fd7900",
+      "#fac200",
+      "#fae300"
+    ]
+  },
+  {
+    "palette": "uber:uberpool_9",
+    "count": 10,
+    "colors": [
+      "#2c51be",
+      "#4630bd",
+      "#7117ab",
+      "#9f0c8c",
+      "#c11265",
+      "#d8183a",
+      "#ec4416",
+      "#fd8a00",
+      "#fac600",
+      "#fae300"
+    ]
+  },
+  {
+    "palette": "uber:uberpool_8",
+    "count": 10,
+    "colors": [
+      "#213e9a",
+      "#3728a4",
+      "#651eaf",
+      "#981bb3",
+      "#c517a8",
+      "#cf136f",
+      "#db0f31",
+      "#e5480c",
+      "#f18b05",
+      "#f9e200"
+    ]
+  },
+  {
+    "palette": "uber:uberpool_7",
+    "count": 10,
+    "colors": [
+      "#213e9a",
+      "#3c2ca4",
+      "#661eaf",
+      "#9b1bba",
+      "#bc179d",
+      "#d2116e",
+      "#da102c",
+      "#e44b1a",
+      "#f18e05",
+      "#f9e200"
+    ]
+  },
+  {
+    "palette": "uber:uberpool_6",
+    "count": 10,
+    "colors": [
+      "#213e9a",
+      "#4230a5",
+      "#631eaf",
+      "#9f1cb8",
+      "#c715a5",
+      "#d1116c",
+      "#da2942",
+      "#e44319",
+      "#f39205",
+      "#f9e200"
+    ]
+  },
+  {
+    "palette": "uber:uberpool_5",
+    "count": 10,
+    "colors": [
+      "#213e9a",
+      "#4a34a5",
+      "#6724af",
+      "#921aa6",
+      "#b81796",
+      "#d21774",
+      "#dd1f3f",
+      "#e7470b",
+      "#f49b05",
+      "#f9e200"
+    ]
+  },
+  {
+    "palette": "uber:uberpool_4",
+    "count": 10,
+    "colors": [
+      "#213e9a",
+      "#5539a5",
+      "#7a30af",
+      "#9b1bba",
+      "#b9108a",
+      "#cd0c5c",
+      "#da102c",
+      "#e96f2a",
+      "#f4aa21",
+      "#f9e200"
+    ]
+  },
+  {
+    "palette": "uber:uberpool_3",
+    "count": 10,
+    "colors": [
+      "#213e9a",
+      "#5a3c97",
+      "#7f3895",
+      "#9e3092",
+      "#bc228f",
+      "#d23e87",
+      "#e06e76",
+      "#eb9762",
+      "#f3bd46",
+      "#f9e200"
+    ]
+  },
+  {
+    "palette": "uber:ice_and_fire_3",
+    "count": 10,
+    "colors": [
+      "#0198bd",
+      "#66aebc",
+      "#97c4ba",
+      "#c0dbb8",
+      "#e7f2b5",
+      "#f9e8a8",
+      "#f5bc92",
+      "#ee8e7d",
+      "#e35c69",
+      "#d50255"
+    ]
+  },
+  {
+    "palette": "uber:ice_and_fire_4",
+    "count": 10,
+    "colors": [
+      "#0198bd",
+      "#78b9bc",
+      "#b3dbb9",
+      "#e8feb5",
+      "#f4e394",
+      "#fbc874",
+      "#fead54",
+      "#f28456",
+      "#e45656",
+      "#d50255"
+    ]
+  },
+  {
+    "palette": "uber:ice_and_fire_5",
+    "count": 10,
+    "colors": [
+      "#0198bd",
+      "#30b9c5",
+      "#45dacc",
+      "#98ecc5",
+      "#dcf8b9",
+      "#fdec9e",
+      "#ffc873",
+      "#fa9f55",
+      "#e96657",
+      "#d50255"
+    ]
+  },
+  {
+    "palette": "uber:ice_and_fire",
+    "count": 10,
+    "colors": [
+      "#0198bd",
+      "#36c1c7",
+      "#66e6cb",
+      "#bff5be",
+      "#edfab4",
+      "#f9f1b2",
+      "#ffd892",
+      "#ffb45e",
+      "#ee7557",
+      "#d50255"
+    ]
+  },
+  {
+    "palette": "uber:ice_and_fire_7",
+    "count": 10,
+    "colors": [
+      "#0198bd",
+      "#44aeba",
+      "#74c5b8",
+      "#a7dcb6",
+      "#dff3b4",
+      "#fbf0a3",
+      "#fcd583",
+      "#feba64",
+      "#f28456",
+      "#d50255"
+    ]
+  },
+  {
+    "palette": "uber:ice_and_fire_8",
+    "count": 10,
+    "colors": [
+      "#007a99",
+      "#0191b5",
+      "#36c1c7",
+      "#8fecc6",
+      "#ebfcb5",
+      "#fcefb1",
+      "#ffc273",
+      "#ee7557",
+      "#c10d51",
+      "#7f1941"
+    ]
+  },
+  {
+    "palette": "uber:global_warming_3",
+    "count": 10,
+    "colors": [
+      "#5a1846",
+      "#731744",
+      "#8b1541",
+      "#a3113e",
+      "#bb073b",
+      "#ce3038",
+      "#dc5c35",
+      "#e9802e",
+      "#f5a222",
+      "#ffc300"
+    ]
+  },
+  {
+    "palette": "uber:global_warming_4",
+    "count": 10,
+    "colors": [
+      "#5a1846",
+      "#681943",
+      "#761940",
+      "#831a3d",
+      "#a33236",
+      "#c34a2d",
+      "#e3611c",
+      "#ed8318",
+      "#f7a411",
+      "#ffc300"
+    ]
+  },
+  {
+    "palette": "uber:global_warming_5",
+    "count": 10,
+    "colors": [
+      "#5a1846",
+      "#6d1942",
+      "#7f1a3e",
+      "#911a32",
+      "#a31b21",
+      "#b52e16",
+      "#c74a13",
+      "#da690d",
+      "#ed9709",
+      "#ffc300"
+    ]
+  },
+  {
+    "palette": "uber:global_warming",
+    "count": 10,
+    "colors": [
+      "#5a1846",
+      "#781442",
+      "#960b3e",
+      "#b5053b",
+      "#cd2735",
+      "#dd5325",
+      "#e87219",
+      "#f08d11",
+      "#f8a809",
+      "#ffc300"
+    ]
+  },
+  {
+    "palette": "uber:global_warming_7",
+    "count": 10,
+    "colors": [
+      "#5a1846",
+      "#6c1944",
+      "#7f1a3d",
+      "#911932",
+      "#a31b21",
+      "#b52b16",
+      "#c84411",
+      "#da6a0d",
+      "#ed9307",
+      "#ffc300"
+    ]
+  },
+  {
+    "palette": "uber:global_warming_8",
+    "count": 10,
+    "colors": [
+      "#4c0035",
+      "#600032",
+      "#740029",
+      "#87001c",
+      "#9b0309",
+      "#af1601",
+      "#c33900",
+      "#d76100",
+      "#eb8e00",
+      "#ffc300"
+    ]
+  },
+  {
+    "palette": "uber:sunrise_3",
+    "count": 10,
+    "colors": [
+      "#355c7d",
+      "#5c617f",
+      "#7b6580",
+      "#976882",
+      "#b36b83",
+      "#c67486",
+      "#d3838a",
+      "#df928e",
+      "#eca191",
+      "#f8b195"
+    ]
+  },
+  {
+    "palette": "uber:sunrise_4",
+    "count": 10,
+    "colors": [
+      "#355c7d",
+      "#5e5f7d",
+      "#7d617c",
+      "#9a627c",
+      "#a9657d",
+      "#b9677d",
+      "#c86a7e",
+      "#d88286",
+      "#e8998d",
+      "#f8b195"
+    ]
+  },
+  {
+    "palette": "uber:sunrise",
+    "count": 10,
+    "colors": [
+      "#355c7d",
+      "#515c7c",
+      "#675b7b",
+      "#89617e",
+      "#ae6982",
+      "#cc6e83",
+      "#e47081",
+      "#f77a82",
+      "#f8968c",
+      "#f8b195"
+    ]
+  },
+  {
+    "palette": "uber:sunrise_6",
+    "count": 10,
+    "colors": [
+      "#355c7d",
+      "#515f7e",
+      "#68627f",
+      "#826580",
+      "#a16c82",
+      "#c87b84",
+      "#dd8988",
+      "#e6968c",
+      "#efa491",
+      "#f8b195"
+    ]
+  },
+  {
+    "palette": "uber:sunrise_7",
+    "count": 10,
+    "colors": [
+      "#355c7d",
+      "#555f7e",
+      "#736380",
+      "#916681",
+      "#b16a83",
+      "#c67486",
+      "#d28389",
+      "#df928d",
+      "#eba291",
+      "#f8b195"
+    ]
+  },
+  {
+    "palette": "uber:sunrise_8",
+    "count": 10,
+    "colors": [
+      "#194266",
+      "#2f5678",
+      "#515f7e",
+      "#736380",
+      "#966781",
+      "#bb6b84",
+      "#cc7b87",
+      "#da8d8c",
+      "#e99f90",
+      "#f8b195"
+    ]
+  },
+  {
+    "palette": "uber:ocean_green_3",
+    "count": 10,
+    "colors": [
+      "#3a748a",
+      "#3c8091",
+      "#3d8c97",
+      "#3e999e",
+      "#3ea6a5",
+      "#58b3ab",
+      "#81c2b0",
+      "#a4d1b6",
+      "#c5dfbc",
+      "#e5eec1"
+    ]
+  },
+  {
+    "palette": "uber:ocean_green_4",
+    "count": 10,
+    "colors": [
+      "#547a82",
+      "#508a8e",
+      "#499b9b",
+      "#3eaca8",
+      "#66b9a9",
+      "#86c7aa",
+      "#a2d4ab",
+      "#b9ddb2",
+      "#cfe5ba",
+      "#e5eec1"
+    ]
+  },
+  {
+    "palette": "uber:ocean_green_5",
+    "count": 10,
+    "colors": [
+      "#3a748a",
+      "#47898c",
+      "#529e8f",
+      "#5fab8c",
+      "#6db687",
+      "#7fc288",
+      "#97cd91",
+      "#b0d89c",
+      "#cae3ae",
+      "#e5eec1"
+    ]
+  },
+  {
+    "palette": "uber:ocean_green_6",
+    "count": 10,
+    "colors": [
+      "#37535e",
+      "#3a6576",
+      "#3b788f",
+      "#3e8aa6",
+      "#449ab9",
+      "#4ea8c5",
+      "#5eb4c7",
+      "#6fbdc5",
+      "#81c6c2",
+      "#93cfbf"
+    ]
+  },
+  {
+    "palette": "uber:ocean_green_7",
+    "count": 10,
+    "colors": [
+      "#3a748a",
+      "#468d91",
+      "#52a092",
+      "#5eab8b",
+      "#6cb686",
+      "#7ec186",
+      "#92cc8b",
+      "#b0d79c",
+      "#cbe3ae",
+      "#e5eec1"
+    ]
+  },
+  {
+    "palette": "uber:ocean_green_8",
+    "count": 10,
+    "colors": [
+      "#37535e",
+      "#3a6d80",
+      "#448990",
+      "#52a092",
+      "#60ad8a",
+      "#71ba85",
+      "#88c789",
+      "#a6d496",
+      "#c7e1ab",
+      "#e5eec1"
+    ]
+  },
+  {
+    "palette": "uber:pink_wine_3",
+    "count": 10,
+    "colors": [
+      "#50315e",
+      "#5f3c67",
+      "#6e476f",
+      "#7e5278",
+      "#8d5e81",
+      "#9f708c",
+      "#b2879c",
+      "#c59fab",
+      "#d9b8ba",
+      "#edd1ca"
+    ]
+  },
+  {
+    "palette": "uber:pink_wine_4",
+    "count": 10,
+    "colors": [
+      "#50315e",
+      "#5d3966",
+      "#6a416e",
+      "#774976",
+      "#8b5c80",
+      "#9e6f8a",
+      "#b28294",
+      "#c69ca6",
+      "#d9b6b8",
+      "#edd1ca"
+    ]
+  },
+  {
+    "palette": "uber:pink_wine_5",
+    "count": 10,
+    "colors": [
+      "#50315e",
+      "#593662",
+      "#623c67",
+      "#744a72",
+      "#8a5b7e",
+      "#9f6e8a",
+      "#b28395",
+      "#c69aa2",
+      "#d9b5b6",
+      "#edd1ca"
+    ]
+  },
+  {
+    "palette": "uber:pink_wine_6",
+    "count": 10,
+    "colors": [
+      "#2c1e3d",
+      "#432b50",
+      "#5c3963",
+      "#744973",
+      "#8b5a80",
+      "#9e6d8a",
+      "#b28295",
+      "#c598a2",
+      "#d9b4b5",
+      "#edd1ca"
+    ]
+  },
+  {
+    "palette": "uber:pink_wine_7",
+    "count": 10,
+    "colors": [
+      "#2c1e3d",
+      "#432b50",
+      "#5c3963",
+      "#774976",
+      "#8b5b80",
+      "#9f6e8a",
+      "#b28294",
+      "#c599a1",
+      "#d9b3b3",
+      "#edd1ca"
+    ]
+  },
+  {
+    "palette": "uber:pink_wine",
+    "count": 10,
+    "colors": [
+      "#2c1e3d",
+      "#482d56",
+      "#653b6b",
+      "#824c7c",
+      "#9d5e89",
+      "#b47194",
+      "#c7879e",
+      "#d79faa",
+      "#e3b8b8",
+      "#edd1ca"
+    ]
+  },
+  {
+    "palette": "uber:purple_blue_yellow_3",
+    "count": 10,
+    "colors": [
+      "#2b1e3e",
+      "#39394f",
+      "#455660",
+      "#507372",
+      "#599284",
+      "#6ca992",
+      "#88b69d",
+      "#a2c3a8",
+      "#bcd1b4",
+      "#d6debf"
+    ]
+  },
+  {
+    "palette": "uber:purple_blue_yellow_4",
+    "count": 10,
+    "colors": [
+      "#2b1e3e",
+      "#35344f",
+      "#3e4b61",
+      "#466373",
+      "#58797b",
+      "#6a9082",
+      "#7ba889",
+      "#99ba9b",
+      "#b8ccad",
+      "#d6debf"
+    ]
+  },
+  {
+    "palette": "uber:purple_blue_yellow_5",
+    "count": 10,
+    "colors": [
+      "#2b1e3e",
+      "#32324f",
+      "#394661",
+      "#476171",
+      "#577f7f",
+      "#699788",
+      "#7da88b",
+      "#93ba92",
+      "#b5cca8",
+      "#d6debf"
+    ]
+  },
+  {
+    "palette": "uber:purple_blue_yellow_6",
+    "count": 10,
+    "colors": [
+      "#2b1e3e",
+      "#312f50",
+      "#374362",
+      "#476373",
+      "#577f80",
+      "#699585",
+      "#7ea98c",
+      "#94ba93",
+      "#b4cca7",
+      "#d6debf"
+    ]
+  },
+  {
+    "palette": "uber:purple_blue_yellow_7",
+    "count": 10,
+    "colors": [
+      "#2b1e3e",
+      "#2f2d4f",
+      "#384461",
+      "#466373",
+      "#577f80",
+      "#699787",
+      "#7ba889",
+      "#96ba95",
+      "#b5cca7",
+      "#d6debf"
+    ]
+  },
+  {
+    "palette": "uber:purple_blue_yellow",
+    "count": 10,
+    "colors": [
+      "#2b1e3e",
+      "#35355c",
+      "#3c4f73",
+      "#426b82",
+      "#4c868a",
+      "#5c9e8d",
+      "#76b390",
+      "#96c399",
+      "#b7d2a8",
+      "#d6debf"
+    ]
+  },
+  {
+    "palette": "goat:green",
+    "count": 10,
+    "colors": [
+      "#e6f6ef",
+      "#ccedde",
+      "#afe4cc",
+      "#8fdab9",
+      "#70cfa5",
+      "#50c292",
+      "#2bb381",
+      "#23976d",
+      "#1b7a58",
+      "#145c42"
+    ]
+  },
+  {
+    "palette": "d3:viridis",
+    "count": 10,
+    "colors": [
+      "#440154",
+      "#462a73",
+      "#414987",
+      "#31688e",
+      "#2a838d",
+      "#2b9d86",
+      "#35b779",
+      "#79cc58",
+      "#b7dd3b",
+      "#fde725"
+    ]
+  },
+  {
+    "palette": "goat:elevation",
+    "count": 10,
+    "colors": [
+      "#2f6b3a",
+      "#4f8d47",
+      "#78ab57",
+      "#a8c66c",
+      "#d3d583",
+      "#dec983",
+      "#c9a36b",
+      "#a27d56",
+      "#b19680",
+      "#f2f2f2"
+    ]
+  },
+  {
+    "palette": "d3:magma",
+    "count": 10,
+    "colors": [
+      "#000004",
+      "#211041",
+      "#44156a",
+      "#721f81",
+      "#a12e7c",
+      "#cb4570",
+      "#f1605d",
+      "#fb976f",
+      "#ffca8f",
+      "#fcfdbf"
+    ]
+  },
+  {
+    "palette": "carto:Bold",
+    "count": 10,
+    "colors": [
+      "#7f3c8d",
+      "#11a579",
+      "#3969ac",
+      "#f2b701",
+      "#e73f74",
+      "#80ba5a",
+      "#e68310",
+      "#008695",
+      "#cf1c90",
+      "#f97b72"
+    ]
+  }
+]

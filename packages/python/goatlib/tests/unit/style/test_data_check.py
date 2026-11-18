@@ -463,3 +463,59 @@ def test_a_band_formula_is_checked_with_the_formula_parser_the_service_evaluates
         assert "invalid_band_expression" in codes(
             formula(broken), contexts["satellite"]
         ), broken
+
+
+def _cluster(value: dict | None = None, symbol: dict | None = None) -> dict:
+    render: dict = {"type": "cluster"}
+    if value is not None:
+        render["value"] = value
+    if symbol is not None:
+        render["symbol"] = symbol
+    return {**V, "render": render}
+
+
+def _issues(doc: dict, ctx: object) -> list[tuple[str, str]]:
+    return [(i.code, i.path) for i in validate(doc, ctx) if i.level != "info"]
+
+
+def test_a_cluster_value_reads_a_numeric_field(contexts: dict) -> None:
+    schools = contexts["schools"]
+    for op in ("sum", "mean", "min", "max"):
+        assert _issues(_cluster({"op": op, "field": "pupils"}), schools) == []
+    assert ("unknown_field", "/render/value/field") in _issues(
+        _cluster({"op": "sum", "field": "gone"}), schools
+    )
+    assert ("field_type_mismatch", "/render/value/field") in _issues(
+        _cluster({"op": "max", "field": "type"}), schools
+    )
+
+
+def test_the_cluster_symbol_reads_value_and_count(contexts: dict) -> None:
+    schools = contexts["schools"]
+    symbol = {
+        "marker": {
+            "size": {"field": "value", "range": [16, 40], "domain": [0, 5000]},
+            "color": {"field": "count", "palette": "d3:viridis"},
+        },
+        "label": {"text": "{value} pupils in {count}"},
+    }
+    assert _issues(_cluster({"op": "sum", "field": "pupils"}, symbol), schools) == []
+    # Without a value of its own, `value` is the count.
+    assert _issues(_cluster(None, symbol), schools) == []
+
+
+def test_a_size_or_color_by_a_cluster_value_needs_a_domain(contexts: dict) -> None:
+    schools = contexts["schools"]
+    symbol = {"marker": {"size": {"field": "value", "range": [16, 40]}}}
+    assert ("missing_required", "/render/symbol/marker/size/domain") in _issues(
+        _cluster({"op": "sum", "field": "pupils"}, symbol), schools
+    )
+    # The count's domain is the compiler's.
+    assert _issues(_cluster(None, symbol), schools) == []
+
+
+def test_a_cluster_value_field_is_a_field_the_style_reads() -> None:
+    from goatlib.style.data_check import referenced_fields
+
+    doc = _cluster({"op": "mean", "field": "pupils"}, {"label": {"text": "{value}"}})
+    assert referenced_fields(doc) == {"pupils"}

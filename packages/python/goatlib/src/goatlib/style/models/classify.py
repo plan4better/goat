@@ -56,7 +56,13 @@ def _target_paths() -> frozenset[str]:
         if key not in ("min_zoom", "max_zoom", "halo", "font")
     }
     return frozenset(
-        paths | {"label.halo.color", "label.halo.width", "label.font.weight"}
+        paths
+        | {
+            "label.halo.color",
+            "label.halo.width",
+            "label.font.weight",
+            "label.font.style",
+        }
     )
 
 

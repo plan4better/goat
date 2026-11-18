@@ -12,12 +12,19 @@ from goatlib.style import cql
 from goatlib.style.catalog import icon_libraries, palettes
 from goatlib.style.check import as_list, part_values, record_places
 from goatlib.style.context import DataContext, FieldInfo
+from goatlib.style.defaults import REFERENCE_DEFAULTS
 from goatlib.style.issues import Issue, make_issue
 from goatlib.style.models.classify import NUMERIC_METHODS
 from goatlib.style.pointer import item_key, to_pointer
 from goatlib.style.template import placeholders, problems
 
 NUMERIC = ("number", "integer")
+#: The cluster symbol's derived fields (spec 8.2): the number of points and the value.
+CLUSTER_FIELDS = ("count", "value")
+#: The cluster values computed from a number field.
+CLUSTER_AGGREGATES = ("sum", "mean", "min", "max")
+#: GOAT's arrow (spec 3.2): the arrows' default icon.
+ARROW = REFERENCE_DEFAULTS["arrows.icon"]
 _LIQUID_OUT = re.compile(r"\{\{-?\s*([^\W\d][\w-]*)")
 _LIQUID_TAG = re.compile(
     r"\{%-?\s*(if|unless|elsif|for|assign|capture)\s+([^\W\d][\w-]*)"
@@ -87,12 +94,29 @@ class _Checker:
                 "unknown_icon", path, f'The icon library "{library}" has no "{name}".'
             )
 
+    def cluster_aggregate(self) -> bool:
+        """Whether the clusters' `value` is computed from a field (not the count)."""
+        render = self.doc.get("render")
+        value = render.get("value") if isinstance(render, dict) else None
+        return isinstance(value, dict) and value.get("op") in CLUSTER_AGGREGATES
+
     # value forms ----------------------------------------------------------------------------------
     def value(self, v: Any, path: list[str], *, cluster: bool = False) -> None:
         if not isinstance(v, dict) or "field" not in v:
             return
-        if cluster and v["field"] == "count":
-            pass
+        if cluster and v["field"] in CLUSTER_FIELDS:
+            if (
+                v["field"] == "value"
+                and self.cluster_aggregate()
+                and ("range" in v or "palette" in v)
+                and v.get("domain") is None
+            ):
+                self.add(
+                    "missing_required",
+                    path + ["domain"],
+                    "A size or color by a cluster's value needs a domain: the browser "
+                    "computes the values and nothing computes their range.",
+                )
         elif "range" in v:
             info = self.field(
                 v["field"], path + ["field"], numeric=True, why="a range maps numbers"
@@ -131,11 +155,14 @@ class _Checker:
     ) -> None:
         for vpath, v in part_values(record, path):
             self.value(v, vpath, cluster=cluster)
-        for part in ("marker", "label"):
+        for part in ("marker", "arrows", "label"):
             value = record.get(part)
             if not isinstance(value, dict):
                 continue
             ppath = path + [part]
+            # GOAT's arrow is the arrows' own icon, in no library.
+            if part == "arrows" and value.get("icon") != ARROW:
+                self.icon(value.get("icon"), ppath + ["icon"])
             if part == "marker":
                 icon = value.get("icon")
                 if isinstance(icon, str):
@@ -148,7 +175,7 @@ class _Checker:
                 text = value.get("text")
                 if isinstance(text, str) and not problems(text):
                     for name in placeholders(text):
-                        if not (cluster and name == "count"):
+                        if not (cluster and name in CLUSTER_FIELDS):
                             self.field(name, ppath + ["text"])
                 priority = value.get("priority")
                 if isinstance(priority, dict):
@@ -328,6 +355,14 @@ class _Checker:
                     ["render", "type"],
                     f"Clusters are computed in the browser for up to {self.ctx.cluster_feature_limit:,} features; "
                     f"this layer has {count:,}. Use H3 hexagons instead.",
+                )
+            value = render.get("value")
+            if isinstance(value, dict) and value.get("op") in CLUSTER_AGGREGATES:
+                self.field(
+                    value.get("field"),
+                    ["render", "value", "field"],
+                    numeric=True,
+                    why=f"{value['op']} reads numbers",
                 )
             if isinstance(render.get("symbol"), dict):
                 self.parts(render["symbol"], ["render", "symbol"], cluster=True)

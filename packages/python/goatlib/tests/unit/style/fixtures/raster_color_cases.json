@@ -1,0 +1,348 @@
+[
+  {
+    "id": "ramp-two-colors",
+    "about": "A ramp of a color list over its domain, values beyond take the end colors; the layer opacity stays in the browser.",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "opacity": 0.6,
+      "render": { "type": "continuous", "band": 1, "palette": ["#000000", "#ffffff"], "domain": [0, 255] }
+    },
+    "token": "eyJiYW5kIjoxLCJjb2xvcnMiOlsiIzAwMDAwMCIsIiNmZmZmZmYiXSwiZG9tYWluIjpbMCwyNTVdLCJraW5kIjoicmFtcCIsIm5vRGF0YSI6W10sIm91dHNpZGUiOiJjbGFtcCIsInYiOjF9",
+    "samples": [
+      { "value": 0, "color": "#000000" },
+      { "value": 51, "color": "#333333" },
+      { "value": 204, "color": "#cccccc" },
+      { "value": 255, "color": "#ffffff" },
+      { "value": -50, "color": "#000000" },
+      { "value": 300, "color": "#ffffff" },
+      { "value": -9999, "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "ramp-palette-reversed-hide",
+    "about": "A catalog palette reversed, values outside the domain transparent.",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "band": 1,
+        "palette": "goat:green",
+        "reverse": true,
+        "domain": [100, 400],
+        "outside": "hide"
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJjb2xvcnMiOlsiIzE0NWM0MiIsIiMxZjhhNjMiLCIjMmJiMzgxIiwiIzVmY2E5YiIsIiM4ZmRhYjkiLCIjYmZlOWQ2IiwiI2U2ZjZlZiJdLCJkb21haW4iOlsxMDAsNDAwXSwia2luZCI6InJhbXAiLCJub0RhdGEiOltdLCJvdXRzaWRlIjoiaGlkZSIsInYiOjF9",
+    "samples": [
+      { "value": 100, "color": "#145c42" },
+      { "value": 250, "color": "#5fca9b" },
+      { "value": 400, "color": "#e6f6ef" },
+      { "value": 99, "color": null },
+      { "value": 401, "color": null },
+      { "value": -9999, "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "ramp-computed-domain",
+    "about": "A catalog palette over the domain the server computed from the band.",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "band": 1,
+        "palette": "goat:elevation",
+        "computed": { "domain": [0, 600], "at": "2026-11-17T10:00:00Z", "data": "url:raster-color-cases" }
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJjb2xvcnMiOlsiIzJmNmIzYSIsIiM1ZjllNGQiLCIjYThjNjZjIiwiI2U4ZGM4ZiIsIiNjOWEzNmIiLCIjOGY2YjRjIiwiI2YyZjJmMiJdLCJkb21haW4iOlswLDYwMF0sImtpbmQiOiJyYW1wIiwibm9EYXRhIjpbXSwib3V0c2lkZSI6ImNsYW1wIiwidiI6MX0",
+    "samples": [
+      { "value": 0, "color": "#2f6b3a" },
+      { "value": 300, "color": "#e8dc8f" },
+      { "value": 600, "color": "#f2f2f2" },
+      { "value": -9999, "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "stops-even",
+    "about": "Own colors at evenly spaced values, blended in between.",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "band": 1,
+        "stops": [
+          { "value": 0, "color": "#000000" },
+          { "value": 100, "color": "#ff0000" },
+          { "value": 200, "color": "#0000ff" }
+        ],
+        "interpolate": "linear",
+        "outside": "clamp"
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJpbnRlcnBvbGF0ZSI6ImxpbmVhciIsImtpbmQiOiJzdG9wcyIsIm5vRGF0YSI6W10sIm91dHNpZGUiOiJjbGFtcCIsInN0b3BzIjpbeyJjb2xvciI6IiMwMDAwMDAiLCJ2YWx1ZSI6MH0seyJjb2xvciI6IiNmZjAwMDAiLCJ2YWx1ZSI6MTAwfSx7ImNvbG9yIjoiIzAwMDBmZiIsInZhbHVlIjoyMDB9XSwidiI6MX0",
+    "samples": [
+      { "value": 0, "color": "#000000" },
+      { "value": 50, "color": "#800000" },
+      { "value": 100, "color": "#ff0000" },
+      { "value": 150, "color": "#800080" },
+      { "value": 200, "color": "#0000ff" },
+      { "value": 250, "color": "#0000ff" },
+      { "value": -9999, "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "stops-uneven",
+    "about": "Own colors at unevenly spaced values (the spec's color map example).",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "stops": [
+          { "value": 180, "color": "#1a9850" },
+          { "value": 260, "color": "#d9ef8b" },
+          { "value": 340, "color": "#fdae61" },
+          { "value": 440, "color": "#a50026" }
+        ],
+        "interpolate": "linear",
+        "outside": "clamp"
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJpbnRlcnBvbGF0ZSI6ImxpbmVhciIsImtpbmQiOiJzdG9wcyIsIm5vRGF0YSI6W10sIm91dHNpZGUiOiJjbGFtcCIsInN0b3BzIjpbeyJjb2xvciI6IiMxYTk4NTAiLCJ2YWx1ZSI6MTgwfSx7ImNvbG9yIjoiI2Q5ZWY4YiIsInZhbHVlIjoyNjB9LHsiY29sb3IiOiIjZmRhZTYxIiwidmFsdWUiOjM0MH0seyJjb2xvciI6IiNhNTAwMjYiLCJ2YWx1ZSI6NDQwfV0sInYiOjF9",
+    "samples": [
+      { "value": 180, "color": "#1a9850" },
+      { "value": 260, "color": "#d9ef8b" },
+      { "value": 340, "color": "#fdae61" },
+      { "value": 440, "color": "#a50026" },
+      { "value": -9999, "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "stops-nearest",
+    "about": "Each cell takes the color of the closest stop (the lower one on a midpoint), values outside transparent.",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "band": 1,
+        "stops": [
+          { "value": 0, "color": "#000000" },
+          { "value": 10, "color": "#ff0000" },
+          { "value": 20, "color": "#0000ff" }
+        ],
+        "interpolate": "nearest",
+        "outside": "hide"
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJpbnRlcnBvbGF0ZSI6Im5lYXJlc3QiLCJraW5kIjoic3RvcHMiLCJub0RhdGEiOltdLCJvdXRzaWRlIjoiaGlkZSIsInN0b3BzIjpbeyJjb2xvciI6IiMwMDAwMDAiLCJ2YWx1ZSI6MH0seyJjb2xvciI6IiNmZjAwMDAiLCJ2YWx1ZSI6MTB9LHsiY29sb3IiOiIjMDAwMGZmIiwidmFsdWUiOjIwfV0sInYiOjF9",
+    "samples": [
+      { "value": 0, "color": "#000000" },
+      { "value": 4, "color": "#000000" },
+      { "value": 5, "color": "#000000" },
+      { "value": 6, "color": "#ff0000" },
+      { "value": 10, "color": "#ff0000" },
+      { "value": 16, "color": "#0000ff" },
+      { "value": 20, "color": "#0000ff" },
+      { "value": -1, "color": null },
+      { "value": 25, "color": null }
+    ]
+  },
+  {
+    "id": "classes-manual",
+    "about": "Manual classes [from, to): an own color, a hidden class, colors from the palette, an open last class.",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "band": 1,
+        "palette": ["#aa0000", "#00aa00", "#0000aa", "#aaaa00"],
+        "domain": [100, 500],
+        "classify": {
+          "method": "manual",
+          "classes": [
+            { "to": 240, "name": "Valley floor", "color": "#111111" },
+            { "from": 240, "to": 275, "visible": false },
+            { "from": 275, "to": 300 },
+            { "from": 300 }
+          ]
+        }
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiMxMTExMTEiLCJ0byI6MjQwfSx7ImNvbG9yIjpudWxsLCJmcm9tIjoyNDAsInRvIjoyNzV9LHsiY29sb3IiOiIjMDAwMGFhIiwiZnJvbSI6Mjc1LCJ0byI6MzAwfSx7ImNvbG9yIjoiI2FhYWEwMCIsImZyb20iOjMwMH1dLCJraW5kIjoiY2xhc3NlcyIsIm5vRGF0YSI6W10sInYiOjF9",
+    "samples": [
+      { "value": 100, "color": "#111111" },
+      { "value": 239.5, "color": "#111111" },
+      { "value": 240, "color": null },
+      { "value": 260, "color": null },
+      { "value": 275, "color": "#0000aa" },
+      { "value": 299.5, "color": "#0000aa" },
+      { "value": 300, "color": "#aaaa00" },
+      { "value": 1000, "color": "#aaaa00" },
+      { "value": -9999, "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "classes-palette",
+    "about": "Classes with their bounds filled and their colors not yet written: the web takes them from a catalog palette.",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "band": 1,
+        "palette": "goat:green",
+        "domain": [0, 30],
+        "classify": {
+          "method": "quantile",
+          "count": 3,
+          "classes": [{ "to": 10 }, { "from": 10, "to": 20 }, { "from": 20 }]
+        }
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiNlNmY2ZWYiLCJ0byI6MTB9LHsiY29sb3IiOiIjNWZjYTliIiwiZnJvbSI6MTAsInRvIjoyMH0seyJjb2xvciI6IiMxNDVjNDIiLCJmcm9tIjoyMH1dLCJraW5kIjoiY2xhc3NlcyIsIm5vRGF0YSI6W10sInYiOjF9",
+    "samples": [
+      { "value": -5, "color": "#e6f6ef" },
+      { "value": 9.5, "color": "#e6f6ef" },
+      { "value": 10, "color": "#5fca9b" },
+      { "value": 25, "color": "#145c42" },
+      { "value": 1000, "color": "#145c42" },
+      { "value": -9999, "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "classes-palette-reversed",
+    "about": "The same classes with the palette reversed: the class colors run the other way.",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "band": 1,
+        "palette": "goat:green",
+        "reverse": true,
+        "domain": [0, 30],
+        "classify": {
+          "method": "quantile",
+          "count": 3,
+          "classes": [{ "to": 10 }, { "from": 10, "to": 20 }, { "from": 20 }]
+        }
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiMxNDVjNDIiLCJ0byI6MTB9LHsiY29sb3IiOiIjNWZjYTliIiwiZnJvbSI6MTAsInRvIjoyMH0seyJjb2xvciI6IiNlNmY2ZWYiLCJmcm9tIjoyMH1dLCJraW5kIjoiY2xhc3NlcyIsIm5vRGF0YSI6W10sInYiOjF9",
+    "samples": [
+      { "value": 5, "color": "#145c42" },
+      { "value": 15, "color": "#5fca9b" },
+      { "value": 25, "color": "#e6f6ef" }
+    ]
+  },
+  {
+    "id": "classes-formula",
+    "about": "Classes of a band formula's value: the cells' bands go into the formula.",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "band": { "name": "Difference", "expression": "b2 - b1" },
+        "palette": ["#ff0000", "#00ff00"],
+        "domain": [-10, 10],
+        "classify": {
+          "method": "manual",
+          "classes": [
+            { "to": 0, "color": "#ff0000" },
+            { "from": 0, "color": "#00ff00" }
+          ]
+        }
+      }
+    },
+    "token": "eyJiYW5kIjoiYjIgLSBiMSIsImNsYXNzZXMiOlt7ImNvbG9yIjoiI2ZmMDAwMCIsInRvIjowfSx7ImNvbG9yIjoiIzAwZmYwMCIsImZyb20iOjB9XSwia2luZCI6ImNsYXNzZXMiLCJub0RhdGEiOltdLCJ2IjoxfQ",
+    "samples": [
+      { "value": -5, "cells": [10, 5], "color": "#ff0000" },
+      { "value": 5, "cells": [5, 10], "color": "#00ff00" },
+      { "value": 0, "cells": [7, 7], "color": "#00ff00" },
+      { "value": null, "cells": [-9999, 5], "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "categories",
+    "about": "The spec's land cover categories: a hidden class, a class without a color, other values in grey, a no-data value of the style; opacity and sharp cells stay in the browser.",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "opacity": 0.75,
+      "resampling": "nearest",
+      "render": {
+        "type": "categorical",
+        "band": 1,
+        "no_data": { "values": [0] },
+        "classes": [
+          { "value": 1, "name": "Water", "color": "#4a90c2" },
+          { "value": 2, "name": "Built-up", "color": "#c0504d" },
+          { "value": 3, "name": "Forest", "color": "#2e7d32" },
+          { "value": 4, "name": "Farmland", "color": "#e6c35c" },
+          { "value": 5, "name": "Grassland", "color": "#9ccc65" },
+          { "value": 6, "name": "Wetland", "color": "#7a87c6", "visible": false },
+          { "value": 9, "name": "Unsorted" }
+        ],
+        "other_color": "#cccccc"
+      },
+      "legend": { "title": "Land cover" }
+    },
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiM0YTkwYzIiLCJ2YWx1ZSI6MX0seyJjb2xvciI6IiNjMDUwNGQiLCJ2YWx1ZSI6Mn0seyJjb2xvciI6IiMyZTdkMzIiLCJ2YWx1ZSI6M30seyJjb2xvciI6IiNlNmMzNWMiLCJ2YWx1ZSI6NH0seyJjb2xvciI6IiM5Y2NjNjUiLCJ2YWx1ZSI6NX0seyJjb2xvciI6bnVsbCwidmFsdWUiOjZ9LHsiY29sb3IiOiIjOWFhM2FkIiwidmFsdWUiOjl9XSwia2luZCI6ImNhdGVnb3JpZXMiLCJub0RhdGEiOlswXSwib3RoZXIiOiIjY2NjY2NjIiwidiI6MX0",
+    "file": { "dtype": "int16", "no_data": -9999 },
+    "samples": [
+      { "value": 1, "color": "#4a90c2" },
+      { "value": 2, "color": "#c0504d" },
+      { "value": 3, "color": "#2e7d32" },
+      { "value": 4, "color": "#e6c35c" },
+      { "value": 5, "color": "#9ccc65" },
+      { "value": 6, "color": null },
+      { "value": 9, "color": "#9aa3ad" },
+      { "value": 7, "color": "#cccccc" },
+      { "value": 0, "color": null, "no_data": true },
+      { "value": -9999, "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "categories-band-two",
+    "about": "Categories of band 2, the first band holding other categories; values without a class and no other color are transparent.",
+    "style": {
+      "version": 1,
+      "kind": "raster",
+      "render": {
+        "type": "categorical",
+        "band": 2,
+        "classes": [
+          { "value": 10, "color": "#ff8800" },
+          { "value": 20, "color": "#0088ff" }
+        ]
+      }
+    },
+    "token": "eyJiYW5kIjoyLCJjbGFzc2VzIjpbeyJjb2xvciI6IiNmZjg4MDAiLCJ2YWx1ZSI6MTB9LHsiY29sb3IiOiIjMDA4OGZmIiwidmFsdWUiOjIwfV0sImtpbmQiOiJjYXRlZ29yaWVzIiwibm9EYXRhIjpbXSwib3RoZXIiOm51bGwsInYiOjF9",
+    "file": { "dtype": "int16", "no_data": -9999 },
+    "samples": [
+      { "value": 10, "cells": [20, 10], "color": "#ff8800" },
+      { "value": 20, "cells": [10, 20], "color": "#0088ff" },
+      { "value": 30, "cells": [10, 30], "color": null },
+      { "value": null, "cells": [10, -9999], "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "image-bands",
+    "about": "An 8-bit image with bands 3, 1 and 2 as red, green and blue; an image has no legend.",
+    "style": { "version": 1, "kind": "raster", "render": { "type": "image", "bands": [3, 1, 2] } },
+    "token": "eyJiYW5kcyI6WzMsMSwyXSwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9",
+    "file": { "dtype": "uint8", "no_data": null },
+    "legend": false,
+    "samples": [
+      { "value": null, "cells": [10, 20, 30], "color": "#1e0a14" },
+      { "value": null, "cells": [200, 100, 50], "color": "#32c864" }
+    ]
+  }
+]

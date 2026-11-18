@@ -142,6 +142,35 @@
      ],
      "default": null,
      "title": "Color"
+    },
+    "icon": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "pattern": "^[a-z][a-z0-9_]*:[A-Za-z0-9._-]+$",
+         "type": "string"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Icon"
+    },
+    "turn_with_line": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Turn With Line"
     }
    },
    "title": "Arrows",
@@ -1180,9 +1209,11 @@
        "enum": [
         "arrows.color",
         "arrows.direction",
+        "arrows.icon",
         "arrows.placement",
         "arrows.size",
         "arrows.spacing",
+        "arrows.turn_with_line",
         "casing.color",
         "casing.opacity",
         "casing.width",
@@ -1197,18 +1228,24 @@
         "fill.pattern_width",
         "label.allow_overlap",
         "label.color",
+        "label.font.style",
         "label.font.weight",
         "label.format",
         "label.formats",
         "label.halo.color",
         "label.halo.width",
+        "label.letter_spacing",
+        "label.line_height",
         "label.lines",
         "label.max_width",
         "label.offset",
+        "label.padding",
         "label.placement",
         "label.priority",
         "label.size",
+        "label.spacing",
         "label.text",
+        "label.transform",
         "line.blur",
         "line.cap",
         "line.color",
@@ -1231,6 +1268,7 @@
         "outline.color",
         "outline.dash",
         "outline.opacity",
+        "outline.position",
         "outline.width"
        ],
        "type": "string"
@@ -1381,11 +1419,55 @@
   },
   "ClusterRender": {
    "additionalProperties": false,
+   "description": "Clusters: a `circle` over their count, or drawn with the points' own marker\n(`points`); the count in the middle of the cluster or on a `badge` at its upper\nright.",
    "properties": {
     "type": {
      "const": "cluster",
      "title": "Type",
      "type": "string"
+    },
+    "look": {
+     "anyOf": [
+      {
+       "enum": [
+        "circle",
+        "points"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Look"
+    },
+    "count": {
+     "anyOf": [
+      {
+       "enum": [
+        "center",
+        "badge"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Count"
+    },
+    "value": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ClusterValue"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
     },
     "radius": {
      "anyOf": [
@@ -1511,6 +1593,40 @@
     }
    },
    "title": "ClusterSymbol",
+   "type": "object"
+  },
+  "ClusterValue": {
+   "additionalProperties": false,
+   "description": "What the cluster symbol's derived field `value` is: the number of points, or\nthe sum, mean, smallest or largest value of a number field over them.",
+   "properties": {
+    "op": {
+     "enum": [
+      "count",
+      "sum",
+      "mean",
+      "min",
+      "max"
+     ],
+     "title": "Op",
+     "type": "string"
+    },
+    "field": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Field"
+    }
+   },
+   "required": [
+    "op"
+   ],
+   "title": "ClusterValue",
    "type": "object"
   },
   "ColorClass": {
@@ -2511,7 +2627,9 @@
        "oneOf": [
         {
          "enum": [
+          "light",
           "regular",
+          "medium",
           "bold"
          ],
          "type": "string"
@@ -2527,6 +2645,29 @@
      ],
      "default": null,
      "title": "Weight"
+    },
+    "style": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "enum": [
+          "normal",
+          "italic"
+         ],
+         "type": "string"
+        },
+        {
+         "$ref": "#/$defs/ZoomStepFontStyle"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Style"
     }
    },
    "title": "Font",
@@ -3762,8 +3903,15 @@
       {
        "enum": [
         "auto",
-        "above",
         "center",
+        "above",
+        "below",
+        "left",
+        "right",
+        "above_left",
+        "above_right",
+        "below_left",
+        "below_right",
         "line",
         "inside"
        ],
@@ -3830,6 +3978,109 @@
      ],
      "default": null,
      "title": "Max Width"
+    },
+    "transform": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "enum": [
+          "none",
+          "uppercase",
+          "lowercase"
+         ],
+         "type": "string"
+        },
+        {
+         "$ref": "#/$defs/ZoomStepTransform"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Transform"
+    },
+    "letter_spacing": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomLetterSpacing"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Letter Spacing"
+    },
+    "line_height": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "minimum": 0,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomLineHeight"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Line Height"
+    },
+    "spacing": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "minimum": 1,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomLabelSpacing"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Spacing"
+    },
+    "padding": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "minimum": 0,
+         "type": "number"
+        },
+        {
+         "$ref": "#/$defs/ZoomLabelPadding"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Padding"
     },
     "lines": {
      "anyOf": [
@@ -5177,6 +5428,30 @@
      ],
      "default": null,
      "title": "Dash"
+    },
+    "position": {
+     "anyOf": [
+      {
+       "oneOf": [
+        {
+         "enum": [
+          "center",
+          "inside",
+          "outside"
+         ],
+         "type": "string"
+        },
+        {
+         "$ref": "#/$defs/ZoomStepOutlinePosition"
+        }
+       ]
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Position"
     }
    },
    "title": "Outline",
@@ -7423,6 +7698,98 @@
    "title": "ZoomIntensity",
    "type": "object"
   },
+  "ZoomLabelPadding": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "minimum": 0,
+        "type": "number"
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomLabelPadding",
+   "type": "object"
+  },
+  "ZoomLabelSpacing": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "minimum": 1,
+        "type": "number"
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomLabelSpacing",
+   "type": "object"
+  },
   "ZoomLayerOpacity": {
    "additionalProperties": false,
    "properties": {
@@ -7468,6 +7835,97 @@
     "zoom"
    ],
    "title": "ZoomLayerOpacity",
+   "type": "object"
+  },
+  "ZoomLetterSpacing": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "type": "number"
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomLetterSpacing",
+   "type": "object"
+  },
+  "ZoomLineHeight": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "minimum": 0,
+        "type": "number"
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomLineHeight",
    "type": "object"
   },
   "ZoomLineOffset": {
@@ -7988,6 +8446,55 @@
    "title": "ZoomStepDash",
    "type": "object"
   },
+  "ZoomStepFontStyle": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "enum": [
+         "normal",
+         "italic"
+        ],
+        "type": "string"
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomStepFontStyle",
+   "type": "object"
+  },
   "ZoomStepIcon": {
    "additionalProperties": false,
    "properties": {
@@ -8082,6 +8589,56 @@
     "zoom"
    ],
    "title": "ZoomStepJoin",
+   "type": "object"
+  },
+  "ZoomStepOutlinePosition": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "enum": [
+         "center",
+         "inside",
+         "outside"
+        ],
+        "type": "string"
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomStepOutlinePosition",
    "type": "object"
   },
   "ZoomStepPattern": {
@@ -8185,6 +8742,56 @@
    "title": "ZoomStepPatternPx",
    "type": "object"
   },
+  "ZoomStepTransform": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "enum": [
+         "none",
+         "uppercase",
+         "lowercase"
+        ],
+        "type": "string"
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomStepTransform",
+   "type": "object"
+  },
   "ZoomStepWeight": {
    "additionalProperties": false,
    "properties": {
@@ -8200,7 +8807,9 @@
        },
        {
         "enum": [
+         "light",
          "regular",
+         "medium",
          "bold"
         ],
         "type": "string"
@@ -12150,6 +12759,7 @@
   "outline.width": 1,
   "outline.opacity": 1,
   "outline.dash": "solid",
+  "outline.position": "center",
   "line.color": "#2166ac",
   "line.width": 2,
   "line.opacity": 1,
@@ -12165,6 +12775,8 @@
   "arrows.direction": "forward",
   "arrows.spacing": 100,
   "arrows.size": 10,
+  "arrows.icon": "goat:arrow",
+  "arrows.turn_with_line": true,
   "marker.shape": "circle",
   "marker.color": "#2bb381",
   "marker.fill": true,
@@ -12183,11 +12795,17 @@
   "label.halo.color": "#ffffff",
   "label.halo.width": 1.5,
   "label.font.weight": "regular",
+  "label.font.style": "normal",
   "label.offset": [
    0,
    0
   ],
   "label.max_width": 120,
+  "label.transform": "none",
+  "label.letter_spacing": 0,
+  "label.line_height": 1.2,
+  "label.spacing": 250,
+  "label.padding": 2,
   "label.allow_overlap": false,
   "extrude.height": 10,
   "extrude.base": 0,
@@ -12203,6 +12821,11 @@
   "heatmap.opacity": 1,
   "heatmap.weight": 1,
   "heatmap.palette": "d3:magma",
+  "cluster.look": "circle",
+  "cluster.count": "center",
+  "cluster.value": {
+   "op": "count"
+  },
   "cluster.radius": 50,
   "cluster.cluster_until_zoom": 14,
   "cluster.min_points": 2,
@@ -12244,15 +12867,20 @@
  },
  "x-per-layer": [
   "arrows.direction",
+  "arrows.icon",
   "arrows.placement",
   "arrows.spacing",
+  "arrows.turn_with_line",
   "extrude.unit",
   "label.allow_overlap",
   "label.format",
   "label.formats",
+  "label.line_height",
   "label.lines",
+  "label.padding",
   "label.placement",
   "label.priority",
+  "label.spacing",
   "marker.allow_overlap"
  ],
  "x-default-ranges": {

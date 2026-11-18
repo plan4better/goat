@@ -164,3 +164,72 @@ def test_legend_classes_shown_defaults_to_filter() -> None:
     from goatlib.style.defaults import REFERENCE_DEFAULTS
 
     assert REFERENCE_DEFAULTS["legend.classes"] == "filter"
+
+
+@pytest.mark.parametrize(
+    "render",
+    [
+        {"type": "cluster", "look": "circle", "count": "center"},
+        {"type": "cluster", "look": "points", "count": "badge"},
+        {"type": "cluster", "look": "points", "count": "center"},
+        {"type": "cluster", "look": "circle", "count": "badge"},
+    ],
+)
+def test_clusters_are_drawn_as_circles_or_like_the_points(render: dict) -> None:
+    doc = {"version": 1, "kind": "vector", "render": render}
+    assert codes_of(parse_for_write(doc)) == []
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [("look", "icons"), ("look", ""), ("count", "corner"), ("count", True)],
+)
+def test_cluster_look_and_count_refuse_other_values(key: str, value: object) -> None:
+    doc = {"version": 1, "kind": "vector", "render": {"type": "cluster", key: value}}
+    assert _issues_at(doc, f"/render/{key}") == ["invalid_value"]
+
+
+def test_cluster_look_and_count_belong_to_clusters() -> None:
+    doc = {
+        "version": 1,
+        "kind": "vector",
+        "render": {"type": "heatmap", "look": "points"},
+    }
+    assert _issues_at(doc, "/render/look") == ["unknown_key"]
+
+
+def test_clusters_default_to_a_circle_with_the_count_in_the_middle() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    assert REFERENCE_DEFAULTS["cluster.look"] == "circle"
+    assert REFERENCE_DEFAULTS["cluster.count"] == "center"
+
+
+@pytest.mark.parametrize("op", ["count", "sum", "mean", "min", "max"])
+def test_a_cluster_value_is_the_count_or_an_aggregate_of_a_field(op: str) -> None:
+    value = {"op": op} if op == "count" else {"op": op, "field": "pupils"}
+    doc = {
+        "version": 1,
+        "kind": "vector",
+        "render": {"type": "cluster", "value": value},
+    }
+    assert codes_of(parse_for_write(doc)) == []
+
+
+def test_a_cluster_aggregate_needs_a_field_and_a_known_op() -> None:
+    def at(value: dict) -> list[str]:
+        doc = {
+            "version": 1,
+            "kind": "vector",
+            "render": {"type": "cluster", "value": value},
+        }
+        return [i.code for i in parse_for_write(doc)[1]]
+
+    assert at({"op": "sum"}) == ["missing_required"]
+    assert at({"op": "median", "field": "pupils"}) == ["invalid_value"]
+
+
+def test_a_cluster_value_defaults_to_the_count() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    assert REFERENCE_DEFAULTS["cluster.value"] == {"op": "count"}

@@ -24,6 +24,8 @@ TODAY_OPACITY = 1
 TODAY_STROKE_WIDTH = 1
 TODAY_ICON_SIZE = 100
 TODAY_LABEL_SIZE = 14
+#: Today's label line height in ems: MapLibre's default, the renderer sets none.
+TODAY_LINE_HEIGHT = 1.2
 TODAY_RESAMPLING = "nearest"
 TODAY_CLUSTER_MAX_ZOOM = 14
 TODAY_UNMATCHED_COLOR = "#aaaaaa"
@@ -37,12 +39,23 @@ _METHODS = {
     "ordinal": "categories",
 }
 _LINE_PLACEMENT = {"start_and_end": "both_ends"}
-_POINT_LABEL_PLACEMENT = {"center": "center", "bottom": "above"}
+#: Today's label anchors are MapLibre's text-anchor: the point of the label that sits on the feature, so the
+#: label sits on the opposite side (anchor `top` draws it below the point).
+_POINT_LABEL_PLACEMENT = {
+    "center": "center",
+    "top": "below",
+    "bottom": "above",
+    "left": "right",
+    "right": "left",
+    "top-left": "below_right",
+    "top-right": "below_left",
+    "bottom-left": "above_right",
+    "bottom-right": "above_left",
+}
 #: Label keys GOAT Style does not have, with today's defaults (not a loss when unchanged).
 _LABEL_DEFAULTS: dict[str, Any] = {
     "alignment": "center",
     "background": False,
-    "font_family": ["Open Sans Regular", "Arial Unicode MS Regular"],
     "background_color": [0, 0, 0, 0],
 }
 _ASSET_ID = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -592,20 +605,45 @@ class _Converter:
                     "text_label.anchor",
                     f'Label anchor "{anchor}" becomes automatic placement.',
                 )
-        elif geometry == "line":
+        # Along a line today's anchor puts that edge of the text on the line: `bottom`
+        # sets the text above it, `top` below it, half of MapLibre's default line
+        # height (1.2 em) from the line; GOAT Style keeps that as an offset.
+        across = 0.0
+        if geometry == "line":
             label["placement"] = "line"
+            anchor = tl.get("anchor") if isinstance(tl.get("anchor"), str) else "top"
+            across = (
+                -TODAY_LINE_HEIGHT / 2
+                if anchor.startswith("bottom")
+                else TODAY_LINE_HEIGHT / 2
+                if anchor.startswith("top")
+                else 0.0
+            )
+            if anchor.endswith(("left", "right")):
+                self.lose(
+                    "text_label.anchor",
+                    f'Label anchor "{anchor}" on a line: the shift along the line is dropped.',
+                )
         elif geometry == "polygon":
             label["placement"] = "inside"
         offset = tl.get("offset")
-        if (
-            isinstance(offset, list)
+        ems = (
+            [_num(offset[0]), _num(offset[1])]
+            if isinstance(offset, list)
             and len(offset) == 2
             and all(_num(x) is not None for x in offset)
-            and any(offset)
-        ):
-            label["offset"] = [round(x * size, 2) for x in offset]
+            else [0.0, 0.0]
+        )
+        ems[1] += across
+        if any(ems):
+            label["offset"] = [round(x * size, 2) for x in ems]
         if tl.get("allow_overlap") is True:
             label["allow_overlap"] = True
+        # Today's form offered Open Sans Regular or Bold (never drawn); Bold keeps its weight.
+        family = tl.get("font_family")
+        first = family[0] if isinstance(family, list) and family else family
+        if isinstance(first, str) and "bold" in first.lower():
+            label["font"] = {"weight": "bold"}
         for key, today in _LABEL_DEFAULTS.items():
             if key in tl and tl[key] != today:
                 self.lose(f"text_label.{key}", "Not part of GOAT Style 1.0.")
@@ -639,6 +677,11 @@ class _Converter:
             }
         if symbol:
             render["symbol"] = symbol
+        # Clusters of a marker layer were drawn as the marker with the count on a badge.
+        marker = doc.get("symbol", {}).get("marker")
+        if isinstance(marker, dict) and marker.get("shape") == "icon":
+            render["look"] = "points"
+            render["count"] = "badge"
         doc["render"] = render
 
     def popup(self) -> dict[str, Any] | bool | None:
@@ -694,6 +737,16 @@ class _Converter:
             render["interpolate"] = (
                 "linear" if style.get("interpolate") is not False else "nearest"
             )
+            # Today's color range draws the cells outside its first and last
+            # value (or `min_value` and `max_value`) transparent.
+            render["outside"] = "hide"
+            for key, end in (("min_value", 0), ("max_value", -1)):
+                bound = _num(style.get(key))
+                if bound is not None and stops and bound != stops[end]["value"]:
+                    self.lose(
+                        f"style.{key}",
+                        f"{key} {bound} is not the color map's end value; cells are hidden outside the color map.",
+                    )
             if style.get("no_data_color") not in (None, "transparent"):
                 self.lose(
                     "style.no_data_color",

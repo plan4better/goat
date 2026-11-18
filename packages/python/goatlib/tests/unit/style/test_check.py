@@ -87,6 +87,97 @@ def test_dash_on_point_outline() -> None:
     assert [i.code for i in check(doc, "point")] == ["dash_on_point_outline"]
 
 
+def test_position_on_point_outline() -> None:
+    doc = {
+        **POINT,
+        "symbol": {"marker": {"color": "#000000"}, "outline": {"position": "inside"}},
+    }
+    assert [i.code for i in check(doc, "point")] == ["position_on_point_outline"]
+    polygon = {**POINT, "symbol": {"outline": {"position": "inside"}}}
+    assert [i.code for i in check(polygon, "polygon")] == []
+
+
+def test_label_placement_must_fit_the_geometry() -> None:
+    def placed(placement: str, geometry: str) -> list[tuple[str, str]]:
+        doc = {**POINT, "symbol": {"label": {"text": "{name}", "placement": placement}}}
+        return [(i.code, i.path) for i in check(doc, geometry)]
+
+    for placement in ("auto", "center", "right", "below_left"):
+        assert placed(placement, "point") == []
+    # A line's label at its center point and an area's label take the sides around the marker too.
+    for placement in ("line", "center", "auto", "right", "above_left"):
+        assert placed(placement, "line") == []
+    for placement in ("inside", "auto", "above", "below_right"):
+        assert placed(placement, "polygon") == []
+    wrong = [("placement_not_for_geometry", "/symbol/label/placement")]
+    assert placed("inside", "line") == wrong
+    assert placed("line", "point") == wrong
+    assert placed("inside", "point") == wrong
+    assert placed("line", "polygon") == wrong
+    # The middle of an area is `inside`, one value for one place.
+    assert placed("center", "polygon") == wrong
+
+
+def test_every_weight_is_fine_upright_and_italic() -> None:
+    """Labels draw in Noto Sans Light, Regular, Medium and Bold, each upright and italic (spec 3.4)."""
+    when = {"op": "isNull", "args": [{"property": "name"}]}
+
+    def fonts(label: dict, rules: list | None = None) -> list[tuple[str, str, str]]:
+        doc = {**POINT, "symbol": {"label": {"text": "{name}", **label}}}
+        if rules:
+            doc["rules"] = rules
+        return [(i.code, i.level, i.path) for i in check(doc, "point")]
+
+    for weight in ("light", "regular", "medium", "bold"):
+        for style in ("normal", "italic"):
+            assert fonts({"font": {"weight": weight, "style": style}}) == [], (
+                weight,
+                style,
+            )
+    by_zoom = {
+        "zoom": [[10, "light"], [14, "medium"], [18, "bold"]],
+        "interpolate": "step",
+    }
+    assert fonts({"font": {"weight": by_zoom, "style": "italic"}}) == []
+    # A rule's bold on an italic layer, and a bold italic line.
+    italic = {"font": {"style": "italic"}}
+    assert (
+        fonts(
+            italic, [{"id": "r1", "when": when, "label": {"font": {"weight": "bold"}}}]
+        )
+        == []
+    )
+    assert (
+        fonts({"lines": [{}, {"font": {"weight": "medium", "style": "italic"}}]}) == []
+    )
+    # A weight the fonts do not have is not a weight.
+    from goatlib.style.parse import parse_for_write
+
+    doc = {
+        **POINT,
+        "symbol": {"label": {"text": "{name}", "font": {"weight": "semibold"}}},
+    }
+    assert [(i.code, i.path) for i in parse_for_write(doc)[1]] == [
+        ("invalid_value", "/symbol/label/font/weight")
+    ]
+
+
+def test_a_class_label_placement_must_fit_the_geometry_too() -> None:
+    doc = {
+        **POINT,
+        "symbol": {"line": {"color": "#000000"}},
+        "rules": [
+            {
+                "when": {"op": "isNull", "args": [{"property": "name"}]},
+                "label": {"text": "{name}", "placement": "inside"},
+            }
+        ],
+    }
+    assert [(i.code, i.path) for i in check(doc, "line")] == [
+        ("placement_not_for_geometry", "/rules/0/label/placement")
+    ]
+
+
 def test_parts_must_fit_the_geometry() -> None:
     doc = {
         **POINT,
@@ -95,6 +186,43 @@ def test_parts_must_fit_the_geometry() -> None:
     assert [(i.code, i.path) for i in check(doc, "polygon")] == [
         ("part_not_for_geometry", "/symbol/line")
     ]
+
+
+@pytest.mark.parametrize("geometry", ["polygon", "line"])
+def test_polygons_and_lines_take_a_marker(geometry: str) -> None:
+    """Spec 3.3: a marker at each polygon's label point or each line's middle."""
+    marker = {
+        "shape": "circle",
+        "icon": "goat:park",
+        "size": {"field": "n", "range": [4, 20]},
+    }
+    assert check({**POINT, "symbol": {"marker": marker}}, geometry) == []
+    by_class = {
+        **POINT,
+        "classify": [
+            {
+                "field": "use",
+                "method": "categories",
+                "classes": [{"values": ["school"], "marker": {"icon": "goat:school"}}],
+            }
+        ],
+        "rules": [
+            {"when": {"op": "=", "args": [{"property": "n"}, 1]}, "marker": False}
+        ],
+    }
+    assert check(by_class, geometry) == []
+    sized = {
+        **POINT,
+        "classify": [
+            {"field": "n", "method": "quantile", "count": 3, "target": "marker.size"}
+        ],
+    }
+    assert check(sized, geometry) == []
+
+
+def test_markers_on_polygons_and_lines_still_draw_no_clusters() -> None:
+    doc = {**POINT, "symbol": {"marker": {"size": 10}}, "render": {"type": "cluster"}}
+    assert [i.code for i in check(doc, "polygon")] == ["render_not_for_geometry"]
 
 
 def test_part_zooms_in_overrides_are_whole_numbers() -> None:
@@ -179,6 +307,8 @@ DOC_CODES = {
     "part_not_for_geometry",
     "override_not_per_feature",
     "dash_on_point_outline",
+    "position_on_point_outline",
+    "placement_not_for_geometry",
     "template_syntax",
     "classify_target_conflict",
     "classify_partial_overlap",
@@ -436,3 +566,21 @@ def test_classification_of_heights_has_a_default_range() -> None:
     assert REFERENCE_DEFAULTS["extrude.height"] == 10
     assert REFERENCE_DEFAULTS["extrude.base"] == 0
     assert REFERENCE_DEFAULTS["extrude.unit"] == "m"
+
+
+def test_classes_do_not_switch_on_a_part_the_layer_has_off() -> None:
+    """Spec 3: a part the layer switches off stays off in every record, so a fill
+    switched off with its color by class still draws nothing."""
+    doc = {
+        "version": 1,
+        "kind": "vector",
+        "symbol": {"fill": False},
+        "classify": [
+            {
+                "field": "land_use",
+                "method": "categories",
+                "classes": [{"values": ["a"], "fill": {"color": "#111111"}}],
+            }
+        ],
+    }
+    assert "nothing_drawn" in [i.code for i in check(doc, "polygon")]

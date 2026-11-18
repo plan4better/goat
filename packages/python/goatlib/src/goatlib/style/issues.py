@@ -30,6 +30,8 @@ CODES: dict[str, Level] = {
     "zoom_range_invalid": "error",
     "override_not_per_feature": "error",
     "dash_on_point_outline": "error",
+    "position_on_point_outline": "error",
+    "placement_not_for_geometry": "error",
     "template_syntax": "error",
     "like_pattern_unsupported": "error",
     "unknown_field": "error",

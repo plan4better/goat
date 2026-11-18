@@ -116,6 +116,90 @@ def test_label_offset_is_xy_and_lines_are_objects() -> None:
     ) == ["invalid_value"]
 
 
+def test_label_case_spacing_and_line_height() -> None:
+    styled = {"transform": "uppercase", "letter_spacing": 0.1, "line_height": 1.4}
+    assert codes(Label, {"text": "{name}", **styled}) == []
+    assert codes(Label, {"transform": "capitalize"}) == ["invalid_value"]
+    # Case switches at zoom stops; letter spacing blends by zoom; neither maps an attribute.
+    assert codes(Label, {"transform": {"zoom": [[10, "none"], [14, "uppercase"]]}}) == [
+        "zoom_needs_step"
+    ]
+    assert codes(Label, {"letter_spacing": {"zoom": [[10, 0], [14, 0.2]]}}) == []
+    assert codes(Label, {"letter_spacing": -0.05}) == []
+    assert codes(Label, {"letter_spacing": {"field": "rank", "range": [0, 0.3]}}) == [
+        "value_form_not_allowed"
+    ]
+    # Line height: fixed or by zoom, never below 0.
+    assert codes(Label, {"line_height": {"zoom": [[10, 1.2], [14, 1.5]]}}) == []
+    assert codes(Label, {"line_height": -1}) == ["invalid_value"]
+    assert codes(Label, {"line_height": {"field": "rank", "range": [1, 2]}}) == [
+        "value_form_not_allowed"
+    ]
+
+
+def test_label_font_style_is_normal_or_italic() -> None:
+    assert codes(Label, {"font": {"style": "italic"}}) == []
+    assert codes(Label, {"font": {"weight": "bold", "style": "normal"}}) == []
+    assert codes(Label, {"font": {"style": "oblique"}}) == ["invalid_value"]
+    # As the weight: it switches at zoom stops, classes and rules may set it, no mapping by attribute.
+    by_zoom = {"zoom": [[10, "normal"], [14, "italic"]]}
+    assert codes(Label, {"font": {"style": by_zoom}}) == ["zoom_needs_step"]
+    assert codes(Label, {"font": {"style": {**by_zoom, "interpolate": "step"}}}) == []
+    assert codes(Label, {"font": {"style": {"field": "kind"}}}) == [
+        "value_form_not_allowed"
+    ]
+    assert "label.font.style" not in PER_LAYER_KEYS
+    # A line of the label takes it too.
+    assert codes(Label, {"lines": [{"font": {"style": "italic"}}]}) == []
+
+
+def test_label_repeat_distance_and_space_around() -> None:
+    assert codes(Label, {"spacing": 400, "padding": 6}) == []
+    assert (
+        codes(
+            Label,
+            {
+                "spacing": {"zoom": [[10, 150], [16, 400]]},
+                "padding": {"zoom": [[10, 0], [16, 8]]},
+            },
+        )
+        == []
+    )
+    # MapLibre repeats line labels at least 1 px apart; the space around is never negative.
+    assert codes(Label, {"spacing": 0}) == ["invalid_value"]
+    assert codes(Label, {"padding": -1}) == ["invalid_value"]
+    assert codes(Label, {"spacing": {"field": "rank", "range": [100, 400]}}) == [
+        "value_form_not_allowed"
+    ]
+    assert codes(Label, {"padding": {"field": "rank", "range": [0, 8]}}) == [
+        "value_form_not_allowed"
+    ]
+    assert {"label.spacing", "label.padding"} <= PER_LAYER_KEYS
+
+
+def test_outline_position_is_center_inside_or_outside() -> None:
+    for position in ("center", "inside", "outside"):
+        assert codes(Outline, {"position": position}) == []
+    assert codes(Outline, {"position": "middle"}) == ["invalid_value"]
+    assert codes(Outline, {"position": {"zoom": [[10, "center"], [14, "inside"]]}}) == [
+        "zoom_needs_step"
+    ]
+    assert (
+        codes(
+            Outline,
+            {
+                "position": {
+                    "zoom": [[10, "center"], [14, "inside"]],
+                    "interpolate": "step",
+                }
+            },
+        )
+        == []
+    )
+    assert codes(Outline, {"position": {"field": "kind"}}) == ["value_form_not_allowed"]
+    assert "outline.position" not in PER_LAYER_KEYS
+
+
 def test_outline_color_may_follow_the_fill() -> None:
     assert codes(Outline, {"color": "fill"}) == []
     assert codes(Outline, {"color": "blue"}) == ["invalid_value"]
@@ -133,15 +217,46 @@ def test_per_layer_keys_match_the_spec() -> None:
             "arrows.placement",
             "arrows.direction",
             "arrows.spacing",
+            "arrows.icon",
+            "arrows.turn_with_line",
             "label.placement",
             "label.lines",
             "label.priority",
             "label.allow_overlap",
+            "label.line_height",
+            "label.spacing",
+            "label.padding",
             "label.format",
             "label.formats",
             "extrude.unit",
         }
     )
+
+
+def test_labels_take_the_point_placements() -> None:
+    for placement in (
+        "auto",
+        "center",
+        "above",
+        "below",
+        "left",
+        "right",
+        "above_left",
+        "above_right",
+        "below_left",
+        "below_right",
+    ):
+        assert codes(Label, {"placement": placement}) == []
+    assert codes(Label, {"placement": "top_left"}) == ["invalid_value"]
+
+
+def test_the_placement_values_are_the_placements_of_the_geometries() -> None:
+    from itertools import chain
+    from typing import get_args
+
+    from goatlib.style.models.parts import LABEL_PLACEMENTS, LabelPlacement
+
+    assert set(get_args(LabelPlacement)) == set(chain(*LABEL_PLACEMENTS.values()))
 
 
 def test_markers_take_the_nine_anchors() -> None:

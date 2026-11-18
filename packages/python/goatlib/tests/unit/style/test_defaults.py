@@ -117,6 +117,19 @@ def test_the_schema_carries_the_defaults() -> None:
     assert REFERENCE_DEFAULTS["marker.fill"] is True
 
 
+def test_label_text_and_outline_position_defaults_draw_as_maplibre_does() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    assert REFERENCE_DEFAULTS["label.transform"] == "none"
+    assert REFERENCE_DEFAULTS["label.letter_spacing"] == 0
+    assert REFERENCE_DEFAULTS["label.line_height"] == 1.2
+    assert REFERENCE_DEFAULTS["label.font.style"] == "normal"
+    # MapLibre's own: a line label repeats every 250 px, 2 px stay free around each label.
+    assert REFERENCE_DEFAULTS["label.spacing"] == 250
+    assert REFERENCE_DEFAULTS["label.padding"] == 2
+    assert REFERENCE_DEFAULTS["outline.position"] == "center"
+
+
 def test_raster_render_defaults_follow_the_reference() -> None:
     from goatlib.style.defaults import REFERENCE_DEFAULTS
 

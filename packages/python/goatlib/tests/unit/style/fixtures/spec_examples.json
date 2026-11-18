@@ -19,6 +19,26 @@
   }
  },
  {
+  "line": 164,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7",
+     "opacity": 0.6
+    },
+    "outline": {
+     "color": "#3182bd",
+     "width": 3,
+     "position": "inside"
+    }
+   }
+  }
+ },
+ {
   "line": 201,
   "target": "districts",
   "expect": [],
@@ -163,6 +183,27 @@
      "placement": "center",
      "direction": "forward",
      "size": 12
+    }
+   }
+  }
+ },
+ {
+  "line": 290,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#4d4d4d",
+     "width": 2
+    },
+    "arrows": {
+     "placement": "repeat",
+     "spacing": 80,
+     "size": 14,
+     "icon": "goat:rail-light"
     }
    }
   }
@@ -492,6 +533,27 @@
   }
  },
  {
+  "line": 529,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7"
+    },
+    "label": {
+     "text": "{name}\n{population}",
+     "transform": "uppercase",
+     "letter_spacing": 0.1,
+     "line_height": 1.1,
+     "placement": "inside"
+    }
+   }
+  }
+ },
+ {
   "line": 554,
   "target": "districts",
   "expect": [
@@ -536,6 +598,84 @@
    },
    "popup": {
     "enabled": false
+   }
+  }
+ },
+ {
+  "line": 667,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8
+    },
+    "label": {
+     "text": "{name}",
+     "size": 11,
+     "placement": "right"
+    }
+   }
+  }
+ },
+ {
+  "line": 709,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 2
+    },
+    "label": {
+     "text": "{name}",
+     "font": {
+      "style": "italic"
+     },
+     "placement": "line",
+     "spacing": 400,
+     "padding": 8
+    }
+   }
+  }
+ },
+ {
+  "line": 728,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac"
+    },
+    "label": {
+     "text": "{name}",
+     "font": {
+      "weight": {
+       "zoom": [
+        [
+         10,
+         "medium"
+        ],
+        [
+         14,
+         "bold"
+        ]
+       ],
+       "interpolate": "step"
+      },
+      "style": "italic"
+     }
+    }
    }
   }
  },
@@ -3776,5 +3916,253 @@
     }
    }
   ]
+ },
+ {
+  "line": 1791,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "render": {
+    "type": "cluster",
+    "look": "points",
+    "count": "badge",
+    "symbol": {
+     "marker": {
+      "color": "#283593"
+     },
+     "label": {
+      "text": "{count}",
+      "color": "#ffffff"
+     }
+    }
+   },
+   "symbol": {
+    "marker": {
+     "shape": "icon",
+     "icon": "goat:building",
+     "color": "#5a1846",
+     "size": 24
+    }
+   },
+   "classify": [
+    {
+     "id": "type",
+     "field": "type",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "primary"
+       ],
+       "name": "Primary",
+       "marker": {
+        "icon": "goat:school"
+       }
+      },
+      {
+       "values": [
+        "secondary"
+       ],
+       "name": "Secondary",
+       "marker": {
+        "icon": "goat:home"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 1829,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "render": {
+    "type": "cluster",
+    "value": {
+     "op": "sum",
+     "field": "pupils"
+    },
+    "symbol": {
+     "marker": {
+      "shape": "circle",
+      "color": "#2166ac",
+      "size": {
+       "field": "value",
+       "range": [
+        16,
+        48
+       ],
+       "scale": "sqrt",
+       "domain": [
+        0,
+        5000
+       ]
+      }
+     },
+     "label": {
+      "text": "{value}",
+      "color": "#ffffff"
+     }
+    }
+   },
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#2166ac",
+     "size": 8
+    }
+   }
+  }
+ },
+ {
+  "line": 2639,
+  "target": "schools",
+  "expect": [
+   "position_on_point_outline"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 2,
+     "position": "outside"
+    }
+   }
+  }
+ },
+ {
+  "line": 2757,
+  "target": "routes",
+  "expect": [
+   "placement_not_for_geometry"
+  ],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac"
+    },
+    "label": {
+     "text": "{name}",
+     "placement": "inside"
+    }
+   }
+  }
+ },
+ {
+  "line": 438,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7",
+     "opacity": 0.6
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "field": "land_use",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "green"
+       ],
+       "name": "Green",
+       "fill": {
+        "color": "#c7e9c0"
+       },
+       "marker": {
+        "shape": "circle",
+        "icon": "goat:park",
+        "color": "#238b45",
+        "size": 20
+       }
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 463,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#f0f0f0"
+    },
+    "outline": {
+     "color": "#bdbdbd",
+     "width": 1
+    },
+    "marker": {
+     "color": "#08519c",
+     "opacity": 0.8,
+     "size": {
+      "field": "population",
+      "domain": [
+       0,
+       30000
+      ],
+      "range": [
+       0,
+       40
+      ],
+      "scale": "sqrt",
+      "title": "Inhabitants"
+     }
+    },
+    "label": {
+     "text": "{name}",
+     "size": 11
+    }
+   }
+  }
+ },
+ {
+  "line": 483,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": 1,
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 3
+    },
+    "marker": {
+     "shape": "circle",
+     "icon": "goat:bus",
+     "color": "#2166ac",
+     "size": 18
+    }
+   }
+  }
  }
 ]
