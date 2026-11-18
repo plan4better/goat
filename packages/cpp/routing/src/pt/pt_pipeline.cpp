@@ -5,6 +5,7 @@
 #include "egress.h"
 #include "nigiri_routing.h"
 #include "stop_finder.h"
+#include "timetable_io.h"
 
 #include "../kernel/dijkstra.h"
 #include "../kernel/graph_builder.h"
@@ -16,7 +17,7 @@
 
 #include <chrono>
 #include <cstdio>
-#include <filesystem>
+#include <memory>
 #include <unordered_set>
 
 namespace routing::pt
@@ -60,7 +61,7 @@ namespace routing::pt
         };
 
         // 1. Load timetable (or reuse pre-loaded)
-        cista::wrapped<nigiri::timetable> owned_tt;
+        std::unique_ptr<MappedTimetable> owned_tt;
         nigiri::timetable const *tt;
         if (pre_tt)
         {
@@ -68,9 +69,8 @@ namespace routing::pt
         }
         else
         {
-            owned_tt = nigiri::timetable::read(
-                std::filesystem::path{cfg.timetable_path});
-            tt = &*owned_tt;
+            owned_tt = std::make_unique<MappedTimetable>(cfg.timetable_path);
+            tt = owned_tt->get();
             std::fprintf(stderr, "[PT] 1. Load timetable: %.0f ms\n", elapsed());
         }
 

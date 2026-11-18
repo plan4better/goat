@@ -5739,6 +5739,8 @@
   "settings_ai_delete_body": "The stored key is deleted. Conversations already held with this connection stay.",
   "fetch_features_section_features": "Features",
   "fetch_features_section_result": "Result",
+  "fetch_features_section_modes": "Modes",
+  "fetch_features_pt_modes_needed": "Choose at least one mode",
   "fetch_features_theme": "Theme",
   "fetch_features_quick_picks": "Quick picks",
   "fetch_features_pick_schools": "Schools",

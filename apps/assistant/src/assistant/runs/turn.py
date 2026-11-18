@@ -62,11 +62,12 @@ NO_ANSWER_CAVEAT = (
 
 
 #: The requests that ask for an answer again in the language of the user
-#: message (``assistant.agent.ends_with_text``).
+#: message or the interface (``assistant.agent.ends_with_text``).
 LANGUAGE_RETRIES = frozenset(
-    answer_in_language(asked, answered)
+    answer_in_language(asked, answered, interface)
     for asked in LANGUAGE_NAMES
     for answered in LANGUAGE_NAMES
+    for interface in (False, True)
     if asked != answered
 )
 

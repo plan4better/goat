@@ -397,6 +397,7 @@ async def run_task(
             prompt_note=render_note(page, previous, task.locale, prompt),
             prompt_answer=answer,
             prompt_text=prompt,
+            prompt_locale=task.locale,
             budget=budget,
         )
         env.emit_data = deps.emit_data

@@ -24,6 +24,7 @@ from assistant.context import (
     dump_context,
     project_of,
 )
+from assistant.language import LANGUAGE_FALLBACK_WORDS, shows_no_language
 from assistant.skills import BUILT_IN, skills_index
 from assistant.surfaces import Locale
 from assistant.user_docs import DOCS_INDEX
@@ -231,16 +232,22 @@ NO_ANSWER_TEXT = (
 LANGUAGE_NAMES: dict[Locale, str] = {"en": "English", "de": "German"}
 
 
-def answer_in_language(asked: Locale, answered: Locale) -> str:
+def answer_in_language(asked: Locale, answered: Locale, interface: bool = False) -> str:
     """Sent back once when a final response is clearly in another language
-    than the user's message (assistant.agent.ends_with_text): the
-    instructions and the note after a longer message say so already, and
-    still some answers came in the language of the data or the interface."""
+    than the user's message, or, with ``interface``, than the interface
+    language the note names for a message that shows none
+    (assistant.agent.ends_with_text): the instructions and the notes say so
+    already, and still some answers came in the language of the data."""
+    reason = (
+        "The user's message shows no language, so the answer is in the interface "
+        f"language, {LANGUAGE_NAMES[asked]}"
+        if interface
+        else f"The user's message is in {LANGUAGE_NAMES[asked]}"
+    )
     return (
-        f"The user's message is in {LANGUAGE_NAMES[asked]}, but this response is in "
-        f"{LANGUAGE_NAMES[answered]}. Write it again in {LANGUAGE_NAMES[asked]}, "
-        "without a word about the language; names of layers, fields, projects and "
-        "places stay as they are."
+        f"{reason}, but this response is in {LANGUAGE_NAMES[answered]}. Write it "
+        f"again in {LANGUAGE_NAMES[asked]}, without a word about the language; "
+        "names of layers, fields, projects and places stay as they are."
     )
 
 
@@ -410,8 +417,6 @@ TOOLS_MAY_HAVE_CHANGED = (
     "messages. Before saying you cannot do something, check them, even if an earlier "
     "answer said so."
 )
-#: A message with fewer words may not show its language (a name, a number).
-LANGUAGE_FALLBACK_WORDS = 3
 
 
 def render_note(
@@ -420,14 +425,15 @@ def render_note(
     locale: Locale,
     message: str | None = None,
 ) -> str:
-    """The run's note: the interface language when the message may not show one,
-    and where the user is and the page state.
+    """The run's note: the interface language when the message may not show one
+    (``shows_no_language``: a name, a number, nouns only), and where the user
+    is and the page state.
 
-    A full sentence leaves the interface language out: next to an English
-    question, "German" in the note made models answer in German."""
+    A message with a grammar word leaves the interface language out: next to
+    an English question, "German" in the note made models answer in German."""
     lines: list[str] = []
     # A longer message gets its language note after the text (with_note).
-    if message is None or len(message.split()) < LANGUAGE_FALLBACK_WORDS:
+    if message is None or shows_no_language(message):
         lines.append(LANGUAGE_LINES[locale])
     if previous is not None:
         lines.append(TOOLS_MAY_HAVE_CHANGED)
