@@ -70,6 +70,14 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+def _decoration_set(decoration: str) -> set[str]:
+    """The kinds of decoration points a request names (`start_and_end` is both ends)."""
+    kinds = set(decoration.split(","))
+    if "start_and_end" in kinds:
+        kinds |= {"start", "end"}
+    return kinds
+
+
 def _qi(name: str) -> str:
     """Quote a SQL identifier, doubling any embedded double quote."""
     return '"' + name.replace('"', '""') + '"'
@@ -2361,6 +2369,20 @@ class TileService:
                     bbox_4326=(tile_xmin, tile_ymin, tile_xmax, tile_ymax),
                     extra_where_sql=extra_where_sql,
                     params=params,
+                    select_parts=select_parts,
+                    prop_cols=prop_cols,
+                    bbox_prune=_bbox_prune_sql(
+                        "scalar"
+                        if has_scalar_bbox
+                        else "struct"
+                        if has_struct_bbox
+                        else None,
+                        tile_xmin,
+                        tile_ymin,
+                        tile_xmax,
+                        tile_ymax,
+                    ),
+                    limit=limit,
                 )
                 if decoration_data:
                     tile_data = tile_data + decoration_data
@@ -2382,23 +2404,38 @@ class TileService:
         bbox_4326: tuple[float, float, float, float],
         extra_where_sql: str = "",
         params: list | None = None,
+        select_parts: list[str] | None = None,
+        prop_cols: list[str] | None = None,
+        bbox_prune: str = "",
+        limit: int | None = None,
     ) -> Optional[bytes]:
         """Generate an MVT layer of decoration placement points + bearings for a line layer.
 
-        Emits one or two point features per line that intersects the tile bbox,
-        depending on `decoration`. Each feature has a `bearing` property in degrees
-        clockwise from north (0..360), computed from the relevant segment of the
-        full source geometry (read pre-tile-clipping, so endpoints are real
-        endpoints rather than tile-boundary intersections).
+        Emits one point feature per line that intersects the tile bbox and per
+        kind of point in `decoration`. Each feature has a `bearing` property in
+        degrees clockwise from north (0..360), computed from the relevant
+        segment of the full source geometry (read pre-tile-clipping, so
+        endpoints are real endpoints rather than tile-boundary intersections),
+        `_decoration`, its kind, and the line's properties of the main tile.
+
+        The lines are those of the main tile: the same filters, bounding box
+        pruning and feature limit. A multipart line counts as one line: its
+        parts joined where they meet end to end (`ST_LineMerge`, which may
+        turn a part to follow the others), else its longest part.
 
         Args:
             table: Fully qualified table name
             geom_col: Geometry column name
-            decoration: One of "start" | "end" | "start_and_end" | "center"
+            decoration: Kinds of points, comma-separated, of "start", "end" and
+                "center"; "start_and_end" is "start,end"
             bbox_3857: (xmin, ymin, xmax, ymax) tile bounds in EPSG:3857
             bbox_4326: (xmin, ymin, xmax, ymax) tile bounds in EPSG:4326
             extra_where_sql: Optional additional WHERE clause text (e.g. CQL/bbox filters)
             params: Query parameters bound by `extra_where_sql`
+            select_parts: The main tile's property selection (with casts)
+            prop_cols: The property names `select_parts` selects
+            bbox_prune: The main tile's row group pruning (`_bbox_prune_sql`)
+            limit: The main tile's feature limit
 
         Returns:
             MVT bytes for the 'default_decoration' layer, or None if empty
@@ -2406,54 +2443,67 @@ class TileService:
         tile_xmin_3857, tile_ymin_3857, tile_xmax_3857, tile_ymax_3857 = bbox_3857
         tile_xmin, tile_ymin, tile_xmax, tile_ymax = bbox_4326
 
-        if decoration == "start":
-            placement_cte = f"""
-                SELECT
-                    ST_StartPoint("{geom_col}") AS geom,
-                    DEGREES(ST_Azimuth(ST_StartPoint("{geom_col}"), ST_PointN("{geom_col}", 2))) AS bearing,
-                    rowid
-                FROM candidates
-                WHERE ST_NumPoints("{geom_col}") >= 2
-            """
-        elif decoration == "end":
-            placement_cte = f"""
-                SELECT
-                    ST_EndPoint("{geom_col}") AS geom,
-                    DEGREES(ST_Azimuth(ST_PointN("{geom_col}", CAST(ST_NumPoints("{geom_col}") - 1 AS INTEGER)), ST_EndPoint("{geom_col}"))) AS bearing,
-                    rowid
-                FROM candidates
-                WHERE ST_NumPoints("{geom_col}") >= 2
-            """
-        elif decoration == "start_and_end":
-            placement_cte = f"""
-                SELECT
-                    ST_StartPoint("{geom_col}") AS geom,
-                    DEGREES(ST_Azimuth(ST_StartPoint("{geom_col}"), ST_PointN("{geom_col}", 2))) AS bearing,
-                    rowid
-                FROM candidates
-                WHERE ST_NumPoints("{geom_col}") >= 2
-                UNION ALL
-                SELECT
-                    ST_EndPoint("{geom_col}") AS geom,
-                    DEGREES(ST_Azimuth(ST_PointN("{geom_col}", CAST(ST_NumPoints("{geom_col}") - 1 AS INTEGER)), ST_EndPoint("{geom_col}"))) AS bearing,
-                    rowid
-                FROM candidates
-                WHERE ST_NumPoints("{geom_col}") >= 2
-            """
-        elif decoration == "center":
-            placement_cte = f"""
-                SELECT
-                    ST_LineInterpolatePoint("{geom_col}", 0.5) AS geom,
-                    DEGREES(ST_Azimuth(
-                        ST_LineInterpolatePoint("{geom_col}", 0.49),
-                        ST_LineInterpolatePoint("{geom_col}", 0.51)
-                    )) AS bearing,
-                    rowid
-                FROM candidates
-                WHERE ST_NumPoints("{geom_col}") >= 2
-            """
-        else:
+        # The point's own properties win over a column of the same name.
+        # Internal columns are named `__deco_*`, so a line attribute such as
+        # `kind` or `geom` keeps its value.
+        own = {"bearing", "_decoration", "_rowid"}
+        props = [
+            (part, col)
+            for part, col in zip(select_parts or [], prop_cols or [])
+            if col not in own
+        ]
+        candidate_props = "".join(f", {part}" for part, _ in props)
+        point_props = "".join(f", {_qi(col)}" for _, col in props)
+
+        g = _qi(geom_col)
+        # One LINESTRING per feature: ST_StartPoint and ST_EndPoint answer NULL
+        # for any other type, and ST_LineInterpolatePoint refuses it.
+        parts = f"list_transform(ST_Dump(ST_LineMerge({g})), lambda d: d.geom)"
+        line_of_feature = (
+            f"CASE WHEN ST_GeometryType({g}) = 'LINESTRING' THEN {g} "
+            f"ELSE list_reduce({parts}, "
+            "lambda a, b: CASE WHEN ST_Length(b) > ST_Length(a) THEN b ELSE a END, "
+            "ST_GeomFromText('LINESTRING EMPTY')) END"
+        )
+        line = "__deco_line"
+        last = f"ST_PointN({line}, CAST(ST_NumPoints({line}) - 1 AS INTEGER))"
+        placements = {
+            "start": (
+                f"ST_StartPoint({line})",
+                f"ST_Azimuth(ST_StartPoint({line}), ST_PointN({line}, 2))",
+            ),
+            "end": (
+                f"ST_EndPoint({line})",
+                f"ST_Azimuth({last}, ST_EndPoint({line}))",
+            ),
+            "center": (
+                f"ST_LineInterpolatePoint({line}, 0.5)",
+                f"ST_Azimuth(ST_LineInterpolatePoint({line}, 0.49), "
+                f"ST_LineInterpolatePoint({line}, 0.51))",
+            ),
+        }
+        kinds = [k for k in placements if k in _decoration_set(decoration)]
+        if not kinds:
             return None
+        # ST_AsMVTGeom must never see a NULL geometry: with other rows beside
+        # it, ST_AsMVT fails with an internal error that invalidates the
+        # DuckDB instance.
+        placement_cte = "\n                UNION ALL\n".join(
+            f"""
+                SELECT
+                    {placements[k][0]} AS __deco_geom,
+                    DEGREES({placements[k][1]}) AS __deco_bearing,
+                    '{k}' AS __deco_kind,
+                    __deco_rowid{point_props}
+                FROM lines
+                WHERE {placements[k][0]} IS NOT NULL"""
+            for k in kinds
+        )
+        struct_props = "".join(
+            f",\n                    {_qi(col)} := placement_pts.{_qi(col)}"
+            for _, col in props
+        )
+        limit_sql = f"\n                LIMIT {int(limit)}" if limit else ""
 
         placement_query = f"""
             WITH bounds AS (
@@ -2462,9 +2512,13 @@ class TileService:
                     ST_MakeEnvelope({tile_xmin}, {tile_ymin}, {tile_xmax}, {tile_ymax}) AS bbox4326
             ),
             candidates AS (
-                SELECT "{geom_col}", rowid
+                SELECT {line_of_feature} AS {line}{candidate_props}, rowid AS __deco_rowid
                 FROM {table}, bounds
-                WHERE ST_Intersects("{geom_col}", bounds.bbox4326){extra_where_sql}
+                WHERE {bbox_prune}ST_Intersects({g}, bounds.bbox4326){extra_where_sql}{limit_sql}
+            ),
+            lines AS (
+                SELECT * FROM candidates
+                WHERE ST_GeometryType({line}) = 'LINESTRING' AND ST_NumPoints({line}) >= 2
             ),
             placement_pts AS (
                 {placement_cte}
@@ -2472,11 +2526,12 @@ class TileService:
             SELECT ST_AsMVT(
                 struct_pack(
                     geometry := ST_AsMVTGeom(
-                        ST_Transform(placement_pts.geom, 'EPSG:4326', 'EPSG:3857', always_xy := true),
+                        ST_Transform(placement_pts.__deco_geom, 'EPSG:4326', 'EPSG:3857', always_xy := true),
                         ST_Extent(bounds.bbox3857)
                     ),
-                    "_rowid" := placement_pts.rowid + 1,
-                    "bearing" := COALESCE(((placement_pts.bearing % 360) + 360) % 360, 0)
+                    "_rowid" := placement_pts.__deco_rowid + 1,
+                    "bearing" := COALESCE(((placement_pts.__deco_bearing % 360) + 360) % 360, 0),
+                    "_decoration" := placement_pts.__deco_kind{struct_props}
                 ),
                 'default_decoration',
                 4096,
