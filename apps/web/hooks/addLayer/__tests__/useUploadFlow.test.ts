@@ -39,14 +39,14 @@ import { useUploadFlow } from "@/hooks/addLayer/useUploadFlow";
 const file = (name: string) => new File(["x"], name, { type: "application/octet-stream" });
 
 describe("useUploadFlow", () => {
-  it("keeps the upload blocked until there is a file", () => {
+  it("keeps the upload blocked until there is a file", async () => {
     const { result } = renderHook(() => useUploadFlow({}));
     expect(result.current.action.disabled).toBe(true);
 
     act(() => result.current.upload.setFile(file("roads.geojson")));
     // A file is not enough on its own: the name still has to validate and the folder to
     // resolve, which is what the remaining tests cover.
-    expect(result.current.upload.file?.name).toBe("roads.geojson");
+    await waitFor(() => expect(result.current.upload.file?.name).toBe("roads.geojson"));
   });
 
   it("rejects a file type the backend cannot read", () => {
@@ -57,32 +57,50 @@ describe("useUploadFlow", () => {
     expect(result.current.action.disabled).toBe(true);
   });
 
-  it("refuses a GTFS feed over its size limit before uploading it", () => {
+  it("refuses a GTFS feed over its size limit before uploading it", async () => {
     const { result } = renderHook(() => useUploadFlow({}));
     const big = file("vbb_gtfs.zip");
     // The size alone matters; nothing has to be read.
     Object.defineProperty(big, "size", { value: 200 * 1024 * 1024 + 1 });
     act(() => result.current.upload.setFile(big));
+    await waitFor(() => expect(result.current.upload.fileError).toBe("bundle_upload_too_large"));
     expect(result.current.upload.file).toBeUndefined();
-    expect(result.current.upload.fileError).toBe("bundle_upload_too_large");
     expect(result.current.action.disabled).toBe(true);
   });
 
-  it("does not change shape for a workbook", () => {
+  it("does not change shape for a workbook", async () => {
     // Its header row and worksheet are settings: they open in their own dialog.
     const { result } = renderHook(() => useUploadFlow({}));
 
     act(() => result.current.upload.setFile(file("table.csv")));
-    expect(result.current.upload.isTabular).toBe(true);
+    await waitFor(() => expect(result.current.upload.isTabular).toBe(true));
 
     act(() => result.current.upload.setFile(file("roads.gpkg")));
-    expect(result.current.upload.isTabular).toBe(false);
+    await waitFor(() => expect(result.current.upload.isTabular).toBe(false));
   });
 
-  it("suggests the file's own name, without its extension", () => {
+  it("suggests the file's own name, without its extension", async () => {
     const { result } = renderHook(() => useUploadFlow({}));
     act(() => result.current.upload.setFile(file("Vienna trees.geojson")));
-    expect(result.current.upload.suggestedName).toBe("Vienna trees");
+    await waitFor(() => expect(result.current.upload.suggestedName).toBe("Vienna trees"));
+  });
+
+  it("suggests an XPlan plan's own name, and keeps a name typed meanwhile", async () => {
+    const plan = new File(
+      [
+        '<xplan:XPlanAuszug xmlns:xplan="http://www.xplanung.de/xplangml/5/1">' +
+          "<xplan:BP_Plan><xplan:name>Bergedorf 112</xplan:name></xplan:BP_Plan></xplan:XPlanAuszug>",
+      ],
+      "export.gml"
+    );
+    const { result } = renderHook(() => useUploadFlow({}));
+    act(() => result.current.upload.setFile(plan));
+    await waitFor(() => expect(result.current.upload.values.name).toBe("Bergedorf 112"));
+
+    act(() => result.current.upload.setFile(file("roads.geojson")));
+    act(() => result.current.upload.setName("Vienna roads"));
+    await waitFor(() => expect(result.current.upload.file?.name).toBe("roads.geojson"));
+    expect(result.current.upload.values.name).toBe("Vienna roads");
   });
 
   it("takes a name from the row, since there is no form to register against", () => {

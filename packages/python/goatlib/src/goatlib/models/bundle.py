@@ -26,6 +26,7 @@ class BundleTypeName(str, Enum):
 
     street_network = "street_network"
     pt_network_gtfs = "pt_network_gtfs"
+    xplan = "xplan"
 
 
 class BundleArtifactKind(str, Enum):
@@ -394,6 +395,17 @@ class BundleTypeSpec(BaseModel):
         return next((d for d in self.dependencies if d.kind == kind), None)
 
 
+#: The plan columns every XPlan member layer carries, so one feature says which
+#: plan it comes from.
+XPLAN_PLAN_COLUMNS: Tuple[str, ...] = (
+    "xpPlanName",
+    "xpPlanType",
+    "xpVersion",
+    "xpRechtsstand",
+    "xpInkrafttretensDatum",
+    "xpAgs",
+)
+
 SPECS: Dict[BundleTypeName, BundleTypeSpec] = {
     BundleTypeName.street_network: BundleTypeSpec(
         type=BundleTypeName.street_network,
@@ -576,6 +588,20 @@ SPECS: Dict[BundleTypeName, BundleTypeSpec] = {
                 ),
             ),
         ),
+    ),
+    # A plan's layers only make sense together, so they travel as one bundle.
+    # Unlike a network, no tool looks for a particular member: a plan holds
+    # whichever of the standard's classes it uses, so the type lists no roles
+    # and each member is tagged with its XPlan class.
+    BundleTypeName.xplan: BundleTypeSpec(
+        type=BundleTypeName.xplan,
+        name="XPlan",
+        description=(
+            "A land-use or development plan in XPlanGML: one layer per kind of "
+            "plan object, with its codes translated and the text of the rules "
+            "that apply to it."
+        ),
+        roles=(),
     ),
 }
 

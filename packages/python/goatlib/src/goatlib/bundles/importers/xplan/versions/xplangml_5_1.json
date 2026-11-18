@@ -1,0 +1,6948 @@
+{
+"classes": {
+"BP_AbgrabungsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_AbstandsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_AbstandsMass": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_AnpflanzungBindungErhaltung": {
+"gegenstand": "XP_AnpflanzungBindungErhaltungsGegenstand",
+"massnahme": "XP_ABEMassnahmenTypen",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_AufschuettungsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_AusgleichsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"ziel": "XP_SPEZiele"
+},
+"BP_AusgleichsMassnahme": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"ziel": "XP_SPEZiele"
+},
+"BP_BauGrenze": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_BauLinie": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_BaugebietsTeilFlaeche": {
+"abweichungBauNVO": "XP_AbweichungBauNVOTypen",
+"allgArtDerBaulNutzung": "XP_AllgArtDerBaulNutzung",
+"bauweise": "BP_Bauweise",
+"bebauungRueckwaertigeGrenze": "BP_GrenzBebauung",
+"bebauungSeitlicheGrenze": "BP_GrenzBebauung",
+"bebauungVordereGrenze": "BP_GrenzBebauung",
+"bebauungsArt": "BP_BebauungsArt",
+"besondereArtDerBaulNutzung": "XP_BesondereArtDerBaulNutzung",
+"dachform": "BP_Dachform",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"sondernutzung": "XP_Sondernutzungen",
+"wohnnutzungEGStrasse": "BP_Zulaessigkeit"
+},
+"BP_Bereich": {
+"bedeutung": "XP_BedeutungenBereich"
+},
+"BP_BereichOhneEinAusfahrtLinie": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "BP_BereichOhneEinAusfahrtTypen"
+},
+"BP_BesondererNutzungszweckFlaeche": {
+"dachform": "BP_Dachform",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_BodenschaetzeFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_EinfahrtPunkt": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "BP_EinfahrtTypen"
+},
+"BP_EinfahrtsbereichLinie": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "BP_EinfahrtTypen"
+},
+"BP_EingriffsBereich": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_ErhaltungsBereichFlaeche": {
+"grund": "BP_ErhaltungsGrund",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_FestsetzungNachLandesrecht": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_FirstRichtungsLinie": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_FoerderungsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_FreiFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_GebaeudeFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_GemeinbedarfsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungGemeinbedarf"
+},
+"BP_GemeinschaftsanlagenFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "BP_ZweckbestimmungGemeinschaftsanlagen"
+},
+"BP_GemeinschaftsanlagenZuordnung": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_GenerischesObjekt": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_GewaesserFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungGewaesser"
+},
+"BP_GruenFlaeche": {
+"nutzungsform": "XP_Nutzungsform",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungGruen"
+},
+"BP_HoehenMass": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_Immissionsschutz": {
+"laermpegelbereich": "BP_Laermpegelbereich",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_KennzeichnungsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungKennzeichnung"
+},
+"BP_KleintierhaltungFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_Landwirtschaft": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungLandwirtschaft"
+},
+"BP_LandwirtschaftsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungLandwirtschaft"
+},
+"BP_NebenanlagenAusschlussFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "BP_NebenanlagenAusschlussTyp"
+},
+"BP_NebenanlagenFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "BP_ZweckbestimmungNebenanlagen"
+},
+"BP_NichtUeberbaubareGrundstuecksflaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_NutzungsartenGrenze": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "BP_AbgrenzungenTypen"
+},
+"BP_PersGruppenBestimmteFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_Plan": {
+"planArt": "BP_PlanArt",
+"rechtsstand": "BP_Rechtsstand",
+"verfahren": "BP_Verfahren"
+},
+"BP_RegelungVergnuegungsstaetten": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zulaessigkeit": "BP_Zulaessigkeit"
+},
+"BP_RekultivierungsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_SchutzPflegeEntwicklungsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"ziel": "XP_SPEZiele"
+},
+"BP_SchutzPflegeEntwicklungsMassnahme": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"ziel": "XP_SPEZiele"
+},
+"BP_SpezielleBauweise": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "BP_SpezielleBauweiseTypen"
+},
+"BP_SpielSportanlagenFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungSpielSportanlage"
+},
+"BP_StrassenVerkehrsFlaeche": {
+"nutzungsform": "XP_Nutzungsform",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_StrassenbegrenzungsLinie": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_Strassenkoerper": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "BP_StrassenkoerperHerstellung"
+},
+"BP_TechnischeMassnahmenFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "BP_ZweckbestimmungenTMF"
+},
+"BP_TextAbschnitt": {
+"rechtscharakter": "BP_Rechtscharakter"
+},
+"BP_TextlicheFestsetzungsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_UeberbaubareGrundstuecksFlaeche": {
+"bauweise": "BP_Bauweise",
+"bebauungRueckwaertigeGrenze": "BP_GrenzBebauung",
+"bebauungSeitlicheGrenze": "BP_GrenzBebauung",
+"bebauungVordereGrenze": "BP_GrenzBebauung",
+"bebauungsArt": "BP_BebauungsArt",
+"dachform": "BP_Dachform",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"wohnnutzungEGStrasse": "BP_Zulaessigkeit"
+},
+"BP_UnverbindlicheVormerkung": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"BP_VerEntsorgung": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungVerEntsorgung"
+},
+"BP_Veraenderungssperre": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"verlaengerung": "XP_VerlaengerungVeraenderungssperre"
+},
+"BP_VerkehrsflaecheBesondererZweckbestimmung": {
+"nutzungsform": "XP_Nutzungsform",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "BP_ZweckbestimmungStrassenverkehr"
+},
+"BP_WaldFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungWald"
+},
+"BP_WasserwirtschaftsFlaeche": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungWasserwirtschaft"
+},
+"BP_Wegerecht": {
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "BP_WegerechtTypen"
+},
+"FP_Abgrabung": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"FP_AnpassungKlimawandel": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"FP_Aufschuettung": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"FP_AusgleichsFlaeche": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"ziel": "XP_SPEZiele"
+},
+"FP_BebauungsFlaeche": {
+"allgArtDerBaulNutzung": "XP_AllgArtDerBaulNutzung",
+"besondereArtDerBaulNutzung": "XP_BesondereArtDerBaulNutzung",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"sonderNutzung": "XP_Sondernutzungen"
+},
+"FP_Bereich": {
+"bedeutung": "XP_BedeutungenBereich"
+},
+"FP_Bodenschaetze": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"FP_Gemeinbedarf": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungGemeinbedarf"
+},
+"FP_GenerischesObjekt": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"FP_Gewaesser": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungGewaesser"
+},
+"FP_Gruen": {
+"nutzungsform": "XP_Nutzungsform",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungGruen"
+},
+"FP_KeineZentrAbwasserBeseitigungFlaeche": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"FP_Kennzeichnung": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungKennzeichnung"
+},
+"FP_Landwirtschaft": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungLandwirtschaft"
+},
+"FP_LandwirtschaftsFlaeche": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungLandwirtschaft"
+},
+"FP_NutzungsbeschraenkungsFlaeche": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"FP_Plan": {
+"planArt": "FP_PlanArt",
+"rechtsstand": "FP_Rechtsstand",
+"verfahren": "FP_Verfahren"
+},
+"FP_PrivilegiertesVorhaben": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "FP_ZweckbestimmungPrivilegiertesVorhaben"
+},
+"FP_SchutzPflegeEntwicklung": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"ziel": "XP_SPEZiele"
+},
+"FP_SpielSportanlage": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungSpielSportanlage"
+},
+"FP_Strassenverkehr": {
+"nutzungsform": "XP_Nutzungsform",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "FP_ZweckbestimmungStrassenverkehr"
+},
+"FP_TextAbschnitt": {
+"rechtscharakter": "FP_Rechtscharakter"
+},
+"FP_TextlicheDarstellungsFlaeche": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"FP_UnverbindlicheVormerkung": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"FP_VerEntsorgung": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungVerEntsorgung"
+},
+"FP_VorbehalteFlaeche": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"FP_WaldFlaeche": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungWald"
+},
+"FP_Wasserwirtschaft": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zweckbestimmung": "XP_ZweckbestimmungWasserwirtschaft"
+},
+"FP_ZentralerVersorgungsbereich": {
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_Abgrenzung": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_AllgGruenflaeche": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_AnpflanzungBindungErhaltung": {
+"gegenstand": "XP_AnpflanzungBindungErhaltungsGegenstand",
+"massnahme": "XP_ABEMassnahmenTypen",
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_Ausgleich": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"ziel": "XP_SPEZiele"
+},
+"LP_Bereich": {
+"bedeutung": "XP_BedeutungenBereich"
+},
+"LP_Biotopverbundflaeche": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_Bodenschutzrecht": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "LP_BodenschutzrechtTypen"
+},
+"LP_ErholungFreizeit": {
+"funktion": "LP_ErholungFreizeitFunktionen",
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_Forstrecht": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "LP_ForstrechtTypen"
+},
+"LP_GenerischesObjekt": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_Landschaftsbild": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_NutzungsAusschluss": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_NutzungserfordernisRegelung": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"regelung": "LP_Regelungen",
+"ziel": "XP_SPEZiele"
+},
+"LP_Plan": {
+"bundesland": "XP_Bundeslaender",
+"planArt": "LP_PlanArt",
+"rechtsstand": "LP_Rechtsstand"
+},
+"LP_PlanerischeVertiefung": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_SchutzPflegeEntwicklung": {
+"massnahme": "XP_SPEMassnahmenTypen",
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"ziel": "XP_SPEZiele"
+},
+"LP_SchutzobjektInternatRecht": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "LP_InternatSchutzobjektTypen"
+},
+"LP_SonstigesRecht": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "LP_SonstRechtTypen"
+},
+"LP_TextAbschnitt": {
+"rechtscharakter": "LP_Rechtscharakter"
+},
+"LP_TextlicheFestsetzungsFlaeche": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_WasserrechtGemeingebrEinschraenkungNaturschutz": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_WasserrechtSchutzgebiet": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "LP_WasserrechtSchutzgebietTypen"
+},
+"LP_WasserrechtSonstige": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_WasserrechtWirtschaftAbflussHochwSchutz": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "LP_WasserrechtWirtschaftAbflussHochwSchutzTypen"
+},
+"LP_ZuBegruenendeGrundstueckflaeche": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"LP_Zwischennutzung": {
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"ziel": "XP_SPEZiele"
+},
+"RP_Achse": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_AchsenTypen"
+},
+"RP_Bereich": {
+"bedeutung": "XP_BedeutungenBereich"
+},
+"RP_Bodenschutz": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_BodenschutzTypen"
+},
+"RP_Einzelhandel": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_EinzelhandelTypen"
+},
+"RP_Energieversorgung": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"primaerenergieTyp": "RP_PrimaerenergieTypen",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"spannung": "RP_SpannungTypen",
+"typ": "RP_EnergieversorgungTypen"
+},
+"RP_Entsorgung": {
+"abfallTyp": "RP_AbfallTypen",
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typAE": "RP_AbfallentsorgungTypen",
+"typAW": "RP_AbwasserTypen"
+},
+"RP_Erholung": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"besondererTyp": "RP_BesondereTourismusErholungTypen",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typErholung": "RP_ErholungTypen",
+"typTourismus": "RP_TourismusTypen"
+},
+"RP_ErneuerbareEnergie": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_ErneuerbareEnergieTypen"
+},
+"RP_Forstwirtschaft": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_ForstwirtschaftTypen"
+},
+"RP_Freiraum": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"RP_Funktionszuweisung": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_FunktionszuweisungTypen"
+},
+"RP_GenerischesObjekt": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"RP_Gewaesser": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"RP_Grenze": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"spezifischerTyp": "RP_SpezifischeGrenzeTypen",
+"typ": "XP_GrenzeTypen"
+},
+"RP_GruenzugGruenzaesur": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_ZaesurTypen"
+},
+"RP_Hochwasserschutz": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_HochwasserschutzTypen"
+},
+"RP_IndustrieGewerbe": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_IndustrieGewerbeTypen"
+},
+"RP_Klimaschutz": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_KlimaschutzTypen"
+},
+"RP_Kommunikation": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_KommunikationTypen"
+},
+"RP_Kulturlandschaft": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_KulturlandschaftTypen"
+},
+"RP_LaermschutzBauschutz": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_LaermschutzTypen"
+},
+"RP_Landwirtschaft": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_LandwirtschaftTypen"
+},
+"RP_Legendenobjekt": {},
+"RP_Luftverkehr": {
+"allgemeinerTyp": "RP_VerkehrTypen",
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"status": "RP_VerkehrStatus",
+"typ": "RP_LuftverkehrTypen"
+},
+"RP_NaturLandschaft": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_NaturLandschaftTypen"
+},
+"RP_NaturschutzrechtlichesSchutzgebiet": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_KlassifizSchutzgebietNaturschutzrecht"
+},
+"RP_Plan": {
+"bundesland": "XP_Bundeslaender",
+"planArt": "RP_Art",
+"rechtsstand": "RP_Rechtsstand",
+"verfahren": "RP_Verfahren"
+},
+"RP_Planungsraum": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"RP_RadwegWanderweg": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_RadwegWanderwegTypen"
+},
+"RP_Raumkategorie": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"besondererTyp": "RP_BesondereRaumkategorieTypen",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_RaumkategorieTypen"
+},
+"RP_Rohstoff": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"bergbauplanungTyp": "RP_BergbauplanungTypen",
+"folgenutzung": "RP_BergbauFolgenutzung",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"rohstoffTyp": "RP_RohstoffTypen",
+"tiefe": "RP_BodenschatzTiefen",
+"zeitstufe": "RP_Zeitstufen"
+},
+"RP_Schienenverkehr": {
+"allgemeinerTyp": "RP_VerkehrTypen",
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"besondererTyp": "RP_BesondererSchienenverkehrTypen",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"status": "RP_VerkehrStatus",
+"typ": "RP_SchienenverkehrTypen"
+},
+"RP_Siedlung": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"RP_SonstVerkehr": {
+"allgemeinerTyp": "RP_VerkehrTypen",
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"status": "RP_VerkehrStatus",
+"typ": "RP_SonstVerkehrTypen"
+},
+"RP_SonstigeInfrastruktur": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"RP_SonstigerFreiraumschutz": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"RP_SonstigerSiedlungsbereich": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"RP_SozialeInfrastruktur": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_SozialeInfrastrukturTypen"
+},
+"RP_Sperrgebiet": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_SperrgebietTypen"
+},
+"RP_Sportanlage": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_SportanlageTypen"
+},
+"RP_Strassenverkehr": {
+"allgemeinerTyp": "RP_VerkehrTypen",
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"besondererTyp": "RP_BesondererStrassenverkehrTypen",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"status": "RP_VerkehrStatus",
+"typ": "RP_StrassenverkehrTypen"
+},
+"RP_TextAbschnitt": {
+"rechtscharakter": "RP_Rechtscharakter"
+},
+"RP_Verkehr": {
+"allgemeinerTyp": "RP_VerkehrTypen",
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"status": "RP_VerkehrStatus"
+},
+"RP_Wasserschutz": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_WasserschutzTypen",
+"zone": "RP_WasserschutzZonen"
+},
+"RP_Wasserverkehr": {
+"allgemeinerTyp": "RP_VerkehrTypen",
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"status": "RP_VerkehrStatus",
+"typ": "RP_WasserverkehrTypen"
+},
+"RP_Wasserwirtschaft": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_WasserwirtschaftTypen"
+},
+"RP_WohnenSiedlung": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "RP_WohnenSiedlungTypen"
+},
+"RP_ZentralerOrt": {
+"bedeutsamkeit": "RP_Bedeutsamkeit",
+"gebietsTyp": "RP_GebietsTyp",
+"rechtscharakter": "RP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"sonstigerTyp": "RP_ZentralerOrtSonstigeTypen",
+"typ": "RP_ZentralerOrtTypen"
+},
+"SO_Bereich": {
+"bedeutung": "XP_BedeutungenBereich"
+},
+"SO_Bodenschutzrecht": {
+"artDerFestlegung": "SO_KlassifizNachBodenschutzrecht",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"SO_Denkmalschutzrecht": {
+"artDerFestlegung": "SO_KlassifizNachDenkmalschutzrecht",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"SO_Forstrecht": {
+"artDerFestlegung": "SO_KlassifizNachForstrecht",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"SO_Gebiet": {
+"gebietsArt": "SO_GebietsArt",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"rechtsstandGebiet": "SO_RechtsstandGebietTyp"
+},
+"SO_Grenze": {
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_GrenzeTypen"
+},
+"SO_Linienobjekt": {
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"SO_Luftverkehrsrecht": {
+"artDerFestlegung": "SO_KlassifizNachLuftverkehrsrecht",
+"laermschutzzone": "SO_LaermschutzzoneTypen",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"SO_Objekt": {
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"SO_Plan": {},
+"SO_Schienenverkehrsrecht": {
+"artDerFestlegung": "SO_KlassifizNachSchienenverkehrsrecht",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"SO_SchutzgebietNaturschutzrecht": {
+"artDerFestlegung": "XP_KlassifizSchutzgebietNaturschutzrecht",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zone": "SO_SchutzzonenNaturschutzrecht"
+},
+"SO_SchutzgebietSonstigesRecht": {
+"artDerFestlegung": "SO_KlassifizSchutzgebietSonstRecht",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"SO_SchutzgebietWasserrecht": {
+"artDerFestlegung": "SO_KlassifizSchutzgebietWasserrecht",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"zone": "SO_SchutzzonenWasserrecht"
+},
+"SO_SonstigesRecht": {
+"artDerFestlegung": "SO_KlassifizNachSonstigemRecht",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"SO_Strassenverkehrsrecht": {
+"artDerFestlegung": "SO_KlassifizNachStrassenverkehrsrecht",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"SO_TextAbschnitt": {
+"rechtscharakter": "SO_Rechtscharakter"
+},
+"SO_Wasserrecht": {
+"artDerFestlegung": "SO_KlassifizNachWasserrecht",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand"
+},
+"XP_BegruendungAbschnitt": {},
+"XP_FPO": {},
+"XP_LPO": {},
+"XP_LTO": {
+"horizontaleAusrichtung": "XP_HorizontaleAusrichtung",
+"vertikaleAusrichtung": "XP_VertikaleAusrichtung"
+},
+"XP_Nutzungsschablone": {
+"horizontaleAusrichtung": "XP_HorizontaleAusrichtung",
+"vertikaleAusrichtung": "XP_VertikaleAusrichtung"
+},
+"XP_PPO": {},
+"XP_PTO": {
+"horizontaleAusrichtung": "XP_HorizontaleAusrichtung",
+"vertikaleAusrichtung": "XP_VertikaleAusrichtung"
+},
+"XP_Praesentationsobjekt": {},
+"XP_Rasterdarstellung": {}
+},
+"lists": {
+"BP_AbgrenzungenTypen": {
+"1000": {
+"name": "Nutzungsartengrenze",
+"short": null
+},
+"2000": {
+"name": "Unterschiedliche Hoehen",
+"short": null
+},
+"9999": {
+"name": "Sonstige Abgrenzung",
+"short": null
+}
+},
+"BP_Bauweise": {
+"1000": {
+"name": "Offene Bauweise",
+"short": "o"
+},
+"2000": {
+"name": "Geschlossene Bauweise",
+"short": "g"
+},
+"3000": {
+"name": "Abweichende Bauweise",
+"short": "a"
+}
+},
+"BP_BebauungsArt": {
+"1000": {
+"name": "Einzelhaeuser",
+"short": "E"
+},
+"2000": {
+"name": "Doppelhaeuser",
+"short": "D"
+},
+"3000": {
+"name": "Hausgruppen",
+"short": "H"
+},
+"4000": {
+"name": "Einzel Doppelhaeuser",
+"short": "ED"
+},
+"5000": {
+"name": "Einzelhaeuser Hausgruppen",
+"short": "EH"
+},
+"6000": {
+"name": "Doppelhaeuser Hausgruppen",
+"short": "DH"
+},
+"7000": {
+"name": "Reihenhaeuser",
+"short": "Rh"
+}
+},
+"BP_BereichOhneEinAusfahrtTypen": {
+"1000": {
+"name": "Keine Einfahrt",
+"short": null
+},
+"2000": {
+"name": "Keine Ausfahrt",
+"short": null
+},
+"3000": {
+"name": "Keine Ein Ausfahrt",
+"short": null
+}
+},
+"BP_Dachform": {
+"1000": {
+"name": "Flachdach",
+"short": "FD"
+},
+"2100": {
+"name": "Pultdach",
+"short": "PD"
+},
+"2200": {
+"name": "Versetztes Pultdach",
+"short": "VPD"
+},
+"3100": {
+"name": "Satteldach",
+"short": "SD"
+},
+"3200": {
+"name": "Walmdach",
+"short": "WD"
+},
+"3300": {
+"name": "Krueppelwalmdach",
+"short": "KWD"
+},
+"3400": {
+"name": "Mansarddach",
+"short": "MD"
+},
+"3500": {
+"name": "Zeltdach",
+"short": "ZD"
+},
+"3600": {
+"name": "Kegeldach",
+"short": "KeD"
+},
+"3700": {
+"name": "Kuppeldach",
+"short": "KuD"
+},
+"3800": {
+"name": "Sheddach",
+"short": "ShD"
+},
+"3900": {
+"name": "Bogendach",
+"short": "BD"
+},
+"4000": {
+"name": "Turmdach",
+"short": "TuD"
+},
+"5000": {
+"name": "Mischform",
+"short": "GDF"
+},
+"9999": {
+"name": "Sonstiges",
+"short": "SDF"
+}
+},
+"BP_EinfahrtTypen": {
+"1000": {
+"name": "Einfahrt",
+"short": null
+},
+"2000": {
+"name": "Ausfahrt",
+"short": null
+},
+"3000": {
+"name": "Ein Ausfahrt",
+"short": null
+}
+},
+"BP_ErhaltungsGrund": {
+"1000": {
+"name": "Staedtebauliche Gestalt",
+"short": null
+},
+"2000": {
+"name": "Wohnbevoelkerung",
+"short": null
+},
+"3000": {
+"name": "Umstrukturierung",
+"short": null
+}
+},
+"BP_GrenzBebauung": {
+"1000": {
+"name": "Verboten",
+"short": null
+},
+"2000": {
+"name": "Erlaubt",
+"short": null
+},
+"3000": {
+"name": "Erzwungen",
+"short": null
+}
+},
+"BP_Laermpegelbereich": {
+"1000": {
+"name": "I",
+"short": null
+},
+"1100": {
+"name": "II",
+"short": null
+},
+"1200": {
+"name": "III",
+"short": null
+},
+"1300": {
+"name": "IV",
+"short": null
+},
+"1400": {
+"name": "V",
+"short": null
+},
+"1500": {
+"name": "VI",
+"short": null
+},
+"1600": {
+"name": "VII",
+"short": null
+}
+},
+"BP_NebenanlagenAusschlussTyp": {
+"1000": {
+"name": "Einschraenkung",
+"short": null
+},
+"2000": {
+"name": "Ausschluss",
+"short": null
+}
+},
+"BP_PlanArt": {
+"1000": {
+"name": "BPlan",
+"short": null
+},
+"10000": {
+"name": "Einfacher BPlan",
+"short": null
+},
+"10001": {
+"name": "Qualifizierter BPlan",
+"short": null
+},
+"3000": {
+"name": "Vorhabenbezogener BPlan",
+"short": null
+},
+"4000": {
+"name": "Innenbereichs Satzung",
+"short": null
+},
+"40000": {
+"name": "Klarstellungs Satzung",
+"short": null
+},
+"40001": {
+"name": "Entwicklungs Satzung",
+"short": null
+},
+"40002": {
+"name": "Ergaenzungs Satzung",
+"short": null
+},
+"5000": {
+"name": "Aussenbereichs Satzung",
+"short": null
+},
+"7000": {
+"name": "Oertliche Bauvorschrift",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"BP_Rechtscharakter": {
+"1000": {
+"name": "Festsetzung",
+"short": null
+},
+"2000": {
+"name": "Nachrichtliche Uebernahme",
+"short": null
+},
+"3000": {
+"name": "Hinweis",
+"short": null
+},
+"4000": {
+"name": "Vermerk",
+"short": null
+},
+"5000": {
+"name": "Kennzeichnung",
+"short": null
+},
+"9998": {
+"name": "Unbekannt",
+"short": null
+}
+},
+"BP_Rechtsstand": {
+"1000": {
+"name": "Aufstellungsbeschluss",
+"short": null
+},
+"2000": {
+"name": "Entwurf",
+"short": null
+},
+"2100": {
+"name": "Fruehzeitige Behoerden Beteiligung",
+"short": null
+},
+"2200": {
+"name": "Fruehzeitige Oeffentlichkeits Beteiligung",
+"short": null
+},
+"2300": {
+"name": "Behoerden Beteiligung",
+"short": null
+},
+"2400": {
+"name": "Oeffentliche Auslegung",
+"short": null
+},
+"3000": {
+"name": "Satzung",
+"short": null
+},
+"4000": {
+"name": "Inkraft Getreten",
+"short": null
+},
+"4500": {
+"name": "Teilweise Untergegangen",
+"short": null
+},
+"5000": {
+"name": "Untergegangen",
+"short": null
+}
+},
+"BP_SpezielleBauweiseTypen": {
+"1000": {
+"name": "Durchfahrt",
+"short": null
+},
+"1100": {
+"name": "Durchgang",
+"short": null
+},
+"1200": {
+"name": "Durchfahrt Durchgang",
+"short": null
+},
+"1300": {
+"name": "Auskragung",
+"short": null
+},
+"1400": {
+"name": "Arkade",
+"short": null
+},
+"1500": {
+"name": "Luftgeschoss",
+"short": null
+},
+"1600": {
+"name": "Bruecke",
+"short": null
+},
+"1700": {
+"name": "Tunnel",
+"short": null
+},
+"1800": {
+"name": "Rampe",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"BP_StrassenkoerperHerstellung": {
+"1000": {
+"name": "Aufschuettung",
+"short": null
+},
+"2000": {
+"name": "Abgrabung",
+"short": null
+},
+"3000": {
+"name": "Stuetzmauer",
+"short": null
+}
+},
+"BP_Verfahren": {
+"1000": {
+"name": "Normal",
+"short": null
+},
+"2000": {
+"name": "Parag13",
+"short": null
+},
+"3000": {
+"name": "Parag13a",
+"short": null
+},
+"4000": {
+"name": "Parag13b",
+"short": null
+}
+},
+"BP_WegerechtTypen": {
+"1000": {
+"name": "Gehrecht",
+"short": null
+},
+"2000": {
+"name": "Fahrrecht",
+"short": null
+},
+"2500": {
+"name": "Radfahrrecht",
+"short": null
+},
+"3000": {
+"name": "Geh Fahrrecht",
+"short": null
+},
+"4000": {
+"name": "Leitungsrecht",
+"short": null
+},
+"4100": {
+"name": "Geh Leitungsrecht",
+"short": null
+},
+"4200": {
+"name": "Fahr Leitungsrecht",
+"short": null
+},
+"5000": {
+"name": "Geh Fahr Leitungsrecht",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"BP_Zulaessigkeit": {
+"1000": {
+"name": "Zulaessig",
+"short": null
+},
+"2000": {
+"name": "Nicht Zulaessig",
+"short": null
+},
+"3000": {
+"name": "Ausnahmsweise Zulaessig",
+"short": null
+}
+},
+"BP_ZweckbestimmungGemeinschaftsanlagen": {
+"1000": {
+"name": "Gemeinschaftsstellplaetze",
+"short": "GSt"
+},
+"2000": {
+"name": "Gemeinschaftsgaragen",
+"short": "GGa"
+},
+"3000": {
+"name": "Spielplatz",
+"short": "GSp"
+},
+"3100": {
+"name": "Carport",
+"short": "GCa"
+},
+"3200": {
+"name": "Gemeinschafts Tiefgarage",
+"short": "GTG"
+},
+"3300": {
+"name": "Nebengebaeude",
+"short": "GNG"
+},
+"3400": {
+"name": "Abfall Sammelanlagen",
+"short": "GASA"
+},
+"3500": {
+"name": "Energie Verteilungsanlagen",
+"short": "GEVA"
+},
+"3600": {
+"name": "Abfall Wertstoffbehaelter",
+"short": "GAWB"
+},
+"3700": {
+"name": "Freizeiteinrichtungen",
+"short": "Fr"
+},
+"3800": {
+"name": "Laermschutzanlagen",
+"short": "LSA"
+},
+"3900": {
+"name": "Abwasser Regenwasser",
+"short": "AwRw"
+},
+"4000": {
+"name": "Ausgleichsmassnahmen",
+"short": "AM"
+},
+"4100": {
+"name": "Fahrradstellplaetze",
+"short": "GFSt"
+},
+"4200": {
+"name": "Gemeinschaftsdachgaerten",
+"short": "GDG"
+},
+"4300": {
+"name": "Gemeinschaftlich Nutzbare Dachflaechen",
+"short": "GND"
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"BP_ZweckbestimmungNebenanlagen": {
+"1000": {
+"name": "Stellplaetze",
+"short": "St"
+},
+"2000": {
+"name": "Garagen",
+"short": "Ga"
+},
+"3000": {
+"name": "Spielplatz",
+"short": "Sp"
+},
+"3100": {
+"name": "Carport",
+"short": "Ca"
+},
+"3200": {
+"name": "Tiefgarage",
+"short": "TG"
+},
+"3300": {
+"name": "Nebengebaeude",
+"short": "NG"
+},
+"3400": {
+"name": "Abfall Sammelanlagen",
+"short": "ASA"
+},
+"3500": {
+"name": "Energie Verteilungsanlagen",
+"short": "EVA"
+},
+"3600": {
+"name": "Abfall Wertstoffbehaelter",
+"short": "AWB"
+},
+"3700": {
+"name": "Fahrradstellplaetze",
+"short": "FSt"
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"BP_ZweckbestimmungStrassenverkehr": {
+"1000": {
+"name": "Parkplatz",
+"short": null
+},
+"1100": {
+"name": "Fussgaengerbereich",
+"short": null
+},
+"1200": {
+"name": "Verkehrsberuhigter Bereich",
+"short": null
+},
+"1300": {
+"name": "Rad Fussweg",
+"short": null
+},
+"1400": {
+"name": "Radweg",
+"short": null
+},
+"1500": {
+"name": "Fussweg",
+"short": null
+},
+"1550": {
+"name": "Wanderweg",
+"short": null
+},
+"1560": {
+"name": "Reit Kutschweg",
+"short": null
+},
+"1580": {
+"name": "Wirtschaftsweg",
+"short": null
+},
+"1600": {
+"name": "Fahrrad Abstellplatz",
+"short": null
+},
+"1700": {
+"name": "Ueberfuehrender Verkehrsweg",
+"short": null
+},
+"1800": {
+"name": "Unterfuehrender Verkehrsweg",
+"short": null
+},
+"2000": {
+"name": "P_RAnlage",
+"short": null
+},
+"2100": {
+"name": "Platz",
+"short": null
+},
+"2200": {
+"name": "Anschlussflaeche",
+"short": null
+},
+"2300": {
+"name": "Landwirtschaftlicher Verkehr",
+"short": null
+},
+"2400": {
+"name": "Verkehrsgruen",
+"short": null
+},
+"2500": {
+"name": "Rastanlage",
+"short": null
+},
+"2600": {
+"name": "Busbahnhof",
+"short": null
+},
+"3000": {
+"name": "Car Sharing",
+"short": null
+},
+"3100": {
+"name": "Bike Sharing",
+"short": null
+},
+"3200": {
+"name": "B_RAnlage",
+"short": null
+},
+"3300": {
+"name": "Parkhaus",
+"short": null
+},
+"3400": {
+"name": "Mischverkehrsflaeche",
+"short": null
+},
+"3500": {
+"name": "Ladestation",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"BP_ZweckbestimmungenTMF": {
+"1000": {
+"name": "Luftreinhaltung",
+"short": null
+},
+"2000": {
+"name": "Nutzung Erneurerbarer Energien",
+"short": null
+},
+"3000": {
+"name": "Minderung Stoerfallfolgen",
+"short": null
+}
+},
+"FP_PlanArt": {
+"1000": {
+"name": "FPlan",
+"short": null
+},
+"2000": {
+"name": "Gemeinsamer FPlan",
+"short": null
+},
+"3000": {
+"name": "Reg FPlan",
+"short": null
+},
+"4000": {
+"name": "FPlan Reg Plan",
+"short": null
+},
+"5000": {
+"name": "Sachlicher Teilplan",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"FP_Rechtscharakter": {
+"1000": {
+"name": "Darstellung",
+"short": null
+},
+"2000": {
+"name": "Nachrichtliche Uebernahme",
+"short": null
+},
+"3000": {
+"name": "Hinweis",
+"short": null
+},
+"4000": {
+"name": "Vermerk",
+"short": null
+},
+"5000": {
+"name": "Kennzeichnung",
+"short": null
+},
+"9998": {
+"name": "Unbekannt",
+"short": null
+}
+},
+"FP_Rechtsstand": {
+"1000": {
+"name": "Aufstellungsbeschluss",
+"short": null
+},
+"2000": {
+"name": "Entwurf",
+"short": null
+},
+"2100": {
+"name": "Fruehzeitige Behoerden Beteiligung",
+"short": null
+},
+"2200": {
+"name": "Fruehzeitige Oeffentlichkeits Beteiligung",
+"short": null
+},
+"2300": {
+"name": "Behoerden Beteiligung",
+"short": null
+},
+"2400": {
+"name": "Oeffentliche Auslegung",
+"short": null
+},
+"3000": {
+"name": "Plan",
+"short": null
+},
+"4000": {
+"name": "Wirksamkeit",
+"short": null
+},
+"5000": {
+"name": "Untergegangen",
+"short": null
+}
+},
+"FP_Verfahren": {
+"1000": {
+"name": "Normal",
+"short": null
+},
+"2000": {
+"name": "Parag13",
+"short": null
+}
+},
+"FP_ZweckbestimmungPrivilegiertesVorhaben": {
+"1000": {
+"name": "Land Forstwirtschaft",
+"short": null
+},
+"10000": {
+"name": "Aussiedlerhof",
+"short": null
+},
+"10001": {
+"name": "Altenteil",
+"short": null
+},
+"10002": {
+"name": "Reiterhof",
+"short": null
+},
+"10003": {
+"name": "Gartenbaubetrieb",
+"short": null
+},
+"10004": {
+"name": "Baumschule",
+"short": null
+},
+"1200": {
+"name": "Oeffentliche Versorgung",
+"short": null
+},
+"12000": {
+"name": "Wasser",
+"short": null
+},
+"12001": {
+"name": "Gas",
+"short": null
+},
+"12002": {
+"name": "Waerme",
+"short": null
+},
+"12003": {
+"name": "Elektrizitaet",
+"short": null
+},
+"12004": {
+"name": "Telekommunikation",
+"short": null
+},
+"12005": {
+"name": "Abwasser",
+"short": null
+},
+"1400": {
+"name": "Ortsgebundener Gewerbebetrieb",
+"short": null
+},
+"1600": {
+"name": "Besonderes Vorhaben",
+"short": null
+},
+"16000": {
+"name": "Besondere Umgebungs Anforderung",
+"short": null
+},
+"16001": {
+"name": "Nachteilige Umgebungs Wirkung",
+"short": null
+},
+"16002": {
+"name": "Besondere Zweckbestimmung",
+"short": null
+},
+"1800": {
+"name": "Erneuerbare Energien",
+"short": null
+},
+"18000": {
+"name": "Windenergie",
+"short": null
+},
+"18001": {
+"name": "Wasserenergie",
+"short": null
+},
+"18002": {
+"name": "Solarenergie",
+"short": null
+},
+"18003": {
+"name": "Biomasse",
+"short": null
+},
+"2000": {
+"name": "Kernenergie",
+"short": null
+},
+"20000": {
+"name": "Nutzung Kernerergie",
+"short": null
+},
+"20001": {
+"name": "Entsorgung Radioaktive Abfaelle",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+},
+"99990": {
+"name": "Standort Einzelhof",
+"short": null
+},
+"99991": {
+"name": "Bebaute Flaeche Aussenbereich",
+"short": null
+}
+},
+"FP_ZweckbestimmungStrassenverkehr": {
+"1000": {
+"name": "Autobahn",
+"short": null
+},
+"1200": {
+"name": "Hauptverkehrsstrasse",
+"short": null
+},
+"1400": {
+"name": "Sonstiger Verkehrsweg Anlage",
+"short": null
+},
+"14000": {
+"name": "Verkehrsberuhigter Bereich",
+"short": null
+},
+"14001": {
+"name": "Platz",
+"short": null
+},
+"140010": {
+"name": "Ueberfuehrender Verkehrsweg",
+"short": null
+},
+"140011": {
+"name": "Unterfuehrender Verkehrsweg",
+"short": null
+},
+"140012": {
+"name": "Wirtschaftsweg",
+"short": null
+},
+"140013": {
+"name": "Landwirtschaftlicher Verkehr",
+"short": null
+},
+"14002": {
+"name": "Fussgaengerbereich",
+"short": null
+},
+"14003": {
+"name": "Rad Fussweg",
+"short": null
+},
+"14004": {
+"name": "Radweg",
+"short": null
+},
+"14005": {
+"name": "Fussweg",
+"short": null
+},
+"14006": {
+"name": "Wanderweg",
+"short": null
+},
+"14007": {
+"name": "Reit Kutschweg",
+"short": null
+},
+"14008": {
+"name": "Rastanlage",
+"short": null
+},
+"14009": {
+"name": "Busbahnhof",
+"short": null
+},
+"1600": {
+"name": "Ruhender Verkehr",
+"short": null
+},
+"16000": {
+"name": "Parkplatz",
+"short": null
+},
+"16001": {
+"name": "Fahrrad Abstellplatz",
+"short": null
+},
+"16002": {
+"name": "P_RAnlage",
+"short": null
+},
+"3000": {
+"name": "Car Sharing",
+"short": null
+},
+"3100": {
+"name": "Bike Sharing",
+"short": null
+},
+"3200": {
+"name": "B_RAnlage",
+"short": null
+},
+"3300": {
+"name": "Parkhaus",
+"short": null
+},
+"3400": {
+"name": "Mischverkehrsflaeche",
+"short": null
+},
+"3500": {
+"name": "Ladestation",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"LP_BodenschutzrechtTypen": {
+"1000": {
+"name": "Altlastenflaeche",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"LP_ErholungFreizeitFunktionen": {
+"1000": {
+"name": "Parkanlage",
+"short": null
+},
+"1030": {
+"name": "Dauerkleingaerten",
+"short": null
+},
+"1050": {
+"name": "Sportplatz",
+"short": null
+},
+"1100": {
+"name": "Spielplatz",
+"short": null
+},
+"1200": {
+"name": "Zeltplatz",
+"short": null
+},
+"1300": {
+"name": "Badeplatz Freibad",
+"short": null
+},
+"1400": {
+"name": "Schutzhuette",
+"short": null
+},
+"1500": {
+"name": "Rastplatz",
+"short": null
+},
+"1600": {
+"name": "Informationstafel",
+"short": null
+},
+"1700": {
+"name": "Feuerstelle Grillplatz",
+"short": null
+},
+"1800": {
+"name": "Liegewiese",
+"short": null
+},
+"1900": {
+"name": "Aussichtsturm",
+"short": null
+},
+"2000": {
+"name": "Aussichtspunkt",
+"short": null
+},
+"2100": {
+"name": "Angelteich",
+"short": null
+},
+"2200": {
+"name": "Modellflugplatz",
+"short": null
+},
+"2300": {
+"name": "Wildgehege Schaugatter",
+"short": null
+},
+"2400": {
+"name": "Jugendzeltplatz Einzelcamp",
+"short": null
+},
+"2500": {
+"name": "Gleitschirmplatz",
+"short": null
+},
+"2600": {
+"name": "Wandern",
+"short": null
+},
+"2700": {
+"name": "Wanderweg",
+"short": null
+},
+"2800": {
+"name": "Lehrpfad",
+"short": null
+},
+"2900": {
+"name": "Reitweg",
+"short": null
+},
+"3000": {
+"name": "Radweg",
+"short": null
+},
+"3100": {
+"name": "Wintersport",
+"short": null
+},
+"3200": {
+"name": "Skiabfahrt",
+"short": null
+},
+"3300": {
+"name": "Skilanglaufloipe",
+"short": null
+},
+"3400": {
+"name": "Rodelbahn Bobbahn",
+"short": null
+},
+"3500": {
+"name": "Wassersport",
+"short": null
+},
+"3600": {
+"name": "Wasserwanderweg",
+"short": null
+},
+"3700": {
+"name": "Schifffahrtsroute",
+"short": null
+},
+"3800": {
+"name": "Anlegestelle Mit Motorbooten",
+"short": null
+},
+"3900": {
+"name": "Anlegestelle Ohne Motorboote",
+"short": null
+},
+"4000": {
+"name": "Sessellift Schlepplift",
+"short": null
+},
+"4100": {
+"name": "Kabinenseilbahn",
+"short": null
+},
+"5000": {
+"name": "Parkplatz",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"LP_ForstrechtTypen": {
+"1000": {
+"name": "Naturwaldreservat",
+"short": null
+},
+"2000": {
+"name": "Schutzwald Allgemein",
+"short": null
+},
+"2100": {
+"name": "Lawinenschutzwald",
+"short": null
+},
+"2200": {
+"name": "Bodenschutzwald",
+"short": null
+},
+"2300": {
+"name": "Klimaschutzwald",
+"short": null
+},
+"2400": {
+"name": "Immissionsschutzwald",
+"short": null
+},
+"2500": {
+"name": "Biotopschutzwald",
+"short": null
+},
+"3000": {
+"name": "Erholungswald Allgemein",
+"short": null
+},
+"3100": {
+"name": "Erholungswald Heilbaeder",
+"short": null
+},
+"3200": {
+"name": "Erholungswald Ballungsraeume",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"LP_InternatSchutzobjektTypen": {
+"1000": {
+"name": "Feuchtgebiet",
+"short": null
+},
+"2000": {
+"name": "Vogelschutzgebiet Internat",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"LP_PlanArt": {
+"1000": {
+"name": "Landschaftsprogramm",
+"short": null
+},
+"2000": {
+"name": "Landschaftsrahmenplan",
+"short": null
+},
+"3000": {
+"name": "Landschaftsplan",
+"short": null
+},
+"4000": {
+"name": "Gruenordnungsplan",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"LP_Rechtscharakter": {
+"1000": {
+"name": "Festsetzung",
+"short": null
+},
+"2000": {
+"name": "Geplant",
+"short": null
+},
+"3000": {
+"name": "Nachrichtliche Uebernahme",
+"short": null
+},
+"4000": {
+"name": "Darstellung Kennzeichnung",
+"short": null
+},
+"5000": {
+"name": "Festsetzung In BPlan",
+"short": null
+},
+"9998": {
+"name": "Unbekannt",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Status",
+"short": null
+}
+},
+"LP_Rechtsstand": {
+"1000": {
+"name": "Aufstellungsbeschluss",
+"short": null
+},
+"2000": {
+"name": "Entwurf",
+"short": null
+},
+"3000": {
+"name": "Plan",
+"short": null
+},
+"4000": {
+"name": "Wirksamkeit",
+"short": null
+},
+"5000": {
+"name": "Untergegangen",
+"short": null
+}
+},
+"LP_Regelungen": {
+"1000": {
+"name": "Gruenlandumbruchverbot",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"LP_SonstRechtTypen": {
+"1000": {
+"name": "Jagdgesetz",
+"short": null
+},
+"2000": {
+"name": "Fischereigesetz",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"LP_WasserrechtSchutzgebietTypen": {
+"1000": {
+"name": "Grund Quellwasser",
+"short": null
+},
+"2000": {
+"name": "Oberflaechengewaesser",
+"short": null
+},
+"3000": {
+"name": "Heilquellen",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"LP_WasserrechtWirtschaftAbflussHochwSchutzTypen": {
+"1000": {
+"name": "Hochwasserrueckhaltebecken",
+"short": null
+},
+"2000": {
+"name": "Ueberschwemm Gebiet",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"RP_AbfallTypen": {
+"1000": {
+"name": "Siedlungsabfall",
+"short": null
+},
+"2000": {
+"name": "Mineralstoffabfall",
+"short": null
+},
+"3000": {
+"name": "Industrieabfall",
+"short": null
+},
+"4000": {
+"name": "Sonderabfall",
+"short": null
+},
+"5000": {
+"name": "Radioaktiver Abfall",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Abfall",
+"short": null
+}
+},
+"RP_AbfallentsorgungTypen": {
+"1000": {
+"name": "Beseitigung Entsorgung",
+"short": null
+},
+"1100": {
+"name": "Abfallbeseitigungsanlage",
+"short": null
+},
+"1101": {
+"name": "Zentrale Abfallbeseitigungsanlage",
+"short": null
+},
+"1200": {
+"name": "Deponie",
+"short": null
+},
+"1300": {
+"name": "Untertageeinlagerung",
+"short": null
+},
+"1400": {
+"name": "Behandlung",
+"short": null
+},
+"1500": {
+"name": "Kompostierung",
+"short": null
+},
+"1600": {
+"name": "Verbrennung",
+"short": null
+},
+"1700": {
+"name": "Umladestation",
+"short": null
+},
+"1800": {
+"name": "Standortsicherung",
+"short": null
+},
+"9999": {
+"name": "Sonstige Abfallentsorgung",
+"short": null
+}
+},
+"RP_AbwasserTypen": {
+"1000": {
+"name": "Klaeranlage",
+"short": null
+},
+"1001": {
+"name": "Zentrale Klaeranlage",
+"short": null
+},
+"1002": {
+"name": "Grossklaerwerk",
+"short": null
+},
+"2000": {
+"name": "Hauptwasserableitung",
+"short": null
+},
+"3000": {
+"name": "Abwasserverwertungsflaeche",
+"short": null
+},
+"4000": {
+"name": "Abwasserbehandlungsanlage",
+"short": null
+},
+"9999": {
+"name": "Sonstige Abwasserinfrastruktur",
+"short": null
+}
+},
+"RP_AchsenTypen": {
+"1000": {
+"name": "Achse",
+"short": null
+},
+"2000": {
+"name": "Siedlungsachse",
+"short": null
+},
+"3000": {
+"name": "Entwicklungsachse",
+"short": null
+},
+"3001": {
+"name": "Landesentwicklungsachse",
+"short": null
+},
+"3002": {
+"name": "Verbindungsachse",
+"short": null
+},
+"3003": {
+"name": "Entwicklungskorridor",
+"short": null
+},
+"4000": {
+"name": "Abgrenzung Entwicklungs Entlastungsorte",
+"short": null
+},
+"5000": {
+"name": "Achsengrundrichtung",
+"short": null
+},
+"6000": {
+"name": "Auesserer Achsen Schwerpunkt",
+"short": null
+},
+"9999": {
+"name": "Sonstige Achse",
+"short": null
+}
+},
+"RP_Art": {
+"1000": {
+"name": "Regionalplan",
+"short": null
+},
+"2000": {
+"name": "Sachlicher Teilplan Regionalebene",
+"short": null
+},
+"2001": {
+"name": "Sachlicher Teilplan Landesebene",
+"short": null
+},
+"3000": {
+"name": "Braunkohlenplan",
+"short": null
+},
+"4000": {
+"name": "Landesweiter Raumordnungsplan",
+"short": null
+},
+"5000": {
+"name": "Standortkonzept Bund",
+"short": null
+},
+"5001": {
+"name": "AWZPlan",
+"short": null
+},
+"6000": {
+"name": "Raeumlicher Teilplan",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"RP_Bedeutsamkeit": {
+"1000": {
+"name": "Regional",
+"short": null
+},
+"2000": {
+"name": "Ueberregional",
+"short": null
+},
+"3000": {
+"name": "Grossraeumig",
+"short": null
+},
+"4000": {
+"name": "Landesweit",
+"short": null
+},
+"5000": {
+"name": "Bundesweit",
+"short": null
+},
+"6000": {
+"name": "Europaeisch",
+"short": null
+},
+"7000": {
+"name": "International",
+"short": null
+},
+"8000": {
+"name": "Flaechenerschliessend",
+"short": null
+},
+"9000": {
+"name": "Herausragend",
+"short": null
+}
+},
+"RP_BergbauFolgenutzung": {
+"1000": {
+"name": "Landwirtschaft",
+"short": null
+},
+"2000": {
+"name": "Forstwirtschaft",
+"short": null
+},
+"3000": {
+"name": "Gruenlandbewirtschaftung",
+"short": null
+},
+"4000": {
+"name": "Natur Landschaft",
+"short": null
+},
+"5000": {
+"name": "Naturschutz",
+"short": null
+},
+"6000": {
+"name": "Erholung",
+"short": null
+},
+"7000": {
+"name": "Gewaesser",
+"short": null
+},
+"8000": {
+"name": "Verkehr",
+"short": null
+},
+"9000": {
+"name": "Altbergbau",
+"short": null
+},
+"9999": {
+"name": "Sonstige Nutzung",
+"short": null
+}
+},
+"RP_BergbauplanungTypen": {
+"1000": {
+"name": "Lagerstaette",
+"short": null
+},
+"1100": {
+"name": "Sicherung",
+"short": null
+},
+"1200": {
+"name": "Gewinnung",
+"short": null
+},
+"1300": {
+"name": "Abbau",
+"short": null
+},
+"1400": {
+"name": "Sicherheitszone",
+"short": null
+},
+"1500": {
+"name": "Anlage Einrichtung Bergbau",
+"short": null
+},
+"1600": {
+"name": "Halde",
+"short": null
+},
+"1700": {
+"name": "Sanierungsflaeche",
+"short": null
+},
+"1800": {
+"name": "Ansiedlung Umsiedlung",
+"short": null
+},
+"1900": {
+"name": "Bergbaufolgelandschaft",
+"short": null
+},
+"9999": {
+"name": "Sonstige Bergbauplanung",
+"short": null
+}
+},
+"RP_BesondereRaumkategorieTypen": {
+"1000": {
+"name": "Grenzgebiet",
+"short": null
+},
+"2000": {
+"name": "Bergbaufolgelandschaft",
+"short": null
+},
+"3000": {
+"name": "Braunkohlenfolgelandschaft",
+"short": null
+}
+},
+"RP_BesondereTourismusErholungTypen": {
+"1000": {
+"name": "Entwicklungsgebiet",
+"short": null
+},
+"2000": {
+"name": "Kernbereich",
+"short": null
+},
+"3000": {
+"name": "Besondere Entwicklungsaufgabe",
+"short": null
+}
+},
+"RP_BesondererSchienenverkehrTypen": {
+"1000": {
+"name": "Eingleisig",
+"short": null
+},
+"1001": {
+"name": "Zweigleisig",
+"short": null
+},
+"1002": {
+"name": "Mehrgleisig",
+"short": null
+},
+"2000": {
+"name": "Ohne Betrieb",
+"short": null
+},
+"3000": {
+"name": "Mit Fernverkehrsfunktion",
+"short": null
+},
+"3001": {
+"name": "Mit Verknuepfungsfunktion Fuer OEPNV",
+"short": null
+},
+"4000": {
+"name": "Elektrischer Betrieb",
+"short": null
+},
+"4001": {
+"name": "Zu Elektrifizieren",
+"short": null
+},
+"5000": {
+"name": "Verbesserung Leistungsfaehigkeit",
+"short": null
+},
+"6000": {
+"name": "Raeumliche Freihaltungentwidmeter Bahntrassen",
+"short": null
+},
+"6001": {
+"name": "Nachnutzungstillgelegter Strecken",
+"short": null
+},
+"7000": {
+"name": "Personenverkehr",
+"short": null
+},
+"7001": {
+"name": "Gueterverkehr",
+"short": null
+},
+"8000": {
+"name": "Nahverkehr",
+"short": null
+},
+"8001": {
+"name": "Fernverkehr",
+"short": null
+}
+},
+"RP_BesondererStrassenverkehrTypen": {
+"1000": {
+"name": "Zweistreifig",
+"short": null
+},
+"1001": {
+"name": "Dreistreifig",
+"short": null
+},
+"1002": {
+"name": "Vierstreifig",
+"short": null
+},
+"1003": {
+"name": "Sechsstreifig",
+"short": null
+},
+"2000": {
+"name": "Problembereich",
+"short": null
+},
+"3000": {
+"name": "Gruenbruecke Querungsmoeglichkeit",
+"short": null
+}
+},
+"RP_BodenschatzTiefen": {
+"1000": {
+"name": "Oberflaechennah",
+"short": null
+},
+"2000": {
+"name": "Tiefliegend",
+"short": null
+}
+},
+"RP_BodenschutzTypen": {
+"1000": {
+"name": "Beseitigung Erheblicher Bodenbelastung",
+"short": null
+},
+"2000": {
+"name": "Sicherung Sanierung Altlasten",
+"short": null
+},
+"3000": {
+"name": "Erosionsschutz",
+"short": null
+},
+"4000": {
+"name": "Torferhalt",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Bodenschutz",
+"short": null
+}
+},
+"RP_EinzelhandelTypen": {
+"1000": {
+"name": "Einzelhandel",
+"short": null
+},
+"2000": {
+"name": "Zentraler Versorgungsbereich",
+"short": null
+},
+"3000": {
+"name": "Zentraler Einkaufsbereich",
+"short": null
+},
+"4000": {
+"name": "Zentrenrelevantes Grossprojekt",
+"short": null
+},
+"5000": {
+"name": "Nichtzentrenrelevantes Grossprojekt",
+"short": null
+},
+"6000": {
+"name": "Grossflaechiger Einzelhandel",
+"short": null
+},
+"7000": {
+"name": "Fachmarktstandort",
+"short": null
+},
+"8000": {
+"name": "Ergaenzungsstandort",
+"short": null
+},
+"9000": {
+"name": "Staedtischer Kernbereich",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Einzelhandel",
+"short": null
+}
+},
+"RP_EnergieversorgungTypen": {
+"1000": {
+"name": "Leitungstrasse",
+"short": null
+},
+"1001": {
+"name": "Hochspannungsleitung",
+"short": null
+},
+"1002": {
+"name": "Kabeltrasse Netzanbindung",
+"short": null
+},
+"2000": {
+"name": "Pipeline",
+"short": null
+},
+"2001": {
+"name": "Uebergabestation",
+"short": null
+},
+"3000": {
+"name": "Kraftwerk",
+"short": null
+},
+"3001": {
+"name": "Grosskraftwerk",
+"short": null
+},
+"3002": {
+"name": "Energiegewinnung",
+"short": null
+},
+"4000": {
+"name": "Energiespeicherung",
+"short": null
+},
+"4001": {
+"name": "Verstetigung Speicherung",
+"short": null
+},
+"4002": {
+"name": "Untergrundspeicher",
+"short": null
+},
+"5000": {
+"name": "Umspannwerk",
+"short": null
+},
+"6000": {
+"name": "Raffinerie",
+"short": null
+},
+"7000": {
+"name": "Leitungsabbau",
+"short": null
+},
+"8000": {
+"name": "Korridor",
+"short": null
+},
+"9999": {
+"name": "Sonstige Energieversorgung",
+"short": null
+}
+},
+"RP_ErholungTypen": {
+"1000": {
+"name": "Erholung",
+"short": null
+},
+"2000": {
+"name": "Ruhige Erholung In Natur Und Landschaft",
+"short": null
+},
+"2001": {
+"name": "Landschaftebezogene Erholung",
+"short": null
+},
+"3000": {
+"name": "Erholung Mit Starker Inanspruchnahme Durch Bevoelkerung",
+"short": null
+},
+"3001": {
+"name": "Infrastrukturelle Erholung",
+"short": null
+},
+"4000": {
+"name": "Erholungswald",
+"short": null
+},
+"5000": {
+"name": "Freizeitanlage",
+"short": null
+},
+"5001": {
+"name": "Ferieneinrichtung",
+"short": null
+},
+"6000": {
+"name": "Erholungslandschaft Alpen",
+"short": null
+},
+"7000": {
+"name": "Kureinrichtung",
+"short": null
+},
+"9999": {
+"name": "Sonstige Erholung",
+"short": null
+}
+},
+"RP_ErneuerbareEnergieTypen": {
+"1000": {
+"name": "Windenergie",
+"short": null
+},
+"2000": {
+"name": "Solarenergie",
+"short": null
+},
+"3000": {
+"name": "Geothermie",
+"short": null
+},
+"4000": {
+"name": "Biomasse",
+"short": null
+},
+"5000": {
+"name": "Wasserkraft",
+"short": null
+},
+"9999": {
+"name": "Sonstige Erneuerbare Energie",
+"short": null
+}
+},
+"RP_ForstwirtschaftTypen": {
+"1000": {
+"name": "Wald",
+"short": null
+},
+"1001": {
+"name": "Bannwald",
+"short": null
+},
+"1002": {
+"name": "Schonwald",
+"short": null
+},
+"2000": {
+"name": "Waldmehrung",
+"short": null
+},
+"2001": {
+"name": "Waldmehrung Erholung",
+"short": null
+},
+"2002": {
+"name": "Vergroesserung Des Waldanteils",
+"short": null
+},
+"3000": {
+"name": "Waldschutz",
+"short": null
+},
+"3001": {
+"name": "Besondere Schutzfunktion Des Waldes",
+"short": null
+},
+"4000": {
+"name": "Von Aufforstung Freizuhalten",
+"short": null
+},
+"9999": {
+"name": "Sonstige Forstwirtschaft",
+"short": null
+}
+},
+"RP_FunktionszuweisungTypen": {
+"1000": {
+"name": "Wohnen",
+"short": null
+},
+"2000": {
+"name": "Arbeit",
+"short": null
+},
+"3000": {
+"name": "Gewerbe Dienstleistung",
+"short": null
+},
+"4000": {
+"name": "Einzelhandel",
+"short": null
+},
+"5000": {
+"name": "Landwirtschaft",
+"short": null
+},
+"6000": {
+"name": "Erholung Fremdenverkehr",
+"short": null
+},
+"7000": {
+"name": "Verteidigung",
+"short": null
+},
+"8000": {
+"name": "Ueberoertliche Versorgungsfunktion Laendlicher Raum",
+"short": null
+},
+"9000": {
+"name": "Laendliche Siedlung",
+"short": null
+},
+"9999": {
+"name": "Sonstige Funktion",
+"short": null
+}
+},
+"RP_GebietsTyp": {
+"1000": {
+"name": "Vorranggebiet",
+"short": null
+},
+"1001": {
+"name": "Vorrangstandort",
+"short": null
+},
+"1100": {
+"name": "Vorbehaltsgebiet",
+"short": null
+},
+"1101": {
+"name": "Vorbehaltsstandort",
+"short": null
+},
+"1200": {
+"name": "Eignungsgebiet",
+"short": null
+},
+"1300": {
+"name": "Vorrangund Eignungsgebiet",
+"short": null
+},
+"1400": {
+"name": "Ausschlussgebiet",
+"short": null
+},
+"1500": {
+"name": "Vorsorgegebiet",
+"short": null
+},
+"1501": {
+"name": "Vorsorgestandort",
+"short": null
+},
+"1600": {
+"name": "Vorzugsraum",
+"short": null
+},
+"1700": {
+"name": "Potenzialgebiet",
+"short": null
+},
+"1800": {
+"name": "Schwerpunktraum",
+"short": null
+},
+"9999": {
+"name": "Sonstiges Gebiet",
+"short": null
+}
+},
+"RP_HochwasserschutzTypen": {
+"1000": {
+"name": "Hochwasserschutz",
+"short": null
+},
+"1001": {
+"name": "Technischer Hochwasserschutz",
+"short": null
+},
+"1100": {
+"name": "Hochwasserrueckhaltebecken",
+"short": null
+},
+"1101": {
+"name": "Hochwasserrueckhaltebecken Polder",
+"short": null
+},
+"1102": {
+"name": "Hochwasserrueckhaltebecken Bauwerk",
+"short": null
+},
+"1200": {
+"name": "Risikobereich Hochwasser",
+"short": null
+},
+"1300": {
+"name": "Kuestenhochwasserschutz",
+"short": null
+},
+"1301": {
+"name": "Deich",
+"short": null
+},
+"1302": {
+"name": "Deichrueckverlegung",
+"short": null
+},
+"1303": {
+"name": "Deichgeschuetztes Gebiet",
+"short": null
+},
+"1400": {
+"name": "Sperrwerk",
+"short": null
+},
+"1500": {
+"name": "Hochw Gefaehrdete Kuestenniederung",
+"short": null
+},
+"1600": {
+"name": "Ueberschwemmungsgebiet",
+"short": null
+},
+"1700": {
+"name": "Ueberschwemmungsgefaehrdeter Bereich",
+"short": null
+},
+"1800": {
+"name": "Retentionsraum",
+"short": null
+},
+"1801": {
+"name": "Potenzieller Retentionsraum",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Hochwasserschutz",
+"short": null
+}
+},
+"RP_IndustrieGewerbeTypen": {
+"1000": {
+"name": "Industrie",
+"short": null
+},
+"1001": {
+"name": "Industrielle Anlage",
+"short": null
+},
+"2000": {
+"name": "Gewerbe",
+"short": null
+},
+"2001": {
+"name": "Gewerblicher Bereich",
+"short": null
+},
+"2002": {
+"name": "Gewerbepark",
+"short": null
+},
+"2003": {
+"name": "Dienstleistung Gewerbe Zentrum",
+"short": null
+},
+"3000": {
+"name": "Gewerbe Industrie",
+"short": null
+},
+"3001": {
+"name": "Bedeutsamer Entwicklungsstandort Gewerbe Industrie",
+"short": null
+},
+"4000": {
+"name": "Sicherungund Entwicklungvon Arbeitsstaetten",
+"short": null
+},
+"5000": {
+"name": "Flaechenintensives Grossvorhaben",
+"short": null
+},
+"6000": {
+"name": "Betriebsanlage Bergbau",
+"short": null
+},
+"7000": {
+"name": "Hafenorientierte Wirtschaftliche Anlage",
+"short": null
+},
+"8000": {
+"name": "Tank Rastanlage",
+"short": null
+},
+"9000": {
+"name": "Bereich Fuer Gewerbliche Und Industrielle Nutzung GIB",
+"short": null
+},
+"9999": {
+"name": "Sonstige Industrie Gewerbe",
+"short": null
+}
+},
+"RP_KlimaschutzTypen": {
+"1000": {
+"name": "Kaltluft",
+"short": null
+},
+"2000": {
+"name": "Frischluft",
+"short": null
+},
+"3000": {
+"name": "Besondere Klimaschutzfunktion",
+"short": null
+},
+"9999": {
+"name": "Sonstige Lufttypen",
+"short": null
+}
+},
+"RP_KommunikationTypen": {
+"1000": {
+"name": "Richtfunkstrecke",
+"short": null
+},
+"2000": {
+"name": "Fernmeldeanlage",
+"short": null
+},
+"2001": {
+"name": "Sende Empfangsstation",
+"short": null
+},
+"2002": {
+"name": "Ton Fernsehsender",
+"short": null
+},
+"9999": {
+"name": "Sonstige Kommunikation",
+"short": null
+}
+},
+"RP_KulturlandschaftTypen": {
+"1000": {
+"name": "Kulturelles Sachgut",
+"short": null
+},
+"2000": {
+"name": "Welterbe",
+"short": null
+},
+"3000": {
+"name": "Kulturerbe Landschaft",
+"short": null
+},
+"4000": {
+"name": "Kultur Denkmalpflege",
+"short": null
+},
+"9999": {
+"name": "Sonstige Kulturlandschaft Typen",
+"short": null
+}
+},
+"RP_LaermschutzTypen": {
+"1000": {
+"name": "Laermbereich",
+"short": null
+},
+"1001": {
+"name": "Laermschutzbereich",
+"short": null
+},
+"2000": {
+"name": "Siedlungsbeschraenkungsbereich",
+"short": null
+},
+"3000": {
+"name": "Zone A",
+"short": null
+},
+"4000": {
+"name": "Zone B",
+"short": null
+},
+"5000": {
+"name": "Zone C",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Laermschutz Bauschutz",
+"short": null
+}
+},
+"RP_LandwirtschaftTypen": {
+"1000": {
+"name": "Landwirtschaftliche Nutzung",
+"short": null
+},
+"1001": {
+"name": "Kernzone Landwirtschaft",
+"short": null
+},
+"2000": {
+"name": "Intensiv Landwirtschaft",
+"short": null
+},
+"3000": {
+"name": "Fischerei",
+"short": null
+},
+"4000": {
+"name": "Weinbau",
+"short": null
+},
+"5000": {
+"name": "Auf Grund Hohen Ertragspotenzials",
+"short": null
+},
+"6000": {
+"name": "Auf Grund Besonderer Funktionen",
+"short": null
+},
+"7000": {
+"name": "Gruenlandbewirtschaftung",
+"short": null
+},
+"8000": {
+"name": "Sonderkultur",
+"short": null
+},
+"9999": {
+"name": "Sonstige Landwirtschaft",
+"short": null
+}
+},
+"RP_LuftverkehrTypen": {
+"1000": {
+"name": "Flughafen",
+"short": null
+},
+"1001": {
+"name": "Verkehrsflughafen",
+"short": null
+},
+"1002": {
+"name": "Regionalflughafen",
+"short": null
+},
+"1003": {
+"name": "Internationaler Flughafen",
+"short": null
+},
+"1004": {
+"name": "Internationaler Verkehrsflughafen",
+"short": null
+},
+"1005": {
+"name": "Flughafenentwicklung",
+"short": null
+},
+"2000": {
+"name": "Flugplatz",
+"short": null
+},
+"2001": {
+"name": "Regionalflugplatz",
+"short": null
+},
+"2002": {
+"name": "Segelflugplatz",
+"short": null
+},
+"2003": {
+"name": "Sonstiger Flugplatz",
+"short": null
+},
+"3000": {
+"name": "Bauschutzbereich",
+"short": null
+},
+"4000": {
+"name": "Militaerflughafen",
+"short": null
+},
+"5000": {
+"name": "Landeplatz",
+"short": null
+},
+"5001": {
+"name": "Verkehrslandeplatz",
+"short": null
+},
+"5002": {
+"name": "Hubschrauberlandeplatz",
+"short": null
+},
+"5003": {
+"name": "Landebahn",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Luftverkehr",
+"short": null
+}
+},
+"RP_NaturLandschaftTypen": {
+"1000": {
+"name": "Natur Landschaft",
+"short": null
+},
+"1100": {
+"name": "Naturschutz Landschaftspflege",
+"short": null
+},
+"1101": {
+"name": "Naturschutz Landschaftspflege Auf Gewaessern",
+"short": null
+},
+"1200": {
+"name": "Flurdurchgruenung",
+"short": null
+},
+"1300": {
+"name": "Unzerschnittene Raeume",
+"short": null
+},
+"1301": {
+"name": "Unzerschnittene Verkehrsarme Raeume",
+"short": null
+},
+"1400": {
+"name": "Feuchtgebiet",
+"short": null
+},
+"1500": {
+"name": "Oekologisches Verbundssystem",
+"short": null
+},
+"1501": {
+"name": "Oekologischer Raum",
+"short": null
+},
+"1600": {
+"name": "Verbesserung Landschaftsstruktur Naturhaushalt",
+"short": null
+},
+"1700": {
+"name": "Biotop",
+"short": null
+},
+"1701": {
+"name": "Biotopverbund",
+"short": null
+},
+"1702": {
+"name": "Biotopverbundachse",
+"short": null
+},
+"1703": {
+"name": "Arten Biotopschutz",
+"short": null
+},
+"1704": {
+"name": "Regionalpark",
+"short": null
+},
+"1800": {
+"name": "Kompensation Entwicklung",
+"short": null
+},
+"1900": {
+"name": "Gruenland Bewirtschaftung Pflege Entwicklung",
+"short": null
+},
+"2000": {
+"name": "Landschaftsstruktur",
+"short": null
+},
+"2100": {
+"name": "Landschaft Erholung",
+"short": null
+},
+"2200": {
+"name": "Landschaftspraegend",
+"short": null
+},
+"2300": {
+"name": "Schutzder Natur",
+"short": null
+},
+"2400": {
+"name": "Schutzdes Landschaftsbildes",
+"short": null
+},
+"2500": {
+"name": "Alpenpark",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Natur Landschaft Schutz",
+"short": null
+}
+},
+"RP_PrimaerenergieTypen": {
+"1000": {
+"name": "Erdoel",
+"short": null
+},
+"2000": {
+"name": "Gas",
+"short": null
+},
+"2001": {
+"name": "Ferngas",
+"short": null
+},
+"3000": {
+"name": "Fernwaerme",
+"short": null
+},
+"4000": {
+"name": "Kraftstoff",
+"short": null
+},
+"5000": {
+"name": "Kohle",
+"short": null
+},
+"6000": {
+"name": "Wasser",
+"short": null
+},
+"7000": {
+"name": "Kernenergie",
+"short": null
+},
+"8000": {
+"name": "Reststoffverwertung",
+"short": null
+},
+"9000": {
+"name": "Erneuerbare Energie",
+"short": null
+},
+"9001": {
+"name": "Windenergie",
+"short": null
+},
+"9999": {
+"name": "Sonstige Primaerenergie",
+"short": null
+}
+},
+"RP_RadwegWanderwegTypen": {
+"1000": {
+"name": "Wanderweg",
+"short": null
+},
+"1001": {
+"name": "Fernwanderweg",
+"short": null
+},
+"2000": {
+"name": "Radwandern",
+"short": null
+},
+"2001": {
+"name": "Fernradweg",
+"short": null
+},
+"3000": {
+"name": "Reiten",
+"short": null
+},
+"4000": {
+"name": "Wasserwandern",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Wanderweg",
+"short": null
+}
+},
+"RP_RaumkategorieTypen": {
+"1000": {
+"name": "Ordnungsraum",
+"short": null
+},
+"1001": {
+"name": "Ordnungsraum Tourismus Erholung",
+"short": null
+},
+"1100": {
+"name": "Verdichtungsraum",
+"short": null
+},
+"1101": {
+"name": "Kernzone Verdichtungsraum",
+"short": null
+},
+"1102": {
+"name": "Randzone Verdichtungsraum",
+"short": null
+},
+"1103": {
+"name": "Ballungskernzone",
+"short": null
+},
+"1104": {
+"name": "Ballungsrandzone",
+"short": null
+},
+"1105": {
+"name": "Hochverdichteter Raum",
+"short": null
+},
+"1106": {
+"name": "Stadt Umland Bereich Verdichtungsraum",
+"short": null
+},
+"1200": {
+"name": "Laendlicher Raum",
+"short": null
+},
+"1201": {
+"name": "Verdichteter Bereichim Laendlichen Raum",
+"short": null
+},
+"1202": {
+"name": "Gestaltungsraum",
+"short": null
+},
+"1203": {
+"name": "Laendlicher Gestaltungsraum",
+"short": null
+},
+"1300": {
+"name": "Stadt Umland Raum",
+"short": null
+},
+"1301": {
+"name": "Stadt Umland Bereich Laendlicher Raum",
+"short": null
+},
+"1400": {
+"name": "Abgrenzung Ordnungsraum",
+"short": null
+},
+"1500": {
+"name": "Duennbesiedeltes Abgelegenes Gebiet",
+"short": null
+},
+"1600": {
+"name": "Umkreis10 KM",
+"short": null
+},
+"1700": {
+"name": "Raummitbesonderem Handlungsbedarf",
+"short": null
+},
+"1800": {
+"name": "Funktionsraum",
+"short": null
+},
+"1900": {
+"name": "Grenze Wirtschaftsraum",
+"short": null
+},
+"2000": {
+"name": "Funktionsschwerpunkt",
+"short": null
+},
+"2100": {
+"name": "Grundversorgung",
+"short": null
+},
+"2200": {
+"name": "Alpengebiet",
+"short": null
+},
+"2300": {
+"name": "Raeume Mit Guenstigen Entwicklungsvoraussetzungen",
+"short": null
+},
+"2400": {
+"name": "Raeume Mit Ausgeglichenen Entwicklungspotenzialen",
+"short": null
+},
+"2500": {
+"name": "Raeume Mit Besonderen Entwicklungsaufgaben",
+"short": null
+},
+"9999": {
+"name": "Sonstige Raumkategorie",
+"short": null
+}
+},
+"RP_Rechtscharakter": {
+"1000": {
+"name": "Ziel Der Raumordnung",
+"short": null
+},
+"2000": {
+"name": "Grundsatz Der Raumordnung",
+"short": null
+},
+"3000": {
+"name": "Nachrichtliche Uebernahme",
+"short": null
+},
+"4000": {
+"name": "Nachrichtliche Uebernahme Ziel",
+"short": null
+},
+"5000": {
+"name": "Nachrichtliche Uebernahme Grundsatz",
+"short": null
+},
+"6000": {
+"name": "Nur Informationsgehalt",
+"short": null
+},
+"7000": {
+"name": "Textliches Ziel",
+"short": null
+},
+"8000": {
+"name": "Zielund Grundsatz",
+"short": null
+},
+"9000": {
+"name": "Vorschlag",
+"short": null
+},
+"9998": {
+"name": "Unbekannt",
+"short": null
+}
+},
+"RP_Rechtsstand": {
+"1000": {
+"name": "Aufstellungsbeschluss",
+"short": null
+},
+"2000": {
+"name": "Entwurf",
+"short": null
+},
+"2001": {
+"name": "Entwurf Genehmigt",
+"short": null
+},
+"2002": {
+"name": "Entwurf Geaendert",
+"short": null
+},
+"2003": {
+"name": "Entwurf Aufgegeben",
+"short": null
+},
+"2004": {
+"name": "Entwurf Ruht",
+"short": null
+},
+"3000": {
+"name": "Plan",
+"short": null
+},
+"4000": {
+"name": "Inkraftgetreten",
+"short": null
+},
+"5000": {
+"name": "Allgemeine Planungsabsicht",
+"short": null
+},
+"6000": {
+"name": "Ausser Kraft",
+"short": null
+},
+"7000": {
+"name": "Plan Ungueltig",
+"short": null
+}
+},
+"RP_RohstoffTypen": {
+"1000": {
+"name": "Anhydritstein",
+"short": null
+},
+"1100": {
+"name": "Baryt",
+"short": null
+},
+"1200": {
+"name": "Basalt Diabas",
+"short": null
+},
+"1300": {
+"name": "Bentonit",
+"short": null
+},
+"1400": {
+"name": "Blaehton",
+"short": null
+},
+"1500": {
+"name": "Braunkohle",
+"short": null
+},
+"1600": {
+"name": "Buntsandstein",
+"short": null
+},
+"1700": {
+"name": "Dekostein",
+"short": null
+},
+"1800": {
+"name": "Diorit",
+"short": null
+},
+"1900": {
+"name": "Dolomitstein",
+"short": null
+},
+"2000": {
+"name": "Erdgas",
+"short": null
+},
+"2100": {
+"name": "Erdoel",
+"short": null
+},
+"2200": {
+"name": "Erz",
+"short": null
+},
+"2300": {
+"name": "Feldspat",
+"short": null
+},
+"2400": {
+"name": "Festgestein",
+"short": null
+},
+"2500": {
+"name": "Flussspat",
+"short": null
+},
+"2600": {
+"name": "Gangquarz",
+"short": null
+},
+"2700": {
+"name": "Gipsstein",
+"short": null
+},
+"2800": {
+"name": "Gneis",
+"short": null
+},
+"2900": {
+"name": "Granit",
+"short": null
+},
+"3000": {
+"name": "Grauwacke",
+"short": null
+},
+"3100": {
+"name": "Hartgestein",
+"short": null
+},
+"3200": {
+"name": "Kalk Kalktuff Kreide",
+"short": null
+},
+"3300": {
+"name": "Kalkmergelstein",
+"short": null
+},
+"3400": {
+"name": "Kalkstein",
+"short": null
+},
+"3500": {
+"name": "Kaolin",
+"short": null
+},
+"3600": {
+"name": "Karbonatgestein",
+"short": null
+},
+"3700": {
+"name": "Kies",
+"short": null
+},
+"3800": {
+"name": "Kieselgur",
+"short": null
+},
+"3900": {
+"name": "Kieshaltiger Sand",
+"short": null
+},
+"4000": {
+"name": "Kies Sand",
+"short": null
+},
+"4100": {
+"name": "Klei",
+"short": null
+},
+"4200": {
+"name": "Kristallin",
+"short": null
+},
+"4300": {
+"name": "Kupfer",
+"short": null
+},
+"4400": {
+"name": "Lehm",
+"short": null
+},
+"4500": {
+"name": "Marmor",
+"short": null
+},
+"4600": {
+"name": "Mergel",
+"short": null
+},
+"4700": {
+"name": "Mergelstein",
+"short": null
+},
+"4800": {
+"name": "Mikrogranit Granitporphyr",
+"short": null
+},
+"4900": {
+"name": "Monzonit",
+"short": null
+},
+"5000": {
+"name": "Muschelkalk",
+"short": null
+},
+"5100": {
+"name": "Naturstein",
+"short": null
+},
+"5200": {
+"name": "Naturwerkstein",
+"short": null
+},
+"5300": {
+"name": "Oelschiefer",
+"short": null
+},
+"5400": {
+"name": "Pegmatitsand",
+"short": null
+},
+"5500": {
+"name": "Quarzit",
+"short": null
+},
+"5600": {
+"name": "Quarzsand",
+"short": null
+},
+"5700": {
+"name": "Rhyolith",
+"short": null
+},
+"5800": {
+"name": "Rhyolith Quarzporphyr",
+"short": null
+},
+"5900": {
+"name": "Salz",
+"short": null
+},
+"6000": {
+"name": "Sand",
+"short": null
+},
+"6100": {
+"name": "Sandstein",
+"short": null
+},
+"6200": {
+"name": "Spezialton",
+"short": null
+},
+"6300": {
+"name": "Steineund Erden",
+"short": null
+},
+"6400": {
+"name": "Steinkohle",
+"short": null
+},
+"6500": {
+"name": "Ton",
+"short": null
+},
+"6600": {
+"name": "Tonstein",
+"short": null
+},
+"6700": {
+"name": "Torf",
+"short": null
+},
+"6800": {
+"name": "Tuff Bimsstein",
+"short": null
+},
+"6900": {
+"name": "Uran",
+"short": null
+},
+"7000": {
+"name": "Vulkanit",
+"short": null
+},
+"7100": {
+"name": "Werkstein",
+"short": null
+},
+"7200": {
+"name": "Andesit",
+"short": null
+},
+"7300": {
+"name": "Formsand",
+"short": null
+},
+"7400": {
+"name": "Gabbro",
+"short": null
+},
+"7500": {
+"name": "Mikrodiorit Kuselit",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"RP_SchienenverkehrTypen": {
+"1000": {
+"name": "Schienenverkehr",
+"short": null
+},
+"1001": {
+"name": "Eisenbahnstrecke",
+"short": null
+},
+"1002": {
+"name": "Haupteisenbahnstrecke",
+"short": null
+},
+"1100": {
+"name": "Trasse",
+"short": null
+},
+"1200": {
+"name": "Schienennetz",
+"short": null
+},
+"1300": {
+"name": "Stadtbahn",
+"short": null
+},
+"1301": {
+"name": "Strassenbahn",
+"short": null
+},
+"1302": {
+"name": "SBahn",
+"short": null
+},
+"1303": {
+"name": "UBahn",
+"short": null
+},
+"1400": {
+"name": "Anschlussgleis Industrie Gewerbe",
+"short": null
+},
+"1500": {
+"name": "Haltepunkt",
+"short": null
+},
+"1600": {
+"name": "Bahnhof",
+"short": null
+},
+"1700": {
+"name": "Hochgeschwindigkeitsverkehr",
+"short": null
+},
+"1800": {
+"name": "Bahnbetriebsgelaende",
+"short": null
+},
+"1801": {
+"name": "Anlagemitgrossem Flaechenbedarf",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Schienenverkehr",
+"short": null
+}
+},
+"RP_SonstVerkehrTypen": {
+"1000": {
+"name": "Verkehrsanlage",
+"short": null
+},
+"1100": {
+"name": "Gueterverkehrszentrum",
+"short": null
+},
+"1200": {
+"name": "Logistikzentrum",
+"short": null
+},
+"1300": {
+"name": "Terminalkombinierter Verkehr",
+"short": null
+},
+"1400": {
+"name": "OEPNV",
+"short": null
+},
+"1500": {
+"name": "Verknuepfungspunkt Bahn Bus",
+"short": null
+},
+"1600": {
+"name": "Parkand Ride Bikeand Ride",
+"short": null
+},
+"1700": {
+"name": "Faehrverkehr",
+"short": null
+},
+"1800": {
+"name": "Infrastrukturkorridor",
+"short": null
+},
+"1900": {
+"name": "Tunnel",
+"short": null
+},
+"2000": {
+"name": "Neue Verkehrstechniken",
+"short": null
+},
+"2001": {
+"name": "Teststrecke",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Verkehr",
+"short": null
+}
+},
+"RP_SozialeInfrastrukturTypen": {
+"1000": {
+"name": "Kultur",
+"short": null
+},
+"2000": {
+"name": "Sozialeinrichtung",
+"short": null
+},
+"3000": {
+"name": "Gesundheit",
+"short": null
+},
+"3001": {
+"name": "Krankenhaus",
+"short": null
+},
+"4000": {
+"name": "Bildung Forschung",
+"short": null
+},
+"4001": {
+"name": "Hochschule",
+"short": null
+},
+"5000": {
+"name": "Polizei",
+"short": null
+},
+"9999": {
+"name": "Sonstige Soziale Infrastruktur",
+"short": null
+}
+},
+"RP_SpannungTypen": {
+"1000": {
+"name": "110 KV",
+"short": null
+},
+"2000": {
+"name": "220 KV",
+"short": null
+},
+"3000": {
+"name": "330 KV",
+"short": null
+},
+"4000": {
+"name": "380 KV",
+"short": null
+}
+},
+"RP_SperrgebietTypen": {
+"1000": {
+"name": "Verteidigung",
+"short": null
+},
+"2000": {
+"name": "Sondergebiet Bund",
+"short": null
+},
+"3000": {
+"name": "Warngebiet",
+"short": null
+},
+"4000": {
+"name": "Militaerische Einrichtung",
+"short": null
+},
+"4001": {
+"name": "Grosse Militaerische Anlage",
+"short": null
+},
+"5000": {
+"name": "Militaerische Liegenschaft",
+"short": null
+},
+"6000": {
+"name": "Konversionsflaeche",
+"short": null
+},
+"9999": {
+"name": "Sonstiges Sperrgebiet",
+"short": null
+}
+},
+"RP_SpezifischeGrenzeTypen": {
+"1000": {
+"name": "Zwoelfmeilenzone",
+"short": null
+},
+"1001": {
+"name": "Begrenzung Des Kuestenmeeres",
+"short": null
+},
+"2000": {
+"name": "Verlauf Umstritten",
+"short": null
+},
+"3000": {
+"name": "Grenze Dt Ausschl Wirtschaftszone",
+"short": null
+},
+"4000": {
+"name": "Mittlere Tide Hochwasserlinie",
+"short": null
+},
+"5000": {
+"name": "Planungsregionsgrenze Region",
+"short": null
+},
+"6000": {
+"name": "Planungsregionsgrenze Land",
+"short": null
+},
+"7000": {
+"name": "Grenze Braunkohlenplan",
+"short": null
+},
+"8000": {
+"name": "Grenzuebergangsstelle",
+"short": null
+}
+},
+"RP_SportanlageTypen": {
+"1000": {
+"name": "Sportanlage",
+"short": null
+},
+"2000": {
+"name": "Wassersport",
+"short": null
+},
+"3000": {
+"name": "Motorsport",
+"short": null
+},
+"4000": {
+"name": "Flugsport",
+"short": null
+},
+"5000": {
+"name": "Reitsport",
+"short": null
+},
+"6000": {
+"name": "Golfsport",
+"short": null
+},
+"7000": {
+"name": "Sportzentrum",
+"short": null
+},
+"9999": {
+"name": "Sonstige Sportanlage",
+"short": null
+}
+},
+"RP_StrassenverkehrTypen": {
+"1000": {
+"name": "Strassenverkehr",
+"short": null
+},
+"1001": {
+"name": "Hauptverkehrsstrasse",
+"short": null
+},
+"1002": {
+"name": "Autobahn",
+"short": null
+},
+"1003": {
+"name": "Bundesstrasse",
+"short": null
+},
+"1004": {
+"name": "Staatsstrasse",
+"short": null
+},
+"1005": {
+"name": "Landesstrasse",
+"short": null
+},
+"1006": {
+"name": "Kreisstrasse",
+"short": null
+},
+"1007": {
+"name": "Fernstrasse",
+"short": null
+},
+"2000": {
+"name": "Trasse",
+"short": null
+},
+"3000": {
+"name": "Strassennetz",
+"short": null
+},
+"4000": {
+"name": "Busverkehr",
+"short": null
+},
+"5000": {
+"name": "Anschlussstelle",
+"short": null
+},
+"6000": {
+"name": "Strassentunnel",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Strassenverkehr",
+"short": null
+}
+},
+"RP_TourismusTypen": {
+"1000": {
+"name": "Tourismus",
+"short": null
+},
+"2000": {
+"name": "Kuestenraum",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Tourismus",
+"short": null
+}
+},
+"RP_Verfahren": {
+"1000": {
+"name": "Aenderung",
+"short": null
+},
+"2000": {
+"name": "Teilfortschreibung",
+"short": null
+},
+"3000": {
+"name": "Neuaufstellung",
+"short": null
+},
+"4000": {
+"name": "Gesamtfortschreibung",
+"short": null
+},
+"5000": {
+"name": "Aktualisierung",
+"short": null
+}
+},
+"RP_VerkehrStatus": {
+"1000": {
+"name": "Ausbau",
+"short": null
+},
+"1001": {
+"name": "Linienfuehrung Offen",
+"short": null
+},
+"2000": {
+"name": "Sicherung",
+"short": null
+},
+"3000": {
+"name": "Neubau",
+"short": null
+},
+"4000": {
+"name": "Im Bau",
+"short": null
+},
+"5000": {
+"name": "Vorh Planfestgest Linienbest Grobtrasse",
+"short": null
+},
+"6000": {
+"name": "Bedarfsplanmassnahme Ohne Raeuml Festlegung",
+"short": null
+},
+"7000": {
+"name": "Korridor",
+"short": null
+},
+"8000": {
+"name": "Verlegung",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Verkehr Status",
+"short": null
+}
+},
+"RP_VerkehrTypen": {
+"1000": {
+"name": "Schienenverkehr",
+"short": null
+},
+"2000": {
+"name": "Strassenverkehr",
+"short": null
+},
+"3000": {
+"name": "Luftverkehr",
+"short": null
+},
+"4000": {
+"name": "Wasserverkehr",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Verkehr",
+"short": null
+}
+},
+"RP_WasserschutzTypen": {
+"1000": {
+"name": "Wasserschutzgebiet",
+"short": null
+},
+"2000": {
+"name": "Grundwasserschutz",
+"short": null
+},
+"2001": {
+"name": "Grundwasservorkommen",
+"short": null
+},
+"2002": {
+"name": "Gewaesserschutz",
+"short": null
+},
+"3000": {
+"name": "Trinkwasserschutz",
+"short": null
+},
+"4000": {
+"name": "Trinkwassergewinnung",
+"short": null
+},
+"5000": {
+"name": "Oberflaechenwasserschutz",
+"short": null
+},
+"6000": {
+"name": "Heilquelle",
+"short": null
+},
+"7000": {
+"name": "Wasserversorgung",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Wasserschutz",
+"short": null
+}
+},
+"RP_WasserschutzZonen": {
+"1000": {
+"name": "Zone1",
+"short": null
+},
+"2000": {
+"name": "Zone2",
+"short": null
+},
+"3000": {
+"name": "Zone3",
+"short": null
+}
+},
+"RP_WasserverkehrTypen": {
+"1000": {
+"name": "Hafen",
+"short": null
+},
+"1001": {
+"name": "Seehafen",
+"short": null
+},
+"1002": {
+"name": "Binnenhafen",
+"short": null
+},
+"1003": {
+"name": "Sportboothafen",
+"short": null
+},
+"1004": {
+"name": "Laende",
+"short": null
+},
+"2000": {
+"name": "Umschlagplatz",
+"short": null
+},
+"3000": {
+"name": "Schleuse Hebewerk",
+"short": null
+},
+"4000": {
+"name": "Schifffahrt",
+"short": null
+},
+"4001": {
+"name": "Wichtiger Schifffahrtsweg",
+"short": null
+},
+"4002": {
+"name": "Sonstiger Schifffahrtsweg",
+"short": null
+},
+"4003": {
+"name": "Wasserstrasse",
+"short": null
+},
+"5000": {
+"name": "Reede",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Wasserverkehr",
+"short": null
+}
+},
+"RP_WasserwirtschaftTypen": {
+"1000": {
+"name": "Wasserleitung",
+"short": null
+},
+"2000": {
+"name": "Wasserwerk",
+"short": null
+},
+"3000": {
+"name": "Staudamm Deich",
+"short": null
+},
+"4000": {
+"name": "Speicherbecken",
+"short": null
+},
+"5000": {
+"name": "Rueckhaltebecken",
+"short": null
+},
+"6000": {
+"name": "Talsperre",
+"short": null
+},
+"7000": {
+"name": "Pumpwerk Schoepfwerk",
+"short": null
+},
+"9999": {
+"name": "Sonstige Wasserwirtschaft",
+"short": null
+}
+},
+"RP_WohnenSiedlungTypen": {
+"1000": {
+"name": "Wohnen",
+"short": null
+},
+"2000": {
+"name": "Baugebietsgrenze",
+"short": null
+},
+"3000": {
+"name": "Siedlungsgebiet",
+"short": null
+},
+"3001": {
+"name": "Siedlungsschwerpunkt",
+"short": null
+},
+"3002": {
+"name": "Siedlungsentwicklung",
+"short": null
+},
+"3003": {
+"name": "Siedlungsbeschraenkung",
+"short": null
+},
+"3004": {
+"name": "Siedlungsnutzung",
+"short": null
+},
+"4000": {
+"name": "Sicherung Entwicklung Wohnstaetten",
+"short": null
+},
+"5000": {
+"name": "Allgemeiner Siedlungsbereich ASB",
+"short": null
+},
+"9999": {
+"name": "Sonstige Wohnen Siedlung",
+"short": null
+}
+},
+"RP_ZaesurTypen": {
+"1000": {
+"name": "Gruenzug",
+"short": null
+},
+"2000": {
+"name": "Gruenzaesur",
+"short": null
+},
+"3000": {
+"name": "Siedlungszaesur",
+"short": null
+}
+},
+"RP_Zeitstufen": {
+"1000": {
+"name": "Zeitstufe1",
+"short": null
+},
+"2000": {
+"name": "Zeitstufe2",
+"short": null
+}
+},
+"RP_ZentralerOrtSonstigeTypen": {
+"1000": {
+"name": "Doppelzentrum",
+"short": null
+},
+"1100": {
+"name": "Funktionsteilig",
+"short": null
+},
+"1101": {
+"name": "Mit Oberzentraler Teilfunktion",
+"short": null
+},
+"1102": {
+"name": "Mit Mittelzentraler Teilfunktion",
+"short": null
+},
+"1200": {
+"name": "Im Verbund",
+"short": null
+},
+"1300": {
+"name": "Kooperierend",
+"short": null
+},
+"1301": {
+"name": "Kooperierend Freiwillig",
+"short": null
+},
+"1302": {
+"name": "Kooperierend Verpflichtend",
+"short": null
+},
+"1400": {
+"name": "Im Verdichtungsraum",
+"short": null
+},
+"1500": {
+"name": "Siedlungs Grundnetz",
+"short": null
+},
+"1501": {
+"name": "Siedlungs Ergaenzungsnetz",
+"short": null
+},
+"1600": {
+"name": "Entwicklungsschwerpunkt",
+"short": null
+},
+"1700": {
+"name": "Ueberschneidungsbereich",
+"short": null
+},
+"1800": {
+"name": "Ergaenzungsfunktion",
+"short": null
+},
+"1900": {
+"name": "Nachbar",
+"short": null
+},
+"2000": {
+"name": "Moegliches Zentrum",
+"short": null
+},
+"2100": {
+"name": "Funktionsraum Eindeutige Ausrichtung",
+"short": null
+},
+"2101": {
+"name": "Funktionsraum Bilaterale Ausrichtung",
+"short": null
+},
+"2200": {
+"name": "Kongruenzraum",
+"short": null
+},
+"9999": {
+"name": "Sonstige Sonstiger Zentraler Ort",
+"short": null
+}
+},
+"RP_ZentralerOrtTypen": {
+"1000": {
+"name": "Oberzentrum",
+"short": null
+},
+"1001": {
+"name": "Gemeinsames Oberzentrum",
+"short": null
+},
+"1500": {
+"name": "Oberbereich",
+"short": null
+},
+"2000": {
+"name": "Mittelzentrum",
+"short": null
+},
+"2500": {
+"name": "Mittelbereich",
+"short": null
+},
+"3000": {
+"name": "Grundzentrum",
+"short": null
+},
+"3001": {
+"name": "Unterzentrum",
+"short": null
+},
+"3500": {
+"name": "Nahbereich",
+"short": null
+},
+"4000": {
+"name": "Kleinzentrum",
+"short": null
+},
+"5000": {
+"name": "Laendlicher Zentralort",
+"short": null
+},
+"6000": {
+"name": "Stadtrandkern1 Ordnung",
+"short": null
+},
+"6001": {
+"name": "Stadtrandkern2 Ordnung",
+"short": null
+},
+"7000": {
+"name": "Versorgungskern Siedlungskern",
+"short": null
+},
+"8000": {
+"name": "Zentrales Siedlungsgebiet",
+"short": null
+},
+"9000": {
+"name": "Metropole",
+"short": null
+},
+"9999": {
+"name": "Sonstiger Zentraler Ort",
+"short": null
+}
+},
+"SO_GebietsArt": {
+"1000": {
+"name": "Umlegungsgebiet",
+"short": null
+},
+"1100": {
+"name": "Staedtebauliche Sanierung",
+"short": null
+},
+"1200": {
+"name": "Staedtebauliche Entwicklungsmassnahme",
+"short": null
+},
+"1300": {
+"name": "Stadtumbaugebiet",
+"short": null
+},
+"1400": {
+"name": "Soziale Stadt",
+"short": null
+},
+"1500": {
+"name": "Business Improvement District",
+"short": null
+},
+"1600": {
+"name": "Housing Improvement District",
+"short": null
+},
+"1999": {
+"name": "Erhaltungsverordnung",
+"short": null
+},
+"2000": {
+"name": "Erhaltungsverordnung Staedtebauliche Gestalt",
+"short": null
+},
+"2100": {
+"name": "Erhaltungsverordnung Wohnbevoelkerung",
+"short": null
+},
+"2200": {
+"name": "Erhaltungsverordnung Umstrukturierung",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"SO_KlassifizNachBodenschutzrecht": {
+"1000": {
+"name": "Schaedliche Bodenveraenderung",
+"short": null
+},
+"2000": {
+"name": "Altlast",
+"short": null
+},
+"20000": {
+"name": "Altablagerung",
+"short": null
+},
+"20001": {
+"name": "Altstandort",
+"short": null
+},
+"20002": {
+"name": "Altstandort Auf Altablagerung",
+"short": null
+}
+},
+"SO_KlassifizNachDenkmalschutzrecht": {
+"1000": {
+"name": "Denkmalschutz Ensemble",
+"short": null
+},
+"1100": {
+"name": "Denkmalschutz Einzelanlage",
+"short": null
+},
+"1200": {
+"name": "Grabungsschutzgebiet",
+"short": null
+},
+"1300": {
+"name": "Pufferzone Weltkulturerbe Enger",
+"short": null
+},
+"1400": {
+"name": "Pufferzone Weltkulturerbe Weiter",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"SO_KlassifizNachForstrecht": {
+"1000": {
+"name": "Oeffentlicher Wald",
+"short": null
+},
+"2000": {
+"name": "Privatwald",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"SO_KlassifizNachLuftverkehrsrecht": {
+"1000": {
+"name": "Flughafen",
+"short": null
+},
+"2000": {
+"name": "Landeplatz",
+"short": null
+},
+"3000": {
+"name": "Segelfluggelaende",
+"short": null
+},
+"4000": {
+"name": "Hubschrauber Landeplatz",
+"short": null
+},
+"5000": {
+"name": "Ballonstartplatz",
+"short": null
+},
+"5200": {
+"name": "Haengegleiter",
+"short": null
+},
+"5400": {
+"name": "Gleitsegler",
+"short": null
+},
+"6000": {
+"name": "Laermschutzbereich",
+"short": null
+},
+"7000": {
+"name": "Baubeschraenkungsbereich",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"SO_KlassifizNachSchienenverkehrsrecht": {
+"1000": {
+"name": "Bahnanlage",
+"short": null
+},
+"10000": {
+"name": "DB_Bahnanlage",
+"short": null
+},
+"10001": {
+"name": "Personenbahnhof",
+"short": null
+},
+"10002": {
+"name": "Fernbahnhof",
+"short": null
+},
+"10003": {
+"name": "Gueterbahnhof",
+"short": null
+},
+"1200": {
+"name": "Bahnlinie",
+"short": null
+},
+"12000": {
+"name": "Personenbahnlinie",
+"short": null
+},
+"12001": {
+"name": "Regionalbahn",
+"short": null
+},
+"12002": {
+"name": "Kleinbahn",
+"short": null
+},
+"12003": {
+"name": "Gueterbahnlinie",
+"short": null
+},
+"12004": {
+"name": "Werks Hafenbahn",
+"short": null
+},
+"12005": {
+"name": "Seilbahn",
+"short": null
+},
+"1400": {
+"name": "OEPNV",
+"short": null
+},
+"14000": {
+"name": "Strassenbahn",
+"short": null
+},
+"14001": {
+"name": "UBahn",
+"short": null
+},
+"14002": {
+"name": "SBahn",
+"short": null
+},
+"14003": {
+"name": "OEPNV_Haltestelle",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"SO_KlassifizNachSonstigemRecht": {
+"1000": {
+"name": "Bauschutzbereich",
+"short": null
+},
+"1100": {
+"name": "Berggesetz",
+"short": null
+},
+"1200": {
+"name": "Richtfunkverbindung",
+"short": null
+},
+"1300": {
+"name": "Truppenuebungsplatz",
+"short": null
+},
+"1400": {
+"name": "Vermessungs Katasterrecht",
+"short": null
+},
+"1500": {
+"name": "Rekultivierungsflaeche",
+"short": null
+},
+"1600": {
+"name": "Renaturierungsflaeche",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"SO_KlassifizNachStrassenverkehrsrecht": {
+"1000": {
+"name": "Bundesautobahn",
+"short": null
+},
+"1100": {
+"name": "Bundesstrasse",
+"short": null
+},
+"1200": {
+"name": "Landes Staatsstrasse",
+"short": null
+},
+"1300": {
+"name": "Kreisstrasse",
+"short": null
+},
+"9999": {
+"name": "Sonst Oeffentl Strasse",
+"short": null
+}
+},
+"SO_KlassifizNachWasserrecht": {
+"1000": {
+"name": "Gewaesser",
+"short": null
+},
+"10000": {
+"name": "Gewaesser1 Ordnung",
+"short": null
+},
+"10001": {
+"name": "Gewaesser2 Ordnung",
+"short": null
+},
+"10002": {
+"name": "Gewaesser3 Ordnung",
+"short": null
+},
+"2000": {
+"name": "Ueberschwemmungsgebiet",
+"short": null
+},
+"20000": {
+"name": "Festgesetztes Ueberschwemmungsgebiet",
+"short": null
+},
+"20001": {
+"name": "Noch Nicht Festgesetztes Ueberschwemmungsgebiet",
+"short": null
+},
+"20002": {
+"name": "Ueberschwemm Gefaehrdetes Gebiet",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"SO_KlassifizSchutzgebietSonstRecht": {
+"1000": {
+"name": "Laermschutzbereich",
+"short": null
+},
+"2000": {
+"name": "Schutzzone Leitungstrasse",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"SO_KlassifizSchutzgebietWasserrecht": {
+"1000": {
+"name": "Wasserschutzgebiet",
+"short": null
+},
+"10000": {
+"name": "Quell Grundwasser Schutzgebiet",
+"short": null
+},
+"10001": {
+"name": "Oberflaechengewaesser Schutzgebiet",
+"short": null
+},
+"2000": {
+"name": "Heilquellenschutzgebiet",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"SO_LaermschutzzoneTypen": {
+"1000": {
+"name": "Tag Zone1",
+"short": null
+},
+"2000": {
+"name": "Tag Zone2",
+"short": null
+},
+"3000": {
+"name": "Nacht",
+"short": null
+}
+},
+"SO_Rechtscharakter": {
+"1000": {
+"name": "Festsetzung BPlan",
+"short": null
+},
+"1500": {
+"name": "Darstellung FPlan",
+"short": null
+},
+"1800": {
+"name": "Inhalt LPlan",
+"short": null
+},
+"2000": {
+"name": "Nachrichtliche Uebernahme",
+"short": null
+},
+"3000": {
+"name": "Hinweis",
+"short": null
+},
+"4000": {
+"name": "Vermerk",
+"short": null
+},
+"5000": {
+"name": "Kennzeichnung",
+"short": null
+},
+"9998": {
+"name": "Unbekannt",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"SO_RechtsstandGebietTyp": {
+"1000": {
+"name": "Vorbereitende Untersuchung",
+"short": null
+},
+"2000": {
+"name": "Aufstellung",
+"short": null
+},
+"3000": {
+"name": "Festlegung",
+"short": null
+},
+"4000": {
+"name": "Abgeschlossen",
+"short": null
+},
+"5000": {
+"name": "Verstetigung",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"SO_SchutzzonenNaturschutzrecht": {
+"1000": {
+"name": "Schutzzone_1",
+"short": null
+},
+"1100": {
+"name": "Schutzzone_2",
+"short": null
+},
+"1200": {
+"name": "Schutzzone_3",
+"short": null
+},
+"2000": {
+"name": "Kernzone",
+"short": null
+},
+"2100": {
+"name": "Pflegezone",
+"short": null
+},
+"2200": {
+"name": "Entwicklungszone",
+"short": null
+},
+"2300": {
+"name": "Regenerationszone",
+"short": null
+}
+},
+"SO_SchutzzonenWasserrecht": {
+"1000": {
+"name": "Zone_1",
+"short": null
+},
+"1100": {
+"name": "Zone_2",
+"short": null
+},
+"1200": {
+"name": "Zone_3",
+"short": null
+},
+"1300": {
+"name": "Zone_3a",
+"short": null
+},
+"1400": {
+"name": "Zone_3b",
+"short": null
+},
+"1500": {
+"name": "Zone_4",
+"short": null
+}
+},
+"XP_ABEMassnahmenTypen": {
+"1000": {
+"name": "Bindung Erhaltung",
+"short": null
+},
+"2000": {
+"name": "Anpflanzung",
+"short": null
+},
+"3000": {
+"name": "Anpflanzung Bindung Erhaltung",
+"short": null
+}
+},
+"XP_AbweichungBauNVOTypen": {
+"1000": {
+"name": "Einschraenkung Nutzung",
+"short": null
+},
+"2000": {
+"name": "Ausschluss Nutzung",
+"short": null
+},
+"3000": {
+"name": "Ausweitung Nutzung",
+"short": null
+},
+"9999": {
+"name": "Sonst Abweichung",
+"short": null
+}
+},
+"XP_AllgArtDerBaulNutzung": {
+"1000": {
+"name": "Wohn Bauflaeche",
+"short": "W"
+},
+"2000": {
+"name": "Gemischte Bauflaeche",
+"short": "M"
+},
+"3000": {
+"name": "Gewerbliche Bauflaeche",
+"short": "G"
+},
+"4000": {
+"name": "Sonder Bauflaeche",
+"short": "S"
+},
+"9999": {
+"name": "Sonstige Bauflaeche",
+"short": "B"
+}
+},
+"XP_AnpflanzungBindungErhaltungsGegenstand": {
+"1000": {
+"name": "Baeume",
+"short": null
+},
+"1100": {
+"name": "Kopfbaeume",
+"short": null
+},
+"1200": {
+"name": "Baumreihe",
+"short": null
+},
+"2000": {
+"name": "Straeucher",
+"short": null
+},
+"2050": {
+"name": "Baeume Und Straeucher",
+"short": null
+},
+"2100": {
+"name": "Hecke",
+"short": null
+},
+"2200": {
+"name": "Knick",
+"short": null
+},
+"3000": {
+"name": "Sonst Bepflanzung",
+"short": null
+},
+"4000": {
+"name": "Gewaesser",
+"short": null
+},
+"5000": {
+"name": "Fassadenbegruenung",
+"short": null
+},
+"6000": {
+"name": "Dachbegruenung",
+"short": null
+}
+},
+"XP_ArtHoehenbezug": {
+"1000": {
+"name": "absolut NHN",
+"short": "NHN92"
+},
+"1100": {
+"name": "absolut NN",
+"short": "NN"
+},
+"1200": {
+"name": "absolut DHHN",
+"short": "NHN2016"
+},
+"2000": {
+"name": "relativ Gelaendeoberkante",
+"short": "GelOK"
+},
+"2500": {
+"name": "relativ Gehweg Oberkante",
+"short": "GehOK"
+},
+"3000": {
+"name": "relativ Bezugshoehe",
+"short": "Relativ"
+}
+},
+"XP_ArtHoehenbezugspunkt": {
+"1000": {
+"name": "TH",
+"short": "TH"
+},
+"2000": {
+"name": "FH",
+"short": "FH"
+},
+"3000": {
+"name": "OK",
+"short": "OK"
+},
+"3500": {
+"name": "LH",
+"short": "LH"
+},
+"4000": {
+"name": "SH",
+"short": "SH"
+},
+"4500": {
+"name": "EFH",
+"short": "EFH"
+},
+"5000": {
+"name": "HBA",
+"short": "HA"
+},
+"5500": {
+"name": "UK",
+"short": "UK"
+},
+"6000": {
+"name": "GBH",
+"short": "GH"
+},
+"6500": {
+"name": "WH",
+"short": "WH"
+}
+},
+"XP_BedeutungenBereich": {
+"1600": {
+"name": "Teilbereich",
+"short": null
+},
+"1800": {
+"name": "Kompensationsbereich",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"XP_BesondereArtDerBaulNutzung": {
+"1000": {
+"name": "Kleinsiedlungsgebiet",
+"short": "WS"
+},
+"1100": {
+"name": "Reines Wohngebiet",
+"short": "WR"
+},
+"1200": {
+"name": "Allg Wohngebiet",
+"short": "WA"
+},
+"1300": {
+"name": "Besonderes Wohngebiet",
+"short": "WB"
+},
+"1400": {
+"name": "Dorfgebiet",
+"short": "MD"
+},
+"1500": {
+"name": "Mischgebiet",
+"short": "MI"
+},
+"1550": {
+"name": "Urbanes Gebiet",
+"short": "MU"
+},
+"1600": {
+"name": "Kerngebiet",
+"short": "MK"
+},
+"1700": {
+"name": "Gewerbegebiet",
+"short": "GE"
+},
+"1800": {
+"name": "Industriegebiet",
+"short": "GI"
+},
+"2000": {
+"name": "Sondergebiet Erholung",
+"short": "SO E"
+},
+"2100": {
+"name": "Sondergebiet Sonst",
+"short": "SO"
+},
+"3000": {
+"name": "Wochenendhausgebiet",
+"short": "SO"
+},
+"4000": {
+"name": "Sondergebiet",
+"short": "SO"
+},
+"9999": {
+"name": "Sonstiges Gebiet",
+"short": "SG"
+}
+},
+"XP_Bundeslaender": {
+"1000": {
+"name": "BB",
+"short": null
+},
+"1100": {
+"name": "BE",
+"short": null
+},
+"1200": {
+"name": "BW",
+"short": null
+},
+"1300": {
+"name": "BY",
+"short": null
+},
+"1400": {
+"name": "HB",
+"short": null
+},
+"1500": {
+"name": "HE",
+"short": null
+},
+"1600": {
+"name": "HH",
+"short": null
+},
+"1700": {
+"name": "MV",
+"short": null
+},
+"1800": {
+"name": "NI",
+"short": null
+},
+"1900": {
+"name": "NW",
+"short": null
+},
+"2000": {
+"name": "RP",
+"short": null
+},
+"2100": {
+"name": "SH",
+"short": null
+},
+"2200": {
+"name": "SL",
+"short": null
+},
+"2300": {
+"name": "SN",
+"short": null
+},
+"2400": {
+"name": "ST",
+"short": null
+},
+"2500": {
+"name": "TH",
+"short": null
+},
+"3000": {
+"name": "Bund",
+"short": null
+}
+},
+"XP_ExterneReferenzArt": {
+"Dokument": {
+"name": "Dokument",
+"short": null
+},
+"PlanMitGeoreferenz": {
+"name": "Plan Mit Georeferenz",
+"short": null
+}
+},
+"XP_ExterneReferenzTyp": {
+"1000": {
+"name": "Beschreibung",
+"short": null
+},
+"1010": {
+"name": "Begruendung",
+"short": null
+},
+"1020": {
+"name": "Legende",
+"short": null
+},
+"1030": {
+"name": "Rechtsplan",
+"short": null
+},
+"1040": {
+"name": "Plangrundlage",
+"short": null
+},
+"1050": {
+"name": "Umweltbericht",
+"short": null
+},
+"1060": {
+"name": "Satzung",
+"short": null
+},
+"1065": {
+"name": "Verordnung",
+"short": null
+},
+"1070": {
+"name": "Karte",
+"short": null
+},
+"1080": {
+"name": "Erlaeuterung",
+"short": null
+},
+"1090": {
+"name": "Zusammenfassende Erklaerung",
+"short": null
+},
+"2000": {
+"name": "Koordinatenliste",
+"short": null
+},
+"2100": {
+"name": "Grundstuecksverzeichnis",
+"short": null
+},
+"2200": {
+"name": "Pflanzliste",
+"short": null
+},
+"2300": {
+"name": "Gruenordnungsplan",
+"short": null
+},
+"2400": {
+"name": "Erschliessungsvertrag",
+"short": null
+},
+"2500": {
+"name": "Durchfuehrungsvertrag",
+"short": null
+},
+"2600": {
+"name": "Staedtebaulicher Vertrag",
+"short": null
+},
+"2700": {
+"name": "Umweltbezogene Stellungnahmen",
+"short": null
+},
+"2800": {
+"name": "Beschluss",
+"short": null
+},
+"9998": {
+"name": "Rechtsverbindlich",
+"short": null
+},
+"9999": {
+"name": "Informell",
+"short": null
+}
+},
+"XP_GrenzeTypen": {
+"1000": {
+"name": "Bundesgrenze",
+"short": null
+},
+"1100": {
+"name": "Landesgrenze",
+"short": null
+},
+"1200": {
+"name": "Regierungsbezirksgrenze",
+"short": null
+},
+"1250": {
+"name": "Bezirksgrenze",
+"short": null
+},
+"1300": {
+"name": "Kreisgrenze",
+"short": null
+},
+"1400": {
+"name": "Gemeindegrenze",
+"short": null
+},
+"1450": {
+"name": "Verbandsgemeindegrenze",
+"short": null
+},
+"1500": {
+"name": "Samtgemeindegrenze",
+"short": null
+},
+"1510": {
+"name": "Mitgliedsgemeindegrenze",
+"short": null
+},
+"1550": {
+"name": "Amtsgrenze",
+"short": null
+},
+"1600": {
+"name": "Stadtteilgrenze",
+"short": null
+},
+"2000": {
+"name": "Vorgeschlagene Grundstuecksgrenze",
+"short": null
+},
+"2100": {
+"name": "Grenze Bestehender Bebauungsplan",
+"short": null
+},
+"9999": {
+"name": "Sonst Grenze",
+"short": null
+}
+},
+"XP_HorizontaleAusrichtung": {
+"linksbündig": {
+"name": "linksbündig",
+"short": null
+},
+"rechtsbündig": {
+"name": "rechtsbündig",
+"short": null
+},
+"zentrisch": {
+"name": "zentrisch",
+"short": null
+}
+},
+"XP_KlassifizSchutzgebietNaturschutzrecht": {
+"1000": {
+"name": "Naturschutzgebiet",
+"short": null
+},
+"1100": {
+"name": "Nationalpark",
+"short": null
+},
+"1200": {
+"name": "Biosphaerenreservat",
+"short": null
+},
+"1300": {
+"name": "Landschaftsschutzgebiet",
+"short": null
+},
+"1400": {
+"name": "Naturpark",
+"short": null
+},
+"1500": {
+"name": "Naturdenkmal",
+"short": null
+},
+"1600": {
+"name": "Geschuetzter Landschafts Bestandteil",
+"short": null
+},
+"1700": {
+"name": "Gesetzlich Geschuetztes Biotop",
+"short": null
+},
+"1800": {
+"name": "Natura2000",
+"short": null
+},
+"18000": {
+"name": "Gebiet Gemeinschaftlicher Bedeutung",
+"short": null
+},
+"18001": {
+"name": "Europaeisches Vogelschutzgebiet",
+"short": null
+},
+"2000": {
+"name": "Nationales Naturmonument",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"XP_Nutzungsform": {
+"1000": {
+"name": "Privat",
+"short": "p"
+},
+"2000": {
+"name": "Oeffentlich",
+"short": "ö"
+}
+},
+"XP_RechtscharakterPlanaenderung": {
+"1000": {
+"name": "Aenderung",
+"short": null
+},
+"1100": {
+"name": "Ergaenzung",
+"short": null
+},
+"2000": {
+"name": "Aufhebung",
+"short": null
+}
+},
+"XP_Rechtsstand": {
+"1000": {
+"name": "Geplant",
+"short": null
+},
+"2000": {
+"name": "Bestehend",
+"short": null
+},
+"3000": {
+"name": "Fortfallend",
+"short": null
+}
+},
+"XP_SPEMassnahmenTypen": {
+"1000": {
+"name": "Artentreicher Gehoelzbestand",
+"short": "AGB"
+},
+"1100": {
+"name": "Naturnaher Wald",
+"short": "NW"
+},
+"1200": {
+"name": "Extensives Gruenland",
+"short": "EG"
+},
+"1300": {
+"name": "Feuchtgruenland",
+"short": "FG"
+},
+"1400": {
+"name": "Obstwiese",
+"short": "OW"
+},
+"1500": {
+"name": "Naturnaher Uferbereich",
+"short": "NUB"
+},
+"1600": {
+"name": "Roehrichtzone",
+"short": "RZ"
+},
+"1700": {
+"name": "Ackerrandstreifen",
+"short": "ARS"
+},
+"1800": {
+"name": "Ackerbrache",
+"short": "AB"
+},
+"1900": {
+"name": "Gruenlandbrache",
+"short": "GB"
+},
+"2000": {
+"name": "Sukzessionsflaeche",
+"short": "SF"
+},
+"2100": {
+"name": "Hochstaudenflur",
+"short": "HF"
+},
+"2200": {
+"name": "Trockenrasen",
+"short": "TR"
+},
+"2300": {
+"name": "Heide",
+"short": "H"
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"XP_SPEZiele": {
+"1000": {
+"name": "Schutz Pflege",
+"short": null
+},
+"2000": {
+"name": "Entwicklung",
+"short": null
+},
+"3000": {
+"name": "Anlage",
+"short": null
+},
+"4000": {
+"name": "Schutz Pflege Entwicklung",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"XP_Sondernutzungen": {
+"1000": {
+"name": "Wochenendhausgebiet",
+"short": "Woch"
+},
+"1100": {
+"name": "Ferienhausgebiet",
+"short": "FHG"
+},
+"1200": {
+"name": "Campingplatzgebiet",
+"short": "CPG"
+},
+"1300": {
+"name": "Kurgebiet",
+"short": "Kur"
+},
+"1400": {
+"name": "Sonst Sondergebiet Erholung",
+"short": "SSE"
+},
+"1500": {
+"name": "Einzelhandelsgebiet",
+"short": "EHG"
+},
+"1600": {
+"name": "Grossflaechiger Einzelhandel",
+"short": "GEH"
+},
+"16000": {
+"name": "Ladengebiet",
+"short": "LG"
+},
+"16001": {
+"name": "Einkaufszentrum",
+"short": "EKZ"
+},
+"16002": {
+"name": "Sonst Grossfl Einzelhandel",
+"short": "SGEH"
+},
+"1700": {
+"name": "Verkehrsuebungsplatz",
+"short": "VÜP"
+},
+"1800": {
+"name": "Hafengebiet",
+"short": "Hafen"
+},
+"1900": {
+"name": "Sondergebiet Erneuerbare Energie",
+"short": "EE"
+},
+"2000": {
+"name": "Sondergebiet Militaer",
+"short": "Militär"
+},
+"2100": {
+"name": "Sondergebiet Landwirtschaft",
+"short": "LW"
+},
+"2200": {
+"name": "Sondergebiet Sport",
+"short": "Sport"
+},
+"2300": {
+"name": "Sondergebiet Gesundheit Soziales",
+"short": "GS"
+},
+"2400": {
+"name": "Golfplatz",
+"short": "Golf"
+},
+"2500": {
+"name": "Sondergebiet Kultur",
+"short": "Kultur"
+},
+"2600": {
+"name": "Sondergebiet Tourismus",
+"short": "Tour"
+},
+"2700": {
+"name": "Sondergebiet Buero Und Verwaltung",
+"short": "BV"
+},
+"2800": {
+"name": "Sondergebiet Hochschule Einrichtungen",
+"short": "HSF"
+},
+"2900": {
+"name": "Sondergebiet Messe",
+"short": "Messe"
+},
+"9999": {
+"name": "Sondergebiet Andere Nutzungen",
+"short": "AN"
+}
+},
+"XP_VerlaengerungVeraenderungssperre": {
+"1000": {
+"name": "Keine",
+"short": null
+},
+"2000": {
+"name": "Erste Verlaengerung",
+"short": null
+},
+"3000": {
+"name": "Zweite Verlaengerung",
+"short": null
+}
+},
+"XP_VertikaleAusrichtung": {
+"Basis": {
+"name": "Basis",
+"short": null
+},
+"Mitte": {
+"name": "Mitte",
+"short": null
+},
+"Oben": {
+"name": "Oben",
+"short": null
+}
+},
+"XP_ZweckbestimmungGemeinbedarf": {
+"1000": {
+"name": "Oeffentliche Verwaltung",
+"short": null
+},
+"10000": {
+"name": "Kommunale Einrichtung",
+"short": null
+},
+"10001": {
+"name": "Betrieb Oeffentl Zweckbestimmung",
+"short": null
+},
+"10002": {
+"name": "Anlage Bund Land",
+"short": null
+},
+"10003": {
+"name": "Sonstige Oeffentliche Verwaltung",
+"short": null
+},
+"1200": {
+"name": "Bildung Forschung",
+"short": null
+},
+"12000": {
+"name": "Schule",
+"short": null
+},
+"12001": {
+"name": "Hochschule",
+"short": null
+},
+"12002": {
+"name": "Berufsbildende Schule",
+"short": null
+},
+"12003": {
+"name": "Forschungseinrichtung",
+"short": null
+},
+"12004": {
+"name": "Sonstiges Bildung Forschung",
+"short": null
+},
+"1400": {
+"name": "Kirche",
+"short": null
+},
+"14000": {
+"name": "Sakralgebaeude",
+"short": null
+},
+"14001": {
+"name": "Kirchliche Verwaltung",
+"short": null
+},
+"14002": {
+"name": "Kirchengemeinde",
+"short": null
+},
+"14003": {
+"name": "Sonstiges Kirche",
+"short": null
+},
+"1600": {
+"name": "Sozial",
+"short": null
+},
+"16000": {
+"name": "Einrichtung Kinder",
+"short": null
+},
+"16001": {
+"name": "Einrichtung Jugendliche",
+"short": null
+},
+"16002": {
+"name": "Einrichtung Familien Erwachsene",
+"short": null
+},
+"16003": {
+"name": "Einrichtung Senioren",
+"short": null
+},
+"16004": {
+"name": "Sonstige Soziale Einrichtung",
+"short": null
+},
+"1800": {
+"name": "Gesundheit",
+"short": null
+},
+"18000": {
+"name": "Krankenhaus",
+"short": null
+},
+"18001": {
+"name": "Sonstiges Gesundheit",
+"short": null
+},
+"2000": {
+"name": "Kultur",
+"short": null
+},
+"20000": {
+"name": "Musik Theater",
+"short": null
+},
+"20001": {
+"name": "Bildung",
+"short": null
+},
+"20002": {
+"name": "Sonstige Kultur",
+"short": null
+},
+"2200": {
+"name": "Sport",
+"short": null
+},
+"22000": {
+"name": "Bad",
+"short": null
+},
+"22001": {
+"name": "Sportplatz Sporthalle",
+"short": null
+},
+"22002": {
+"name": "Sonstiger Sport",
+"short": null
+},
+"2400": {
+"name": "Sicherheit Ordnung",
+"short": null
+},
+"24000": {
+"name": "Feuerwehr",
+"short": null
+},
+"24001": {
+"name": "Schutzbauwerk",
+"short": null
+},
+"24002": {
+"name": "Justiz",
+"short": null
+},
+"24003": {
+"name": "Sonstige Sicherheit Ordnung",
+"short": null
+},
+"2600": {
+"name": "Infrastruktur",
+"short": null
+},
+"26000": {
+"name": "Post",
+"short": null
+},
+"26001": {
+"name": "Sonstige Infrastruktur",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"XP_ZweckbestimmungGewaesser": {
+"1000": {
+"name": "Hafen",
+"short": null
+},
+"1100": {
+"name": "Wasserflaeche",
+"short": null
+},
+"1200": {
+"name": "Fliessgewaesser",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"XP_ZweckbestimmungGruen": {
+"1000": {
+"name": "Parkanlage",
+"short": null
+},
+"10000": {
+"name": "Parkanlage Historisch",
+"short": null
+},
+"10001": {
+"name": "Parkanlage Naturnah",
+"short": null
+},
+"10002": {
+"name": "Parkanlage Waldcharakter",
+"short": null
+},
+"10003": {
+"name": "Naturnahe Ufer Parkanlage",
+"short": null
+},
+"1200": {
+"name": "Dauerkleingarten",
+"short": null
+},
+"12000": {
+"name": "Erholungs Gaerten",
+"short": null
+},
+"1400": {
+"name": "Sportplatz",
+"short": null
+},
+"14000": {
+"name": "Reitsportanlage",
+"short": null
+},
+"14001": {
+"name": "Hundesportanlage",
+"short": null
+},
+"14002": {
+"name": "Wassersportanlage",
+"short": null
+},
+"14003": {
+"name": "Schiessstand",
+"short": null
+},
+"14004": {
+"name": "Golfplatz",
+"short": null
+},
+"14005": {
+"name": "Skisport",
+"short": null
+},
+"14006": {
+"name": "Tennisanlage",
+"short": null
+},
+"14007": {
+"name": "Sonstiger Sportplatz",
+"short": null
+},
+"1600": {
+"name": "Spielplatz",
+"short": null
+},
+"16000": {
+"name": "Bolzplatz",
+"short": null
+},
+"16001": {
+"name": "Abenteuerspielplatz",
+"short": null
+},
+"1800": {
+"name": "Zeltplatz",
+"short": null
+},
+"18000": {
+"name": "Campingplatz",
+"short": null
+},
+"2000": {
+"name": "Badeplatz",
+"short": null
+},
+"2200": {
+"name": "Freizeit Erholung",
+"short": null
+},
+"22000": {
+"name": "Kleintierhaltung",
+"short": null
+},
+"22001": {
+"name": "Festplatz",
+"short": null
+},
+"2400": {
+"name": "Spez Gruenflaeche",
+"short": null
+},
+"24000": {
+"name": "Strassenbegleit Gruen",
+"short": null
+},
+"24001": {
+"name": "Boeschungs Flaeche",
+"short": null
+},
+"24002": {
+"name": "Feld Wald Wiese",
+"short": null
+},
+"24003": {
+"name": "Uferschutzstreifen",
+"short": null
+},
+"24004": {
+"name": "Abschirmgruen",
+"short": null
+},
+"24005": {
+"name": "Umweltbildungspark Schaugatter",
+"short": null
+},
+"24006": {
+"name": "Ruhender Verkehr",
+"short": null
+},
+"2600": {
+"name": "Friedhof",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+},
+"99990": {
+"name": "Gaertnerei",
+"short": null
+}
+},
+"XP_ZweckbestimmungKennzeichnung": {
+"1000": {
+"name": "Naturgewalten",
+"short": null
+},
+"2000": {
+"name": "Abbauflaeche",
+"short": null
+},
+"3000": {
+"name": "Aeussere Einwirkungen",
+"short": null
+},
+"4000": {
+"name": "Schadstoff Belast Boden",
+"short": null
+},
+"5000": {
+"name": "Laerm Belastung",
+"short": null
+},
+"6000": {
+"name": "Bergbau",
+"short": null
+},
+"7000": {
+"name": "Bodenordnung",
+"short": null
+},
+"8000": {
+"name": "Vorhabensgebiet",
+"short": null
+},
+"9999": {
+"name": "Andere Gesetzl Vorschriften",
+"short": null
+}
+},
+"XP_ZweckbestimmungLandwirtschaft": {
+"1000": {
+"name": "Landwirtschaft Allgemein",
+"short": null
+},
+"1100": {
+"name": "Ackerbau",
+"short": null
+},
+"1200": {
+"name": "Wiesen Weidewirtschaft",
+"short": null
+},
+"1300": {
+"name": "Gartenbauliche Erzeugung",
+"short": null
+},
+"1400": {
+"name": "Obstbau",
+"short": null
+},
+"1500": {
+"name": "Weinbau",
+"short": null
+},
+"1600": {
+"name": "Imkerei",
+"short": null
+},
+"1700": {
+"name": "Binnenfischerei",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"XP_ZweckbestimmungSpielSportanlage": {
+"1000": {
+"name": "Sportanlage",
+"short": null
+},
+"2000": {
+"name": "Spielanlage",
+"short": null
+},
+"3000": {
+"name": "Spiel Sportanlage",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"XP_ZweckbestimmungVerEntsorgung": {
+"1000": {
+"name": "Elektrizitaet",
+"short": null
+},
+"10000": {
+"name": "Hochspannungsleitung",
+"short": null
+},
+"10001": {
+"name": "Trafostation Umspannwerk",
+"short": null
+},
+"100010": {
+"name": "Leitungsmast",
+"short": null
+},
+"10002": {
+"name": "Solarkraftwerk",
+"short": null
+},
+"10003": {
+"name": "Windkraftwerk",
+"short": null
+},
+"10004": {
+"name": "Geothermiekraftwerk",
+"short": null
+},
+"10005": {
+"name": "Elektrizitaetswerk",
+"short": null
+},
+"10006": {
+"name": "Wasserkraftwerk",
+"short": null
+},
+"10007": {
+"name": "Biomasse Kraftwerk",
+"short": null
+},
+"10008": {
+"name": "Kabelleitung",
+"short": null
+},
+"10009": {
+"name": "Niederspannungsleitung",
+"short": null
+},
+"1200": {
+"name": "Gas",
+"short": null
+},
+"12000": {
+"name": "Ferngasleitung",
+"short": null
+},
+"12001": {
+"name": "Gaswerk",
+"short": null
+},
+"12002": {
+"name": "Gasbehaelter",
+"short": null
+},
+"12003": {
+"name": "Gasdruckregler",
+"short": null
+},
+"12004": {
+"name": "Gasstation",
+"short": null
+},
+"12005": {
+"name": "Gasleitung",
+"short": null
+},
+"1300": {
+"name": "Erdoel",
+"short": null
+},
+"13000": {
+"name": "Erdoelleitung",
+"short": null
+},
+"13001": {
+"name": "Bohrstelle",
+"short": null
+},
+"13002": {
+"name": "Erdoelpumpstation",
+"short": null
+},
+"13003": {
+"name": "Oeltank",
+"short": null
+},
+"1400": {
+"name": "Waermeversorgung",
+"short": null
+},
+"14000": {
+"name": "Blockheizkraftwerk",
+"short": null
+},
+"14001": {
+"name": "Fernwaermeleitung",
+"short": null
+},
+"14002": {
+"name": "Fernheizwerk",
+"short": null
+},
+"1600": {
+"name": "Wasser",
+"short": null
+},
+"16000": {
+"name": "Wasserwerk",
+"short": null
+},
+"16001": {
+"name": "Wasserleitung",
+"short": null
+},
+"16002": {
+"name": "Wasserspeicher",
+"short": null
+},
+"16003": {
+"name": "Brunnen",
+"short": null
+},
+"16004": {
+"name": "Pumpwerk",
+"short": null
+},
+"16005": {
+"name": "Quelle",
+"short": null
+},
+"1800": {
+"name": "Abwasser",
+"short": null
+},
+"18000": {
+"name": "Abwasserleitung",
+"short": null
+},
+"18001": {
+"name": "Abwasserrueckhaltebecken",
+"short": null
+},
+"18002": {
+"name": "Abwasserpumpwerk",
+"short": null
+},
+"18003": {
+"name": "Klaeranlage",
+"short": null
+},
+"18004": {
+"name": "Anlage Klaerschlamm",
+"short": null
+},
+"18005": {
+"name": "Sonstige Abwasser Behandlungsanlage",
+"short": null
+},
+"18006": {
+"name": "Salz Oder Soleleitungen",
+"short": null
+},
+"2000": {
+"name": "Regenwasser",
+"short": null
+},
+"20000": {
+"name": "Regenwasser Rueckhaltebecken",
+"short": null
+},
+"20001": {
+"name": "Niederschlagswasserleitung",
+"short": null
+},
+"2200": {
+"name": "Abfallentsorgung",
+"short": null
+},
+"22000": {
+"name": "Muellumladestation",
+"short": null
+},
+"22001": {
+"name": "Muellbeseitigungsanlage",
+"short": null
+},
+"22002": {
+"name": "Muellsortieranlage",
+"short": null
+},
+"22003": {
+"name": "Recyclinghof",
+"short": null
+},
+"2400": {
+"name": "Ablagerung",
+"short": null
+},
+"24000": {
+"name": "Erdaushubdeponie",
+"short": null
+},
+"24001": {
+"name": "Bauschuttdeponie",
+"short": null
+},
+"24002": {
+"name": "Hausmuelldeponie",
+"short": null
+},
+"24003": {
+"name": "Sondermuelldeponie",
+"short": null
+},
+"24004": {
+"name": "Stillgelegte Deponie",
+"short": null
+},
+"24005": {
+"name": "Rekultivierte Deponie",
+"short": null
+},
+"2600": {
+"name": "Telekommunikation",
+"short": null
+},
+"26000": {
+"name": "Fernmeldeanlage",
+"short": null
+},
+"26001": {
+"name": "Mobilfunkstrecke",
+"short": null
+},
+"26002": {
+"name": "Fernmeldekabel",
+"short": null
+},
+"2800": {
+"name": "Erneuerbare Energien",
+"short": null
+},
+"3000": {
+"name": "Kraft Waerme Kopplung",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+},
+"99990": {
+"name": "Produktenleitung",
+"short": null
+}
+},
+"XP_ZweckbestimmungWald": {
+"1000": {
+"name": "Naturwald",
+"short": null
+},
+"1200": {
+"name": "Nutzwald",
+"short": null
+},
+"1400": {
+"name": "Erholungswald",
+"short": null
+},
+"1600": {
+"name": "Schutzwald",
+"short": null
+},
+"1800": {
+"name": "Flaeche Forstwirtschaft",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+},
+"XP_ZweckbestimmungWasserwirtschaft": {
+"1000": {
+"name": "Hochwasser Rueckhaltebecken",
+"short": null
+},
+"1100": {
+"name": "Ueberschwemmgebiet",
+"short": null
+},
+"1200": {
+"name": "Versickerungsflaeche",
+"short": null
+},
+"1300": {
+"name": "Entwaesserungsgraben",
+"short": null
+},
+"1400": {
+"name": "Deich",
+"short": null
+},
+"9999": {
+"name": "Sonstiges",
+"short": null
+}
+}
+},
+"version": "5.1"
+}

@@ -214,7 +214,7 @@ export const useFileUpload = () => {
   const [datasetType, setDatasetType] = useState<string | undefined>(undefined);
 
   const acceptedFileTypes = useMemo(() => {
-    return [".gpkg", ".geojson", ".zip", ".kml", ".csv", ".xlsx", ".parquet"];
+    return [".gpkg", ".geojson", ".zip", ".kml", ".gml", ".csv", ".xlsx", ".parquet"];
   }, []);
 
   const handleChange = useCallback(
@@ -234,6 +234,7 @@ export const useFileUpload = () => {
           file.name.endsWith(".geojson") ||
           file.name.endsWith(".shp") ||
           file.name.endsWith(".kml") ||
+          file.name.endsWith(".gml") ||
           file.name.endsWith(".parquet");
         const isTable = file.name.endsWith(".csv") || file.name.endsWith(".xlsx");
         if (isFeatureLayer) {

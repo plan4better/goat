@@ -1557,6 +1557,7 @@
     "type": {
       "street_network": "Street Network",
       "pt_network_gtfs": "Public Transport Network",
+      "xplan": "XPlan Plan",
       "feature": "Feature",
       "raster": "Raster",
       "wms": "WMS",
@@ -1968,6 +1969,7 @@
   "pt_end_time_error": "End time must be greater than start time",
   "pt_end_time_tooltip": "Define the end time window for the public transport",
   "pt_network_gtfs": "Public Transport Network",
+  "xplan": "XPlan Plan",
   "pt_start_time": "Start Time",
   "pt_start_time_error": "Start time must be smaller than end time",
   "pt_start_time_tooltip": "Define the start of time window for the public transport",
@@ -3113,6 +3115,7 @@
   "thumbnail_invalid_type": "Choose a PNG, JPEG or WebP image.",
   "reset_to_generated": "Reset to generated",
   "bundle_upload_note_pt_network_gtfs": "Public Transport Network bundles must be linked to a Street Network bundle in order for GOAT to connect stops with streets. Select a Street Network bundle that covers the same region to continue.",
+  "bundle_upload_note_xplan": "The plan becomes one bundle with a layer for each kind of object (building areas, building limits, streets, ...). Codes are translated into readable values, and each area carries the text of the rules that apply to it.",
   "bundle_upload_too_large": "Choose a {{type}} file of {{mb}} MiB or less.",
   "street_network_bundle": "Street Network bundle",
   "default_network": "Default",

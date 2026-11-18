@@ -11,7 +11,7 @@ Auf GOAT können Sie mit Datensätzen aus Plan4Betters Katalog arbeiten, Ihre ei
 
 ### 1.1 Räumliche Features
 
-Feature-Datensätze speichern **räumliche Features wie Punkte, Linien oder Polygone**. Auf GOAT können Sie Daten aus **Shapefiles**, **GeoPackages**, **GeoJSON**, **KML**, **ZIP** oder **Parquet**-Dateien hochladen oder eine **WFS**-externe-URL hinzufügen. Für externe Raster-Quellen (WMS, WMTS, XYZ-Kacheln, COG) siehe [Raster-Datensätze](#raster-datensätze) unten. Sie können diese Datensätze mit den verschiedenen Werkzeugen aus der Werkzeugkiste visualisieren, gestalten und analysieren.
+Feature-Datensätze speichern **räumliche Features wie Punkte, Linien oder Polygone**. Auf GOAT können Sie Daten aus **Shapefiles**, **GeoPackages**, **GeoJSON**, **KML**, **GML**, **ZIP** oder **Parquet**-Dateien hochladen oder eine **WFS**-externe-URL hinzufügen. Für externe Raster-Quellen (WMS, WMTS, XYZ-Kacheln, COG) siehe [Raster-Datensätze](#raster-datensätze) unten. Sie können diese Datensätze mit den verschiedenen Werkzeugen aus der Werkzeugkiste visualisieren, gestalten und analysieren.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
   <img src={require('/img/data/spatial_de.webp').default} alt="Räumliche Features in GOAT" style={{ maxHeight: "450px", maxWidth: "750px", objectFit: "cover"}}/>
@@ -62,9 +62,22 @@ GOAT verbindet Haltestellen mit Straßen, um den Weg zur und von der Haltestelle
 
 ÖPNV-Netze sind die Grundlage für das [ÖPNV](../routing/public_transport)-Routing in GOAT. Zum Importieren siehe [Inhalte hinzufügen](../workspace/content.md#inhalte-hinzufügen); was das integrierte Netz von GOAT enthält und wie Sie eigene importieren, finden Sie unter [Netz-Datensätze](./builtin_datasets.md#eigene-netze-importieren).
 
+## XPlan-Pläne
+
+Ein **XPlan-Plan** ist ein Bauleitplan (Bebauungsplan, Flächennutzungsplan) im Format **XPlanGML**, dem deutschen Austauschstandard für die Planung. Laden Sie die `.gml`-Datei des Plans hoch: GOAT erkennt einen XPlan-Plan an seinem Inhalt, unabhängig vom Dateinamen. Eine `.gml`-Datei, die kein XPlan ist, wird als gewöhnlicher Datensatz importiert.
+
+Der Plan wird zu einem Layer je Art von Planobjekt, die er enthält, benannt nach seiner XPlan-Klasse, zum Beispiel `BP_BaugebietsTeilFlaeche` für Baugebiete oder `BP_BauGrenze` für Baugrenzen. Außerdem macht GOAT den Plan lesbar:
+
+- **Aus Schlüsseln werden Wörter.** XPlanGML speichert die meisten Aussagen als Schlüssel, etwa `1500` für die Art des Baugebiets. Neben jedem Schlüsselfeld legt GOAT ein Feld mit der Endung `Wert` und seiner Bedeutung an, zum Beispiel `besondereArtDerBaulNutzungWert` = `Mischgebiet`.
+- **Festsetzungen stehen an den Flächen.** Viele Regeln, etwa zum Einzelhandel, gibt es nur als textliche Festsetzungen. Jede Fläche trägt den Text der für sie geltenden Festsetzungen in `refTextInhaltWert`, und alle Festsetzungen stehen zusätzlich in einer eigenen Tabelle.
+- **Jedes Objekt nennt seinen Plan.** Felder wie `xpPlanName`, `xpRechtsstand` und `xpAgs` zeigen, aus welchem Plan ein Objekt stammt und in welchem Stand dieser Plan ist.
+- **Der Plan sieht aus wie ein Plan.** Baugebiete sind nach Art der Nutzung eingefärbt und Baugrenzen als blau gestrichelte Linien gezeichnet, nach den Planzeichen der PlanZV.
+
+GOAT importiert einen Plan so, wie er ist, und prüft ihn nicht gegen die XPlanung-Regeln; dafür gibt es den Validator der XLeitstelle.
+
 ## Datensätze aus mehreren Layern
 
-Straßennetze und ÖPNV-Netze bestehen beide aus **mehreren Layern, die nur gemeinsam sinnvoll sind**. GOAT nennt einen solchen Datensatz **Datenpaket** und verwaltet ihn als Einheit: Seine Layer werden gemeinsam geteilt, sie erscheinen gemeinsam in einem Projekt, und beim Löschen des Datensatzes werden alle entfernt.
+Straßennetze, ÖPNV-Netze und XPlan-Pläne bestehen alle aus **mehreren Layern, die nur gemeinsam sinnvoll sind**. GOAT nennt einen solchen Datensatz **Datenpaket** und verwaltet ihn als Einheit: Seine Layer werden gemeinsam geteilt, sie erscheinen gemeinsam in einem Projekt, und beim Löschen des Datensatzes werden alle entfernt.
 
 Der Begriff begegnet Ihnen bei der Arbeit: Der Upload-Dialog bestätigt, dass eine erkannte Datei *als Datenpaket importiert* wird, der [Katalog](../workspace/catalog.md) kennzeichnet einen Eintrag mit mehreren Layern als `Datenpaket`, und Teilen oder Löschen betrifft immer den gesamten Satz.
 
