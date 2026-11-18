@@ -385,6 +385,40 @@ every trip without a usable one, a line through its stops
 Explorer's snapshot gives those trips the same line as their shape. Like any
 derived member it is never written back to the feed.
 
+## XPlan bundles are decoded at import
+
+An XPlanGML file states codes and links, not meanings: `besondereArtDerBaulNutzung
+= 1500`, `refTextInhalt = #GML_...`. The meanings are in the standard's code
+lists. The XPlan importer (`bundles/importers/xplan/`) writes them into the
+data, a `<field>Wert` column per code field, the linked clause text in
+`refTextInhaltWert` and the plan's details on every object, because the AI
+assistant, filters and exports read columns and never the map style. Decoding
+only in the style, as the QGIS XPlan-Reader does, would leave all of them with
+numbers.
+
+- What GOAT knows about the format is the XPlan schema
+  (`bundles/importers/xplan/schema.py`), the counterpart of the GTFS importer's
+  `gtfs_schema.py`: per version, which fields of a class hold codes, from which
+  code list, and what each code means. A format needs as much schema as its
+  files leave out: Overture's GeoParquet names its values in words, GTFS is
+  untyped text, XPlan states only codes. At about 1,700 codes per version it
+  is generated (`generate_schema.py`, into `versions/`) from the XLeitstelle's
+  own publication, not fetched at import: the worker may have no internet and
+  the decoding must not depend on a website. xPlanBox ships the same lists, but
+  under the AGPL. A code the version's list does not hold stays without a name.
+- One member layer per XPlan class, as every XPlan tool cuts a plan. The plan
+  is a bundle because its layers only make sense together, not because a tool
+  needs a particular member, so the `xplan` type declares no roles: a plan holds
+  whichever of the standard's classes it uses, and each member's role is its
+  class name, which is what its style is looked up by.
+- The file is read with pyogrio, not DuckDB's `ST_Read`: plans draw arcs, which
+  GDAL reads as curve geometries DuckDB rejects, so `io/curves.py`
+  straightens them (plain `.gml` uploads go through it too). Links are read only with `GML_ATTRIBUTES_TO_OGR_FIELDS`,
+  and for some WFS downloads only when the root declares the xlink namespace
+  (`with_root_xlink`).
+- A `.gml` is XPlan by its content (the namespace declared on the root), not
+  its name; the web app reads the same 64 KB to route the upload.
+
 ## GOAT's public transport network is cut like an upload
 
 GOAT's default public transport network is one GTFS feed combining several

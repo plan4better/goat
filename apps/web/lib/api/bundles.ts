@@ -115,8 +115,9 @@ export interface BundleTypeDef {
   labelKey: string;
   /** Short format label for the "supported formats" hint. */
   uploadHint: string;
-  /** Whether an uploaded file is this bundle type. */
-  matches: (file: File) => boolean;
+  /** Whether an uploaded file is this bundle type. May read the file: an XPlan
+   *  plan is a `.gml` like any other, and only its content tells. */
+  matches: (file: File) => boolean | Promise<boolean>;
   /** Whether the upload must name a street network bundle to link. Follows the
    *  type's own required dependency: a GTFS feed's stop-to-street linkage is
    *  computed against a street network. */
@@ -130,6 +131,26 @@ export interface BundleTypeDef {
    *  checked here so nobody uploads a file only to have it refused. */
   maxSizeMiB?: number;
 }
+
+/** How much of a `.gml` is read to tell an XPlan plan from other GML: the
+ *  namespace is declared on the root element, in the first lines. */
+const XPLAN_SNIFF_BYTES = 65536;
+
+/** The XPlanGML namespace as a file declares it. A declaration, not the bare
+ *  address, which another GML may mention in a comment. Same rule as the
+ *  backend's `XPlanImporter.matches_source`. */
+const XPLAN_NAMESPACE = /xmlns:\w+="http:\/\/www\.xplanung\.de\/xplangml\/\d+\/\d+"/;
+
+/** Whether a file is an XPlan plan, and the plan's name when the start of the
+ *  file holds it, to suggest as the bundle's name. */
+export const sniffXPlan = async (
+  file: File
+): Promise<{ isXPlan: boolean; planName: string | null }> => {
+  const head = await file.slice(0, XPLAN_SNIFF_BYTES).text();
+  if (!XPLAN_NAMESPACE.test(head)) return { isXPlan: false, planName: null };
+  const name = /<\w+:name>([^<]+)<\/\w+:name>/.exec(head);
+  return { isXPlan: true, planName: name ? name[1].trim() : null };
+};
 
 export const BUNDLE_TYPES: BundleTypeDef[] = [
   {
@@ -158,14 +179,29 @@ export const BUNDLE_TYPES: BundleTypeDef[] = [
       return name.endsWith(".zip") && name.includes("overture");
     },
   },
+  {
+    type: "xplan",
+    labelKey: "xplan",
+    uploadHint: "XPlanGML (.gml)",
+    uploadNoteKey: "bundle_upload_note_xplan",
+    matches: async (file) =>
+      file.name.toLowerCase().endsWith(".gml") && (await sniffXPlan(file)).isXPlan,
+  },
 ];
 
 /**
  * Detect which bundle type an uploaded file is, or null when it's a
  * plain single-layer dataset.
  */
-export const detectBundleType = (file: File | null | undefined): BundleTypeDef | null =>
-  file ? (BUNDLE_TYPES.find((t) => t.matches(file)) ?? null) : null;
+export const detectBundleType = async (
+  file: File | null | undefined
+): Promise<BundleTypeDef | null> => {
+  if (!file) return null;
+  for (const type of BUNDLE_TYPES) {
+    if (await type.matches(file)) return type;
+  }
+  return null;
+};
 
 /**
  * True when a content tile is a bundle rather than a layer. The layer

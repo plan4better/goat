@@ -1645,6 +1645,7 @@
     "type": {
       "street_network": "Straßennetz",
       "pt_network_gtfs": "ÖPNV-Netz",
+      "xplan": "XPlan-Plan",
       "feature": "Feature",
       "raster": "Raster",
       "table": "Tabelle",
@@ -2062,6 +2063,7 @@
   "pt_end_time_error": "Endzeit muss größer als Startzeit sein",
   "pt_end_time_tooltip": "Definieren Sie das Ende des Zeitfensters für den öffentlichen Verkehr",
   "pt_network_gtfs": "ÖPNV-Netz",
+  "xplan": "XPlan-Plan",
   "pt_start_time": "Startzeit",
   "pt_start_time_error": "Startzeit muss kleiner als Endzeit sein",
   "pt_start_time_tooltip": "Definieren Sie den Beginn des Zeitfensters für den öffentlichen Verkehr",
@@ -3106,6 +3108,7 @@
   "thumbnail_invalid_type": "Wählen Sie ein PNG-, JPEG- oder WebP-Bild.",
   "reset_to_generated": "Auf generiertes Bild zurücksetzen",
   "bundle_upload_note_pt_network_gtfs": "Datenpakete für ÖPNV-Netze müssen mit einem Straßennetz-Datenpaket verknüpft werden, damit GOAT Haltestellen mit Straßen verbinden kann. Wählen Sie ein Straßennetz-Datenpaket, das dieselbe Region abdeckt, um fortzufahren.",
+  "bundle_upload_note_xplan": "Der Plan wird ein Datenpaket mit einem Layer je Objektart (Baugebiete, Baugrenzen, Straßen, ...). Schlüssel werden in lesbare Werte übersetzt, und jede Fläche trägt den Text der für sie geltenden Festsetzungen.",
   "bundle_upload_too_large": "Wählen Sie eine Datei für {{type}} mit höchstens {{mb}} MiB.",
   "street_network_bundle": "Straßennetz-Datenpaket",
   "default_network": "Standard",

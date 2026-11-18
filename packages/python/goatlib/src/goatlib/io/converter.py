@@ -15,6 +15,7 @@ from pyproj import CRS
 from pyproj.exceptions import CRSError
 
 from goatlib.config import settings
+from goatlib.io.config import parquet_copy_options
 from goatlib.io.formats import (
     ALL_EXTS,
     FileFormat,
@@ -152,6 +153,22 @@ class IOConverter:
                     )
                 finally:
                     shutil.rmtree(sanitized.parent, ignore_errors=True)
+
+            # GML with arcs: GDAL reads them as curves, which DuckDB rejects,
+            # so convert a copy with straight segments.
+            straightened = self._gml_with_straight_segments(src_info)
+            if straightened:
+                try:
+                    return self.to_parquet(
+                        str(straightened),
+                        out,
+                        geometry_col=geometry_col,
+                        target_crs=target_crs,
+                        column_mapping=column_mapping,
+                        timeout=timeout,
+                    )
+                finally:
+                    shutil.rmtree(straightened.parent, ignore_errors=True)
 
             # Handle archive formats
             if self._is_archive_format(src_info):
@@ -293,6 +310,70 @@ class IOConverter:
                     f"[{min_x:.2f}, {min_y:.2f}, {max_x:.2f}, {max_y:.2f}]). Fix the "
                     f'file\'s "crs" entry or export it as WGS84 (EPSG:4326).'
                 )
+        return dest
+
+    def _gml_with_straight_segments(self: Self, src_info: SourceInfo) -> Path | None:
+        """A GeoPackage copy of a GML class with every arc straightened, or None
+        for any other source.
+
+        Read with pyogrio, not `ST_Read`: GDAL hands arcs over as curve WKB,
+        which DuckDB cannot parse (`io/curves.py`).
+        """
+        path = Path(src_info.path)
+        if path.suffix.lower() != FileFormat.GML.value:
+            return None
+        import pyarrow as pa
+        import pyogrio
+
+        from goatlib.io.curves import linear_wkb
+
+        meta, table = pyogrio.read_arrow(
+            str(path), layer=src_info.layer_name, WRITE_GFS="NO", DOWNLOAD_SCHEMA="NO"
+        )
+        geometry = meta.get("geometry_name") or "wkb_geometry"
+        has_geometry = geometry in table.column_names
+        # A class with several geometry properties repeats the others as raw
+        # binary columns, which nothing reads.
+        table = table.drop_columns(
+            [
+                f.name
+                for f in table.schema
+                if pa.types.is_binary(f.type) and f.name != geometry
+            ]
+        )
+        if has_geometry:
+            wkb = [linear_wkb(v) for v in table.column(geometry).to_pylist()]
+            table = table.drop_columns([geometry]).append_column(
+                "_wkb", pa.array(wkb, type=pa.binary())
+            )
+        tmp_dir = Path(tempfile.mkdtemp(prefix="goatlib_gml_"))
+        name = src_info.layer_name or path.stem
+        self.con.register("_gml_source", table)
+        try:
+            # GeoPackage stores no lists: a repeated field becomes "a; b".
+            columns = [
+                f'array_to_string("{c}", \'; \') AS "{c}"'
+                if t.endswith("[]")
+                else f'"{c}"'
+                for c, t, *_ in self.con.execute("DESCRIBE _gml_source").fetchall()
+                if c != "_wkb"
+            ]
+            if has_geometry:
+                dest = tmp_dir / f"{name}.gpkg"
+                srs = f", SRS '{meta['crs']}'" if meta.get("crs") else ""
+                select = ", ".join(columns + ["ST_GeomFromWKB(_wkb) AS geom"])
+                self.con.execute(
+                    f"COPY (SELECT {select} FROM _gml_source) TO '{dest}' "
+                    f"(FORMAT GDAL, DRIVER 'GPKG'{srs})"
+                )
+            else:
+                dest = tmp_dir / f"{name}.parquet"
+                self.con.execute(
+                    f"COPY (SELECT {', '.join(columns)} FROM _gml_source) TO '{dest}' "
+                    f"{parquet_copy_options()}"
+                )
+        finally:
+            self.con.unregister("_gml_source")
         return dest
 
     def _is_archive_format(self: Self, src_info: SourceInfo) -> bool:

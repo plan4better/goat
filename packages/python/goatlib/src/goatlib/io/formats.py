@@ -17,6 +17,7 @@ class FileFormat(StrEnum):
     GEOJSON = ".geojson"
     JSON = ".json"
     GPKG = ".gpkg"
+    GML = ".gml"
     SHP = ".shp"
     ZIP = ".zip"
     KML = ".kml"
@@ -35,6 +36,7 @@ VECTOR_EXTS: FrozenSet[str] = frozenset(
         FileFormat.GEOJSON,
         FileFormat.JSON,
         FileFormat.GPKG,
+        FileFormat.GML,
         FileFormat.SHP,
         FileFormat.ZIP,
         FileFormat.KML,
@@ -74,11 +76,19 @@ READ_DRIVERS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         # A `.json` may also be ESRI JSON or TopoJSON.
         FileFormat.JSON: ("GeoJSON", "GeoJSONSeq", "ESRIJSON", "TopoJSON"),
         FileFormat.GPKG: ("GPKG",),
+        FileFormat.GML: ("GML",),
         FileFormat.SHP: ("ESRI Shapefile",),
         FileFormat.KML: ("KML",),
         FileFormat.GPX: ("GPX",),
         FileFormat.XLSX: ("XLSX",),
     }
+)
+
+#: GDAL open options a read of the suffix always passes. GDAL's GML driver
+#: caches its guess at a file's schema in a `.gfs` beside it; a stale one breaks
+#: later reads of the same name, so no read of an upload writes one.
+READ_OPEN_OPTIONS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {FileFormat.GML: ("WRITE_GFS=NO",)}
 )
 
 #: Read without GDAL: text tables (the delimiter sniffed, so `.dsv` too) and
@@ -111,7 +121,11 @@ def allowed_drivers_sql(suffix: str) -> str:
     drivers = READ_DRIVERS.get(suffix)
     if not drivers:
         raise _unsupported(suffix)
-    return "allowed_drivers=ARRAY[{}]".format(", ".join(map(sql_literal, drivers)))
+    sql = "allowed_drivers=ARRAY[{}]".format(", ".join(map(sql_literal, drivers)))
+    options = READ_OPEN_OPTIONS.get(suffix)
+    if options:
+        sql += ", open_options=ARRAY[{}]".format(", ".join(map(sql_literal, options)))
+    return sql
 
 
 def refuse_unsupported_format(name: str) -> None:

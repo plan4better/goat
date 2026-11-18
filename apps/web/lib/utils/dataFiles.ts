@@ -5,7 +5,7 @@
 export const NEEDS_SETUP = ["csv", "xlsx", "xls"];
 
 /** Formats that carry their own geometry and fields, so there is nothing to ask. */
-export const IMPORTS_DIRECTLY = ["gpkg", "geojson", "kml", "zip", "parquet"];
+export const IMPORTS_DIRECTLY = ["gpkg", "geojson", "kml", "gml", "zip", "parquet"];
 
 /** Every format a drop takes, on the editor or on the assistant dock. */
 export const DROP_FILE_EXTENSIONS = [...NEEDS_SETUP, ...IMPORTS_DIRECTLY];
