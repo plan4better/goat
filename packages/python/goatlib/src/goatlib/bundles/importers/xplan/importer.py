@@ -5,11 +5,9 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
-from typing import List
+from typing import TYPE_CHECKING, List
 
 import duckdb
-import pyarrow as pa
-import pyogrio
 
 from goatlib.bundles.importers.base import (
     BundleImporter,
@@ -17,11 +15,15 @@ from goatlib.bundles.importers.base import (
     ValidationResult,
     register_importer,
 )
-from goatlib.bundles.importers.xplan.decode import decorate
 from goatlib.bundles.importers.xplan.schema import version_from_namespace
 from goatlib.io.config import parquet_copy_options
 from goatlib.io.curves import linear_wkb
 from goatlib.models.bundle import BundleTypeName
+
+# pyarrow and pyogrio are loaded only when a plan is read: core imports the
+# importers but installs goatlib without them.
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +32,11 @@ logger = logging.getLogger(__name__)
 SNIFF_BYTES = 65536
 
 #: The XPlanGML namespace as a file declares it. A declaration, not the bare
-#: address, which another GML may mention in a comment or a value.
-_XPLAN_NS = re.compile(rb'xmlns:\w+="(http://www\.xplanung\.de/xplangml/\d+/\d+)"')
+#: address, which another GML may mention in a comment or a value. With or
+#: without a prefix, in either quotes.
+_XPLAN_NS = re.compile(
+    rb"xmlns(?::[\w.-]+)?\s*=\s*[\"'](http://www\.xplanung\.de/xplangml/\d+/\d+)[\"']"
+)
 
 #: Objects that only place labels and symbols on the printed plan. GOAT labels
 #: from attributes, so they are not imported.
@@ -78,6 +83,8 @@ def xplan_namespace(path: str | Path) -> str | None:
 def _classes(path: str) -> list[str]:
     """The file's object classes. `list_layers` takes no open options, so it
     writes GDAL's `.gfs` cache; one it created is removed again."""
+    import pyogrio
+
     gfs = Path(path).with_suffix(".gfs")
     existed = gfs.exists()
     try:
@@ -158,7 +165,7 @@ class XPlanImporter(BundleImporter):
         return ValidationResult(valid=True, detected_roles=sorted(classes))
 
     @staticmethod
-    def _read(source_path: str) -> dict[str, tuple[pa.Table, str | None]]:
+    def _read(source_path: str) -> dict[str, tuple["pa.Table", str | None]]:
         """Every class's objects, arcs straightened into a `_wkb` column.
 
         Returns class to (table, CRS of its geometry or None). Links between
@@ -166,7 +173,10 @@ class XPlanImporter(BundleImporter):
         `<field>_href` columns only when told to; the setting is process wide,
         so it is set for these reads alone.
         """
-        tables: dict[str, tuple[pa.Table, str | None]] = {}
+        import pyarrow as pa
+        import pyogrio
+
+        tables: dict[str, tuple["pa.Table", str | None]] = {}
         pyogrio.set_gdal_config_options({"GML_ATTRIBUTES_TO_OGR_FIELDS": "YES"})
         try:
             for cls in _classes(source_path):
@@ -213,6 +223,8 @@ class XPlanImporter(BundleImporter):
                 )
 
     def extract_layers(self, source_path: str, workdir: str) -> List[ExtractedLayer]:
+        from goatlib.bundles.importers.xplan.decode import decorate
+
         out = Path(workdir)
         con = duckdb.connect()
         con.execute("INSTALL spatial; LOAD spatial;")

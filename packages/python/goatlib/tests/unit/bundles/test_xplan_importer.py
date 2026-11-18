@@ -1,5 +1,7 @@
 """XPlanGML bundles: code lists, spec, import."""
 
+import subprocess
+import sys
 from pathlib import Path
 
 import duckdb
@@ -170,6 +172,16 @@ def layers(tmp_path: Path):
     }
 
 
+def test_importers_load_without_pyarrow():
+    """Core imports the importers but installs goatlib without pyarrow and
+    pyogrio: XPlan loads them only when a plan is read."""
+    code = (
+        "import sys; sys.modules['pyarrow'] = sys.modules['pyogrio'] = None; "
+        "import goatlib.bundles.importers"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
 def test_codes_decode():
     codes = CodeList()
     assert codes.name("6.0", "XP_BesondereArtDerBaulNutzung", "1500") == "Mischgebiet"
@@ -216,6 +228,16 @@ def test_xplan_is_sniffed(tmp_path: Path):
     assert not importer.matches_source(str(other))
     assert infer_bundle_type("t1.gml", str(plan)) == BundleTypeName.xplan
     assert infer_bundle_type("other.gml", str(other)) is None
+    # Declared without a prefix, in single quotes, or with spaces around `=`.
+    for n, declaration in enumerate(
+        (
+            'xmlns="http://www.xplanung.de/xplangml/5/4"',
+            "xmlns:xp='http://www.xplanung.de/xplangml/5/4'",
+            'xmlns:xp = "http://www.xplanung.de/xplangml/5/4"',
+        )
+    ):
+        head = _write(tmp_path, f"d{n}.gml", f"<XPlanAuszug {declaration}/>")
+        assert importer.matches_source(str(head)), declaration
 
 
 def test_xplan_layers(layers):
