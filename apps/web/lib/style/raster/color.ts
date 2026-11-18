@@ -122,11 +122,12 @@ export function rasterColorSpec(render: JsonObject): RasterColorSpec | null {
   // Computed classes draw once the server filled their bounds; until then the color range stands in.
   const bounded = written.length > 0 && (manual || written.some((c) => num(c.from) || num(c.to)));
   if (classify && bounded) {
-    // Class colors from the classification's own palette, else the render's (goatlib compute does the same).
-    const own = classify.palette !== undefined;
-    const steps = paletteSteps((own ? classify.palette : palette) as string | string[], written.length);
-    const reverse = (own ? classify.reverse : render.reverse) === true;
-    const colors = reverse ? [...steps].reverse() : steps;
+    // A class without a color takes the color goatlib compute writes into it (`paletteSteps`, as its
+    // `sample_colors`), from the classification's own palette, else the render's.
+    const own = classify.palette !== undefined && classify.palette !== null;
+    const colors = paletteSteps((own ? classify.palette : palette) as string | string[], written.length, {
+      reverse: (own ? classify.reverse : render.reverse) === true,
+    });
     return {
       kind: "classes",
       band,

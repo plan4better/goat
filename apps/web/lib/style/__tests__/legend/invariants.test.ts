@@ -9,6 +9,7 @@ import { type LegendSection, type Swatch, buildLegend, rangeText, valuesText } f
 
 import { type LegendCase, legendCases, pointsDrawn } from "./cases";
 import { known } from "./known";
+import { ZOOM_STOPS, attributePaths, inZoomStops } from "./zoomStops";
 
 const cases = legendCases();
 const each = cases.map((c) => [c.id, c] as const);
@@ -76,9 +77,8 @@ describe("legend invariants", () => {
       // Two classifications of one field with the same categories are one list (their records merged).
       const merged = c.values!.second === "same_field" && !!second;
       if (!expected.length && !section) return;
-      // The merged list carries the later classification's class ids: compare what the classes hold.
-      if (merged) expect(section?.entries).toHaveLength(expected.length);
-      else expect(section?.entries.map((e) => e.id)).toEqual(expected);
+      // The merged list keeps the first classification's class ids, which its counts (`legend.classes`) read.
+      expect(section?.entries.map((e) => e.id)).toEqual(expected);
       expect(section?.field).toBe(first.field);
       if (merged) expect(entriesOf(legendOf(c)!.sections).some((s) => s.id === "second")).toBe(false);
     }
@@ -129,6 +129,11 @@ describe("legend invariants", () => {
         }
       if (section.kind === "ramp") {
         expect(section.colors.length).toBeGreaterThanOrEqual(2);
+        // The features' own opacity where they are drawn fainter than full strength; none at full strength.
+        if (section.opacity !== undefined) {
+          expect(section.opacity).toBeGreaterThanOrEqual(0);
+          expect(section.opacity).toBeLessThan(1);
+        }
         for (const color of section.colors) expect(Color.parse(color), color).toBeTruthy();
         expect(section.domain.every(Number.isFinite)).toBe(true);
         expect(section.domain[0]).toBeLessThanOrEqual(section.domain[1]);
@@ -140,6 +145,17 @@ describe("legend invariants", () => {
         expect([...values].sort((a, b) => a - b)).toEqual(values);
       }
     }
+  });
+
+  it.each(each)("%s: beside clusters, every entry says what it stands for", (_id, c) => {
+    const sections = entriesOf(legendOf(c)?.sections ?? []);
+    if (!sections.some((s) => s.id === "cluster")) return;
+    for (const section of sections)
+      for (const entry of section.entries)
+        expect(
+          entry.name ?? entry.values ?? entry.range ?? entry.extra,
+          `${section.id}/${entry.id}`
+        ).toBeDefined();
   });
 
   it.each(each)("%s: numeric classes ascend and do not overlap", (_id, c) => {
@@ -226,6 +242,24 @@ describe("legend invariants", () => {
     }
   });
 
+  // A value by attribute in zoom stops (spec 4.4) that is the same at every stop draws what it draws alone.
+  const sameAtEveryStop = cases.flatMap((c) => {
+    const variant = attributePaths(c).length ? inZoomStops(c, "same", ZOOM_STOPS.same) : null;
+    return variant ? [[c.id, c, variant] as const] : [];
+  });
+  it.each(sameAtEveryStop)(
+    "%s: a value by attribute the same at every zoom stop leaves the legend it leaves alone",
+    (_id, c, variant) => {
+      // Colors compared as MapLibre reads them, whatever their letters' case.
+      const read = (legend: unknown) => JSON.parse(JSON.stringify(legend).toLowerCase()) as unknown;
+      expect(read(legendOf(variant))).toEqual(read(legendOf(c)));
+    }
+  );
+
+  it("values by attribute in zoom stops are checked in enough cases", () => {
+    expect(sameAtEveryStop.length).toBeGreaterThanOrEqual(20);
+  });
+
   const spec = (line: number) => legendOf(cases.find((c) => c.id === `spec-${line}`)!)!;
 
   it("a heatmap's ramp reads low to high, not numbers", () => {
@@ -241,6 +275,190 @@ describe("legend invariants", () => {
     // The spec's example sizes clusters from 16 to 40 px: the sample sits in the middle.
     expect(entry.swatch.marker).toMatchObject({ color: "#283593", size: 28 });
     expect(base).toMatchObject({ kind: "entries", id: "base" });
+    // Below the Clusters row, the base look reads as the single points; without clusters it takes the layer's name.
+    expect((base as Extract<LegendSection, { kind: "entries" }>).entries[0].extra).toBe("points");
+    const plain = buildLegend(
+      { version: 1, kind: "vector", symbol: { marker: { color: "#283593" } } },
+      { geometry: "point", zoom: 12 }
+    )!.sections;
+    expect((plain[0] as Extract<LegendSection, { kind: "entries" }>).entries[0].extra).toBeUndefined();
+  });
+
+  it("a cluster value's size samples have the cluster symbol's color and outline, as on the map", () => {
+    const style = {
+      version: 1,
+      kind: "vector",
+      render: {
+        type: "cluster",
+        value: { op: "sum", field: "amount" },
+        symbol: {
+          marker: {
+            shape: "circle",
+            color: "#2166ac",
+            size: { field: "value", range: [16, 48], scale: "sqrt", domain: [0, 1000] },
+            opacity: { field: "count", range: [0.5, 1], domain: [0, 10] },
+          },
+          outline: { color: "#ffffff", width: 2 },
+        },
+      },
+      symbol: { marker: { shape: "circle", color: "#283593", size: 8 } },
+    };
+    const sections = buildLegend(style, { geometry: "point", zoom: 12 })!.sections;
+    // A form over the count is no sample of the value.
+    expect(sections.map((s) => s.id)).toEqual(["cluster", "cluster.marker.size", "base"]);
+    const sizes = sections[1] as Extract<LegendSection, { kind: "sizes" }>;
+    for (const sample of sizes.samples) {
+      expect(sample.swatch.marker).toMatchObject({ color: "#2166ac" });
+      expect(sample.swatch.outline).toMatchObject({ color: "#ffffff", width: 2 });
+    }
+  });
+
+  it("the cluster sample follows the cluster size set in the panel", () => {
+    const sample = (size: unknown) => {
+      const style = {
+        version: 1,
+        kind: "vector",
+        render: { type: "cluster", symbol: { marker: { shape: "circle", size } } },
+      };
+      const [cluster] = buildLegend(style, { geometry: "point", zoom: 12 })!.sections;
+      return (cluster as Extract<LegendSection, { kind: "entries" }>).entries[0].swatch.marker!.size;
+    };
+    expect(sample({ field: "count", range: [10, 60], scale: "sqrt" })).toBe(35);
+    expect(sample(20)).toBe(20);
+  });
+
+  it("a part the layer switches off shows in no swatch, though classes set it; an outline in the fill color takes the class's", () => {
+    const style = {
+      version: 1,
+      kind: "vector",
+      symbol: { fill: false, outline: { color: "fill", width: 2 } },
+      classify: [
+        {
+          id: "k",
+          field: "kind",
+          method: "categories",
+          target: "fill.color",
+          classes: [{ id: "a", values: ["a"], fill: { color: "#111111" } }],
+        },
+      ],
+    };
+    const [block] = buildLegend(style, { geometry: "polygon", zoom: 12 })!.sections;
+    const { swatch } = (block as Extract<LegendSection, { kind: "entries" }>).entries[0];
+    expect(swatch.fill).toBeUndefined();
+    expect(swatch.outline?.color).toBe("#111111");
+    // A class still switches off a part the layer shows.
+    const shown = buildLegend(
+      {
+        ...style,
+        symbol: { fill: { color: "#cccccc" } },
+        classify: [{ ...style.classify[0], classes: [{ id: "a", values: ["a"], fill: false }] }],
+      },
+      { geometry: "polygon", zoom: 12 }
+    )!.sections[0] as Extract<LegendSection, { kind: "entries" }>;
+    expect(shown.entries[0].swatch.fill).toBeUndefined();
+  });
+
+  it("clusters drawn like the points show the points' marker, with a badge where the count is on one", () => {
+    const sample = (render: object) => {
+      const style = {
+        version: 1,
+        kind: "vector",
+        symbol: { marker: { shape: "icon", icon: "goat:shop", color: "#5a1846", size: 20 } },
+        render: {
+          type: "cluster",
+          symbol: { marker: { color: "#2838b2" }, label: { text: "{count}", color: "#ffff00" } },
+          ...render,
+        },
+      };
+      const [cluster] = buildLegend(style, { geometry: "point", zoom: 12 })!.sections;
+      expect(cluster).toMatchObject({ kind: "entries", id: "cluster" });
+      return (cluster as Extract<LegendSection, { kind: "entries" }>).entries[0].swatch;
+    };
+    const points = sample({ look: "points", count: "badge" });
+    expect(points.marker).toMatchObject({ shape: "icon", icon: "goat:shop", color: "#5a1846" });
+    expect(points.badge).toEqual({ color: "#2838b2", text: "#ffff00", ring: "#ffffff" });
+    expect(sample({ look: "points" }).badge).toBeUndefined();
+    expect(sample({ look: "points" }).marker).toMatchObject({ icon: "goat:shop" });
+    // A circle by count with a badge: the circle in the cluster color, the badge too.
+    const circle = sample({ count: "badge" });
+    expect(circle.marker).toMatchObject({ color: "#2838b2" });
+    expect(circle.marker?.icon).toBeUndefined();
+    expect(circle.badge).toEqual({ color: "#2838b2", text: "#ffff00", ring: "#ffffff" });
+    expect(sample({}).badge).toBeUndefined();
+  });
+
+  it("a cluster badge takes the cluster symbol's outline as its ring", () => {
+    const style = {
+      version: 1,
+      kind: "vector",
+      render: {
+        type: "cluster",
+        count: "badge",
+        symbol: { marker: { color: "#283593" }, outline: { color: "#000000", width: 2 } },
+      },
+    };
+    const [cluster] = buildLegend(style, { geometry: "point", zoom: 12 })!.sections;
+    const swatch = (cluster as Extract<LegendSection, { kind: "entries" }>).entries[0].swatch;
+    expect(swatch.badge?.ring).toBe("#000000");
+  });
+
+  it("clusters with a value name it, and a size or color by the value shows its range", () => {
+    const style = {
+      version: 1,
+      kind: "vector",
+      render: {
+        type: "cluster",
+        value: { op: "sum", field: "turnover" },
+        symbol: {
+          marker: {
+            shape: "circle",
+            size: { field: "value", range: [10, 30], domain: [0, 1000] },
+            color: { field: "value", palette: ["#000000", "#ffffff"], domain: [0, 1000] },
+          },
+          label: { text: "{value}" },
+        },
+      },
+    };
+    const sections = buildLegend(style, { geometry: "point", zoom: 12 })!.sections;
+    expect(sections.map((s) => [s.kind, s.id])).toEqual([
+      ["entries", "cluster"],
+      ["sizes", "cluster.marker.size"],
+      ["ramp", "cluster.marker.color"],
+      ["entries", "base"],
+    ]);
+    expect(sections[0]).toMatchObject({ op: "sum", field: "turnover" });
+    expect(sections[1]).toMatchObject({ op: "sum", field: "turnover" });
+    expect(sections[2]).toMatchObject({ op: "sum", field: "turnover", domain: [0, 1000] });
+    // The count names nothing more, as today.
+    const counted = buildLegend(
+      { ...style, render: { ...style.render, value: undefined } },
+      { geometry: "point", zoom: 12 }
+    )!.sections;
+    expect(counted[0]).not.toHaveProperty("op");
+  });
+
+  it("a cluster badge without a cluster symbol has the map's default colors", () => {
+    const style = {
+      version: 1,
+      kind: "vector",
+      symbol: { marker: { shape: "pin" } },
+      render: { type: "cluster", look: "points", count: "badge" },
+    };
+    const [cluster] = buildLegend(style, { geometry: "point", zoom: 12 })!.sections;
+    const swatch = (cluster as Extract<LegendSection, { kind: "entries" }>).entries[0].swatch;
+    const compiled = compileLayer({
+      id: "1",
+      style: style as never,
+      geometry: "point",
+      source: { type: "points", id: "s", data: "https://geoapi.example/items" },
+    });
+    const badge = compiled.layers.find((l) => l.id === "1-cluster-badge") as {
+      layout: Record<string, unknown>;
+      paint: Record<string, unknown>;
+    };
+    expect(JSON.stringify(badge.layout["icon-image"])).toContain(`||${swatch.badge!.color}|`);
+    expect(badge.paint["text-color"]).toBe(swatch.badge!.text);
+    expect(swatch.marker).toMatchObject({ shape: "pin" });
   });
 
   it("clusters without a symbol of their own show the color the map gives them", () => {

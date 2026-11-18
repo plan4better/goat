@@ -1,8 +1,25 @@
+import {
+  type Color,
+  type StylePropertySpecification,
+  createPropertyExpression,
+  latest,
+} from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
-import { combine, fold, fromForm, toProperty } from "@/lib/style/compile/values";
+import { combine, fold, fromForm, toProperty, valueAt } from "@/lib/style/compile/values";
 
 import { paintErrors } from "./maplibre";
+
+/** A color expression as MapLibre evaluates it in `circle-color`, for a feature at a zoom, as rgba of 0 to 255. */
+function colorAt(expr: unknown, properties: Record<string, unknown>, zoom: number): number[] {
+  const spec = (latest as unknown as Record<string, Record<string, StylePropertySpecification>>).paint_circle[
+    "circle-color"
+  ];
+  const parsed = createPropertyExpression(expr, "layers[0].paint.circle-color", spec);
+  if (parsed.result !== "success") throw new Error(parsed.value.map((e) => e.message).join("; "));
+  const color = parsed.value.evaluate({ zoom }, { type: 1, properties } as never) as Color;
+  return [color.r, color.g, color.b].map((c) => Math.round((c / (color.a || 1)) * 255)).concat(color.a);
+}
 
 describe("value forms", () => {
   it("fixed values, zoom stops, steps and exponential curves", () => {
@@ -246,6 +263,50 @@ describe("value forms", () => {
     expect((property as unknown[]).slice(0, 4)).toEqual(["interpolate", ["linear"], ["zoom"], 11]);
     expect(paintErrors(property)).toEqual([]);
   });
+
+  it("a color by attribute in zoom stops, taken between two stops, is each feature's color the stops blend to there", () => {
+    const palette = (colors: string[]) => ({ field: "p", palette: colors, domain: [0, 100] });
+    const form = (more: object = {}) => ({
+      zoom: [
+        [11, palette(["#0000ff", "#00ff00"])],
+        [15, palette(["#ff0000", "#ffff00"])],
+      ],
+      ...more,
+    });
+    // As the value as a property (a top-level interpolate on the zoom) gives it at that zoom.
+    for (const curve of [{}, { interpolate: "exponential", base: 2 }]) {
+      const v = fromForm(form(curve), "color", "#2bb381");
+      for (const zoom of [11, 12, 13.5, 15])
+        for (const p of [0, 50, 100])
+          expect(colorAt(valueAt(v, zoom), { p }, 0), `zoom ${zoom}, p ${p}`).toEqual(
+            colorAt(toProperty(v), { p }, zoom)
+          );
+    }
+    // A fixed color at one stop blends with the other stop's colors.
+    const mixed = fromForm(
+      {
+        zoom: [
+          [11, "#000000"],
+          [15, palette(["#ff0000", "#ffff00"])],
+        ],
+      },
+      "color",
+      "#2bb381"
+    );
+    expect(colorAt(valueAt(mixed, 12), { p: 100 }, 0)).toEqual([64, 64, 0, 1]);
+    // The same colors at both stops stay that one expression.
+    const same = fromForm(
+      {
+        zoom: [
+          [11, palette(["#0000ff", "#00ff00"])],
+          [15, palette(["#0000ff", "#00ff00"])],
+        ],
+      },
+      "color",
+      "#2bb381"
+    );
+    expect(valueAt(same, 12)).toEqual(valueAt(same, 11));
+  });
 });
 
 describe("combining values", () => {
@@ -359,6 +420,39 @@ describe("combining values", () => {
       ["case", ["boolean", ["feature-state", "active"], false], 6, 6],
     ]);
     expect(paintErrors(property, "line-width", "line")).toEqual([]);
+  });
+
+  it("a color by attribute in zoom stops combined over other stop zooms blends there too", () => {
+    const palette = (colors: string[]) => ({ field: "p", palette: colors, domain: [0, 100] });
+    const color = fromForm(
+      {
+        zoom: [
+          [11, palette(["#0000ff", "#00ff00"])],
+          [15, palette(["#ff0000", "#ffff00"])],
+        ],
+      },
+      "color",
+      "#2bb381"
+    );
+    const width = fromForm(
+      {
+        zoom: [
+          [12, 1],
+          [14, 3],
+        ],
+      },
+      "number",
+      1
+    );
+    // Taken at the union of stops (11, 12, 14, 15): each feature's color as the color alone gives it.
+    const v = combine([color, width], ([c]) => c, { kind: "color" });
+    const property = toProperty(v);
+    expect(paintErrors(property, "circle-color")).toEqual([]);
+    for (const zoom of [12, 13, 14])
+      for (const p of [0, 50, 100])
+        expect(colorAt(property, { p }, zoom), `zoom ${zoom}, p ${p}`).toEqual(
+          colorAt(toProperty(color), { p }, zoom)
+        );
   });
 
   it("folds constant arithmetic", () => {

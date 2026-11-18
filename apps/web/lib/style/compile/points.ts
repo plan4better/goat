@@ -16,9 +16,12 @@ import {
   highlightColor,
   highlightWidth,
   makeLayer,
+  onDecorations,
   put,
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
+import { extrudes, heightValue } from "@/lib/style/compile/polygons";
+import type { Geometry } from "@/lib/style/compile/types";
 import {
   type Expr,
   FILL_COLOR,
@@ -30,7 +33,7 @@ import {
   toProperty,
 } from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
-import { isObject } from "@/lib/style/json";
+import { type JsonObject, isObject } from "@/lib/style/json";
 import {
   MARKER_SHAPES,
   type MarkerShapeId,
@@ -68,10 +71,137 @@ function haloWidth(width: Value, opacity: Value): Value {
   );
 }
 
+/** The marker icon of every feature: the cascade's, or the one the context picks (`PartContext.icon`). */
+function iconValue(
+  ctx: PartContext,
+  opts: { fields?: PartContext["fields"]; fallback: Expr; map?: (ref: string) => Expr }
+): Value {
+  if (ctx.icon) return { expr: ctx.icon.pick(opts.map ?? ((ref) => ref), opts.fallback) };
+  return cascade(ctx.style, "marker.icon", {
+    fields: opts.fields,
+    fallback: opts.fallback,
+    ...(opts.map ? { map: opts.map as (value: unknown) => Expr } : {}),
+  });
+}
+
+/** Where a marker draws (spec 3.3): on the point; at each polygon's label anchor or each line's center point on
+ * vector tiles; on GeoJSON, inside the polygon itself (MapLibre places one symbol in it) or at the middle of the
+ * line. Raised polygons carry the marker on the roof, as their labels. */
+interface Place {
+  sourceLayer: string;
+  layout: Record<string, unknown>;
+  /** The layer draws on decoration points of this kind. */
+  decoration?: "center";
+  /** The features that have a marker, where the symbol leaves it out and classes or rules switch it on. */
+  filter?: Expr;
+}
+
+const list = (value: unknown): JsonObject[] => (Array.isArray(value) ? value.filter(isObject) : []);
+
+/** On polygons and lines a marker the symbol leaves out is off (spec 3): the features a class or rule gives one, less
+ * those a class or rule switches it off for. Undefined where every feature has one. */
+function markerFilter(ctx: PartContext): Expr | undefined {
+  const symbol = isObject(ctx.style.symbol) ? ctx.style.symbol : {};
+  const base = isObject(symbol.marker);
+  const records = [
+    ...list(ctx.style.classify).flatMap((c) => [...list(c.classes), c.other, c.no_data]),
+    ...list(ctx.style.rules),
+  ];
+  if (base && !records.some((r) => isObject(r) && r.marker === false)) return undefined;
+  // Each record's marker as a number: 1 where it switches it on, 0 where off; the cascade picks each feature's.
+  const on = (r: unknown): JsonObject | undefined => {
+    if (!isObject(r)) return undefined;
+    const { marker, ...rest } = r;
+    return isObject(marker)
+      ? { ...rest, marker: { on: 1 } }
+      : marker === false
+        ? { ...rest, marker: { on: 0 } }
+        : rest;
+  };
+  const synthetic: JsonObject = {
+    symbol: { marker: { on: base ? 1 : 0 } },
+    classify: list(ctx.style.classify).map((c) => ({
+      ...c,
+      classes: list(c.classes).map(on),
+      other: on(c.other),
+      no_data: on(c.no_data),
+    })),
+    rules: list(ctx.style.rules).map(on),
+  };
+  const value = cascade(synthetic, "marker.on", { fields: ctx.fields, kind: "number", fallback: 0 });
+  return ["==", toProperty(value), 1];
+}
+
+function placeOf(ctx: PartContext): Place {
+  if (ctx.geometry === "point") return { sourceLayer: "default", layout: {} };
+  const filter = markerFilter(ctx);
+  if (ctx.geometry === "line") {
+    if (ctx.vectorSource)
+      return { sourceLayer: "default_decoration", layout: {}, decoration: "center", filter };
+    const rotated = isSet(ctx.style, "marker.rotation");
+    return {
+      sourceLayer: "default",
+      layout: { "symbol-placement": "line-center", "icon-rotation-alignment": rotated ? "map" : "viewport" },
+      filter,
+    };
+  }
+  if (ctx.vectorSource) ctx.out.tileParams.label = true;
+  const layout = extrudes(ctx.style) ? { "symbol-height-offset": toProperty(heightValue(ctx)) } : {};
+  return { sourceLayer: ctx.vectorSource ? "default_anchor" : "default", layout, filter };
+}
+
+/** A marker layer at its place. */
+function placed(
+  ctx: PartContext,
+  place: Place,
+  suffix: string,
+  layout: Record<string, unknown>,
+  paint: Record<string, unknown>,
+  opts: Parameters<typeof makeLayer>[7] = {}
+): LayerSpecification {
+  const filters = [place.filter, opts.filter].filter((f) => f !== undefined);
+  const filter = filters.length > 1 ? ["all", ...filters] : filters[0];
+  const layer = makeLayer(
+    ctx,
+    suffix,
+    "symbol",
+    "marker",
+    { ...layout, ...place.layout },
+    paint,
+    place.sourceLayer,
+    {
+      ...opts,
+      filter,
+    }
+  );
+  return place.decoration ? onDecorations(ctx, [place.decoration], layer) : layer;
+}
+
+/** Whether the layer's markers are drawn as images (lib/style/compile/markerImage.ts), given the icons it uses: the
+ * icon alone never; on polygons and lines always; on points where the layer's shape, or one a class or rule sets,
+ * draws as one (a shape, a pin, a circle with an icon). */
+export function markersAsImages(
+  style: JsonObject,
+  geometry: Geometry | undefined,
+  icons: string[] = setValues(style, "marker.icon").filter((r): r is string => typeof r === "string")
+): boolean {
+  const symbol = isObject(style.symbol) ? style.symbol : {};
+  const shape = (isObject(symbol.marker) ? symbol.marker.shape : undefined) ?? DEFAULTS["marker.shape"];
+  if (shape === "icon") return false;
+  return (
+    geometry !== "point" ||
+    [shape, ...setValues(style, "marker.shape")].some((s) => drawsAsImage(s, icons.length > 0))
+  );
+}
+
 export function pointLayers(ctx: PartContext): LayerSpecification[] {
   const { style } = ctx;
   const c = { fields: ctx.fields };
-  if (!partUsed(style, "marker", "point")) return [];
+  if (!partUsed(style, "marker", ctx.geometry)) return [];
+  // On polygons and lines the marker is always an image (circle layers draw at every vertex of a GeoJSON polygon or
+  // line), and the outline is the polygon's border, not the marker's stroke.
+  const point = ctx.geometry === "point";
+  const place = placeOf(ctx);
   const layers: LayerSpecification[] = [];
   const size = cascade(style, "marker.size", c);
   const ownOpacity = cascade(style, "marker.opacity", c);
@@ -82,16 +212,15 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
     always(fill, true)
       ? opacity
       : withLayerOpacity(ctx, byFill(fill, ownOpacity, { expr: hollow }, "number"));
-  const outline = partUsed(style, "outline", "point");
+  const outline = point && partUsed(style, "outline", "point");
   const offsetSet = setValues(style, "marker.offset").some(moves);
   const symbol = isObject(style.symbol) ? style.symbol : {};
   const baseMarker = isObject(symbol.marker) ? symbol.marker : {};
   // The layer's shape; classes and rules may set their own (the icon alone only the layer, spec 3.3).
   const shape = baseMarker.shape ?? DEFAULTS["marker.shape"];
-  const shapes = setValues(style, "marker.shape");
   const baseSize =
     typeof baseMarker.size === "number" ? baseMarker.size : (DEFAULTS["marker.size"] as number);
-  const markerColor = cascade(style, "marker.color", c);
+  const markerColor = ctx.color !== undefined ? { expr: ctx.color } : cascade(style, "marker.color", c);
   // An outline in the "fill" color takes the marker's color (the circle, or the icon's tint).
   const outlineColor = substitute(
     cascade(style, "outline.color", { ...c, map: (v) => (v === "fill" ? FILL_COLOR : v) }),
@@ -99,9 +228,11 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
     markerColor
   );
 
-  const iconRefs = setValues(style, "marker.icon").filter((r): r is string => typeof r === "string");
-  if (shape !== "icon" && [shape, ...shapes].some((s) => drawsAsImage(s, iconRefs.length > 0)))
-    return markerImageLayers(ctx, markerShapeOf(shape), iconRefs, {
+  const iconRefs = ctx.icon
+    ? [...ctx.icon.refs]
+    : setValues(style, "marker.icon").filter((r): r is string => typeof r === "string");
+  if (markersAsImages(style, ctx.geometry, iconRefs))
+    return markerImageLayers(ctx, place, markerShapeOf(shape), iconRefs, {
       size,
       opacity: hollowOpacity(1),
       fill,
@@ -154,7 +285,7 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
   refs.forEach((ref) => ctx.images.add(ref));
 
   const layout: Record<string, unknown> = {
-    "icon-image": toProperty(cascade(style, "marker.icon", { ...c, fallback: "goat:marker" })),
+    "icon-image": toProperty(iconValue(ctx, { ...c, fallback: "goat:marker" })),
     "icon-size": toProperty(combine([size], ([s]) => ["/", s, ICON_HEIGHT], { kind: "number" })),
   };
   if (isSet(style, "marker.rotation")) {
@@ -188,26 +319,18 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
   const own = refs.some(keepsColors);
   const library = refs.some((r) => !keepsColors(r));
   if (own && library) {
-    const kind = cascade(style, "marker.icon", {
+    const kind = iconValue(ctx, {
       ...c,
       fallback: "library",
       map: (r) => (keepsColors(r) ? "asset" : "library"),
     });
     const kindExpr: Expr = isZoomed(kind) ? "library" : kind.expr;
-    layers.push(
-      makeLayer(ctx, "icon", "symbol", "marker", layout, libraryPaint, "default", {
-        filter: ["==", kindExpr, "library"],
-      })
-    );
-    layers.push(
-      makeLayer(ctx, "icon-asset", "symbol", "marker", layout, ownPaint, "default", {
-        filter: ["==", kindExpr, "asset"],
-      })
-    );
+    layers.push(placed(ctx, place, "icon", layout, libraryPaint, { filter: ["==", kindExpr, "library"] }));
+    layers.push(placed(ctx, place, "icon-asset", layout, ownPaint, { filter: ["==", kindExpr, "asset"] }));
   } else if (own) {
-    layers.push(makeLayer(ctx, "icon-asset", "symbol", "marker", layout, ownPaint));
+    layers.push(placed(ctx, place, "icon-asset", layout, ownPaint));
   } else {
-    layers.push(makeLayer(ctx, "icon", "symbol", "marker", layout, libraryPaint));
+    layers.push(placed(ctx, place, "icon", layout, libraryPaint));
   }
   return layers;
 }
@@ -243,6 +366,7 @@ function perLayerSize(style: PartContext["style"]): number {
 /** A marker with a shape as one image per look (lib/style/compile/markerImage.ts), and its highlight ring. */
 function markerImageLayers(
   ctx: PartContext,
+  place: Place,
   shape: MarkerShapeId,
   refs: string[],
   marker: { size: Value; opacity: Value; fill: Value; color: Value; outline?: { color: Value } }
@@ -264,7 +388,7 @@ function markerImageLayers(
       );
   const parts = [
     cascade(style, "marker.shape", { ...c, fallback: "circle" }),
-    cascade(style, "marker.icon", { ...c, fallback: "" }),
+    iconValue(ctx, { ...c, fallback: "" }),
     everyZoom(marker.color),
     marker.outline ? everyZoom(marker.outline.color) : { expr: "" },
     everyZoom(width),
@@ -322,7 +446,8 @@ function markerImageLayers(
   put(paint, "icon-opacity", marker.opacity, ctx, always(marker.fill, false) ? undefined : "marker.opacity");
 
   const layers: LayerSpecification[] = [];
-  if (ctx.input.highlight) {
+  // On polygons and lines the area or the line itself shows the active feature.
+  if (ctx.input.highlight && ctx.geometry === "point") {
     // A layout image cannot change with feature state: the active marker gets a ring under it.
     const radius = combine([marker.size, width], ([s, w]) => ["+", ["/", s, 2], w], { kind: "number" });
     // Around a pin's head, above its tip: circle-translate is one value per layer, so the base size places it.
@@ -348,6 +473,6 @@ function markerImageLayers(
       )
     );
   }
-  layers.push(makeLayer(ctx, "marker", "symbol", "marker", layout, paint, "default", { ordered: false }));
+  layers.push(placed(ctx, place, "marker", layout, paint, { ordered: false }));
   return layers;
 }

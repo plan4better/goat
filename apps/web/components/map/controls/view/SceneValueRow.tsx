@@ -169,7 +169,7 @@ export function SceneValueRow({
   kind: "color" | "number";
   look: AutoLook;
 }) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const store = useEditor();
   const mapZoom = useMapZoom();
   const popover = usePopover();
@@ -220,7 +220,7 @@ export function SceneValueRow({
   if (mode === "zoom") {
     // The summary as the style editor writes it, of the value shown.
     const shown = setIn(store.document, path, form) as LayerStyle;
-    const summary = summarize(shown, path, t, { fields: [], mapZoom });
+    const summary = summarize(shown, path, t, { fields: [], mapZoom, language: i18n.language });
     const swatch = kind === "color" ? { background: swatchOf(shown, path), wide: true } : undefined;
     return (
       <GroupRow

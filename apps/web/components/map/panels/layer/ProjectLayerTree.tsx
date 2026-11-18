@@ -37,7 +37,7 @@ import { setSelectedBundle, setSelectedLayers } from "@/lib/store/layer/slice";
 import { setActiveRightPanel, setDataPanelLayerId, setIsDataPanelOpen } from "@/lib/store/map/slice";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { baseSwatch, buildLegend, informative } from "@/lib/style/legend";
+import { baseSwatch, buildLegend, informative, legendDependsOnZoom } from "@/lib/style/legend";
 import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 import type { TimeStep } from "@/lib/style/time";
 import { isBundleMemberLayer, isEditableBundleMember } from "@/lib/utils/bundleEditable";
@@ -69,7 +69,12 @@ import type { MapLayer } from "@/hooks/map/useMapLayers";
 import useStartEditingGuard from "@/hooks/map/useStartEditingGuard";
 import { timeOf } from "@/hooks/map/useTimeSteps";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
-import { type LegendLayer, legendLayerOf, useLayerLegend } from "@/hooks/style/useLegendPresence";
+import {
+  type LegendLayer,
+  legendLayerOf,
+  useLayerLegend,
+  useLegendZoom,
+} from "@/hooks/style/useLegendPresence";
 
 // Modals
 import AddLayerMenu from "@/components/addLayer/AddLayerMenu";
@@ -104,6 +109,9 @@ import {
 const SYNTHETIC_CLICK = { stopPropagation: () => undefined } as React.MouseEvent;
 // Who shows a saved area on the map while a filter badge is hovered.
 const BADGE_HOVER = {};
+
+/** The zoom rows read their swatches and legends at when none of them changes with the zoom. */
+const LEGEND_FIXED_ZOOM = 12;
 
 // 1. HELPER COMPONENTS
 
@@ -462,8 +470,8 @@ export const ProjectLayerTree = ({
   const currentZoom = useAppSelector((state) =>
     dimOutOfZoom && viewMode === "view" ? state.map.currentZoom : undefined
   );
-  // Swatches and legends show values by zoom at the map's whole zoom.
-  const legendZoom = useAppSelector((state) => Math.round(state.map.currentZoom ?? 12));
+  // Swatches and legends show values by zoom at the zoom the map is at.
+  const legendZoom = useLegendZoom();
   const editingLayerId = useAppSelector((state) => state.featureEditor.activeLayerId);
   const startEditingGuard = useStartEditingGuard();
   // Which member layers of the project's bundles may be edited, by role.
@@ -1215,6 +1223,19 @@ export const ProjectLayerTree = ({
   );
 
   // --- ICONS & LEGEND ---
+  // The zoom the rows' swatches and legends are read at: the map's while any row's legend changes with it, else a
+  // fixed one (those legends are the same at every zoom), so a zoom does not rebuild every row.
+  const treeZoom = useMemo(
+    () =>
+      items.some((item) => {
+        const style = (item.data as ProjectLayerTreeNode | undefined)?.style;
+        return isObject(style) && legendDependsOnZoom(style as JsonObject);
+      })
+        ? legendZoom
+        : LEGEND_FIXED_ZOOM,
+    [items, legendZoom]
+  );
+
   const itemsWithIcons = useMemo(() => {
     return items.map((item) => {
       const node = item.data;
@@ -1343,7 +1364,7 @@ export const ProjectLayerTree = ({
       // Whether the row has a legend to show: every class counts here, the legend itself lists those kept.
       const legend =
         style && isVisible && shouldShowLegend && !simpleLegendLayerIds?.includes(node.id)
-          ? buildLegend(style, { geometry, zoom: legendZoom, serviceLegendUrl })
+          ? buildLegend(style, { geometry, zoom: treeZoom, serviceLegendUrl })
           : null;
       const icon =
         node.layer_type === "raster" ? (
@@ -1353,7 +1374,7 @@ export const ProjectLayerTree = ({
             style={{ fontSize: "1rem", color: theme.palette.action.active }}
           />
         ) : style ? (
-          <SwatchIcon swatch={baseSwatch(style, { geometry: geometry ?? "polygon", zoom: legendZoom })} />
+          <SwatchIcon swatch={baseSwatch(style, { geometry: geometry ?? "polygon", zoom: treeZoom })} />
         ) : undefined;
       const caption =
         shouldShowLegend && typeof legendOptions?.caption === "string" ? legendOptions.caption : undefined;
@@ -1378,7 +1399,7 @@ export const ProjectLayerTree = ({
             <TreeLayerLegend
               style={style}
               geometry={geometry}
-              zoom={legendZoom}
+              zoom={treeZoom}
               serviceLegendUrl={serviceLegendUrl}
               layer={legendLayerOf(node)}
               hideHeading={hideLegendHeading}
@@ -1395,7 +1416,7 @@ export const ProjectLayerTree = ({
     items,
     theme,
     currentZoom,
-    legendZoom,
+    treeZoom,
     viewMode,
     isEditMode,
     hideLegendHeading,

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { isPatternImage, parsePatternImage, patternTile } from "@/lib/style/compile/patternImage";
+import {
+  NO_PATTERN_IMAGE,
+  isPatternImage,
+  parsePatternImage,
+  patternTile,
+} from "@/lib/style/compile/patternImage";
+import { drawPattern } from "@/lib/style/render/patternImages";
 
 describe("pattern images", () => {
   it("a name carries the kind, the spacing, the line width and the color", () => {
@@ -14,6 +20,13 @@ describe("pattern images", () => {
     expect(parsePatternImage("goat-pattern:zigzag|12|1|#333333")).toBeNull();
     expect(parsePatternImage("goat-pattern:vertical|0|1|#333333")).toBeNull();
     expect(parsePatternImage("goat-pattern:vertical|12|1")).toBeNull();
+  });
+
+  it("the image of no pattern is a pattern image the renderer draws clear", () => {
+    expect(isPatternImage(NO_PATTERN_IMAGE)).toBe(true);
+    const image = drawPattern(NO_PATTERN_IMAGE);
+    expect(image).not.toBeNull();
+    expect(image && [...image.data].every((byte) => byte === 0)).toBe(true);
   });
 
   it("tiles repeat seamlessly: straight lines span the tile, diagonals lie `spacing` apart", () => {

@@ -60,7 +60,8 @@ export interface CompiledLayer {
   images: ImageRequest[];
   /** Entries of the style's root `state` (global state defaults): "locale", `${id}:time`. */
   state: Record<string, { default: unknown }>;
-  /** What the tile URL must ask geoapi for: polygon label anchors, line decoration points, the fields they carry. */
+  /** What the data URL must ask geoapi for: polygon label anchors, line decoration points, the fields they carry;
+   * for the points of a GeoJSON URL (clusters) the fields the layers read. */
   tileParams: { label?: true; decorations?: Array<"start" | "end" | "center">; fields?: string[] };
   position: Position;
   /** Capability names of spec section 19 this style needs and this compiler cannot render yet. */

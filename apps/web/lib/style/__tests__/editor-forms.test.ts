@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { colorFields, keyOf, modeOf, modesFor, switchMode } from "@/lib/style/editor/forms";
+import {
+  LABEL_FONT_CHOICE,
+  colorFields,
+  keyOf,
+  modeOf,
+  modesFor,
+  switchMode,
+} from "@/lib/style/editor/forms";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
@@ -277,5 +284,139 @@ describe("value modes", () => {
         }
       )
     );
+  });
+});
+
+describe("heights and values by attribute in zoom stops", () => {
+  it("a height or a base by attribute is in proportion to the field: a linear scale (spec 3.6)", () => {
+    for (const [key, range] of [
+      ["height", [0, 50]],
+      ["base", [0, 10]],
+    ] as const)
+      expect(
+        switchMode(doc({ extrude: { height: 10 } }), `symbol.extrude.${key}`, "attribute", {
+          mapZoom: 12,
+          field: "density",
+        })
+      ).toEqual(
+        doc({ extrude: { height: 10, [key]: { field: "density", range: [...range], scale: "linear" } } })
+      );
+  });
+
+  it("a value by attribute switched to zoom keeps the field at every stop (spec 4.4)", () => {
+    const size = { field: "pupils", range: [3, 10], scale: "sqrt", computed: { domain: [0, 1500] } };
+    expect(
+      switchMode(doc({ marker: { size } }), "symbol.marker.size", "zoom", { mapZoom: 12, field: "x" })
+    ).toEqual(
+      doc({
+        marker: {
+          size: {
+            zoom: [
+              [9, size],
+              [15, size],
+            ],
+          },
+        },
+      })
+    );
+    const color = { field: "pupils", palette: "d3:viridis" };
+    expect(switchMode(doc({ fill: { color } }), "symbol.fill.color", "zoom", { mapZoom: 12 })).toEqual(
+      doc({
+        fill: {
+          color: {
+            zoom: [
+              [9, color],
+              [15, color],
+            ],
+          },
+        },
+      })
+    );
+  });
+
+  it("a field's values as they are switched to zoom become plain stops, as before", () => {
+    expect(
+      switchMode(doc({ marker: { rotation: { field: "bearing" } } }), "symbol.marker.rotation", "zoom", {
+        mapZoom: 12,
+        sample: { bearing: 90 },
+      })
+    ).toEqual(
+      doc({
+        marker: {
+          rotation: {
+            zoom: [
+              [9, 90],
+              [15, 90],
+            ],
+          },
+        },
+      })
+    );
+  });
+
+  it("zoom stops by attribute switched to fixed take the nearest stop's value for the sample", () => {
+    const stops = doc({
+      marker: {
+        size: {
+          zoom: [
+            [11, { field: "p", range: [4, 20], domain: [0, 100] }],
+            [16, { field: "p", range: [8, 40], domain: [0, 100] }],
+          ],
+        },
+      },
+    });
+    expect(switchMode(stops, "symbol.marker.size", "fixed", { mapZoom: 15, sample: { p: 25 } })).toEqual(
+      doc({ marker: { size: 16 } })
+    );
+    expect(switchMode(stops, "symbol.marker.size", "fixed", { mapZoom: 11.5, sample: { p: 25 } })).toEqual(
+      doc({ marker: { size: 8 } })
+    );
+  });
+});
+
+describe("the label's Font", () => {
+  const fonts = [
+    "regular",
+    "bold",
+    "medium",
+    "light",
+    "italic",
+    "bold_italic",
+    "medium_italic",
+    "light_italic",
+  ];
+
+  it("is one of eight fonts, every weight upright and italic", () => {
+    expect(LABEL_FONT_CHOICE.values).toEqual(fonts);
+    expect(LABEL_FONT_CHOICE.read({})).toBe("regular");
+    expect(LABEL_FONT_CHOICE.read({ font: { weight: "light", style: "italic" } })).toBe("light_italic");
+    expect(LABEL_FONT_CHOICE.read({ font: { weight: "bold", style: "italic" } })).toBe("bold_italic");
+    expect(LABEL_FONT_CHOICE.read({ font: { style: "italic" } })).toBe("italic");
+    expect(LABEL_FONT_CHOICE.read({ font: { weight: "medium" } })).toBe("medium");
+  });
+
+  it("writes both keys: the layer leaves the defaults out, a class or a rule writes them", () => {
+    expect(LABEL_FONT_CHOICE.write("medium_italic", false)).toEqual({
+      "font.weight": "medium",
+      "font.style": "italic",
+    });
+    expect(LABEL_FONT_CHOICE.write("light", false)).toEqual({
+      "font.weight": "light",
+      "font.style": undefined,
+    });
+    expect(LABEL_FONT_CHOICE.write("italic", false)).toEqual({
+      "font.weight": undefined,
+      "font.style": "italic",
+    });
+    expect(LABEL_FONT_CHOICE.write("regular", true)).toEqual({
+      "font.weight": "regular",
+      "font.style": "normal",
+    });
+    for (const font of fonts) {
+      const written = LABEL_FONT_CHOICE.write(font, true);
+      expect(
+        LABEL_FONT_CHOICE.read({ font: { weight: written["font.weight"], style: written["font.style"] } })
+      ).toBe(font);
+    }
   });
 });

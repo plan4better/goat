@@ -1,9 +1,11 @@
+import { Color } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
 import { compileLayer } from "@/lib/style/compile";
 import type { CompileInput } from "@/lib/style/compile/types";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
+import { mapLook } from "./legend/mapSwatch";
 import { maplibreErrors } from "./maplibre";
 
 const compile = (
@@ -260,6 +262,36 @@ describe("points", () => {
     ]);
     expect(layout["icon-size"]).toEqual(["interpolate", ["linear"], ["zoom"], 10, 0.3333333333, 16, 1]);
     expect(valid(out)).toEqual([]);
+  });
+
+  it("a color by attribute in zoom stops (spec 4.4) on a marker image is the color a circle has at each whole zoom", () => {
+    const palette = (colors: string[]) => ({ field: "amount", palette: colors, domain: [0, 100] });
+    const color = {
+      zoom: [
+        [11, palette(["#0000ff", "#00ff00"])],
+        [15, palette(["#ff0000", "#ffff00"])],
+      ],
+    };
+    const marker = (shape: string) =>
+      compile({ version: 1, kind: "vector", symbol: { marker: { shape, color } } }, "point", {
+        fields: { amount: "number" },
+      });
+    const [pin, circle] = [marker("pin"), marker("circle")];
+    expect(valid(pin)).toEqual([]);
+    const rgba = (value: unknown) => {
+      const c = value instanceof Color ? value : Color.parse(String(value))!;
+      return [c.r, c.g, c.b].map((x) => Math.round((x / (c.a || 1)) * 255));
+    };
+    for (const zoom of [10, 11, 12, 13, 14, 15, 16])
+      for (const amount of [0, 50, 100])
+        expect(
+          rgba(mapLook(pin, { amount }, zoom, "point")["marker.color"]),
+          `zoom ${zoom}, ${amount}`
+        ).toEqual(rgba(mapLook(circle, { amount }, zoom, "point")["marker.color"]));
+    // One image per whole zoom from the first stop to the last, as for a plain color by zoom.
+    const image = (layer(pin, "marker")?.layout as Record<string, unknown>)["icon-image"] as unknown[];
+    expect(image.slice(0, 2)).toEqual(["step", ["zoom"]]);
+    expect(image.filter((_, i) => i >= 3 && i % 2 === 1)).toEqual([12, 13, 14, 15]);
   });
 
   it("markers with a shape draw where they collide unless overlap is turned off", () => {

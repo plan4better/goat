@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import en from "@/i18n/locales/en/common.json";
 
 import { scopedView } from "@/lib/style/editor/classify";
-import { colorsIn, summarize, swatchOf } from "@/lib/style/editor/summaries";
+import { LABEL_FONT_CHOICE } from "@/lib/style/editor/forms";
+import { colorsIn, compoundLabel, compoundOptions, summarize, swatchOf } from "@/lib/style/editor/summaries";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 const i18n = i18next.createInstance();
@@ -14,7 +15,7 @@ const t = i18n.t.bind(i18n);
 const doc = (symbol: object, extra: object = {}) =>
   ({ version: 1, kind: "vector", symbol, ...extra }) as LayerStyle;
 const fields = [{ name: "visitors", type: "integer" as const, label: "Visitors per year" }];
-const ctx = { fields, mapZoom: 12, geometry: "polygon" as const };
+const ctx = { fields, mapZoom: 12, geometry: "polygon" as const, language: "en" };
 
 describe("row summaries", () => {
   it("fixed values", () => {
@@ -72,6 +73,20 @@ describe("row summaries", () => {
         ctx
       )
     ).toBe("By zoom · 2 stops");
+  });
+
+  it("numbers in the panel's language, percents as the opacity's", () => {
+    const de = { ...ctx, language: "de" };
+    expect(summarize(doc({ line: { width: 2.5 } }), "symbol.line.width", t, de)).toBe("2,5 px");
+    expect(summarize(doc({ line: { width: 2.5 } }), "symbol.line.width", t, ctx)).toBe("2.5 px");
+    const widths = {
+      zoom: [
+        [10, 1.5],
+        [16, 6],
+      ],
+    };
+    expect(summarize(doc({ line: { width: widths } }), "symbol.line.width", t, de)).toBe("1,5 → 6 px");
+    expect(summarize(doc({ line: { opacity: 0.72 } }), "symbol.line.opacity", t, de)).toBe("72%");
   });
 
   it("values by attribute and by classes", () => {
@@ -176,5 +191,44 @@ describe("colors in a style", () => {
       }
     );
     expect(colorsIn(d)).toEqual(["#a1d99b", "#e6ab02"]);
+  });
+});
+
+describe("the label's Font", () => {
+  it("offers four weights under Upright and under Italic, each named in full", () => {
+    const options = compoundOptions(t, LABEL_FONT_CHOICE);
+    expect(options.map((o) => [o.group, o.label, o.short])).toEqual([
+      ["Upright", "Regular", "Regular"],
+      ["Upright", "Bold", "Bold"],
+      ["Upright", "Medium", "Medium"],
+      ["Upright", "Light", "Light"],
+      ["Italic", "Regular", "Italic"],
+      ["Italic", "Bold", "Bold italic"],
+      ["Italic", "Medium", "Medium italic"],
+      ["Italic", "Light", "Light italic"],
+    ]);
+  });
+
+  it("names each row for assistive tech with its visible text in it", () => {
+    const options = compoundOptions(t, LABEL_FONT_CHOICE);
+    expect(options.map((o) => o.ariaLabel)).toEqual([
+      "Regular",
+      "Bold",
+      "Medium",
+      "Light",
+      "Regular italic",
+      "Bold italic",
+      "Medium italic",
+      "Light italic",
+    ]);
+    for (const o of options) expect(o.ariaLabel).toContain(o.label);
+  });
+
+  it("is named by weight and style together", () => {
+    const named = (font: object) => compoundLabel(t, LABEL_FONT_CHOICE, LABEL_FONT_CHOICE.read({ font }));
+    expect(named({})).toBe("Regular");
+    expect(named({ weight: "medium", style: "italic" })).toBe("Medium italic");
+    expect(named({ weight: "light" })).toBe("Light");
+    expect(named({ weight: "bold", style: "italic" })).toBe("Bold italic");
   });
 });

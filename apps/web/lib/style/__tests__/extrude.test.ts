@@ -117,3 +117,76 @@ describe("extruded polygons", () => {
     expect(extrudes(style({ render: { type: "h3" } }))).toBe(false);
   });
 });
+
+describe("heights the panel writes (spec 3.6)", () => {
+  const DENSITY = { field: "density", range: [0, 300], domain: [0, 100] };
+
+  it("a height by attribute maps the field's domain to the range, a feature without a value at 0", () => {
+    const out = poly({ extrude: { height: DENSITY } });
+    const height = paintOf(out)["fill-extrusion-height"];
+    expect(evaluate(height, { density: 50 })).toBe(150);
+    expect(evaluate(height, { density: 100 })).toBe(300);
+    expect(evaluate(height, {})).toBe(0);
+    expect(maplibreErrors(out.layers, out.sources, out.state)).toEqual([]);
+  });
+
+  it("a range stays in metres with storeys", () => {
+    const out = poly({ extrude: { height: DENSITY, unit: "storeys" } });
+    expect(evaluate(paintOf(out)["fill-extrusion-height"], { density: 50 })).toBe(150);
+  });
+
+  it("a height by zoom whose stops hold values by attribute grows with the zoom (spec 4.4)", () => {
+    const out = poly({
+      extrude: {
+        height: {
+          zoom: [
+            [12, DENSITY],
+            [16, { ...DENSITY, range: [0, 600] }],
+          ],
+        },
+      },
+    });
+    const height = paintOf(out)["fill-extrusion-height"];
+    expect(evaluate(height, { density: 50 }, 12)).toBe(150);
+    expect(evaluate(height, { density: 50 }, 16)).toBe(300);
+    expect(maplibreErrors(out.layers, out.sources, out.state)).toEqual([]);
+  });
+
+  it("a base by zoom, by attribute or by classes stays under the height", () => {
+    const zoomed = poly({
+      extrude: {
+        height: 100,
+        base: {
+          zoom: [
+            [12, 0],
+            [16, 40],
+          ],
+        },
+      },
+    });
+    const base = paintOf(zoomed)["fill-extrusion-base"];
+    expect(evaluate(base, {}, 16)).toBe(40);
+    expect(maplibreErrors(zoomed.layers, zoomed.sources, zoomed.state)).toEqual([]);
+    const byField = poly({
+      extrude: { height: 20, base: { field: "density", range: [0, 50], domain: [0, 100] } },
+    });
+    expect(evaluate(paintOf(byField)["fill-extrusion-base"], { density: 100 })).toBe(20);
+    const classes = poly(
+      { extrude: { height: 60, base: 0 } },
+      {
+        classify: [
+          {
+            field: "use",
+            method: "categories",
+            target: "extrude.base",
+            classes: [{ values: ["shop"], extrude: { base: 10 } }],
+          },
+        ],
+      }
+    );
+    const classBase = paintOf(classes)["fill-extrusion-base"];
+    expect(evaluate(classBase, { use: "shop" })).toBe(10);
+    expect(evaluate(classBase, { use: "home" })).toBe(0);
+    expect(maplibreErrors(classes.layers, classes.sources, classes.state)).toEqual([]);
+  });
+});

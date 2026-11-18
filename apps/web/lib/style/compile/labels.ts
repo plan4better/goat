@@ -3,8 +3,8 @@
 import type { LayerSpecification } from "maplibre-gl";
 
 import { cascade, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
-import { FONT_STACKS } from "@/lib/style/compile/constants";
-import { type PartContext, makeLayer, put, withLayerOpacity } from "@/lib/style/compile/parts";
+import { fontStack } from "@/lib/style/compile/constants";
+import { type PartContext, makeLayer, onDecorations, put, withLayerOpacity } from "@/lib/style/compile/parts";
 import { extrudes, heightValue } from "@/lib/style/compile/polygons";
 import type { FieldType } from "@/lib/style/compile/types";
 import {
@@ -145,7 +145,19 @@ export function textField(template: string, ctx: TextContext): Expr {
   return exprs.length === 1 ? exprs[0] : ["concat", ...exprs];
 }
 
-/** A template whose lines have their own size, color and weight, as format sections. */
+/** A weight's stack in one style, as a literal. */
+const stackOf =
+  (style: "normal" | "italic") =>
+  (weight: unknown): Expr => ["literal", [...fontStack(weight, style)]];
+
+/** The stack of a style over the weight's upright and italic stacks (spec 16). */
+function withStyle(upright: Expr, italic: Expr, style: Expr): Expr {
+  if (typeof style === "string") return style === "italic" ? italic : upright;
+  return ["case", ["==", style, "italic"], italic, upright];
+}
+
+/** A template whose lines have their own size, color and font, as format sections. A line's font replaces the
+ * label's: a key it leaves out takes its default. */
 function formatSections(template: string, lines: JsonObject[], baseSize: number, ctx: TextContext): Expr {
   const sections: Expr[] = ["format"];
   template.split("\n").forEach((line, i) => {
@@ -153,12 +165,9 @@ function formatSections(template: string, lines: JsonObject[], baseSize: number,
     const style = lines[i] ?? {};
     const options: Record<string, unknown> = {};
     if (typeof style.size === "number") options["font-scale"] = fold(["/", style.size, baseSize]);
-    if (isObject(style.font) && typeof style.font.weight === "string") {
-      options["text-font"] = [
-        "literal",
-        FONT_STACKS[style.font.weight as keyof typeof FONT_STACKS] ?? FONT_STACKS.regular,
-      ];
-    }
+    const font = isObject(style.font) ? style.font : {};
+    if (typeof font.weight === "string" || typeof font.style === "string")
+      options["text-font"] = ["literal", [...fontStack(font.weight, font.style)]];
     if (typeof style.color === "string") options["text-color"] = style.color;
     const exprs = partExprs(parseTemplate(line), ctx);
     sections.push(exprs.length === 1 ? exprs[0] : ["concat", ...exprs], options);
@@ -166,7 +175,22 @@ function formatSections(template: string, lines: JsonObject[], baseSize: number,
   return sections;
 }
 
-const DEFAULT_PLACEMENT = { point: "auto", line: "line", polygon: "inside" } as const;
+const DEFAULT_PLACEMENT = { point: "auto", line: "line", polygon: "auto" } as const;
+
+/**
+ * The fixed placements beside a point (spec 3.4): MapLibre's text-anchor, the point of the label that sits on the
+ * feature, so the opposite of the side named; and the direction the label moves to clear the marker.
+ */
+const BESIDE: Record<string, { anchor: string; x: number; y: number }> = {
+  above: { anchor: "bottom", x: 0, y: -1 },
+  below: { anchor: "top", x: 0, y: 1 },
+  left: { anchor: "right", x: -1, y: 0 },
+  right: { anchor: "left", x: 1, y: 0 },
+  above_left: { anchor: "bottom-right", x: -1, y: -1 },
+  above_right: { anchor: "bottom-left", x: 1, y: -1 },
+  below_left: { anchor: "top-right", x: -1, y: 1 },
+  below_right: { anchor: "top-left", x: 1, y: 1 },
+};
 
 /**
  * `f` applied to each fixed offset an offset cascade can end in: the outputs of its match, case and step, or the
@@ -246,11 +270,17 @@ export function labelLayers(ctx: PartContext): LayerSpecification[] {
     ),
     "text-size": toProperty(size),
   };
+  // The stack follows both keys, each by zoom and per class.
   const font = toProperty(
-    cascade(style, "label.font.weight", {
-      ...c,
-      map: (w) => ["literal", FONT_STACKS[w as keyof typeof FONT_STACKS] ?? FONT_STACKS.regular],
-    })
+    combine(
+      [
+        cascade(style, "label.font.weight", { ...c, map: stackOf("normal") }),
+        cascade(style, "label.font.weight", { ...c, map: stackOf("italic") }),
+        cascade(style, "label.font.style", c),
+      ],
+      ([upright, italic, fontStyle]) => withStyle(upright, italic, fontStyle),
+      { step: true, kind: "choice" }
+    )
   );
   layout["text-font"] = Array.isArray(font) && font[0] === "literal" ? font[1] : font;
   put(
@@ -261,37 +291,73 @@ export function labelLayers(ctx: PartContext): LayerSpecification[] {
     "label.max_width"
   );
 
+  put(layout, "text-transform", cascade(style, "label.transform", c), ctx, "label.transform");
+  put(
+    layout,
+    "text-letter-spacing",
+    cascade(style, "label.letter_spacing", { ...c, kind: "number" }),
+    ctx,
+    "label.letter_spacing"
+  );
+  // One line height for the whole layer (MapLibre takes no value per feature), fixed or by zoom.
+  put(
+    layout,
+    "text-line-height",
+    fromForm(perLayer(style, "label.line_height"), "number", DEFAULTS["label.line_height"]),
+    ctx,
+    "label.line_height"
+  );
+
   let sourceLayer = "default";
   const placement = perLayer(style, "label.placement") ?? DEFAULT_PLACEMENT[geometry];
   // Offsets vary per feature and by zoom (spec 4.5); MapLibre takes them in ems of the label size.
   const em = (px: number) => fold(["/", px, baseSize]) as number;
   const offset = cascade(style, "label.offset", { ...c, map: (o) => ["literal", o] });
-  if (geometry === "point" && (placement === "auto" || placement === "above")) {
+  const withMarker = partUsed(style, "marker", geometry);
+  // A line's label sits along the line or at its center point; there, as on a polygon's label point, it takes the
+  // positions of a point's label around the marker (spec 3.4).
+  const side = typeof placement === "string" && placement in BESIDE ? BESIDE[placement] : undefined;
+  const center =
+    geometry === "line" && (placement === "center" || placement === "auto" || side !== undefined);
+  // A GeoJSON line has no center point: MapLibre places the label at the middle of the line itself, where a fixed
+  // anchor and offset move it but no variable anchors.
+  const lineMiddle = center && !ctx.vectorSource;
+  // `auto` beside the marker; on an area or a line without one it stays in the middle, as `inside` and `center` do.
+  const around =
+    side !== undefined || (placement === "auto" && (geometry === "point" || (withMarker && !lineMiddle)));
+  if (around) {
     // Around the marker: half its size plus 2 px, per zoom stop when the base size varies by zoom (spec 16).
-    const marker = partUsed(style, "marker", "point")
+    const marker = withMarker
       ? fromForm(baseMarkerSize(style), "number", DEFAULTS["marker.size"])
       : { expr: 0 };
-    const fallbackSize = partUsed(style, "marker", "point") ? baseNumber(style, "marker", "size") : 0;
-    const around = combine(
+    const fallbackSize = withMarker ? baseNumber(style, "marker", "size") : 0;
+    const offsets = combine(
       [marker, offset],
       ([size, o]) =>
         eachOffset(o, ([x, y]) => {
           const d = em((typeof size === "number" ? size : fallbackSize) / 2 + 2);
-          const at = (ax: number, ay: number) => [fold(["+", ax, em(x)]), fold(["+", ay, em(y)])];
+          const shift = (ax: number, ay: number) => [fold(["+", ax, em(x)]), fold(["+", ay, em(y)])];
           return [
             "literal",
-            placement === "auto"
-              ? ["top", at(0, d), "bottom", at(0, -d), "right", at(-d, 0), "left", at(d, 0)]
-              : at(0, -d),
+            side
+              ? shift(side.x * d, side.y * d)
+              : ["top", shift(0, d), "bottom", shift(0, -d), "right", shift(-d, 0), "left", shift(d, 0)],
           ];
         }),
       { kind: "number" }
     );
-    if (placement === "auto") {
-      layout["text-variable-anchor-offset"] = bare(toProperty(around));
+    if (side) {
+      // A fixed side: the label is dropped on a collision, never moved to another side.
+      layout["text-anchor"] = side.anchor;
+      // Upright beside the marker, which stands upright at the line's middle too.
+      if (lineMiddle) layout["text-rotation-alignment"] = "viewport";
+      layout["text-offset"] = bare(toProperty(offsets));
+      // Beside the marker the lines line up on its side; above and below it they stay centred (MapLibre's default).
+      if (side.x !== 0) layout["text-justify"] = "auto";
     } else {
-      layout["text-anchor"] = "bottom";
-      layout["text-offset"] = bare(toProperty(around));
+      layout["text-variable-anchor-offset"] = bare(toProperty(offsets));
+      // The lines of a label beside the marker line up on the marker's side; above and below it they stay centred.
+      layout["text-justify"] = "auto";
     }
   } else if (moved(offset)) {
     layout["text-offset"] = bare(
@@ -300,13 +366,17 @@ export function labelLayers(ctx: PartContext): LayerSpecification[] {
       )
     );
   }
-  if (geometry === "line" && placement === "line") layout["symbol-placement"] = "line";
-  if (geometry === "line" && placement === "center") {
-    sourceLayer = "default_decoration";
-    ctx.out.tileParams.decorations = [
-      ...new Set([...(ctx.out.tileParams.decorations ?? []), "center" as const]),
-    ];
+  // Unset, MapLibre's own spacing (250 px) and padding (2 px) are the defaults (spec 18.2).
+  const perLayerNumber = (path: string) =>
+    toProperty(fromForm(perLayer(style, path), "number", DEFAULTS[path] as number));
+  if (geometry === "line" && placement === "line") {
+    layout["symbol-placement"] = "line";
+    if (isSet(style, "label.spacing")) layout["symbol-spacing"] = perLayerNumber("label.spacing");
   }
+  if (isSet(style, "label.padding")) layout["text-padding"] = perLayerNumber("label.padding");
+  if (center && ctx.vectorSource) sourceLayer = "default_decoration";
+  // GeoJSON lines carry no center points: MapLibre places the label at the middle of the line.
+  else if (center) layout["symbol-placement"] = "line-center";
   if (geometry === "polygon") {
     sourceLayer = "default_anchor";
     ctx.out.tileParams.label = true;
@@ -331,5 +401,6 @@ export function labelLayers(ctx: PartContext): LayerSpecification[] {
     ctx,
     "label.opacity"
   );
-  return [makeLayer(ctx, "label", "symbol", "label", layout, paint, sourceLayer, { ordered: false })];
+  const label = makeLayer(ctx, "label", "symbol", "label", layout, paint, sourceLayer, { ordered: false });
+  return [center ? onDecorations(ctx, ["center"], label) : label];
 }

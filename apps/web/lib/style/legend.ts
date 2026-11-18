@@ -1,15 +1,17 @@
 // Legend data of a layer style (spec 7.2): sections of entries with swatches, ramps for palettes by attribute,
 // size samples for ranges. Swatches hold fixed values at a zoom; the legend components draw them.
 import { perLayer } from "@/lib/style/compile/cascade";
+import { markersAsImages } from "@/lib/style/compile/points";
 import { extrudes } from "@/lib/style/compile/polygons";
-import { DEFAULT_CLUSTER_SYMBOL, h3Resolution, h3Scale } from "@/lib/style/compile/render";
+import { DEFAULT_CLUSTER_SYMBOL, h3Resolution, h3Scale, pointsSymbol } from "@/lib/style/compile/render";
 import type { Geometry } from "@/lib/style/compile/types";
-import { fromForm, valueAt } from "@/lib/style/compile/values";
+import { type Kind, fromForm, isZoomed, valueAt } from "@/lib/style/compile/values";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { PROPERTY_KINDS } from "@/lib/style/generated/properties";
 import { type JsonObject, isObject } from "@/lib/style/json";
+import { paletteSteps } from "@/lib/style/palettes";
 import { rasterColorSpec } from "@/lib/style/raster/color";
 
 type Part = Record<string, unknown>;
@@ -21,16 +23,25 @@ export interface Swatch {
   line?: Part;
   casing?: Part;
   marker?: Part;
+  /** The icon a line's arrows draw where the style picks one (spec 3.2 `arrows.icon`), with its color, direction,
+   * placement and whether it turns with the line; none for GOAT's own arrow. */
+  arrows?: Part;
+  /** A cluster's number on a badge at the marker's upper right (spec 8.2 `count: badge`): its fill, number and ring
+   * colors. */
+  badge?: { color: string; text: string; ring: string };
 }
+
+/** How an H3 cell's or a cluster's value is computed from its points (spec 8.2, 8.3). */
+export type ValueOp = "count" | "sum" | "mean" | "min" | "max";
 
 export interface LegendEntry {
   id: string;
   name?: string;
   values?: Array<string | number | boolean>;
   range?: { from?: number; to?: number };
-  /** The classification's Other or No data record, the layer's clusters, its H3 cells in one color, or the
-   * features no rule matches (`rest`). */
-  extra?: "other" | "no_data" | "cluster" | "h3" | "rest";
+  /** The classification's Other or No data record, the layer's clusters, its H3 cells in one color, the
+   * features no rule matches (`rest`), or the base look of the single points below the clusters (`points`). */
+  extra?: "other" | "no_data" | "cluster" | "h3" | "rest" | "points";
   /** The height in metres a class of the height gives its features. */
   height?: number;
   swatch: Swatch;
@@ -52,8 +63,8 @@ export type LegendSection =
        * list writes them. */
       unit?: string;
       format?: RangeFormat;
-      /** H3: how the cell value is computed. */
-      op?: "count" | "sum" | "mean";
+      /** H3 and clusters: how the cell's or the cluster's value is computed. */
+      op?: ValueOp;
       /** The classification sets a size (a marker's size, a line's or an outline's width): its entries are drawn
        * at sizes in the ratio the classes have. Every other block keeps its swatches in one fixed box. */
       sized?: boolean;
@@ -71,12 +82,20 @@ export type LegendSection =
       title?: string;
       /** The field a value form reads. */
       field?: string;
+      /** A cluster value by the field (spec 8.2 `value`): how it is computed. */
+      op?: ValueOp;
       /** A density without numbers (a heatmap): the ends read low and high. */
       ends?: "low_high";
       colors: string[];
+      /** Where each color sits along the ramp, 0 (the domain's start) to 1 (its end); without them the colors are
+       * spread evenly. Two colors at one place are a hard step (a raster's stops at their values, spec 9.3). */
+      positions?: number[];
       domain: [number, number];
       /** The value at the middle of the ramp, where the scale is not linear. */
       middle?: number;
+      /** The features' own opacity the colors are drawn at (a fill's, the hexagons', a heatmap's), where it is below
+       * 1; the layer's opacity is never in it. */
+      opacity?: number;
       /** The unit after the end values, and words in place of them (raster legends, spec 9.2). */
       unit?: string;
       labels?: [string | undefined, string | undefined];
@@ -106,6 +125,8 @@ export type LegendSection =
       title?: string;
       /** The field the sizes follow. */
       field?: string;
+      /** A cluster value by the field (spec 8.2 `value`): how it is computed. */
+      op?: ValueOp;
       samples: Array<{ value: number; swatch: Swatch }>;
     };
 
@@ -142,10 +163,11 @@ export function legendClasses(style: JsonObject): LegendClasses {
 export const itemKey = (item: JsonObject, index: number): string =>
   typeof item.id === "string" ? item.id : String(index);
 
-const PARTS: Record<Geometry, Array<keyof Omit<Swatch, "geometry">>> = {
+const PARTS: Record<Geometry, Array<keyof Omit<Swatch, "geometry" | "badge">>> = {
   point: ["marker", "outline"],
-  line: ["casing", "line"],
-  polygon: ["fill", "outline"],
+  // A marker on a line or a polygon draws in its middle (spec 3.3).
+  line: ["casing", "line", "marker"],
+  polygon: ["fill", "outline", "marker"],
 };
 
 const KEYS: Record<string, string[]> = {
@@ -158,6 +180,27 @@ const KEYS: Record<string, string[]> = {
 
 /** The properties whose classes are sizes. */
 const SIZES = new Set(["marker.size", "line.width", "outline.width"]);
+
+/** What the legend draws (spec 7.2): the properties a swatch shows (`swatch`: the parts' KEYS, a marker's icon and
+ * hollow fill, a pattern's color and spacing, the arrows' color) and the height a class of the height writes beside
+ * its entry. A label's text, color and font, a marker's rotation and offset, a line's offset or blur draw nothing in a
+ * swatch. */
+const DRAWN = new Set([
+  ...Object.entries(KEYS).flatMap(([part, keys]) => keys.map((key) => `${part}.${key}`)),
+  "marker.icon",
+  "marker.fill",
+  "fill.pattern_color",
+  "fill.pattern_spacing",
+  "fill.pattern_width",
+  "arrows.color",
+  "extrude.height",
+]);
+
+/** Whether the legend shows a classification: it sets something the legend draws (its target; without one, the main
+ * color). One that sets nothing it draws (a label's font) has no block of its own, joins none of its field's, and is
+ * not counted for `legend.classes`; its classes hidden with the eye still hide their features, on the map and so in the
+ * legend. */
+export const legendDraws = (c: JsonObject): boolean => typeof c.target !== "string" || DRAWN.has(c.target);
 
 const MAIN: Record<Geometry, string> = { point: "marker", line: "line", polygon: "fill" };
 
@@ -185,6 +228,13 @@ export const classificationProperty = (c: JsonObject, geometry: Geometry): strin
 
 const list = (value: unknown): JsonObject[] => (Array.isArray(value) ? value.filter(isObject) : []);
 
+/** A polygon's or a line's marker alone (spec 7.2): what a block of the marker's sizes shows, as for points; in neutral
+ * grey where the block sets no color. */
+function markerAlone(swatch: Swatch, neutral = false): Swatch {
+  if (swatch.geometry === "point" || !swatch.marker) return swatch;
+  return { geometry: "point", marker: neutral ? { ...swatch.marker, color: LEGEND_NEUTRAL } : swatch.marker };
+}
+
 /** Sizes and widths: read at one zoom whatever the map's. A legend whose symbols grow and shrink with the zoom
  * jumps; colors and every other value follow the map's zoom, so a swatch shows the color on screen. */
 const STEADY = new Set(["marker.size", "line.width", "outline.width", "casing.width"]);
@@ -194,6 +244,17 @@ function steadyZoom(form: unknown, zoom: number): number {
   const stops = isObject(form) && Array.isArray(form.zoom) ? (form.zoom as unknown[][]) : [];
   const [first, last] = [stops[0]?.[0], stops[stops.length - 1]?.[0]];
   return typeof first === "number" && typeof last === "number" ? (first + last) / 2 : zoom;
+}
+
+/** The colors a layer draws inside images (compile/imageNames.ts): a pattern's, and where its markers are images, a
+ * marker's fill and icon, and its stroke on points. MapLibre picks an image once per tile, at the tile's whole zoom
+ * (the map's zoom rounded down), and the image's name holds its colors at every whole zoom between their stops
+ * (`everyZoom`): such a color is read at that whole zoom, every other color at the zoom itself. */
+function imageColors(style: JsonObject, geometry: Geometry): Set<string> {
+  const markers = markersAsImages(style, geometry)
+    ? ["marker.color", "marker.icon_color", ...(geometry === "point" ? ["outline.color"] : [])]
+    : [];
+  return new Set(["fill.pattern_color", ...markers]);
 }
 
 /** A part key's value at `zoom`: fixed, or taken from its zoom stops; a value by attribute shows the reference. */
@@ -206,27 +267,142 @@ function resolve(form: unknown, path: string, zoom: number): unknown {
   return Array.isArray(at) || isObject(at) ? DEFAULTS[path] : at;
 }
 
-/** The base merged with a record's overrides (spec 6.1): `false` switches a part off, an object switches it on.
- * `neutral`: the main part's color the record does not set itself is neutral grey (a classification that sets no
- * color). */
+/** A value by attribute (spec 4.3): a field's value, mapped or used as it is. */
+const byField = (value: unknown): value is JsonObject => isObject(value) && typeof value.field === "string";
+
+/** The stops of a value by zoom whose stops hold values by attribute (spec 4.4); null for any other value. */
+function fieldStops(form: unknown): Array<[number, unknown]> | null {
+  if (!isObject(form) || !Array.isArray(form.zoom)) return null;
+  const stops = (form.zoom as unknown[]).filter(
+    (stop): stop is [number, unknown] => Array.isArray(stop) && typeof stop[0] === "number"
+  );
+  return stops.some(([, value]) => byField(value)) ? stops : null;
+}
+
+/** Whether a value follows a field, at every zoom (spec 4.3) or in its zoom stops (spec 4.4): no one value to show. */
+const followsField = (form: unknown): boolean => byField(form) || fieldStops(form) !== null;
+
+/** The stops a value by zoom reads at `zoom`, as the compiler's `valueAt` reads them: the first or the last beyond
+ * them, the one the zoom is on or a step holds, else the two around the zoom. */
+function stopsAround<T>(stops: Array<[number, T]>, zoom: number, step: boolean): Array<[number, T]> {
+  const last = stops.length - 1;
+  if (zoom <= stops[0][0]) return [stops[0]];
+  if (zoom >= stops[last][0]) return [stops[last]];
+  const i = stops.findIndex(([z], k) => z <= zoom && zoom < stops[k + 1][0]);
+  return zoom === stops[i][0] || step ? [stops[i]] : [stops[i], stops[i + 1]];
+}
+
+/** A palette's colors, turned round where the form says so, or a fixed color alone; none for any other value. */
+function colorsOf(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (!byField(value) || !("palette" in value)) return [];
+  const colors = Array.isArray(value.palette)
+    ? [...(value.palette as string[])]
+    : [...(PALETTES[value.palette as string]?.colors ?? [])];
+  if (value.reverse === true) colors.reverse();
+  return colors;
+}
+
+/** A value by attribute as the map draws it at `zoom`, for its ramp or its size samples: the form whose field, title,
+ * scale and domain they show and, for a range, its output at a value of the field. A value by zoom with values by
+ * attribute in its stops (spec 4.4) is read as the compiler reads it: at or beyond a stop, or on a step, that stop's
+ * form; between two stops both outputs, blended by the stops' own curve (a palette color by color, both spread over as
+ * many colors as the longer one has; two palettes over different domains or scales are no one ramp, so the stop
+ * nearer the zoom stands for them). Null where those stops follow more than one field or a domain is not computed
+ * yet. */
+function formAt(
+  form: unknown,
+  zoom: number
+): { form: JsonObject; domain: [number, number]; output: (v: number) => number } | null {
+  if (byField(form)) {
+    const domain = domainOf(form);
+    return domain ? { form, domain, output: (v) => rangeOutput(form, domain, v) } : null;
+  }
+  const stops = fieldStops(form);
+  if (!stops) return null;
+  const kind = stops.some(([, v]) => byField(v) && "palette" in v) ? "color" : "number";
+  const value = fromForm(form, kind, null);
+  if (!isZoomed(value)) return null;
+  const around = stopsAround(stops, zoom, value.interpolate === "step");
+  const blend = (outputs: unknown[], as: Kind = kind) =>
+    valueAt(
+      { interpolate: value.interpolate, stops: around.map(([z], i) => [z, outputs[i]]), kind: as },
+      zoom
+    );
+  const forms = around.map(([, v]) => v).filter(byField);
+  const domains = forms.map(domainOf);
+  if (!forms.length || forms.some((f) => f.field !== forms[0].field) || domains.some((d) => !d)) return null;
+  const [own, domain] = [forms[0], domains[0]!];
+  if (kind === "color") {
+    const lists = around.map(([, v]) => colorsOf(v));
+    if (lists.some((colors) => !colors.length)) return null;
+    const [a, b] = domains as Array<[number, number]>;
+    if (
+      b &&
+      ((forms[0].scale ?? "linear") !== (forms[1].scale ?? "linear") || a[0] !== b[0] || a[1] !== b[1])
+    )
+      return formAt(forms[(blend([0, 1], "number") as number) < 0.5 ? 0 : 1], zoom);
+    const n = Math.max(...lists.map((colors) => colors.length));
+    const even = lists.map((colors) => (colors.length === n ? colors : paletteSteps(colors, n)));
+    const palette = even[0].map((_, k) => String(blend(even.map((colors) => colors[k]))));
+    return { form: { ...own, palette, reverse: false }, domain, output: () => NaN };
+  }
+  const outputs = (v: number) =>
+    around.map(([, s]) =>
+      typeof s === "number" ? s : byField(s) && Array.isArray(s.range) ? rangeOutput(s, domainOf(s)!, v) : NaN
+    );
+  if (!outputs(domain[0]).every(Number.isFinite)) return null;
+  return { form: own, domain, output: (v) => blend(outputs(v)) as number };
+}
+
+/** The icon a line's arrows draw where the style picks one (spec 3.2 `arrows.icon`), in the arrows' color or the
+ * line's; none for GOAT's own arrow, and none where the base or the record switches the arrows off. */
+function arrowsSwatch(
+  style: JsonObject,
+  base: unknown,
+  over: unknown,
+  lineColor: unknown,
+  zoom: number
+): Part | undefined {
+  if (base === false || over === false || !(isObject(base) || isObject(over))) return undefined;
+  const icon = perLayer(style, "arrows.icon");
+  if (typeof icon !== "string" || icon === DEFAULTS["arrows.icon"]) return undefined;
+  const merged: JsonObject = { ...(isObject(base) ? base : {}), ...(isObject(over) ? over : {}) };
+  return {
+    icon,
+    color:
+      (merged.color !== undefined ? resolve(merged.color, "arrows.color", zoom) : undefined) ?? lineColor,
+    direction: perLayer(style, "arrows.direction"),
+    placement: perLayer(style, "arrows.placement"),
+    turn_with_line: perLayer(style, "arrows.turn_with_line"),
+  };
+}
+
+/** The base merged with a record's overrides (spec 6.1): `false` switches a part off, an object switches on a part the
+ * base leaves out; a part the base switches off stays off. An outline in the fill color takes the color the main part
+ * would have, drawn or not. `neutral`: the main part's color the record does not set itself is neutral grey (a
+ * classification that sets no color). `images`: the style's `imageColors`, worked out once per legend. */
 function swatch(
   style: JsonObject,
   geometry: Geometry,
   zoom: number,
   override?: JsonObject,
-  neutral = false
+  neutral = false,
+  images = imageColors(style, geometry)
 ): Swatch {
   const symbol = isObject(style.symbol) ? style.symbol : {};
   const out: Swatch = { geometry };
+  const at = (path: string) => (images.has(path) ? Math.floor(zoom) : zoom);
+  let mainColor: unknown;
   for (const part of PARTS[geometry]) {
     const base = symbol[part];
     const over = override?.[part];
     const used = part === MAIN[geometry] || isObject(base) || isObject(over);
-    if (!used || over === false || (base === false && !isObject(over))) continue;
     const merged: JsonObject = { ...(isObject(base) ? base : {}), ...(isObject(over) ? over : {}) };
+    if (part === MAIN[geometry]) mainColor = resolve(merged.color, `${part}.color`, at(`${part}.color`));
+    if (!used || over === false || base === false) continue;
     // A main color by attribute has no one color to show (its ramp stands beside the entries): neutral grey.
-    if (part === MAIN[geometry] && isObject(merged.color) && typeof merged.color.field === "string")
-      merged.color = LEGEND_NEUTRAL;
+    if (part === MAIN[geometry] && followsField(merged.color)) merged.color = LEGEND_NEUTRAL;
     if (neutral && part === MAIN[geometry]) {
       const own = isObject(over) ? over : {};
       if (own.color === undefined) merged.color = LEGEND_NEUTRAL;
@@ -234,7 +410,8 @@ function swatch(
         merged.icon_color = LEGEND_NEUTRAL;
     }
     const resolved: Part = {};
-    for (const key of KEYS[part]) resolved[key] = resolve(merged[key], `${part}.${key}`, zoom);
+    for (const key of KEYS[part])
+      resolved[key] = resolve(merged[key], `${part}.${key}`, at(`${part}.${key}`));
     if (part === "marker" && merged.icon !== undefined)
       resolved.icon = resolve(merged.icon, "marker.icon", zoom);
     // A hollow marker (spec 3.3): its outline and icon only, the icon in the marker color unless it has its own.
@@ -243,16 +420,25 @@ function swatch(
       if (merged.icon_color === undefined) resolved.icon_color = resolved.color;
     }
     if (part === "fill" && resolved.pattern !== "none") {
-      resolved.pattern_color = merged.pattern_color ?? resolved.color;
+      // In the fill color unless it has its own, drawn in an image.
+      resolved.pattern_color = followsField(merged.pattern_color)
+        ? merged.pattern_color
+        : merged.pattern_color !== undefined
+          ? resolve(merged.pattern_color, "fill.pattern_color", at("fill.pattern_color"))
+          : resolve(merged.color, "fill.color", at("fill.pattern_color"));
       for (const key of ["pattern_spacing", "pattern_width"])
         resolved[key] = resolve(merged[key], `fill.${key}`, zoom);
     }
     if (part === "outline" && resolved.color === "fill")
       resolved.color =
-        geometry === "point"
-          ? (out.marker?.color ?? DEFAULTS["marker.color"])
-          : (out.fill?.color ?? DEFAULTS["fill.color"]);
+        (geometry === "point" ? out.marker?.color : out.fill?.color) ??
+        mainColor ??
+        DEFAULTS[geometry === "point" ? "marker.color" : "fill.color"];
     out[part] = resolved;
+  }
+  if (geometry === "line") {
+    const arrows = arrowsSwatch(style, symbol.arrows, override?.arrows, out.line?.color, zoom);
+    if (arrows) out.arrows = arrows;
   }
   return out;
 }
@@ -283,52 +469,82 @@ export function scaleValue(form: JsonObject, [d0, d1]: [number, number], t: numb
   return d0 + t * (d1 - d0);
 }
 
-/** The output of a range form at `v`, by its scale (spec 5.8), rounded to 0.1. */
-export function scaled(form: JsonObject, domain: [number, number], v: number): number {
+/** The output of a range form at `v`, by its scale (spec 5.8). */
+function rangeOutput(form: JsonObject, domain: [number, number], v: number): number {
   const [r0, r1] = form.range as number[];
   const t = scaleT(form, domain, v);
-  const out = Number.isFinite(t) ? r0 + t * (r1 - r0) : r0;
-  return Math.round(out * 10) / 10;
+  return Number.isFinite(t) ? r0 + t * (r1 - r0) : r0;
 }
 
-/** Sections for the base symbol's value forms by attribute: a ramp per palette, three samples per range. */
-function valueFormSections(style: JsonObject, geometry: Geometry, zoom: number): LegendSection[] {
+/** The output of a range form at `v`, by its scale (spec 5.8), rounded to 0.1. */
+export function scaled(form: JsonObject, domain: [number, number], v: number): number {
+  return Math.round(rangeOutput(form, domain, v) * 10) / 10;
+}
+
+/** A ramp's opacity (`opacity` in a ramp section): none at full strength. */
+const rampOpacity = (opacity: number): { opacity?: number } => (opacity < 1 ? { opacity } : {});
+
+/** A heatmap's or the hexagons' own opacity at `zoom`: fixed, or taken from its zoom stops; the default where it has
+ * no one value. */
+function renderOpacity(form: unknown, fallback: number, zoom: number): number {
+  const at = valueAt(fromForm(form, "number", fallback), zoom);
+  return typeof at === "number" ? at : fallback;
+}
+
+/** The opacity a part's color by attribute is drawn at, as the base swatch shows the part: a pattern draws at full
+ * strength whatever the fill's opacity, and a hollow marker is not faded by its own. */
+function partOpacity(base: Swatch, part: keyof Omit<Swatch, "geometry" | "badge">, key: string): number {
+  const own = base[part];
+  if (key === "pattern_color" || !own || (part === "marker" && own.fill === false)) return 1;
+  return typeof own.opacity === "number" ? own.opacity : 1;
+}
+
+/** Sections for the base symbol's value forms by attribute, also those in zoom stops (spec 4.4): a ramp per palette,
+ * at its part's opacity, three samples per range. Sizes by zoom are read at the middle of their stops, a color drawn
+ * in an image at the whole zoom (imageColors), every other value at the zoom. */
+function valueFormSections(
+  style: JsonObject,
+  geometry: Geometry,
+  zoom: number,
+  images = imageColors(style, geometry)
+): LegendSection[] {
   const symbol = isObject(style.symbol) ? style.symbol : {};
   const sections: LegendSection[] = [];
+  // The base look: the opacity of each part a ramp colors, at the zoom (an opacity by attribute shows the default).
+  const base = swatch(style, geometry, zoom, undefined, false, images);
   for (const part of PARTS[geometry]) {
     const node = symbol[part];
     if (!isObject(node)) continue;
-    for (const [key, form] of Object.entries(node)) {
-      if (!isObject(form) || typeof form.field !== "string") continue;
-      const domain = domainOf(form);
-      if (!domain) continue;
+    for (const [key, value] of Object.entries(node)) {
       const id = `${part}.${key}`;
+      const at = formAt(
+        value,
+        STEADY.has(id) ? steadyZoom(value, zoom) : images.has(id) ? Math.floor(zoom) : zoom
+      );
+      if (!at) continue;
+      const { form, domain } = at;
       const title = typeof form.title === "string" ? form.title : undefined;
       if ("palette" in form) {
-        const colors = Array.isArray(form.palette)
-          ? [...(form.palette as string[])]
-          : [...(PALETTES[form.palette as string]?.colors ?? [])];
-        if (form.reverse === true) colors.reverse();
         const curved = form.scale === "sqrt" || form.scale === "log";
         sections.push({
           kind: "ramp",
           id,
           title,
-          field: form.field,
-          colors,
+          field: form.field as string,
+          colors: colorsOf(form),
           domain,
           // Three significant digits: a guide to where the middle sits, not a value to read exactly.
           ...(curved ? { middle: Number(scaleValue(form, domain, 0.5).toPrecision(3)) } : {}),
+          ...rampOpacity(partOpacity(base, part, key)),
         });
       } else if (Array.isArray(form.range)) {
         const samples = [0, 0.5, 1].map((t) => {
           const value = domain[0] + t * (domain[1] - domain[0]);
-          return {
-            value,
-            swatch: swatch(style, geometry, zoom, { [part]: { [key]: scaled(form, domain, value) } }),
-          };
+          const size = Math.round(at.output(value) * 10) / 10;
+          const sample = swatch(style, geometry, zoom, { [part]: { [key]: size } }, false, images);
+          return { value, swatch: part === "marker" ? markerAlone(sample) : sample };
         });
-        sections.push({ kind: "sizes", id, title, field: form.field, samples });
+        sections.push({ kind: "sizes", id, title, field: form.field as string, samples });
       }
     }
   }
@@ -345,10 +561,11 @@ function rasterSections(style: JsonObject, serviceLegendUrl?: string): LegendSec
   const legend = isObject(style.legend) ? style.legend : {};
   const text = (v: unknown) => (typeof v === "string" && v ? v : undefined);
   const ends: [string | undefined, string | undefined] = [text(legend.min_label), text(legend.max_label)];
-  const ramp = (colors: string[], domain: [number, number]): LegendSection => ({
+  const ramp = (colors: string[], domain: [number, number], positions?: number[]): LegendSection => ({
     kind: "ramp",
     id: "raster",
     colors,
+    ...(positions ? { positions } : {}),
     domain,
     ...(text(legend.unit) ? { unit: text(legend.unit) } : {}),
     ...(ends.some(Boolean) ? { labels: ends } : {}),
@@ -356,13 +573,29 @@ function rasterSections(style: JsonObject, serviceLegendUrl?: string): LegendSec
   const fill = (color: string): Swatch => ({ geometry: "polygon", fill: { color } });
   // A ramp without a domain shows none until the server computed the band's range (spec 12).
   if (spec.kind === "ramp") return spec.domain ? [ramp(spec.colors, spec.domain)] : [];
-  if (spec.kind === "stops")
+  if (spec.kind === "stops") {
+    const { stops } = spec;
+    const domain: [number, number] = [stops[0].value, stops[stops.length - 1].value];
+    const span = domain[1] - domain[0];
+    if (!(span > 0)) return [ramp([stops[0].color], domain)];
+    const at = (value: number) => (value - domain[0]) / span;
+    // Each stop's color at its value, blended between; nearest stops hold their color up to the midpoints to their
+    // neighbours, a midpoint itself in the lower color (as the raster service paints them).
+    const placed =
+      spec.interpolate === "nearest"
+        ? stops.flatMap((s, i) => [
+            { color: s.color, at: i === 0 ? 0 : at((stops[i - 1].value + s.value) / 2) },
+            { color: s.color, at: i === stops.length - 1 ? 1 : at((s.value + stops[i + 1].value) / 2) },
+          ])
+        : stops.map((s) => ({ color: s.color, at: at(s.value) }));
     return [
       ramp(
-        spec.stops.map((s) => s.color),
-        [spec.stops[0].value, spec.stops[spec.stops.length - 1].value]
+        placed.map((s) => s.color),
+        domain,
+        placed.map((s) => s.at)
       ),
     ];
+  }
   if (spec.kind === "classes") {
     const written = list(isObject(render.classify) ? render.classify.classes : undefined);
     const entries = spec.classes.flatMap((c, i): LegendEntry[] =>
@@ -396,35 +629,40 @@ function rasterSections(style: JsonObject, serviceLegendUrl?: string): LegendSec
             },
           ]
     );
+    // Values no class names take the other color, as the vector legend's Other entry shows them.
+    if (spec.other !== null) entries.push({ id: "other", extra: "other", swatch: fill(spec.other) });
     return entries.length ? [{ kind: "entries", id: "raster", entries }] : [];
   }
   return [];
 }
 
-/** Whether a legend says more than the layer's base look, which a swatch beside the layer's name already shows. */
-/** Two records of one class merged: the later one's parts over the earlier's, as the map applies them (spec 5.7). */
+/** Two records of one class merged: the later one's parts over the earlier's, as the map applies them (spec 5.7). The
+ * class keeps the earlier one's id (or none): the first classification's counts and the legend's entries read it. */
 function mergeRecords(a: unknown, b: unknown): JsonObject | undefined {
   if (!isObject(a)) return isObject(b) ? b : undefined;
   if (!isObject(b)) return a;
   const out: JsonObject = { ...a };
-  for (const [key, value] of Object.entries(b))
+  for (const [key, value] of Object.entries(b)) {
+    if (key === "id") continue;
     out[key] = isObject(value) && isObject(out[key]) ? { ...(out[key] as JsonObject), ...value } : value;
+  }
   return out;
 }
 
 /** What a classification's classes hold: their values (categories) or their bounds (numeric classes). */
 const classValues = (c: JsonObject) => JSON.stringify(list(c.classes).map((k) => [k.values, k.from, k.to]));
 
-/** The shown classifications, those of one field with the same classes as one (the same categories, or the same
- * numeric bounds): a class shows everything the classifications set for it (a size and a color by the same field
- * are one list). `key` is the first one's: its counts stand for the others, which hold the same features. */
+/** The shown classifications (`legendDraws`), those of one field with the same classes as one (the same categories,
+ * or the same numeric bounds): a class shows everything the classifications set for it (a size and a color by the
+ * same field are one list). `key` is the first one's: its counts stand for the others, which hold the same features,
+ * and its classes' ids are the entries' ids. */
 function legendClassifications(
   style: JsonObject,
   geometry: Geometry
 ): Array<{ c: JsonObject; targets: string[]; key: string }> {
   const out: Array<{ c: JsonObject; targets: string[]; key: string }> = [];
   for (const [index, c] of list(style.classify).entries()) {
-    if (c.legend === false) continue;
+    if (c.legend === false || !legendDraws(c)) continue;
     const same = out.find(
       ({ c: o }) =>
         (o.method === "categories") === (c.method === "categories") &&
@@ -445,6 +683,23 @@ function legendClassifications(
   }
   return out;
 }
+
+/** The legend's blocks of classes (spec 7.2): each one's section id and the properties it stands for, its own
+ * classification's and those of the classifications of its field merged into it. */
+export function legendBlocks(
+  style: JsonObject,
+  geometry: Geometry
+): Array<{ id: string; targets: string[] }> {
+  return legendClassifications(style, geometry).map(({ c, targets }) => ({
+    id: typeof c.id === "string" ? c.id : String(c.field),
+    targets,
+  }));
+}
+
+/** The rules the legend lists (spec 7.2): those with a name, not left out; a rule that hides its features draws
+ * nothing, so it has no entry either. An entry's id is its rule's `itemKey` among these. */
+export const listedRules = (style: JsonObject): JsonObject[] =>
+  list(style.rules).filter((r) => typeof r.name === "string" && r.legend !== false && r.visible !== false);
 
 /** The Height line of a layer that raises its features (3D spec 7.7): how the base height is set, or the classes a
  * classification of the height makes; H3 columns follow the cell value. */
@@ -479,8 +734,15 @@ function heightSection(style: JsonObject, geometry: Geometry): LegendSection | n
   const form = part.height ?? DEFAULTS["extrude.height"];
   if (typeof form === "number") return { kind: "height", id: "height", mode: "fixed", value: form };
   if (isObject(form) && Array.isArray(form.zoom)) {
-    const values = (form.zoom as unknown[][]).map((stop) => stop[1]).filter((v) => typeof v === "number");
-    return { kind: "height", id: "height", mode: "zoom", max: Math.max(...(values as number[])) };
+    // A stop by attribute (spec 4.4) reaches the larger end of its range.
+    const values = (form.zoom as unknown[][]).flatMap(([, v]) =>
+      typeof v === "number"
+        ? [v]
+        : byField(v) && Array.isArray(v.range)
+          ? v.range.filter((r): r is number => typeof r === "number")
+          : []
+    );
+    return values.length ? { kind: "height", id: "height", mode: "zoom", max: Math.max(...values) } : null;
   }
   if (isObject(form) && typeof form.field === "string") {
     const range = Array.isArray(form.range) ? form.range : null;
@@ -492,6 +754,7 @@ function heightSection(style: JsonObject, geometry: Geometry): LegendSection | n
   return null;
 }
 
+/** Whether a legend says more than the layer's base look, which a swatch beside the layer's name already shows. */
 export const informative = (legend: Legend | null | undefined): boolean =>
   !!legend?.sections.some((section) => section.kind !== "entries" || section.id !== "base");
 
@@ -559,6 +822,7 @@ export function buildLegend(
     };
   }
   const geometry = ctx.geometry ?? (style.geometry as Geometry | undefined) ?? "point";
+  const images = imageColors(style, geometry);
   const sections: LegendSection[] = [];
   const blocks: Array<{ section: Extract<LegendSection, { kind: "entries" }>; targets: string[] }> = [];
   // A heatmap or H3 layer draws its points from a zoom on (`points_from_zoom`), or never: below that zoom the map
@@ -571,6 +835,13 @@ export function buildLegend(
   const pending = counts === PRESENCE_PENDING;
   // A class or Other or No data the count left out: when nothing else is left, the legend says so.
   let countedOut = false;
+  // Clusters, only below `cluster_until_zoom`: from it on the map draws single points alone.
+  const clustering =
+    render?.type === "cluster" &&
+    ctx.zoom <
+      (typeof render.cluster_until_zoom === "number"
+        ? render.cluster_until_zoom
+        : (DEFAULTS["cluster.cluster_until_zoom"] as number));
   for (const { c, targets, key } of points ? legendClassifications(style, geometry) : []) {
     const entries: LegendEntry[] = [];
     const numeric = c.method !== "categories";
@@ -586,7 +857,7 @@ export function buildLegend(
       }
       const entry: LegendEntry = {
         id: itemKey(k, i),
-        swatch: swatch(style, geometry, ctx.zoom, k, neutral),
+        swatch: swatch(style, geometry, ctx.zoom, k, neutral, images),
       };
       if (typeof k.name === "string") entry.name = k.name;
       const raised = heightOf(k);
@@ -617,12 +888,15 @@ export function buildLegend(
         extra,
         ...(typeof record.name === "string" ? { name: record.name } : {}),
         ...(raisedTo(record) !== undefined ? { height: raisedTo(record) } : {}),
-        swatch: swatch(style, geometry, ctx.zoom, record, neutral),
+        swatch: swatch(style, geometry, ctx.zoom, record, neutral, images),
       });
     }
     // A classification without entries leaves no block, nor a heading: its classes are all hidden with the eye,
     // or it has none (not computed yet, or its field has no values).
     if (!entries.length) continue;
+    // Sizes of a polygon's or a line's marker: the markers alone, as for points.
+    if (targets.includes("marker.size") && targets.every((target) => target.startsWith("marker.")))
+      for (const entry of entries) entry.swatch = markerAlone(entry.swatch, neutral);
     const domain = classDomain(c);
     blocks.push({
       targets,
@@ -650,20 +924,21 @@ export function buildLegend(
         ? { ...section, properties: targets.map((target) => propertyKey(target, geometry)) }
         : section
     );
-  // A rule that hides its features draws nothing, so it has no entry either.
-  const rules = (points ? list(style.rules) : []).filter(
-    (r) => typeof r.name === "string" && r.legend !== false && r.visible !== false
-  );
-  const forms = points ? valueFormSections(style, geometry, ctx.zoom) : [];
+  const rules = points ? listedRules(style) : [];
+  const forms = points ? valueFormSections(style, geometry, ctx.zoom, images) : [];
   if (rules.length) {
     const entries: LegendEntry[] = rules.map((r, i) => ({
-      id: typeof r.id === "string" ? r.id : String(i),
+      id: itemKey(r, i),
       name: r.name as string,
-      swatch: swatch(style, geometry, ctx.zoom, r),
+      swatch: swatch(style, geometry, ctx.zoom, r, false, images),
     }));
     // Without classes or a value by attribute nothing else says what the features no rule matches look like.
     if (!blocks.length && !forms.length)
-      entries.push({ id: "rest", extra: "rest", swatch: swatch(style, geometry, ctx.zoom) });
+      entries.push({
+        id: "rest",
+        extra: "rest",
+        swatch: swatch(style, geometry, ctx.zoom, undefined, false, images),
+      });
     sections.push({ kind: "entries", id: "rules", entries });
   }
   sections.push(...forms);
@@ -673,7 +948,15 @@ export function buildLegend(
       ? [...(palette as string[])]
       : [...(PALETTES[palette as string]?.colors ?? [])];
     if (style.render.reverse === true) colors.reverse();
-    sections.push({ kind: "ramp", id: "heatmap", colors, domain: [0, 1], ends: "low_high" });
+    const opacity = renderOpacity(style.render.opacity, DEFAULTS["heatmap.opacity"] as number, ctx.zoom);
+    sections.push({
+      kind: "ramp",
+      id: "heatmap",
+      colors,
+      domain: [0, 1],
+      ends: "low_high",
+      ...rampOpacity(opacity),
+    });
   }
   if (isObject(style.render) && style.render.type === "h3" && !points)
     sections.push(...h3Sections(style.render, ctx.zoom));
@@ -684,26 +967,24 @@ export function buildLegend(
       classes: legendClasses(style) === "view" ? "view" : "filter",
     });
   else if (!sections.length) {
+    // The layer's name says what the one swatch is; below the Clusters row it reads as the single points.
     sections.push({
       kind: "entries",
       id: "base",
-      entries: [{ id: "base", swatch: swatch(style, geometry, ctx.zoom) }],
+      entries: [
+        {
+          id: "base",
+          ...(clustering ? { extra: "points" as const } : {}),
+          swatch: swatch(style, geometry, ctx.zoom, undefined, false, images),
+        },
+      ],
     });
   }
   // H3 columns stand only while the hexagons are drawn.
   const height = density && points ? null : heightSection(style, geometry);
   if (height) sections.push(height);
   // Clusters first, then the single points (spec 7.2).
-  // (Only below `cluster_until_zoom`: from it on the map draws single points alone.)
-  if (
-    isObject(style.render) &&
-    style.render.type === "cluster" &&
-    ctx.zoom <
-      (typeof style.render.cluster_until_zoom === "number"
-        ? style.render.cluster_until_zoom
-        : (DEFAULTS["cluster.cluster_until_zoom"] as number))
-  )
-    sections.unshift(clusterSection(style.render, ctx.zoom));
+  if (clustering && render) sections.unshift(...clusterSections(style, render, ctx.zoom));
   return {
     ...(isObject(legend) && typeof legend.title === "string" ? { title: legend.title } : {}),
     ...(isObject(legend) && typeof legend.caption === "string" ? { caption: legend.caption } : {}),
@@ -741,27 +1022,73 @@ const heightOf = (record: unknown): number | undefined =>
     ? record.extrude.height
     : undefined;
 
-/** "Clusters" with a sample (spec 7.2): the cluster symbol, at the middle of its sizes where they follow the count. */
-function clusterSection(render: JsonObject, zoom: number): LegendSection {
+/** "Clusters" with a sample (spec 7.2): the cluster symbol, at the middle of its sizes where they follow the count, or
+ * the points' marker as clusters drawn like them show it (spec 8.2 `look: points`, `pointsSymbol`); with the badge where the number is
+ * on one, in the cluster symbol's marker, label and outline colors as on the map (white without an outline). With a
+ * value by a field, the entry names it, and a size or color by the value shows its range. */
+function clusterSections(style: JsonObject, render: JsonObject, zoom: number): LegendSection[] {
   const symbol = isObject(render.symbol) ? render.symbol : (DEFAULT_CLUSTER_SYMBOL as unknown as JsonObject);
   const marker = isObject(symbol.marker) ? symbol.marker : {};
   const range =
     isObject(marker.size) && Array.isArray(marker.size.range) ? (marker.size.range as number[]) : null;
-  const sample = swatch(
+  const own = swatch(
     { symbol },
     "point",
     zoom,
     range ? { marker: { size: (range[0] + range[1]) / 2 } } : undefined
   );
-  return { kind: "entries", id: "cluster", entries: [{ id: "cluster", extra: "cluster", swatch: sample }] };
+  const points = (render.look ?? DEFAULTS["cluster.look"]) === "points";
+  const sample = points ? swatch({ symbol: pointsSymbol(style) }, "point", zoom) : own;
+  if ((render.count ?? DEFAULTS["cluster.count"]) === "badge") {
+    const label = isObject(symbol.label) ? symbol.label : {};
+    const outline = isObject(symbol.outline) ? symbol.outline : null;
+    sample.badge = {
+      color: typeof own.marker?.color === "string" ? own.marker.color : (DEFAULTS["marker.color"] as string),
+      text: typeof label.color === "string" ? label.color : DEFAULT_CLUSTER_SYMBOL.label.color,
+      ring: outline
+        ? typeof outline.color === "string"
+          ? outline.color
+          : (DEFAULTS["outline.color"] as string)
+        : "#ffffff",
+    };
+  }
+  const value = isObject(render.value) ? render.value : {};
+  const named =
+    typeof value.op === "string" && value.op !== "count" && typeof value.field === "string"
+      ? { op: value.op as ValueOp, field: value.field }
+      : null;
+  const entries: LegendSection = {
+    kind: "entries",
+    id: "cluster",
+    ...(named ?? {}),
+    entries: [{ id: "cluster", extra: "cluster", swatch: sample }],
+  };
+  if (!named) return [entries];
+  // The cluster symbol's forms over the value, as the base symbol's forms show theirs: its samples have the cluster
+  // symbol's color and outline, as on the map; a form over the count has no sample of the value.
+  const ofValue = (part: unknown) =>
+    isObject(part)
+      ? Object.fromEntries(
+          Object.entries(part).filter(
+            ([, form]) => !isObject(form) || typeof form.field !== "string" || form.field === "value"
+          )
+        )
+      : part;
+  const byValue = valueFormSections(
+    { symbol: { marker: ofValue(symbol.marker), outline: ofValue(symbol.outline) } },
+    "point",
+    zoom
+  ).map((section) => ({ ...section, id: `cluster.${section.id}`, ...named }) as LegendSection);
+  return [entries, ...byValue];
 }
 
-/** H3 hexagons (spec 7.2): the cell value at the resolution the zoom draws, as classes or a ramp; nothing while the
- * values are not computed. A sum or mean names its field. */
+/** H3 hexagons (spec 7.2): the cell value at the resolution the zoom draws, as classes or a ramp, at the hexagons'
+ * opacity; nothing while the values are not computed. A sum or mean names its field. */
 function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
   const scale = h3Scale(render, h3Resolution(render, zoom));
   const value = isObject(render.value) ? render.value : {};
   const field = value.op !== "count" && typeof value.field === "string" ? { field: value.field } : {};
+  const opacity = renderOpacity(render.opacity, DEFAULTS["h3.opacity"] as number, zoom);
   if (scale.kind === "ramp")
     return [
       {
@@ -770,6 +1097,7 @@ function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
         ...(field.field ? { title: field.field } : {}),
         colors: scale.colors,
         domain: [scale.min, scale.max],
+        ...rampOpacity(opacity),
       },
     ];
   // Not computed yet, or one value in every cell: the map draws every hexagon in one color.
@@ -781,7 +1109,11 @@ function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
         ...field,
         op: value.op === "sum" || value.op === "mean" ? value.op : "count",
         entries: [
-          { id: "0", extra: "h3", swatch: { geometry: "polygon" as const, fill: { color: scale.color } } },
+          {
+            id: "0",
+            extra: "h3",
+            swatch: { geometry: "polygon" as const, fill: { color: scale.color, opacity } },
+          },
         ],
       },
     ];
@@ -798,11 +1130,24 @@ function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
           ...(i > 0 ? { from: scale.breaks[i - 1] } : {}),
           ...(i < n - 1 ? { to: scale.breaks[i] } : {}),
         },
-        swatch: { geometry: "polygon" as const, fill: { color } },
+        swatch: { geometry: "polygon" as const, fill: { color, opacity } },
       })),
       ...(scale.domain ? { domain: scale.domain } : {}),
     },
   ];
+}
+
+/** Whether a style's legend and base swatch can change with the zoom: it has a value by zoom anywhere, or draws its
+ * points as clusters, a heatmap or hexagons (each changes what it shows at a zoom). Any other legend is the same at
+ * every zoom. */
+export function legendDependsOnZoom(style: JsonObject): boolean {
+  if (isObject(style.render) && style.render.type !== undefined) return true;
+  const byZoom = (node: unknown): boolean =>
+    Array.isArray(node)
+      ? node.some(byZoom)
+      : isObject(node) &&
+        Object.entries(node).some(([key, v]) => (key === "zoom" && Array.isArray(v)) || byZoom(v));
+  return byZoom(style);
 }
 
 /** A layer's base look as one swatch (the layer list's icon). */
@@ -853,14 +1198,14 @@ function recordOf(c: JsonObject, value: unknown): JsonObject | undefined {
   return isObject(record) ? record : undefined;
 }
 
-/** The swatch of the class a feature falls in (the popup header's icon): the first classification's
- * class for the feature's value, its `other` or `no_data` record, else the layer's base look. */
+/** The swatch of the class a feature falls in (the popup header's icon): the class of the first classification the
+ * legend draws (`legendDraws`) for the feature's value, its `other` or `no_data` record, else the layer's base look. */
 export function classOf(
   style: JsonObject,
   properties: Record<string, unknown> | undefined,
   ctx: { geometry: Geometry; zoom: number }
 ): Swatch {
-  const [first] = list(style.classify);
+  const first = list(style.classify).find(legendDraws);
   const record =
     first && typeof first.field === "string" ? recordOf(first, properties?.[first.field]) : undefined;
   return swatch(style, ctx.geometry, ctx.zoom, record);

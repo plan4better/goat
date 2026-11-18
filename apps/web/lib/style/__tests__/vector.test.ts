@@ -1,3 +1,4 @@
+import { Color } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
 import { compileLayer } from "@/lib/style/compile";
@@ -5,7 +6,8 @@ import type { CompileInput } from "@/lib/style/compile/types";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 import { fieldTypes, goldenPairs, specExamples } from "./fixtures";
-import { maplibreErrors } from "./maplibre";
+import { mapLook } from "./legend/mapSwatch";
+import { evaluate, maplibreErrors } from "./maplibre";
 
 const tiles = (id: string) => ({ type: "tiles" as const, id: `s${id}`, tiles: ["https://t/{z}/{x}/{y}"] });
 
@@ -98,7 +100,8 @@ describe("polygons and lines", () => {
       "fill-pattern": [
         "case",
         ["==", ["match", ["get", "use"], "green", "cross", "none"], "none"],
-        "",
+        // An image that exists for features without a pattern: an empty name makes MapLibre ask for one named "null".
+        "goat-pattern:none",
         ["concat", "goat-pattern:", ["match", ["get", "use"], "green", "cross", "none"], "|10|2|#cccccc"],
       ],
       "fill-opacity": ["match", ["get", "use"], "green", 1, 0],
@@ -281,6 +284,105 @@ describe("parts switched on by classes and rules (spec 3)", () => {
     ]);
   });
 
+  it("an outline inside or outside its polygon moves by half its width (spec 3.1)", () => {
+    const outline = (o: object, extra: object = {}) =>
+      part(
+        compile({ version: 1, kind: "vector", symbol: { fill: {}, outline: o }, ...extra }, "polygon", {
+          fields: { t: "string" },
+        }),
+        "outline"
+      ).paint;
+    // MapLibre insets a polygon's line by a positive offset.
+    expect(outline({ width: 4, position: "inside" })["line-offset"]).toBe(2);
+    expect(outline({ width: 4, position: "outside" })["line-offset"]).toBe(-2);
+    expect(outline({ width: 4, position: "center" })["line-offset"]).toBeUndefined();
+    expect(outline({ width: 4 })["line-offset"]).toBeUndefined();
+    expect(
+      outline({
+        width: {
+          zoom: [
+            [10, 2],
+            [16, 6],
+          ],
+        },
+      })["line-offset"]
+    ).toBeUndefined();
+    // The width's default (1 px) and its zoom stops.
+    expect(outline({ position: "inside" })["line-offset"]).toBe(0.5);
+    expect(
+      outline({
+        width: {
+          zoom: [
+            [10, 2],
+            [16, 6],
+          ],
+        },
+        position: "outside",
+      })["line-offset"]
+    ).toEqual(["interpolate", ["linear"], ["zoom"], 10, -1, 16, -3]);
+    // A class that moves its outline inside, with its own width.
+    const byClass = outline(
+      { width: 2 },
+      {
+        classify: [
+          {
+            field: "t",
+            method: "categories",
+            classes: [{ values: ["a"], outline: { position: "inside", width: 6 } }],
+          },
+        ],
+      }
+    );
+    expect(byClass["line-offset"]).toEqual([
+      "match",
+      ["match", ["get", "t"], "a", "inside", "center"],
+      "inside",
+      ["/", ["match", ["get", "t"], "a", 6, 2], 2],
+      "outside",
+      ["-", 0, ["/", ["match", ["get", "t"], "a", 6, 2], 2]],
+      0,
+    ]);
+    const out = compile(
+      { version: 1, kind: "vector", symbol: { fill: {}, outline: { position: "inside" } } },
+      "polygon"
+    );
+    expect(valid(out)).toEqual([]);
+  });
+
+  it("an outline whose position changes by zoom moves by half the width it is drawn at, at every zoom", () => {
+    const out = compile(
+      {
+        version: 1,
+        kind: "vector",
+        symbol: {
+          fill: {},
+          outline: {
+            width: {
+              zoom: [
+                [10, 1],
+                [16, 9],
+              ],
+            },
+            position: {
+              zoom: [
+                [10, "inside"],
+                [14, "outside"],
+              ],
+            },
+          },
+        },
+      },
+      "polygon"
+    );
+    const paint = part(out, "outline").paint;
+    for (const zoom of [9, 10, 12, 13, 13.5, 13.99, 14, 14.5, 15.25, 16, 18]) {
+      const width = evaluate(paint["line-width"], {}, zoom) as number;
+      const offset = evaluate(paint["line-offset"], {}, zoom) as number;
+      expect(offset, `zoom ${zoom}`).toBeCloseTo(((zoom < 14 ? 1 : -1) * width) / 2, 2);
+    }
+    expect(valid(out)).toEqual([]);
+  });
+
   it("a part zoom range inside a class narrows that part for the class's features (spec 3.5)", () => {
     const style = {
       version: 1,
@@ -291,6 +393,120 @@ describe("parts switched on by classes and rules (spec 3)", () => {
     const out = compile(style, "polygon", { fields: { t: "string", name: "string" } });
     expect(part(out, "label").filter).toEqual(["any", ["!=", ["get", "t"], "a"], [">=", ["zoom"], 15]]);
     expect(part(out, "fill").filter).toBeUndefined();
+  });
+});
+
+describe("parts the layer switches off stay off (spec 3)", () => {
+  const byKind = (record: object) => [
+    { id: "k", field: "kind", method: "categories", classes: [{ values: ["a"], ...record }] },
+  ];
+  const ids = (out: ReturnType<typeof compileLayer>) => out.layers.map((l) => l.id);
+  const fields = { fields: { kind: "string" as const, name: "string" as const } };
+
+  it("a fill switched off draws no fill though its classes set the fill color", () => {
+    const out = compile(
+      {
+        version: 1,
+        kind: "vector",
+        symbol: { fill: false, outline: { color: "fill", width: 2 } },
+        classify: [{ ...byKind({ fill: { color: "#111111" } })[0], target: "fill.color" }],
+      },
+      "polygon",
+      fields
+    );
+    expect(ids(out)).toEqual(["9-outline"]);
+    // The outline in the fill color still takes each class's fill color (spec 3.1).
+    expect(JSON.stringify(part(out, "outline").paint["line-color"])).toContain("#111111");
+    expect(valid(out)).toEqual([]);
+  });
+
+  it("a pattern or a height a class sets draws nothing while the layer has its part off", () => {
+    const hatched = compile(
+      {
+        version: 1,
+        kind: "vector",
+        symbol: { fill: false },
+        classify: byKind({ fill: { pattern: "hatch" } }),
+      },
+      "polygon",
+      fields
+    );
+    expect(ids(hatched)).toEqual([]);
+    const raised = compile(
+      {
+        version: 1,
+        kind: "vector",
+        symbol: { fill: {}, extrude: false },
+        classify: byKind({ extrude: { height: 30 } }),
+      },
+      "polygon",
+      fields
+    );
+    expect(ids(raised)).toEqual(["9-fill"]);
+    expect(part(raised, "fill").type).toBe("fill");
+  });
+
+  it("an outline, a label, a line, a casing, arrows and a marker switched off stay off in classes and rules", () => {
+    const rule = (record: object) => [{ when: { op: "=", args: [{ property: "kind" }, "a"] }, ...record }];
+    const polygon = compile(
+      {
+        version: 1,
+        kind: "vector",
+        symbol: { fill: {}, outline: false, label: false },
+        classify: byKind({ outline: { color: "#ff0000" } }),
+        rules: rule({ label: { text: "{name}" } }),
+      },
+      "polygon",
+      fields
+    );
+    expect(ids(polygon)).toEqual(["9-fill"]);
+    const line = compile(
+      {
+        version: 1,
+        kind: "vector",
+        symbol: { line: false, casing: false, arrows: false },
+        classify: byKind({ line: { color: "#ff0000" }, casing: { width: 2 }, arrows: { size: 12 } }),
+      },
+      "line",
+      fields
+    );
+    expect(ids(line)).toEqual([]);
+    const point = compile(
+      {
+        version: 1,
+        kind: "vector",
+        symbol: { marker: false },
+        rules: rule({ marker: { color: "#ff0000" } }),
+      },
+      "point",
+      fields
+    );
+    expect(ids(point)).toEqual([]);
+  });
+
+  it("an object in a record still sets the keys of a part the layer shows, and false still switches it off", () => {
+    const out = compile(
+      {
+        version: 1,
+        kind: "vector",
+        symbol: { fill: { color: "#cccccc" } },
+        classify: [
+          {
+            id: "k",
+            field: "kind",
+            method: "categories",
+            classes: [
+              { values: ["a"], fill: false },
+              { values: ["b"], fill: { color: "#111111" } },
+            ],
+          },
+        ],
+      },
+      "polygon",
+      fields
+    );
+    expect(part(out, "fill").paint["fill-opacity"]).toEqual(["match", ["get", "kind"], "a", 0, 1]);
+    expect(JSON.stringify(part(out, "fill").paint["fill-color"])).toContain("#111111");
   });
 });
 
@@ -356,5 +572,35 @@ describe("patterns and the fill color (spec 3.1)", () => {
       "#0000ff",
     ]);
     expect(part(out, "pattern")).toBeUndefined();
+  });
+
+  it("a pattern in a fill color by attribute in zoom stops (spec 4.4) has the fill's color at each whole zoom", () => {
+    const palette = (colors: string[]) => ({ field: "amount", palette: colors, domain: [0, 100] });
+    const style = {
+      version: 1,
+      kind: "vector",
+      symbol: {
+        fill: {
+          pattern: "hatch_45",
+          color: {
+            zoom: [
+              [11, palette(["#0000ff", "#00ff00"])],
+              [15, palette(["#ff0000", "#ffff00"])],
+            ],
+          },
+        },
+      },
+    };
+    const out = compile(style, "polygon", { fields: { amount: "number" } });
+    expect(valid(out)).toEqual([]);
+    const rgb = (value: unknown) => {
+      const c = value instanceof Color ? value : Color.parse(String(value))!;
+      return [c.r, c.g, c.b].map((x) => Math.round((x / (c.a || 1)) * 255));
+    };
+    for (const zoom of [11, 12, 13, 14, 15])
+      for (const amount of [0, 50, 100]) {
+        const look = mapLook(out, { amount }, zoom, "polygon");
+        expect(rgb(look["fill.pattern_color"]), `zoom ${zoom}, ${amount}`).toEqual(rgb(look["fill.color"]));
+      }
   });
 });

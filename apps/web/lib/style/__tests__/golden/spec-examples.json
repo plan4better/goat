@@ -84,6 +84,92 @@
   "position": "top",
   "unsupported": []
  },
+ "164": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#deebf7",
+     "fill-opacity": 0.6
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#3182bd"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      3
+     ],
+     "line-offset": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
  "201": {
   "id": "1",
   "sources": {
@@ -189,54 +275,6 @@
    }
   },
   "layers": [
-   {
-    "id": "1-fill",
-    "type": "fill",
-    "source": "s",
-    "source-layer": "default",
-    "paint": {
-     "fill-color": [
-      "case",
-      [
-       "has",
-       "land_use"
-      ],
-      [
-       "match",
-       [
-        "get",
-        "land_use"
-       ],
-       "residential",
-       "#e6ab02",
-       "green",
-       "#66a61e",
-       "#9aa3ad"
-      ],
-      "#2bb381"
-     ],
-     "fill-opacity": [
-      "case",
-      [
-       "has",
-       "land_use"
-      ],
-      [
-       "match",
-       [
-        "get",
-        "land_use"
-       ],
-       "residential",
-       1,
-       "green",
-       1,
-       1
-      ],
-      0
-     ]
-    }
-   },
    {
     "id": "1-outline",
     "type": "line",
@@ -387,7 +425,7 @@
        ],
        "none"
       ],
-      "",
+      "goat-pattern:none",
       [
        "concat",
        "goat-pattern:",
@@ -631,6 +669,110 @@
     "center"
    ]
   },
+  "position": "top",
+  "unsupported": []
+ },
+ "290": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#4d4d4d"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      2
+     ]
+    }
+   },
+   {
+    "id": "1-arrows",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "symbol-placement": "line",
+     "symbol-spacing": 80,
+     "icon-image": "goat:rail-light",
+     "icon-size": 0.5833333333,
+     "icon-rotation-alignment": "map",
+     "icon-allow-overlap": true,
+     "icon-rotate": 90
+    },
+    "paint": {
+     "icon-color": "#4d4d4d"
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:rail-light",
+    "url": "/assets/icons/maki/rail-light.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {},
   "position": "top",
   "unsupported": []
  },
@@ -1423,6 +1565,188 @@
   "position": "top",
   "unsupported": []
  },
+ "438": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": [
+      "match",
+      [
+       "get",
+       "land_use"
+      ],
+      "green",
+      "#c7e9c0",
+      "#deebf7"
+     ],
+     "fill-opacity": 0.6
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   },
+   {
+    "id": "1-marker",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_anchor",
+    "filter": [
+     "==",
+     [
+      "match",
+      [
+       "get",
+       "land_use"
+      ],
+      "green",
+      1,
+      0
+     ],
+     1
+    ],
+    "layout": {
+     "icon-image": [
+      "concat",
+      "goat-marker:",
+      [
+       "match",
+       [
+        "get",
+        "land_use"
+       ],
+       "green",
+       "circle",
+       "circle"
+      ],
+      "|20|",
+      [
+       "match",
+       [
+        "get",
+        "land_use"
+       ],
+       "green",
+       "goat:park",
+       ""
+      ],
+      "|",
+      [
+       "match",
+       [
+        "get",
+        "land_use"
+       ],
+       "green",
+       "#238b45",
+       "#2bb381"
+      ],
+      "||0|#ffffff"
+     ],
+     "icon-size": [
+      "/",
+      [
+       "match",
+       [
+        "get",
+        "land_use"
+       ],
+       "green",
+       20,
+       8
+      ],
+      20
+     ],
+     "icon-allow-overlap": true
+    },
+    "paint": {}
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:park",
+    "url": "/assets/icons/maki/park.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {
+   "label": true,
+   "fields": [
+    "land_use"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
  "458": {
   "id": "1",
   "sources": {
@@ -1497,6 +1821,205 @@
   "images": [],
   "state": {},
   "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "463": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#f0f0f0"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#bdbdbd"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      1
+     ]
+    }
+   },
+   {
+    "id": "1-marker",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_anchor",
+    "layout": {
+     "icon-image": "goat-marker:circle|40||#08519c||0|#ffffff",
+     "icon-size": [
+      "/",
+      [
+       "case",
+       [
+        "all",
+        [
+         "has",
+         "population"
+        ],
+        [
+         ">=",
+         [
+          "to-number",
+          [
+           "get",
+           "population"
+          ],
+          0
+         ],
+         0
+        ]
+       ],
+       [
+        "interpolate",
+        [
+         "linear"
+        ],
+        [
+         "sqrt",
+         [
+          "to-number",
+          [
+           "get",
+           "population"
+          ],
+          0
+         ]
+        ],
+        0,
+        0,
+        173.20508075688772,
+        40
+       ],
+       8
+      ],
+      40
+     ],
+     "icon-allow-overlap": true
+    },
+    "paint": {
+     "icon-opacity": 0.8
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_anchor",
+    "layout": {
+     "text-field": [
+      "to-string",
+      [
+       "get",
+       "name"
+      ]
+     ],
+     "text-size": 11,
+     "text-font": [
+      "Noto Sans Regular"
+     ],
+     "text-max-width": 10.9090909091,
+     "text-variable-anchor-offset": [
+      "top",
+      [
+       0,
+       0.5454545455
+      ],
+      "bottom",
+      [
+       0,
+       -0.5454545455
+      ],
+      "right",
+      [
+       -0.5454545455,
+       0
+      ],
+      "left",
+      [
+       0.5454545455,
+       0
+      ]
+     ],
+     "text-justify": "auto"
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {
+   "label": true,
+   "fields": [
+    "name",
+    "population"
+   ]
+  },
   "position": "top",
   "unsupported": []
  },
@@ -1609,6 +2132,108 @@
    "label": true,
    "fields": [
     "name"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
+ "483": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      3
+     ]
+    }
+   },
+   {
+    "id": "1-marker",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_decoration",
+    "layout": {
+     "icon-image": "goat-marker:circle|18|goat:bus|#2166ac||0|#ffffff",
+     "icon-size": 1,
+     "icon-allow-overlap": true
+    },
+    "paint": {}
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:bus",
+    "url": "/assets/icons/maki/bus.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {},
+  "tileParams": {
+   "decorations": [
+    "center"
    ]
   },
   "position": "top",
@@ -1987,7 +2612,8 @@
        0.5,
        0.3333333333
       ]
-     ]
+     ],
+     "text-justify": "auto"
     },
     "paint": {
      "text-color": "#3a3541",
@@ -2003,6 +2629,134 @@
    }
   },
   "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "529": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#deebf7"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": "#ffc300",
+     "line-width": 3,
+     "line-opacity": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      1,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default_anchor",
+    "layout": {
+     "text-field": [
+      "concat",
+      [
+       "to-string",
+       [
+        "get",
+        "name"
+       ]
+      ],
+      "\n",
+      [
+       "case",
+       [
+        "has",
+        "population"
+       ],
+       [
+        "number-format",
+        [
+         "to-number",
+         [
+          "get",
+          "population"
+         ],
+         0
+        ],
+        {
+         "locale": [
+          "global-state",
+          "locale"
+         ]
+        }
+       ],
+       ""
+      ]
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Regular"
+     ],
+     "text-transform": "uppercase",
+     "text-letter-spacing": 0.1,
+     "text-line-height": 1.1
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {
+   "locale": {
+    "default": "en-US"
+   }
+  },
+  "tileParams": {
+   "label": true,
+   "fields": [
+    "name",
+    "population"
+   ]
+  },
   "position": "top",
   "unsupported": []
  },
@@ -2980,6 +3734,91 @@
   "position": "top",
   "unsupported": []
  },
+ "667": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": 4,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "text-field": [
+      "to-string",
+      [
+       "get",
+       "name"
+      ]
+     ],
+     "text-size": 11,
+     "text-font": [
+      "Noto Sans Regular"
+     ],
+     "text-max-width": 10.9090909091,
+     "text-anchor": "left",
+     "text-offset": [
+      0.5454545455,
+      0
+     ],
+     "text-justify": "auto"
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
  "679": {
   "id": "1",
   "sources": {
@@ -3143,6 +3982,111 @@
     "pixelRatio": 4
    }
   ],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "709": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      2
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "text-field": [
+      "to-string",
+      [
+       "get",
+       "name"
+      ]
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Italic"
+     ],
+     "symbol-placement": "line",
+     "symbol-spacing": 400,
+     "text-padding": 8
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
   "state": {},
   "tileParams": {},
   "position": "top",
@@ -3325,6 +4269,125 @@
       3,
       0
      ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "728": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      2
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "text-field": [
+      "to-string",
+      [
+       "get",
+       "name"
+      ]
+     ],
+     "text-size": 12,
+     "text-font": [
+      "step",
+      [
+       "zoom"
+      ],
+      [
+       "literal",
+       [
+        "Noto Sans Medium Italic"
+       ]
+      ],
+      14,
+      [
+       "literal",
+       [
+        "Noto Sans Bold Italic"
+       ]
+      ]
+     ],
+     "symbol-placement": "line"
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
     }
    }
   ],
@@ -6665,49 +7728,141 @@
     ],
     "layout": {
      "text-field": [
-      "to-string",
+      "case",
       [
-       "get",
+       "has",
        "point_count"
-      ]
+      ],
+      [
+       "case",
+       [
+        ">=",
+        [
+         "abs",
+         [
+          "to-number",
+          [
+           "get",
+           "point_count"
+          ],
+          0
+         ]
+        ],
+        1000000
+       ],
+       [
+        "concat",
+        [
+         "number-format",
+         [
+          "/",
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          1000000
+         ],
+         {
+          "locale": [
+           "global-state",
+           "locale"
+          ],
+          "min-fraction-digits": 1,
+          "max-fraction-digits": 1
+         }
+        ],
+        " M"
+       ],
+       [
+        ">=",
+        [
+         "abs",
+         [
+          "to-number",
+          [
+           "get",
+           "point_count"
+          ],
+          0
+         ]
+        ],
+        1000
+       ],
+       [
+        "concat",
+        [
+         "number-format",
+         [
+          "/",
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          1000
+         ],
+         {
+          "locale": [
+           "global-state",
+           "locale"
+          ],
+          "min-fraction-digits": 1,
+          "max-fraction-digits": 1
+         }
+        ],
+        " k"
+       ],
+       [
+        "number-format",
+        [
+         "round",
+         [
+          "to-number",
+          [
+           "get",
+           "point_count"
+          ],
+          0
+         ]
+        ],
+        {
+         "locale": [
+          "global-state",
+          "locale"
+         ]
+        }
+       ]
+      ],
+      ""
      ],
      "text-size": 12,
      "text-font": [
       "Noto Sans Regular"
-     ],
-     "text-variable-anchor-offset": [
-      "top",
-      [
-       0,
-       0.5
-      ],
-      "bottom",
-      [
-       0,
-       -0.5
-      ],
-      "right",
-      [
-       -0.5,
-       0
-      ],
-      "left",
-      [
-       0.5,
-       0
-      ]
      ]
     },
     "paint": {
      "text-color": "#ffffff",
      "text-halo-color": "#ffffff",
-     "text-halo-width": 1.5
+     "text-halo-width": 0
     }
    }
   ],
   "images": [],
-  "state": {},
-  "tileParams": {},
+  "state": {
+   "locale": {
+    "default": "en-US"
+   }
+  },
+  "tileParams": {
+   "fields": []
+  },
   "position": "top",
   "unsupported": []
  },
@@ -6927,6 +8082,367 @@
   "position": "top",
   "unsupported": []
  },
+ "1791": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "geojson",
+    "data": "https://geoapi.example/items",
+    "cluster": true,
+    "clusterRadius": 50,
+    "clusterMinPoints": 2,
+    "clusterMaxZoom": 13,
+    "clusterProperties": {
+     "goat_cluster_0": [
+      "+",
+      [
+       "match",
+       [
+        "get",
+        "type"
+       ],
+       "primary",
+       1,
+       0
+      ]
+     ],
+     "goat_cluster_1": [
+      "+",
+      [
+       "match",
+       [
+        "get",
+        "type"
+       ],
+       "secondary",
+       1,
+       0
+      ]
+     ],
+     "goat_cluster_other": [
+      "+",
+      [
+       "match",
+       [
+        "get",
+        "type"
+       ],
+       [
+        "primary",
+        "secondary"
+       ],
+       0,
+       1
+      ]
+     ]
+    }
+   }
+  },
+  "layers": [
+   {
+    "id": "1-icon",
+    "type": "symbol",
+    "source": "s",
+    "filter": [
+     "!",
+     [
+      "has",
+      "point_count"
+     ]
+    ],
+    "layout": {
+     "icon-image": [
+      "match",
+      [
+       "get",
+       "type"
+      ],
+      "primary",
+      "goat:school",
+      "secondary",
+      "goat:home",
+      "goat:building"
+     ],
+     "icon-size": 1
+    },
+    "paint": {
+     "icon-color": "#5a1846"
+    }
+   },
+   {
+    "id": "1-cluster-icon",
+    "type": "symbol",
+    "source": "s",
+    "filter": [
+     "has",
+     "point_count"
+    ],
+    "layout": {
+     "icon-image": [
+      "let",
+      "m",
+      [
+       "max",
+       [
+        "get",
+        "goat_cluster_0"
+       ],
+       [
+        "get",
+        "goat_cluster_1"
+       ],
+       [
+        "get",
+        "goat_cluster_other"
+       ]
+      ],
+      [
+       "case",
+       [
+        "==",
+        [
+         "var",
+         "m"
+        ],
+        [
+         "get",
+         "goat_cluster_0"
+        ]
+       ],
+       "goat:school",
+       [
+        "==",
+        [
+         "var",
+         "m"
+        ],
+        [
+         "get",
+         "goat_cluster_1"
+        ]
+       ],
+       "goat:home",
+       "goat:building"
+      ]
+     ],
+     "icon-size": 1,
+     "icon-allow-overlap": true
+    },
+    "paint": {
+     "icon-color": "#5a1846"
+    }
+   },
+   {
+    "id": "1-cluster-badge",
+    "type": "symbol",
+    "source": "s",
+    "filter": [
+     "has",
+     "point_count"
+    ],
+    "layout": {
+     "icon-image": [
+      "step",
+      [
+       "abs",
+       [
+        "to-number",
+        [
+         "get",
+         "point_count"
+        ],
+        0
+       ]
+      ],
+      "goat-marker:circle|18||#283593|#ffffff|1.5|",
+      100,
+      "goat-marker:circle|26||#283593|#ffffff|1.5|",
+      1000,
+      "goat-marker:circle|34||#283593|#ffffff|1.5|",
+      10000,
+      "goat-marker:circle|40||#283593|#ffffff|1.5|",
+      100000,
+      "goat-marker:circle|46||#283593|#ffffff|1.5|"
+     ],
+     "icon-offset": [
+      "literal",
+      [
+       12,
+       -12
+      ]
+     ],
+     "icon-allow-overlap": true,
+     "icon-ignore-placement": true,
+     "text-field": [
+      "case",
+      [
+       "has",
+       "point_count"
+      ],
+      [
+       "case",
+       [
+        ">=",
+        [
+         "abs",
+         [
+          "to-number",
+          [
+           "get",
+           "point_count"
+          ],
+          0
+         ]
+        ],
+        1000000
+       ],
+       [
+        "concat",
+        [
+         "number-format",
+         [
+          "/",
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          1000000
+         ],
+         {
+          "locale": [
+           "global-state",
+           "locale"
+          ],
+          "min-fraction-digits": 1,
+          "max-fraction-digits": 1
+         }
+        ],
+        " M"
+       ],
+       [
+        ">=",
+        [
+         "abs",
+         [
+          "to-number",
+          [
+           "get",
+           "point_count"
+          ],
+          0
+         ]
+        ],
+        1000
+       ],
+       [
+        "concat",
+        [
+         "number-format",
+         [
+          "/",
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          1000
+         ],
+         {
+          "locale": [
+           "global-state",
+           "locale"
+          ],
+          "min-fraction-digits": 1,
+          "max-fraction-digits": 1
+         }
+        ],
+        " k"
+       ],
+       [
+        "number-format",
+        [
+         "round",
+         [
+          "to-number",
+          [
+           "get",
+           "point_count"
+          ],
+          0
+         ]
+        ],
+        {
+         "locale": [
+          "global-state",
+          "locale"
+         ]
+        }
+       ]
+      ],
+      ""
+     ],
+     "text-font": [
+      "Noto Sans Bold"
+     ],
+     "text-size": 12,
+     "text-offset": [
+      "literal",
+      [
+       1,
+       -1
+      ]
+     ],
+     "text-allow-overlap": true,
+     "text-ignore-placement": true
+    },
+    "paint": {
+     "text-color": "#ffffff"
+    }
+   }
+  ],
+  "images": [
+   {
+    "name": "goat:building",
+    "url": "/assets/icons/maki/building.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   },
+   {
+    "name": "goat:school",
+    "url": "/assets/icons/maki/school.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   },
+   {
+    "name": "goat:home",
+    "url": "/assets/icons/maki/home.svg",
+    "sdf": true,
+    "height": 24,
+    "pixelRatio": 4
+   }
+  ],
+  "state": {
+   "locale": {
+    "default": "en-US"
+   }
+  },
+  "tileParams": {
+   "fields": [
+    "type"
+   ]
+  },
+  "position": "top",
+  "unsupported": []
+ },
  "1816": {
   "id": "1",
   "sources": {
@@ -6953,6 +8469,336 @@
   "images": [],
   "state": {},
   "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
+ "1829": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "geojson",
+    "data": "https://geoapi.example/items",
+    "cluster": true,
+    "clusterRadius": 50,
+    "clusterMinPoints": 2,
+    "clusterMaxZoom": 13,
+    "clusterProperties": {
+     "goat_cluster_value": [
+      "+",
+      [
+       "case",
+       [
+        "has",
+        "pupils"
+       ],
+       [
+        "to-number",
+        [
+         "get",
+         "pupils"
+        ],
+        0
+       ],
+       0
+      ]
+     ],
+     "goat_cluster_value_n": [
+      "+",
+      [
+       "case",
+       [
+        "has",
+        "pupils"
+       ],
+       1,
+       0
+      ]
+     ]
+    }
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "filter": [
+     "!",
+     [
+      "has",
+      "point_count"
+     ]
+    ],
+    "paint": {
+     "circle-color": "#2166ac",
+     "circle-radius": 4,
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-cluster-marker",
+    "type": "circle",
+    "source": "s",
+    "filter": [
+     "has",
+     "point_count"
+    ],
+    "paint": {
+     "circle-color": "#2166ac",
+     "circle-radius": [
+      "/",
+      [
+       "case",
+       [
+        "all",
+        [
+         ">",
+         [
+          "get",
+          "goat_cluster_value_n"
+         ],
+         0
+        ],
+        [
+         ">=",
+         [
+          "to-number",
+          [
+           "get",
+           "goat_cluster_value"
+          ],
+          0
+         ],
+         0
+        ]
+       ],
+       [
+        "interpolate",
+        [
+         "linear"
+        ],
+        [
+         "sqrt",
+         [
+          "to-number",
+          [
+           "get",
+           "goat_cluster_value"
+          ],
+          0
+         ]
+        ],
+        0,
+        16,
+        70.71067811865476,
+        48
+       ],
+       8
+      ],
+      2
+     ],
+     "circle-stroke-color": "#ffc300",
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      0
+     ]
+    }
+   },
+   {
+    "id": "1-cluster-label",
+    "type": "symbol",
+    "source": "s",
+    "filter": [
+     "has",
+     "point_count"
+    ],
+    "layout": {
+     "text-field": [
+      "case",
+      [
+       ">",
+       [
+        "get",
+        "goat_cluster_value_n"
+       ],
+       0
+      ],
+      [
+       "case",
+       [
+        ">=",
+        [
+         "abs",
+         [
+          "to-number",
+          [
+           "get",
+           "goat_cluster_value"
+          ],
+          0
+         ]
+        ],
+        1000000
+       ],
+       [
+        "concat",
+        [
+         "number-format",
+         [
+          "/",
+          [
+           "to-number",
+           [
+            "get",
+            "goat_cluster_value"
+           ],
+           0
+          ],
+          1000000
+         ],
+         {
+          "locale": [
+           "global-state",
+           "locale"
+          ],
+          "min-fraction-digits": 1,
+          "max-fraction-digits": 1
+         }
+        ],
+        " M"
+       ],
+       [
+        ">=",
+        [
+         "abs",
+         [
+          "to-number",
+          [
+           "get",
+           "goat_cluster_value"
+          ],
+          0
+         ]
+        ],
+        1000
+       ],
+       [
+        "concat",
+        [
+         "number-format",
+         [
+          "/",
+          [
+           "to-number",
+           [
+            "get",
+            "goat_cluster_value"
+           ],
+           0
+          ],
+          1000
+         ],
+         {
+          "locale": [
+           "global-state",
+           "locale"
+          ],
+          "min-fraction-digits": 1,
+          "max-fraction-digits": 1
+         }
+        ],
+        " k"
+       ],
+       [
+        "number-format",
+        [
+         "round",
+         [
+          "to-number",
+          [
+           "get",
+           "goat_cluster_value"
+          ],
+          0
+         ]
+        ],
+        {
+         "locale": [
+          "global-state",
+          "locale"
+         ]
+        }
+       ]
+      ],
+      ""
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Regular"
+     ]
+    },
+    "paint": {
+     "text-color": "#ffffff",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 0
+    }
+   }
+  ],
+  "images": [],
+  "state": {
+   "locale": {
+    "default": "en-US"
+   }
+  },
+  "tileParams": {
+   "fields": [
+    "pupils"
+   ]
+  },
   "position": "top",
   "unsupported": []
  },
@@ -7166,7 +9012,7 @@
    "s": {
     "type": "raster",
     "tiles": [
-     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiMyZjZiM2EiLCJ0byI6MjQwfSx7ImNvbG9yIjoiI2E4YzY2YyIsImZyb20iOjI0MCwidG8iOjI3NX0seyJjb2xvciI6IiNlOGRjOGYiLCJmcm9tIjoyNzUsInRvIjozMDB9LHsiY29sb3IiOiIjOGY2YjRjIiwiZnJvbSI6MzAwLCJ0byI6MzQwfSx7ImNvbG9yIjoiI2YyZjJmMiIsImZyb20iOjM0MH1dLCJraW5kIjoiY2xhc3NlcyIsIm5vRGF0YSI6W10sInYiOjF9"
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiMyZjZiM2EiLCJ0byI6MjQwfSx7ImNvbG9yIjoiIzg0YjI1YyIsImZyb20iOjI0MCwidG8iOjI3NX0seyJjb2xvciI6IiNlOGRjOGYiLCJmcm9tIjoyNzUsInRvIjozMDB9LHsiY29sb3IiOiIjYWM4NzViIiwiZnJvbSI6MzAwLCJ0byI6MzQwfSx7ImNvbG9yIjoiI2YyZjJmMiIsImZyb20iOjM0MH1dLCJraW5kIjoiY2xhc3NlcyIsIm5vRGF0YSI6W10sInYiOjF9"
     ],
     "tileSize": 256
    }
@@ -8323,6 +10169,83 @@
   "position": "top",
   "unsupported": []
  },
+ "2639": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-marker",
+    "type": "circle",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "circle-color": "#1a6b4d",
+     "circle-radius": 4,
+     "circle-stroke-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#ffffff"
+     ],
+     "circle-stroke-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      2
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
  "2663": {
   "id": "1",
   "sources": {
@@ -8499,6 +10422,108 @@
     "name"
    ]
   },
+  "position": "top",
+  "unsupported": []
+ },
+ "2757": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-line",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "line-join": "round"
+    },
+    "paint": {
+     "line-color": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      "#ffc300",
+      "#2166ac"
+     ],
+     "line-width": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      3,
+      2
+     ]
+    }
+   },
+   {
+    "id": "1-label",
+    "type": "symbol",
+    "source": "s",
+    "source-layer": "default",
+    "layout": {
+     "text-field": [
+      "to-string",
+      [
+       "get",
+       "name"
+      ]
+     ],
+     "text-size": 12,
+     "text-font": [
+      "Noto Sans Regular"
+     ]
+    },
+    "paint": {
+     "text-color": "#3a3541",
+     "text-halo-color": "#ffffff",
+     "text-halo-width": 1.5
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
   "position": "top",
   "unsupported": []
  }

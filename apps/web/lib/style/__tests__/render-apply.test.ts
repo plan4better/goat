@@ -15,7 +15,14 @@ vi.mock("@/lib/transformers/map-image", () => ({ loadImage: (...args: unknown[])
 function fakeMap() {
   const calls: string[] = [];
   const layers = new Map<string, unknown>();
-  const sources = new Map<string, { setTiles: (t: string[]) => void; setData: (d: unknown) => void }>();
+  const sources = new Map<
+    string,
+    {
+      setTiles: (t: string[]) => void;
+      setData: (d: unknown) => void;
+      setClusterOptions: (o: object) => void;
+    }
+  >();
   let resolver: ((id: string) => void | Promise<void>) | null = null;
   const map = {
     calls,
@@ -25,7 +32,9 @@ function fakeMap() {
       calls.push(`addSource ${id}`);
       sources.set(id, {
         setTiles: (tiles: string[]) => calls.push(`setTiles ${id} ${tiles.join(",")}`),
-        setData: () => calls.push(`setData ${id}`),
+        setData: (data: unknown) => calls.push(`setData ${id}${typeof data === "string" ? ` ${data}` : ""}`),
+        setClusterOptions: (options: object) =>
+          calls.push(`setClusterOptions ${id} ${JSON.stringify(options)}`),
       });
     },
     removeSource: (id: string) => {
@@ -91,6 +100,80 @@ describe("applyCompiled", () => {
     map.calls.length = 0;
     applyCompiled(map, first, over(2));
     expect(map.calls).toEqual(["setData pending-9"]);
+  });
+
+  describe("clusters", () => {
+    const ITEMS = "https://geoapi/collections/9/items?limit=100000&f=json";
+    const clusters = (render: object, symbol: object = { marker: {} }) =>
+      compiled(
+        { version: 1, kind: "vector", render: { type: "cluster", ...render }, symbol },
+        { geometry: "point", source: { type: "points", id: "src-9", data: ITEMS } }
+      );
+    const dataOf = (out: ReturnType<typeof compiled>) => (out.sources["src-9"] as { data: string }).data;
+
+    it("asks geoapi for the fields the layers read, and for none when they read none", () => {
+      const byKind = clusters({}, { marker: { color: { field: "kind", values: { a: "#ff0000" } } } });
+      expect(new URL(dataOf(byKind)).searchParams.get("properties")).toBe("kind");
+      expect(new URL(dataOf(byKind)).searchParams.get("limit")).toBe("100000");
+      expect(new URL(dataOf(clusters({}))).searchParams.get("properties")).toBe("");
+    });
+
+    it("a new radius or zoom re-clusters the loaded points with setClusterOptions", () => {
+      const map = fakeMap();
+      const first = clusters({ radius: 50, cluster_until_zoom: 14 });
+      applyCompiled(map, null, first);
+      map.calls.length = 0;
+      applyCompiled(map, first, clusters({ radius: 60, cluster_until_zoom: 12 }));
+      expect(map.calls).toEqual([
+        'setClusterOptions src-9 {"cluster":true,"clusterRadius":60,"clusterMaxZoom":11}',
+      ]);
+    });
+
+    it("clusters drawn like icons by category add the source again with its counters", () => {
+      const map = fakeMap();
+      const icons = {
+        classify: [
+          {
+            id: "k",
+            field: "kind",
+            method: "categories",
+            classes: [{ values: ["a"], marker: { icon: "goat:shop" } }],
+          },
+        ],
+      };
+      const doc = (render: object) =>
+        compiled(
+          {
+            version: 1,
+            kind: "vector",
+            render: { type: "cluster", ...render },
+            symbol: { marker: {} },
+            ...icons,
+          },
+          { geometry: "point", source: { type: "points", id: "src-9", data: ITEMS } }
+        );
+      const first = doc({});
+      applyCompiled(map, null, first);
+      map.calls.length = 0;
+      const next = doc({ look: "points", count: "badge" });
+      applyCompiled(map, first, next);
+      expect(map.calls).toContain("addSource src-9");
+      expect(map.calls.some((c) => c.startsWith("setClusterOptions"))).toBe(false);
+      expect(map.calls.indexOf("removeSource src-9")).toBeLessThan(map.calls.indexOf("addSource src-9"));
+    });
+
+    it("a field more loads the points again, with the new radius", () => {
+      const map = fakeMap();
+      const first = clusters({ radius: 50 });
+      applyCompiled(map, null, first);
+      map.calls.length = 0;
+      const next = clusters({ radius: 60 }, { marker: {}, label: { text: "{name}" } });
+      applyCompiled(map, first, next);
+      expect(map.calls.slice(0, 2)).toEqual([
+        `setData src-9 ${dataOf(next)}`,
+        'setClusterOptions src-9 {"cluster":true,"clusterRadius":60,"clusterMaxZoom":13}',
+      ]);
+    });
   });
 
   it("a paint change calls only setPaintProperty", () => {

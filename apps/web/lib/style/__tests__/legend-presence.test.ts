@@ -169,6 +169,26 @@ describe("buildLegend with the classes present", () => {
     expect(idsOf(twin, { present: { kind: present(["c2"]) } })).toEqual([["c2"]]);
   });
 
+  it("the block keeps the first one's class ids where the others' classes have ids of their own", () => {
+    // The panel gives each class of each classification its own id.
+    const sizes = KINDS.classify[0].classes.map((k, i) => ({
+      ...k,
+      id: `s${i + 1}`,
+      marker: { size: 6 + i },
+    }));
+    const twin = {
+      ...KINDS,
+      classify: [
+        KINDS.classify[0],
+        { ...KINDS.classify[0], id: "kind_size", target: "marker.size", classes: sizes, computed: undefined },
+      ],
+    };
+    expect(idsOf(twin)).toEqual([["c1", "c2", "c3", "other", "no_data"]]);
+    expect(
+      idsOf(twin, { present: { kind: present(["c2"]), kind_size: present(["s1", "s2", "s3"]) } })
+    ).toEqual([["c2"]]);
+  });
+
   it("`all` lists every class whatever the counts say", () => {
     const all = { ...KINDS, legend: { classes: "all" } };
     expect(idsOf(all, { present: { kind: present([]) } })).toEqual([["c1", "c2", "c3", "other", "no_data"]]);

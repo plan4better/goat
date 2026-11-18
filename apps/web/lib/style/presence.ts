@@ -10,14 +10,16 @@ import {
   classifier,
   extraListed,
   itemKey,
+  legendDraws,
 } from "@/lib/style/legend";
 
 const list = (value: unknown): JsonObject[] => (Array.isArray(value) ? value.filter(isObject) : []);
 
-/** The classifications the legend lists, each with its key in the counts (its id, else its position). */
+/** The classifications the legend lists (`legendDraws`), each with its key in the counts (its id, else its
+ * position). */
 function counted(style: JsonObject): Array<{ key: string; c: JsonObject; field: string }> {
   return [...list(style.classify).entries()].flatMap(([index, c]) =>
-    c.legend !== false && typeof c.field === "string" && c.field && list(c.classes).length
+    c.legend !== false && legendDraws(c) && typeof c.field === "string" && c.field && list(c.classes).length
       ? [{ key: itemKey(c, index), c, field: c.field }]
       : []
   );

@@ -7,11 +7,12 @@ import { TILE_MAXZOOM } from "@/lib/style/compile/constants";
 import { ImageCollector } from "@/lib/style/compile/images";
 import { labelLayers } from "@/lib/style/compile/labels";
 import { lineLayers } from "@/lib/style/compile/lines";
-import type { PartContext } from "@/lib/style/compile/parts";
+import { type PartContext, keepDecorations } from "@/lib/style/compile/parts";
 import { pointLayers } from "@/lib/style/compile/points";
 import { polygonLayers } from "@/lib/style/compile/polygons";
 import { rasterLayers } from "@/lib/style/compile/rasters";
 import {
+  CLUSTER_COUNTER,
   clusterLayers,
   clusterSource,
   h3Layers,
@@ -39,7 +40,7 @@ function sourceSpec(input: CompileInput, render: JsonObject): SourceSpecificatio
     return { type: "vector", tiles: source.tiles, maxzoom: source.maxzoom ?? TILE_MAXZOOM };
   if (source.type === "points")
     return render.type === "cluster"
-      ? clusterSource(source.data, render)
+      ? clusterSource(source.data, render, input.style as unknown as JsonObject, input.fields)
       : { type: "geojson", data: source.data };
   if (source.type === "service") return serviceSource(source, input.style as unknown as JsonObject);
   return null;
@@ -109,6 +110,9 @@ function timeFilter(input: CompileInput, style: JsonObject): Expr | undefined {
   return ["any", unset, ["==", ["get", time.field], value]];
 }
 
+/** The properties MapLibre gives a cluster. */
+const CLUSTER_PROPERTIES = ["cluster", "cluster_id", "point_count", "point_count_abbreviated"];
+
 /** The fields an expression reads (`get` and `has`). */
 function fieldsRead(node: unknown, found: Set<string>): Set<string> {
   if (Array.isArray(node)) {
@@ -170,6 +174,8 @@ export function compileLayer(input: CompileInput): CompiledLayer {
       if (geometry === "point") out.layers.push(...pointLayers(ctx));
       if (geometry === "polygon") out.layers.push(...polygonLayers(ctx));
       if (geometry === "line") out.layers.push(...lineLayers(ctx));
+      // Markers on polygons and lines: above the area or the line, below the labels (spec 3.3).
+      if (geometry !== "point") out.layers.push(...pointLayers(ctx));
       out.layers.push(...labelLayers(ctx));
     };
     if (geometry === "point" && (render.type === "heatmap" || render.type === "h3")) {
@@ -197,6 +203,7 @@ export function compileLayer(input: CompileInput): CompiledLayer {
     } else {
       parts();
     }
+    keepDecorations(out);
     // Label anchors and decoration points carry only the fields asked for (spec 15).
     const extra = new Set<string>();
     for (const layer of out.layers) {
@@ -204,7 +211,18 @@ export function compileLayer(input: CompileInput): CompiledLayer {
       if (sourceLayer === "default_anchor" || sourceLayer === "default_decoration") fieldsRead(layer, extra);
     }
     extra.delete("bearing");
+    extra.delete("_decoration");
     if (extra.size) out.tileParams.fields = [...extra].sort();
+    // The points read from geoapi carry only the fields the layers read (spec 8.2), not the clusters' own.
+    if (input.source.type === "points" && typeof input.source.data === "string") {
+      const read = new Set<string>();
+      for (const layer of out.layers) fieldsRead(layer, read);
+      // The cluster properties count what the points carry.
+      fieldsRead((source as { clusterProperties?: unknown } | null)?.clusterProperties, read);
+      for (const name of CLUSTER_PROPERTIES) read.delete(name);
+      for (const name of read) if (name.startsWith(CLUSTER_COUNTER)) read.delete(name);
+      out.tileParams.fields = [...read].sort();
+    }
   }
   out.images = images.list();
   if (input.entry?.visible === false) {

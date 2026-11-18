@@ -190,6 +190,27 @@ describe("classification edits", () => {
     ).toBeUndefined();
   });
 
+  it("retargets a Font classification: its classes lose the style with the weight", () => {
+    const d = doc({
+      classify: [
+        {
+          id: "c",
+          field: "kind",
+          method: "categories",
+          target: "label.font.weight",
+          classes: [
+            { values: ["a"], label: { font: { weight: "regular", style: "italic" }, size: 14 } },
+            { values: ["b"], label: { font: { weight: "bold", style: "normal" } } },
+          ],
+        },
+      ],
+    });
+    expect(classify(retarget(d, 0, "label.size", "point"))[0].classes).toEqual([
+      { values: ["a"], label: { size: 14 } },
+      { values: ["b"] },
+    ]);
+  });
+
   it("a manual bound sets the class's from and the previous class's to", () => {
     const d = doc({
       classify: [
@@ -457,6 +478,15 @@ describe("classification targets", () => {
         expect(de.style_editor, key).toHaveProperty(label);
       }
     expect(classifyTargets("point")).not.toContain("outline.dash");
+    // Only polygon outlines run inside or outside their edge (spec 3.1).
+    expect(classifyTargets("point")).not.toContain("outline.position");
+    expect(classifyTargets("polygon")).toContain("outline.position");
+    expect(classifyTargets("line")).toContain("label.transform");
+    // The Font sets the weight and the style as one choice: the style is no target of its own.
+    expect(classifyTargets("point")).toContain("label.font.weight");
+    expect(classifyTargets("point")).not.toContain("label.font.style");
+    // Letter spacing, like the label's width and offset, is a class's own setting, not a classification's target.
+    expect(classifyTargets("polygon")).not.toContain("label.letter_spacing");
     // A class draws hollow markers with the Fill switch in its scope.
     expect(classifyTargets("point")).not.toContain("marker.fill");
     expect(classifyTargets("polygon").slice(0, 2)).toEqual(["fill.color", "fill.opacity"]);

@@ -195,6 +195,7 @@ export interface Outline {
   width?: (number | ZoomPx | ByAttributeNumber | RawField) | null;
   opacity?: (number | ZoomUnit | ByAttributeNumber | RawField) | null;
   dash?: (("solid" | "dashed" | "dotted" | "dash_dot") | ZoomStepDash) | null;
+  position?: (("center" | "inside" | "outside") | ZoomStepOutlinePosition) | null;
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
@@ -219,6 +220,15 @@ export interface ZoomPx {
  * via the `definition` "ZoomStepDash".
  */
 export interface ZoomStepDash {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomStepOutlinePosition".
+ */
+export interface ZoomStepOutlinePosition {
   zoom: [unknown, unknown][];
   interpolate?: "linear" | "exponential" | "step";
   base?: number;
@@ -289,6 +299,8 @@ export interface Arrows {
   spacing?: (number | ZoomSpacing) | null;
   size?: (number | ZoomPx | ByAttributeNumber | RawField) | null;
   color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
+  icon?: string | null;
+  turn_with_line?: boolean | null;
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
@@ -400,9 +412,29 @@ export interface Label {
   color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
   halo?: Halo | null;
   font?: Font | null;
-  placement?: ("auto" | "above" | "center" | "line" | "inside") | null;
+  placement?:
+    | (
+        | "auto"
+        | "center"
+        | "above"
+        | "below"
+        | "left"
+        | "right"
+        | "above_left"
+        | "above_right"
+        | "below_left"
+        | "below_right"
+        | "line"
+        | "inside"
+      )
+    | null;
   offset?: ([unknown, unknown] | ZoomOffset) | null;
   max_width?: (number | ZoomPx | ByAttributeNumber | RawField) | null;
+  transform?: (("none" | "uppercase" | "lowercase") | ZoomStepTransform) | null;
+  letter_spacing?: (number | ZoomLetterSpacing) | null;
+  line_height?: (number | ZoomLineHeight) | null;
+  spacing?: (number | ZoomLabelSpacing) | null;
+  padding?: (number | ZoomLabelPadding) | null;
   lines?: LabelLine[] | null;
   priority?: Priority | null;
   allow_overlap?: boolean | null;
@@ -432,13 +464,68 @@ export interface Halo {
  * via the `definition` "Font".
  */
 export interface Font {
-  weight?: (("regular" | "bold") | ZoomStepWeight) | null;
+  weight?: (("light" | "regular" | "medium" | "bold") | ZoomStepWeight) | null;
+  style?: (("normal" | "italic") | ZoomStepFontStyle) | null;
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
  * via the `definition` "ZoomStepWeight".
  */
 export interface ZoomStepWeight {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomStepFontStyle".
+ */
+export interface ZoomStepFontStyle {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomStepTransform".
+ */
+export interface ZoomStepTransform {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomLetterSpacing".
+ */
+export interface ZoomLetterSpacing {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomLineHeight".
+ */
+export interface ZoomLineHeight {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomLabelSpacing".
+ */
+export interface ZoomLabelSpacing {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomLabelPadding".
+ */
+export interface ZoomLabelPadding {
   zoom: [unknown, unknown][];
   interpolate?: "linear" | "exponential" | "step";
   base?: number;
@@ -505,9 +592,11 @@ export interface Classification {
     | (
         | "arrows.color"
         | "arrows.direction"
+        | "arrows.icon"
         | "arrows.placement"
         | "arrows.size"
         | "arrows.spacing"
+        | "arrows.turn_with_line"
         | "casing.color"
         | "casing.opacity"
         | "casing.width"
@@ -522,18 +611,24 @@ export interface Classification {
         | "fill.pattern_width"
         | "label.allow_overlap"
         | "label.color"
+        | "label.font.style"
         | "label.font.weight"
         | "label.format"
         | "label.formats"
         | "label.halo.color"
         | "label.halo.width"
+        | "label.letter_spacing"
+        | "label.line_height"
         | "label.lines"
         | "label.max_width"
         | "label.offset"
+        | "label.padding"
         | "label.placement"
         | "label.priority"
         | "label.size"
+        | "label.spacing"
         | "label.text"
+        | "label.transform"
         | "line.blur"
         | "line.cap"
         | "line.color"
@@ -556,6 +651,7 @@ export interface Classification {
         | "outline.color"
         | "outline.dash"
         | "outline.opacity"
+        | "outline.position"
         | "outline.width"
       )
     | null;
@@ -876,15 +972,33 @@ export interface HeatmapWeight {
   domain?: [unknown, unknown] | null;
 }
 /**
+ * Clusters: a `circle` over their count, or drawn with the points' own marker
+ * (`points`); the count in the middle of the cluster or on a `badge` at its upper
+ * right.
+ *
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
  * via the `definition` "ClusterRender".
  */
 export interface ClusterRender {
   type: "cluster";
+  look?: ("circle" | "points") | null;
+  count?: ("center" | "badge") | null;
+  value?: ClusterValue | null;
   radius?: number | null;
   cluster_until_zoom?: number | null;
   min_points?: number | null;
   symbol?: ClusterSymbol | null;
+}
+/**
+ * What the cluster symbol's derived field `value` is: the number of points, or
+ * the sum, mean, smallest or largest value of a number field over them.
+ *
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ClusterValue".
+ */
+export interface ClusterValue {
+  op: "count" | "sum" | "mean" | "min" | "max";
+  field?: string | null;
 }
 /**
  * Cluster points, styled over the derived field `count`.

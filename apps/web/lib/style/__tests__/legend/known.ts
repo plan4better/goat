@@ -2,12 +2,14 @@
 // holds for (by their settings, so the list survives a reshuffle of the cases) and what is wrong. A check expects
 // these to fail: once one is fixed its test turns red until the entry is removed. Differences that are by design
 // do not belong here; the checks themselves allow for those.
-import type { LegendCase } from "./cases";
+import type { LegendCase } from "./caseList";
 
 export interface KnownDifference {
-  check: "compiles" | "invariants" | "map" | "render";
+  check: "compiles" | "invariants" | "map" | "render" | "lab";
   when: (c: LegendCase) => boolean;
   reason: string;
+  /** For the lab: which of its findings the difference shows in (the others stay empty). */
+  finding?: "errors" | "missingImages" | "notDrawn" | "drawnHidden" | "colorMismatches";
 }
 
 export const KNOWN_DIFFERENCES: KnownDifference[] = [];

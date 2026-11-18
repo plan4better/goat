@@ -17,15 +17,18 @@ import {
   put,
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
-import { PATTERN_IMAGE } from "@/lib/style/compile/patternImage";
+import { NO_PATTERN_IMAGE, PATTERN_IMAGE } from "@/lib/style/compile/patternImage";
 import {
   type Expr,
   FILL_COLOR,
   type Value,
   combine,
+  fold,
   fromForm,
+  isZoomed,
   substitute,
   toProperty,
+  valueAt,
 } from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { SCENE_DEFAULTS } from "@/lib/style/generated/scene";
@@ -104,6 +107,36 @@ function extrusionLayer(ctx: PartContext, fillColor: Value): LayerSpecification 
   return makeLayer(ctx, "fill", "fill-extrusion", "fill", {}, paint, "default", { ordered: false });
 }
 
+/** How far before a position's zoom stop the offset of a blending width jumps to the new side. */
+const SIDE_CHANGE = 0.001;
+
+/** The offset of an outline at its position: half its width into the polygon, out of it, or none on the edge. A
+ * position by zoom changes side at its stops while a width by zoom blends between its own: the offset then follows the
+ * width's curve, with a stop at every stop of either and one just before each side change, so it stays half the drawn
+ * width at every zoom. */
+function outlineOffset(position: Value, width: Value): Value {
+  const half = (w: Expr): Expr => ["/", w, 2];
+  const at = ([p, w]: Expr[]): Expr =>
+    p === "inside"
+      ? half(w)
+      : p === "outside"
+        ? ["-", 0, half(w)]
+        : typeof p === "string"
+          ? 0
+          : ["match", p, "inside", half(w), "outside", ["-", 0, half(w)], 0];
+  if (!isZoomed(position) || !isZoomed(width) || width.interpolate === "step")
+    return combine([position, width], at, { kind: "number" });
+  const changes = position.stops.slice(1).map(([z]) => z - SIDE_CHANGE);
+  const zooms = [...new Set([...position.stops.map(([z]) => z), ...changes, ...width.stops.map(([z]) => z)])];
+  return {
+    interpolate: width.interpolate,
+    stops: zooms
+      .sort((a, b) => a - b)
+      .map((z) => [z, fold(at([valueAt(position, z), valueAt(width, z)]))] as [number, Expr]),
+    kind: "number",
+  };
+}
+
 export function polygonLayers(ctx: PartContext): LayerSpecification[] {
   const { style } = ctx;
   const c = { fields: ctx.fields };
@@ -137,7 +170,7 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
           everyZoom(inFill(cascade(style, "fill.pattern_color", { ...c, fallback: FILL_COLOR }))),
         ],
         ([kind, spacing, width, color]) => {
-          if (kind === "none") return "";
+          if (kind === "none") return NO_PATTERN_IMAGE;
           const image = concat([
             PATTERN_IMAGE,
             kind,
@@ -148,7 +181,7 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
             "|",
             colorText(color),
           ]);
-          return typeof kind === "string" ? image : ["case", ["==", kind, "none"], "", image];
+          return typeof kind === "string" ? image : ["case", ["==", kind, "none"], NO_PATTERN_IMAGE, image];
         },
         { step: true, kind: "choice" }
       );
@@ -166,8 +199,12 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
       cascade(style, "outline.color", { ...c, map: (v) => (v === "fill" ? FILL_COLOR : v) })
     );
     put(paint, "line-color", highlightColor(ctx, color), ctx, "outline.color");
-    put(paint, "line-width", highlightWidth(ctx, cascade(style, "outline.width", c)), ctx, "outline.width");
+    const width = cascade(style, "outline.width", c);
+    put(paint, "line-width", highlightWidth(ctx, width), ctx, "outline.width");
     put(paint, "line-opacity", cascade(style, "outline.opacity", c), ctx, "outline.opacity");
+    // Inside or outside: the line moves by half its width; MapLibre insets a polygon's ring by a positive offset.
+    if (setValues(style, "outline.position").some((p) => p === "inside" || p === "outside"))
+      put(paint, "line-offset", outlineOffset(cascade(style, "outline.position", c), width), ctx);
     if (isSet(style, "outline.dash"))
       paint["line-dasharray"] = toProperty(cascade(style, "outline.dash", { ...c, map: dashArray }));
     if (opacity) paint["line-layer-opacity"] = toProperty(opacity);

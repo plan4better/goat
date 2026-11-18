@@ -50,7 +50,7 @@ export function mapLook(
       !featureFilter(layer.filter as never, "layers[0].filter", state).filter({ zoom }, feature)
     )
       continue;
-    const read = (group: "paint" | "layout", key: string): unknown => {
+    const read = (group: "paint" | "layout", key: string, at = zoom): unknown => {
       const spec = (latest as unknown as Record<string, Record<string, StylePropertySpecification>>)[
         `${group}_${layer.type}`
       ][key];
@@ -59,8 +59,11 @@ export function mapLook(
       const parsed = createPropertyExpression(raw, `layers[0].${group}.${key}`, spec, state);
       if (parsed.result !== "success")
         throw new Error(`${layer.id} ${key}: ${parsed.value.map((e) => e.message).join("; ")}`);
-      return parsed.value.evaluate({ zoom }, feature);
+      return parsed.value.evaluate({ zoom: at }, feature);
     };
+    // MapLibre picks a symbol's image and a fill's pattern once per tile, at the tile's whole zoom (the map's zoom
+    // rounded down); every other value at the map's zoom.
+    const tileZoom = Math.floor(zoom);
     const part = layer.id.slice(compiled.id.length + 1);
     if (part === "marker" && layer.type === "circle") {
       out["marker.shape"] = "circle";
@@ -71,7 +74,7 @@ export function mapLook(
       out["outline.width"] = read("paint", "circle-stroke-width");
       out["outline.opacity"] = read("paint", "circle-stroke-opacity");
     } else if (part === "marker" && layer.type === "symbol") {
-      const image = parseMarkerImage(imageName(read("layout", "icon-image")));
+      const image = parseMarkerImage(imageName(read("layout", "icon-image", tileZoom)));
       if (!image) throw new Error(`${layer.id}: not a marker image`);
       out["marker.shape"] = image.shape;
       out["marker.color"] = image.fill;
@@ -79,11 +82,14 @@ export function mapLook(
       out["marker.icon"] = image.icon;
       out["marker.icon_color"] = image.iconColor;
       out["marker.opacity"] = read("paint", "icon-opacity");
-      out["outline.color"] = image.stroke;
-      out["outline.width"] = image.strokeWidth;
+      // A marker on a polygon or a line has no stroke: the outline is the polygon's border (spec 3.3).
+      if (geometry === "point") {
+        out["outline.color"] = image.stroke;
+        out["outline.width"] = image.strokeWidth;
+      }
     } else if (part === "icon" && layer.type === "symbol") {
       out["marker.shape"] = "icon";
-      out["marker.icon"] = imageName(read("layout", "icon-image"));
+      out["marker.icon"] = imageName(read("layout", "icon-image", tileZoom));
       out["marker.color"] = read("paint", "icon-color");
       out["marker.size"] = (read("layout", "icon-size") as number) * ICON_HEIGHT;
       out["marker.opacity"] = read("paint", "icon-opacity");
@@ -94,7 +100,7 @@ export function mapLook(
       out["fill.color"] = read("paint", "fill-extrusion-color");
       out["extrude.height"] = read("paint", "fill-extrusion-height");
     } else if (part === "pattern" && layer.type === "fill") {
-      const image = parsePatternImage(imageName(read("paint", "fill-pattern")));
+      const image = parsePatternImage(imageName(read("paint", "fill-pattern", tileZoom)));
       out["fill.pattern"] = image?.kind ?? "none";
       if (image) out["fill.pattern_color"] = image.color;
     } else if (layer.type === "line" && (part === "outline" || part === "line" || part === "casing")) {

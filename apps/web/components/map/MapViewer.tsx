@@ -34,9 +34,11 @@ import {
   INTERACTIVE_PARTS,
   type ViewLayer,
   clusterFeatureOf,
+  featureProperties,
   topFeature,
   zoomToCluster,
 } from "@/lib/style/render/viewLayers";
+import { getFeature } from "@/lib/api/layers";
 import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 import { applyMapLanguage } from "@/hooks/map/MapHooks";
 import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
@@ -134,6 +136,10 @@ const datasetOf = (layer: ViewLayer): string => String(layer.layer_id ?? layer.i
 
 /** The least time between two cell value reads while hovering a raster file, in ms. */
 const RASTER_HOVER_INTERVAL = 100;
+
+/** The map's zoom as the store holds it: rounded down to a tenth. MapLibre draws a tile's images and switches layers
+ * and clusters at the whole zoom at or below the map's, so at 12.96 every reader of the store sees zoom 12, as drawn. */
+const storedZoom = (zoom: number): number => Math.floor(zoom * 10) / 10;
 
 const MapViewer: React.FC<MapProps> = ({
   mapRef,
@@ -411,6 +417,9 @@ const MapViewer: React.FC<MapProps> = ({
   // still over the same feature, and to clear the popup when the cursor
   // leaves all hover-trigger features.
   const hoverPopupKeyRef = useRef<string | undefined>(undefined);
+  // The latest click: a clustered layer's feature properties arrive from geoapi after it, and only the latest click's
+  // open the popup.
+  const clickSeqRef = useRef(0);
 
   // Touch start point — used by the touch-tap fallback below. Maplibre's
   // own tap-to-click conversion is blocked by MapboxDraw's mode
@@ -459,6 +468,8 @@ const MapViewer: React.FC<MapProps> = ({
 
     const map = mapRef?.current?.getMap();
 
+    const click = ++clickSeqRef.current;
+
     // Cluster click: zoom to where the cluster breaks apart.
     const clusterFeature = map ? clusterFeatureOf(map, features) : undefined;
     if (map && clusterFeature) {
@@ -493,27 +504,28 @@ const MapViewer: React.FC<MapProps> = ({
           lngLat = [interactiveFeature.geometry.coordinates[0], interactiveFeature.geometry.coordinates[1]];
         }
 
-        const { properties: primitiveProperties, jsonProperties } = splitPopupProperties(
-          interactiveFeature.properties
-        );
-        dispatch(
-          setPopupInfo({
-            lngLat,
-            properties: primitiveProperties,
-            jsonProperties: jsonProperties,
-            // Full unfiltered feature properties — snapshotted here so the
-            // new MapFeaturePopover doesn't read live from highlightedFeature
-            // (which mutates on unrelated UI events like changing the
-            // selected layer in the Layers panel).
-            featureProperties: interactiveFeature.properties as Record<string, unknown>,
-            triggeredBy: "click",
-            title: interactiveLayer.name ?? "",
-            // queryables expects the dataset id, not the project layer id.
-            layerId: datasetOf(interactiveLayer),
-            projectLayerId: interactiveLayer.id.toString(),
-            onClose: handlePopoverClose,
-          })
-        );
+        void featureProperties(interactiveLayer, interactiveFeature, getFeature).then((full) => {
+          if (click !== clickSeqRef.current) return;
+          const { properties: primitiveProperties, jsonProperties } = splitPopupProperties(full);
+          dispatch(
+            setPopupInfo({
+              lngLat,
+              properties: primitiveProperties,
+              jsonProperties: jsonProperties,
+              // Full unfiltered feature properties — snapshotted here so the
+              // new MapFeaturePopover doesn't read live from highlightedFeature
+              // (which mutates on unrelated UI events like changing the
+              // selected layer in the Layers panel).
+              featureProperties: full,
+              triggeredBy: "click",
+              title: interactiveLayer.name ?? "",
+              // queryables expects the dataset id, not the project layer id.
+              layerId: datasetOf(interactiveLayer),
+              projectLayerId: interactiveLayer.id.toString(),
+              onClose: handlePopoverClose,
+            })
+          );
+        });
       } else {
         // No interactive features were found in the click stack.
         dispatch(setHighlightedFeature(undefined));
@@ -546,13 +558,16 @@ const MapViewer: React.FC<MapProps> = ({
       if (!didHighlight && cfg && layerHighlightsActiveFeature(cfg.enabled, cfg.highlight_active_feature)) {
         dispatch(setHighlightedFeature(filterHit.feature));
       }
-      dispatch(
-        setClickedFeatureForFilter({
-          layerProjectId: filterHit.layer.id as number,
-          properties: filterHit.feature.properties,
-          timestamp: Date.now(),
-        })
-      );
+      void featureProperties(filterHit.layer, filterHit.feature, getFeature).then((properties) => {
+        if (click !== clickSeqRef.current) return;
+        dispatch(
+          setClickedFeatureForFilter({
+            layerProjectId: filterHit.layer.id as number,
+            properties,
+            timestamp: Date.now(),
+          })
+        );
+      });
     }
 
     if (onClick) {
@@ -659,21 +674,25 @@ const MapViewer: React.FC<MapProps> = ({
           : [e.lngLat.lng, e.lngLat.lat];
 
       dispatch(setHighlightedFeature(hoverFeature));
-      dispatch(
-        setPopupInfo({
-          lngLat: featureLngLat,
-          title: hoverLayer.name ?? "",
-          layerId: datasetOf(hoverLayer),
-          projectLayerId: hoverLayer.id.toString(),
-          // MapFeaturePopover uses featureProperties for token
-          // substitution; `properties` carries the same payload for the
-          // readers that still take it (the fixed popup slot's fallback).
-          featureProperties: hoverFeature.properties as Record<string, unknown>,
-          properties: hoverFeature.properties as Record<string, string>,
-          triggeredBy: "hover",
-          onClose: handlePopoverClose,
-        }),
-      );
+      void featureProperties(hoverLayer, hoverFeature, getFeature).then((full) => {
+        // The pointer moved on while a clustered layer's properties were on their way.
+        if (hoverPopupKeyRef.current !== hoverKey) return;
+        dispatch(
+          setPopupInfo({
+            lngLat: featureLngLat,
+            title: hoverLayer.name ?? "",
+            layerId: datasetOf(hoverLayer),
+            projectLayerId: hoverLayer.id.toString(),
+            // MapFeaturePopover uses featureProperties for token
+            // substitution; `properties` carries the same payload for the
+            // readers that still take it (the fixed popup slot's fallback).
+            featureProperties: full,
+            properties: full as Record<string, string>,
+            triggeredBy: "hover",
+            onClose: handlePopoverClose,
+          }),
+        );
+      });
     } else if (hoverPopupKeyRef.current !== undefined) {
       // Cursor left all hover-trigger features — close the hover popup.
       // We only get here if the current popup was hover-originated
@@ -729,10 +748,10 @@ const MapViewer: React.FC<MapProps> = ({
         { pixelRatio: 2 },
       );
 
-      // set current zoom (rounded to 1 decimal place for consistency)
+      // set current zoom (to a tenth, as storedZoom keeps it)
       const map = mapRef.current.getMap();
       const zoom = map.getZoom();
-      const roundedZoom = Math.round(zoom * 10) / 10;
+      const roundedZoom = storedZoom(zoom);
       lastDispatchedZoomRef.current = roundedZoom;
       dispatch(setCurrentZoom(roundedZoom));
 
@@ -770,9 +789,9 @@ const MapViewer: React.FC<MapProps> = ({
       if (mapRef?.current) {
         const map = mapRef.current.getMap();
         const zoom = map.getZoom();
-        // Round to 1 decimal place to avoid excessive Redux updates during smooth zoom/pan
+        // To a tenth (storedZoom) to avoid excessive Redux updates during smooth zoom/pan
         // This prevents re-renders of components subscribed to currentZoom (like LayerTree)
-        const roundedZoom = Math.round(zoom * 10) / 10;
+        const roundedZoom = storedZoom(zoom);
         if (lastDispatchedZoomRef.current !== roundedZoom) {
           // Debounce the Redux dispatch — zoom visibility dimming in the layer tree
           // doesn't need real-time updates during zoom animation

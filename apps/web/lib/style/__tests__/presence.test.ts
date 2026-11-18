@@ -124,6 +124,12 @@ describe("presenceRequests", () => {
   it("classifications left out of the legend ask for nothing", () => {
     expect(presenceRequests(style({ ...KINDS, legend: false }))).toEqual([]);
   });
+
+  it("classifications of what the legend does not draw (a label's font) ask for nothing", () => {
+    const font = { ...KINDS, id: "font", target: "label.font.weight" };
+    expect(presenceRequests(style(font)).map(({ key }) => key)).toEqual([]);
+    expect(Object.keys(countPresence(style(KINDS, font)).result())).toEqual(["kind"]);
+  });
 });
 
 describe("presenceFromCounts", () => {
