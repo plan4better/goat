@@ -12,6 +12,9 @@
     "dev:inspect": "node scripts/copy-duckdb-wasm.mjs && cross-env NODE_OPTIONS='--inspect' node_modules/.bin/next dev -p 3000",
     "fix-all-files": "eslint . --ext .ts,.tsx,.js,.jsx,.cjs,.mjs,.mdx,.graphql --fix",
     "generate:style": "node scripts/generate-style-sources.mjs",
+    "lab": "vitest run --config vitest.lab.config.ts",
+    "lab:show": "vitest --config vitest.lab.config.ts --browser.headless=false",
+    "lab:update": "vitest run --config vitest.lab.config.ts --update",
     "start": "next start",
     "lint": "eslint . --ignore-path .gitignore",
     "lint:fix": "eslint . --ext .ts,.js,.tsx,.jsx --fix",
@@ -155,6 +158,7 @@
     "@types/react-dom": "^19.2.0",
     "@types/uuid": "^9.0.2",
     "@vitejs/plugin-react": "^4.2.1",
+    "@vitest/browser-playwright": "5.1.0",
     "@vitest/ui": "^5.0.5",
     "cross-env": "^7.0.3",
     "es-check": "^7.1.1",
@@ -163,6 +167,7 @@
     "json-schema-to-typescript": "^16.0.0",
     "react-rnd": "^10.4.1",
     "size-limit": "^8.2.6",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "vitest-browser-react": "2.3.0"
   }
 }

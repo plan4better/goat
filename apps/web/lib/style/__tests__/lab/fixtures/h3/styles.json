@@ -1,0 +1,98 @@
+{
+  "classes": {
+    "version": 1,
+    "kind": "vector",
+    "geometry": "point",
+    "render": {
+      "type": "h3",
+      "value": {
+        "op": "count"
+      },
+      "classify": {
+        "method": "equal_interval",
+        "count": 4
+      },
+      "points_from_zoom": 13,
+      "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "style-lab",
+        "scope": "dataset",
+        "resolutions": {
+          "5": {
+            "min": 33.0,
+            "max": 604.0,
+            "breaks": [175.75, 318.5, 461.25]
+          },
+          "6": {
+            "min": 8.0,
+            "max": 247.0,
+            "breaks": [67.75, 127.5, 187.25]
+          },
+          "7": {
+            "min": 8.0,
+            "max": 42.0,
+            "breaks": [16.5, 25.0, 33.5]
+          },
+          "8": {
+            "min": 1.0,
+            "max": 9.0,
+            "breaks": [3.0, 5.0, 7.0]
+          },
+          "9": {
+            "min": 1.0,
+            "max": 9.0,
+            "breaks": [3.0, 5.0, 7.0]
+          },
+          "10": {
+            "min": 1.0,
+            "max": 9.0,
+            "breaks": [3.0, 5.0, 7.0]
+          }
+        }
+      }
+    }
+  },
+  "ramp": {
+    "version": 1,
+    "kind": "vector",
+    "geometry": "point",
+    "render": {
+      "type": "h3",
+      "value": {
+        "op": "mean",
+        "field": "pop"
+      },
+      "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "style-lab",
+        "scope": "dataset",
+        "resolutions": {
+          "5": {
+            "min": 71.1920529801,
+            "max": 116.363636364
+          },
+          "6": {
+            "min": 64.9450549451,
+            "max": 125.3125
+          },
+          "7": {
+            "min": 25.7894736842,
+            "max": 145.333333333
+          },
+          "8": {
+            "min": 0.0,
+            "max": 160.0
+          },
+          "9": {
+            "min": 0.0,
+            "max": 160.0
+          },
+          "10": {
+            "min": 0.0,
+            "max": 160.0
+          }
+        }
+      }
+    }
+  }
+}
