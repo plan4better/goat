@@ -254,6 +254,130 @@ class TestProjectExportRunner:
             assert manifest["project_name"] == "Test Project"
             assert manifest["layer_count"] == 1
 
+    ICON_ID = "00000000-0000-0000-0000-0000000000a1"
+    IMAGE_ID = "00000000-0000-0000-0000-0000000000b1"
+
+    def _metadata(self) -> dict[str, Any]:
+        def entry(asset_id: str, name: str, asset_type: str) -> dict[str, Any]:
+            return {
+                "id": asset_id,
+                "s3_key": f"goat/prod/users/u/{asset_type}/{name}",
+                "file_name": name,
+                "mime_type": "image/png",
+                "asset_type": asset_type,
+                "archive_path": f"assets/{asset_id}{Path(name).suffix}",
+            }
+
+        return {
+            "project_metadata": {"name": "P"},
+            "layers": [],
+            "layer_project_links": [],
+            "layer_groups": [],
+            "workflows": [],
+            "reports": [],
+            "assets": [
+                entry(self.ICON_ID, "a.png", "icon"),
+                entry(self.IMAGE_ID, "b.png", "image"),
+            ],
+            "asset_s3_keys": [],
+            "thumbnail_s3_key": "thumbnails/projects/p.png",
+        }
+
+    def _run(
+        self, runner: ProjectExportRunner, params: ProjectExportParams
+    ) -> zipfile.ZipFile:
+        """Run the export with `_metadata`; the uploaded ZIP."""
+        import io
+
+        runner._s3_client.download_file.side_effect = lambda **kw: Path(
+            kw["Filename"]
+        ).write_bytes(b"thumb")
+        uploaded: dict[str, bytes] = {}
+        runner._s3_client.put_object.side_effect = lambda **kw: uploaded.update(
+            zip=kw["Body"].read()
+        )
+        public = runner.settings.get_s3_public_client.return_value
+        public.generate_presigned_url.return_value = "https://s3.example.com/p"
+        with patch.object(
+            runner,
+            "_gather_metadata",
+            new_callable=AsyncMock,
+            return_value=self._metadata(),
+        ):
+            runner.run(params)
+        return zipfile.ZipFile(io.BytesIO(uploaded["zip"]))
+
+    def test_run_fetches_uploads_through_core_as_the_user(
+        self, runner: ProjectExportRunner, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Icons and images come through core's public file route, with no
+        token: the export never acts as the user. The thumbnail is a data
+        bucket object."""
+        core = MagicMock()
+        core.download_upload.side_effect = lambda asset_id, dest: dest.write_bytes(
+            asset_id.encode()
+        )
+        params = ProjectExportParams(
+            user_id="00000000-0000-0000-0000-000000000001",
+            project_id="00000000-0000-0000-0000-000000000099",
+            core_url="http://core:8000",
+        )
+        with (
+            patch(
+                "goatlib.tools.project_export.CoreSession",
+                return_value=core,
+            ) as session,
+            caplog.at_level("WARNING"),
+        ):
+            zf = self._run(runner, params)
+
+        session.assert_called_once_with("http://core:8000", None)
+        assert [c.args[0] for c in core.download_upload.call_args_list] == [
+            self.ICON_ID,
+            self.IMAGE_ID,
+        ]
+        assert zf.read(f"assets/{self.ICON_ID}.png") == self.ICON_ID.encode()
+        assert zf.read(f"assets/{self.IMAGE_ID}.png") == self.IMAGE_ID.encode()
+        assert zf.read("assets/thumbnail.png") == b"thumb"
+        core.close.assert_called_once()
+
+    def test_a_failed_download_leaves_that_file_out(
+        self, runner: ProjectExportRunner, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        core = MagicMock()
+        core.download_upload.side_effect = RuntimeError("404")
+        params = ProjectExportParams(
+            user_id="00000000-0000-0000-0000-000000000001",
+            project_id="00000000-0000-0000-0000-000000000099",
+            core_url="http://core:8000",
+        )
+        with (
+            patch(
+                "goatlib.tools.project_export.CoreSession",
+                return_value=core,
+            ),
+            caplog.at_level("WARNING"),
+        ):
+            zf = self._run(runner, params)
+        assert f"assets/{self.ICON_ID}.png" not in zf.namelist()
+        assert any(self.ICON_ID in r.getMessage() for r in caplog.records)
+
+    def test_without_cores_address_uploads_stay_out_with_a_warning(
+        self, runner: ProjectExportRunner, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        params = ProjectExportParams(
+            user_id="00000000-0000-0000-0000-000000000001",
+            project_id="00000000-0000-0000-0000-000000000099",
+        )
+        with caplog.at_level("WARNING"):
+            zf = self._run(runner, params)
+        runner._s3_client.download_file.assert_called_once()
+        assert f"assets/{self.ICON_ID}.png" not in zf.namelist()
+        assert any(self.ICON_ID in r.getMessage() for r in caplog.records)
+        # The index still names the uploads the project uses.
+        index = json.loads(zf.read("assets/index.json"))
+        assert [a["id"] for a in index["assets"]] == [self.ICON_ID, self.IMAGE_ID]
+
     async def test_gather_metadata_includes_field_config(
         self, runner: ProjectExportRunner
     ) -> None:
@@ -650,3 +774,64 @@ async def test_project_json_carries_scene_and_locale() -> None:
     metadata = await _gather_with_view_rows(runner, project_id, owner_id, owner_id, [])
     assert metadata["project_metadata"]["scene"] == {"terrain": {"exaggeration": 2}}
     assert metadata["project_metadata"]["locale"] == "de"
+
+
+def test_the_archive_lists_the_icons_and_images_a_project_names(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Uploads the styles name by id or by key go into the asset index; a
+    document is not exported (the archive format has none), with a warning;
+    an upload nobody names stays out quietly."""
+
+    def row(asset_id: str, asset_type: str) -> dict[str, Any]:
+        return {
+            "id": uuid.UUID(asset_id),
+            "s3_key": f"goat/prod/users/u/{asset_type}/{asset_id}.x",
+            "file_name": f"{asset_type}.png",
+            "display_name": None,
+            "category": None,
+            "mime_type": "image/png",
+            "file_size": 1,
+            "asset_type": asset_type,
+            "content_hash": "h",
+        }
+
+    icon, image, doc, unused = (
+        f"00000000-0000-0000-0000-00000000000{i}" for i in range(4)
+    )
+    names = json.dumps(
+        [
+            f"asset:{icon}",
+            f"https://goat.example/goat/prod/users/u/image/{image}.x",
+            f"asset:{doc}",
+        ]
+    )
+    rows = [
+        row(icon, "icon"),
+        row(image, "image"),
+        row(doc, "document"),
+        row(unused, "icon"),
+    ]
+    with caplog.at_level("WARNING"):
+        matched = ProjectExportRunner._named_uploads(rows, names)
+    assert [a["id"] for a in matched] == [icon, image]
+    assert matched[0]["archive_path"] == f"assets/{icon}.png"
+    assert [r.getMessage() for r in caplog.records if doc in r.getMessage()]
+    assert not [r for r in caplog.records if unused in r.getMessage()]
+
+
+def test_an_upload_lands_inside_the_archive_only(tmp_path: Path) -> None:
+    """The archive path comes from the database; a file is written only when
+    it stays inside the archive."""
+    core = MagicMock()
+    params = ProjectExportParams(
+        user_id="00000000-0000-0000-0000-000000000001",
+        project_id="00000000-0000-0000-0000-000000000099",
+        core_url="http://core:8000",
+    )
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    assets = [{"id": "a", "file_name": "x.png", "archive_path": "../x.png"}]
+    with patch("goatlib.tools.project_export.CoreSession", return_value=core):
+        ProjectExportRunner._fetch_uploads(params, assets, archive)
+    core.download_upload.assert_not_called()

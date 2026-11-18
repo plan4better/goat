@@ -667,6 +667,18 @@ key stay as they are. DuckLake offers no way around it: a rewrite, and
 `SET SORTED BY` with `ducklake_merge_adjacent_files`, both number the rows
 anew. The `project_import` copy keeps its export's order on purpose.
 
+## Uploaded files are core's
+
+Uploaded icons, images and documents (`uploaded_asset`) are core's alone: core decides where the files live (the
+assets bucket, or the data bucket under `ASSETS_PREFIX` in `storage/s3_config.py` when it serves them itself) and
+the Windmill workers get no access to that store. Project export and import carry icons and images through core's
+HTTP API instead (`tools/core_api.py`), with core's address from processes. `project_export` reads each file from
+core's public `/asset/<id>/file` (following the redirect to the image link) and needs no token; documents are not
+exported. `project_import` uploads each file through `/asset/upload` with the user's access token as its first step,
+while the token is fresh (core keeps it, records it and reuses an identical file of the user's), and writes the
+records with the ids core returns. Nothing refreshes the token: a file core refuses stays out with a warning and the
+import goes on. A failed import deletes the uploads it created, with the same token, as far as it can.
+
 ## Files another pod just wrote
 
 The data volume is shared over NFS, and each node remembers for a while that a file name did not exist. A

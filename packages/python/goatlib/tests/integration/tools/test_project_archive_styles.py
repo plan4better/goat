@@ -112,7 +112,7 @@ async def test_a_1_2_round_trip_keeps_every_named_style_the_active_one_and_map_s
         """,
         uuid.UUID(asset_id),
         uuid.UUID(TEST_USER_ID),
-        f"assets/{TEST_USER_ID}/{asset_id}.svg",
+        f"goat/test/users/{TEST_USER_ID}/icon/{asset_id}.svg",
         len(SVG),
     )
     layer_id = str(uuid.uuid4())
@@ -156,17 +156,23 @@ async def test_a_1_2_round_trip_keeps_every_named_style_the_active_one_and_map_s
 
     archive = tmp_path / "archive"
     write(archive, {**archive_files(metadata), asset["archive_path"]: SVG})
+    uploads_before = await postgres_pool.fetchval(
+        f"SELECT count(*) FROM {S}.uploaded_asset"
+    )
     new_project_id, id_map = await imported(archive, tool_settings)
 
-    new_asset = id_map[asset_id]
+    # The records are written without uploads here (`_upload_archive_uploads`
+    # runs before, through core, not in this test), so the styles keep the
+    # icon's id and no row is added for it.
+    assert asset_id not in id_map
     [link] = await links_of(postgres_pool, new_project_id)
-    assert json.loads(link["default_style"]) == icon_style(new_asset)
+    assert json.loads(link["default_style"]) == icon_style(asset_id)
     assert [
         (s["name"], s["position"], s["active"], s["revisions"])
         for s in json.loads(link["styles"])
     ] == [("Default", 0, False, 1), ("Density", 1, True, 1)]
     assert [s["document"] for s in json.loads(link["styles"])] == [
-        icon_style(new_asset),
+        icon_style(asset_id),
         density,
     ]
     assert (
@@ -176,11 +182,10 @@ async def test_a_1_2_round_trip_keeps_every_named_style_the_active_one_and_map_s
         link["legend_expanded"],
     ) == (False, "below_labels", 2024, False)
     assert (link["group_visible"], link["group_expanded"]) == (False, False)
-    row = await postgres_pool.fetchrow(
-        f"SELECT user_id, s3_key, content_hash FROM {S}.uploaded_asset WHERE id = $1",
-        uuid.UUID(new_asset),
+    assert (
+        await postgres_pool.fetchval(f"SELECT count(*) FROM {S}.uploaded_asset")
+        == uploads_before
     )
-    assert row is not None and row["s3_key"] == f"assets/{TEST_USER_ID}/{new_asset}.svg"
 
 
 async def test_a_1_1_archive_imports_with_style_rows_and_map_state(
@@ -264,13 +269,14 @@ async def test_a_1_1_archive_imports_with_style_rows_and_map_state(
             f"assets/{old_asset}.svg": SVG,
         },
     )
-    new_project_id, id_map = await imported(archive, tool_settings)
+    new_project_id, _ = await imported(archive, tool_settings)
     pins, table = await links_of(postgres_pool, new_project_id)
 
     assert json.loads(pins["default_style"])["symbol"]["marker"]["color"] == "#ff0000"
     [style] = json.loads(pins["styles"])
     assert (style["name"], style["active"], style["revisions"]) == ("Default", True, 1)
-    assert style["document"]["symbol"]["marker"]["icon"] == f"asset:{id_map[old_asset]}"
+    # The icon named by its URL takes the upload's id from the archive.
+    assert style["document"]["symbol"]["marker"]["icon"] == f"asset:{old_asset}"
     assert (pins["visible"], pins["legend_expanded"]) == (False, False)
     assert (pins["group_visible"], pins["group_expanded"]) == (False, False)
     # A table has no style rows; its map state moves all the same.

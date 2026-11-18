@@ -53,6 +53,8 @@ check_common() {
   # every table it needs (apps/assistant/sql/grants.sql lists them).
   jq -e '.services as $s | $s.assistant.environment | .POSTGRES_USER == $s.core.environment.POSTGRES_USER and .POSTGRES_USER == $s["core-migrate"].environment.POSTGRES_USER and .POSTGRES_DB == $s.core.environment.POSTGRES_DB' <<<"$json" >/dev/null || fail "assistant must use GOAT's database role"
   jq -e '.services.assistant.environment.REDIS_URL == "redis://redis:6379/0"' <<<"$json" >/dev/null || fail "assistant redis"
+  # The project archive jobs reach core on the compose network, as processes tells them.
+  jq -e '.services.processes.environment.CORE_URL == "http://core:8000"' <<<"$json" >/dev/null || fail "processes has no CORE_URL for the jobs"
   jq -e '.services.assistant.environment | .ASSISTANT_CORE_URL == "http://core:8000" and .ASSISTANT_GEOAPI_URL == "http://geoapi:8000" and .ASSISTANT_CATALOG_URL == "http://catalog:8400" and .GOAT_PROCESSES_URL == "http://processes:8000"' <<<"$json" >/dev/null || fail "assistant service urls"
   jq -e '.services as $s | $s.assistant.environment.KEYCLOAK_CLIENT_ID == $s.web.environment.KEYCLOAK_CLIENT_ID and $s.assistant.environment.KEYCLOAK_CLIENT_SECRET == $s.web.environment.KEYCLOAK_CLIENT_SECRET' <<<"$json" >/dev/null || fail "assistant must refresh logins with the web client"
   jq -e '.services.assistant.environment.ASSISTANT_TOKEN_EXCHANGE_ENABLED == "false"' <<<"$json" >/dev/null || fail "token exchange needs Keycloak 26.2"

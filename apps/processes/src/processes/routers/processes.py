@@ -71,6 +71,7 @@ from processes.services.analytics_service import AnalyticsService
 from processes.services.beta_access import get_beta_email_domains, is_beta_user_email
 from processes.services.public_search_config import get_public_sql_scope
 from processes.services.tool_registry import tool_registry
+from processes.services.user_session import user_session_inputs
 from processes.services.windmill_client import (
     WindmillClient,
     WindmillError,
@@ -867,14 +868,14 @@ async def execute_process(
         "user_id": str(user_id),
     }
 
-    # Pass access_token and refresh_token to print_report for Playwright authentication
-    # The refresh_token allows the worker to refresh expired access tokens during long atlas jobs
-    # NOTE: Keycloak client credentials are read from env vars in the print worker directly,
-    # NOT passed through job inputs, to avoid exposing secrets in Windmill's job storage
-    if process_id == "print_report":
-        if access_token:
-            job_inputs["access_token"] = access_token
-        # refresh_token is passed from the frontend in the inputs — same exposure as access_token
+    # What a job that acts as the user gets of the session: the access token
+    # (print_report, project_import), core's address (the project archive
+    # tools) and print_report's refresh_token from the web app. print_report's
+    # Keycloak client comes from the print worker's env, never from job inputs,
+    # so no secret lands in Windmill's job storage.
+    job_inputs = user_session_inputs(
+        process_id, job_inputs, access_token, settings.CORE_URL
+    )
 
     # Auto-populate od_matrix_path from routing_mode so the field can stay hidden
     # in the UI while the analysis layer still gets it.

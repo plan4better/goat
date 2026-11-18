@@ -590,6 +590,9 @@ services:
       WINDMILL_TOKEN_FILE: /app/data/windmill/.token
       TRAVELTIME_MATRICES_DIR: /app/data/traveltime_matrices
       PRINT_BASE_URL: http://web:3000
+      # Where the project export and import jobs reach core: they carry icons
+      # and images through core's API (export reads them, import uploads them).
+      CORE_URL: http://core:8000
       # Three DuckDB connections (analytics, SQL previews, layer search) get
       # this budget each; with the mirror lists' fixed 256 MB they fit the
       # memory limit below.

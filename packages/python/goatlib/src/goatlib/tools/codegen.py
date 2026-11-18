@@ -114,6 +114,7 @@ def generate_windmill_script(
             "triggered_by_email",  # Injected by GeoAPI, not user-facing
             "access_token",  # Injected by processes service
             "refresh_token",  # Injected by processes service
+            "core_url",  # Injected by processes service
         }
 
     # Get fields from Pydantic model

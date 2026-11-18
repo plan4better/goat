@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from goatlib.models.project import DEFAULT_INITIAL_VIEW_STATE
+from goatlib.style.context import DataContext
 from goatlib.tools.project_import import (
     ImportCleanupTracker,
     ProjectImportParams,
@@ -186,6 +187,25 @@ class TestProjectImportRunner:
             }
             (rpt_dir / "rpt-1.json").write_text(json.dumps(rpt))
 
+            # Uploads get their new ids from core, not here: references to
+            # them elsewhere (a report's image, for one) keep their ids.
+            (archive_dir / "assets").mkdir()
+            upload_id = "00000000-0000-0000-0000-0000000000a1"
+            (archive_dir / "assets" / "index.json").write_text(
+                json.dumps(
+                    {
+                        "assets": [
+                            {
+                                "id": upload_id,
+                                "file_name": "pin.svg",
+                                "mime_type": "image/svg+xml",
+                                "asset_type": "icon",
+                            }
+                        ]
+                    }
+                )
+            )
+
             id_map = runner._generate_id_mapping(archive_dir)
 
         assert "layer-1" in id_map
@@ -193,6 +213,7 @@ class TestProjectImportRunner:
         assert "group-1" in id_map
         assert "wf-1" in id_map
         assert "rpt-1" in id_map
+        assert upload_id not in id_map
         # All new IDs should be unique
         new_ids = list(id_map.values())
         assert len(new_ids) == len(set(new_ids))
@@ -542,6 +563,197 @@ class TestProjectImportRunner:
         old = ExportProjectMetadata.model_validate({"name": "P"})
         assert (old.scene, old.locale) == (None, None)
 
+    def test_an_icon_named_by_url_gets_its_uploads_id(self) -> None:
+        """A style before 1.2 names an uploaded icon by its URL: it becomes
+        `asset:<id>` with the id core gave the upload this import, else the id
+        it has on the server that exported it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp)
+            (archive / "assets").mkdir()
+            (archive / "assets" / "index.json").write_text(
+                json.dumps(
+                    {
+                        "assets": [
+                            {
+                                "id": "old-1",
+                                "s3_key": "goat/prod/users/x/icon/0a.svg",
+                                "file_name": "pin.svg",
+                                "mime_type": "image/svg+xml",
+                                "asset_type": "icon",
+                            }
+                        ]
+                    }
+                )
+            )
+            asset_for_url = ProjectImportRunner._asset_for_url(archive, {})
+            uploaded = ProjectImportRunner._asset_for_url(archive, {"old-1": "new-1"})
+        url = "https://goat.example/goat/prod/users/x/icon/0a.svg"
+        assert asset_for_url(url) == "old-1"
+        assert uploaded(url) == "new-1"
+        assert asset_for_url("https://goat.example/other.svg") is None
+
+    @staticmethod
+    def _archive_with_uploads(archive: Path) -> None:
+        (archive / "assets").mkdir()
+        entries = []
+        for asset_id, name, asset_type, has_file in (
+            ("icon-1", "pin.svg", "icon", True),
+            ("image-1", "photo.png", "image", True),
+            ("gone-1", "lost.png", "image", False),
+        ):
+            path = f"assets/{asset_id}{Path(name).suffix}"
+            if has_file:
+                (archive / path).write_bytes(b"x")
+            entries.append(
+                {
+                    "id": asset_id,
+                    "file_name": name,
+                    "mime_type": "application/octet-stream",
+                    "asset_type": asset_type,
+                    "display_name": "Pin" if asset_type == "icon" else None,
+                    "category": "Shops" if asset_type == "icon" else None,
+                    "archive_path": path,
+                }
+            )
+        (archive / "assets" / "index.json").write_text(json.dumps({"assets": entries}))
+
+    def test_upload_archive_files_through_core(
+        self, runner: ProjectImportRunner, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Icons and images the archive carries go to core one by one; a
+        missing file and a failed upload are left out with a warning, the
+        others still go."""
+        core = MagicMock()
+
+        def upload(path: Path, **kw: object) -> str:
+            if kw["file_name"] == "photo.png":
+                raise RuntimeError("413 too large")
+            return f"new-{kw['file_name']}"
+
+        core.upload.side_effect = upload
+        with tempfile.TemporaryDirectory() as tmp, caplog.at_level("WARNING"):
+            archive = Path(tmp)
+            self._archive_with_uploads(archive)
+            new_ids = runner._upload_archive_files(core, archive)
+
+        assert new_ids == {"icon-1": "new-pin.svg"}
+        assert [c.kwargs["file_name"] for c in core.upload.call_args_list] == [
+            "pin.svg",
+            "photo.png",
+        ]
+        assert core.upload.call_args_list[0].kwargs["display_name"] == "Pin"
+        assert core.upload.call_args_list[0].kwargs["category"] == "Shops"
+        messages = " ".join(r.getMessage() for r in caplog.records)
+        for left_out in ("image-1", "gone-1"):
+            assert left_out in messages
+
+    def test_an_unsafe_archive_path_is_not_uploaded(
+        self, runner: ProjectImportRunner
+    ) -> None:
+        core = MagicMock()
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "archive"
+            (archive / "assets").mkdir(parents=True)
+            (Path(tmp) / "secret.svg").write_bytes(b"x")
+            (archive / "assets" / "index.json").write_text(
+                json.dumps(
+                    {
+                        "assets": [
+                            {
+                                "id": "a",
+                                "file_name": "pin.svg",
+                                "mime_type": "image/svg+xml",
+                                "asset_type": "icon",
+                                "archive_path": "../secret.svg",
+                            }
+                        ]
+                    }
+                )
+            )
+            assert runner._upload_archive_files(core, archive) == {}
+        core.upload.assert_not_called()
+
+    def test_uploads_first_remembers_only_the_ones_it_created(
+        self, runner: ProjectImportRunner
+    ) -> None:
+        """Core reuses an identical file the user already has; a failed import
+        must never delete that one, so only new ids are kept for the rollback."""
+        core = MagicMock()
+        core.upload_ids.return_value = {"had-before"}
+        names = iter(["had-before", "new-1"])
+        core.upload.side_effect = lambda path, **kw: next(names)
+        params = ProjectImportParams(
+            user_id="u",
+            s3_key="k",
+            target_folder_id="f",
+            core_url="http://core:8000",
+            access_token="tok",
+        )
+        tracker = ImportCleanupTracker()
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "goatlib.tools.project_import.CoreSession", return_value=core
+            ) as session,
+        ):
+            archive = Path(tmp)
+            self._archive_with_uploads(archive)
+            new_ids = runner._upload_archive_uploads(params, archive, tracker)
+
+        session.assert_called_once_with("http://core:8000", "tok")
+        assert new_ids == {"icon-1": "had-before", "image-1": "new-1"}
+        assert tracker.upload_ids == ["new-1"]
+        assert tracker.core is core
+
+    def test_without_cores_address_uploads_stay_out(
+        self, runner: ProjectImportRunner, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        params = ProjectImportParams(user_id="u", s3_key="k", target_folder_id="f")
+        tracker = ImportCleanupTracker()
+        with tempfile.TemporaryDirectory() as tmp, caplog.at_level("WARNING"):
+            archive = Path(tmp)
+            self._archive_with_uploads(archive)
+            assert runner._upload_archive_uploads(params, archive, tracker) == {}
+        assert tracker.core is None
+        messages = " ".join(r.getMessage() for r in caplog.records)
+        assert "icon-1" in messages and "image-1" in messages
+
+    def test_a_failed_import_deletes_the_uploads_it_created(
+        self, runner: ProjectImportRunner, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Best effort, with the same token: a delete that fails is logged and
+        the rest still go."""
+        runner._recorded_layer_ids = lambda ids: set()
+        core = MagicMock()
+        core.delete_upload.side_effect = [RuntimeError("401"), None]
+        tracker = ImportCleanupTracker()
+        tracker.core = core
+        tracker.upload_ids = ["new-1", "new-2"]
+        with caplog.at_level("WARNING"):
+            runner._cleanup_on_failure(tracker)
+        assert [c.args[0] for c in core.delete_upload.call_args_list] == [
+            "new-1",
+            "new-2",
+        ]
+        assert any("new-1" in r.getMessage() for r in caplog.records)
+
+    def test_named_styles_take_the_uploads_new_ids(self) -> None:
+        """The records are written with the ids core gave the uploads."""
+        style = {
+            "version": 1,
+            "kind": "vector",
+            "symbol": {"marker": {"shape": "icon", "icon": "asset:old-1"}},
+        }
+        styles, _ = ProjectImportRunner._link_styles(
+            {"styles": [{"name": "Default", "document": style, "active": True}]},
+            DataContext(kind="vector", geometry="point"),
+            seed="s",
+            asset_ids={"old-1": "new-1"},
+            asset_for_url=lambda path: None,
+            stamp=lambda document: document,
+        )
+        assert styles[0]["document"]["symbol"]["marker"]["icon"] == "asset:new-1"
+
     def test_cleanup_on_failure(self, runner: ProjectImportRunner) -> None:
         """DuckLake tables without a layer row dropped, S3 objects deleted.
 
@@ -555,7 +767,7 @@ class TestProjectImportRunner:
         runner._track_new_table(recorded, "lake.main.t_layer2")
         runner._recorded_layer_ids = lambda ids: {recorded} & set(ids)
         tracker = ImportCleanupTracker()
-        tracker.s3_keys = ["assets/user/file1.png", "assets/user/file2.png"]
+        tracker.s3_keys = ["thumbnails/p1/thumbnail.png"]
 
         runner._cleanup_on_failure(tracker)
 
@@ -567,17 +779,25 @@ class TestProjectImportRunner:
         assert len(drop_calls) == 1
         assert "lake.main.t_layer1" in drop_calls[0]
 
-        # Verify S3 delete_object calls
-        assert runner._s3_client.delete_object.call_count == 2
-        runner._s3_client.delete_object.assert_any_call(
-            Bucket="test-bucket", Key="assets/user/file1.png"
-        )
-        runner._s3_client.delete_object.assert_any_call(
-            Bucket="test-bucket", Key="assets/user/file2.png"
+        runner._s3_client.delete_object.assert_called_once_with(
+            Bucket="test-bucket", Key="thumbnails/p1/thumbnail.png"
         )
 
-    def test_run_full_import(self, runner: ProjectImportRunner) -> None:
-        """Full import run with a real ZIP file."""
+    @pytest.mark.parametrize("with_core", [True, False])
+    def test_run_full_import(
+        self,
+        runner: ProjectImportRunner,
+        caplog: pytest.LogCaptureFixture,
+        with_core: bool,
+    ) -> None:
+        """Full import run with a real ZIP file.
+
+        Uploads are core's: the job writes no file and no `uploaded_asset` row
+        for the archive's icon itself. With core's address it uploads the icon
+        through core as the user first, while the token is fresh (before any
+        data or record is written), and writes the records with the id core
+        returns; without, the icon is left out with a warning.
+        """
         user_id = "00000000-0000-0000-0000-000000000001"
         folder_id = "00000000-0000-0000-0000-ffffffffffff"
         layer_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -642,6 +862,21 @@ class TestProjectImportRunner:
             wf_bytes = json.dumps(workflow, indent=2).encode()
             checksums["workflows/wf-1.json"] = _checksum(wf_bytes)
 
+            assets_index = {
+                "assets": [
+                    {
+                        "id": "icon-1",
+                        "s3_key": "goat/prod/users/x/icon/0a.svg",
+                        "file_name": "pin.svg",
+                        "mime_type": "image/svg+xml",
+                        "asset_type": "icon",
+                        "archive_path": "assets/icon-1.svg",
+                    }
+                ]
+            }
+            assets_bytes = json.dumps(assets_index, indent=2).encode()
+            checksums["assets/index.json"] = _checksum(assets_bytes)
+
             manifest = {
                 "format_version": "1.0",
                 "exported_at": "2025-06-01T00:00:00Z",
@@ -664,6 +899,8 @@ class TestProjectImportRunner:
                 zf.writestr(f"layers/{layer_id}/data.parquet", b"FAKE_PARQUET")
                 zf.writestr("layer_groups.json", groups_bytes)
                 zf.writestr("workflows/wf-1.json", wf_bytes)
+                zf.writestr("assets/index.json", assets_bytes)
+                zf.writestr("assets/icon-1.svg", b"<svg/>")
                 zf.writestr(
                     "manifest.json",
                     json.dumps(manifest, indent=2).encode(),
@@ -675,6 +912,8 @@ class TestProjectImportRunner:
             user_id=user_id,
             s3_key="imports/test-export.zip",
             target_folder_id=folder_id,
+            core_url="http://core:8000" if with_core else None,
+            access_token="tok" if with_core else None,
         )
 
         # Mock S3 download_file to copy our test ZIP
@@ -719,13 +958,59 @@ class TestProjectImportRunner:
 
         mock_asyncpg_conn.fetchval = AsyncMock(side_effect=tracking_fetchval)
 
-        with patch("goatlib.tools.project_import.asyncpg") as mock_asyncpg:
+        core = MagicMock()
+        core.upload_ids.return_value = set()
+        state_at_upload: list[tuple[int, int]] = []
+
+        def upload(path: Path, **kw: object) -> str:
+            tables = [
+                c for c in mock_con.execute.call_args_list if "CREATE TABLE" in str(c)
+            ]
+            state_at_upload.append((len(execute_calls_log), len(tables)))
+            assert path.read_bytes() == b"<svg/>"
+            return "new-icon"
+
+        core.upload.side_effect = upload
+        insert = AsyncMock(wraps=runner._insert_pg_records)
+        with (
+            patch("goatlib.tools.project_import.asyncpg") as mock_asyncpg,
+            patch(
+                "goatlib.tools.project_import.CoreSession", return_value=core
+            ) as session,
+            patch.object(runner, "_insert_pg_records", insert),
+            caplog.at_level("WARNING"),
+        ):
             mock_asyncpg.connect = AsyncMock(return_value=mock_asyncpg_conn)
             result = runner.run(params)
 
         # Verify output structure
         assert "project_id" in result
         assert result["project_name"] == "Imported Project"
+
+        # The job itself writes no upload: no row, no file.
+        assert not [q for q in execute_calls_log if "uploaded_asset" in q]
+        runner._s3_client.put_object.assert_not_called()
+        runner._s3_client.upload_file.assert_not_called()
+        runner._s3_client.upload_fileobj.assert_not_called()
+        if with_core:
+            core.upload.assert_called_once()
+            assert core.upload.call_args.kwargs == {
+                "file_name": "pin.svg",
+                "mime_type": "image/svg+xml",
+                "asset_type": "icon",
+                "display_name": None,
+                "category": None,
+            }
+            session.assert_called_once_with("http://core:8000", "tok")
+            # First: no record and no DuckLake table yet.
+            assert state_at_upload == [(0, 0)]
+            assert insert.await_args.kwargs["asset_ids"] == {"icon-1": "new-icon"}
+            core.close.assert_called_once()
+            core.delete_upload.assert_not_called()
+        else:
+            session.assert_not_called()
+            assert insert.await_args.kwargs["asset_ids"] == {}
+            assert any("icon-1" in r.getMessage() for r in caplog.records)
         assert result["layer_count"] == 1
         assert result["workflow_count"] == 1
         assert result["report_count"] == 0
