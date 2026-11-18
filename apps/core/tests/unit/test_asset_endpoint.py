@@ -1,6 +1,5 @@
 import mimetypes
 from collections.abc import AsyncIterator
-from uuid import uuid4
 
 import pytest
 from core.core.config import settings
@@ -68,7 +67,8 @@ async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
 
 
 ASSET_REDIRECTS = [
-    f"{settings.API_V2_STR}/asset/{uuid4()}/file",
+    # A fixed id: parallel test workers must collect the same test names.
+    f"{settings.API_V2_STR}/asset/00000000-0000-4000-8000-000000000001/file",
     f"{settings.API_V2_STR}/asset/file/users/u1/icons/pin.svg",
 ]
 

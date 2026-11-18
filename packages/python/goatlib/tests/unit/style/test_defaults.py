@@ -32,6 +32,26 @@ def test_the_seed_picks_the_color() -> None:
     assert len(colors) > 3
 
 
+def test_new_layers_never_get_the_pale_spectral_colors() -> None:
+    # The light yellows and greens of Spectral are hard to see on a light basemap.
+    pale = {"#fee08b", "#ffffbf", "#e6f598", "#abdda4"}
+    ctx = DataContext(kind="vector", geometry="polygon")
+    colors = {
+        default_style(ctx, seed=f"layer-{i}")["symbol"]["fill"]["color"].lower()
+        for i in range(400)
+    }
+    assert colors == {
+        "#9e0142",
+        "#d53e4f",
+        "#f46d43",
+        "#fdae61",
+        "#66c2a5",
+        "#3288bd",
+        "#5e4fa2",
+    }
+    assert not colors & pale
+
+
 def test_service_default_is_a_plain_image_slightly_see_through() -> None:
     assert default_style(DataContext(kind="raster", source="xyz")) == {
         "version": 1,

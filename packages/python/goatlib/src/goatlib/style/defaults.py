@@ -125,10 +125,14 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
 #: Today's look for new layers: a color from the Spectral palette, picked by the
 #: layer id instead of at random, so the same layer always gets the same color.
 DEFAULT_PALETTE = "colorbrewer:Spectral"
+#: Spectral's light yellows and greens, left out: they are hard to see on a light basemap.
+_PALE = {"#fee08b", "#ffffbf", "#e6f598", "#abdda4"}
 
 
 def _color(seed: str | None) -> str:
-    colors = palette_colors(DEFAULT_PALETTE) or ["#2bb381"]
+    colors = [c for c in palette_colors(DEFAULT_PALETTE) if c.lower() not in _PALE] or [
+        "#2bb381"
+    ]
     if seed is None:
         return colors[0]
     return colors[hashlib.sha256(seed.encode()).digest()[0] % len(colors)]
