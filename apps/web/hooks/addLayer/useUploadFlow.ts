@@ -233,6 +233,8 @@ export const useUploadFlow = ({
   const pendingFile = useRef<File | null>(null);
   const setFile = useCallback(
     (next: File | null) => {
+      // A file still being read is forgotten too, or its reading would bring it back.
+      pendingFile.current = null;
       setFileError(undefined);
       setFileValue(undefined);
       // Removing the file removes everything said about it: a name, a description and a
@@ -280,6 +282,7 @@ export const useUploadFlow = ({
   );
 
   const reset = useCallback(() => {
+    pendingFile.current = null;
     setFileValue(undefined);
     setFileError(undefined);
     setSource(null);

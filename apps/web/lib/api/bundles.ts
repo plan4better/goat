@@ -136,20 +136,47 @@ export interface BundleTypeDef {
  *  namespace is declared on the root element, in the first lines. */
 const XPLAN_SNIFF_BYTES = 65536;
 
-/** The XPlanGML namespace as a file declares it. A declaration, not the bare
- *  address, which another GML may mention in a comment. Same rule as the
- *  backend's `XPlanImporter.matches_source`. */
-const XPLAN_NAMESPACE = /xmlns:\w+="http:\/\/www\.xplanung\.de\/xplangml\/\d+\/\d+"/;
+/** The XPlanGML namespace as a file declares it, with or without a prefix, in
+ *  either quotes. A declaration, not the bare address, which another GML may
+ *  mention in a comment. Same rule as the backend's `XPlanImporter.matches_source`. */
+const XPLAN_NAMESPACE =
+  /xmlns(?::[\w.-]+)?\s*=\s*["']http:\/\/www\.xplanung\.de\/xplangml\/\d+\/\d+["']/;
+
+/** The name of the plan object (`BP_Plan`, `FP_Plan`, ...), not of a Bereich before it. */
+const XPLAN_PLAN_NAME =
+  /<(?:[\w.-]+:)?\w+_Plan\b[^>]*>[\s\S]*?<(?:[\w.-]+:)?name>([^<]+)<\/(?:[\w.-]+:)?name>/;
+
+/** The start of an XML file as text, in the encoding its declaration names: older
+ *  exports are ISO-8859-1, whose umlauts are not UTF-8. */
+const decodeXml = (bytes: ArrayBuffer): string => {
+  const declared = /<\?xml[^>]*encoding\s*=\s*["']([\w.:-]+)["']/.exec(
+    new TextDecoder("latin1").decode(bytes.slice(0, 200))
+  );
+  try {
+    return new TextDecoder(declared?.[1] ?? "utf-8").decode(bytes);
+  } catch {
+    return new TextDecoder().decode(bytes);
+  }
+};
+
+const XML_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+
+const unescapeXml = (text: string): string =>
+  text.replace(/&(#x[\da-f]+|#\d+|\w+);/gi, (entity, code: string) => {
+    if (code[0] !== "#") return XML_ENTITIES[code] ?? entity;
+    const hex = code[1].toLowerCase() === "x";
+    return String.fromCodePoint(parseInt(code.slice(hex ? 2 : 1), hex ? 16 : 10));
+  });
 
 /** Whether a file is an XPlan plan, and the plan's name when the start of the
  *  file holds it, to suggest as the bundle's name. */
 export const sniffXPlan = async (
   file: File
 ): Promise<{ isXPlan: boolean; planName: string | null }> => {
-  const head = await file.slice(0, XPLAN_SNIFF_BYTES).text();
+  const head = decodeXml(await file.slice(0, XPLAN_SNIFF_BYTES).arrayBuffer());
   if (!XPLAN_NAMESPACE.test(head)) return { isXPlan: false, planName: null };
-  const name = /<\w+:name>([^<]+)<\/\w+:name>/.exec(head);
-  return { isXPlan: true, planName: name ? name[1].trim() : null };
+  const name = XPLAN_PLAN_NAME.exec(head);
+  return { isXPlan: true, planName: name ? unescapeXml(name[1]).trim() : null };
 };
 
 export const BUNDLE_TYPES: BundleTypeDef[] = [

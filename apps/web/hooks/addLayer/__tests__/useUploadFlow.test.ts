@@ -101,6 +101,12 @@ describe("useUploadFlow", () => {
     act(() => result.current.upload.setName("Vienna roads"));
     await waitFor(() => expect(result.current.upload.file?.name).toBe("roads.geojson"));
     expect(result.current.upload.values.name).toBe("Vienna roads");
+
+    // A plan removed while it is being read stays removed.
+    act(() => result.current.upload.setFile(plan));
+    act(() => result.current.upload.setFile(null));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(result.current.upload.file).toBeUndefined();
   });
 
   it("takes a name from the row, since there is no form to register against", () => {
