@@ -2,7 +2,7 @@
 // colors and the last ten picked, kept in this browser when it allows), then the color field and hue bar with the
 // color as Hex, RGB or HSL. Opacity is not here: each part has its own Opacity row, by zoom and by classes too.
 import { Box, ButtonBase, Typography, styled } from "@mui/material";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -101,9 +101,9 @@ const Swatches = memo(function Swatches({
   );
 });
 
-/** A color taken from another part, as a choice of value beside the swatches: marked as a picked swatch is (a primary
- * outline) and with a check while it is the value. */
-function SentinelOption({ label, selected, onPick }: Sentinel) {
+/** A value taken from elsewhere (a color from another part, the arrows' own icon), as a choice beside the picker's
+ * swatches or tiles: marked as a picked swatch is (a primary outline) and with a check while it is the value. */
+export function SentinelOption({ label, selected, onPick, glyph }: Sentinel) {
   return (
     <Box sx={{ px: 3, pt: 2 }}>
       <ButtonBase
@@ -120,16 +120,18 @@ function SentinelOption({ label, selected, onPick }: Sentinel) {
           borderColor: selected ? "primary.main" : "divider",
           color: selected ? "primary.main" : "text.secondary",
         }}>
-        <Box
-          sx={{
-            width: 16,
-            height: 16,
-            flex: "none",
-            borderRadius: "4px",
-            boxShadow: (theme) => `inset 0 0 0 1px ${theme.palette.divider}`,
-            background: HATCH,
-          }}
-        />
+        {glyph ?? (
+          <Box
+            sx={{
+              width: 16,
+              height: 16,
+              flex: "none",
+              borderRadius: "4px",
+              boxShadow: (theme) => `inset 0 0 0 1px ${theme.palette.divider}`,
+              background: HATCH,
+            }}
+          />
+        )}
         <Typography
           variant="body2"
           fontWeight="bold"
@@ -144,11 +146,13 @@ function SentinelOption({ label, selected, onPick }: Sentinel) {
   );
 }
 
-interface Sentinel {
+export interface Sentinel {
   label: string;
   /** The value is taken from the other part now. */
   selected: boolean;
   onPick: () => void;
+  /** Drawn before the label in place of the hatched swatch. */
+  glyph?: ReactNode;
 }
 
 export interface ColorPickerProps {

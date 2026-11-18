@@ -1,9 +1,13 @@
 // A number box that keeps what is typed as a draft until it reads as a number; percent boxes show 0 to 100 and
-// report 0 to 1. A box grows with its value, so long numbers are never cut; `plain` draws the number as text beside a
+// report 0 to 1. Numbers show in the panel's language, as the summaries do ("1,5" in German), and a box takes the
+// language's decimal separator or a point. A box grows with its value, so long numbers are never cut; `plain` draws the number as text beside a
 // slider, as wide as its digits, a field on hover and focus. An optional number (`onClear`) may be emptied, its
 // placeholder saying what applies then.
 import { Box, InputBase, Typography } from "@mui/material";
 import { type MouseEvent, memo, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+
+import { plainNumber } from "@/lib/style/editor/summaries";
 
 import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
 
@@ -44,10 +48,28 @@ function focusField(event: MouseEvent<HTMLElement>) {
   input.select();
 }
 
-const shown = (value: number | undefined, pct?: boolean) =>
-  value === undefined || !Number.isFinite(value)
-    ? ""
-    : String(Number((pct ? value * 100 : value).toFixed(2)));
+const shown = (value: number | undefined, language: string, pct?: boolean) =>
+  value === undefined || !Number.isFinite(value) ? "" : plainNumber(pct ? value * 100 : value, language);
+
+/** The decimal separator of a language: "," in German. */
+const decimals = new Map<string, string>();
+function decimalOf(language: string): string {
+  let decimal = decimals.get(language);
+  if (decimal === undefined) {
+    decimal =
+      new Intl.NumberFormat(language).formatToParts(1.5).find((part) => part.type === "decimal")?.value ??
+      ".";
+    decimals.set(language, decimal);
+  }
+  return decimal;
+}
+
+/** What is typed as a number: the language's decimal separator or a point; undefined while it is not one yet. */
+export function parseNumber(text: string, language: string): number | undefined {
+  const decimal = decimalOf(language);
+  const normalized = decimal === "." ? text : text.split(decimal).join(".");
+  return NUMBER.test(normalized) ? Number(normalized) : undefined;
+}
 
 export const NumberInput = memo(function NumberInput({
   value,
@@ -65,14 +87,18 @@ export const NumberInput = memo(function NumberInput({
   onClear,
   onBlur,
 }: NumberInputProps) {
-  const [draft, setDraft] = useState(() => shown(value, pct));
+  const { i18n } = useTranslation();
+  const language = i18n.language;
+  const [draft, setDraft] = useState(() => shown(value, language, pct));
   const sent = useRef(value);
+  const shownIn = useRef(language);
   useEffect(() => {
-    if (value !== sent.current) {
+    if (value !== sent.current || language !== shownIn.current) {
       sent.current = value;
-      setDraft(shown(value, pct));
+      shownIn.current = language;
+      setDraft(shown(value, language, pct));
     }
-  }, [value, pct]);
+  }, [value, pct, language]);
 
   const type = (text: string) => {
     setDraft(text);
@@ -81,13 +107,14 @@ export const NumberInput = memo(function NumberInput({
       onClear();
       return;
     }
-    if (!NUMBER.test(text)) return;
-    const next = pct ? Number(text) / 100 : Number(text);
+    const number = parseNumber(text, language);
+    if (number === undefined) return;
+    const next = pct ? number / 100 : number;
     sent.current = next;
     onChange(next);
   };
   const leave = () => {
-    setDraft(shown(value, pct));
+    setDraft(shown(value, language, pct));
     onBlur?.();
   };
   const unitText = pct ? "%" : unit;

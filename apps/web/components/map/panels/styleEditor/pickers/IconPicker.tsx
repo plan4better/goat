@@ -1,7 +1,8 @@
 "use client";
 
 // The icon picker: GOAT's symbols (the marker shapes and pins among them), emoji and the user's own icons in tabs, each
-// with its search. Reads and writes icon references (spec 1); the Icon editor's switch takes the icon off.
+// with its search. Reads and writes icon references (spec 1); the Icon editor's switch takes the icon off. A choice
+// above the tabs may stand for an icon none of them holds (the arrows' own arrow).
 import { Box, Tab, Tabs } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { defaultResolveIcon } from "@/lib/style/compile/images";
 import { ICON_GROUPS } from "@/lib/style/generated/catalog";
 
+import { type Sentinel, SentinelOption } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
 import { CustomIconPane } from "@/components/map/panels/styleEditor/pickers/CustomIconPane";
 import { EmojiPane } from "@/components/map/panels/styleEditor/pickers/EmojiPane";
 import { SymbolGlyph } from "@/components/map/panels/styleEditor/pickers/IconGlyph";
@@ -104,9 +106,11 @@ export interface IconPickerProps {
   value?: string;
   /** An icon reference (the icon's switch takes the icon off). */
   onChange: (ref: string) => void;
+  /** A choice above the tabs for an icon the tabs do not hold, as the color picker's "Same as line". */
+  sentinel?: Sentinel;
 }
 
-export function IconPicker({ value, onChange }: IconPickerProps) {
+export function IconPicker({ value, onChange, sentinel }: IconPickerProps) {
   const { t } = useTranslation("common");
   const [tab, setTab] = useState<IconTab>(() => tabOf(value));
   // The emoji load while the picker is idle, so their tab draws at once.
@@ -121,6 +125,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
   }, []);
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+      {sentinel && <SentinelOption {...sentinel} />}
       <Box sx={{ display: "flex", alignItems: "center", px: 3, borderBottom: 1, borderColor: "divider" }}>
         <Tabs
           value={tab}

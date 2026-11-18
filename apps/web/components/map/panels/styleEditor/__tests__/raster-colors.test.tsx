@@ -59,6 +59,24 @@ describe("raster colors", () => {
     expect(store.get("render.classify.classes.1.visible")).toBe(false);
   });
 
+  it("classes offer 2 to 12; a file with more classes shows its count", async () => {
+    const classes = Array.from({ length: 15 }, (_, i) => ({
+      ...(i ? { from: i } : {}),
+      ...(i < 14 ? { to: i + 1 } : {}),
+    }));
+    const { store } = setup({
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [0, 15],
+      classify: { method: "manual", classes },
+    });
+    await openColors();
+    await choose("style_editor.classes", "15", "2");
+    expect(store.get("render.classify.classes")).toEqual([{ to: 7.5 }, { from: 7.5 }]);
+    await choose("style_editor.classes", "2", "12");
+    expect((store.get("render.classify.classes") as unknown[]).length).toBe(12);
+  });
+
   it("a palette picked for classes takes every class, also a color picked by hand", async () => {
     const { store } = setup({
       type: "continuous",
@@ -137,6 +155,35 @@ describe("raster colors", () => {
     expect((store.get("render.stops") as Array<{ value: number }>).map((s) => s.value)).toEqual([
       260, 300, 440, 500,
     ]);
+  });
+
+  it("own colors say what cells outside the stops do: Transparent hides them, End colors draws them again", async () => {
+    const stops = [0, 100].map((value) => ({ value, color: "#111111" }));
+    const { store } = setup({ type: "continuous", stops });
+    await openColors();
+    await choose("style_editor.outside", "style_editor.outside_clamp", "style_editor.outside_hide");
+    expect(store.get("render.outside")).toBe("hide");
+    await choose("style_editor.outside", "style_editor.outside_hide", "style_editor.outside_clamp");
+    expect(store.get("render.outside")).toBeUndefined();
+  });
+
+  it("a palette over a range keeps its Outside row", async () => {
+    setup({ type: "continuous", palette: "goat:elevation", domain: [0, 100], outside: "hide" });
+    await openColors();
+    expect(within(rowOf("style_editor.outside")).getByRole("combobox").textContent).toBe(
+      "style_editor.outside_hide"
+    );
+  });
+
+  it("a palette in classes has no Outside row", async () => {
+    setup({
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [0, 100],
+      classify: { method: "manual", classes: [{ to: 50 }, { from: 50 }] },
+    });
+    await openColors();
+    expect(screen.queryByText("style_editor.outside")).toBeNull();
   });
 
   it("hillshade colors start from the band's values; a band without values keeps them off and says so", async () => {

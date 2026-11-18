@@ -41,9 +41,10 @@ A layer without classes shows one swatch. Each classification (see [By classes](
 The legend lists what the map draws:
 
 - A class hidden with the eye and a rule that hides features have no entry.
+- A classification that changes only what a swatch does not show (a label, a symbol's rotation, offset or anchor, a line's offset, blur, cap or join, the outline's position, the base height of raised features or the arrows' size) has no section of its own. Its classes hidden with the eye still hide their features, on the map and in the legend.
 - A layer drawn as <code>Heatmap</code> shows a ramp from <code>Low</code> to <code>High</code>, and one drawn as <code>H3 hexagons</code> the classes or the ramp of the hexagons. With <code>Points</code> set to <code>From zoom</code> and a zoom level, the legend changes to the classes of the points from that zoom on.
-- A layer drawn as <code>Clusters</code> lists <code>Clusters</code> first, as long as the map still clusters at the current zoom.
-- Colors that change with the zoom follow the map. Symbol sizes do not: every symbol keeps one size in the legend, so the legend does not move while you zoom. Only classes by size are drawn at different sizes, in proportion to each other.
+- A layer drawn as <code>Clusters</code> lists <code>Clusters</code> first, as long as the map still clusters at the current zoom, then the single points: their classes, or in a layer without classes <code>Single points</code>.
+- Colors that change with the zoom follow the map. Symbol sizes do not: every symbol keeps one size in the legend, so the legend does not move while you zoom. Only classes by size are drawn at different sizes, in proportion to each other. A size that follows a field and grows with the zoom shows its samples at the sizes the map draws halfway between its first and last stop.
 - A name too long for its row is cut. Hover it to read it in full.
 
 In <code>Contents</code>, each classification has these settings:

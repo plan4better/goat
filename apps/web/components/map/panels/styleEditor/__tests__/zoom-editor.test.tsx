@@ -372,3 +372,42 @@ describe("opening the zoom editor", () => {
     expect(screen.getByText("z16")).toBeDefined();
   });
 });
+
+describe("values by attribute that grow with the zoom (spec 4.4)", () => {
+  it("a size by attribute switched to By zoom keeps the field at every stop, each with its own range", async () => {
+    const size = { field: "pupils", range: [4, 24], scale: "sqrt" };
+    const { store } = renderPanel(
+      <PopoverProvider>
+        <SymbolSection />
+      </PopoverProvider>,
+      {
+        document: { version: 1, kind: "vector", symbol: { marker: { size } } } as LayerStyle,
+        data: { geometry: "point", fields: [{ name: "pupils", type: "number", label: "pupils" }] },
+        mapZoom: 12,
+      }
+    );
+    const row = screen.getByText("style_editor.size").parentElement as HTMLElement;
+    await userEvent.click(within(row).getByRole("button", { name: "style_editor.value_mode_aria" }));
+    await userEvent.click(within(screen.getByRole("menu")).getByText("style_editor.mode_zoom"));
+    expect(store.get("symbol.marker.size")).toEqual({
+      zoom: [
+        [9, size],
+        [15, size],
+      ],
+    });
+    // The zoom editor opens on the stop nearest the map zoom; its value opens the attribute editor of that stop.
+    expect(screen.getByText("style_editor.by_zoom_title")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.by_field" }));
+    expect(screen.getByText("style_editor.by_attribute_title")).toBeDefined();
+    fireEvent.change(screen.getByRole("slider", { name: "style_editor.range_largest" }), {
+      target: { value: 40 },
+    });
+    // The map is as near the one stop as the other: the first is selected.
+    expect(store.get("symbol.marker.size")).toEqual({
+      zoom: [
+        [9, { ...size, range: [4, 40] }],
+        [15, size],
+      ],
+    });
+  });
+});

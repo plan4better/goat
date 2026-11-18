@@ -66,6 +66,8 @@ export interface SearchableMenuItem {
   tooltip?: string;
   /** A heading row, not selectable. */
   heading?: boolean;
+  /** The row's name for assistive tech where its label alone is not (a font's "Bold" under "Italic"). */
+  ariaLabel?: string;
   /** Matched by the search besides the label (a field's name under its display name). */
   keywords?: string;
   /** At the row's end: a count. */
@@ -250,6 +252,7 @@ export default function SearchableMenu({
       <MenuRow
         key={`${item.label}-${i}`}
         role={role === "listbox" ? "option" : "menuitem"}
+        aria-label={item.ariaLabel}
         aria-selected={role === "listbox" ? !!item.selected : undefined}
         // A multiple pick shows its checkbox, not a check.
         selected={multiple ? false : item.selected}

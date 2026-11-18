@@ -2,10 +2,11 @@
 
 // General (points only): how the points are drawn: each as its symbol, as a heatmap, in clusters or as H3 hexagons
 // (spec 8).
-// Switching writes `render` with its type only; the rest comes from the defaults.
+// Switching writes `render` with its type only, and for clusters of icons and shapes their look and count; the rest
+// comes from the defaults.
 import { useTranslation } from "react-i18next";
 
-import { CLUSTER_FEATURE_LIMIT } from "@/lib/style/editor/parts";
+import { CLUSTER_FEATURE_LIMIT, clusterRender } from "@/lib/style/editor/parts";
 import { choiceLabel } from "@/lib/style/editor/summaries";
 
 import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
@@ -41,7 +42,16 @@ export function GeneralSection() {
             disabled: blocked,
           };
         })}
-        onChange={(value) => store.set("render", value === "features" ? undefined : { type: value })}
+        onChange={(value) =>
+          store.set(
+            "render",
+            value === "features"
+              ? undefined
+              : value === "cluster"
+                ? clusterRender(store.document)
+                : { type: value }
+          )
+        }
       />
     </PanelSection>
   );

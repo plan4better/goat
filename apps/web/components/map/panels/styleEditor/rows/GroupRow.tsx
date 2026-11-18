@@ -65,6 +65,8 @@ export interface ValueButtonProps {
   warn?: string;
   /** The field's name when its value does not say it (an emoji alone). */
   ariaLabel?: string;
+  /** The whole value on hover and on keyboard focus, where a long summary is cut with an ellipsis. */
+  tooltip?: string;
   onOpen: (anchor: HTMLElement) => void;
 }
 
@@ -77,6 +79,7 @@ export function ValueButton({
   overrideDot,
   warn,
   ariaLabel,
+  tooltip,
   onOpen,
   buttonRef,
   expanded,
@@ -91,6 +94,7 @@ export function ValueButton({
     <FieldButton
       onClick={onOpen}
       ariaLabel={ariaLabel}
+      tooltip={tooltip}
       buttonRef={buttonRef}
       expanded={expanded}
       active={active}

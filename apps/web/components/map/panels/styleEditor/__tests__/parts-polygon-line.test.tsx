@@ -62,6 +62,15 @@ describe("polygon and line parts", () => {
     expect(field.textContent).toBe("style_editor.same_as_fill");
   });
 
+  it("a polygon outline runs on the edge, inside or outside", async () => {
+    const { store } = render({ fill: {}, outline: { color: "#000000", width: 4 } }, "polygon");
+    await openGroup("style_editor.part_outline");
+    await choose("style_editor.outline_position", "center", "inside");
+    expect(store.get("symbol.outline.position")).toBe("inside");
+    await choose("style_editor.outline_position", "inside", "outside");
+    expect(store.get("symbol.outline.position")).toBe("outside");
+  });
+
   it("line cap, join and dash write butt|round|square, miter|round|bevel and dash names", async () => {
     const { store } = render({ line: {} }, "line");
     await openGroup("style_editor.part_line");

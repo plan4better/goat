@@ -8,6 +8,8 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { CLASS_COUNTS } from "@/lib/style/editor/classify";
+import { withStored } from "@/lib/style/editor/defaults";
 import { equalClasses, setRasterPalette } from "@/lib/style/editor/raster";
 import { getIn, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -35,7 +37,6 @@ import {
   SwitchRow,
 } from "@/components/map/panels/styleEditor/rows";
 
-const COUNTS = [3, 4, 5, 6, 7, 8, 9];
 /** Methods that compute classes from the band's histogram: listed, not offered until the raster service. */
 const LATER = ["equal_interval", "quantile", "natural_breaks"];
 
@@ -295,7 +296,7 @@ export function RasterColorsEditor() {
               <ChoiceRow<number>
                 label={t("style_editor.classes")}
                 value={count}
-                options={COUNTS.map((n) => ({
+                options={withStored(CLASS_COUNTS, count).map((n) => ({
                   value: n,
                   label: t("style_editor.count_classes", { count: n, defaultValue: String(n) }),
                 }))}
@@ -349,23 +350,33 @@ export function RasterColorsEditor() {
                 {t("style_editor.range_from_data")}
               </Button>
             </Row>
-            {!classify && (
-              <ChoiceRow<string>
-                label={t("style_editor.outside")}
-                value={render.outside === "hide" ? "hide" : "clamp"}
-                options={["clamp", "hide"].map((v) => ({
-                  value: v,
-                  label: t(`style_editor.outside_${v}`),
-                  sub: t(`style_editor.outside_${v}_sub`),
-                }))}
-                onChange={(v) => store.set("render.outside", v === "clamp" ? undefined : v)}
-              />
-            )}
+            {!classify && <OutsideRow />}
             {classify && <ClassRows domain={domain} />}
           </>
         )
       )}
+      {stops && <OutsideRow />}
     </>
+  );
+}
+
+/** What cells beyond a color range (its range, or its first and last stop) draw: the end colors, or nothing. Classes
+ * have open ends, so they have no such row. */
+function OutsideRow() {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const outside = useStyleValue<unknown>("render.outside");
+  return (
+    <ChoiceRow<string>
+      label={t("style_editor.outside")}
+      value={outside === "hide" ? "hide" : "clamp"}
+      options={["clamp", "hide"].map((v) => ({
+        value: v,
+        label: t(`style_editor.outside_${v}`),
+        sub: t(`style_editor.outside_${v}_sub`),
+      }))}
+      onChange={(v) => store.set("render.outside", v === "clamp" ? undefined : v)}
+    />
   );
 }
 

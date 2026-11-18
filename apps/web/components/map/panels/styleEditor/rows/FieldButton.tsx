@@ -1,7 +1,13 @@
 // A button in MUI's outlined input: a value that opens an editor looks and focuses like a box you type in. It draws
 // the focused outline while its editor or menu is open (`active`) and a ring in the text color while the keyboard
 // focuses it; a click's focus, which stays after the editor closes, leaves the outline at rest.
-import { type InputBaseComponentProps, OutlinedInput, type SxProps, type Theme } from "@mui/material";
+import {
+  type InputBaseComponentProps,
+  OutlinedInput,
+  type SxProps,
+  type Theme,
+  Tooltip,
+} from "@mui/material";
 import { type ReactNode, type Ref, forwardRef } from "react";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -15,7 +21,8 @@ import {
   focusRing,
 } from "@/components/map/panels/styleEditor/rows/fieldBox";
 
-/** The input slot as a button: drops the props only a text input understands. */
+/** The input slot as a button: drops the props only a text input understands. A tooltip describes the button itself,
+ * so it opens on hover and on keyboard focus. */
 const ButtonSlot = forwardRef(function ButtonSlot(
   props: InputBaseComponentProps,
   ref: Ref<HTMLButtonElement>
@@ -29,9 +36,26 @@ const ButtonSlot = forwardRef(function ButtonSlot(
     required: _required,
     rows: _rows,
     type: _type,
+    tooltip,
+    "aria-describedby": describedBy,
     ...rest
   } = props;
-  return <button {...(rest as object)} ref={ref} type="button" />;
+  // An unset description leaves the button to the tooltip's.
+  const button = (
+    <button
+      {...(rest as object)}
+      {...(describedBy ? { "aria-describedby": describedBy } : {})}
+      ref={ref}
+      type="button"
+    />
+  );
+  return tooltip ? (
+    <Tooltip title={tooltip} describeChild>
+      {button}
+    </Tooltip>
+  ) : (
+    button
+  );
 });
 
 export interface FieldButtonProps {
@@ -42,6 +66,8 @@ export interface FieldButtonProps {
   active?: boolean;
   buttonRef?: Ref<HTMLButtonElement>;
   ariaLabel?: string;
+  /** The whole value on hover and on keyboard focus, where a long value is cut with an ellipsis. */
+  tooltip?: string;
   /** Opens a menu: "listbox" for the field's options (the button is a combobox), "menu" for actions or modes. */
   popup?: "listbox" | "menu";
   start?: ReactNode;
@@ -56,6 +82,7 @@ export function FieldButton({
   active,
   buttonRef,
   ariaLabel,
+  tooltip,
   popup,
   start,
   end,
@@ -73,6 +100,7 @@ export function FieldButton({
         "data-active": active || undefined,
         "aria-label": ariaLabel,
         "aria-haspopup": popup,
+        tooltip,
         role: popup === "listbox" ? "combobox" : undefined,
         onClick: (event: React.MouseEvent<HTMLElement>) => onClick(event.currentTarget),
       }}

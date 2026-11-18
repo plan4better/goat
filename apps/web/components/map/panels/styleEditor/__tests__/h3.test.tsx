@@ -75,9 +75,20 @@ describe("H3 hexagons", () => {
     await choose("style_editor.classes", "style_editor.h3_continuous", "style_editor.method_quantile");
     expect(store.get("render.classify")).toEqual({ method: "quantile", count: 5 });
     await pick("style_editor.count", 0);
-    expect(store.get("render.classify")).toEqual({ method: "quantile", count: 3 });
+    expect(store.get("render.classify")).toEqual({ method: "quantile", count: 2 });
+    await pick("style_editor.count", 10);
+    expect(store.get("render.classify")).toEqual({ method: "quantile", count: 12 });
     await choose("style_editor.classes", "style_editor.method_quantile", "style_editor.h3_continuous");
     expect(store.get("render.classify")).toBeUndefined();
+  });
+
+  it("a stored count outside 2 to 12 shows as picked and stays", async () => {
+    const { store } = setup({ type: "h3", classify: { method: "quantile", count: 20 } });
+    await userEvent.click(within(rowOf("style_editor.count")).getByRole("combobox"));
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    expect(options).toHaveLength(12);
+    expect(options[11].getAttribute("aria-selected")).toBe("true");
+    expect(store.get("render.classify.count")).toBe(20);
   });
 
   it("opacity, outline width and the points' zoom write the render", async () => {

@@ -4,7 +4,7 @@
 // can be switched off has its switch in the popover header; off writes `false` and keeps the part's last settings
 // for this layer, so switching it on brings them back. The points' Fill switch draws hollow markers instead
 // (`marker.fill`); a marker left with nothing to draw gets a note, not a block.
-import { Switch, Typography } from "@mui/material";
+import { Box, Button, Switch, Typography } from "@mui/material";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -13,6 +13,7 @@ import type { Geometry } from "@/lib/style/compile/types";
 import { recordPathOf, scopedPart } from "@/lib/style/editor/classify";
 import {
   type IconSettings,
+  MAIN_PART,
   iconSettings,
   markerFilled,
   markerOn,
@@ -47,6 +48,8 @@ import { ZoomRangeRow } from "@/components/map/panels/styleEditor/rows";
 const switchedOff = new WeakMap<EditorStore, Map<Path, unknown>>();
 const OFF = "\u0000off";
 const ICON_OFF = "\u0000icon-off";
+/** In class scope: a part the layer switches off. */
+const OFF_FOR_LAYER = "\u0000off-for-layer";
 const FILL_OFF = "\u0000fill-off";
 const INVISIBLE = "\u0000invisible";
 
@@ -72,6 +75,13 @@ export function togglePart(store: EditorStore, path: Path, on: boolean): void {
     memory.set(path, isObject(value) ? value : {});
     store.set(path, false);
   }
+}
+
+/** Lets classes switch on a part the layer switches off: `false` becomes absent, which leaves it off for every feature
+ * but the classes that turn it on (spec 3). One undo step; the layer's last settings stay remembered for its switch.
+ * Not for the geometry's main part, which absent would draw everywhere. */
+export function allowPerClass(store: EditorStore, path: Path): void {
+  store.update((doc) => setIn(doc, path, undefined));
 }
 
 /** Draws the markers of the layer or of the scoped class hollow (`fill: false`) or filled again; the outline stays as
@@ -100,12 +110,23 @@ export function markerInvisible(doc: LayerStyle, scope: Scope | null): boolean {
 
 /** A popover header's on/off switch (passed as the entry's `actions`, beside the close button), named "Turn <name>
  * on" or "Turn <name> off". */
-export function HeaderSwitch({ name, on, onToggle }: { name: string; on: boolean; onToggle: () => void }) {
+export function HeaderSwitch({
+  name,
+  on,
+  onToggle,
+  disabled = false,
+}: {
+  name: string;
+  on: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}) {
   const { t } = useTranslation("common");
   return (
     <Switch
       size="small"
       checked={on}
+      disabled={disabled}
       onChange={onToggle}
       inputProps={{
         "aria-label": t(on ? "style_editor.turn_part_off" : "style_editor.turn_part_on", { part: name }),
@@ -184,11 +205,22 @@ export function PartSwitch({ part }: { part: string }) {
   const on = useStyleSelector((doc) =>
     group && geometry ? partOn(scopedPart(doc, scope, group.part), group.part, geometry) : false
   );
+  // A part the layer switches off stays off in every class: it comes back with the layer's switch (spec 3).
+  const offForLayer = useStyleSelector(
+    (doc) => scope !== null && group !== undefined && getIn(doc, `symbol.${group.part}`) === false
+  );
   if (!group || !geometry) return null;
   const name = t(`style_editor.part_name_${group.id}`);
   if (group.switchKey) return <FillSwitch name={name} />;
   const writePath = scope ? `${recordPathOf(scope)}.${group.part}` : partPath(group);
-  return <HeaderSwitch name={name} on={on} onToggle={() => togglePart(store, writePath, !on)} />;
+  return (
+    <HeaderSwitch
+      name={name}
+      on={on}
+      disabled={offForLayer}
+      onToggle={() => togglePart(store, writePath, !on)}
+    />
+  );
 }
 
 function PartRows({ group, geometry, shown }: { group: PartGroup; geometry: Geometry; shown: Set<string> }) {
@@ -242,6 +274,7 @@ export const PartZooms = memo(function PartZooms({ base }: { base: Path }) {
 
 export function PartEditor({ part }: { part: string }) {
   const { t } = useTranslation("common");
+  const store = useEditor();
   const { geometry } = useStyleData();
   const group = geometry ? groupOf(geometry, part) : undefined;
   const base = group ? partPath(group) : "";
@@ -251,6 +284,7 @@ export function PartEditor({ part }: { part: string }) {
   const rows = useStyleSelector((doc) => {
     if (!group || !geometry) return "";
     const value = scopedPart(doc, scope, group.part);
+    if (scope && getIn(doc, `symbol.${group.part}`) === false) return OFF_FOR_LAYER;
     if (!partOn(value, group.part, geometry)) return OFF;
     if (group.switchKey && !markerFilled(value)) return markerInvisible(doc, scope) ? INVISIBLE : FILL_OFF;
     // The Icon group is off while the marker is a plain circle (its own switch, not the part's).
@@ -262,6 +296,26 @@ export function PartEditor({ part }: { part: string }) {
       .join(",");
   });
   if (!group || !geometry) return null;
+  if (rows === OFF_FOR_LAYER) {
+    // A part other than the main one may be allowed per class: absent is off for all features but the classes'.
+    const allow = MAIN_PART[geometry] !== group.part;
+    return (
+      <Box sx={{ px: 3, py: 2 }}>
+        <Typography variant="body2" color="text.secondary">
+          {t(allow ? "style_editor.part_off_for_layer_allow" : "style_editor.part_off_for_layer")}
+        </Typography>
+        {allow && (
+          <Button
+            variant="text"
+            size="small"
+            onClick={() => allowPerClass(store, base)}
+            sx={{ textTransform: "none", mt: 1, ml: -1 }}>
+            {t("style_editor.allow_per_class")}
+          </Button>
+        )}
+      </Box>
+    );
+  }
   if (rows === OFF || rows === ICON_OFF || rows === FILL_OFF || rows === INVISIBLE)
     return (
       <>

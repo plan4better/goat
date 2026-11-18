@@ -28,6 +28,7 @@ import {
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import { classLabel } from "@/components/map/panels/styleEditor/editors/ClassList";
+import { HeightRow } from "@/components/map/panels/styleEditor/editors/HeightRow";
 import {
   IconSwitch,
   PartEditor,
@@ -35,7 +36,6 @@ import {
   markerInvisible,
   partPath,
 } from "@/components/map/panels/styleEditor/editors/PartEditor";
-import { HeightRow } from "@/components/map/panels/styleEditor/editors/HeightRow";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import { useRuleLabel } from "@/components/map/panels/styleEditor/editors/RuleEditor";
 import { ShapedIcon } from "@/components/map/panels/styleEditor/editors/ShapeField";
@@ -54,7 +54,7 @@ import {
 } from "@/components/map/panels/styleEditor/rows";
 
 const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup }) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const store = useEditor();
   const data = useStyleData();
   const mapZoom = useMapZoom();
@@ -63,6 +63,9 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
   // In class scope the row summarizes the class: its part merged over the base, a dot when it sets anything.
   const { value, overridden } = useScoped(base);
   const scope = useScope();
+  // A part the layer switches off (`false`) is off for all features, in every class too; one never turned on reads
+  // None, as classes may still turn it on.
+  const offForAll = useStyleSelector((doc) => getIn(doc, base) === false);
   // The summary reads the classifications (a color by classes) and the main color ("Same as fill").
   const geometry = data.geometry ?? "polygon";
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
@@ -80,8 +83,8 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
   const summaryPath = `${base}.${group.summary}`;
   const iconName = useIconLabel(group.summary === "icon" ? getIn(doc, summaryPath) : undefined);
   let text = on
-    ? summarize(doc, summaryPath, t, { fields: data.fields, mapZoom, geometry })
-    : t("style_editor.none");
+    ? summarize(doc, summaryPath, t, { fields: data.fields, mapZoom, geometry, language: i18n.language })
+    : t(offForAll ? "style_editor.part_off_for_all" : "style_editor.none");
   const swatch =
     on && group.swatch
       ? swatchOf(doc, `${base}.${group.swatch}`, geometry, { scoped: scope !== null })
@@ -96,7 +99,7 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
         : typeof template === "string" && template
           ? template.replace(/\n/g, " ")
           : t("style_editor.no_text");
-    text = `${name} · ${summarize(doc, `${base}.size`, t, { fields: data.fields, mapZoom, geometry })}`;
+    text = `${name} · ${summarize(doc, `${base}.size`, t, { fields: data.fields, mapZoom, geometry, language: i18n.language })}`;
   }
   let glyph: ReactNode;
   let iconValue: ReactNode;
@@ -141,9 +144,7 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
           actions: (
             <>
               <ResetToDataset
-                paths={
-                  group.resetKeys?.map((key) => `${partPath(group)}.${key}`) ?? [partPath(group)]
-                }
+                paths={group.resetKeys?.map((key) => `${partPath(group)}.${key}`) ?? [partPath(group)]}
               />
               {group.toggle ? <PartSwitch part={group.id} /> : group.id === "icon" ? <IconSwitch /> : null}
             </>

@@ -118,7 +118,7 @@ Einen Wert, den Sie in einer Klassenzeile ändern, behält die Klasse, auch wenn
 | <code>Head/Tail-Breaks</code> | Für Werte, bei denen wenige sehr groß sind. | Schiefe Daten, bei denen die Extreme zählen. |
 | <code>Manuelle Grenzen</code> | Sie geben die Untergrenze jeder Klasse ein. | Eigene Schwellenwerte, gleich über mehrere Karten. |
 
-<code>Klassen</code> legt fest, wie viele: von <code>3 Klassen</code> bis <code>9 Klassen</code> bei Zahlen (Standard: 5) und <code>Alle Werte</code> oder die häufigsten (<code>Top 3</code> bis <code>Top 12</code>) bei Kategorien.
+<code>Klassen</code> legt fest, wie viele: von <code>2 Klassen</code> bis <code>12 Klassen</code> bei Zahlen (Standard: 5) und <code>Alle Werte</code> oder die häufigsten (<code>Top 3</code> bis <code>Top 12</code>) bei Kategorien.
 
 ### Mehrere Klassifizierungen
 
@@ -140,7 +140,7 @@ Eine Klasse kann mit denselben Einstellungen wie der ganze Layer eine eigene Fü
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Ändern Sie die Zeilen wie gewohnt: Die Änderungen gelten nur für diese Klasse. Um einer Eigenschaft wieder den Wert aller Objekte zu geben, wählen Sie im Menü ihrer Schaltfläche <code>Zurücksetzen</code>.</div>
+  <div class="content">Ändern Sie die Zeilen wie gewohnt: Die Änderungen gelten nur für diese Klasse. Um einer Eigenschaft wieder den Wert aller Objekte zu geben, wählen Sie im Menü ihrer Schaltfläche <code>Zurücksetzen</code>. Eine Klasse kann einen Teil ausschalten, den der Layer zeigt; ein Teil, der für den ganzen Layer ausgeschaltet ist, zum Beispiel die Füllung, bleibt aber in jeder Klasse aus: Sein Schalter ist ausgegraut mit <code>Für den Layer ausgeschaltet</code>, und die Klasse behält ihre Einstellungen für den Fall, dass Sie den Teil für alle Objekte wieder einschalten. Die Zeile eines solchen Teils zeigt <code>Für alle aus</code>. Bei jedem Teil außer dem Hauptteil (die Füllung von Polygonen, die Linie von Linien, der Marker von Punkten) bietet der Editor der Klasse <code>Pro Klasse erlauben</code> an: Der Teil bleibt für alle Objekte aus, und Klassen können ihn einschalten.</div>
 </div>
 
 <div class="step">
@@ -162,8 +162,10 @@ Eine Klasse kann mit denselben Einstellungen wie der ganze Layer eine eigene Fü
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Wählen Sie unter <code>Übergang</code>, wie sich der Wert zwischen den Stopps ändert: <code>Linear</code>, <code>Weich</code> (erst langsam, zum nächsten Stopp hin schneller) oder <code>Stufen</code> (springt an jedem Stopp zum nächsten Wert). Werte wie eine Strichart oder ein Symbol wechseln immer an jedem Stopp.</div>
+  <div class="content">Wählen Sie unter <code>Übergang</code>, wie sich der Wert zwischen den Stopps ändert: <code>Linear</code>, <code>Weich</code> (erst langsam, zum nächsten Stopp hin schneller) oder <code>Stufen</code> (springt an jedem Stopp zum nächsten Wert). Werte wie eine Strichart oder ein Symbol wechseln immer an jedem Stopp. Auf einem Marker mit Form, einem Pin oder einem Symbol auf einem Kreis, auf dem Marker einer Fläche oder Linie und auf einem Muster ändert sich eine Farbe einmal je ganzer Zoomstufe: bei Zoom 12,5 hat sie ihren Wert von Zoom 12.</div>
 </div>
+
+**Größen, die einem Feld folgen und mit dem Zoom wachsen.** Legen Sie den Wert zuerst <code>Nach Attribut</code> fest und wählen Sie dann <code>Nach Zoom</code>: Jeder Stopp behält das Feld. Der <code>Wert</code> eines Stopps zeigt dann <code>Nach</code> und den Namen des Feldes; klicken Sie darauf, um für diesen Stopp <code>Kleinster Wert</code> und <code>Größter Wert</code> festzulegen, etwa größere Kreise bei einem höheren Zoom. Zwischen den Stopps gehen die Größen ineinander über, sodass die Kreise beim Wachsen ihre Verhältnisse behalten. Das gilt für jede Größe, Breite, Farbe, Deckkraft und Höhe, die sich <code>Nach Attribut</code> festlegen lässt.
 
 ## Farbpaletten {#color-palettes}
 

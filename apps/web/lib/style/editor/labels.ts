@@ -1,7 +1,21 @@
 // Label templates in the panel (spec 3.4): field tokens with escaped braces, the fields a template uses, and the
-// preview text: the template filled from one feature with numbers formatted as the map draws them (spec 18.3).
+// preview text: the template filled from one feature with numbers formatted as the map draws them (spec 18.3). And
+// what the label editor's summary rows show (Halo, Text style, Position) for the layer or the scoped class or rule.
+import type { TFunction } from "i18next";
+
 import { type NumberFormatSpec, parseTemplate } from "@/lib/style/compile/labels";
-import type { FieldType } from "@/lib/style/compile/types";
+import { extrudes } from "@/lib/style/compile/polygons";
+import type { FieldType, Geometry } from "@/lib/style/compile/types";
+import { scopedView } from "@/lib/style/editor/classify";
+import { LABEL_FONT_CHOICE, keyOf, modeOf } from "@/lib/style/editor/forms";
+import { type Path, getIn } from "@/lib/style/editor/paths";
+import type { Scope } from "@/lib/style/editor/store";
+import { choiceLabel, compoundLabel, summarize, summaryNumber, swatchOf } from "@/lib/style/editor/summaries";
+import { DEFAULTS } from "@/lib/style/generated/defaults";
+import type { LayerStyle } from "@/lib/style/generated/types";
+import type { JsonObject } from "@/lib/style/json";
+
+import type { FieldInfo } from "@/components/map/panels/styleEditor/context";
 
 const NUMBER_TYPES = new Set<FieldType>(["number", "integer"]);
 
@@ -63,4 +77,96 @@ export function fillTemplate(
         : String(value);
     })
     .join("");
+}
+
+export interface LabelSummaryContext {
+  fields: FieldInfo[];
+  mapZoom: number;
+  geometry?: Geometry;
+  /** The panel's language: the summary's first letter is a capital in it. */
+  language: string;
+}
+
+/** The document a summary reads: the layer's, or in scope what the class or rule draws (its record over the layer's),
+ * read by the shape of each value, as the record holds fixed values and values by zoom. */
+function shownDoc(doc: LayerStyle, scope: Scope | null): LayerStyle {
+  if (!scope) return doc;
+  const view: JsonObject = { ...(scopedView(doc, scope).view as unknown as JsonObject) };
+  delete view.classify;
+  delete view.rules;
+  return view as unknown as LayerStyle;
+}
+
+const TEXT_NUMBERS = ["letter_spacing", "line_height", "max_width"] as const;
+
+/** The Text style row in short words, named as its rows: the font first ("Regular", "Medium italic"), then what
+ * differs from the defaults in order of importance: case, letter spacing, line height, wrap width ("Regular,
+ * uppercase, letter spacing 24%"). A value by zoom or by classes says that it varies, in its place. */
+export function labelTextStyleSummary(
+  doc: LayerStyle,
+  base: Path,
+  scope: Scope | null,
+  t: TFunction,
+  ctx: LabelSummaryContext
+): string {
+  const shown = shownDoc(doc, scope);
+  const at = (key: string) => {
+    const path = `${base}.${key}`;
+    return { value: getIn(shown, path), fixed: modeOf(shown, path, ctx.geometry) === "fixed", path };
+  };
+  const parts: string[] = [];
+  const weight = at("font.weight");
+  const style = at("font.style");
+  if (!weight.fixed || !style.fixed) parts.push(t("style_editor.ts_font_varies"));
+  else {
+    const font = { font: { weight: weight.value, style: style.value } };
+    parts.push(compoundLabel(t, LABEL_FONT_CHOICE, LABEL_FONT_CHOICE.read(font)));
+  }
+  const transform = at("transform");
+  if (!transform.fixed) parts.push(t("style_editor.ts_case_varies"));
+  else if (transform.value === "uppercase" || transform.value === "lowercase")
+    parts.push(t(`style_editor.ts_${transform.value}`));
+  for (const name of TEXT_NUMBERS) {
+    const { value, fixed, path } = at(name);
+    const key = keyOf(path);
+    if (!fixed) parts.push(t(`style_editor.ts_${name}_varies`));
+    else if (typeof value === "number" && value !== DEFAULTS[key])
+      parts.push(t(`style_editor.ts_${name}`, { value: summaryNumber(value, key, ctx.language) }));
+  }
+  const text = parts.join(", ");
+  return text.charAt(0).toLocaleUpperCase(ctx.language) + text.slice(1);
+}
+
+/** The Halo row: the color's swatch and the width ("1.5 px", "1,5 px" in German), "None" at 0. */
+export function labelHaloSummary(
+  doc: LayerStyle,
+  base: Path,
+  scope: Scope | null,
+  t: TFunction,
+  ctx: LabelSummaryContext
+): { text: string; swatch: string } {
+  const shown = shownDoc(doc, scope);
+  const width = `${base}.halo.width`;
+  const swatch = swatchOf(shown, `${base}.halo.color`, ctx.geometry, { scoped: scope !== null });
+  const value = getIn(shown, width);
+  const none = modeOf(shown, width, ctx.geometry) === "fixed" && value === 0;
+  return { text: none ? t("style_editor.halo_none") : summarize(shown, width, t, ctx), swatch };
+}
+
+const DEFAULT_PLACEMENT: Record<Geometry, string> = { point: "auto", line: "line", polygon: "auto" };
+
+/** The Position row: the label's placement (one for the layer); polygons with a height put it on the roofs. */
+export function labelPositionSummary(
+  doc: LayerStyle,
+  base: Path,
+  t: TFunction,
+  ctx: LabelSummaryContext
+): { placement: string; text: string } {
+  const set = getIn(doc, `${base}.placement`);
+  const placement = typeof set === "string" ? set : DEFAULT_PLACEMENT[ctx.geometry ?? "point"];
+  const roof = ctx.geometry === "polygon" && extrudes(doc as unknown as JsonObject);
+  return {
+    placement,
+    text: roof ? t("style_editor.placement_roof") : choiceLabel(t, "label.placement", placement),
+  };
 }

@@ -1,5 +1,8 @@
-// Small pictures of a choice for its dropdown: dash patterns, fill patterns, line ends and corners, anchor positions.
+// Small pictures of a choice for its dropdown: dash patterns, fill patterns, line ends and corners, anchor positions
+// and the sides of a point's label.
 import type { ReactNode } from "react";
+
+import type { Geometry } from "@/lib/style/compile/types";
 
 import { PatternPicture } from "@/components/map/panels/styleEditor/pickers/PatternTiles";
 
@@ -32,27 +35,39 @@ const ANCHOR_GRID = [
   "bottom_right",
 ];
 
-/** The picture of `value` for the choice property `key`, or undefined when it has none. */
-export function choiceGlyph(key: string, value: string): ReactNode | undefined {
-  // An anchor: nine dots, the anchor's filled and larger.
-  if (key === "marker.anchor")
-    return (
-      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style={{ flex: "none" }}>
-        {ANCHOR_GRID.map((position, i) => {
-          const on = position === value;
-          return (
-            <circle
-              key={position}
-              cx={2 + (i % 3) * 4}
-              cy={2 + Math.floor(i / 3) * 4}
-              r={on ? 1.9 : 0.9}
-              fill="currentColor"
-              opacity={on ? 1 : 0.45}
-            />
-          );
-        })}
-      </svg>
-    );
+/** Nine dots, the `on` ones filled and larger (`size` their radius). */
+function AnchorGrid({ on, size = 1.9 }: { on: readonly string[]; size?: number }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style={{ flex: "none" }}>
+      {ANCHOR_GRID.map((position, i) => {
+        const lit = on.includes(position);
+        return (
+          <circle
+            key={position}
+            cx={2 + (i % 3) * 4}
+            cy={2 + Math.floor(i / 3) * 4}
+            r={lit ? size : 0.9}
+            fill="currentColor"
+            opacity={lit ? 1 : 0.45}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+/** The picture of `value` for the choice property `key` on `geometry`, or undefined when it has none. */
+export function choiceGlyph(key: string, value: string, geometry?: Geometry): ReactNode | undefined {
+  // An anchor: the anchor's dot of the nine.
+  if (key === "marker.anchor") return <AnchorGrid on={[value]} />;
+  // A label around its marker: the dot of the side it sits on, the middle one for the middle (`center`, an area's
+  // `inside`); automatic, the four sides MapLibre picks from. Along a line, none.
+  if (key === "label.placement" && geometry) {
+    if (value === "line") return undefined;
+    if (value === "auto") return <AnchorGrid on={["top", "left", "right", "bottom"]} size={1.4} />;
+    if (value === "inside") return <AnchorGrid on={["center"]} />;
+    return <AnchorGrid on={[value.replace("above", "top").replace("below", "bottom")]} />;
+  }
   if (key === "line.dash" || key === "outline.dash")
     return (
       <Svg width={24}>

@@ -22,13 +22,27 @@ const raster = (style: object) => ({
   },
 });
 
+/** The widths of strokes, which draw finely at half a pixel: lines, outlines (of polygons, lines and points), casings
+ * and label halos. A pattern's line width stays whole: it is drawn into the pattern's image. */
+const HALF_PIXEL = ["line.width", "outline.width", "casing.width", "label.halo.width"];
+
 describe("a slider moves in whole numbers of what it shows", () => {
   it("every number row of the panel starts and steps on whole numbers, percents as percents", () => {
-    const off = Object.entries(SLIDERS).filter(([, s]) => {
+    const off = Object.entries(SLIDERS).filter(([key, s]) => {
+      if (HALF_PIXEL.includes(key)) return false;
       const scale = s.pct ? 100 : 1;
       return !whole(s.min * scale) || !whole(s.step * scale);
     });
     expect(off.map(([key]) => key)).toEqual([]);
+  });
+
+  it("the widths of strokes and halos step by half a pixel, from a whole number", () => {
+    for (const key of HALF_PIXEL) {
+      expect(SLIDERS[key], key).toBeDefined();
+      expect(SLIDERS[key].step, key).toBe(0.5);
+      expect(SLIDERS[key].unit, key).toBe("px");
+      expect(whole(SLIDERS[key].min), key).toBe(true);
+    }
   });
 
   it("hillshade strength shows percent", () => {

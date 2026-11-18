@@ -118,7 +118,7 @@ A value you change in a class row stays when the server computes the classes aga
 | <code>Head/tail breaks</code> | For values where a few are very large. | Skewed data where the extremes matter. |
 | <code>Manual breaks</code> | You type the lower bound of each class. | Thresholds of your own, the same across maps. |
 
-<code>Classes</code> sets how many: from <code>3 classes</code> to <code>9 classes</code> for numbers (5 by default), and <code>All values</code> or the most frequent ones (<code>Top 3</code> to <code>Top 12</code>) for categories.
+<code>Classes</code> sets how many: from <code>2 classes</code> to <code>12 classes</code> for numbers (5 by default), and <code>All values</code> or the most frequent ones (<code>Top 3</code> to <code>Top 12</code>) for categories.
 
 ### Several classifications
 
@@ -140,7 +140,7 @@ A class can get its own fill, outline, icon, label or zoom range with the same c
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Change the rows as usual: the changes apply to this class only. To give a property the value of all features again, choose <code>Reset</code> in its button's menu.</div>
+  <div class="content">Change the rows as usual: the changes apply to this class only. To give a property the value of all features again, choose <code>Reset</code> in its button's menu. A class can switch off a part the layer shows, but a part switched off for the whole layer, for example the fill, stays off in every class: its switch is greyed out with <code>Off for the layer</code>, and the class keeps its settings for when you turn the part on for all features. The layer's row for such a part reads <code>Off for all</code>. For any part but the main one (the fill of polygons, the line of lines, the marker of points), the class editor offers <code>Allow per class</code>: the part stays off for all features, and classes can turn it on.</div>
 </div>
 
 <div class="step">
@@ -162,8 +162,10 @@ A class can get its own fill, outline, icon, label or zoom range with the same c
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Under <code>Transition</code>, choose how the value changes between stops: <code>Linear</code>, <code>Smooth</code> (slow at first, faster towards the next stop) or <code>Steps</code> (jumps to the next value at each stop). Values such as a dash or an icon always switch at each stop.</div>
+  <div class="content">Under <code>Transition</code>, choose how the value changes between stops: <code>Linear</code>, <code>Smooth</code> (slow at first, faster towards the next stop) or <code>Steps</code> (jumps to the next value at each stop). Values such as a dash or an icon always switch at each stop. On a marker with a shape, a pin or an icon on a circle, on a marker of an area or a line, and on a pattern, a color changes once per whole zoom level: at zoom 12.5 it has its value at zoom 12.</div>
 </div>
+
+**Sizes that follow a field and grow with the zoom.** Set the value <code>By attribute</code> first, then choose <code>By zoom</code>: every stop keeps the field. A stop's <code>Value</code> then reads <code>By</code> and the field's name; click it to set that stop's <code>Smallest</code> and <code>Largest</code>, for example larger circles at a higher zoom. Between the stops the sizes blend, so the circles keep their proportions as they grow. This works for every size, width, color, opacity and height that can be set <code>By attribute</code>.
 
 ## Color palettes {#color-palettes}
 

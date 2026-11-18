@@ -1,7 +1,9 @@
 // The panel's popovers: level 1 (a part's or section's editor), level 2 (an editor opened from level 1), level 3 and
 // on (an editor opened from the level before), each beside the one that opened it, and a picker (color, palette,
-// icon). One entry per level; opening a level closes the levels after it.
-import { type ReactNode, createContext, useContext, useEffect, useSyncExternalStore } from "react";
+// icon). One entry per level. What a control opens closes what its level opened before: the levels after its level and
+// the picker. So only the path from the panel to the newest popover is open; a picker opened from the last level keeps
+// it open.
+import { type ReactNode, createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 /** A level from 1 on, or the picker. */
 export type PopoverLevel = number | "picker";
@@ -32,10 +34,24 @@ export interface PopoverApi {
   current(level: PopoverLevel): PopoverEntry | null;
 }
 
-export const PopoverContext = createContext<PopoverApi | null>(null);
+/** The stack's own API: `open` is told the level of the control that opens (0: the panel). */
+export interface PopoverStackApi extends Omit<PopoverApi, "open"> {
+  open(level: PopoverLevel, entry: PopoverEntry, from: 0 | PopoverLevel): void;
+}
 
+export const PopoverContext = createContext<PopoverStackApi | null>(null);
+
+/** The popover level a component renders in: 0 in the panel itself. */
+export const LevelContext = createContext<0 | PopoverLevel>(0);
+
+/** The popovers as a component sees them: what it opens, it opens from the level it renders in. */
 export function usePopover(): PopoverApi {
-  const api = useContext(PopoverContext);
+  const stack = useContext(PopoverContext);
+  const from = useContext(LevelContext);
+  const api = useMemo<PopoverApi | null>(
+    () => stack && { ...stack, open: (level, entry) => stack.open(level, entry, from) },
+    [stack, from]
+  );
   if (!api) throw new Error("usePopover needs a PopoverProvider");
   return api;
 }
@@ -106,9 +122,6 @@ export function anchorTopOf(el: HTMLElement): number {
   const panel = panelOf(el);
   return panel ? top - panel.getBoundingClientRect().top : top;
 }
-
-/** The popover level a component renders in: 0 in the panel itself. */
-export const LevelContext = createContext<0 | PopoverLevel>(0);
 
 /** Closes the popover this component draws in once `gone` holds: the value it edits is no longer of its kind (another
  * mode chosen, an undo). The editor that opened it stays. */

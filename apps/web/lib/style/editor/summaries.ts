@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 
 import type { Geometry } from "@/lib/style/compile/types";
 import { SLIDERS } from "@/lib/style/editor/defaults";
-import { MAIN_COLOR, classificationFor, keyOf, modeOf } from "@/lib/style/editor/forms";
+import { type CompoundChoice, MAIN_COLOR, classificationFor, keyOf, modeOf } from "@/lib/style/editor/forms";
 import { type Path, getIn } from "@/lib/style/editor/store";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
@@ -13,21 +13,52 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import { isObject } from "@/lib/style/json";
 
 import type { FieldInfo } from "@/components/map/panels/styleEditor/context";
+import type { ChoiceOption } from "@/components/map/panels/styleEditor/rows/ChoiceRow";
 
 interface SummaryContext {
   fields: FieldInfo[];
   mapZoom: number;
   geometry?: Geometry;
+  /** The panel's language: numbers take its decimal separator. */
+  language: string;
 }
 
 /** The label of a choice: `style_editor.value_<key with _>_<value>` ("value_line_dash_dash_dot" is "Dash dot"). */
 export const choiceLabel = (t: TFunction, key: string, value: unknown): string =>
   t(`style_editor.value_${key.replace(/\./g, "_")}_${String(value)}`, { defaultValue: String(value) });
 
-function number(value: number, key: string): string {
+/** The label of a compound's choice, in full: an upright font is named by its weight ("Medium"), an italic one by its
+ * style ("Italic", "Medium italic"). */
+export const compoundLabel = (t: TFunction, compound: CompoundChoice, choice: string): string =>
+  choiceLabel(t, `${compound.part}.${compound.labelKey(choice)}`, choice);
+
+/** A compound's choices as the options of a choice field, wherever its font is picked: in the compound's groups, each
+ * named in its group ("Medium" under "Italic") and in full in the field ("Medium italic"). */
+export const compoundOptions = (t: TFunction, compound: CompoundChoice): ChoiceOption<string>[] =>
+  compound.values.map((value) => {
+    const label = compoundLabel(t, compound, value);
+    const group = compound.group?.(value);
+    if (!group) return { value, label };
+    const named = ([key, v]: [string, string]) => choiceLabel(t, `${compound.part}.${key}`, v);
+    return {
+      value,
+      label: named(group.name),
+      short: label,
+      group: named(group.heading),
+      ariaLabel: group.spoken ? named(group.spoken) : label,
+    };
+  });
+
+/** A number in the panel's language, to two decimals at most: "1.5", "1,5" in German (the number boxes show it so). */
+export const plainNumber = (value: number, language: string): string =>
+  new Intl.NumberFormat(language, { maximumFractionDigits: 2, useGrouping: false }).format(value);
+
+/** A number as the panel's summaries show it, with its slider's unit: "1.5 px" ("1,5 px" in German), a share as a
+ * percent ("72%"). */
+export function summaryNumber(value: number, key: string, language: string): string {
   const slider = SLIDERS[key];
   if (slider?.pct) return `${Math.round(value * 100)}%`;
-  const text = String(Math.round(value * 100) / 100);
+  const text = plainNumber(value, language);
   return slider?.unit ? `${text} ${slider.unit}` : text;
 }
 
@@ -51,8 +82,9 @@ export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: Summar
         const first = stops[0][1] as number;
         const last = stops[stops.length - 1][1] as number;
         const slider = SLIDERS[key];
-        if (slider?.pct) return `${number(first, key)} → ${number(last, key)}`;
-        const plain = (n: number) => String(Math.round(n * 100) / 100);
+        if (slider?.pct)
+          return `${summaryNumber(first, key, ctx.language)} → ${summaryNumber(last, key, ctx.language)}`;
+        const plain = (n: number) => plainNumber(n, ctx.language);
         return `${plain(first)} → ${plain(last)}${slider?.unit ? ` ${slider.unit}` : ""}`;
       }
       return stops.map(([, v]) => (isObject(v) ? "…" : choiceLabel(t, key, v))).join(" → ");
@@ -67,7 +99,7 @@ export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: Summar
         const opacity = opacityPath !== path ? (getIn(doc, opacityPath) ?? DEFAULTS[opacityKey]) : undefined;
         return typeof opacity === "number" ? `${hex} · ${Math.round(opacity * 100)}%` : hex;
       }
-      if (typeof fixed === "number") return number(fixed, key);
+      if (typeof fixed === "number") return summaryNumber(fixed, key, ctx.language);
       return fixed === undefined ? "" : choiceLabel(t, key, fixed);
     }
   }

@@ -183,6 +183,52 @@ describe("classification editor", () => {
     );
   });
 
+  /** The Classes menu's options, and which one is selected. */
+  async function countMenu() {
+    await userEvent.click(within(rowOf("style_editor.classes")).getByRole("combobox"));
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    return { options, selected: options.findIndex((o) => o.getAttribute("aria-selected") === "true") };
+  }
+
+  it("numeric classes offer 2 to 12; a stored count outside them shows and stays", async () => {
+    const { store } = shell(doc([{ ...QUANTILE, count: 15 }]));
+    const { options, selected } = await countMenu();
+    // 2 to 12, then the stored 15.
+    expect(options).toHaveLength(12);
+    expect(selected).toBe(11);
+    expect(store.get("classify.0.count")).toBe(15);
+    await userEvent.click(options[0]);
+    expect(store.get("classify.0.count")).toBe(2);
+  });
+
+  it("numeric classes show a stored 10 as picked", async () => {
+    shell(doc([{ ...QUANTILE, count: 10 }]));
+    const { options, selected } = await countMenu();
+    expect(options).toHaveLength(11);
+    expect(selected).toBe(8);
+  });
+
+  it("numeric classes show a stored 100 as picked, not as All values", async () => {
+    const { store } = shell(doc([{ ...QUANTILE, count: 100 }]));
+    expect(within(rowOf("style_editor.classes")).getByRole("combobox").textContent).toBe(
+      "style_editor.count_classes"
+    );
+    const { options, selected } = await countMenu();
+    // 2 to 12, then the stored 100.
+    expect(options).toHaveLength(12);
+    expect(selected).toBe(11);
+    expect(store.get("classify.0.count")).toBe(100);
+  });
+
+  it("categories show a stored top count the menu lacks as picked", async () => {
+    const categories = { id: "land_use", field: "land_use", method: "categories", count: 10 };
+    shell(doc([categories]));
+    const { options, selected } = await countMenu();
+    // All values, top 3, 5, 8, the stored 10, 12.
+    expect(options).toHaveLength(6);
+    expect(selected).toBe(4);
+  });
+
   it("an open editor follows its classification by id when another is removed", () => {
     const categories = { id: "land_use", field: "land_use", method: "categories", count: 8 };
     const { store } = shell(doc([categories, QUANTILE]), { ci: 1, id: "population" });
@@ -350,17 +396,17 @@ describe("class values", () => {
 
   it("number values are one column: each keeps room for the longest value of the property's range", () => {
     shell(doc([WIDTHS]));
-    // Outline width runs 0 to 8 by 1: one digit.
-    expect(values().map(reserveOf)).toEqual(["1", "1", "1"]);
+    // Outline width runs 0 to 8 by 0.5: "7.5", three characters.
+    expect(values().map(reserveOf)).toEqual(["3", "3", "3"]);
   });
 
   it("a value longer than the range widens the whole column", () => {
     const wide = {
       ...WIDTHS,
-      classes: [...WIDTHS.classes.slice(0, 2), { id: "c", from: 20, outline: { width: 12 } }],
+      classes: [...WIDTHS.classes.slice(0, 2), { id: "c", from: 20, outline: { width: 12.25 } }],
     };
     shell(doc([wide]));
-    expect(values().map(reserveOf)).toEqual(["2", "2", "2"]);
+    expect(values().map(reserveOf)).toEqual(["5", "5", "5"]);
   });
 
   it("a head names the columns: the property the classes set, the field, the features", () => {

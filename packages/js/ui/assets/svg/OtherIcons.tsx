@@ -53,6 +53,19 @@ export const aggregateIcon: IconDefinition = {
   prefix: "fas" as IconPrefix,
 };
 
+/** Clusters on a map: one large dot and two small ones. */
+export const clusterIcon: IconDefinition = {
+  icon: [
+    24,
+    24,
+    [],
+    "",
+    "M2 14.5a7 7 0 1 0 14 0a7 7 0 1 0-14 0zM15 6.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0zM17 16.5a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0z",
+  ],
+  iconName: "cluster" as IconName,
+  prefix: "fas" as IconPrefix,
+};
+
 export const hexagonIcon: IconDefinition = {
   icon: [24, 24, [], "", "m6.8 21l-5.2-9l5.2-9h10.4l5.2 9l-5.2 9z"],
   iconName: "hexagon" as IconName,

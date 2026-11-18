@@ -1,4 +1,5 @@
-import { act, screen } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EditorStore } from "@/lib/style/editor/store";
@@ -86,6 +87,27 @@ describe("issues on rows", () => {
       answer([{ level: "error", code: "template_syntax", path: "/symbol/label/text", message }])
     );
     await openGroup("style_editor.part_label");
+    expect(screen.getByText(message)).toBeDefined();
+  });
+
+  it("the label's Text style row warns of an issue of its font, and the Font row shows it", async () => {
+    const message = "Bold italic labels cannot be drawn yet: pick bold or italic.";
+    const { store, answer } = shell({
+      version: 1,
+      kind: "vector",
+      symbol: {
+        marker: { shape: "circle", color: "#1a6b4d", size: 8 },
+        label: { text: "{name}", font: { weight: "bold", style: "italic" } },
+      },
+    } as LayerStyle);
+    act(() => store.set("symbol.marker.size", 9));
+    await act(() =>
+      answer([{ level: "error", code: "not_supported_yet", path: "/symbol/label/font", message }])
+    );
+    await openGroup("style_editor.part_label");
+    const textStyle = screen.getByText("style_editor.text_style").parentElement as HTMLElement;
+    expect(within(textStyle).getByLabelText(message)).toBeDefined();
+    await userEvent.click(within(textStyle).getByRole("button"));
     expect(screen.getByText(message)).toBeDefined();
   });
 });
