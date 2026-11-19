@@ -188,7 +188,13 @@ describe("syncMapLayers", () => {
         type: "raster",
         id: "src-3",
         tiles: "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp",
-        dem: "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp",
+        coverage: "https://geo/collections/d/coverage/tiles/WebMercatorQuad",
+        values: {
+          encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 32769 },
+          range: [100, 400],
+          integer: true,
+          version: "1-e1",
+        },
       },
     };
     const image: RenderLayer = {
@@ -199,7 +205,7 @@ describe("syncMapLayers", () => {
         type: "raster",
         id: "src-4",
         tiles: "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp",
-        dem: "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp",
+        coverage: "https://geo/collections/d/coverage/tiles/WebMercatorQuad",
       },
     };
     syncMapLayers(map, null, [labelled, clusters, hillshade, image], { locale: "en" });

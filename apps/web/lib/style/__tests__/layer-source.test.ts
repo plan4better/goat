@@ -59,7 +59,7 @@ describe("compileSourceFor", () => {
       type: "raster",
       id: "src-3",
       tiles: `${GEOAPI}/collections/r1/raster/tiles/{z}/{x}/{y}.webp`,
-      dem: `${GEOAPI}/collections/r1/raster/dem/{z}/{x}/{y}.webp`,
+      coverage: `${GEOAPI}/collections/r1/coverage/tiles/WebMercatorQuad`,
     });
     const changed = new Date(Date.now() - 60_000).toISOString();
     expect(compileSourceFor(cog, { kind: "raster", geoapiUrl: GEOAPI, version: changed })).toMatchObject({

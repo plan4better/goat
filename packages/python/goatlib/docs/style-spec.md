@@ -2196,8 +2196,8 @@ and there is no feature limit.
 
 **Top-level keys:**
 
-- `version`, `kind: "raster"`, `opacity`, `min_zoom`, `max_zoom`, `resampling` (`linear` or `nearest`; default `linear`,
-  `nearest` for categorical rasters), `render`, `legend`, `popup`;
+- `version`, `kind: "raster"`, `opacity`, `min_zoom`, `max_zoom`, `resampling` (`linear` or `nearest`; default `nearest`
+  for continuous, categorical and hillshade colors, `linear` for images and shading), `render`, `legend`, `popup`;
 - for `image` also the adjustments `brightness`, `contrast`, `saturation` (-1 to 1, default 0) and `hue` (degrees).
 
 **Render types:** `image`, `continuous`, `categorical`, `hillshade`. Every type takes:
@@ -2206,10 +2206,10 @@ and there is no feature limit.
   value from the raster metadata, so most styles leave it out.
 - `band`, except `image`.
 
-The raster tile service (geoapi) colors the cells for every render type, band formulas included, and serves colored
-tiles, so screen and print look the same; coloring in the browser (MapLibre `color-relief`) is a later optimization.
-The style does not depend on where the cells are colored. Map services (9.8) are drawn as the service sends them; their
-adjustments are MapLibre paint properties, applied in the browser on screen and in print.
+The raster service (geoapi) reads the cells and MapLibre colors them: `continuous`, `categorical` with classes and
+`hillshade` draw value tiles, so a color edit loads no tiles and a new band, formula or `resampling` does. The service
+colors `image`, colors over float cells of an unknown range, and colorings past 4096 stops whose token fits in a URL
+(else not supported). Screen and print look the same. Map services (9.8) draw as sent, adjustments as MapLibre paint.
 
 ### 9.1 Image
 
@@ -3072,7 +3072,7 @@ included. Viewers load it with one request, and it never computes.
 | the layer's points (id, coordinates, the fields the style uses) | features API (exists as GeoJSON) | `render: cluster` in the browser |
 | classification and domain computation | goatlib (natural breaks and head/tail breaks are new) | section 12 |
 | counts of a classification's values under a filter: unique values, a histogram over the class bounds, features without a value | processes (exist) | `legend.classes: filter` (7.2) |
-| colored raster tiles, band formulas, band statistics, point values | geoapi's raster tile service | section 9 |
+| raster value tiles and their description, colored tiles for images, band formulas, band statistics, point values | geoapi's raster service | section 9 |
 | map service pictures, service styles, legend images | the service itself; the web reads its capabilities when the layer is added (exists) | 9.8 |
 | sprites: library icons as SDF, uploads as bitmaps | web, from GOAT's icon library | markers, arrows |
 | pattern tiles, drawn on demand from the image's name | web, `lib/style/render/patternImages.ts` | fill patterns |
@@ -3128,7 +3128,7 @@ are part of the format: an output that breaks one of them draws something else t
 | H3 | vector source of geoapi's H3 tiles; `fill` + `line` layers over the cell value; with `extrude`, one `fill-extrusion` layer instead (no outline), height `base` + scaled value x `tallest`, one expression per computed resolution chosen with `match` on the tile's resolution |
 | polygon `extrude` | the fill becomes one `fill-extrusion` layer with the fill layer's id: color from the fill cascade, `fill-extrusion-height` from the `extrude.height` cascade (raw storeys x 3, `false` and missing values 0), `fill-extrusion-base` = `["min", base, height]`, `fill-extrusion-opacity` = fill opacity x layer opacity; no pattern layer, no sort key; point-placed labels get `symbol-height-offset` = the height |
 | map document `scene` and `view` | not layers: root `projection` (`globe` as a zoom expression from `vertical-perspective` at 8 to `mercator` at 9), `terrain` (a `raster-dem` source of the deployment's Terrarium tiles), `sky` and `light` (a set light's position from `global-state`; a missing one is a `viewport` light), a terrain hillshade layer and the building layer `goat-buildings` (`buildings.opacity` is its `fill-extrusion-opacity` and that of the basemap's own 3D building layers); every hillshade's illumination reads the light from `global-state`. `maxPitch` 85 in 3D, 0 in 2D |
-| raster | `raster` source of the raster service's colored tiles and a `raster` layer (adjustments as in 9.1); hillshade: a `hillshade` layer on a terrarium DEM source, the layer opacity in the alpha of its colors |
+| raster | `continuous`, `categorical` with classes and `hillshade`: a `raster-dem` source of the raster service's value tiles, `encoding: "custom"` with the factors of their description; the colors a `color-relief` layer (`color-relief-color` is an `interpolate` over `["elevation"]` with the coloring's stops, transparent at no data; `color-relief-opacity`; `resampling`); a hillshade a `hillshade` layer on the same source, above the colors, the layer opacity in the alpha of its colors. `image`, colors over float cells of an unknown range (the codes cannot place them), and colors needing more than 4096 stops whose token fits in a URL (longer ones are reported as not supported): a `raster` source of the service's colored tiles with the coloring as a token in the URL, and a `raster` layer (adjustments as in 9.1) |
 | map service | `raster` source with the service's tile URL (WMS `GetMap` with `{bbox-epsg-3857}` and `STYLES` = `service_style`; WMTS with `Style`; XYZ as given) and a `raster` layer with `raster-opacity`, the adjustments as in 9.1 and `raster-resampling` |
 
 > "Cycle routes with a white edge, width by zoom, shifted 2 px, an arrow in the middle; planned routes dashed, faded,
@@ -3504,7 +3504,7 @@ part overrides.
 
 | Key | Values and defaults |
 |---|---|
-| top level | `opacity` (1), `min_zoom`, `max_zoom`, `resampling` (`linear`), `brightness`, `contrast`, `saturation` (0), `hue` (0), `legend`, `popup` |
+| top level | `opacity` (1), `min_zoom`, `max_zoom`, `resampling` (`nearest` for continuous, categorical and hillshade colors, `linear` for images and hillshade alone), `brightness`, `contrast`, `saturation` (0), `hue` (0), `legend`, `popup` |
 | `image` | `bands` (`[1, 2, 3]` for 3+ bands), `no_data`; on a map service only `service_style` (the service's first style) |
 | `continuous` | `band` (1), `palette` (`goat:elevation`) + `reverse` + `domain` (band min and max), or `stops`; `interpolate` (`linear`, `nearest`); `outside` (`clamp`); `classify`; `no_data` |
 | `categorical` | `band` (1), `classes` (`value`, `name`, `color`, `visible`), `other_color` (transparent), `no_data` |
@@ -3555,7 +3555,7 @@ what it cannot render yet, so the AI and the panel never offer it:
 | First release | Later (in the format, `not_supported_yet` until built) |
 |---|---|
 | vector parts, value forms, classifications, rules, order, legend, time, popup, named styles, map document | H3 (geoapi H3 tiles) |
-| heatmap, clusters, map services (9.8) | raster band formulas, ranges and class breaks computed from a band's values, colored tiles and point values (raster service) |
+| heatmap, clusters, map services (9.8) | raster band formulas, ranges and class breaks computed from a band's values, value tiles, colored tiles for images and point values (raster service) |
 | raster `image`, `continuous`, `categorical`, `hillshade` (9) | map service popups (`GetFeatureInfo`) |
 | 3D: polygon `extrude` (3.6), H3 columns (8.3), `view.mode` and `view.projection` (10.1), `scene` (10.2) | |
 

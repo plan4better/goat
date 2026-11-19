@@ -89,7 +89,14 @@ export function compileInput(c: LegendCase): CompileInput {
       type: "raster",
       id: "s",
       tiles: "https://geo.example/collections/d/raster/tiles/{z}/{x}/{y}.webp",
-      dem: "https://geo.example/collections/d/raster/dem/{z}/{x}/{y}.webp",
+      coverage: "https://geo.example/collections/d/coverage/tiles/WebMercatorQuad",
+      values: {
+        encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+        range: [0, 255],
+        integer: true,
+        version: "1-e1",
+        maxzoom: 14,
+      },
     };
   else if (sourceKind(style) === "points")
     source = { type: "points", id: "s", data: "https://geoapi.example/items" };

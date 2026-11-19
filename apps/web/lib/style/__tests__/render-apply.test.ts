@@ -318,18 +318,42 @@ describe("raster tiles on the map", () => {
     type: "raster",
     id: `src-${id}`,
     tiles: `https://geo/collections/${id}/raster/tiles/{z}/{x}/{y}.webp`,
-    dem: `https://geo/collections/${id}/raster/dem/{z}/{x}/{y}.webp`,
+    coverage: `https://geo/collections/${id}/coverage/tiles/WebMercatorQuad`,
+    values: {
+      encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+      range: [0, 255],
+      integer: true,
+      version: "1-e1",
+    },
   });
-  const raster = (palette: string, opacity = 1, id = "9") =>
+  /** Image tiles: geoapi colors them, with the coloring in their URL. */
+  const BANDS: Record<string, [number, number, number]> = {
+    rgb: [1, 2, 3],
+    bgr: [3, 2, 1],
+    gbr: [2, 3, 1],
+    brg: [3, 1, 2],
+  };
+  const raster = (bands: string, opacity = 1, id = "9") =>
     compileLayer({
       id,
       style: {
         version: 1,
         kind: "raster",
         opacity,
-        render: { type: "continuous", palette, domain: [0, 9] },
+        render: { type: "image", bands: BANDS[bands] },
       } as LayerStyle,
       source: source(id),
+    });
+  /** Value tiles: colored in the browser. */
+  const relief = (palette: string) =>
+    compileLayer({
+      id: "9",
+      style: {
+        version: 1,
+        kind: "raster",
+        render: { type: "continuous", palette, domain: [0, 9] },
+      } as LayerStyle,
+      source: source(),
     });
   const tilesOf = (out: ReturnType<typeof compileLayer>, id = "src-9") =>
     (out.sources[id] as { tiles: string[] }).tiles.join(",");
@@ -339,21 +363,21 @@ describe("raster tiles on the map", () => {
 
   it("an unchanged coloring changes nothing; a paint change still goes through its setter", () => {
     const map = fakeMap();
-    const first = raster("goat:elevation");
+    const first = raster("rgb");
     applyCompiled(map, null, first);
     map.calls.length = 0;
-    applyCompiled(map, first, raster("goat:elevation", 0.5));
+    applyCompiled(map, first, raster("rgb", 0.5));
     vi.advanceTimersByTime(500);
     expect(map.calls).toEqual(["setPaintProperty 9-raster raster-opacity"]);
   });
 
   it("changed colorings set the tiles once, after a quiet moment, with the last coloring", () => {
     const map = fakeMap();
-    let prev = raster("goat:elevation");
+    let prev = raster("rgb");
     applyCompiled(map, null, prev);
     map.calls.length = 0;
-    for (const palette of ["d3:viridis", "goat:green", "colorbrewer:BuGn"]) {
-      const next = raster(palette);
+    for (const bands of ["bgr", "gbr", "brg"]) {
+      const next = raster(bands);
       applyCompiled(map, prev, next);
       prev = next;
       vi.advanceTimersByTime(50);
@@ -366,9 +390,9 @@ describe("raster tiles on the map", () => {
   it("a layer taken off before the quiet moment sets no tiles", async () => {
     const { removeCompiled } = await import("@/lib/style/render/apply");
     const map = fakeMap();
-    const first = raster("goat:elevation");
+    const first = raster("rgb");
     applyCompiled(map, null, first);
-    const next = raster("d3:viridis");
+    const next = raster("bgr");
     applyCompiled(map, first, next);
     removeCompiled(map, next);
     map.calls.length = 0;
@@ -378,18 +402,28 @@ describe("raster tiles on the map", () => {
 
   it("two raster layers set their own tiles", () => {
     const map = fakeMap();
-    const a1 = raster("goat:elevation", 1, "a");
-    const b1 = raster("goat:elevation", 1, "b");
+    const a1 = raster("rgb", 1, "a");
+    const b1 = raster("rgb", 1, "b");
     applyCompiled(map, null, a1);
     applyCompiled(map, null, b1);
     map.calls.length = 0;
-    const a2 = raster("d3:viridis", 1, "a");
-    const b2 = raster("goat:green", 1, "b");
+    const a2 = raster("bgr", 1, "a");
+    const b2 = raster("gbr", 1, "b");
     applyCompiled(map, a1, a2);
     applyCompiled(map, b1, b2);
     vi.advanceTimersByTime(250);
     expect(map.calls.sort()).toEqual(
       [`setTiles src-a ${tilesOf(a2, "src-a")}`, `setTiles src-b ${tilesOf(b2, "src-b")}`].sort()
     );
+  });
+
+  it("a color edit of a value render only sets paint: no source is added, removed or given new tiles", () => {
+    const map = fakeMap();
+    const first = relief("goat:elevation");
+    applyCompiled(map, null, first);
+    map.calls.length = 0;
+    applyCompiled(map, first, relief("d3:viridis"));
+    vi.advanceTimersByTime(500);
+    expect(map.calls).toEqual(["setPaintProperty 9-relief color-relief-color"]);
   });
 });

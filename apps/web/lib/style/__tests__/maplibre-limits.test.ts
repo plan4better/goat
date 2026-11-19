@@ -153,7 +153,14 @@ function exampleSource(target: string, points: boolean): CompileInput["source"] 
       type: "raster",
       id: "s",
       tiles: "https://geo/{z}/{x}/{y}.webp",
-      dem: "https://geo/dem/{z}/{x}/{y}.webp",
+      coverage: "https://geo/coverage/tiles/WebMercatorQuad",
+      values: {
+        encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+        range: [0, 255],
+        integer: true,
+        version: "1-e1",
+        maxzoom: 14,
+      },
     };
   if (points) return { type: "points", id: "s", data: "https://geoapi.example/items" };
   return { type: "tiles", id: "s", tiles: ["https://tiles.example/{z}/{x}/{y}"] };

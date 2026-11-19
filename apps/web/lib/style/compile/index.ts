@@ -143,8 +143,8 @@ export function compileLayer(input: CompileInput): CompiledLayer {
   const geometry = input.geometry ?? (style.geometry as Geometry | undefined);
   const images = new ImageCollector(input.resolveIcon);
   if (style.kind === "raster") {
-    // Raster files are colored in the browser until the raster service exists (spec 9); map services send finished
-    // pictures.
+    // Raster files draw from geoapi's value tiles, colored in the browser, or from its image tiles (spec 9); map
+    // services send finished pictures.
     if (input.source.type === "service") out.layers.push(serviceLayer(input.id, input.source.id, style));
     else if (input.source.type === "raster")
       out.layers.push(...rasterLayers(input.id, input.source, style, out));

@@ -1,13 +1,15 @@
-// Rasters as the browser draws them: MapLibre's hillshade over the raster service's Terrarium elevation tiles, and a
-// raster tile's opacity and resampling. The lab answers every tile address with one stored fixture tile, made from
-// synthetic data by fixtures/raster/make_tiles.py, so every tile on the map is the same: the tile whose top left
-// corner is at the map's center [0, 0] is the one read.
+// Rasters as the browser draws them: the raster service's value tiles colored by MapLibre's color-relief and shaded by
+// its hillshade, and an image tile's opacity and resampling. The lab answers every tile address with one stored
+// fixture tile, made from synthetic data by fixtures/raster/make_tiles.py, so every tile on the map is the same: the
+// tile whose top left corner is at the map's center [0, 0] is the one read.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { CompileInput } from "@/lib/style/compile/types";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { JsonObject } from "@/lib/style/json";
+import type { RasterValues } from "@/lib/style/raster/values";
 
+import contract from "../../../../../../packages/python/goatlib/tests/unit/style/fixtures/raster_color_cases.json";
 import { type Rgb, WHITE, blank, distance, over, readRect } from "./checks";
 import tiles from "./fixtures/raster/tiles.json";
 import { type LabCase, type Scene, closeScene, renderScene } from "./scene";
@@ -31,12 +33,22 @@ afterEach(() => {
   while (scenes.length) closeScene(scenes.pop()!);
 });
 
-/** The lab's tile routes, at the URL templates the compiler takes for a raster file. */
+/** A value tile's description as the lab knows it: the encoding make_tiles.py wrote to tiles.json. The fixtures never
+ * change, and the lab's tiles exist at every zoom. */
+const described = (about: Omit<RasterValues, "version" | "maxzoom">): RasterValues => ({
+  ...about,
+  version: "lab",
+  maxzoom: 22,
+});
+
+/** The lab's tile routes, at the URL templates the compiler takes for a raster file: image tiles of colored cells, and
+ * value tiles of the cone for the hillshade. */
 const SOURCE = {
   type: "raster",
   id: "raster",
   tiles: `${location.origin}/lab-raster/cells/{z}/{x}/{y}.webp`,
-  dem: `${location.origin}/lab-raster/dem/{z}/{x}/{y}.webp`,
+  coverage: `${location.origin}/lab-raster/cone`,
+  values: described({ encoding: tiles.cone.encoding, range: null, integer: false }),
 } satisfies CompileInput["source"];
 
 const raster = (id: string, style: JsonObject): LabCase => ({
@@ -97,7 +109,7 @@ const tileSize = (s: Scene, id: string): number => {
 };
 
 describe("hillshade", () => {
-  // The fixture's elevation tile holds one cone on flat ground; the light comes from the style's direction (degrees
+  // The fixture's value tile holds one cone on flat ground; the light comes from the style's direction (degrees
   // clockwise from north), so the flank toward it faces the light and the one across the top faces away. The light
   // comes from far from both GOAT's default direction and MapLibre's, so a light that is not the style's shows. The
   // cases set the colors: the default highlight is white, which does not show on the white ground.
@@ -124,7 +136,7 @@ describe("hillshade", () => {
       const shadow = onGround(pick("shadow_color"));
 
       const [x, y] = origin(s);
-      const scale = tileSize(s, `${SOURCE.id}-dem`) / tiles.cone.size;
+      const scale = tileSize(s, SOURCE.id) / tiles.cone.size;
       const top = [x + tiles.cone.center[0] * scale, y + tiles.cone.center[1] * scale];
       const reach = tiles.cone.radius * scale * FLANK;
       // Toward the light on the map: north is up.
@@ -156,6 +168,109 @@ describe("hillshade", () => {
       }
     });
   }
+});
+
+/** A contract case of the raster service's colors (goatlib's raster_color_cases.json): a style and cells of known
+ * values with the color each is drawn in, null where none. */
+interface ContractCase {
+  id: string;
+  style: JsonObject;
+  samples: Array<{ value: number | null; color: string | null }>;
+}
+
+/** What tiles.json holds about each value tile: its encoding and the code at each sample's block (a range is a pair,
+ * which JSON types as a list). */
+const VALUE_TILES = tiles.values as unknown as Record<
+  string,
+  Omit<RasterValues, "version" | "maxzoom"> & { codes: number[] }
+>;
+
+/** The contract's cases that color values; each has a value tile, fixtures/raster/values-<id>.webp. */
+const VALUE_CASES = (contract as unknown as ContractCase[]).filter((c) => c.id in VALUE_TILES);
+
+/** A value tile's width in pixels, and its samples' blocks: each sample's cells fill a square block of BLOCK pixels,
+ * BLOCKS_PER_ROW to a row from the top left, with no data around them (make_tiles.py SIZE, BLOCK, case_bands). */
+const VALUE_TILE_SIZE = 256;
+const BLOCK = 32;
+const BLOCKS_PER_ROW = 8;
+
+describe("value tiles colored in the browser", () => {
+  it("covers every value case of the contract", () => {
+    expect(VALUE_CASES.length).toBe(12);
+  });
+
+  it.each(VALUE_CASES)("$id: each sample block is drawn in its color", async (c) => {
+    const { codes: _codes, ...about } = VALUE_TILES[c.id];
+    const s = await scene({
+      ...raster(c.id, c.style),
+      source: {
+        ...SOURCE,
+        // The image tiles' route has no such fixture: a coloring drawn from image tiles fails to load.
+        tiles: `${location.origin}/lab-raster/none/{z}/{x}/{y}.webp`,
+        coverage: `${location.origin}/lab-raster/values-${c.id}`,
+        values: described(about),
+      },
+    });
+    const opacity = typeof c.style.opacity === "number" ? c.style.opacity : 1;
+    const [x, y] = origin(s);
+    const scale = tileSize(s, SOURCE.id) / VALUE_TILE_SIZE;
+    const wrong = c.samples.flatMap((sample, k) => {
+      const middle: [number, number] = [
+        x + ((k % BLOCKS_PER_ROW) + 0.5) * BLOCK * scale,
+        y + (Math.floor(k / BLOCKS_PER_ROW) + 0.5) * BLOCK * scale,
+      ];
+      const drawn = pixel(s, middle);
+      const want = sample.color === null ? WHITE : onGround(sample.color, opacity);
+      return near(drawn, want) ? [] : [`value ${sample.value}: drawn ${drawn}, want ${want}`];
+    });
+    expect(wrong).toEqual([]);
+  });
+
+  it("draws color-relief on the globe: each sample block in its color", async () => {
+    const c = VALUE_CASES.find((v) => v.id === "categories")!;
+    const { codes: _codes, ...about } = VALUE_TILES[c.id];
+    // Below zoom 11 the globe is a sphere, not yet the flat map it turns into by zoom 12.
+    const zoom = 4;
+    const s = await scene({
+      ...raster(`${c.id}-globe`, c.style),
+      zoom,
+      source: {
+        ...SOURCE,
+        tiles: `${location.origin}/lab-raster/none/{z}/{x}/{y}.webp`,
+        coverage: `${location.origin}/lab-raster/values-${c.id}`,
+        values: described(about),
+      },
+    });
+    s.map.setProjection({ type: "globe" });
+    await new Promise((done) => {
+      s.map.once("idle", done);
+      s.map.triggerRepaint();
+    });
+    expect(s.errors).toEqual([]);
+    expect(s.map.getProjection()?.type).toBe("globe");
+    // A pixel of the tile read (top left corner at [0, 0]) as a place, then where the globe draws it. Tiles of 256 px
+    // are one zoom level above the map's.
+    const n = 2 ** (zoom + 1);
+    const at = ([px, py]: [number, number]): [number, number] => {
+      const x = n / 2 + px / VALUE_TILE_SIZE;
+      const y = n / 2 + py / VALUE_TILE_SIZE;
+      const lng = (x / n) * 360 - 180;
+      const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI;
+      const { x: sx, y: sy } = s.map.project([lng, lat]);
+      return [sx, sy];
+    };
+    const opacity = typeof c.style.opacity === "number" ? c.style.opacity : 1;
+    const wrong = c.samples.flatMap((sample, k) => {
+      const middle = at([
+        ((k % BLOCKS_PER_ROW) + 0.5) * BLOCK,
+        (Math.floor(k / BLOCKS_PER_ROW) + 0.5) * BLOCK,
+      ]);
+      const drawn = pixel(s, middle);
+      const want = sample.color === null ? WHITE : onGround(sample.color, opacity);
+      return near(drawn, want) ? [] : [`value ${sample.value}: drawn ${drawn}, want ${want}`];
+    });
+    expect(wrong).toEqual([]);
+  });
 });
 
 describe("raster image", () => {

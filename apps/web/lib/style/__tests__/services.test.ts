@@ -87,18 +87,27 @@ describe("map services and rasters", () => {
     });
   });
 
-  it("a raster file draws from the raster service even before its domain is computed", () => {
-    const out = compile(
-      { version: 1, kind: "raster", render: { type: "continuous", palette: "goat:elevation" } },
-      {
-        type: "raster",
-        id: "s9",
-        tiles: "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp",
-        dem: "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp",
-      }
-    );
+  it("a raster file draws from its values even before its domain is computed", () => {
+    const style = { version: 1, kind: "raster", render: { type: "continuous", palette: "goat:elevation" } };
+    const source = {
+      type: "raster" as const,
+      id: "s9",
+      tiles: "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp",
+      coverage: "https://geo/collections/d/coverage/tiles/WebMercatorQuad",
+    };
+    // Until its values are loaded it draws nothing, and nothing is missing.
+    const loading = compile(style, source);
+    expect(loading.unsupported).toEqual([]);
+    expect(loading.layers).toEqual([]);
+    const values = {
+      encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+      range: [0, 255] as [number, number],
+      integer: true,
+      version: "1-e1",
+    };
+    const out = compile(style, { ...source, values });
     expect(out.unsupported).toEqual([]);
-    expect(out.layers.map((l) => l.id)).toEqual(["9-raster"]);
+    expect(out.layers.map((l) => l.id)).toEqual(["9-relief"]);
   });
 });
 

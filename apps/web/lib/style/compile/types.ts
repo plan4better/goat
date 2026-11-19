@@ -2,6 +2,7 @@
 import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
 import type { LayerStyle } from "@/lib/style/generated/types";
+import type { RasterValues } from "@/lib/style/raster/values";
 
 /** A field's type as the data describes it (goatlib `FieldType`). */
 export type FieldType = "string" | "number" | "integer" | "boolean" | "date" | "datetime";
@@ -23,8 +24,16 @@ export type CompileSource =
       /** How many service layers the URL draws (WMS `LAYERS`). */
       layers?: number;
     }
-  /** A raster file served by geoapi: its tile and elevation URL templates (`{z}/{x}/{y}`), and its version (`v=`). */
-  | { type: "raster"; id: string; tiles: string; dem: string; version?: string };
+  /** A raster file served by geoapi: its image tile template (`{z}/{x}/{y}`), its coverage tileset (value tiles), its
+   * version (`v=` of the image tiles) and, once loaded, the description of the value tiles the style reads. */
+  | {
+      type: "raster";
+      id: string;
+      tiles: string;
+      coverage: string;
+      version?: string;
+      values?: RasterValues;
+    };
 
 export interface CompileInput {
   /** Layer ids are `${id}-<part>`. */

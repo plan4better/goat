@@ -5,14 +5,18 @@ import { afterAll, describe, expect, it } from "vitest";
 import { compileLayer } from "@/lib/style/compile";
 import type { CompileInput } from "@/lib/style/compile/types";
 import type { LayerStyle } from "@/lib/style/generated/types";
+import { isObject } from "@/lib/style/json";
 import { type LegendEntry, type LegendSection, buildLegend } from "@/lib/style/legend";
+import { rasterColorSpec } from "@/lib/style/raster/color";
+import { rasterToken } from "@/lib/style/raster/token";
 
 import { rampColorAt } from "@/components/map/legend/rampGradient";
 
 // The web side of the raster color contract (geoapi's side: apps/geoapi/tests/test_raster_color_contract.py). Each
-// case of the shared fixture holds a style, the token the compiler makes of it and sample cells with the color geoapi
-// paints them. Here: the compiler puts exactly that token in the tile URL, and the legend shows each sample in its
-// color. geoapi's test paints the same samples from the same token.
+// case of the shared fixture holds a style, the token of its coloring and sample cells with the color geoapi paints
+// them. Here: the style's coloring gives exactly that token (the one image tiles carry), and the legend shows each
+// sample in its color. geoapi's test paints the same samples from the same token; raster-values.test.ts colors them
+// in the browser.
 //
 // After an intended change of a coloring, refresh the tokens with
 //   UPDATE_RASTER_TOKENS=1 pnpm exec vitest run lib/style/__tests__/raster-color-contract.test.ts
@@ -51,8 +55,14 @@ const SOURCE: CompileInput["source"] = {
   type: "raster",
   id: "s",
   tiles: "https://geo/collections/d1/raster/tiles/{z}/{x}/{y}.webp",
-  dem: "https://geo/collections/d1/raster/dem/{z}/{x}/{y}.webp",
+  coverage: "https://geo/collections/d1/coverage/tiles/WebMercatorQuad",
   version: "1",
+  values: {
+    encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+    range: [0, 255],
+    integer: true,
+    version: "1-e1",
+  },
 };
 
 /** The largest difference per channel (0 to 255) a sample's color may have. */
@@ -61,11 +71,10 @@ const TOLERANCE = 2;
 const compile = (style: Record<string, unknown>) =>
   compileLayer({ id: "r", style: style as unknown as LayerStyle, source: SOURCE });
 
-/** The token in a compiled layer's tile URL. */
-function tokenOf(out: ReturnType<typeof compile>): string | null {
-  const tiles = (out.sources.s as { tiles?: string[] } | undefined)?.tiles;
-  if (!tiles) return null;
-  return new URL(tiles[0].replace("{z}/{x}/{y}", "0/0/0")).searchParams.get("style");
+/** The token of a style's coloring. */
+function tokenOf(style: Record<string, unknown>): string | null {
+  const spec = rasterColorSpec(isObject(style.render) ? style.render : { type: "image" });
+  return spec ? rasterToken(spec) : null;
 }
 
 /** The compiled tokens, by case, written into the fixture with UPDATE_RASTER_TOKENS=1. */
@@ -158,10 +167,9 @@ describe("raster color contract (with geoapi's test_raster_color_contract.py)", 
   });
 
   describe.each(CASES)("$id", (c) => {
-    it("compiles to the token geoapi colors with", () => {
-      const out = compile(c.style);
-      expect(out.unsupported).toEqual([]);
-      const token = tokenOf(out);
+    it("derives the token geoapi colors image tiles with", () => {
+      expect(compile(c.style).unsupported).toEqual([]);
+      const token = tokenOf(c.style);
       expect(token).not.toBeNull();
       compiled.set(c.id, token as string);
       if (UPDATE) return;
@@ -174,11 +182,14 @@ describe("raster color contract (with geoapi's test_raster_color_contract.py)", 
     if (c.style.opacity !== undefined)
       it("leaves opacity to the browser: the token carries none, the layer's paint does", () => {
         const { opacity, ...opaque } = c.style;
-        expect(tokenOf(compile(opaque))).toBe(tokenOf(compile(c.style)));
-        const layer = compile(c.style).layers.find((l) => l.type === "raster") as {
+        expect(tokenOf(opaque)).toBe(tokenOf(c.style));
+        const layer = compile(c.style).layers.find(
+          (l) => l.type === "raster" || l.type === "color-relief"
+        ) as {
+          type: string;
           paint: Record<string, unknown>;
         };
-        expect(layer.paint["raster-opacity"]).toBe(opacity);
+        expect(layer.paint[`${layer.type}-opacity`]).toBe(opacity);
       });
 
     it("has a legend that shows each sample in the color geoapi paints it", () => {

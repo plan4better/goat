@@ -18,8 +18,9 @@ const FIXTURE_DIR = path.resolve(__dirname, "lib/style/__tests__/lab/fixtures");
 const API_ROUTE = "/lab-api";
 const UPLOAD_ROUTE = `${API_ROUTE}/api/v2/asset/`;
 const UPLOAD_FILE = path.join(FIXTURE_DIR, "icon.svg");
-// Raster tiles: /lab-raster/{name}/{z}/{x}/{y}.webp answers fixtures/raster/{name}.webp at every tile address, so
-// the lab's raster sources (colored cells, elevation) draw the same tile everywhere.
+// Raster tiles: /lab-raster/{name}/{z}/{x}/{y}, with or without `.webp` and with any query, answers
+// fixtures/raster/{name}.webp at every tile address, so the lab's raster sources (image tiles of colored cells, value
+// tiles) draw the same tile everywhere.
 const RASTER_ROUTE = "/lab-raster/";
 const RASTER_DIR = path.join(FIXTURE_DIR, "raster");
 // H3 layers: /lab-h3/{z}/{x}/{y}.pbf answers as geoapi answers a layer's tiles, from fixtures/h3/{request}/{z}/{x}/{y}.pbf.
@@ -77,7 +78,7 @@ function labFiles(): Plugin {
         )
       );
       server.middlewares.use(RASTER_ROUTE, (req, res, next) => {
-        const name = /^\/([a-z]+)\/\d+\/\d+\/\d+\.webp(\?|$)/.exec(req.url ?? "")?.[1];
+        const name = /^\/([a-z0-9-]+)\/\d+\/\d+\/\d+(?:\.webp)?(\?|$)/.exec(req.url ?? "")?.[1];
         const file = name && path.join(RASTER_DIR, `${name}.webp`);
         if (!file || !fs.existsSync(file)) {
           res.statusCode = 404;

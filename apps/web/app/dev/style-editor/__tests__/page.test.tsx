@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -12,6 +12,20 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("react-map-gl/maplibre", () => ({
   Map: ({ children }: { children?: React.ReactNode }) => <div data-testid="map">{children}</div>,
+}));
+const { preview, valuesMock } = vi.hoisted(() => ({
+  preview: { input: null as { source?: Record<string, unknown> } | null },
+  valuesMock: vi.fn(),
+}));
+vi.mock("@/lib/style/render/useLivePreview", () => ({
+  useLivePreview: (_map: unknown, input: { source?: Record<string, unknown> } | null) => {
+    preview.input = input;
+    return null;
+  },
+}));
+vi.mock("@/lib/api/rasters", async (original) => ({
+  ...(await original<typeof import("@/lib/api/rasters")>()),
+  loadRasterValues: (url: string, onLoad: () => void) => valuesMock(url, onLoad),
 }));
 const DATASETS: Record<string, object> = {
   l1: {
@@ -93,5 +107,31 @@ describe("development route", () => {
     // @ts-expect-error no cog address any more
     const props: Parameters<typeof DevStyleEditor>[0] = { layerId: "", cog: "https://x/canopy.tif" };
     expect(props.layerId).toBe("");
+  });
+
+  it("the preview of a raster that colors values draws once their description is loaded", async () => {
+    const values = {
+      encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+      range: [0, 255],
+      integer: true,
+      version: "1-e1",
+    };
+    const loaded: { values?: typeof values } = {};
+    let onLoad: (() => void) | undefined;
+    valuesMock.mockImplementation((_url: string, callback: () => void) => {
+      if (!loaded.values) onLoad = callback;
+      return loaded.values;
+    });
+    const { DevStyleEditor } = await import("@/app/dev/style-editor/DevStyleEditor");
+    const doc = { version: 1, kind: "raster", render: { type: "continuous", palette: "goat:elevation" } };
+    renderWithProviders(<DevStyleEditor layerId="r1" initialDoc={JSON.stringify(doc)} />);
+    await waitFor(() => expect(valuesMock).toHaveBeenCalled());
+    expect(valuesMock.mock.calls[0][0]).toMatch(
+      /\/collections\/r1\/coverage\/tiles\/WebMercatorQuad\?band=1&resampling=nearest$/
+    );
+    expect(preview.input?.source).not.toHaveProperty("values");
+    loaded.values = values;
+    act(() => onLoad?.());
+    await waitFor(() => expect(preview.input?.source).toMatchObject({ type: "raster", values }));
   });
 });

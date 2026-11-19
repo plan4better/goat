@@ -4,7 +4,8 @@ shared fixture holds a style, the token the web compiles from it and sample
 cells with their colors. Here the raster tile route colors a small synthetic
 file with that token, and each sample's pixel must be its color (transparent
 where the color is null). The web's test checks the same colors against the
-compiled token and the legend.
+compiled token and the legend. The value tiles of the same file hold each
+sample's value, which the browser colors.
 
 Each case gets its own file: one 256 px tile of Web Mercator, so the tile route
 reads its cells one to one, with each sample in a block of its own and the rest
@@ -23,6 +24,8 @@ import numpy as np
 import pytest
 import rasterio
 from fastapi.testclient import TestClient
+from goatlib.raster.token import decode_token
+from goatlib.raster.values import ValueEncoding
 from rasterio.transform import from_bounds
 
 from geoapi.services import raster_service as rs
@@ -32,6 +35,8 @@ FIXTURE = (
     / "packages/python/goatlib/tests/unit/style/fixtures/raster_color_cases.json"
 )
 CASES: list[dict[str, Any]] = json.loads(FIXTURE.read_text())
+#: The cases the browser colors from value tiles: all but the images.
+VALUE_CASES = [c for c in CASES if decode_token(c["token"]).kind != "rgb"]
 
 LAYER = "abc123def456789012345678901234cd"
 TMS = morecantile.tms.get("WebMercatorQuad")
@@ -103,11 +108,7 @@ def raster_file(
         id=LAYER, external_url=None, version=case["id"], stored_file=path
     )
     rs.raster_service.clear()
-    with (
-        patch.object(rs.raster_service, "layer", AsyncMock(return_value=row)),
-        patch.object(rs, "get_cached_tile", return_value=None),
-        patch.object(rs, "cache_tile", return_value=True),
-    ):
+    with patch.object(rs.raster_service, "layer", AsyncMock(return_value=row)):
         yield test_client, case
     rs.raster_service.clear()
 
@@ -151,4 +152,52 @@ def test_a_tile_paints_each_sample_in_its_color(
                 f"{cell}: painted #{red:02x}{green:02x}{blue:02x} alpha {alpha}, "
                 f"expected {sample['color']}"
             )
+    assert wrong == []
+
+
+@pytest.mark.parametrize(
+    "raster_file", VALUE_CASES, ids=[c["id"] for c in VALUE_CASES], indirect=True
+)
+def test_a_value_tile_holds_each_samples_value(
+    raster_file: tuple[TestClient, dict[str, Any]],
+) -> None:
+    client, case = raster_file
+    band = case["style"]["render"].get("band")
+    if isinstance(band, dict):
+        query = f"formula={band['expression']}"
+    else:
+        query = f"band={band or 1}"
+    coverage = f"/collections/{LAYER}/coverage/tiles/WebMercatorQuad"
+    described = client.get(f"{coverage}?{query}")
+    assert described.status_code == 200, described.text
+    values = described.json()["goat:values"]
+    factors = values["encoding"]
+    encoding = ValueEncoding(
+        base=-factors["baseShift"],
+        step=factors["blueFactor"],
+        integer=values["integer"],
+        range=tuple(values["range"]) if values["range"] else None,
+    )
+    # The tile at the description's link, which names the encoding.
+    href = described.json()["links"][0]["href"].removeprefix("http://testserver")
+    for name, value in (
+        ("tileMatrix", TILE.z),
+        ("tileRow", TILE.y),
+        ("tileCol", TILE.x),
+    ):
+        href = href.replace(f"{{{name}}}", str(value))
+    r = client.get(href)
+    assert r.status_code == 200, r.text
+    decoded = encoding.decode(_pixels(r.content))
+    no_data = case.get("file", {}).get("no_data", -9999)
+    wrong = []
+    for k, sample in enumerate(case["samples"]):
+        y, x = _block_center(k)
+        value = float(decoded[y, x])
+        cells = sample.get("cells", [sample["value"]])
+        if no_data is not None and no_data in cells:
+            if not np.isnan(value):
+                wrong.append(f"{cells}: {value}, not no data")
+        elif not abs(value - sample["value"]) <= encoding.step:
+            wrong.append(f"{cells}: {value}, expected {sample['value']}")
     assert wrong == []

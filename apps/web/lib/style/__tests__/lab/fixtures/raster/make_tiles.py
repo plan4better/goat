@@ -2,9 +2,17 @@
 raster service's own code (goatlib.raster.source), and writes what the lab's
 checks need to know about them to tiles.json.
 
-- dem.webp: a Terrarium elevation tile of one cone on flat ground, made by
-  `RasterSource.dem` (what geoapi's elevation route answers) from a synthetic
-  elevation file that covers exactly one tile.
+- cone.webp: a value tile of one cone on flat ground, made by
+  `RasterSource.values` (what geoapi's value tiles answer, read bilinear) from
+  a synthetic elevation file that covers exactly one tile. tiles.json holds its
+  encoding (the `raster-dem` source's factors) next to the cone's shape.
+- values-<id>.webp: a value tile of each case of the raster color contract
+  (packages/python/goatlib/tests/unit/style/fixtures/raster_color_cases.json)
+  that colors values, not an image: the case's file laid out as geoapi's
+  contract test writes it (each sample's cells in a block of its own, no data
+  around), read nearest. tiles.json holds each one's encoding, the band's (or
+  formula's) range, whether it is stored exactly, and each sample's code at its
+  block's center.
 - cells.webp: a few pixels, one per cell of known color, encoded as the
   service encodes its tiles. MapLibre stretches a tile's picture over the tile,
   so each pixel is drawn as a cell many pixels wide: the browser's resampling
@@ -15,19 +23,29 @@ Run from the repository root, then format tiles.json as the web app does:
     pnpm --filter @p4b/web exec prettier --write lib/style/__tests__/lab/fixtures/raster/tiles.json
 """
 
+import io
 import json
 import tempfile
+import warnings
 from pathlib import Path
+from typing import Any, Literal
 
 import morecantile
 import numpy as np
 import rasterio
+from goatlib.raster.formula import Formula, parse_formula
 from goatlib.raster.source import RasterSource, encode_tile
+from goatlib.raster.token import decode_token
+from goatlib.raster.values import ValueEncoding, value_encoding
 from rasterio.transform import from_bounds
 
 HERE = Path(__file__).resolve().parent
+CASES = (
+    HERE.parents[7]
+    / "packages/python/goatlib/tests/unit/style/fixtures/raster_color_cases.json"
+)
 SIZE = 256
-#: The tile the elevation file covers: the one whose top left corner is [0, 0].
+#: The tile every file covers: the one whose top left corner is [0, 0].
 TILE = morecantile.Tile(x=4096, y=4096, z=13)
 TMS = morecantile.tms.get("WebMercatorQuad")
 #: The cone: its top in the tile's middle, its radius in pixels of the tile's
@@ -36,6 +54,8 @@ TMS = morecantile.tms.get("WebMercatorQuad")
 CENTER = (128, 128)
 RADIUS = 96
 HEIGHT = 1500
+#: A case's samples sit in blocks of this many pixels, eight to a row.
+BLOCK = 32
 #: The cells' colors, row by row from the top.
 CELLS = [
     ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3"],
@@ -51,27 +71,120 @@ def cone() -> np.ndarray:
     return np.clip(HEIGHT * (1 - r / RADIUS), 0, None).astype("float32")
 
 
-def dem_tile() -> bytes:
-    bounds = TMS.xy_bounds(TILE)
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / "cone.tif"
-        with rasterio.open(
-            path,
-            "w",
-            driver="GTiff",
-            width=SIZE,
-            height=SIZE,
-            count=1,
-            dtype="float32",
-            crs="EPSG:3857",
-            transform=from_bounds(*bounds, SIZE, SIZE),
-        ) as out:
-            out.write(cone(), 1)
-        with RasterSource(None, stored_file=path) as source:
-            tile = source.dem(TILE.z, TILE.x, TILE.y)
+def write_file(path: Path, data: np.ndarray, no_data: float | None) -> None:
+    """Bands (count x SIZE x SIZE) as a file that covers TILE exactly."""
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        width=SIZE,
+        height=SIZE,
+        count=data.shape[0],
+        dtype=data.dtype,
+        crs="EPSG:3857",
+        transform=from_bounds(*TMS.xy_bounds(TILE), SIZE, SIZE),
+        nodata=no_data,
+    ) as out:
+        out.write(data)
+
+
+def case_bands(case: dict[str, Any]) -> tuple[np.ndarray, float | None]:
+    """The case's cells: each sample's band values in a block, no data around."""
+    file = case.get("file", {})
+    dtype = file.get("dtype", "float32")
+    no_data = file.get("no_data", -9999)
+    cells = [s.get("cells", [s["value"]]) for s in case["samples"]]
+    count = max(len(c) for c in cells)
+    data = np.full((count, SIZE, SIZE), no_data if no_data is not None else 0, dtype)
+    for k, values in enumerate(cells):
+        row, col = (k // 8) * BLOCK, (k % 8) * BLOCK
+        for band, value in enumerate(values):
+            data[band, row : row + BLOCK, col : col + BLOCK] = value
+    return data, no_data
+
+
+def block_center(k: int) -> tuple[int, int]:
+    """The row and column of sample `k`'s block's center."""
+    return (k // 8) * BLOCK + BLOCK // 2, (k % 8) * BLOCK + BLOCK // 2
+
+
+def encoding_of(source: RasterSource, formula: Formula) -> ValueEncoding:
+    """The formula's encoding as geoapi gives it: a formula that only names a
+    band (`b2`) is that band, over its statistics' minimum and maximum; any
+    other formula is over a sample's. Both read an overview at most 1024 px
+    wide, which for these files is the whole file."""
+    info = source.info()
+    single = (
+        len(formula.bands) == 1 and formula.expression.strip() == f"b{formula.bands[0]}"
+    )
+    if single:
+        stats = source.statistics()[formula.bands[0] - 1]
+        value_range = None if stats.min is None else (stats.min, stats.max)
+    else:
+        valid = source.sample(formula)
+        value_range = (float(valid.min()), float(valid.max())) if valid.size else None
+    return value_encoding(
+        info.dtype,
+        scaled=info.scaled,
+        value_range=value_range,
+        formula=not single,
+    )
+
+
+def value_tile(
+    path: Path, formula: Formula, resampling: Literal["nearest", "bilinear"]
+) -> tuple[bytes, ValueEncoding]:
+    """The file's value tile at TILE and its encoding."""
+    with RasterSource(None, stored_file=path) as source:
+        encoding = encoding_of(source, formula)
+        tile = source.values(
+            TILE.z, TILE.x, TILE.y, formula, encoding, resampling=resampling
+        )
     if tile is None:
-        raise RuntimeError("The elevation file gave no tile.")
-    return tile
+        raise RuntimeError(f"{path.name} gave no tile.")
+    return tile, encoding
+
+
+def codes(tile: bytes) -> np.ndarray:
+    """Each pixel's code `q` (R * 65536 + G * 256 + B) of a value tile."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", rasterio.errors.NotGeoreferencedWarning)
+        with rasterio.MemoryFile(io.BytesIO(tile)) as f, f.open() as src:
+            rgb = src.read((1, 2, 3)).astype("int64")
+    return (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]
+
+
+def cone_tile(tmp: Path) -> tuple[bytes, ValueEncoding]:
+    path = tmp / "cone.tif"
+    write_file(path, cone()[np.newaxis], None)
+    return value_tile(path, parse_formula("b1"), "bilinear")
+
+
+def case_tiles(tmp: Path) -> dict[str, tuple[bytes, dict[str, Any]]]:
+    """Each value case's tile and what tiles.json holds about it, by case id."""
+    out = {}
+    for case in json.loads(CASES.read_text()):
+        if decode_token(case["token"]).kind == "rgb":
+            continue
+        path = tmp / f"{case['id']}.tif"
+        write_file(path, *case_bands(case))
+        # The band or formula the case's style colors.
+        band = case["style"]["render"].get("band", 1)
+        formula = parse_formula(
+            band["expression"] if isinstance(band, dict) else f"b{band}"
+        )
+        tile, encoding = value_tile(path, formula, "nearest")
+        q = codes(tile)
+        out[case["id"]] = (
+            tile,
+            {
+                "encoding": encoding.factors(),
+                "range": list(encoding.range) if encoding.range else None,
+                "integer": encoding.integer,
+                "codes": [int(q[block_center(k)]) for k in range(len(case["samples"]))],
+            },
+        )
+    return out
 
 
 def cells_tile() -> bytes:
@@ -84,16 +197,23 @@ def cells_tile() -> bytes:
 
 
 def main() -> None:
-    (HERE / "dem.webp").write_bytes(dem_tile())
+    with tempfile.TemporaryDirectory() as tmp:
+        cone_bytes, cone_encoding = cone_tile(Path(tmp))
+        cases = case_tiles(Path(tmp))
+    (HERE / "cone.webp").write_bytes(cone_bytes)
+    for case_id, (tile, _) in cases.items():
+        (HERE / f"values-{case_id}.webp").write_bytes(tile)
     (HERE / "cells.webp").write_bytes(cells_tile())
     facts = {
         "cone": {
+            "encoding": cone_encoding.factors(),
             "size": SIZE,
             "center": list(CENTER),
             "radius": RADIUS,
             "height": HEIGHT,
         },
         "cells": CELLS,
+        "values": {case_id: about for case_id, (_, about) in cases.items()},
     }
     (HERE / "tiles.json").write_text(json.dumps(facts, indent=2) + "\n")
 

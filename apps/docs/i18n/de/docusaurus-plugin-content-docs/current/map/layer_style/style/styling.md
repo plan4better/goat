@@ -201,6 +201,8 @@ Eine Rasterdatei hat die Abschnitte <code>Allgemein</code>, einen Abschnitt für
 - <code>Layer</code>: <code>Deckkraft</code>, <code>Resampling</code> (<code>Weich</code> oder <code>Nächste Zelle</code>), <code>Anpassungen</code> bei einem Bild (<code>Helligkeit</code>, <code>Kontrast</code>, <code>Sättigung</code>, <code>Farbton</code>), <code>Keine Daten</code> (Zellwerte, die transparent gezeichnet werden; einen davon können Sie auf der Karte wählen) und <code>Sichtbar</code>.
 - <code>Popup</code>: <code>Anzeigen bei</code> <code>Aus</code>, <code>Bei Klick</code> oder <code>Nur beim Überfahren</code>; bei mehreren Bändern wählen Sie unter <code>Werte</code> <code>Dargestellte Werte</code> oder <code>Alle Bänder</code>.
 
+Farbänderungen erscheinen sofort auf der Karte; ein anderes <code>Band</code>, eine Bandformel oder ein anderes <code>Resampling</code> lädt das Raster neu, was einen Moment dauern kann.
+
 Ein Kartendienst (WMS, WMTS oder XYZ) liefert fertige Bilder: Er wird als <code>Bild</code> gezeichnet, in einem der Stile, die der Dienst anbietet (<code>Dienststil</code>). Sein Abschnitt <code>Layer</code> hat <code>Deckkraft</code>, <code>Resampling</code>, <code>Anpassungen</code> und <code>Sichtbar</code>, und seine Legende zeigt das Legendenbild des Dienstes, sofern er eins hat.
 
 :::tip Intelligentes Styling

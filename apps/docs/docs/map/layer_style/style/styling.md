@@ -201,6 +201,8 @@ A raster file has the sections <code>General</code>, a section for its colors, <
 - <code>Layer</code>: <code>Opacity</code>, <code>Resampling</code> (<code>Smooth</code> or <code>Nearest</code>), <code>Adjustments</code> for an image (<code>Brightness</code>, <code>Contrast</code>, <code>Saturation</code>, <code>Hue</code>), <code>No data</code> (cell values drawn transparent; pick one on the map) and <code>Visible</code>.
 - <code>Popup</code>: <code>Show on</code> <code>Off</code>, <code>On click</code> or <code>Only on hover</code>; with several bands, <code>Values</code> shows the <code>Styled values</code> or <code>All bands</code>.
 
+Color changes show on the map at once; another <code>Band</code>, a band formula or another <code>Resampling</code> loads the raster again, which can take a moment.
+
 A map service (WMS, WMTS or XYZ) sends finished pictures: it is drawn as an <code>Image</code>, in one of the styles the service offers (<code>Service style</code>). Its <code>Layer</code> section has <code>Opacity</code>, <code>Resampling</code>, <code>Adjustments</code> and <code>Visible</code>, and its legend shows the service's own legend image when it has one.
 
 :::tip Smart styling

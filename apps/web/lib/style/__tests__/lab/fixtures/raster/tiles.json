@@ -1,5 +1,11 @@
 {
   "cone": {
+    "encoding": {
+      "redFactor": 64.0,
+      "greenFactor": 0.25,
+      "blueFactor": 0.0009765625,
+      "baseShift": 148.8961181640625
+    },
     "size": 256,
     "center": [128, 128],
     "radius": 96,
@@ -10,5 +16,139 @@
     ["#ff7f00", "#ffff33", "#a65628", "#f781bf"],
     ["#1b9e77", "#d95f02", "#7570b3", "#e7298a"],
     ["#66a61e", "#e6ab02", "#a6761d", "#666666"]
-  ]
+  ],
+  "values": {
+    "ramp-two-colors": {
+      "encoding": {
+        "redFactor": 16.0,
+        "greenFactor": 0.0625,
+        "blueFactor": 0.000244140625,
+        "baseShift": 85.000244140625
+      },
+      "range": [-50.0, 300.0],
+      "integer": false,
+      "codes": [348161, 557057, 1183745, 1392641, 143361, 1576961, 0]
+    },
+    "ramp-palette-reversed-hide": {
+      "encoding": {
+        "redFactor": 16.0,
+        "greenFactor": 0.0625,
+        "blueFactor": 0.000244140625,
+        "baseShift": -68.799755859375
+      },
+      "range": [99.0, 401.0],
+      "integer": false,
+      "codes": [127796, 742196, 1356596, 123700, 1360692, 0]
+    },
+    "ramp-computed-domain": {
+      "encoding": {
+        "redFactor": 32.0,
+        "greenFactor": 0.125,
+        "blueFactor": 0.00048828125,
+        "baseShift": 60.00048828125
+      },
+      "range": [0.0, 600.0],
+      "integer": false,
+      "codes": [122881, 737281, 1351681, 0]
+    },
+    "stops-even": {
+      "encoding": {
+        "redFactor": 8.0,
+        "greenFactor": 0.03125,
+        "blueFactor": 0.0001220703125,
+        "baseShift": 25.0001220703125
+      },
+      "range": [0.0, 250.0],
+      "integer": false,
+      "codes": [204801, 614401, 1024001, 1433601, 1843201, 2252801, 0]
+    },
+    "stops-uneven": {
+      "encoding": {
+        "redFactor": 16.0,
+        "greenFactor": 0.0625,
+        "blueFactor": 0.000244140625,
+        "baseShift": -153.999755859375
+      },
+      "range": [180.0, 440.0],
+      "integer": false,
+      "codes": [106497, 434177, 761857, 1171457, 0]
+    },
+    "stops-nearest": {
+      "encoding": {
+        "redFactor": 1.0,
+        "greenFactor": 0.00390625,
+        "blueFactor": 1.52587890625e-5,
+        "baseShift": 3.6000152587890626
+      },
+      "range": [-1.0, 25.0],
+      "integer": false,
+      "codes": [235931, 498075, 563611, 629147, 891291, 1284507, 1546651, 170395, 1874331]
+    },
+    "classes-manual": {
+      "encoding": {
+        "redFactor": 32.0,
+        "greenFactor": 0.125,
+        "blueFactor": 0.00048828125,
+        "baseShift": -9.99951171875
+      },
+      "range": [100.0, 1000.0],
+      "integer": false,
+      "codes": [184321, 470017, 471041, 512001, 542721, 592897, 593921, 2027521, 0]
+    },
+    "classes-palette": {
+      "encoding": {
+        "redFactor": 32.0,
+        "greenFactor": 0.125,
+        "blueFactor": 0.00048828125,
+        "baseShift": 105.50048828125
+      },
+      "range": [-5.0, 1000.0],
+      "integer": false,
+      "codes": [205825, 235521, 236545, 267265, 2264065, 0]
+    },
+    "classes-palette-reversed": {
+      "encoding": {
+        "redFactor": 1.0,
+        "greenFactor": 0.00390625,
+        "blueFactor": 1.52587890625e-5,
+        "baseShift": -2.9999847412109375
+      },
+      "range": [5.0, 25.0],
+      "integer": false,
+      "codes": [131073, 786433, 1441793]
+    },
+    "classes-formula": {
+      "encoding": {
+        "redFactor": 0.25,
+        "greenFactor": 0.0009765625,
+        "blueFactor": 3.814697265625e-6,
+        "baseShift": 6.000003814697266
+      },
+      "range": [-5.0, 5.0],
+      "integer": false,
+      "codes": [262145, 2883585, 1572865, 0]
+    },
+    "categories": {
+      "encoding": {
+        "redFactor": 65536.0,
+        "greenFactor": 256.0,
+        "blueFactor": 1.0,
+        "baseShift": 32769.0
+      },
+      "range": [0.0, 9.0],
+      "integer": true,
+      "codes": [32770, 32771, 32772, 32773, 32774, 32775, 32778, 32776, 32769, 0]
+    },
+    "categories-band-two": {
+      "encoding": {
+        "redFactor": 65536.0,
+        "greenFactor": 256.0,
+        "blueFactor": 1.0,
+        "baseShift": 32769.0
+      },
+      "range": [10.0, 30.0],
+      "integer": true,
+      "codes": [32779, 32789, 32799, 0]
+    }
+  }
 }

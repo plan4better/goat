@@ -58,8 +58,8 @@ class FakeSource:
     def tile(self, *args: Any, **kwargs: Any) -> bytes | None:
         return b"tile"
 
-    def dem(self, *args: Any, **kwargs: Any) -> bytes | None:
-        return b"dem"
+    def values(self, *args: Any, **kwargs: Any) -> bytes | None:
+        return b"values"
 
     def point(self, *args: Any, **kwargs: Any) -> Any:
         return rs.PointValues([1.0], None)
@@ -83,8 +83,7 @@ def db() -> Iterator[AsyncMock]:
     with (
         patch.object(rs, "RasterSource", FakeSource),
         patch.object(rs.layer_service, "_execute_with_retry", mock),
-        patch.object(rs, "get_cached_tile", return_value=None),
-        patch.object(rs, "cache_tile", return_value=True),
+        patch.object(rs, "remote_validator", return_value=None),
     ):
         yield mock
 
@@ -115,7 +114,8 @@ def test_bounds_reads_only_the_header_once_per_layer_version(
         "raster/bounds",
         "raster/info",
         f"raster/tiles/10/550/335.webp?style={RGB}",
-        "raster/dem/10/550/335.webp",
+        "coverage/tiles/WebMercatorQuad",
+        "coverage/tiles/WebMercatorQuad/10/335/550?f=webp&base=0&step=1",
         "raster/point?lon=14&lat=52",
     ],
 )
@@ -133,8 +133,18 @@ def test_no_raster_route_writes_to_the_database(
 def test_drawing_a_layer_reads_no_header_for_its_bounds(
     test_client: TestClient, db: AsyncMock
 ) -> None:
-    test_client.get(f"/collections/{LAYER}/raster/dem/10/550/335.webp")
-    assert FakeSource.headers == 0
+    """Tiles read the file's header (a value tile's encoding needs it), never
+    its bounds."""
+    with patch.object(
+        rs.raster_service, "bounds", side_effect=AssertionError("bounds read")
+    ) as bounds:
+        for route in (
+            f"raster/tiles/10/550/335.webp?style={RGB}",
+            "coverage/tiles/WebMercatorQuad/10/335/550?f=webp&base=0&step=1",
+        ):
+            r = test_client.get(f"/collections/{LAYER}/{route}")
+            assert r.status_code == 200, route
+    bounds.assert_not_called()
 
 
 @pytest.mark.parametrize(

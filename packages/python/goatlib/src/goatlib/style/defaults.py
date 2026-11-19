@@ -11,7 +11,8 @@ from goatlib.style.context import DataContext
 #: published in the JSON Schema as `x-defaults`. Defaults that depend on the
 #: document (the pattern color is the fill color, arrows take the line color, the
 #: icon on a hollow marker takes the marker color, the label placement follows the
-#: geometry) are the compiler's.
+#: geometry, a raster color scale draws crisp cells while `raster.resampling` holds
+#: for images and hillshade alone) are the compiler's.
 REFERENCE_DEFAULTS: dict[str, Any] = {
     "opacity": 1,
     "min_zoom": 0,

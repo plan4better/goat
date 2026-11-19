@@ -201,11 +201,36 @@ describe("raster layer section", () => {
     expect(screen.queryByText("style_editor.no_data")).toBeNull();
   });
 
-  it("categories default to nearest resampling", () => {
-    setup({ type: "categorical" }, BYTE);
-    expect(screen.getByRole("combobox", { name: "style_editor.resampling" }).textContent).toBe(
+  it("color scales default to nearest resampling, images and shading alone to smooth", () => {
+    for (const [render, shown] of [
+      [{ type: "categorical" }, "nearest"],
+      [{ type: "continuous", palette: "goat:elevation" }, "nearest"],
+      [{ type: "hillshade", palette: "goat:elevation" }, "nearest"],
+      [{ type: "hillshade" }, "linear"],
+      [{ type: "image" }, "linear"],
+    ] as const) {
+      const { unmount } = setup(render, BYTE);
+      expect([render, screen.getByRole("combobox", { name: "style_editor.resampling" }).textContent]).toEqual(
+        [render, `style_editor.resampling_${shown}`]
+      );
+      unmount();
+    }
+  });
+
+  it("smooth cells on a color scale are kept in the style, the default is not", async () => {
+    const { store } = setup({ type: "continuous", palette: "goat:elevation" }, BYTE);
+    await choose(
+      "style_editor.resampling",
+      "style_editor.resampling_nearest",
+      "style_editor.resampling_linear"
+    );
+    expect(store.get("resampling")).toBe("linear");
+    await choose(
+      "style_editor.resampling",
+      "style_editor.resampling_linear",
       "style_editor.resampling_nearest"
     );
+    expect(store.get("resampling")).toBeUndefined();
   });
 });
 

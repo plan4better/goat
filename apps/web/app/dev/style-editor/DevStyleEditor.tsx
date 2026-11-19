@@ -5,10 +5,11 @@
 // the core endpoints exist.
 import { Box, Button, Drawer, Typography } from "@mui/material";
 import type { Map as MaplibreMap } from "maplibre-gl";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState, useSyncExternalStore } from "react";
 import { Map as MapView } from "react-map-gl/maplibre";
 
 import { useDataset } from "@/lib/api/layers";
+import { loadRasterValues } from "@/lib/api/rasters";
 import { getBasemapUrl } from "@/lib/constants/basemaps";
 import { compileLayer, sourceKind } from "@/lib/style/compile";
 import type { CompileInput, Geometry } from "@/lib/style/compile/types";
@@ -16,6 +17,7 @@ import { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type SourceLayer, compileSourceFor, sourceOf } from "@/lib/style/layerSource";
 import { withTileParams } from "@/lib/style/render/apply";
+import { rasterValuesOver } from "@/lib/style/render/rasterValues";
 import { useLivePreview } from "@/lib/style/render/useLivePreview";
 import { StyleSaver, bindPageLifecycle } from "@/lib/style/save";
 import { createMemoryTransport, styleCheck } from "@/lib/style/transports/memory";
@@ -71,6 +73,25 @@ function useDocument(store: EditorStore): LayerStyle {
   return useSyncExternalStore(store.subscribe, read, read);
 }
 
+/** The input with the values its raster style colors, loaded as a map's renderer loads them. */
+function useRasterValues(input: CompileInput | null): CompileInput | null {
+  // Counts the descriptions that arrived and the quiet moments that ended: the same input is attached anew.
+  const [answers, redraw] = useReducer((n: number) => n + 1, 0);
+  const [values] = useState(() => rasterValuesOver(loadRasterValues, redraw));
+  useEffect(() => () => values.dispose(), [values]);
+  return useMemo(
+    () => {
+      if (input?.source.type !== "raster") return input;
+      const [layer] = values.attach([
+        { key: input.id, style: input.style, entry: {}, source: input.source },
+      ]).layers;
+      return { ...input, style: layer.style, source: layer.source };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [input, answers, values]
+  );
+}
+
 /** Keeps the map in step with the document. It is its own subscriber, so an edit renders nothing else of the page. */
 function LivePreview({
   store,
@@ -82,7 +103,7 @@ function LivePreview({
   setup: PreviewSetup;
 }) {
   const style = useDocument(store);
-  const input = useMemo(() => previewInput(style, setup), [style, setup]);
+  const input = useRasterValues(useMemo(() => previewInput(style, setup), [style, setup]));
   useLivePreview(map, input);
   return null;
 }
@@ -93,7 +114,7 @@ function DrawerContent({ store, setup }: { store: EditorStore; setup: PreviewSet
   const readIssues = () => store.saver.issues;
   const issues = useSyncExternalStore(subscribeSaver, readIssues, readIssues);
   const json = JSON.stringify(document, null, 2);
-  const input = previewInput(document, setup);
+  const input = useRasterValues(useMemo(() => previewInput(document, setup), [document, setup]));
   const compiled = input ? withTileParams(compileLayer(input)) : null;
   return (
     <Box sx={{ display: "flex", gap: 2, p: 1, maxHeight: "40vh" }}>

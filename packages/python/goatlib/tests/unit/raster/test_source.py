@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 
 import morecantile
 import numpy as np
@@ -6,8 +7,17 @@ import pytest
 import rasterio
 from goatlib.io.remote_source.url_guard import UnsafeUrlError
 from goatlib.raster.formula import parse_formula
-from goatlib.raster.source import RasterSource, RasterUnavailableError, resolve_address
+from goatlib.raster.source import (
+    RasterSource,
+    RasterUnavailableError,
+    failure_key,
+    recent_failure,
+    remember_failure,
+    remote_validator,
+    resolve_address,
+)
 from goatlib.raster.token import decode_token, encode_token
+from goatlib.raster.values import value_encoding
 
 from .conftest import BOUNDS
 
@@ -155,12 +165,59 @@ def test_a_formulas_values_are_sampled(cog_server: str) -> None:
     assert values.size > 0 and np.allclose(values, 400 / 600)
 
 
-def test_elevation_tiles_are_terrarium_encoded(cog_server: str) -> None:
+def test_a_value_tile_holds_the_files_values(cog_server: str) -> None:
+    encoding = value_encoding("float32", scaled=False, value_range=(100.0, 400.0))
+    z, x, y = _tile_at(*CENTER, 13)
+    corner = (BOUNDS[0] + 0.002, BOUNDS[3] - 0.002)
     with RasterSource(f"{cog_server}/elevation.tif", LOCAL) as src:
-        rgb = _png(src.dem(*_tile_at(*CENTER, 13)))
+        values = encoding.decode(
+            _png(src.values(z, x, y, parse_formula("b1"), encoding))
+        )
+        read = src.reader.tile(
+            x, y, z, tilesize=256, indexes=(1,), resampling_method="bilinear"
+        )
+        hole = encoding.decode(
+            _png(src.values(*_tile_at(*corner, 14), parse_formula("b1"), encoding))
+        )
+    expected = np.ma.filled(read.array[0].astype("float64"), np.nan)
+    assert np.array_equal(np.isnan(values), np.isnan(expected))
+    assert np.nanmax(np.abs(values - expected)) <= encoding.step
     row, col = _pixel_of(*CENTER, 13)
-    r, g, b = (int(v) for v in rgb[row, col, :3])
-    assert r * 256 + g + b / 256 - 32768 == pytest.approx(250, abs=2)
+    assert values[row, col] == pytest.approx(250, abs=2)
+    assert np.isnan(hole[_pixel_of(*corner, 14)])
+
+
+def test_a_value_tile_of_a_formula_holds_its_result(cog_server: str) -> None:
+    encoding = value_encoding(
+        "uint16", scaled=False, value_range=(100.0, 100.0), formula=True
+    )
+    with RasterSource(f"{cog_server}/multiband.tif", LOCAL) as src:
+        tile = src.values(*_tile_at(*CENTER, 13), parse_formula("b2 - b1"), encoding)
+    values = encoding.decode(_png(tile))
+    assert np.isfinite(values).any()
+    assert np.nanmax(np.abs(values - 100)) <= encoding.step
+
+
+def test_outside_the_file_there_is_no_value_tile(cog_server: str) -> None:
+    encoding = value_encoding("float32", scaled=False, value_range=(100.0, 400.0))
+    with RasterSource(f"{cog_server}/elevation.tif", LOCAL) as src:
+        assert (
+            src.values(*_tile_at(0.0, 0.0, 10), parse_formula("b1"), encoding) is None
+        )
+
+
+def test_info_names_the_files_native_zoom(cog_server: str) -> None:
+    with RasterSource(f"{cog_server}/elevation.tif", LOCAL) as src:
+        maxzoom = src.info().maxzoom
+    assert isinstance(maxzoom, int) and maxzoom >= 0
+
+
+def test_the_remote_validator_is_the_files_last_modified(cog_server: str) -> None:
+    import requests
+
+    url = f"{cog_server}/elevation.tif"
+    expected = requests.head(url, timeout=3).headers["Last-Modified"]
+    assert remote_validator(url, LOCAL) == expected
 
 
 def test_a_point_answers_every_band_and_a_formulas_value(cog_server: str) -> None:
@@ -213,6 +270,7 @@ def test_the_checked_address_is_kept_for_a_while(
     url = f"{cog_server}/rgb.tif?kept"
     resolve_address(url, LOCAL)
     resolve_address(url, LOCAL)
+    remote_validator(url, LOCAL)
     assert calls == [url]
 
 
@@ -257,6 +315,9 @@ def test_a_band_the_file_does_not_have_is_a_band_error(cog_server: str) -> None:
             with pytest.raises(BandError):
                 src.tile(*_tile_at(*CENTER, 13), coloring)
         assert src.point(*CENTER, parse_formula("b5")).formula is None
+        encoding = value_encoding("float32", scaled=False, value_range=None)
+        with pytest.raises(BandError):
+            src.values(*_tile_at(*CENTER, 13), parse_formula("b2 - b1"), encoding)
 
 
 def test_a_stored_file_opens_only_when_named_as_one(cog_dir) -> None:  # noqa: ANN001
@@ -282,3 +343,18 @@ def test_a_source_needs_a_stored_file_or_an_address() -> None:
     # An empty address is still the URL guard's to refuse.
     with pytest.raises(UnsafeUrlError):
         RasterSource("").__enter__()
+
+
+def test_a_remembered_failure_is_recent_for_a_while(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from goatlib.raster import source
+
+    monkeypatch.setattr(source, "_failures", {})
+    key = failure_key(None, Path("/data/layer.tif"))
+    assert recent_failure(key) is None
+    remember_failure(key, "The file could not be read.")
+    assert recent_failure(key) == "The file could not be read."
+    monkeypatch.setattr(source, "FAILURE_TTL_S", 0)
+    remember_failure(key, "Again.")
+    assert recent_failure(key) is None

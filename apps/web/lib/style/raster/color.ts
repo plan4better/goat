@@ -49,6 +49,13 @@ const CLASS_GRAY = "#9aa3ad";
 
 const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
+/** A hex color's red, green and blue (`#rgb` or `#rrggbb`). */
+export const rgbOf = (hex: string): [number, number, number] => {
+  const h = hex.replace(/^#/, "");
+  const full = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.slice(0, 6);
+  return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16)];
+};
+
 /** The band a render colors: a number, or a formula's expression; null when it is neither. */
 function bandOf(render: JsonObject): Band | null {
   const band = render.band ?? 1;
