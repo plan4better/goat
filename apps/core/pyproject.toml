@@ -26,7 +26,7 @@ dependencies = [
   "boto3==1.38.23",
   "goatlib",
   "goatobs",
-  "dnspython>=2.8.0",
+  "dnspython>=2.9.2",
   "python-keycloak>=2.16.3",
   "emails>=0.6",
   "babel>=2.13.0",
@@ -41,5 +41,5 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
   "asyncpg-stubs>=0.30.0",
-  "pytest>=8.3.5",
+  "pytest>=9.2.0",
 ]
