@@ -6,9 +6,11 @@ from unittest.mock import AsyncMock, patch
 
 import duckdb
 import pytest
+from goatlib.io.spatial_order import hilbert_key
 from goatlib.tools.catalog_materialize import (
     CatalogMaterializeParams,
     CatalogMaterializeRunner,
+    published_tiles_keys,
 )
 
 
@@ -188,7 +190,7 @@ def test_the_recorded_count_is_of_features_with_a_geometry(
         runner, "_catalog_s3", lambda: SimpleNamespace(download_file=download_file)
     )
 
-    _, feature_count, _, _ = runner._materialize_vector(
+    _, feature_count, _, _, _ = runner._materialize_vector(
         "00000000-0000-0000-0000-000000000001", "../../../data/item.parquet"
     )
 
@@ -354,3 +356,99 @@ def test_the_catalog_gc_removes_a_rasters_copy_too(tmp_path, monkeypatch) -> Non
     task = CatalogGCTask()
     task.settings = None
     assert stored_raster_file(LAYER_ID) in task._artifact_paths(LAYER_ID)
+
+
+def test_a_sorted_file_with_published_tiles_keeps_its_row_order(
+    tmp_path, monkeypatch
+) -> None:
+    """goat-data's tiles number features by row: the copy must keep that order,
+    and an unsorted file is sorted as before (and its tiles built)."""
+    monkeypatch.setenv("CATALOG_LAYERS_DIR", str(tmp_path / "catalog" / "layers"))
+    monkeypatch.setenv("CATALOG_S3_BUCKET", "catalog")
+    points = "SELECT i AS id, ST_Point(i % 7, i // 7) AS geom FROM range(40) t(i)"
+    sources = {}
+    fixture = duckdb.connect()
+    fixture.execute("INSTALL spatial; LOAD spatial;")
+    in_order = "ORDER BY " + hilbert_key("geom", f"({points})")
+    for name, order in (("sorted", in_order), ("unsorted", "")):
+        sources[name] = tmp_path / f"{name}.parquet"
+        fixture.execute(
+            f"COPY ({points} {order}) TO '{sources[name]}' (FORMAT PARQUET)"
+        )
+    ids = {
+        name: [r[0] for r in fixture.execute(f"SELECT id FROM '{path}'").fetchall()]
+        for name, path in sources.items()
+    }
+    fixture.close()
+
+    for name, keep in (("sorted", True), ("unsorted", False)):
+        runner = CatalogMaterializeRunner()
+        monkeypatch.setattr(
+            runner,
+            "_catalog_s3",
+            lambda src=sources[name]: SimpleNamespace(
+                download_file=lambda _b, _k, target: shutil.copyfile(src, target)
+            ),
+        )
+        out, _, _, _, kept = runner._materialize_vector(
+            "00000000-0000-0000-0000-000000000001",
+            f"../../../data/{name}.parquet",
+            keep_sorted=True,
+        )
+        assert kept is keep
+        rows = duckdb.connect().execute(f"SELECT id FROM '{out}'").fetchall()
+        if keep:
+            assert [r[0] for r in rows] == ids["sorted"]
+        # Written with GOAT's parquet settings either way.
+        codecs = (
+            duckdb.connect()
+            .execute(f"SELECT DISTINCT compression FROM parquet_metadata('{out}')")
+            .fetchall()
+        )
+        assert codecs == [("ZSTD",)]
+
+
+def test_published_tiles_are_copied_only_when_usable(tmp_path, monkeypatch) -> None:
+    """Copied beside GOAT's own build when goat-data built them with this
+    recipe; otherwise nothing is left behind and the job builds them."""
+    monkeypatch.setenv("CATALOG_TILES_DIR", str(tmp_path / "catalog" / "tiles"))
+    monkeypatch.setenv("CATALOG_S3_BUCKET", "catalog")
+    from goatlib.io.pmtiles import MANBY_MARKER, PMTilesGenerator
+    from goatlib.utils.layer import catalog_tiles_dir
+
+    item = {
+        "assets": {
+            "tiles": {"href": "../../../data/a.pmtiles"},
+            "tiles_anchor": {"href": "../../../data/a_anchor.pmtiles"},
+        }
+    }
+    keys = published_tiles_keys(item)
+    assert keys == ("data/a.pmtiles", "data/a_anchor.pmtiles")
+    assert published_tiles_keys({"assets": {"data": {"href": "x.parquet"}}}) is None
+
+    layer_id = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+    main = catalog_tiles_dir() / "t_3fa85f6457174562b3fc2c963f66afa6.pmtiles"
+    anchor = main.with_name(main.stem + "_anchor.pmtiles")
+    runner = CatalogMaterializeRunner()
+    runner.settings = SimpleNamespace(pmtiles_enabled=True)
+    monkeypatch.setattr(
+        runner,
+        "_catalog_s3",
+        lambda: SimpleNamespace(
+            download_file=lambda _b, key, target: open(target, "wb").write(b"t")
+        ),
+    )
+
+    for marker, polygon_keys, usable in (
+        (MANBY_MARKER, keys, True),
+        ({**MANBY_MARKER, "recipe": -1}, keys, False),  # an older recipe
+        (MANBY_MARKER, (keys[0], None), False),  # a polygon without its anchors
+    ):
+        for f in (main, anchor):
+            f.unlink(missing_ok=True)
+        monkeypatch.setattr(
+            PMTilesGenerator, "read_marker", lambda self, path, m=marker: dict(m)
+        )
+        assert runner._use_published_tiles(layer_id, polygon_keys, True) is usable
+        assert main.exists() is usable and anchor.exists() is usable
+        assert not list(catalog_tiles_dir().glob("*.part"))

@@ -7,6 +7,7 @@ import {
   type BundleRead,
   type BundleTypeDef,
   detectBundleType,
+  sniffXPlan,
   useBundles,
 } from "@/lib/api/bundles";
 import { refreshContentFeed } from "@/lib/api/content";
@@ -40,7 +41,7 @@ import { useShareNotice } from "@/hooks/addLayer/useShareNotice";
  * direct S3 upload → `createLayer`, whose OGC job id goes to the jobs store.
  */
 
-const ACCEPTED_FILE_TYPES = [".gpkg", ".geojson", ".zip", ".kml", ".csv", ".xlsx", ".parquet"];
+const ACCEPTED_FILE_TYPES = [".gpkg", ".geojson", ".zip", ".kml", ".gml", ".csv", ".xlsx", ".parquet"];
 const TABULAR_EXTENSIONS = ["csv", "xlsx", "xls"];
 
 /** As `contentMetadataSchema` enforces it — kept here so the field can stop at the same point. */
@@ -136,7 +137,16 @@ export const useUploadFlow = ({
     return !!ext && TABULAR_EXTENSIONS.includes(ext);
   }, [file]);
 
-  const bundleType = useMemo(() => detectBundleType(file), [file]);
+  // Detecting reads the file (an XPlan plan is told from other GML by its
+  // content), so the type arrives after the file does.
+  const [bundleType, setBundleType] = useState<BundleTypeDef | null>(null);
+  useEffect(() => {
+    let current = true;
+    void detectBundleType(file).then((type) => current && setBundleType(type));
+    return () => {
+      current = false;
+    };
+  }, [file]);
   const requiresStreetNetwork = !!bundleType?.requiresStreetNetwork;
   const [streetNetworkId, setStreetNetworkId] = useState<string | null>(null);
   /**
@@ -220,8 +230,11 @@ export const useUploadFlow = ({
       : file.name;
   }, [file]);
 
+  const pendingFile = useRef<File | null>(null);
   const setFile = useCallback(
     (next: File | null) => {
+      // A file still being read is forgotten too, or its reading would bring it back.
+      pendingFile.current = null;
       setFileError(undefined);
       setFileValue(undefined);
       // Removing the file removes everything said about it: a name, a description and a
@@ -240,28 +253,36 @@ export const useUploadFlow = ({
         setFileError(`${t("invalid_file_type")}: ${ACCEPTED_FILE_TYPES.join(", ")}`);
         return;
       }
-      const nextType = detectBundleType(next);
-      if (nextType?.maxSizeMiB && next.size > nextType.maxSizeMiB * 1024 * 1024) {
-        setFileError(
-          t("bundle_upload_too_large", { type: t(nextType.labelKey), mb: nextType.maxSizeMiB })
-        );
-        return;
-      }
-      setFileValue(next);
-      // The suggested name goes into the form, not just onto the screen: with no field
-      // registered for it, a name that only existed as display text left the form invalid
-      // and the upload button dead.
-      // Trimmed to the limit `contentMetadataSchema` enforces (255): an export named by a
-      // SQL query is longer than that, and suggesting it verbatim opened the form invalid
-      // with an error nobody had caused.
-      setValue("name", next.name.replace(/\.[^/.]+$/, "").slice(0, MAX_NAME_LENGTH), {
-        shouldValidate: true,
-      });
+      // Detection reads the file; a file chosen meanwhile wins.
+      pendingFile.current = next;
+      void (async () => {
+        const nextType = await detectBundleType(next);
+        const planName = nextType?.type === "xplan" ? (await sniffXPlan(next)).planName : null;
+        if (pendingFile.current !== next) return;
+        if (nextType?.maxSizeMiB && next.size > nextType.maxSizeMiB * 1024 * 1024) {
+          setFileError(
+            t("bundle_upload_too_large", { type: t(nextType.labelKey), mb: nextType.maxSizeMiB })
+          );
+          return;
+        }
+        setFileValue(next);
+        // The suggested name goes into the form, not just onto the screen: with no field
+        // registered for it, a name that only existed as display text left the form invalid
+        // and the upload button dead. An XPlan plan suggests the plan's own name.
+        // Trimmed to the limit `contentMetadataSchema` enforces (255): an export named by a
+        // SQL query is longer than that, and suggesting it verbatim opened the form invalid
+        // with an error nobody had caused.
+        // A name typed while the file was read stays.
+        if (getValues("name")) return;
+        const suggested = planName ?? next.name.replace(/\.[^/.]+$/, "");
+        setValue("name", suggested.slice(0, MAX_NAME_LENGTH), { shouldValidate: true });
+      })();
     },
-    [setValue, t]
+    [getValues, setValue, t]
   );
 
   const reset = useCallback(() => {
+    pendingFile.current = null;
     setFileValue(undefined);
     setFileError(undefined);
     setSource(null);

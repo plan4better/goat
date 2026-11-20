@@ -2,6 +2,7 @@ import type { Theme } from "@mui/material";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
+import { wmsTileTemplate } from "@/lib/utils/externalService";
 import type { CatalogItem } from "@/lib/validations/catalog";
 
 /** What kind of thing a catalog result is. */
@@ -10,7 +11,7 @@ import type { CatalogItem } from "@/lib/validations/catalog";
  * `vector` covers point, line and polygon alike; `unknown` is for an item whose
  * kind genuinely cannot be told from what the catalog publishes.
  */
-export type CatalogKind = "bundle" | "raster" | "table" | "vector" | "unknown";
+export type CatalogKind = "bundle" | "raster" | "wms" | "wmts" | "table" | "vector" | "unknown";
 
 /** Pass `asMember` when the item is one layer of a bundle that is already on screen. */
 export const catalogKindOf = (item: CatalogItem, asMember?: boolean): CatalogKind => {
@@ -19,15 +20,69 @@ export const catalogKindOf = (item: CatalogItem, asMember?: boolean): CatalogKin
   switch (props["goat:layerType"]) {
     case "raster":
       return "raster";
+    case "wms":
+      return "wms";
+    case "wmts":
+      return "wmts";
     case "table":
       return "table";
     case "feature":
       return "vector";
-    default:
+    default: {
+      // Geometry first: a vector layer may also offer a map view. Otherwise a member that inherited
+      // `bundle` says it is a map service in its own link. Same rule as goatlib's `is_wms`.
       if (props["goat:geometryType"]) return "vector";
+      const service = item.links?.find((link) => link.rel === "wms" || link.rel === "wmts")?.rel;
+      if (service === "wms" || service === "wmts") return service;
       if (typeof props["table:row_count"] === "number") return "table";
       return "unknown";
+    }
   }
+};
+
+/**
+ * The tile template a map service item draws live from. A WMS: its `rel="wms"`
+ * links on the first link's server, the link title naming the layers. A WMTS:
+ * its `rel="xyz"` link, the tile address goat-data picked from the capabilities.
+ * `null` for anything else, or a service that cannot be drawn.
+ */
+export const catalogServiceTiles = (item: CatalogItem): string | null => {
+  const kind = catalogKindOf(item, true);
+  if (kind === "wmts") return item.links.find((link) => link.rel === "xyz" && link.href)?.href ?? null;
+  if (kind !== "wms") return null;
+  const links = item.links.filter((link) => link.rel === "wms" && link.href);
+  if (!links.length) return null;
+  const href = links[0].href;
+  // Several layers of one link are named in its title, comma-separated: the mirror keeps no `wms:layers`.
+  const layers = links
+    .filter((link) => link.href === href && link.title)
+    .flatMap((link) => (link.title as string).split(",").map((name) => name.trim()))
+    .filter(Boolean)
+    // Encoded: a name with `&`, `#` or a space would cut the request short.
+    .map((name) => encodeURIComponent(name).replace(/%3A/gi, ":"));
+  // goat-data publishes the clean server address, so it goes in as it is.
+  return layers.length ? wmsTileTemplate(href, layers) : null;
+};
+
+/**
+ * The tile address of a layer's published tiles, served by the catalog one tile
+ * at a time (`/assets/{id}/tiles/{z}/{x}/{y}`); `null` without them, when the
+ * detail map draws the sample instead.
+ */
+export const catalogTilesUrl = (item: CatalogItem): string | null => {
+  const href = (item.assets as Record<string, { href?: string } | null> | undefined)?.tiles?.href;
+  return href && /^https?:\/\//i.test(href) ? `${href.replace(/\/$/, "")}/{z}/{x}/{y}` : null;
+};
+
+/**
+ * A raster layer's image tiles and value tiles (`coverage`), as the catalog announces
+ * them (`assets.raster`, `/assets/{id}/raster`); `null` for anything else.
+ */
+export const catalogRasterSource = (item: CatalogItem): { tiles: string; coverage: string } | null => {
+  const href = (item.assets as Record<string, { href?: string } | null> | undefined)?.raster?.href;
+  if (!href || !/^https?:\/\//i.test(href)) return null;
+  const root = href.replace(/\/$/, "");
+  return { tiles: `${root}/{z}/{x}/{y}.webp`, coverage: `${root}/coverage/tiles/WebMercatorQuad` };
 };
 
 /**
@@ -57,6 +112,7 @@ export const markFor = ({ kind, geometryType }: MarkSubject): ICON_NAME => {
   if (kind === "project") return ICON_NAME.MAP;
   if (kind === "template") return ICON_NAME.CLONE;
   if (kind === "table") return ICON_NAME.TABLE;
+  if (kind === "wms" || kind === "wmts") return ICON_NAME.WMS;
   if (kind === "raster") return ICON_NAME.RASTER;
   switch (geometryType) {
     case "point":
@@ -89,7 +145,7 @@ export type ContentTone = "primary" | "primary-dark" | "info" | "warning" | "sec
 export const toneFor = (kind: MarkKind): ContentTone => {
   if (kind === "folder" || kind === "project") return "primary";
   if (kind === "bundle") return "primary-dark";
-  if (kind === "raster") return "warning";
+  if (kind === "raster" || kind === "wms" || kind === "wmts") return "warning";
   if (kind === "table" || kind === "template") return "secondary";
   return "info";
 };

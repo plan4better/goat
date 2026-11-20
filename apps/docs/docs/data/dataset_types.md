@@ -11,7 +11,7 @@ On GOAT, you can work with datasets from Plan4Better’s catalog, upload your ow
 
 ### 1.1 Spatial Features
 
-Feature datasets store **spatial features like points, lines, or polygons**. On GOAT you can upload data from **Shapefiles**, **Geopackages**, **GeoJSON**, **KML**, **ZIP**, or **Parquet** files, or add a **WFS** external URL. For raster external sources (WMS, WMTS, XYZ Tiles, COG), see [Raster Datasets](#rasters-datasets) below. You can visualize, style, and analyze these datasets using the different tools from the toolbox.
+Feature datasets store **spatial features like points, lines, or polygons**. On GOAT you can upload data from **Shapefiles**, **Geopackages**, **GeoJSON**, **KML**, **GML**, **ZIP**, or **Parquet** files, or add a **WFS** external URL. For raster external sources (WMS, WMTS, XYZ Tiles, COG), see [Raster Datasets](#rasters-datasets) below. You can visualize, style, and analyze these datasets using the different tools from the toolbox.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
   <img src={require('/img/data/spatial.webp').default} alt="Spatial features in GOAT" style={{ maxHeight: "450px", maxWidth: "750px", objectFit: "cover"}}/>
@@ -62,9 +62,22 @@ GOAT connects stops to streets so that it can route the walk to and from a stop.
 
 Public transport networks power GOAT's [Public Transport](../routing/public_transport) routing. To import one, see [Adding content](../workspace/content.md#adding-content); for what GOAT's built-in network contains and how to bring your own, see [Network Datasets](./builtin_datasets.md#bringing-your-own-networks).
 
+## XPlan Plans
+
+An **XPlan plan** is a land-use or development plan (Bebauungsplan, Flächennutzungsplan) in **XPlanGML**, the German exchange standard for planning. Upload the plan's `.gml` file: GOAT recognises an XPlan plan by its content, whatever the file is called. A `.gml` that is not XPlan is imported as an ordinary dataset.
+
+The plan becomes one layer for each kind of plan object it contains, named after its XPlan class, for example `BP_BaugebietsTeilFlaeche` for building areas or `BP_BauGrenze` for building limits. GOAT also makes the plan readable:
+
+- **Codes become words.** XPlanGML stores most statements as codes, such as `1500` for the type of building area. Next to each code field, GOAT adds a field ending in `Wert` with its meaning, for example `besondereArtDerBaulNutzungWert` = `Mischgebiet`.
+- **Rules travel with the areas.** Many rules, such as limits on retail, are only written as text clauses. Each area carries the text of the clauses that apply to it in `refTextInhaltWert`, and all clauses are also in their own table.
+- **Every object names its plan.** Fields such as `xpPlanName`, `xpRechtsstand` and `xpAgs` tell which plan an object comes from and what state that plan is in.
+- **The plan looks like a plan.** Building areas are coloured by their type of use and building limits are drawn as dashed blue lines, following the German planning symbols (PlanZV).
+
+GOAT imports a plan as it is and does not check it against the XPlanung rules; use the XLeitstelle's validator for that.
+
 ## Datasets made of several layers
 
-Street Networks and Public Transport Networks are both made up of **several layers that only make sense together**. GOAT calls such a dataset a **bundle** and manages it as a unit: its layers are shared together, they appear together in a project, and deleting the dataset removes all of them.
+Street Networks, Public Transport Networks and XPlan plans are all made up of **several layers that only make sense together**. GOAT calls such a dataset a **bundle** and manages it as a unit: its layers are shared together, they appear together in a project, and deleting the dataset removes all of them.
 
 You will meet the term while working: the upload dialog confirms that a recognized file *will be imported as a bundle*, the [Catalog](../workspace/catalog.md) labels an entry holding several layers `Bundle`, and sharing or deleting one always applies to the whole set.
 

@@ -41,6 +41,9 @@ coverage
 apps/web/public/vendor/maplibre/
 out/
 !apps/docs/**/out/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
 build
 
 # misc

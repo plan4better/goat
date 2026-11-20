@@ -31,7 +31,7 @@ Sie können Layer aus [verschiedenen Quellen](../data/dataset_types) zu Ihrer Ka
 
 **Neue Daten**
 
-- **Datensatz hochladen**: ein Datensatz von Ihrem Gerät (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet sowie [GTFS](https://www.plan4better.de/de/glossar/gtfs)- und [Overture](https://www.plan4better.de/de/glossar/overture-maps)-Archive)
+- **Datensatz hochladen**: ein Datensatz von Ihrem Gerät (GeoPackage, GeoJSON, Shapefile, KML, GML, CSV, XLSX, Parquet sowie [GTFS](https://www.plan4better.de/de/glossar/gtfs)- und [Overture](https://www.plan4better.de/de/glossar/overture-maps)-Archive)
 - **Layer erstellen**: ein neuer, leerer Layer, in den Sie zeichnen
 - **Daten abrufen / verbinden**: ein Layer, der über WFS, WMS, WMTS, XYZ-Kacheln oder COG bereitgestellt wird, per URL eingebunden, Features aus OpenStreetMap oder Overture Maps für ein Gebiet, oder das Straßennetz oder ÖPNV-Netz von GOAT für ein Gebiet als Datenpaket
 

@@ -20,7 +20,8 @@ const STYLE = { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#6
 
 describe("catalogSampleLayer", () => {
   it("draws the sample with the dataset's style, features numbered for the highlight", () => {
-    const layer = catalogSampleLayer(STYLE, "point", sample);
+    const layer = catalogSampleLayer({ ...STYLE, min_zoom: 6, max_zoom: 14 }, "point", sample);
+    // The preview opens on the whole dataset, so the style's zoom range would hide it there.
     expect(layer?.style).toEqual(STYLE);
     expect(layer?.geometry).toBe("point");
     expect(layer?.source.type).toBe("points");

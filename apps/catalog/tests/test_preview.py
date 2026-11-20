@@ -255,6 +255,18 @@ def reader(tmp_path: Path, data_parquet: Path) -> PreviewReader:
 
 
 class TestPreviewReader:
+    @pytest.mark.parametrize(
+        "parquet_url",
+        ["../../../data/layer.tif", None],  # a raster; a WMS (no data)
+    )
+    def test_a_layer_without_a_table_file_has_no_sample(
+        self, reader: PreviewReader, parquet_url: str | None
+    ) -> None:
+        """404 at once, not a failed read of a GeoTIFF as Parquet (502)."""
+        with pytest.raises(ApiError) as err:
+            reader.read(_row(parquet_url=parquet_url), limit=10)
+        assert err.value.status_code == 404
+
     def test_returns_a_bounded_feature_collection(self, reader: PreviewReader) -> None:
         doc = reader.read(_row(), limit=10)
         assert doc["type"] == "FeatureCollection"

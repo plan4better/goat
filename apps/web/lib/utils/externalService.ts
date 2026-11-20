@@ -501,18 +501,31 @@ export const selectionBounds = (service: ConnectedService, ids: string[]): LngLa
   ];
 };
 
-const wmsTileUrl = (service: ConnectedService, layers: ServiceLayer[]) => {
-  const base = service.getMapBase ?? getMapBaseOf(service.url);
+/** The GetMap tile template for some layers of the WMS whose GetMap address is `base`. */
+export const wmsTileTemplate = (
+  base: string,
+  layerIds: string[],
+  styles: string[] = [],
+  version?: string
+) => {
   const [path, query] = base.split("?");
   const url = generateWmsUrl(
     path,
-    layers.map((layer) => layer.id).join(","),
-    layers.map((layer) => layer.style ?? "").join(","),
-    service.version
+    layerIds.join(","),
+    layerIds.map((_, i) => styles[i] ?? "").join(","),
+    version
   );
   // `generateWmsUrl` starts its own query; the server's parameters go in front of it.
   return query ? url.replace("?", `?${query}&`) : url;
 };
+
+const wmsTileUrl = (service: ConnectedService, layers: ServiceLayer[]) =>
+  wmsTileTemplate(
+    service.getMapBase ?? getMapBaseOf(service.url),
+    layers.map((layer) => layer.id),
+    layers.map((layer) => layer.style ?? ""),
+    service.version
+  );
 
 /**
  * What the layer is drawn from: a tile template, a COG, or `null` where nothing can be

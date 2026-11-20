@@ -10,6 +10,7 @@ from fastapi import Depends, Request
 from catalog.errors import ApiError, NotModifiedError
 from catalog.services.assets import AssetReader
 from catalog.services.preview import PreviewReader
+from catalog.services.tiles import RasterTileReader, TileReader
 from catalog.store import CatalogStore
 
 
@@ -68,6 +69,24 @@ def get_asset_reader(request: Request) -> AssetReader:
     deployment does not offer is not there. Both need the catalog bucket.
     """
     reader: AssetReader | None = getattr(request.app.state, "asset_reader", None)
+    if reader is None:
+        raise ApiError(404, "assets are not enabled on this deployment")
+    return reader
+
+
+def get_tile_reader(request: Request) -> TileReader:
+    """FastAPI dependency: the tile reader, on the same terms as assets."""
+    reader: TileReader | None = getattr(request.app.state, "tile_reader", None)
+    if reader is None:
+        raise ApiError(404, "assets are not enabled on this deployment")
+    return reader
+
+
+def get_raster_tile_reader(request: Request) -> RasterTileReader:
+    """FastAPI dependency: the raster tile reader, on the same terms as assets."""
+    reader: RasterTileReader | None = getattr(
+        request.app.state, "raster_tile_reader", None
+    )
     if reader is None:
         raise ApiError(404, "assets are not enabled on this deployment")
     return reader

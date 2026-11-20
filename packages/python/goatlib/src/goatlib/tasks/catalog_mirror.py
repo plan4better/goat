@@ -108,7 +108,9 @@ __all__ = [
 #:     ordering needs no knowledge of that vocabulary. Higher is better.
 #: v10: a Collection's `geometry` is the union of its layers' footprints, not
 #:      the envelope of its extent -- a bbox cannot exclude Koblenz from NRW.
-MIRROR_FORMAT_VERSION = 10
+#: v11: an item's `goat:layerType` is its own kind (feature, table, raster, wms,
+#:      wmts), not the `bundle` its dataset is published as.
+MIRROR_FORMAT_VERSION = 11
 
 ITEMS_FILENAME = "items.parquet"
 COLLECTIONS_FILENAME = "collections.parquet"
@@ -510,10 +512,41 @@ def build_mirror(
         # published item. Doing the join once per harvest is what keeps a
         # faceted search a single-relation scan.
         publisher = coll_expr(_opt(collections, "providers", "c.providers[1].name"))
-        layer_type = "COALESCE({}, {}, 'feature')".format(
-            item_expr(_opt(items, "goat:layerType", 'i."goat:layerType"')),
-            coll_expr(_opt(collections, "goat:layerType", 'c."goat:layerType"')),
+        # Each layer's own kind. A bundle's layers are published as `bundle`, the
+        # dataset's word, so "datasets with a WMS layer" could not be asked: the
+        # kind comes from the layer itself, by the same rule as the web's
+        # `catalogKindOf` and goatlib's `layer_type`. The dataset row keeps
+        # `bundle` for display; the type filter reads the layers (registry).
+        declared = item_expr(_opt(items, "goat:layerType", 'lower(i."goat:layerType")'))
+        inherited = coll_expr(
+            _opt(collections, "goat:layerType", 'lower(c."goat:layerType")')
         )
+
+        def has_link(rel: str) -> str:
+            return item_expr(
+                _opt(
+                    items,
+                    "links",
+                    f"len(list_filter(i.links, l -> l.rel = '{rel}' "
+                    "AND l.href IS NOT NULL)) > 0",
+                )
+            )
+
+        data_href = item_expr(_opt(items, "assets", "lower(i.assets.data.href)"))
+        data_type = item_expr(_opt(items, "assets", "lower(i.assets.data.type)"))
+        own = "('table', 'feature', 'raster', 'wms', 'wmts')"
+        layer_type = f"""CASE
+            WHEN {item_expr(_opt(items, "goat:geometryType", 'i."goat:geometryType"'))}
+                IS NOT NULL THEN 'feature'
+            WHEN {declared} IN {own} THEN {declared}
+            WHEN regexp_matches(coalesce({data_href}, ''), '\\.tiff?$')
+                OR coalesce({data_type}, '') LIKE 'image/%' THEN 'raster'
+            WHEN coalesce({has_link("wms")}, false) THEN 'wms'
+            WHEN coalesce({has_link("wmts")}, false) THEN 'wmts'
+            WHEN {inherited} IN {own} THEN {inherited}
+            WHEN {declared} = 'bundle' OR {inherited} = 'bundle' THEN 'table'
+            ELSE 'feature'
+        END"""
         # Description and keywords are published on the Collection ONLY -- 0 of
         # 10,793 items carry either, while 3,834 of 3,834 collections carry a
         # description and 96% carry keywords. Inheriting them here is what lets a

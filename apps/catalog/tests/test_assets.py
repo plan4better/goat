@@ -10,6 +10,7 @@ item id and a kind — never an object key — so the questions worth asking are
 served under a type it is not".
 """
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -387,7 +388,10 @@ class TestRoute:
         )
         with TestClient(app) as client:
             r = client.get("/assets/does-not-exist/thumbnail")
+            # Same bounds as geoapi's tile routes, refused before any read.
+            too_deep = client.get("/assets/does-not-exist/tiles/40/0/0")
         assert r.status_code == 404
+        assert too_deep.status_code == 400
 
     def test_a_served_asset_carries_its_type_and_cache_and_guard_headers(
         self, catalog_dir: Path, objects: Path
@@ -452,3 +456,247 @@ def test_object_key_keeps_the_prefixes_apart() -> None:
         object_key("../../../data/a.parquet", BUCKET, prefixes=("thumbs/",))
     with pytest.raises(ApiError):
         object_key("../../../thumbs/a.svg", BUCKET, prefixes=("data/",))
+
+
+class TestTiles:
+    """`/assets/{id}/tiles/{z}/{x}/{y}`: one tile at a time from the item's
+    published `.pmtiles`, never the file and never another object."""
+
+    @staticmethod
+    def _pmtiles(path: Path, tile: bytes = b"tile-0") -> None:
+        from pmtiles.tile import Compression, TileType, zxy_to_tileid
+        from pmtiles.writer import Writer
+
+        with open(path, "wb") as f:
+            writer = Writer(f)
+            writer.write_tile(zxy_to_tileid(0, 0, 0), tile)
+            writer.finalize(
+                {
+                    "tile_type": TileType.MVT,
+                    "tile_compression": Compression.GZIP,
+                    "min_zoom": 0,
+                    "max_zoom": 0,
+                    "min_lon_e7": -1800000000,
+                    "min_lat_e7": -850000000,
+                    "max_lon_e7": 1800000000,
+                    "max_lat_e7": 850000000,
+                    "center_zoom": 0,
+                    "center_lon_e7": 0,
+                    "center_lat_e7": 0,
+                },
+                {"vector_layers": []},
+            )
+
+    def _reader(self, tmp_path: Path, objects: Path) -> tuple[Any, list[int]]:
+        from catalog.services.tiles import TileReader
+
+        self._pmtiles(objects / "data" / "item-1.pmtiles")
+        reads: list[int] = []
+
+        class _Local(TileReader):
+            def read_range(
+                self, key: str, offset: int, length: int
+            ) -> tuple[bytes, str]:
+                reads.append(offset)
+                with open(objects / key, "rb") as f:
+                    whole = f.read()
+                etag = hashlib.md5(whole).hexdigest()  # noqa: S324 - as S3's
+                return whole[offset : offset + length], f'"{etag}"'
+
+        return _Local(_settings(tmp_path)), reads
+
+    def test_a_tile_is_served_and_the_header_read_once(
+        self, tmp_path: Path, objects: Path
+    ) -> None:
+        reader, reads = self._reader(tmp_path, objects)
+        row = {
+            "id": "item-1",
+            "assets": {"tiles": {"href": "../../../data/item-1.pmtiles"}},
+        }
+        assert reader.tile(row, 0, 0, 0) == (b"tile-0", "gzip")
+        assert reader.tile(row, 3, 1, 1) is None  # no such tile
+        assert reader.tile(row, 2, 9, 9) is None  # cannot exist
+        assert reader.tile(row, 0, 0, 0) == (b"tile-0", "gzip")
+        assert reads.count(0) == 1, "the header and root directory are cached"
+
+    def test_a_file_replaced_under_the_same_name_is_read_anew(
+        self, tmp_path: Path, objects: Path
+    ) -> None:
+        """goat-data rewrites a layer's tiles under the same name: the cached
+        head must not point into the new file."""
+        reader, reads = self._reader(tmp_path, objects)
+        path = objects / "data" / "item-1.pmtiles"
+        row = {"assets": {"tiles": {"href": "../../../data/item-1.pmtiles"}}}
+        # Past the cached head, so the tile itself is a range read.
+        self._pmtiles(path, b"a" * 20_000)
+        before = reader.version(row)
+        assert reader.tile(row, 0, 0, 0) == (b"a" * 20_000, "gzip")
+        self._pmtiles(path, b"b" * 20_000)
+        assert reader.tile(row, 0, 0, 0) == (b"b" * 20_000, "gzip")
+        assert reader.version(row) != before
+        assert reads.count(0) == 2
+
+    def test_the_served_item_points_at_the_tile_route(self) -> None:
+        served = _public_assets(
+            {"tiles": {"href": "../../../data/item-1.pmtiles", "roles": ["tiles"]}},
+            item_id="item-1",
+            assets_base="https://cat.example/assets",
+        )
+        assert served["tiles"]["href"] == "https://cat.example/assets/item-1/tiles"
+        # A raster's GeoTIFF stays private; its drawn tiles are announced instead.
+        raster = _public_assets(
+            {"data": {"href": "../../../data/r-1.tif", "roles": ["data"]}},
+            item_id="r-1",
+            assets_base="https://cat.example/assets",
+        )
+        assert raster == {
+            "raster": {
+                "href": "https://cat.example/assets/r-1/raster",
+                "type": "image/webp",
+                "roles": ["tiles"],
+            }
+        }
+
+    @pytest.mark.parametrize(
+        "assets",
+        [
+            {},
+            {"tiles": {"href": "../../../thumbs/item-1.pmtiles"}},
+            {"tiles": {"href": "../../../data/item-1.parquet"}},
+            {"tiles": {"href": "https://elsewhere.example/data/item-1.pmtiles"}},
+        ],
+    )
+    def test_nothing_but_the_items_own_tiles_is_reachable(
+        self, tmp_path: Path, objects: Path, assets: dict[str, Any]
+    ) -> None:
+        reader, _ = self._reader(tmp_path, objects)
+        with pytest.raises(ApiError) as err:
+            reader.tile({"id": "item-1", "assets": assets}, 0, 0, 0)
+        assert err.value.status_code == 404
+
+
+class TestRasterTiles:
+    """`/assets/{id}/raster/...`: the item's own GeoTIFF drawn tile by tile with
+    goatlib's raster code, read through a signed address that stays server side."""
+
+    RAMP = {
+        "v": 1,
+        "noData": [],
+        "kind": "ramp",
+        "band": 1,
+        "colors": ["#000000", "#ffffff"],
+        "domain": [0, 4],
+    }
+
+    def _reader(self, tmp_path: Path, tags: dict[str, str] | None = None) -> Any:
+        import numpy as np
+        import rasterio
+        from goatlib.raster.source import RasterSource
+        from rasterio.transform import from_bounds
+
+        from catalog.services.tiles import RasterTileReader, TileReader
+
+        tif = tmp_path / "classes.tif"
+        with rasterio.open(
+            tif,
+            "w",
+            driver="GTiff",
+            width=64,
+            height=64,
+            count=1,
+            dtype="uint8",
+            crs="EPSG:4326",
+            transform=from_bounds(10, 47, 11, 48, 64, 64),
+        ) as dst:
+            dst.write((np.arange(64 * 64).reshape(64, 64) % 4 + 1).astype("uint8"), 1)
+            if tags:
+                dst.update_tags(1, **tags)
+
+        class _Local(RasterTileReader):
+            def _source(self, generation: str, key: str) -> RasterSource:
+                return RasterSource(None, stored_file=tif)
+
+            def _version(self, generation: str, key: str) -> str:
+                return "file-1"
+
+        settings = _settings(tmp_path)
+        return _Local(settings, TileReader(settings))
+
+    def test_a_tile_inside_is_drawn_and_one_outside_is_empty(
+        self, tmp_path: Path
+    ) -> None:
+        from goatlib.raster.token import encode_token
+
+        reader = self._reader(tmp_path)
+        row = {"id": "r-1", "parquet_url": "../../../data/r-1.tif"}
+        token = encode_token(self.RAMP)
+        drawn = reader.tile("g", row, 8, 135, 90, token)  # covers 10.5 E, 47.5 N
+        assert drawn is not None and drawn[:4] == b"RIFF" and drawn[8:12] == b"WEBP"
+        assert reader.tile("g", row, 8, 10, 10, token) is None
+
+    def test_only_the_items_own_geotiff_and_a_valid_coloring(
+        self, tmp_path: Path
+    ) -> None:
+        from goatlib.raster.token import encode_token
+
+        reader = self._reader(tmp_path)
+        with pytest.raises(ApiError) as no_raster:
+            reader.tile(
+                "g",
+                {"parquet_url": "../../../data/x.parquet"},
+                8,
+                135,
+                90,
+                encode_token(self.RAMP),
+            )
+        assert no_raster.value.status_code == 404
+        with pytest.raises(ApiError) as bad_token:
+            reader.tile(
+                "g", {"parquet_url": "../../../data/r-1.tif"}, 8, 135, 90, "not-a-token"
+            )
+        assert bad_token.value.status_code == 400
+
+    def test_values_are_tiled_for_the_browser_to_color(self, tmp_path: Path) -> None:
+        """GOAT Style colors a raster in the browser from value tiles; the
+        description says how their codes become values, like geoapi's."""
+        from goatlib.raster.formula import parse_formula
+
+        reader = self._reader(tmp_path)
+        row = {"id": "r-1", "parquet_url": "../../../data/r-1.tif"}
+        band = parse_formula("b1")
+        encoding, maxzoom, version = reader.value_tileset("g", row, band)
+        assert encoding.integer and encoding.range == (1.0, 4.0)
+        assert maxzoom is not None and version == "file-1"
+        tile = reader.value_tile("g", row, 8, 135, 90, band, encoding, "nearest")
+        assert tile is not None and tile[8:12] == b"WEBP"
+        assert reader.value_tile("g", row, 8, 10, 10, band, encoding, "nearest") is None
+        with pytest.raises(ApiError) as missing_band:
+            reader.value_tileset("g", row, parse_formula("b2"))
+        assert missing_band.value.status_code == 400
+
+    def test_a_raster_its_reader_cannot_parse_is_not_available(
+        self, tmp_path: Path
+    ) -> None:
+        """Statistics written with a decimal comma break every read: 404, not 500."""
+        from goatlib.raster.formula import parse_formula
+        from goatlib.raster.token import encode_token
+        from goatlib.raster.values import value_encoding
+
+        reader = self._reader(
+            tmp_path, {"STATISTICS_MINIMUM": "1,5", "STATISTICS_MAXIMUM": "4,5"}
+        )
+        row = {"id": "r-1", "parquet_url": "../../../data/r-1.tif"}
+        band = parse_formula("b1")
+        with pytest.raises(ApiError) as drawn:
+            reader.tile("g", row, 8, 135, 90, encode_token(self.RAMP))
+        encoding = value_encoding("uint8", scaled=False, value_range=None)
+        with pytest.raises(ApiError) as values:
+            reader.value_tile("g", row, 8, 135, 90, band, encoding, "nearest")
+        assert drawn.value.status_code == values.value.status_code == 404
+
+    def test_the_signed_address_names_the_bucket_object(self, tmp_path: Path) -> None:
+        from catalog.services.tiles import TileReader
+
+        url = TileReader(_settings(tmp_path)).presign("data/r-1.tif", expires=600)
+        assert url.startswith(f"https://example.invalid/{BUCKET}/data/r-1.tif?")
+        assert "X-Amz-Expires=600" in url and "X-Amz-Signature=" in url

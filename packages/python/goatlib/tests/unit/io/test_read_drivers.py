@@ -406,6 +406,73 @@ def test_gpkg_layers_are_still_listed():
     ]
 
 
+TWO_CLASS_GML = """<?xml version="1.0" encoding="UTF-8"?>
+<t:Collection xmlns:t="http://example.org/t" xmlns:gml="http://www.opengis.net/gml/3.2"
+  gml:id="c">
+  <gml:featureMember>
+    <t:A gml:id="a1"><t:name>one</t:name>
+      <t:geom><gml:Point gml:id="p1" srsName="EPSG:25832"><gml:pos>1 2</gml:pos></gml:Point></t:geom>
+    </t:A>
+  </gml:featureMember>
+  <gml:featureMember>
+    <t:B gml:id="b1"><t:kind>x</t:kind>
+      <t:geom><gml:Point gml:id="p2" srsName="EPSG:25832"><gml:pos>3 4</gml:pos></gml:Point></t:geom>
+    </t:B>
+  </gml:featureMember>
+</t:Collection>
+"""
+
+
+def test_gml_classes_are_listed(tmp_path: Path):
+    source = tmp_path / "two.gml"
+    source.write_text(TWO_CLASS_GML)
+
+    assert discover.discover_inputs(str(source)) == [f"{source}::A", f"{source}::B"]
+
+
+def test_gml_writes_no_gfs(tmp_path: Path):
+    """GDAL caches its guess at a GML's schema in a `.gfs` beside the file; a
+    stale one breaks later reads, so no read of an upload may leave one."""
+    source = tmp_path / "two.gml"
+    source.write_text(TWO_CLASS_GML)
+
+    report = convert_all(str(source), tmp_path / "out")
+
+    assert len(report.outputs) == 2
+    assert not (tmp_path / "two.gfs").exists()
+
+
+ARC_GML = """<?xml version="1.0" encoding="UTF-8"?>
+<t:Collection xmlns:t="http://example.org/t" xmlns:gml="http://www.opengis.net/gml/3.2"
+  gml:id="c">
+  <gml:featureMember>
+    <t:Parcel gml:id="a1"><t:name>rounded</t:name>
+      <t:geom><gml:Polygon gml:id="g1" srsName="EPSG:25832"><gml:exterior><gml:Ring>
+        <gml:curveMember><gml:Curve gml:id="c1"><gml:segments>
+          <gml:LineStringSegment><gml:posList>0 0 10 0</gml:posList></gml:LineStringSegment>
+          <gml:Arc><gml:posList>10 0 15 5 10 10</gml:posList></gml:Arc>
+          <gml:LineStringSegment><gml:posList>10 10 0 10 0 0</gml:posList></gml:LineStringSegment>
+        </gml:segments></gml:Curve></gml:curveMember>
+      </gml:Ring></gml:exterior></gml:Polygon></t:geom>
+    </t:Parcel>
+  </gml:featureMember>
+</t:Collection>
+"""
+
+
+def test_gml_arcs_are_converted(tmp_path: Path):
+    """Cadastre and planning GML draw arcs, which GDAL reads as curves DuckDB
+    rejects; the arcs become straight segments instead of the class failing."""
+    source = tmp_path / "parcels.gml"
+    source.write_text(ARC_GML)
+
+    report = convert_all(str(source), tmp_path / "out")
+
+    assert report.failures == []
+    assert len(report.outputs) == 1
+    assert not (tmp_path / "parcels.gfs").exists()
+
+
 # Content that is not a GeoTIFF (only the faked `osgeo.gdal` sees it).
 NOT_A_GEOTIFF = "not a GeoTIFF"
 

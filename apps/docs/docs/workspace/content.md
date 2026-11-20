@@ -77,7 +77,7 @@ Deleting content does not remove it straight away: it goes to the **Trash**, whe
 
 - **New folder**, to group content however suits you
 - **Blank project** or **Import project**
-- **Upload dataset**, to upload a file from your device (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
+- **Upload dataset**, to upload a file from your device (GeoPackage, GeoJSON, Shapefile, KML, GML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
 - **Fetch / Connect data**, to add an external layer by URL (WFS, WMS, WMTS, XYZ Tiles or COG)
 - **Upload document**, for a file that belongs with the work without being data
 
@@ -134,7 +134,7 @@ A project exported from a newer GOAT whose styles use something this GOAT does n
 
 ### Uploading a dataset
 
-GOAT supports multiple file formats for upload: **GeoPackage**, **GeoJSON**, **Shapefile**, **KML**, **CSV**, **XLSX**, **ZIP**, **Parquet**, and **COG** files, as well as **GTFS** (`gtfs.zip`) archives for [Public Transport Networks](../data/dataset_types.md#public-transport-networks) and **Overture** (`overture.zip`) archives for [Street Networks](../data/dataset_types.md#street-networks).
+GOAT supports multiple file formats for upload: **GeoPackage**, **GeoJSON**, **Shapefile**, **KML**, **GML**, **CSV**, **XLSX**, **ZIP**, **Parquet**, and **COG** files, as well as **GTFS** (`gtfs.zip`) archives for [Public Transport Networks](../data/dataset_types.md#public-transport-networks), **Overture** (`overture.zip`) archives for [Street Networks](../data/dataset_types.md#street-networks), and **XPlanGML** (`.gml`) files for [XPlan Plans](../data/dataset_types.md#xplan-plans).
 
 <div class="step">
   <div class="step-number">1</div>

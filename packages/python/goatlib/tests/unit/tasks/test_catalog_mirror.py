@@ -499,3 +499,60 @@ def test_a_bundle_of_tables_claims_nowhere(tmp_path: Path) -> None:
     con.close()
     assert geom is None, "a bundle of tables must not claim the world"
     assert hit is None, "and must not match a spatial query"
+
+
+def test_a_bundles_layers_say_what_they_are(tmp_path: Path) -> None:
+    """Layers of a bundle are published as `bundle`; the mirror gives each its
+    own kind, so the catalog's type filter can look inside a dataset."""
+    con = duckdb.connect()
+    con.execute(
+        """
+        CREATE TABLE items AS SELECT * FROM (VALUES
+            ('m-poly', 'c-b', 'bundle', 'polygon', [], {'data': {'href': 'data/a.parquet', 'type': 'application/vnd.apache.parquet'}}),
+            ('m-wms', 'c-b', 'bundle', NULL,
+             [{'rel': 'wms', 'href': 'https://g/ows', 'type': 'image/png', 'title': 'a'}],
+             {'data': {'href': NULL, 'type': NULL}}),
+            ('m-tif', 'c-b', 'bundle', NULL, [], {'data': {'href': 'data/b.tif', 'type': 'image/tiff; application=geotiff'}}),
+            ('m-tif-wms', 'c-b', 'bundle', NULL,
+             [{'rel': 'wms', 'href': 'https://g/ows', 'type': 'image/png', 'title': 'b'}],
+             {'data': {'href': 'data/d.tif', 'type': 'image/tiff; application=geotiff'}}),
+            ('m-table', 'c-b', 'bundle', NULL, [], {'data': {'href': 'data/c.parquet', 'type': 'application/vnd.apache.parquet'}}),
+            ('m-table-wms', 'c-b', 'table', NULL,
+             [{'rel': 'wms', 'href': 'https://g/ows', 'type': 'image/png', 'title': 'c'}],
+             {'data': {'href': 'data/e.parquet', 'type': 'application/vnd.apache.parquet'}})
+        ) AS t(id, collection, "goat:layerType", "goat:geometryType", links, assets)
+        """
+    )
+    con.execute(
+        """CREATE TABLE collections AS SELECT 'c-b' AS id, 'Bundle' AS title,
+           'bundle' AS "goat:layerType" """
+    )
+    items_path, collections_path = tmp_path / "i.parquet", tmp_path / "c.parquet"
+    con.execute(f"COPY items TO '{items_path.as_posix()}' (FORMAT PARQUET)")
+    con.execute(f"COPY collections TO '{collections_path.as_posix()}' (FORMAT PARQUET)")
+    con.close()
+
+    out, out_c = (
+        tmp_path / "items_mirror.parquet",
+        tmp_path / "collections_mirror.parquet",
+    )
+    build_mirror(items_path, collections_path, out, out_c)
+
+    check = duckdb.connect()
+    kinds = dict(
+        check.execute(
+            f"SELECT id, \"goat:layerType\" FROM read_parquet('{out.as_posix()}')"
+        ).fetchall()
+    )
+    assert kinds == {
+        "m-poly": "feature",
+        "m-wms": "wms",
+        "m-tif": "raster",
+        "m-tif-wms": "raster",
+        "m-table": "table",
+        "m-table-wms": "table",
+    }
+    # The dataset itself is still a bundle: cards show "Bundle".
+    assert check.execute(
+        f"SELECT \"goat:layerType\" FROM read_parquet('{out_c.as_posix()}')"
+    ).fetchone() == ("bundle",)

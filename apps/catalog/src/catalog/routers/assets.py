@@ -15,17 +15,32 @@ Why the URL names the item and the kind rather than the object:
 """
 
 import json
-from typing import Any
+import math
+from typing import Any, Literal
+from urllib.parse import quote, urlencode
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response
+from fastapi.responses import JSONResponse
 from goatlib.catalog.item import item_style
 
 from catalog.auth import optional_auth
-from catalog.deps import check_not_modified, get_asset_reader, get_store
+from catalog.deps import (
+    check_not_modified,
+    get_asset_reader,
+    get_raster_tile_reader,
+    get_store,
+    get_tile_reader,
+)
 from catalog.errors import ApiError
 from catalog.services.assets import ASSET_KINDS, AssetReader, valid_item_id
 from catalog.services.search import resolve_id
+from catalog.services.tiles import RasterTileReader, TileReader
 from catalog.store import CatalogStore
+
+#: Tiles are read live from the bucket, where goat-data replaces a layer's
+#: tiles under the same name, so a browser keeps them briefly and then
+#: revalidates (vector tiles carry the file's ETag).
+_TILE_MAX_AGE_S = 300
 
 router = APIRouter(
     prefix="/assets",
@@ -72,6 +87,206 @@ def get_asset(
         content=content,
         media_type=media_type,
         headers=_headers(store, key),
+    )
+
+
+@router.get(
+    "/{item_id}/tiles/{z}/{x}/{y}",
+    summary="One vector tile of a layer's published tiles",
+    response_class=Response,
+)
+def get_tile(
+    item_id: str,
+    z: int = Path(..., ge=0, le=24),
+    x: int = Path(..., ge=0),
+    y: int = Path(..., ge=0),
+    if_none_match: str | None = Header(None),
+    store: CatalogStore = Depends(get_store),
+    reader: TileReader = Depends(get_tile_reader),
+) -> Response:
+    """One Mapbox Vector Tile of the layer, for drawing its map.
+
+    204 for a tile with nothing in it; 404 when the layer has no published
+    tiles, or where a deployment does not serve assets.
+    """
+    if not valid_item_id(item_id):
+        raise ApiError(404, f"Item not found: {item_id}")
+    res = resolve_id(store, item_id)
+    if res is None or res["kind"] != "item":
+        raise ApiError(404, f"Item not found: {item_id}")
+    version = reader.version(res["row"])
+    headers = {
+        "Cache-Control": f"public, max-age={_TILE_MAX_AGE_S}",
+        "ETag": f'W/"{version.strip(chr(34))}"',
+        "X-Content-Type-Options": "nosniff",
+    }
+    if if_none_match == headers["ETag"]:
+        return Response(status_code=304, headers=headers)
+    found = reader.tile(res["row"], z, x, y)
+    if found is None:
+        return Response(status_code=204, headers=headers)
+    content, encoding = found
+    if encoding:
+        headers["Content-Encoding"] = encoding
+    return Response(
+        content=content, media_type="application/x-protobuf", headers=headers
+    )
+
+
+def _raster_row(store: CatalogStore, item_id: str) -> dict[str, Any]:
+    if not valid_item_id(item_id):
+        raise ApiError(404, f"Item not found: {item_id}")
+    res = resolve_id(store, item_id)
+    if res is None or res["kind"] != "item":
+        raise ApiError(404, f"Item not found: {item_id}")
+    return res["row"]
+
+
+def _webp(tile: bytes | None) -> Response:
+    headers = {
+        "Cache-Control": f"public, max-age={_TILE_MAX_AGE_S}",
+        "X-Content-Type-Options": "nosniff",
+    }
+    if tile is None:
+        return Response(status_code=204, headers=headers)
+    return Response(content=tile, media_type="image/webp", headers=headers)
+
+
+@router.get(
+    "/{item_id}/raster/{z}/{x}/{y}.webp",
+    summary="A raster tile colored by a style token",
+    response_class=Response,
+)
+def get_raster_tile(
+    item_id: str,
+    z: int = Path(..., ge=0, le=24),
+    x: int = Path(..., ge=0),
+    y: int = Path(..., ge=0),
+    style: str | None = None,
+    store: CatalogStore = Depends(get_store),
+    reader: RasterTileReader = Depends(get_raster_tile_reader),
+) -> Response:
+    """One tile of a raster layer, colored by `style` (the token a GOAT Style
+    raster coloring compiles to). 204 outside the raster, 404 when the layer is
+    no raster or where a deployment does not serve assets."""
+    row = _raster_row(store, item_id)
+    return _webp(reader.tile(store.etag_seed, row, z, x, y, style))
+
+
+def _values_of(band: int | None, formula: str | None) -> Any:
+    """What a value tile holds: the band's values, or the formula's; band 1
+    when neither is given (geoapi's `_values_of`)."""
+    from goatlib.raster.formula import FormulaError, parse_formula
+
+    if band is not None and formula is not None:
+        raise ApiError(400, "A band or a formula, not both.")
+    try:
+        return parse_formula(formula if formula is not None else f"b{band or 1}")
+    except FormulaError as error:
+        raise ApiError(400, str(error)) from None
+
+
+@router.get(
+    "/{item_id}/raster/coverage/tiles/WebMercatorQuad",
+    summary="The value tiles of a raster's band or formula, as GOAT Style reads them",
+    response_class=JSONResponse,
+)
+def get_raster_values_tileset(
+    request: Request,
+    item_id: str,
+    band: int | None = Query(None, ge=1),
+    formula: str | None = Query(None, max_length=500),
+    resampling: Literal["nearest", "bilinear"] = "bilinear",
+    store: CatalogStore = Depends(get_store),
+    reader: RasterTileReader = Depends(get_raster_tile_reader),
+) -> JSONResponse:
+    """OGC tileset metadata with `goat:values`, the same document geoapi
+    serves for a project raster, so the browser colors a catalog raster the
+    way it colors the layer the raster becomes."""
+    values = _values_of(band, formula)
+    row = _raster_row(store, item_id)
+    encoding, maxzoom, version = reader.value_tileset(store.etag_seed, row, values)
+    shown: dict[str, str | int] = {
+        "f": "webp",
+        **({"formula": formula} if formula is not None else {"band": band or 1}),
+        "resampling": resampling,
+    }
+    query = urlencode(
+        {
+            **shown,
+            "base": repr(encoding.base),
+            "step": repr(encoding.step),
+            "v": version,
+        },
+        quote_via=quote,
+    )
+    tiles = str(request.url.remove_query_params(list(request.query_params.keys())))
+    return JSONResponse(
+        {
+            "title": f"{item_id} values",
+            "tileMatrixSetURI": (
+                "http://www.opengis.net/def/tilematrixset/OGC/1.0/WebMercatorQuad"
+            ),
+            "crs": "http://www.opengis.net/def/crs/EPSG/0/3857",
+            "dataType": "coverage",
+            "maxzoom": maxzoom,
+            "links": [
+                {
+                    "rel": "item",
+                    "type": "image/webp",
+                    "templated": True,
+                    "href": f"{tiles}/{{tileMatrix}}/{{tileRow}}/{{tileCol}}?{query}",
+                }
+            ],
+            "goat:values": {
+                "encoding": encoding.factors(),
+                "range": list(encoding.range) if encoding.range else None,
+                "integer": encoding.integer,
+                "version": version,
+            },
+        },
+        headers={"Cache-Control": f"public, max-age={_TILE_MAX_AGE_S}"},
+    )
+
+
+@router.get(
+    "/{item_id}/raster/coverage/tiles/WebMercatorQuad/{tileMatrix}/{tileRow}/{tileCol}",
+    summary="A value tile of a raster's band or formula",
+    response_class=Response,
+)
+def get_raster_values_tile(
+    item_id: str,
+    z: int = Path(..., alias="tileMatrix", ge=0, le=24),
+    y: int = Path(..., alias="tileRow", ge=0),
+    x: int = Path(..., alias="tileCol", ge=0),
+    base: float = Query(..., description="Code q is base + q * step"),
+    step: float = Query(..., description="What one code adds to the value"),
+    band: int | None = Query(None, ge=1),
+    formula: str | None = Query(None, max_length=500),
+    resampling: Literal["nearest", "bilinear"] = "bilinear",
+    f: Literal["webp"] = "webp",
+    v: str = Query("", max_length=64),
+    store: CatalogStore = Depends(get_store),
+    reader: RasterTileReader = Depends(get_raster_tile_reader),
+) -> Response:
+    """Each pixel's code `q = R * 65536 + G * 256 + B` is the value
+    `base + q * step`; code 0 is no data. 204 outside the raster."""
+    from goatlib.raster.values import MAX_Q, ValueEncoding
+
+    values = _values_of(band, formula)
+    if not (
+        math.isfinite(base)
+        and math.isfinite(step)
+        and step > 0
+        and math.isfinite(base + MAX_Q * step)
+    ):
+        raise ApiError(
+            400, "base and step must be finite, step above 0, and every code finite."
+        )
+    encoding = ValueEncoding(base=base, step=step, integer=False, range=None)
+    row = _raster_row(store, item_id)
+    return _webp(
+        reader.value_tile(store.etag_seed, row, z, x, y, values, encoding, resampling)
     )
 
 

@@ -642,7 +642,7 @@ _MEMBER_DESCRIPTION_CHARS = 300
 def _compact_columns(columns: Any) -> Any:
     if not isinstance(columns, list):
         return columns
-    keep = ("name", "type", "description")
+    keep = ("name", "type", "description", "keywords", "statistics")
     return [
         {key: column[key] for key in keep if column.get(key) is not None}
         for column in columns[:_RECORD_COLUMNS]

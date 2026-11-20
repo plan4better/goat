@@ -50,7 +50,7 @@ const MapDropTarget = ({ projectId }: { projectId: string }) => {
   const [needsSetup, setNeedsSetup] = useState<File | null>(null);
 
   const take = useCallback(
-    (files: FileList | null) => {
+    async (files: FileList | null) => {
       const dropped = Array.from(files ?? []);
       if (dropped.length === 0) return;
       if (dropped.length > 1) {
@@ -69,7 +69,7 @@ const MapDropTarget = ({ projectId }: { projectId: string }) => {
       // imported from a drop alone: a GTFS feed's stop-to-street linkage is
       // built against a street network, and nothing here can pick one. So the
       // drop opens the dialog and the upload finishes there.
-      if (detectBundleType(file)?.requiresStreetNetwork) {
+      if ((await detectBundleType(file))?.requiresStreetNetwork) {
         setNeedsSetup(file);
         return;
       }
