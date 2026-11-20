@@ -1641,6 +1641,9 @@
       "language_code": "Keine Sprache verfügbar"
     },
     "show_all_fields": "Alle {{count}} anzeigen",
+    "copy_address": "Adresse kopieren",
+    "source_map_service": "Kartendienst ({{kind}})",
+    "source_remote_file": "Externe Datei",
     "title": "Metadaten",
     "type": {
       "street_network": "Straßennetz",

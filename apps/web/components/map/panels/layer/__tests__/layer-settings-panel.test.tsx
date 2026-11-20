@@ -42,7 +42,12 @@ vi.mock("@/components/map/panels/filter/LayerFilterPanel", () => ({
     <div data-testid="filter-tab" data-visible={String(visible)} />
   ),
 }));
-vi.mock("@/components/map/panels/properties/Properties", () => ({ default: () => null }));
+// The metadata tab shows what it is told about the edit right: an editor sees a layer's address whole.
+vi.mock("@/components/map/panels/properties/Properties", () => ({
+  default: ({ canEdit }: { canEdit?: boolean }) => (
+    <div data-testid="metadata-tab" data-can-edit={String(canEdit)} />
+  ),
+}));
 vi.mock("@/lib/api/projects", async (original) => ({
   ...(await original<object>()),
   useProject: () => ({ project: { owned_by: { id: "u1" }, my_role: "project-owner" } }),
@@ -157,6 +162,27 @@ describe("the layer settings panel", () => {
     renderPanel({ ...layer, type: "table", feature_layer_geometry_type: null } as unknown as MapLayer);
     await screen.findByTestId("filter-tab");
     expect(requested.filter((url) => url.includes("/feature-count/"))).toEqual([]);
+  });
+
+  it("tells the metadata tab whether the user may edit the dataset", async () => {
+    // The project's owner (u1) is signed in: the dataset is theirs, or someone else's they may not edit.
+    for (const [owner, canEdit] of [
+      ["u1", "true"],
+      ["u2", "false"],
+    ]) {
+      const { unmount } = renderPanel({
+        ...layer,
+        type: "raster",
+        data_type: "cog",
+        url: "https://files.example/dem.tif?sig=x",
+        user_id: owner,
+        feature_layer_geometry_type: null,
+        style: null,
+      } as unknown as MapLayer);
+      await userEvent.click(await screen.findByRole("tab", { name: "metadata.title" }));
+      expect((await screen.findByTestId("metadata-tab")).dataset.canEdit).toBe(canEdit);
+      unmount();
+    }
   });
 
   it("a table's filter tab knows it is off screen once its metadata is open", async () => {

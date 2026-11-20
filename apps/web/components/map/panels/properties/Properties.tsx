@@ -1,9 +1,10 @@
 // The layer panel's Metadata tab, laid out as the style panel is: sections with a heading each (the description, the
 // lineage, the details, the fields), the facts as rows of a label and its value, the 12 px gutter. The details open
-// with the dataset's size (its geometry and feature count are in the panel's header); the catalog facts after it are
-// read from the catalog record the layer carries (a promoted catalog layer's own record, a fetched layer's
-// provenance), in the catalog's vocabulary.
-import { Box, Button, Tooltip, Typography } from "@mui/material";
+// with where the data comes from (the catalog, a file or a map service added by its address, with that address), then
+// the dataset's size (its geometry and feature count are in the panel's header); the catalog facts after it are read
+// from the catalog record the layer carries (a promoted catalog layer's own record, a fetched layer's provenance), in
+// the catalog's vocabulary.
+import { Box, Button, Link, Tooltip, Typography } from "@mui/material";
 import { format, formatDistance } from "date-fns";
 import prettyBytes from "pretty-bytes";
 import { type ReactNode, useMemo, useState } from "react";
@@ -15,13 +16,22 @@ import { useDateFnsLocale } from "@/i18n/utils";
 
 import { useLayerQueryables } from "@/lib/api/layers";
 import type { FieldType } from "@/lib/style/compile/types";
-import { isCatalogLayer } from "@/lib/utils/catalog-layer";
 import { datasetUpdatedAt } from "@/lib/utils/datasetDates";
+import {
+  type LayerOrigin,
+  addressShownTo,
+  layerOrigin,
+  readableAddress,
+  shortAddress,
+  withoutQuery,
+  withoutScheme,
+} from "@/lib/utils/layerOrigin";
 import type { ProjectLayer } from "@/lib/validations/project";
 
 import { useCatalogLabels } from "@/hooks/catalog/useCatalogLabels";
 import { fieldsOf } from "@/hooks/style/useStyleData";
 
+import CopyButton from "@/components/common/CopyButton";
 import FieldKindIcon, { type FieldIndicatorKind, fieldIndicatorKind } from "@/components/common/FieldKindIcon";
 import MarkdownProse from "@/components/dashboard/common/MarkdownProse";
 import { PanelSection, Row } from "@/components/map/panels/styleEditor/rows";
@@ -45,6 +55,34 @@ const Value = ({ children }: { children: ReactNode }) => (
     {children}
   </Typography>
 );
+
+/**
+ * A layer's address: the host and the last segment in full and the folders between left out, decoded to read,
+ * wrapping where it must; the whole of it (as this person may see it) on hover and in the copy. A file's address is a
+ * link that opens it in a new tab; a map service's is text, as its tile template or GetMap request opens no useful
+ * page, and its query is left out of the text. The copy button follows the text on its last line, so it never covers
+ * it.
+ */
+const Address = ({ href, link, copyLabel }: { href: string; link: boolean; copyLabel: string }) => {
+  const text = readableAddress(shortAddress(withoutScheme(link ? href : withoutQuery(href))));
+  return (
+    <Value>
+      <Tooltip title={href} placement="bottom-start" arrow>
+        {link ? (
+          <Link href={href} target="_blank" rel="noopener noreferrer" underline="hover">
+            {text}
+          </Link>
+        ) : (
+          // Focusable, so a keyboard opens its tooltip as a pointer does.
+          <span tabIndex={0}>{text}</span>
+        )}
+      </Tooltip>
+      <Box component="span" sx={{ display: "inline-flex", verticalAlign: "middle", ml: 0.5 }}>
+        <CopyButton value={href} label={copyLabel} />
+      </Box>
+    </Value>
+  );
+};
 
 /** Prose (the description, the lineage) in the panel's gutter. */
 const Prose = ({ children }: { children: string }) => (
@@ -93,9 +131,19 @@ interface PropertiesPanelProps {
   activeLayer: ProjectLayer;
   /** Lists the dataset's fields. Off on a public map, whose viewers get what the author wrote and no schema. */
   showFields?: boolean;
+  /** The person may edit the dataset, so sees its address whole. Off by default (a shared or a public map): anyone
+   * else sees it without its query string and fragment, where a key or a signature may sit. */
+  canEdit?: boolean;
 }
 
-const PropertiesPanel = ({ activeLayer, showFields = true }: PropertiesPanelProps) => {
+/** What the Source row says the data came from. */
+const SOURCE_LABEL_KEYS: Record<LayerOrigin["kind"], string> = {
+  catalog: "catalog",
+  remote_file: "metadata.source_remote_file",
+  map_service: "metadata.source_map_service",
+};
+
+const PropertiesPanel = ({ activeLayer, showFields = true, canEdit = false }: PropertiesPanelProps) => {
   const { t, i18n } = useTranslation("common");
   const dateLocale = useDateFnsLocale();
   const labels = useCatalogLabels();
@@ -103,7 +151,8 @@ const PropertiesPanel = ({ activeLayer, showFields = true }: PropertiesPanelProp
   const description = text(activeLayer.description);
   const lineage = text(record?.["processing:lineage"]);
   const updatedAt = datasetUpdatedAt(activeLayer);
-  const catalog = isCatalogLayer(activeLayer);
+  const origin = layerOrigin(activeLayer);
+  const address = origin && origin.kind !== "catalog" ? addressShownTo(origin.url, canEdit) : undefined;
   // Which layer's fields are all shown: another layer opens with its list short again.
   const [allFieldsOf, setAllFieldsOf] = useState<string>();
 
@@ -158,22 +207,36 @@ const PropertiesPanel = ({ activeLayer, showFields = true }: PropertiesPanelProp
           <Prose>{lineage}</Prose>
         </PanelSection>
       )}
-      {(facts.length > 0 || catalog || updatedAt) && (
+      {(facts.length > 0 || origin || updatedAt) && (
         <PanelSection title={t("details")}>
+          {/* Where the layer came from: the catalog, or the address a file or a map service was added with. A
+            catalog layer deliberately gets no link to its entry: the mirror is rebuilt wholesale on every sync, so a
+            promoted layer outlives the entry it came from and the link would eventually 404. */}
+          {origin && (
+            <Row label={t("source")}>
+              <Icon iconName={ICON_NAME.GLOBE} sx={{ fontSize: 13, color: "text.secondary" }} />
+              <Value>
+                {t(
+                  SOURCE_LABEL_KEYS[origin.kind],
+                  origin.kind === "map_service" ? { kind: origin.service.toUpperCase() } : undefined
+                )}
+              </Value>
+            </Row>
+          )}
+          {address && (
+            <Row label={t("address")}>
+              <Address
+                href={address}
+                link={origin?.kind === "remote_file"}
+                copyLabel={t("metadata.copy_address")}
+              />
+            </Row>
+          )}
           {facts.map(({ key, label, value }) => (
             <Row key={key} label={label}>
               <Value>{value}</Value>
             </Row>
           ))}
-          {/* Where the layer came from: someone else's dataset. Deliberately not a link to the catalog entry: the
-            mirror is rebuilt wholesale on every sync, so a promoted layer outlives the entry it came from and the
-            link would eventually 404. */}
-          {catalog && (
-            <Row label={t("source")}>
-              <Icon iconName={ICON_NAME.GLOBE} sx={{ fontSize: 13, color: "text.secondary" }} />
-              <Value>{t("catalog")}</Value>
-            </Row>
-          )}
           {updatedAt && (
             <Row label={t("metadata.headings.updated")}>
               {/* The date itself, not "12 days ago": this is provenance, and a relative distance is only easy to read

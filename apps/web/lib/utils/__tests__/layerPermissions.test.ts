@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { MAX_EDITABLE_LAYER_SIZE } from "@/lib/constants";
 import {
+  canEditDataset,
   canEditLayerFeatures,
   canEditLayerFields,
   canSetDefaultStyle,
@@ -268,5 +269,32 @@ describe("canSetDefaultStyle", () => {
   it("refuses when there is no layer", () => {
     expect(canSetDefaultStyle(null, editor)).toBe(false);
     expect(canSetDefaultStyle(undefined, editor)).toBe(false);
+  });
+});
+
+describe("canEditDataset", () => {
+  const editor = { currentUserId: "me", projectOwnerId: "owner", isProjectEditor: true };
+  const remoteFile = (fields: Record<string, unknown>) =>
+    ({
+      type: "raster",
+      data_type: "cog",
+      url: "https://example.org/a.tif",
+      other_properties: {},
+      ...fields,
+    }) as never;
+
+  it("allows a project editor who owns the dataset, or a dataset of the project's owner", () => {
+    expect(canEditDataset(remoteFile({ user_id: "me" }), editor)).toBe(true);
+    expect(canEditDataset(remoteFile({ user_id: "owner" }), editor)).toBe(true);
+  });
+
+  it("refuses someone else's dataset, a project viewer, a locked row, a catalog layer and no layer", () => {
+    expect(canEditDataset(remoteFile({ user_id: "someone" }), editor)).toBe(false);
+    expect(canEditDataset(remoteFile({ user_id: "me" }), { ...editor, isProjectEditor: false })).toBe(false);
+    expect(canEditDataset(remoteFile({ user_id: "me", locked: true }), editor)).toBe(false);
+    expect(
+      canEditDataset(remoteFile({ user_id: "me", other_properties: { catalog_item: { id: "x" } } }), editor)
+    ).toBe(false);
+    expect(canEditDataset(undefined, editor)).toBe(false);
   });
 });

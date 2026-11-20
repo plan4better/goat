@@ -11,7 +11,7 @@ import { setSelectedLayers } from "@/lib/store/layer/slice";
 import { setActiveRightPanel } from "@/lib/store/map/slice";
 import type { Geometry } from "@/lib/style/compile/types";
 import { sourceOf } from "@/lib/style/layerSource";
-import { canSetDefaultStyle } from "@/lib/utils/layerPermissions";
+import { canEditDataset, canSetDefaultStyle } from "@/lib/utils/layerPermissions";
 
 import { MapSidebarItemID } from "@/types/map/common";
 
@@ -102,6 +102,8 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
     // The panel is the project's editing panel; a role the project names decides.
     isProjectEditor: !project?.my_role || ["project-owner", "project-editor"].includes(project.my_role),
   };
+  // Whoever may edit the dataset sees its address whole in the metadata tab; anyone else without its query string.
+  const canEdit = canEditDataset(activeLayer, datasetAccess);
   const editorLayer = useMemo<EditorLayer>(() => {
     const g = activeLayer?.feature_layer_geometry_type?.toLowerCase();
     const geometry = (g === "point" || g === "line" || g === "polygon" ? g : undefined) as
@@ -224,7 +226,7 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
                   )}
                 </Box>
                 <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: "100%" }}>
-                  {isTabLive(1) && <PropertiesPanel activeLayer={activeLayer} />}
+                  {isTabLive(1) && <PropertiesPanel activeLayer={activeLayer} canEdit={canEdit} />}
                 </Box>
               </>
             )}
@@ -237,7 +239,7 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
                   )}
                 </Box>
                 <Box role="tabpanel" hidden={activeTab !== 1} sx={{ height: "100%" }}>
-                  {isTabLive(1) && <PropertiesPanel activeLayer={activeLayer} />}
+                  {isTabLive(1) && <PropertiesPanel activeLayer={activeLayer} canEdit={canEdit} />}
                 </Box>
               </>
             )}
@@ -260,7 +262,7 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
                   )}
                 </Box>
                 <Box role="tabpanel" hidden={activeTab !== 2} sx={{ height: "100%" }}>
-                  {isTabLive(2) && <PropertiesPanel activeLayer={activeLayer} />}
+                  {isTabLive(2) && <PropertiesPanel activeLayer={activeLayer} canEdit={canEdit} />}
                 </Box>
               </>
             )}

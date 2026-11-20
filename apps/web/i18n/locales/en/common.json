@@ -1549,6 +1549,9 @@
       "language_code": "No language available"
     },
     "show_all_fields": "Show all {{count}}",
+    "copy_address": "Copy address",
+    "source_map_service": "Map service ({{kind}})",
+    "source_remote_file": "Remote file",
     "title": "Metadata",
     "type": {
       "street_network": "Street Network",
